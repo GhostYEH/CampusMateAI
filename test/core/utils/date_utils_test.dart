@@ -20,7 +20,9 @@ void main() {
   group('AppDateUtils.weekday', () {
     test('周一至周日映射正确', () {
       expect(
-          AppDateUtils.weekday(DateTime(2025, 10, 13)), '周一'); // 2025-10-13 是周一
+        AppDateUtils.weekday(DateTime(2025, 10, 13)),
+        '周一',
+      ); // 2025-10-13 是周一
       expect(AppDateUtils.weekday(DateTime(2025, 10, 14)), '周二');
       expect(AppDateUtils.weekday(DateTime(2025, 10, 15)), '周三');
       expect(AppDateUtils.weekday(DateTime(2025, 10, 16)), '周四');
@@ -33,7 +35,9 @@ void main() {
   group('AppDateUtils.formatDate / formatDateFull', () {
     test('formatDate 不含年份', () {
       expect(
-          AppDateUtils.formatDate(DateTime(2025, 10, 20)), contains('10月20日'));
+        AppDateUtils.formatDate(DateTime(2025, 10, 20)),
+        contains('10月20日'),
+      );
       expect(AppDateUtils.formatDate(DateTime(2025, 10, 20)), contains('周'));
     });
 
@@ -57,30 +61,42 @@ void main() {
 
     test('刚刚(不足1分钟)', () {
       expect(
-          AppDateUtils.relativeTime(now.subtract(const Duration(seconds: 30)),
-              now: now),
-          '刚刚');
+        AppDateUtils.relativeTime(
+          now.subtract(const Duration(seconds: 30)),
+          now: now,
+        ),
+        '刚刚',
+      );
     });
 
     test('N分钟前', () {
       expect(
-          AppDateUtils.relativeTime(now.subtract(const Duration(minutes: 5)),
-              now: now),
-          '5分钟前');
+        AppDateUtils.relativeTime(
+          now.subtract(const Duration(minutes: 5)),
+          now: now,
+        ),
+        '5分钟前',
+      );
     });
 
     test('N小时前(同一天)', () {
       expect(
-          AppDateUtils.relativeTime(now.subtract(const Duration(hours: 3)),
-              now: now),
-          '3小时前');
+        AppDateUtils.relativeTime(
+          now.subtract(const Duration(hours: 3)),
+          now: now,
+        ),
+        '3小时前',
+      );
     });
 
     test('N天前(7天内)', () {
       expect(
-          AppDateUtils.relativeTime(now.subtract(const Duration(days: 2)),
-              now: now),
-          '2天前');
+        AppDateUtils.relativeTime(
+          now.subtract(const Duration(days: 2)),
+          now: now,
+        ),
+        '2天前',
+      );
     });
 
     test('7天以上显示月日', () {
@@ -184,8 +200,9 @@ void main() {
           .subtract(const Duration(seconds: 1));
 
       expect(
-          AppDateUtils.isThisWeek(mondayStart.add(const Duration(hours: 12))),
-          isTrue);
+        AppDateUtils.isThisWeek(mondayStart.add(const Duration(hours: 12))),
+        isTrue,
+      );
       expect(AppDateUtils.isThisWeek(sundayEnd), isTrue);
       // 上周一应该不在本周
       final lastWeek = mondayStart.subtract(const Duration(days: 7));

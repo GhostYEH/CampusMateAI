@@ -19,16 +19,18 @@ void main() {
     CounselorChatService? chatService,
     KnowledgeBaseService? knowledgeBase,
   }) {
-    final container = ProviderContainer(overrides: [
-      taskRepositoryProvider.overrideWithValue(
-        MockTaskRepository(initial: const []),
-      ),
-      if (knowledgeBase != null)
-        knowledgeBaseProvider.overrideWithValue(knowledgeBase),
-      if (chatService != null)
-        counselorChatProvider.overrideWithValue(chatService),
-      reduceMotionProvider.overrideWith((ref) => true),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        taskRepositoryProvider.overrideWithValue(
+          MockTaskRepository(initial: const []),
+        ),
+        if (knowledgeBase != null)
+          knowledgeBaseProvider.overrideWithValue(knowledgeBase),
+        if (chatService != null)
+          counselorChatProvider.overrideWithValue(chatService),
+        reduceMotionProvider.overrideWith((ref) => true),
+      ],
+    );
     addTearDown(container.dispose);
     return container;
   }
@@ -157,7 +159,7 @@ void main() {
     await pumpIdle(tester);
 
     // 找到第一个快捷问题 chip(MockData.quickQuestions[0])
-    final quickQuestionText = '综合测评需要准备什么材料?';
+    const quickQuestionText = '综合测评需要准备什么材料?';
     final chip = find.text(quickQuestionText);
     expect(chip, findsWidgets);
 

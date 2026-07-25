@@ -42,10 +42,14 @@ void main() {
       var r = s.smooth(_probs(ExpressionLabel.happy), t0);
       expect(r.isStable, isFalse); // streak=1
       r = s.smooth(
-          _probs(ExpressionLabel.happy), t0.add(const Duration(seconds: 1)));
+        _probs(ExpressionLabel.happy),
+        t0.add(const Duration(seconds: 1)),
+      );
       expect(r.isStable, isFalse); // streak=2
       r = s.smooth(
-          _probs(ExpressionLabel.happy), t0.add(const Duration(seconds: 2)));
+        _probs(ExpressionLabel.happy),
+        t0.add(const Duration(seconds: 2)),
+      );
       expect(r.isStable, isTrue); // streak=3 >= stableFrames
     });
 
@@ -58,8 +62,10 @@ void main() {
       final t0 = DateTime(2025, 1, 1, 10, 0);
       // 4 帧 happy(高置信度)
       for (var i = 0; i < 4; i++) {
-        s.smooth(_probs(ExpressionLabel.happy, mainConfidence: 0.9),
-            t0.add(Duration(seconds: i)));
+        s.smooth(
+          _probs(ExpressionLabel.happy, mainConfidence: 0.9),
+          t0.add(Duration(seconds: i)),
+        );
       }
       // 1 帧 sad 注入(单帧抖动), 窗口内仍是 happy 主导
       final r = s.smooth(
@@ -109,8 +115,10 @@ void main() {
       final t0 = DateTime(2025, 1, 1, 10, 0);
       // 2 帧 happy (streak=2, 未达 stable)
       s.smooth(_probs(ExpressionLabel.happy, mainConfidence: 0.9), t0);
-      s.smooth(_probs(ExpressionLabel.happy, mainConfidence: 0.9),
-          t0.add(const Duration(seconds: 1)));
+      s.smooth(
+        _probs(ExpressionLabel.happy, mainConfidence: 0.9),
+        t0.add(const Duration(seconds: 1)),
+      );
       // 1 帧低置信度(均匀分布)→ happy 平均 = (0.9+0.9+0.111)/3 ≈ 0.637 < 0.7,重置 streak
       final lowConf = <ExpressionLabel, double>{
         for (final l in ExpressionLabel.values)
@@ -194,8 +202,10 @@ void main() {
       final t0 = DateTime(2025, 1, 1, 10, 0);
       // 5 帧 happy, 窗口仅保留最近 3 帧
       for (var i = 0; i < 5; i++) {
-        s.smooth(_probs(ExpressionLabel.happy, mainConfidence: 0.9),
-            t0.add(Duration(seconds: i)));
+        s.smooth(
+          _probs(ExpressionLabel.happy, mainConfidence: 0.9),
+          t0.add(Duration(seconds: i)),
+        );
       }
       // 注入 1 帧 sad, 由于窗口大小=3, 包含 2 帧 happy + 1 帧 sad
       // happy 概率 = 0.9 * 2/3 + sad_rest * 2/3
@@ -219,11 +229,15 @@ void main() {
       final t0 = DateTime(2025, 1, 1, 10, 0);
       s.smooth(_probs(ExpressionLabel.happy), t0);
       s.smooth(
-          _probs(ExpressionLabel.happy), t0.add(const Duration(seconds: 1)));
+        _probs(ExpressionLabel.happy),
+        t0.add(const Duration(seconds: 1)),
+      );
       s.reset();
       // reset 后第一帧应不 stable
       final r = s.smooth(
-          _probs(ExpressionLabel.happy), t0.add(const Duration(seconds: 2)));
+        _probs(ExpressionLabel.happy),
+        t0.add(const Duration(seconds: 2)),
+      );
       expect(r.isStable, isFalse);
     });
   });
@@ -239,8 +253,10 @@ void main() {
       final t0 = DateTime(2025, 1, 1, 10, 0);
       // 4 帧 happy => stable (streak=3+)
       for (var i = 0; i < 4; i++) {
-        s.smooth(_probs(ExpressionLabel.happy, mainConfidence: 0.9),
-            t0.add(Duration(seconds: i)));
+        s.smooth(
+          _probs(ExpressionLabel.happy, mainConfidence: 0.9),
+          t0.add(Duration(seconds: i)),
+        );
       }
       // 切到 neutral: 需 2 帧让 neutral 在窗口(3)中占多数
       // 帧 4: 窗口=[h,h,n], happy 主导, streak 继续

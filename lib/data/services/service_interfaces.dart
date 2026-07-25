@@ -28,6 +28,9 @@ class ExtractionStep {
 }
 
 /// 待办任务仓库抽象。
+///
+/// 持久化相关方法([snapshot]/[restoreFrom]/[clearAll]/[resetToDemo])用于
+/// 本地缓存管理;真实后端实现可作为 no-op 或维护本地缓存。
 abstract interface class TaskRepository {
   List<Task> get tasks;
   Stream<List<Task>> watchTasks();
@@ -40,6 +43,18 @@ abstract interface class TaskRepository {
   Future<List<Task>> getUpcoming({int limit = 5});
   Future<List<Task>> getCompleted();
   Future<List<Task>> getToday();
+
+  /// 当前内存中所有任务的可持久化快照(包含已删除项)。
+  List<Task> get snapshot;
+
+  /// 从持久化数据恢复(替换内存数据)。
+  Future<void> restoreFrom(List<Task> saved);
+
+  /// 清空所有任务(用于"清除本地数据")。
+  Future<void> clearAll();
+
+  /// 重置为演示数据(用于"恢复演示数据")。
+  Future<void> resetToDemo();
 }
 
 /// AI 导员聊天服务抽象。
@@ -72,6 +87,9 @@ abstract interface class KnowledgeBaseService {
 }
 
 /// 学习会话仓库抽象。
+///
+/// 持久化相关方法([historySnapshot]/[restoreHistoryFrom]/[clearHistory]/
+/// [resetToDemo])用于本地缓存管理;真实后端实现可作为 no-op。
 abstract interface class StudySessionRepository {
   StudySession? get current;
   Stream<StudySession> watchCurrent();
@@ -81,6 +99,18 @@ abstract interface class StudySessionRepository {
   Future<StudySession> end({String? selfReportMood});
   Future<List<StudySession>> history({int limit = 30});
   Future<Duration> todayTotal();
+
+  /// 当前内存历史记录的可持久化快照。
+  List<StudySession> get historySnapshot;
+
+  /// 从持久化数据恢复历史记录(替换内存数据)。
+  Future<void> restoreHistoryFrom(List<StudySession> saved);
+
+  /// 清空历史记录(用于"清除本地数据")。
+  Future<void> clearHistory();
+
+  /// 重置为演示历史(用于"恢复演示数据")。
+  Future<void> resetToDemo();
 }
 
 /// 表情识别服务抽象(强制接口,见 AGENTS.md §6)。

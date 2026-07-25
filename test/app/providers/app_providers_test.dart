@@ -83,12 +83,16 @@ void main() {
 
   group('TaskListNotifier', () {
     test('初始状态从仓库加载任务', () {
-      final repo = MockTaskRepository(initial: [
-        _task(id: 't1', title: '已存在任务'),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 't1', title: '已存在任务'),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       expect(
@@ -98,12 +102,16 @@ void main() {
     });
 
     test('createTask 后任务出现在列表中', () async {
-      final repo = MockTaskRepository(initial: [
-        _task(id: 't1', title: '已存在任务'),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 't1', title: '已存在任务'),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final initialCount = container.read(taskListProvider).length;
@@ -119,12 +127,16 @@ void main() {
     });
 
     test('toggleComplete 切换任务完成状态', () async {
-      final repo = MockTaskRepository(initial: [
-        _task(id: 't1', title: '任务'),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 't1', title: '任务'),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final task = container.read(taskListProvider).first;
@@ -139,12 +151,16 @@ void main() {
     });
 
     test('softDelete / restore 软删除与恢复', () async {
-      final repo = MockTaskRepository(initial: [
-        _task(id: 't1', title: '任务'),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 't1', title: '任务'),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       await container.read(taskListProvider.notifier).softDelete('t1');
@@ -173,9 +189,11 @@ void main() {
         ],
       );
       final repo = MockTaskRepository(initial: [taskWithMaterials]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final task = container.read(taskListProvider).first;
@@ -195,28 +213,32 @@ void main() {
     test('todayTasksProvider 仅今日截止且未完成', () {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day, 23, 59);
-      final repo = MockTaskRepository(initial: [
-        _task(id: 'today1', deadline: today, title: '今天截止'),
-        _task(
-          id: 'soon',
-          deadline: now.add(const Duration(days: 2)),
-          title: '即将截止',
-        ),
-        _task(
-          id: 'done',
-          deadline: today,
-          completed: true,
-          title: '已完成',
-        ),
-        _task(
-          id: 'past',
-          deadline: now.add(const Duration(days: 10)),
-          title: '远期',
-        ),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 'today1', deadline: today, title: '今天截止'),
+          _task(
+            id: 'soon',
+            deadline: now.add(const Duration(days: 2)),
+            title: '即将截止',
+          ),
+          _task(
+            id: 'done',
+            deadline: today,
+            completed: true,
+            title: '已完成',
+          ),
+          _task(
+            id: 'past',
+            deadline: now.add(const Duration(days: 10)),
+            title: '远期',
+          ),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final todayTasks = container.read(todayTasksProvider);
@@ -227,15 +249,19 @@ void main() {
     test('upcomingTasksProvider 所有未完成且有截止,按截止升序', () {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day, 23, 59);
-      final repo = MockTaskRepository(initial: [
-        _task(id: 'today1', deadline: today),
-        _task(id: 'soon', deadline: now.add(const Duration(days: 2))),
-        _task(id: 'done', deadline: today, completed: true),
-        _task(id: 'past', deadline: now.add(const Duration(days: 10))),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 'today1', deadline: today),
+          _task(id: 'soon', deadline: now.add(const Duration(days: 2))),
+          _task(id: 'done', deadline: today, completed: true),
+          _task(id: 'past', deadline: now.add(const Duration(days: 10))),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final upcoming = container.read(upcomingTasksProvider);
@@ -246,13 +272,17 @@ void main() {
     });
 
     test('completedTasksProvider 仅已完成', () {
-      final repo = MockTaskRepository(initial: [
-        _task(id: 't1', completed: true),
-        _task(id: 't2', completed: false),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 't1', completed: true),
+          _task(id: 't2', completed: false),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final completed = container.read(completedTasksProvider);
@@ -263,13 +293,17 @@ void main() {
     test('nearestDeadlineTaskProvider 返回最紧急任务', () {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day, 23, 59);
-      final repo = MockTaskRepository(initial: [
-        _task(id: 'today1', deadline: today),
-        _task(id: 'soon', deadline: now.add(const Duration(days: 2))),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 'today1', deadline: today),
+          _task(id: 'soon', deadline: now.add(const Duration(days: 2))),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final nearest = container.read(nearestDeadlineTaskProvider);
@@ -280,13 +314,17 @@ void main() {
     test('todayProgressProvider 今日完成进度', () {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day, 23, 59);
-      final repo = MockTaskRepository(initial: [
-        _task(id: 'today1', deadline: today),
-        _task(id: 'done', deadline: today, completed: true),
-      ]);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final repo = MockTaskRepository(
+        initial: [
+          _task(id: 'today1', deadline: today),
+          _task(id: 'done', deadline: today, completed: true),
+        ],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       final progress = container.read(todayProgressProvider);
@@ -296,9 +334,11 @@ void main() {
 
     test('空仓库时 nearestDeadlineTaskProvider 返回 null', () {
       final repo = MockTaskRepository(initial: []);
-      final container = ProviderContainer(overrides: [
-        taskRepositoryProvider.overrideWithValue(repo),
-      ]);
+      final container = ProviderContainer(
+        overrides: [
+          taskRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
       addTearDown(container.dispose);
 
       expect(container.read(nearestDeadlineTaskProvider), isNull);

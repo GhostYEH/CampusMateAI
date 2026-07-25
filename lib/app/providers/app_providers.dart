@@ -2,47 +2,99 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/app_config.dart';
 import '../../data/models/models.dart';
+import '../../data/services/lite_rt_expression_recognition_service.dart';
 import '../../data/services/service_interfaces.dart';
 import '../../mock/mock_data/mock_data.dart';
 import '../../mock/mock_services/mock_services.dart';
 
-// ===== 服务接口 Providers(可通过 override 替换为真实实现)=====
+// ===== 服务接口 Providers(依赖抽象接口,通过 AppConfig 切换实现)=====
 
+/// 知识库服务 — 当前 Mock,后续接入 RAG 向量数据库。
 final knowledgeBaseProvider = Provider<KnowledgeBaseService>(
-  (ref) => MockKnowledgeBaseService(),
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      // TODO(后续阶段): 接入真实 RAG 后端
+      throw UnimplementedError('真实 RAG 知识库尚未接入,请切换到 Mock 模式');
+    }
+    return MockKnowledgeBaseService();
+  },
 );
 
+/// 通知智能提取服务 — 当前 Mock,后续接入 FastAPI LLM。
 final notificationExtractionProvider = Provider<NotificationExtractionService>(
-  (ref) => MockNotificationExtractionService(),
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      throw UnimplementedError('真实通知提取后端尚未接入,请切换到 Mock 模式');
+    }
+    return MockNotificationExtractionService();
+  },
 );
 
+/// 任务仓库 — 当前 Mock 内存实现,后续接入 FastAPI + PostgreSQL。
 final taskRepositoryProvider = Provider<TaskRepository>(
-  (ref) => MockTaskRepository(),
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      throw UnimplementedError('真实任务仓库尚未接入,请切换到 Mock 模式');
+    }
+    return MockTaskRepository();
+  },
 );
 
+/// AI 导员聊天服务 — 当前 Mock,后续接入 FastAPI + RAG。
 final counselorChatProvider = Provider<CounselorChatService>(
-  (ref) => MockCounselorChatService(
-    knowledgeBase: ref.watch(knowledgeBaseProvider),
-  ),
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      throw UnimplementedError('真实 AI 导员后端尚未接入,请切换到 Mock 模式');
+    }
+    return MockCounselorChatService(
+      knowledgeBase: ref.watch(knowledgeBaseProvider),
+    );
+  },
 );
 
+/// 学习会话仓库 — 当前 Mock,后续接入 FastAPI。
 final studySessionRepositoryProvider = Provider<StudySessionRepository>(
-  (ref) => MockStudySessionRepository(),
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      throw UnimplementedError('真实学习会话仓库尚未接入,请切换到 Mock 模式');
+    }
+    return MockStudySessionRepository();
+  },
 );
 
+/// 权限服务 — 当前 Mock。
 final permissionServiceProvider = Provider<PermissionService>(
   (ref) => MockPermissionService(),
 );
 
+/// 分析服务 — 当前 Mock。
 final analyticsServiceProvider = Provider<AnalyticsService>(
   (ref) => MockAnalyticsService(),
 );
 
-/// 表情识别服务 — 暴露为 Provider 以便注入 Mock 标签。
+/// 表情识别服务 — 暴露抽象接口,UI 不依赖具体 Mock 类型。
+///
+/// 当前阶段:始终返回 Mock 实现。
+/// 后续阶段:根据 [AppConfig.useMockExpressionRecognition] 切换为
+/// [LiteRtExpressionRecognitionService](真实 CNN + LiteRT)。
 final expressionRecognitionProvider =
-    Provider<MockExpressionRecognitionService>((ref) {
+    Provider<ExpressionRecognitionService>((ref) {
+  final config = ref.watch(appConfigProvider);
   final settings = ref.watch(appSettingsProvider);
+
+  if (!config.useMockExpressionRecognition) {
+    // 真实 LiteRT 模型尚未接入,所有方法会抛 UnimplementedError。
+    // 接入计划见 lite_rt_expression_recognition_service.dart 注释。
+    return LiteRtExpressionRecognitionService();
+  }
+
   final service = MockExpressionRecognitionService(
     confidenceThreshold: settings.expressionConfidenceThreshold,
     stableFrames: settings.expressionStableFrames,
@@ -52,12 +104,24 @@ final expressionRecognitionProvider =
   return service;
 });
 
+/// Mock 表情控制入口 — 仅在 Mock 模式下返回 Mock 实例,否则返回 null。
+///
+/// 用于演示模式下的"表情注入"控制台(开发/演示模式专用)。
+/// UI 层不直接判断服务具体类型,而是通过此 Provider 获取可选的 Mock 控制。
+final mockExpressionControlProvider =
+    Provider<MockExpressionRecognitionService?>((ref) {
+  final config = ref.watch(appConfigProvider);
+  if (!config.useMockExpressionRecognition) return null;
+  final service = ref.watch(expressionRecognitionProvider);
+  return service is MockExpressionRecognitionService ? service : null;
+});
+
 // ===== 应用状态 =====
 
 /// 当前用户。
 final currentUserProvider = Provider<AppUser>((ref) => MockData.currentUser);
 
-/// 应用设置(可持久化,当前内存)。
+/// 应用设置(可持久化,启动时由 main 覆盖注入加载的初始值)。
 final appSettingsProvider =
     StateNotifierProvider<AppSettingsNotifier, AppSettings>(
   (ref) => AppSettingsNotifier(),
@@ -65,6 +129,11 @@ final appSettingsProvider =
 
 class AppSettingsNotifier extends StateNotifier<AppSettings> {
   AppSettingsNotifier() : super(const AppSettings());
+
+  /// 从持久化数据恢复(仅启动时调用)。
+  void restoreFrom(AppSettings settings) {
+    state = settings;
+  }
 
   void toggleDarkMode() => state = state.copyWith(darkMode: !state.darkMode);
   void toggleReduceMotion() =>
@@ -91,6 +160,11 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
   void toggleExpressionRecognition() => state = state.copyWith(
         expressionRecognitionEnabled: !state.expressionRecognitionEnabled,
       );
+
+  /// 重置为默认设置(用于"清除本地数据")。
+  void resetToDefault() {
+    state = const AppSettings();
+  }
 }
 
 /// 全局校园通知列表。
@@ -126,7 +200,7 @@ final unreadNoticeCountProvider = Provider<int>(
 /// 因此无需额外通过 ref.onDispose 注册,否则会导致 dispose 被调用两次。
 final taskListProvider = StateNotifierProvider<TaskListNotifier, List<Task>>(
   (ref) {
-    final repo = ref.watch(taskRepositoryProvider) as MockTaskRepository;
+    final repo = ref.watch(taskRepositoryProvider);
     return TaskListNotifier(repo);
   },
 );
@@ -139,7 +213,7 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
     });
   }
 
-  final MockTaskRepository _repo;
+  final TaskRepository _repo;
   late final StreamSubscription<List<Task>> _sub;
 
   void _refresh() {
@@ -365,8 +439,7 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
 /// 当前学习会话。
 final currentStudySessionProvider = StreamProvider<StudySession>((ref) async* {
-  final repo =
-      ref.watch(studySessionRepositoryProvider) as MockStudySessionRepository;
+  final repo = ref.watch(studySessionRepositoryProvider);
   await for (final s in repo.watchCurrent()) {
     yield s;
   }
@@ -374,15 +447,13 @@ final currentStudySessionProvider = StreamProvider<StudySession>((ref) async* {
 
 /// 学习会话历史。
 final studyHistoryProvider = FutureProvider<List<StudySession>>((ref) async {
-  final repo =
-      ref.watch(studySessionRepositoryProvider) as MockStudySessionRepository;
+  final repo = ref.watch(studySessionRepositoryProvider);
   return repo.history(limit: 30);
 });
 
 /// 今日学习总时长。
 final todayStudyTotalProvider = FutureProvider<Duration>((ref) async {
-  final repo =
-      ref.watch(studySessionRepositoryProvider) as MockStudySessionRepository;
+  final repo = ref.watch(studySessionRepositoryProvider);
   return repo.todayTotal();
 });
 

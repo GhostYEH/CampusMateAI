@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/design_system/app_colors.dart';
 import '../../../app/design_system/app_typography.dart';
 import '../../../app/providers/app_providers.dart';
+import '../../../core/storage/data_persistence_service.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/staggered_enter.dart';
 
@@ -163,6 +164,12 @@ class ProfilePage extends ConsumerWidget {
                           .toggleDemoMode(),
                     ),
                     _ActionTile(
+                      icon: Icons.refresh_rounded,
+                      label: '恢复演示数据',
+                      subtitle: '重置为默认待办与学习记录',
+                      onTap: () => _confirmRestoreDemo(context, ref),
+                    ),
+                    _ActionTile(
                       icon: Icons.delete_outline_rounded,
                       label: '清除本地数据',
                       iconColor: AppColors.danger,
@@ -216,7 +223,7 @@ class ProfilePage extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除本地数据'),
-        content: const Text('将清除本地待办、聊天记录与学习记录,且不可恢复。确定继续吗?'),
+        content: const Text('将清除本地待办、学习记录与设置,且不可恢复。确定继续吗?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -224,14 +231,46 @@ class ProfilePage extends ConsumerWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
-              ref.read(chatMessagesProvider.notifier).clear();
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('本地数据已清除')),
-              );
+              await ref.read(dataPersistenceProvider).clearAllData();
+              ref.read(appSettingsProvider.notifier).resetToDefault();
+              ref.read(chatMessagesProvider.notifier).clear();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('本地数据已清除')),
+                );
+              }
             },
             child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmRestoreDemo(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('恢复演示数据'),
+        content: const Text('将重置本地待办与学习记录为默认演示数据,当前数据会被覆盖。继续吗?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await ref.read(dataPersistenceProvider).restoreDemoData();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('演示数据已恢复')),
+                );
+              }
+            },
+            child: const Text('恢复'),
           ),
         ],
       ),
@@ -295,6 +334,7 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -302,15 +342,15 @@ class _ProfileHeader extends StatelessWidget {
           Container(
             width: 60,
             height: 60,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
+            decoration: BoxDecoration(
+              color: c.primary,
               shape: BoxShape.circle,
             ),
-            child: const Center(
+            child: Center(
               child: Text(
                 '知',
                 style: TextStyle(
-                  color: AppColors.onPrimary,
+                  color: c.onPrimary,
                   fontSize: 26,
                   fontWeight: FontWeight.w600,
                 ),
@@ -336,9 +376,9 @@ class _ProfileHeader extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
+          Icon(
             Icons.chevron_right_rounded,
-            color: AppColors.textTertiary,
+            color: c.textTertiary,
           ),
         ],
       ),
@@ -394,11 +434,12 @@ class _SwitchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppColors.textSecondary),
+          Icon(icon, size: 20, color: c.textSecondary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -430,11 +471,12 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: AppColors.textSecondary),
+          Icon(icon, size: 20, color: c.textSecondary),
           const SizedBox(width: 12),
           Expanded(child: Text(label, style: AppTypography.body)),
           Text(value, style: AppTypography.caption),
@@ -449,16 +491,20 @@ class _ActionTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.subtitle,
     this.iconColor = AppColors.textSecondary,
   });
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final VoidCallback onTap;
   final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
+    final isDanger = iconColor == AppColors.danger;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -470,19 +516,24 @@ class _ActionTile extends StatelessWidget {
               Icon(icon, size: 20, color: iconColor),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  label,
-                  style: AppTypography.body.copyWith(
-                    color: iconColor == AppColors.danger
-                        ? AppColors.danger
-                        : AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: AppTypography.body.copyWith(
+                        color: isDanger ? c.danger : c.textPrimary,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(subtitle!, style: AppTypography.caption),
+                  ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: AppColors.textTertiary,
+                color: c.textTertiary,
               ),
             ],
           ),

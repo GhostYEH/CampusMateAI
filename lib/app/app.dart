@@ -1,22 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/models/models.dart';
 import '../app/router/app_router.dart';
 import '../app/theme/app_theme.dart';
 import '../app/providers/app_providers.dart';
+import '../core/storage/data_persistence_service.dart';
 import '../core/widgets/state_views.dart';
 
-class CampusCompanionApp extends ConsumerWidget {
+class CampusCompanionApp extends ConsumerStatefulWidget {
   const CampusCompanionApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CampusCompanionApp> createState() => _CampusCompanionAppState();
+}
+
+class _CampusCompanionAppState extends ConsumerState<CampusCompanionApp> {
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final settings = ref.watch(appSettingsProvider);
 
     // 同步减少动态效果设置到全局 Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(reduceMotionProvider.notifier).state = settings.reduceMotion;
+    });
+
+    // 监听设置变化,自动持久化(fireImmediately: false 避免覆盖刚加载的数据)
+    ref.listen<AppSettings>(appSettingsProvider, (_, next) {
+      ref.read(dataPersistenceProvider).saveSettings(next);
+    });
+
+    // 监听任务列表变化,自动持久化
+    ref.listen<List<Task>>(taskListProvider, (_, __) {
+      ref.read(dataPersistenceProvider).saveTasks();
+    });
+
+    // 监听通知列表变化,自动持久化已读状态
+    ref.listen<List<CampusNotice>>(campusNoticesProvider, (_, next) {
+      ref.read(dataPersistenceProvider).saveNotices(next);
     });
 
     return MaterialApp.router(

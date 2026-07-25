@@ -157,7 +157,7 @@ class MockNotificationExtractionService
   }
 }
 
-/// Mock 任务仓库 — 内存实现。
+/// Mock 任务仓库 — 内存实现,可从持久化层恢复与重置。
 class MockTaskRepository implements TaskRepository {
   MockTaskRepository({List<Task>? initial}) {
     _tasks.addAll(initial ?? MockData.tasks);
@@ -165,6 +165,10 @@ class MockTaskRepository implements TaskRepository {
 
   final List<Task> _tasks = [];
   final _controller = StreamController<List<Task>>.broadcast();
+
+  /// 当前内存任务的可持久化快照(包括已删除项)。
+  @override
+  List<Task> get snapshot => List.unmodifiable(_tasks);
 
   @override
   List<Task> get tasks => List.unmodifiable(
@@ -212,6 +216,31 @@ class MockTaskRepository implements TaskRepository {
   @override
   Future<void> hardDelete(String taskId) async {
     _tasks.removeWhere((t) => t.id == taskId);
+    _emit();
+  }
+
+  /// 清空所有任务(用于"清除本地数据")。
+  @override
+  Future<void> clearAll() async {
+    _tasks.clear();
+    _emit();
+  }
+
+  /// 重置为 MockData 演示数据(用于"恢复演示数据")。
+  @override
+  Future<void> resetToDemo() async {
+    _tasks
+      ..clear()
+      ..addAll(MockData.tasks);
+    _emit();
+  }
+
+  /// 从持久化数据恢复(替换内存数据)。
+  @override
+  Future<void> restoreFrom(List<Task> saved) async {
+    _tasks
+      ..clear()
+      ..addAll(saved);
     _emit();
   }
 
@@ -535,6 +564,35 @@ class MockStudySessionRepository implements StudySessionRepository {
 
   void _emit() {
     if (_current != null) _controller.add(_current!);
+  }
+
+  /// 历史快照(可持久化)。
+  @override
+  List<StudySession> get historySnapshot => List.unmodifiable(_history);
+
+  /// 从持久化历史恢复(替换内存历史)。
+  @override
+  Future<void> restoreHistoryFrom(List<StudySession> saved) async {
+    _history
+      ..clear()
+      ..addAll(saved);
+    _emit();
+  }
+
+  /// 清除全部历史(用于"清除本地数据")。
+  @override
+  Future<void> clearHistory() async {
+    _history.clear();
+    _emit();
+  }
+
+  /// 重置为 MockData 演示数据(用于"恢复演示数据")。
+  @override
+  Future<void> resetToDemo() async {
+    _history
+      ..clear()
+      ..addAll(MockData.studyHistory);
+    _emit();
   }
 
   void dispose() {

@@ -3,6 +3,9 @@ import '../../app/design_system/app_colors.dart';
 import '../../app/design_system/app_typography.dart';
 
 /// 统一卡片样式 — 以边框为主、微弱阴影为辅,不堆叠。
+///
+/// 默认使用 [AppColorScheme] 自适应浅色/深色模式;
+/// 调用方可显式覆盖 `borderColor` / `backgroundColor` 以自定义。
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -11,8 +14,8 @@ class AppCard extends StatelessWidget {
     this.margin,
     this.onTap,
     this.borderRadius = 18,
-    this.borderColor = AppColors.border,
-    this.backgroundColor = AppColors.bgSurface,
+    this.borderColor,
+    this.backgroundColor,
     this.shadow = AppShadows.subtle,
     this.showBorder = true,
   });
@@ -22,19 +25,22 @@ class AppCard extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final VoidCallback? onTap;
   final double borderRadius;
-  final Color borderColor;
-  final Color backgroundColor;
+  final Color? borderColor;
+  final Color? backgroundColor;
   final List<BoxShadow> shadow;
   final bool showBorder;
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
+    final bg = backgroundColor ?? c.bgSurface;
+    final border = borderColor ?? c.border;
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: bg,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: showBorder ? Border.all(color: borderColor, width: 0.8) : null,
+        border: showBorder ? Border.all(color: border, width: 0.8) : null,
         boxShadow: shadow,
       ),
       child: Material(
@@ -68,11 +74,12 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 18, color: AppColors.primary),
+          Icon(icon, size: 18, color: c.primary),
           const SizedBox(width: 6),
         ],
         Expanded(

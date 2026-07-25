@@ -11,9 +11,11 @@ void main() {
   /// 构造一个可覆盖任务仓库的 ProviderContainer,便于测试首页在不同数据下的表现。
   ProviderContainer makeContainerWithTasks(List<Task> tasks) {
     final repo = MockTaskRepository(initial: tasks);
-    final container = ProviderContainer(overrides: [
-      taskRepositoryProvider.overrideWithValue(repo),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        taskRepositoryProvider.overrideWithValue(repo),
+      ],
+    );
     addTearDown(container.dispose);
     return container;
   }
@@ -177,11 +179,13 @@ void main() {
   });
 
   testWidgets('首页:减少动态效果模式下不报错并正常渲染', (tester) async {
-    final container = ProviderContainer(overrides: [
-      taskRepositoryProvider.overrideWithValue(
-        MockTaskRepository(initial: const []),
-      ),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        taskRepositoryProvider.overrideWithValue(
+          MockTaskRepository(initial: const []),
+        ),
+      ],
+    );
     addTearDown(container.dispose);
     // 开启减少动态效果
     container.read(reduceMotionProvider.notifier).state = true;
