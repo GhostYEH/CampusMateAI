@@ -7,7 +7,9 @@ void main() {
       expect(NoticeImportance.fromString('urgent'), NoticeImportance.urgent);
       expect(NoticeImportance.fromString('紧急'), NoticeImportance.urgent);
       expect(
-          NoticeImportance.fromString('important'), NoticeImportance.important);
+        NoticeImportance.fromString('important'),
+        NoticeImportance.important,
+      );
       expect(NoticeImportance.fromString('重要'), NoticeImportance.important);
       expect(NoticeImportance.fromString('normal'), NoticeImportance.normal);
       expect(NoticeImportance.fromString('普通'), NoticeImportance.normal);
@@ -17,12 +19,18 @@ void main() {
     });
 
     test('weight 排序: urgent > important > normal > unknown', () {
-      expect(NoticeImportance.urgent.weight,
-          greaterThan(NoticeImportance.important.weight));
-      expect(NoticeImportance.important.weight,
-          greaterThan(NoticeImportance.normal.weight));
-      expect(NoticeImportance.normal.weight,
-          greaterThan(NoticeImportance.unknown.weight));
+      expect(
+        NoticeImportance.urgent.weight,
+        greaterThan(NoticeImportance.important.weight),
+      );
+      expect(
+        NoticeImportance.important.weight,
+        greaterThan(NoticeImportance.normal.weight),
+      );
+      expect(
+        NoticeImportance.normal.weight,
+        greaterThan(NoticeImportance.unknown.weight),
+      );
     });
   });
 
@@ -51,7 +59,7 @@ void main() {
     });
 
     test('fromJson 缺失字段时使用默认值', () {
-      final restored = TaskMaterial.fromJson({'id': 'm2', 'name': '成绩单'});
+      final restored = TaskMaterial.fromJson(const {'id': 'm2', 'name': '成绩单'});
       expect(restored.id, 'm2');
       expect(restored.name, '成绩单');
       expect(restored.required, isTrue);
@@ -71,7 +79,7 @@ void main() {
   group('ExtractedNotice', () {
     test('completeness 字段完成度评分', () {
       // 全空: 1/6 (taskName 默认非空)
-      final empty = ExtractedNotice(taskName: '测试任务');
+      const empty = ExtractedNotice(taskName: '测试任务');
       // taskName 已填,其他 5 项空 => 1/6
       expect(empty.completeness, closeTo(1 / 6, 1e-6));
 
@@ -95,7 +103,7 @@ void main() {
     });
 
     test('copyWith 不影响原对象(不可变性)', () {
-      final original = ExtractedNotice(
+      const original = ExtractedNotice(
         taskName: '原任务',
         importance: NoticeImportance.normal,
         confidence: 0.5,
@@ -113,13 +121,15 @@ void main() {
     });
 
     test('materials 空列表与null 语义区分', () {
-      final withMaterials = ExtractedNotice(
+      const withMaterials = ExtractedNotice(
         taskName: 't',
-        materials: const [TaskMaterial(id: 'm', name: '材料')],
+        materials: [TaskMaterial(id: 'm', name: '材料')],
       );
-      final withoutMaterials = ExtractedNotice(taskName: 't');
-      expect(withMaterials.completeness,
-          greaterThan(withoutMaterials.completeness));
+      const withoutMaterials = ExtractedNotice(taskName: 't');
+      expect(
+        withMaterials.completeness,
+        greaterThan(withoutMaterials.completeness),
+      );
     });
   });
 

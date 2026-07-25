@@ -127,6 +127,29 @@ class CampusNotice extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'source': source,
+        'publishedAt': publishedAt.toIso8601String(),
+        'content': content,
+        'importance': importance.name,
+        'read': read,
+        'tags': tags,
+      };
+
+  factory CampusNotice.fromJson(Map<String, dynamic> json) => CampusNotice(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        source: json['source'] as String,
+        publishedAt: DateTime.parse(json['publishedAt'] as String),
+        content: json['content'] as String,
+        importance: NoticeImportance.values
+            .byName(json['importance'] as String? ?? 'normal'),
+        read: json['read'] as bool? ?? false,
+        tags: (json['tags'] as List?)?.cast<String>() ?? const [],
+      );
+
   @override
   List<Object?> get props =>
       [id, title, source, publishedAt, content, importance, read, tags];

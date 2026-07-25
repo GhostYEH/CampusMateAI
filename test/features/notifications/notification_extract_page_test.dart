@@ -35,17 +35,19 @@ void main() {
     List<Task>? initialTasks,
     NotificationExtractionService? extractionService,
   }) {
-    final container = ProviderContainer(overrides: [
-      taskRepositoryProvider.overrideWithValue(
-        MockTaskRepository(initial: initialTasks ?? const []),
-      ),
-      if (extractionService != null)
-        notificationExtractionProvider.overrideWithValue(extractionService),
-      // 开启"减少动态效果",跳过 StaggeredEnter 的 Opacity 动画。
-      // 动画期间 Opacity 可能为 0,Flutter 会用 IgnorePointer 替换,
-      // 导致按钮无法接收点击事件。
-      reduceMotionProvider.overrideWith((ref) => true),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        taskRepositoryProvider.overrideWithValue(
+          MockTaskRepository(initial: initialTasks ?? const []),
+        ),
+        if (extractionService != null)
+          notificationExtractionProvider.overrideWithValue(extractionService),
+        // 开启"减少动态效果",跳过 StaggeredEnter 的 Opacity 动画。
+        // 动画期间 Opacity 可能为 0,Flutter 会用 IgnorePointer 替换,
+        // 导致按钮无法接收点击事件。
+        reduceMotionProvider.overrideWith((ref) => true),
+      ],
+    );
     addTearDown(container.dispose);
     return container;
   }

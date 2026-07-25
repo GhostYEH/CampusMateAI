@@ -22,6 +22,7 @@ class EmptyStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
       child: Column(
@@ -30,11 +31,11 @@ class EmptyStateView extends StatelessWidget {
           Container(
             width: 72,
             height: 72,
-            decoration: const BoxDecoration(
-              color: AppColors.bgSunken,
+            decoration: BoxDecoration(
+              color: c.bgSunken,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 32, color: AppColors.textTertiary),
+            child: Icon(icon, size: 32, color: c.textTertiary),
           ),
           const SizedBox(height: 16),
           Text(title, style: AppTypography.subtitle),
@@ -73,21 +74,22 @@ class ErrorStateView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline_rounded,
             size: 36,
-            color: AppColors.danger,
+            color: c.danger,
           ),
           const SizedBox(height: 12),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.body.copyWith(color: c.textSecondary),
           ),
           if (onRetry != null) ...[
             const SizedBox(height: 14),

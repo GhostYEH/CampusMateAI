@@ -104,6 +104,33 @@ class StudySession extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'startedAt': startedAt.toIso8601String(),
+        'endedAt': endedAt?.toIso8601String(),
+        'durationSeconds': durationSeconds,
+        'state': state.name,
+        'goalId': goalId,
+        'taskId': taskId,
+        'focusRatio': focusRatio,
+        'selfReportMood': selfReportMood,
+        // expressionSamples 不持久化(体积大,且表情实时性)
+      };
+
+  factory StudySession.fromJson(Map<String, dynamic> json) => StudySession(
+        id: json['id'] as String,
+        startedAt: DateTime.parse(json['startedAt'] as String),
+        endedAt: json['endedAt'] == null
+            ? null
+            : DateTime.parse(json['endedAt'] as String),
+        durationSeconds: json['durationSeconds'] as int,
+        state: StudyState.values.byName(json['state'] as String),
+        goalId: json['goalId'] as String?,
+        taskId: json['taskId'] as String?,
+        focusRatio: (json['focusRatio'] as num?)?.toDouble() ?? 0,
+        selfReportMood: json['selfReportMood'] as String?,
+      );
+
   @override
   List<Object?> get props => [
         id,

@@ -66,10 +66,12 @@ void main() {
       final original = repo.tasks.first;
       expect(original.completed, isFalse);
 
-      await repo.updateTask(original.copyWith(
-        completed: true,
-        completedAt: DateTime(2025, 1, 5),
-      ));
+      await repo.updateTask(
+        original.copyWith(
+          completed: true,
+          completedAt: DateTime(2025, 1, 5),
+        ),
+      );
 
       expect(repo.tasks.first.completed, isTrue);
       expect(repo.tasks.first.completedAt, DateTime(2025, 1, 5));
@@ -150,9 +152,10 @@ void main() {
         _task(id: 't3', deadline: now.add(const Duration(days: 3))),
         _task(id: 't4', deadline: null),
         _task(
-            id: 't5',
-            deadline: now.add(const Duration(days: 2)),
-            completed: true),
+          id: 't5',
+          deadline: now.add(const Duration(days: 2)),
+          completed: true,
+        ),
       ]);
 
       final upcoming = await repo.getUpcoming();
@@ -181,9 +184,10 @@ void main() {
       final repo = _repoWith([
         _task(id: 'later', deadline: now.add(const Duration(days: 10))),
         _task(
-            id: 'done',
-            deadline: now.add(const Duration(days: 1)),
-            completed: true),
+          id: 'done',
+          deadline: now.add(const Duration(days: 1)),
+          completed: true,
+        ),
         _task(id: 'soon', deadline: now.add(const Duration(days: 2))),
       ]);
 

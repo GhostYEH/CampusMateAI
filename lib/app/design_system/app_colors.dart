@@ -72,6 +72,74 @@ class AppColors {
   static const Color darkPrimaryContainer = Color(0xFF1E3A4E);
 }
 
+/// 上下文感知色板 — 根据 [BuildContext] 的亮度自动返回浅色或深色变体。
+///
+/// 使用示例:
+/// ```dart
+/// final c = context.appColors;
+/// Container(color: c.bgSurface, child: Text('hi', style: TextStyle(color: c.textPrimary)));
+/// ```
+///
+/// 这是为支持深色模式(AGENTS.md §2.2)而提供的便利扩展。
+/// 已有的 `AppColors.*` 静态颜色保留为浅色默认值;
+/// 在需要适配深色模式的 widget 中,改用 `context.appColors.*` 即可。
+class AppColorScheme {
+  const AppColorScheme(this._isDark);
+
+  final bool _isDark;
+
+  /// 从 [BuildContext] 构造对应的色板。
+  factory AppColorScheme.of(BuildContext context) {
+    return AppColorScheme(Theme.of(context).brightness == Brightness.dark);
+  }
+
+  // ===== 主色 =====
+  Color get primary => _isDark ? AppColors.darkPrimary : AppColors.primary;
+  Color get onPrimary =>
+      _isDark ? const Color(0xFF0E2A3D) : AppColors.onPrimary;
+  Color get primarySubtle =>
+      _isDark ? AppColors.darkPrimaryContainer : AppColors.primarySubtle;
+  Color get primaryContainer =>
+      _isDark ? AppColors.darkPrimaryContainer : AppColors.primaryContainer;
+
+  // ===== 暖色强调 =====
+  Color get accent => AppColors.accent;
+  Color get accentSubtle => AppColors.accentSubtle;
+  Color get accentContainer => AppColors.accentContainer;
+
+  // ===== 语义色 =====
+  Color get success => AppColors.success;
+  Color get warning => AppColors.warning;
+  Color get danger => AppColors.danger;
+  Color get info => AppColors.info;
+
+  // ===== 表面 =====
+  Color get bgBase => _isDark ? AppColors.darkBgBase : AppColors.bgBase;
+  Color get bgSurface =>
+      _isDark ? AppColors.darkBgSurface : AppColors.bgSurface;
+  Color get bgElevated =>
+      _isDark ? AppColors.darkBgElevated : AppColors.bgElevated;
+  Color get bgSunken => _isDark ? AppColors.darkBgElevated : AppColors.bgSunken;
+  Color get border => _isDark ? AppColors.darkBorder : AppColors.border;
+  Color get borderStrong =>
+      _isDark ? AppColors.darkBorder : AppColors.borderStrong;
+
+  // ===== 文本 =====
+  Color get textPrimary =>
+      _isDark ? AppColors.darkTextPrimary : AppColors.textPrimary;
+  Color get textSecondary =>
+      _isDark ? AppColors.darkTextSecondary : AppColors.textSecondary;
+  Color get textTertiary =>
+      _isDark ? AppColors.darkTextSecondary : AppColors.textTertiary;
+  Color get textDisabled =>
+      _isDark ? AppColors.darkBorder : AppColors.textDisabled;
+}
+
+/// [BuildContext] 上的色板访问器。
+extension AppColorsExtension on BuildContext {
+  AppColorScheme get appColors => AppColorScheme.of(this);
+}
+
 /// 表情标签对应的展示色
 Color expressionColor(String label) {
   switch (label.toLowerCase()) {

@@ -16,8 +16,10 @@ void main() {
       // 10 分钟后,仍在 15 分钟冷却内
       expect(c.canTrigger(now: t0.add(const Duration(minutes: 10))), isFalse);
       // 14 分 59 秒后,仍在冷却内
-      expect(c.canTrigger(now: t0.add(const Duration(seconds: 14 * 60 + 59))),
-          isFalse);
+      expect(
+        c.canTrigger(now: t0.add(const Duration(seconds: 14 * 60 + 59))),
+        isFalse,
+      );
     });
 
     test('冷却结束后 canTrigger 为 true', () {

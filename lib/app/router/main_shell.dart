@@ -13,14 +13,17 @@ class MainShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final border = Theme.of(context).brightness == Brightness.dark
+        ? AppColors.darkBorder
+        : AppColors.border;
     return Scaffold(
       body: SafeArea(
         top: false,
         child: navigationShell,
       ),
       bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.border, width: 0.8)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: border, width: 0.8)),
         ),
         child: NavigationBar(
           selectedIndex: navigationShell.currentIndex,
