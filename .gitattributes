@@ -1,0 +1,1 @@
+web/public/digital-human/Build/*.wasm filter=lfs diff=lfs merge=lfs -text
