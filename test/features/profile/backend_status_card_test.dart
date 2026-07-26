@@ -32,7 +32,19 @@ void main() {
   }
 
   ProviderContainer mockContainer() {
-    final container = ProviderContainer();
+    final container = ProviderContainer(
+      overrides: [
+        // 显式注入 Mock 模式配置(仅开发/测试场景)
+        appConfigProvider.overrideWith((ref) {
+          return const AppConfig(
+            environment: AppEnvironment.development,
+            useMockBackend: true,
+            useMockExpressionRecognition: true,
+            apiBaseUrl: 'http://10.0.2.2:8000',
+          );
+        }),
+      ],
+    );
     addTearDown(container.dispose);
     return container;
   }
@@ -49,7 +61,6 @@ void main() {
             environment: AppEnvironment.development,
             useMockBackend: false,
             useMockExpressionRecognition: true,
-            enableDemoMode: false,
             apiBaseUrl: apiBaseUrl,
           );
         }),
@@ -75,7 +86,6 @@ void main() {
             environment: AppEnvironment.development,
             useMockBackend: false,
             useMockExpressionRecognition: true,
-            enableDemoMode: false,
             apiBaseUrl: apiBaseUrl,
           );
         }),
@@ -90,23 +100,27 @@ void main() {
     return container;
   }
 
-  group('BackendStatusCard - Mock 模式', () {
-    testWidgets('渲染"演示模式"标题与说明', (tester) async {
+  group('BackendStatusCard - Mock 模式(开发场景)', () {
+    testWidgets('渲染"服务暂时不可用"标题(不暴露 Mock 字样)', (tester) async {
       final container = mockContainer();
       await tester.pumpWidget(wrapApp(container));
       await tester.pump();
 
-      expect(find.text('演示模式'), findsOneWidget);
-      expect(find.textContaining('当前使用 Mock 数据'), findsOneWidget);
+      // 参赛版本约束:不向用户暴露"演示模式"字样,
+      // 统一显示为"服务暂时不可用"
+      expect(find.text('服务暂时不可用'), findsOneWidget);
+      expect(find.text('演示模式'), findsNothing);
+      expect(find.textContaining('Mock'), findsNothing);
       expect(find.text('API 地址'), findsOneWidget);
     });
 
-    testWidgets('Mock 模式不显示重试按钮', (tester) async {
+    testWidgets('Mock 模式提供"重试"按钮以重试连接后端', (tester) async {
       final container = mockContainer();
       await tester.pumpWidget(wrapApp(container));
       await tester.pump();
 
-      expect(find.text('重试'), findsNothing);
+      // Mock 模式视为 disconnected,提供重试入口
+      expect(find.text('重试'), findsOneWidget);
     });
   });
 
@@ -157,7 +171,7 @@ void main() {
   });
 
   group('BackendStatusCard - 未连接状态', () {
-    testWidgets('disconnected 状态显示"未连接"与重试按钮', (tester) async {
+    testWidgets('disconnected 状态显示"服务暂时不可用"与重试按钮', (tester) async {
       final container = realBackendContainer(
         initialStatus: const BackendStatus(
           status: BackendConnectionStatus.disconnected,
@@ -167,7 +181,8 @@ void main() {
       await tester.pumpWidget(wrapApp(container));
       await tester.pump();
 
-      expect(find.text('未连接'), findsOneWidget);
+      // 参赛版本约束:不暴露"未连接"等内部状态字样,统一显示为"服务暂时不可用"
+      expect(find.text('服务暂时不可用'), findsOneWidget);
       expect(find.textContaining('无法连接到后端服务'), findsOneWidget);
       // 重试按钮可见
       expect(find.text('重试'), findsOneWidget);
@@ -188,13 +203,13 @@ void main() {
       await tester.pump();
 
       // 初始 disconnected
-      expect(find.text('未连接'), findsOneWidget);
+      expect(find.text('服务暂时不可用'), findsOneWidget);
 
       // 点击重试(假 Notifier 的 check 不会被调用,但 UI 不应崩溃)
       await tester.tap(find.text('重试'));
       await tester.pump();
       // 仍处于 disconnected
-      expect(find.text('未连接'), findsOneWidget);
+      expect(find.text('服务暂时不可用'), findsOneWidget);
     });
   });
 

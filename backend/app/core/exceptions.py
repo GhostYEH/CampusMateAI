@@ -75,6 +75,14 @@ class DocumentNotFound(AppException):
     message = "文档不存在。"
 
 
+class NotFoundError(AppException):
+    """通用资源不存在(用于附件等未在 AppException 子类中专门建模的资源)。"""
+
+    code = "NOT_FOUND"
+    http_status = 404
+    message = "资源不存在。"
+
+
 class DocumentAlreadyExists(AppException):
     code = "DOCUMENT_ALREADY_EXISTS"
     http_status = 409
@@ -109,6 +117,128 @@ class EmptyQuestion(AppException):
     code = "EMPTY_QUESTION"
     http_status = 400
     message = "问题为空，无法回答。"
+
+
+# ===== 鉴权与权限 =====
+
+class Unauthorized(AppException):
+    code = "UNAUTHORIZED"
+    http_status = 401
+    message = "未认证或认证已失效。"
+
+
+class Forbidden(AppException):
+    code = "FORBIDDEN"
+    http_status = 403
+    message = "无权访问该资源。"
+
+
+class UserNotFound(AppException):
+    code = "USER_NOT_FOUND"
+    http_status = 404
+    message = "用户不存在。"
+
+
+class UsernameExists(AppException):
+    code = "USERNAME_EXISTS"
+    http_status = 409
+    message = "用户名已被占用。"
+
+
+class StudentNumberExists(AppException):
+    code = "STUDENT_NUMBER_EXISTS"
+    http_status = 409
+    message = "学号已被占用。"
+
+
+class TeacherNumberExists(AppException):
+    code = "TEACHER_NUMBER_EXISTS"
+    http_status = 409
+    message = "工号已被占用。"
+
+
+class InvalidCredentials(AppException):
+    code = "INVALID_CREDENTIALS"
+    http_status = 401
+    message = "用户名或密码错误。"
+
+
+class InvalidInviteCode(AppException):
+    code = "INVALID_INVITE_CODE"
+    http_status = 404
+    message = "邀请码无效或班级不存在。"
+
+
+class ClassGroupFull(AppException):
+    code = "CLASS_GROUP_FULL"
+    http_status = 409
+    message = "班级已满员。"
+
+
+class AlreadyEnrolled(AppException):
+    code = "ALREADY_ENROLLED"
+    http_status = 409
+    message = "该学生已加入此班级。"
+
+
+class CourseNotFound(AppException):
+    code = "COURSE_NOT_FOUND"
+    http_status = 404
+    message = "课程不存在。"
+
+
+class ClassGroupNotFound(AppException):
+    code = "CLASS_GROUP_NOT_FOUND"
+    http_status = 404
+    message = "班级不存在。"
+
+
+class AnnouncementNotFound(AppException):
+    code = "ANNOUNCEMENT_NOT_FOUND"
+    http_status = 404
+    message = "通知不存在。"
+
+
+class AssignmentNotFound(AppException):
+    code = "ASSIGNMENT_NOT_FOUND"
+    http_status = 404
+    message = "任务不存在。"
+
+
+class SubmissionNotFound(AppException):
+    code = "SUBMISSION_NOT_FOUND"
+    http_status = 404
+    message = "提交不存在。"
+
+
+class AssignmentClosed(AppException):
+    code = "ASSIGNMENT_CLOSED"
+    http_status = 409
+    message = "任务已截止提交。"
+
+
+class ResubmitNotAllowed(AppException):
+    code = "RESUBMIT_NOT_ALLOWED"
+    http_status = 409
+    message = "该任务不允许重新提交。"
+
+
+class AttachmentTooLarge(AppException):
+    code = "ATTACHMENT_TOO_LARGE"
+    http_status = 413
+    message = "附件过大。"
+
+
+class AttachmentTypeNotAllowed(AppException):
+    code = "ATTACHMENT_TYPE_NOT_ALLOWED"
+    http_status = 415
+    message = "附件类型不被允许。"
+
+
+class InvalidTransition(AppException):
+    code = "INVALID_TRANSITION"
+    http_status = 409
+    message = "状态转换不被允许。"
 
 
 def _build_error_body(
@@ -173,11 +303,32 @@ __all__ = [
     "NoticeUnparseable",
     "KnowledgeBaseEmpty",
     "DocumentNotFound",
+    "NotFoundError",
     "DocumentAlreadyExists",
     "FileTooLarge",
     "FileTypeNotAllowed",
     "FileNameUnsafe",
     "LLMUnavailable",
     "EmptyQuestion",
+    "Unauthorized",
+    "Forbidden",
+    "UserNotFound",
+    "UsernameExists",
+    "StudentNumberExists",
+    "TeacherNumberExists",
+    "InvalidCredentials",
+    "InvalidInviteCode",
+    "ClassGroupFull",
+    "AlreadyEnrolled",
+    "CourseNotFound",
+    "ClassGroupNotFound",
+    "AnnouncementNotFound",
+    "AssignmentNotFound",
+    "SubmissionNotFound",
+    "AssignmentClosed",
+    "ResubmitNotAllowed",
+    "AttachmentTooLarge",
+    "AttachmentTypeNotAllowed",
+    "InvalidTransition",
     "register_exception_handlers",
 ]

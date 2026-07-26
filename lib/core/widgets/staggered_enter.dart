@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/design_system/app_typography.dart';
@@ -29,6 +31,7 @@ class _StaggeredEnterState extends ConsumerState<StaggeredEnter>
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late final Animation<Offset> _offset;
+  Timer? _startTimer;
 
   @override
   void initState() {
@@ -45,8 +48,9 @@ class _StaggeredEnterState extends ConsumerState<StaggeredEnter>
     ).animate(
       CurvedAnimation(parent: _controller, curve: AppMotion.decelerate),
     );
-    if (mounted) {
-      Future.delayed(widget.delay, () {
+    // reduceMotion 模式下不创建 timer,直接保持初始状态(build 中也跳过动画)
+    if (!ref.read(reduceMotionProvider)) {
+      _startTimer = Timer(widget.delay, () {
         if (mounted) _controller.forward();
       });
     }
@@ -54,12 +58,25 @@ class _StaggeredEnterState extends ConsumerState<StaggeredEnter>
 
   @override
   void dispose() {
+    _startTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
+  /// 监听 reduceMotion 变化:切换为 true 时立即停止动画与待触发的 Timer。
+  void _onReduceMotionChanged(bool? previous, bool reduceMotion) {
+    if (reduceMotion) {
+      _startTimer?.cancel();
+      _startTimer = null;
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // 监听 reduceMotion 变化:切换为 true 时立即停止动画。
+    ref.listen(reduceMotionProvider, _onReduceMotionChanged);
     if (ref.watch(reduceMotionProvider)) {
       return widget.child;
     }

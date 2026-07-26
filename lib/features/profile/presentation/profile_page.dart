@@ -11,12 +11,18 @@ import '../../../core/widgets/staggered_enter.dart';
 import '../../../data/models/knowledge.dart';
 import 'widgets/backend_status_card.dart';
 
+/// 个人中心页 — 用户设置与数据管理。
+///
+/// 设计原则(遵循 AGENTS.md §2):
+/// - 不暴露"演示模式"、"Mock 切换"、"恢复演示数据"等入口
+/// - 所有数据管理操作仅影响本地缓存,不影响真实后端数据
+/// - 后端断开时显示"服务暂时不可用",不自动切换到 Mock
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
+    final user = ref.watch(currentAuthUserProvider);
     final settings = ref.watch(appSettingsProvider);
 
     return Scaffold(
@@ -170,65 +176,30 @@ class ProfilePage extends ConsumerWidget {
               StaggeredEnter(
                 delay: const Duration(milliseconds: 360),
                 child: _SettingsGroup(
-                  title: '数据管理',
+                  title: '本地数据管理',
                   children: [
                     _ActionTile(
                       icon: Icons.cleaning_services_rounded,
                       label: '清除聊天记录',
-                      subtitle: '删除 AI 导员的历史对话',
+                      subtitle: '删除 AI 导员的历史对话(仅本地)',
                       onTap: () => _confirmClearChat(context, ref),
                     ),
                     _ActionTile(
                       icon: Icons.checklist_rtl_rounded,
-                      label: '清除用户待办',
-                      subtitle: '删除本地所有待办任务',
+                      label: '清除本地待办',
+                      subtitle: '删除本地所有待办任务(不影响后端)',
                       onTap: () => _confirmClearTasks(context, ref),
                     ),
                     _ActionTile(
                       icon: Icons.folder_delete_outlined,
                       label: '删除用户导入的知识库文档',
-                      subtitle: '保留仿真演示资料',
+                      subtitle: '仅删除你导入的文档,保留校园公共资料',
                       onTap: () => _confirmDeleteUserDocuments(context, ref),
                     ),
                     _ActionTile(
-                      icon: Icons.restore_page_outlined,
-                      label: '恢复仿真演示资料',
-                      subtitle: '基于哈希去重,不覆盖用户资料',
-                      onTap: () => _confirmRestoreDemoDocs(context, ref),
-                    ),
-                    _ActionTile(
-                      icon: Icons.layers_clear_outlined,
-                      label: '重置 Mock 演示数据',
-                      subtitle: '恢复本地待办与学习记录为默认值',
-                      onTap: () => _confirmRestoreDemo(context, ref),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              StaggeredEnter(
-                delay: const Duration(milliseconds: 420),
-                child: _SettingsGroup(
-                  title: '演示与数据',
-                  children: [
-                    _SwitchTile(
-                      icon: Icons.play_circle_outline_rounded,
-                      label: '比赛演示模式',
-                      subtitle: '开启完整演示数据链路',
-                      value: settings.demoMode,
-                      onChanged: (_) => ref
-                          .read(appSettingsProvider.notifier)
-                          .toggleDemoMode(),
-                    ),
-                    _ActionTile(
-                      icon: Icons.refresh_rounded,
-                      label: '恢复演示数据',
-                      subtitle: '重置为默认待办与学习记录',
-                      onTap: () => _confirmRestoreDemo(context, ref),
-                    ),
-                    _ActionTile(
                       icon: Icons.delete_outline_rounded,
-                      label: '清除本地数据',
+                      label: '清除所有本地数据',
+                      subtitle: '清除本地待办、学习记录与设置',
                       iconColor: AppColors.danger,
                       onTap: () => _confirmClear(context, ref),
                     ),
@@ -259,6 +230,13 @@ class ProfilePage extends ConsumerWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              StaggeredEnter(
+                delay: const Duration(milliseconds: 480),
+                child: _SignOutTile(
+                  onTap: () => _confirmSignOut(context, ref),
+                ),
+              ),
               const SizedBox(height: 24),
               Center(
                 child: Text(
@@ -280,7 +258,8 @@ class ProfilePage extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('清除本地数据'),
-        content: const Text('将清除本地待办、学习记录与设置,且不可恢复。确定继续吗?'),
+        content: const Text('将清除本地待办、学习记录与设置,且不可恢复。'
+            '此操作不影响后端已保存的课程、通知与任务数据。确定继续吗?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -306,34 +285,6 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 
-  void _confirmRestoreDemo(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('恢复演示数据'),
-        content: const Text('将重置本地待办与学习记录为默认演示数据,当前数据会被覆盖。继续吗?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await ref.read(dataPersistenceProvider).restoreDemoData();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('演示数据已恢复')),
-                );
-              }
-            },
-            child: const Text('恢复'),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 清除聊天记录 — 仅影响本地对话,不影响待办或知识库。
   void _confirmClearChat(BuildContext context, WidgetRef ref) {
     showDialog<void>(
@@ -342,7 +293,7 @@ class ProfilePage extends ConsumerWidget {
         title: const Text('清除聊天记录'),
         content: const Text('将删除 AI 导员的所有历史对话。\n\n'
             '影响范围:仅本地对话记录。\n'
-            '不影响:待办任务、知识库文档。'),
+            '不影响:待办任务、知识库文档、后端数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -365,15 +316,15 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 
-  /// 清除用户待办 — 仅影响本地任务,不影响知识库。
+  /// 清除本地待办 — 仅影响本地任务,不影响知识库或后端。
   void _confirmClearTasks(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清除用户待办'),
+        title: const Text('清除本地待办'),
         content: const Text('将删除本地所有待办任务。\n\n'
             '影响范围:本地待办、提醒设置。\n'
-            '不影响:聊天记录、知识库文档。'),
+            '不影响:聊天记录、知识库文档、后端数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -387,7 +338,7 @@ class ProfilePage extends ConsumerWidget {
               await ref.read(dataPersistenceProvider).saveTasks();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('待办已清除')),
+                  const SnackBar(content: Text('本地待办已清除')),
                 );
               }
             },
@@ -398,15 +349,15 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 
-  /// 删除用户导入的知识库文档 — 仅删除用户文档,保留演示资料。
+  /// 删除用户导入的知识库文档 — 仅删除用户文档,保留校园公共资料。
   void _confirmDeleteUserDocuments(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除用户导入的知识库文档'),
-        content: const Text('将删除所有用户导入的知识库文档,保留仿真演示资料。\n\n'
-            '影响范围:仅用户导入的文档。\n'
-            '不影响:待办任务、聊天记录、演示资料。'),
+        content: const Text('将删除所有你导入的知识库文档,保留校园公共资料。\n\n'
+            '影响范围:仅你导入的文档。\n'
+            '不影响:待办任务、聊天记录、后端数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -440,45 +391,24 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 
-  /// 恢复仿真演示资料 — 基于哈希去重,不覆盖用户导入资料。
-  void _confirmRestoreDemoDocs(BuildContext context, WidgetRef ref) {
+  void _confirmSignOut(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('恢复仿真演示资料'),
-        content: const Text('将恢复内置的仿真校园演示资料。\n\n'
-            '基于内容哈希去重,不会覆盖你已导入的资料。\n'
-            '不影响:待办任务、聊天记录、用户导入文档。'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('将退出当前账号,需要重新登录才能继续使用。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () async {
-              Navigator.pop(context);
-              try {
-                final added = await ref
-                    .read(knowledgeManagementProvider)
-                    .restoreDemoDocuments();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        added > 0 ? '已恢复 $added 份演示资料' : '演示资料已存在,无新增',
-                      ),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('恢复失败:$e')),
-                  );
-                }
-              }
+              Navigator.pop(dialogContext);
+              await ref.read(authNotifierProvider.notifier).logout();
             },
-            child: const Text('恢复'),
+            child: const Text('退出'),
           ),
         ],
       ),
@@ -494,8 +424,8 @@ class ProfilePage extends ConsumerWidget {
           '校园事务智能陪伴助手\n\n'
           '面向大学生的智能陪伴应用,集成校园通知整理、待办管理、'
           'AI导员问答、基于CNN的面部表情识别与学习陪伴。\n\n'
-          '当前阶段:第一阶段 · 高质量可运行前端原型(Mock 业务闭环)。\n\n'
-          '后续:接入 FastAPI + RAG 后端、LiteRT 部署 CNN 模型。',
+          '支持学生、教师、管理员多角色协作,'
+          '连接真实 FastAPI 后端服务。',
         ),
         actions: [
           TextButton(
@@ -517,7 +447,7 @@ class ProfilePage extends ConsumerWidget {
           '• 仅识别可观察表情,不进行心理诊断。\n'
           '• 本地数据保存在设备,可随时清除。\n'
           '• 不收集、不共享个人敏感信息。\n'
-          '• Mock 阶段所有后端、知识库、CNN 均为模拟。',
+          '• 密码不存储在本地,token 经过混淆保存。',
         ),
         actions: [
           TextButton(
@@ -531,7 +461,7 @@ class ProfilePage extends ConsumerWidget {
 
   void _showFeedback(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('感谢反馈!Mock 阶段暂未接入反馈通道。')),
+      const SnackBar(content: Text('感谢反馈!暂未接入反馈通道。')),
     );
   }
 }
@@ -543,6 +473,10 @@ class _ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.appColors;
+    final displayName = (user?.name as String?) ?? '未登录';
+    final college = (user?.college as String?) ?? '';
+    final grade = (user?.grade as String?) ?? '';
+    final studentId = (user?.studentId as String?) ?? '';
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Row(
@@ -556,7 +490,7 @@ class _ProfileHeader extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                '知',
+                displayName.isNotEmpty ? displayName.characters.first : '?',
                 style: TextStyle(
                   color: c.onPrimary,
                   fontSize: 26,
@@ -570,17 +504,18 @@ class _ProfileHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(user.name, style: AppTypography.headline),
-                const SizedBox(height: 4),
-                Text(
-                  '${user.college} · ${user.grade}',
-                  style: AppTypography.caption,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '学号 ${user.studentId}',
-                  style: AppTypography.overline,
-                ),
+                Text(displayName, style: AppTypography.headline),
+                if (college.isNotEmpty || grade.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    [college, grade].where((s) => s.isNotEmpty).join(' · '),
+                    style: AppTypography.caption,
+                  ),
+                ],
+                if (studentId.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text('学号/工号 $studentId', style: AppTypography.overline),
+                ],
               ],
             ),
           ),
@@ -744,6 +679,51 @@ class _ActionTile extends StatelessWidget {
                 color: c.textTertiary,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SignOutTile extends StatelessWidget {
+  const _SignOutTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.logout_rounded,
+                  size: 20,
+                  color: c.danger,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '退出登录',
+                    style: AppTypography.body.copyWith(color: c.danger),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: c.textTertiary,
+                ),
+              ],
+            ),
           ),
         ),
       ),

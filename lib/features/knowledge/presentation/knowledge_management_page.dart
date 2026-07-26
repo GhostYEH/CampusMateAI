@@ -19,7 +19,7 @@ import 'widgets/knowledge_status_card.dart';
 ///
 /// 设计原则(遵循 frontend-design skill 的"晨曦校园"方向):
 /// - 状态卡片置顶,演示资料声明始终可见(只要包含演示资料)
-/// - 操作按钮分组:上传 / 重建索引 / 恢复演示资料
+/// - 操作按钮分组:上传 / 重建索引
 /// - 错误状态温和,提供重试,不清空已选文件或已填元数据
 /// - 上传过程状态机驱动:等待 → 上传中 → 解析中 → 索引中 → 完成/失败
 /// - 失败显示后端返回的具体可理解原因
@@ -464,50 +464,9 @@ class _KnowledgeManagementPageState
     }
   }
 
-  // ============ 恢复演示资料 ============
-
-  Future<void> _confirmRestoreDemo() async {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('恢复仿真演示资料'),
-        content: const Text(
-          '将恢复内置的仿真校园演示资料。\n\n'
-          '基于内容哈希去重,不会覆盖你已导入的资料。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _performRestoreDemo();
-            },
-            child: const Text('恢复'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _performRestoreDemo() async {
-    try {
-      final service = ref.read(knowledgeManagementProvider);
-      final added = await service.restoreDemoDocuments();
-      if (!mounted) return;
-      await _loadAll();
-      if (!mounted) return;
-      _showSnack(added > 0 ? '已恢复 $added 份演示资料' : '演示资料已存在,无新增');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      _showSnack('恢复失败:${e.message}');
-    } catch (e) {
-      if (!mounted) return;
-      _showSnack('恢复失败:$e');
-    }
-  }
+  // 正式参赛版本约束(AGENTS.md §2):
+  // "恢复演示资料"入口已从正式产品中移除。
+  // restoreDemoDocuments() 服务方法仅供开发/测试使用,不暴露到普通用户界面。
 
   void _showSnack(String message) {
     if (!mounted) return;
@@ -518,9 +477,6 @@ class _KnowledgeManagementPageState
 
   @override
   Widget build(BuildContext context) {
-    final config = ref.watch(appConfigProvider);
-    final isMockMode = config.useMockBackend;
-
     return Scaffold(
       backgroundColor: AppColors.bgBase,
       appBar: AppBar(
@@ -539,13 +495,13 @@ class _KnowledgeManagementPageState
         ],
       ),
       body: SafeArea(
-        child: _buildBody(isMockMode),
+        child: _buildBody(),
       ),
       floatingActionButton: _buildFab(),
     );
   }
 
-  Widget _buildBody(bool isMockMode) {
+  Widget _buildBody() {
     if (_loading) {
       return const LoadingView(label: '加载知识库状态...');
     }
@@ -567,7 +523,6 @@ class _KnowledgeManagementPageState
           StaggeredEnter(
             child: KnowledgeStatusCard(
               status: _status!,
-              isMockMode: isMockMode,
             ),
           ),
         const SizedBox(height: 12),
@@ -577,7 +532,6 @@ class _KnowledgeManagementPageState
             onUpload: _pickFile,
             onRebuild:
                 _rebuildProgress?.inProgress == true ? null : _confirmRebuild,
-            onRestoreDemo: _confirmRestoreDemo,
             rebuildInProgress: _rebuildProgress?.inProgress == true,
           ),
         ),
@@ -627,13 +581,11 @@ class _ActionsBar extends StatelessWidget {
   const _ActionsBar({
     required this.onUpload,
     required this.onRebuild,
-    required this.onRestoreDemo,
     required this.rebuildInProgress,
   });
 
   final VoidCallback onUpload;
   final VoidCallback? onRebuild;
-  final VoidCallback onRestoreDemo;
   final bool rebuildInProgress;
 
   @override
@@ -662,16 +614,6 @@ class _ActionsBar extends StatelessWidget {
               onTap: onRebuild,
               color: AppColors.accent,
               disabled: rebuildInProgress,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ActionChip(
-              icon: Icons.restore_rounded,
-              label: '恢复演示',
-              hint: '恢复仿真校园资料',
-              onTap: onRestoreDemo,
-              color: AppColors.success,
             ),
           ),
         ],

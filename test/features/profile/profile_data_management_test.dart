@@ -47,6 +47,15 @@ void main() {
     final dp = customDataPersistence ?? dataPersistence;
     final container = ProviderContainer(
       overrides: [
+        // 显式注入 Mock 模式配置(仅开发/测试场景)
+        appConfigProvider.overrideWith((ref) {
+          return const AppConfig(
+            environment: AppEnvironment.development,
+            useMockBackend: true,
+            useMockExpressionRecognition: true,
+            apiBaseUrl: 'http://10.0.2.2:8000',
+          );
+        }),
         taskRepositoryProvider.overrideWithValue(repo),
         studySessionRepositoryProvider.overrideWithValue(studyRepo),
         knowledgeManagementProvider.overrideWithValue(
@@ -89,7 +98,7 @@ void main() {
   }
 
   group('ProfilePage - 数据管理分区', () {
-    testWidgets('渲染"数据管理"分区标题', (tester) async {
+    testWidgets('渲染"本地数据管理"分区标题', (tester) async {
       setPhoneViewport(tester);
       final container = makeContainer();
 
@@ -98,10 +107,13 @@ void main() {
       );
       await pumpIdle(tester);
 
-      expect(find.text('数据管理'), findsOneWidget);
+      // 参赛版本约束:分区标题从"数据管理"改为"本地数据管理",
+      // 强调仅影响本地数据,不影响后端
+      expect(find.text('本地数据管理'), findsOneWidget);
+      expect(find.text('数据管理'), findsNothing);
     });
 
-    testWidgets('显示全部 5 个数据管理操作项', (tester) async {
+    testWidgets('显示数据管理操作项(无演示数据入口)', (tester) async {
       setPhoneViewport(tester);
       final container = makeContainer();
 
@@ -110,14 +122,20 @@ void main() {
       );
       await pumpIdle(tester);
 
+      // 参赛版本约束:不暴露"恢复仿真演示资料"、"重置 Mock 演示数据"等入口
       expect(find.text('清除聊天记录'), findsOneWidget);
-      expect(find.text('清除用户待办'), findsOneWidget);
+      expect(find.text('清除本地待办'), findsOneWidget);
       expect(find.text('删除用户导入的知识库文档'), findsOneWidget);
-      expect(find.text('恢复仿真演示资料'), findsOneWidget);
-      expect(find.text('重置 Mock 演示数据'), findsOneWidget);
+      expect(find.text('清除所有本地数据'), findsOneWidget);
+
+      // 禁止出现的演示模式入口
+      expect(find.text('恢复仿真演示资料'), findsNothing);
+      expect(find.text('重置 Mock 演示数据'), findsNothing);
+      expect(find.textContaining('演示'), findsNothing);
+      expect(find.textContaining('Mock'), findsNothing);
     });
 
-    testWidgets('点击"清除用户待办"显示确认对话框', (tester) async {
+    testWidgets('点击"清除本地待办"显示确认对话框', (tester) async {
       setPhoneViewport(tester);
       final container = makeContainer();
 
@@ -126,16 +144,16 @@ void main() {
       );
       await pumpIdle(tester);
 
-      // 滚动到"清除用户待办"确保可见
-      await tester.ensureVisible(find.text('清除用户待办'));
+      // 滚动到"清除本地待办"确保可见
+      await tester.ensureVisible(find.text('清除本地待办'));
       await tester.pumpAndSettle();
 
       // 点击
-      await tester.tap(find.text('清除用户待办'));
+      await tester.tap(find.text('清除本地待办'));
       await tester.pumpAndSettle();
 
       // 对话框标题(列表项 + 对话框标题 = 2)
-      expect(find.text('清除用户待办'), findsNWidgets(2));
+      expect(find.text('清除本地待办'), findsNWidgets(2));
       expect(find.textContaining('将删除本地所有待办任务'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
       expect(find.text('清除'), findsOneWidget);
@@ -179,10 +197,10 @@ void main() {
       );
       await pumpIdle(tester);
 
-      // 滚动并点击"清除用户待办"
-      await tester.ensureVisible(find.text('清除用户待办'));
+      // 滚动并点击"清除本地待办"
+      await tester.ensureVisible(find.text('清除本地待办'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('清除用户待办'));
+      await tester.tap(find.text('清除本地待办'));
       await tester.pumpAndSettle();
 
       // 点击对话框中的"清除"按钮

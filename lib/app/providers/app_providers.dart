@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 export '../config/app_config.dart';
+export 'auth_providers.dart';
 import '../../data/models/models.dart';
 import '../../data/services/api/api_client.dart';
 import '../../data/services/api/api_counselor_chat_service.dart';
@@ -207,8 +208,15 @@ final mockExpressionControlProvider =
 
 // ===== 应用状态 =====
 
-/// 当前用户。
-final currentUserProvider = Provider<AppUser>((ref) => MockData.currentUser);
+/// 当前用户(向后兼容)。
+///
+/// 未登录时返回 Mock 演示账号(林知夏),保证旧版学生页面继续工作。
+/// 登录成功后由 [AuthNotifier.login] 更新为真实登录用户。
+///
+/// 多角色相关页面应改用 [currentAuthUserProvider](支持 null 表示未登录)。
+final currentUserProvider = StateProvider<AppUser>(
+  (ref) => MockData.currentUser,
+);
 
 /// 应用设置(可持久化,启动时由 main 覆盖注入加载的初始值)。
 final appSettingsProvider =
@@ -227,7 +235,6 @@ class AppSettingsNotifier extends StateNotifier<AppSettings> {
   void toggleDarkMode() => state = state.copyWith(darkMode: !state.darkMode);
   void toggleReduceMotion() =>
       state = state.copyWith(reduceMotion: !state.reduceMotion);
-  void toggleDemoMode() => state = state.copyWith(demoMode: !state.demoMode);
   void toggleReminder() =>
       state = state.copyWith(reminderEnabled: !state.reminderEnabled);
   void toggleProactiveSuggestion() => state = state.copyWith(
@@ -614,6 +621,14 @@ final chatMessagesProvider =
   (ref) => ChatMessagesNotifier(ref),
 );
 
+/// AI 导员对话上下文 — 由路由 extra 注入,UI 顶部展示。
+///
+/// 当学生从课程/通知/任务进入 AI 导员时,路由 builder 会调用
+/// `ref.read(counselorContextProvider.notifier).set(...)` 设置上下文。
+/// 离开 /counselor 时应清除(由 CounselorPage dispose 处理)。
+final counselorContextProvider =
+    StateProvider<CounselorContext>((ref) => const CounselorContext());
+
 class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
   ChatMessagesNotifier(this.ref) : super([_initialGreeting()]);
 
@@ -662,9 +677,12 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
     try {
       final service = ref.read(counselorChatProvider);
+      // 读取当前 AI 导员上下文(若有),嵌入 conversationId
+      // 后端可解析 `conv_main:course_xxx:assignment_yyy` 格式做权限过滤。
+      final ctx = ref.read(counselorContextProvider);
       final content = await service.send(
         text,
-        conversationId: 'conv_main',
+        conversationId: ctx.toConversationId(),
         onChunk: (chunk) {
           if (!mounted) return;
           final idx = state.indexWhere((m) => m.id == streamingId);

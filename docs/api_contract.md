@@ -7,6 +7,10 @@
 >
 > Flutter 客户端实现在 [`lib/data/services/api/`](../lib/data/services/api/) 中,
 > JSON 字段名与本文一一对应。
+>
+> **本文件覆盖"单学生助手"接口**:健康检查 / 通知抽取 / 知识库 / AI 导员。
+> **多角色协同平台接口**(认证 / 课程 / 班级 / 通知 / 任务 / 提交 / 工作台)
+> 见 [`multi_role_api_contract.md`](./multi_role_api_contract.md)。
 
 ---
 
@@ -21,6 +25,7 @@
 - [SSE 事件格式](#sse-事件格式)
 - [枚举对照表](#枚举对照表)
 - [数据模型对照表](#数据模型对照表)
+- [多角色协同平台(链接)](#多角色协同平台链接)
 
 ---
 
@@ -386,6 +391,15 @@ UTF-8。所有中文文本不做转义,SSE 中 JSON `ensure_ascii=False`。
 | `conversation_id` | string | 否 | 会话 ID(留空则后端生成) |
 | `recent_tasks` | object[] | 否 | 最近待办(用于个性化提示) |
 | `stream` | bool | 否 | 是否流式(默认 true) |
+| `course_id` | string | 否 | 课程 ID(需有权限,详见 [多角色契约](./multi_role_api_contract.md#8-ai-导员上下文融合)) |
+| `class_id` | string | 否 | 班级 ID(需有权限) |
+| `assignment_id` | string | 否 | 任务 ID(需有权限,草稿不可见) |
+| `announcement_id` | string | 否 | 通知 ID(需有权限,草稿不可见) |
+
+> 携带 `course_id` / `class_id` / `assignment_id` / `announcement_id` 任一字段时,
+> 必须携带有效 access token;后端会真实校验访问权限,详见
+> [`multi_role_api_contract.md` §8](./multi_role_api_contract.md#8-ai-导员上下文融合)。
+> 匿名访问仅允许使用通用知识库。
 
 #### 非流式响应
 
@@ -501,6 +515,26 @@ UTF-8。所有中文文本不做转义,SSE 中 JSON `ensure_ascii=False`。
 | 422 | `NOTICE_UNPARSEABLE` | 文本无法识别为通知 |
 | 422 | `VALIDATION_FAILED` | Pydantic 校验失败 |
 | 500 | `INTERNAL_ERROR` | 未捕获异常(不暴露堆栈) |
+| 401 | `UNAUTHORIZED` | 未认证或认证已失效(多角色) |
+| 401 | `INVALID_CREDENTIALS` | 用户名或密码错误(多角色) |
+| 403 | `FORBIDDEN` | 无权访问该资源(多角色) |
+| 404 | `USER_NOT_FOUND` | 用户不存在(多角色) |
+| 404 | `COURSE_NOT_FOUND` | 课程不存在(多角色) |
+| 404 | `CLASS_GROUP_NOT_FOUND` | 班级不存在(多角色) |
+| 404 | `ANNOUNCEMENT_NOT_FOUND` | 通知不存在(多角色) |
+| 404 | `ASSIGNMENT_NOT_FOUND` | 任务不存在(多角色) |
+| 404 | `SUBMISSION_NOT_FOUND` | 提交不存在(多角色) |
+| 404 | `INVALID_INVITE_CODE` | 邀请码无效或班级不存在(多角色) |
+| 409 | `USERNAME_EXISTS` | 用户名已被占用(多角色) |
+| 409 | `STUDENT_NUMBER_EXISTS` | 学号已被占用(多角色) |
+| 409 | `TEACHER_NUMBER_EXISTS` | 工号已被占用(多角色) |
+| 409 | `ALREADY_ENROLLED` | 该学生已加入此班级(多角色) |
+| 409 | `CLASS_GROUP_FULL` | 班级已满员(多角色) |
+| 409 | `ASSIGNMENT_CLOSED` | 任务已截止提交(多角色) |
+| 409 | `RESUBMIT_NOT_ALLOWED` | 该任务不允许重新提交(多角色) |
+| 409 | `INVALID_TRANSITION` | 状态转换不被允许(多角色) |
+| 413 | `ATTACHMENT_TOO_LARGE` | 附件过大(多角色) |
+| 415 | `ATTACHMENT_TYPE_NOT_ALLOWED` | 附件类型不被允许(多角色) |
 
 > 注意: `KNOWLEDGE_BASE_EMPTY`(HTTP 200) 和 `LLM_UNAVAILABLE`(HTTP 200) **不是错误**,
 > 而是业务上的"无资料"/"降级"状态,通过响应体 `mode` / `evidence_level` 表达。
@@ -682,3 +716,43 @@ data: {完整 ChatFinalMeta}
 - `extractor_mode` / `warnings` / `evidence_level` / `mode` 均为新增字段,
   旧版本 Flutter 客户端忽略不影响功能
 - 后端在响应中始终带 `version`(health 接口),客户端可据此判断兼容性
+
+---
+
+## 多角色协同平台(链接)
+
+本文件覆盖"单学生助手"接口。以下多角色协同平台接口详见
+[`multi_role_api_contract.md`](./multi_role_api_contract.md):
+
+- **认证**: `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me`
+- **课程**: `GET/POST /courses` · `GET/PATCH /courses/{course_id}`
+- **班级**: `GET /classes` · `POST /courses/{course_id}/classes` ·
+  `GET/PATCH /classes/{class_id}` · `POST /classes/{class_id}/join` ·
+  `POST /classes/{class_id}/reset-invite-code` ·
+  `GET /classes/{class_id}/members` · `DELETE /classes/{class_id}/members/{user_id}`
+- **通知**: `GET/POST /classes/{class_id}/announcements` ·
+  `GET/PATCH /announcements/{announcement_id}` ·
+  `POST /announcements/{announcement_id}/publish` ·
+  `POST /announcements/{announcement_id}/read` ·
+  `GET /announcements/{announcement_id}/read-status`
+- **任务**: `GET/POST /classes/{class_id}/assignments` ·
+  `GET/PATCH /assignments/{assignment_id}` ·
+  `POST /assignments/{assignment_id}/publish` ·
+  `POST /assignments/{assignment_id}/close` ·
+  `GET /assignments/{assignment_id}/stats` ·
+  `GET /assignments/{assignment_id}/student-status`
+- **提交**: `GET/POST /assignments/{assignment_id}/submissions` ·
+  `GET/PATCH /submissions/{submission_id}` ·
+  `POST /submissions/{submission_id}/submit` ·
+  `POST /submissions/{submission_id}/attachments` ·
+  `POST /submissions/{submission_id}/grade`
+- **工作台**: `GET /dashboard/teacher` · `GET /dashboard/student`
+- **AI 上下文**: `POST /counselor/chat` 新增 `course_id` / `class_id` /
+  `assignment_id` / `announcement_id` 可选字段
+
+> 多角色接口需要 JWT access token(除登录与匿名 counselor 外)。
+> 验收账号(dev/test 环境,通过 `AUTO_SEED_DEMO_USERS=true` 显式启用):
+> `teacher_demo` / `student_demo` / `admin_demo`(密码均为 `Demo123456`)。
+> 验收账号为普通用户,走完整真实业务流程,无特殊权限或 Mock 数据开关。
+> **正式 Release 不得启用** `AUTO_SEED_DEMO_USERS` / `AUTO_IMPORT_DEMO`(详见
+> [`backend/README.md` §正式 Release 强约束](../backend/README.md#正式-release-强约束本轮新增))。

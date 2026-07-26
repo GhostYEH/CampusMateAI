@@ -37,8 +37,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = 10
     # 用字符串表示，逗号分隔；通过 allowed_extensions_list 属性获取列表
     allowed_extensions: str = "md,txt,pdf,docx"
-    # 启动时是否自动导入内置演示资料(测试环境通常关闭)
-    auto_import_demo: bool = True
+    # 启动时是否自动导入内置测试环境资料(默认关闭;仅 dev/test 显式开启)
+    # production 环境下强制为 False(见 _normalize 校验)
+    auto_import_demo: bool = False
 
     @property
     def allowed_extensions_list(self) -> List[str]:
@@ -63,6 +64,21 @@ class Settings(BaseSettings):
     # ===== 日志 =====
     log_level: str = "INFO"
     log_requests: bool = True
+
+    # ===== 鉴权 (JWT) =====
+    # 用于 HMAC-SHA256 签名 JWT；生产应通过 .env 覆盖为足够随机的字符串
+    # 测试环境在 conftest.py 中通过环境变量覆盖
+    jwt_secret: str = "campusmate_dev_secret_change_in_production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30  # access token 短有效期
+    refresh_token_expire_days: int = 14   # refresh token 较长有效期
+
+    # ===== 测试环境数据 seeding =====
+    # 启动时是否自动 seed 多角色验收账号(teacher_demo/student_demo/admin_demo)
+    # 默认关闭;仅 dev/test 显式开启
+    # production 环境下强制为 False(见 _normalize 校验)
+    # 验收账号为普通用户,走完整真实业务流程,无特殊权限
+    auto_seed_demo_users: bool = False
 
     # ----- 派生属性 -----
     @property
@@ -115,6 +131,20 @@ class Settings(BaseSettings):
         if self.llm_provider == "none" and not self.enable_fallback_mode:
             # 强制开启降级模式，否则功能不可用
             self.enable_fallback_mode = True
+        # ===== production 强约束 =====
+        # 正式 Release 不得启用测试环境数据 seeding / 测试环境资料自动导入
+        # 不得依赖 DEMO_MODE / USE_MOCK_BACKEND 等开关返回模拟业务数据
+        if self.app_env == "production":
+            if self.auto_seed_demo_users:
+                raise ValueError(
+                    "production 环境禁止启用 AUTO_SEED_DEMO_USERS;"
+                    "验收账号应在真实数据库中以普通用户身份创建"
+                )
+            if self.auto_import_demo:
+                raise ValueError(
+                    "production 环境禁止启用 AUTO_IMPORT_DEMO;"
+                    "测试环境资料不得进入生产数据"
+                )
         return self
 
 

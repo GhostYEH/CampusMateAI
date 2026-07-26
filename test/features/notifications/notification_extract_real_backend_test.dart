@@ -23,7 +23,6 @@ void main() {
             environment: AppEnvironment.development,
             useMockBackend: false,
             useMockExpressionRecognition: true,
-            enableDemoMode: false,
             apiBaseUrl: 'http://test.local',
           );
         }),
@@ -122,65 +121,13 @@ void main() {
       // 应显示错误横幅
       expect(find.text('无法连接后端服务'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
-      // Real 模式下还应显示"切换到演示模式"
-      expect(find.text('切换到演示模式'), findsOneWidget);
+      // 参赛版本约束:正式产品不得提供"切换到演示模式"入口
+      expect(find.text('切换到演示模式'), findsNothing);
+      // 也不应有任何 Mock 降级入口
+      expect(find.byIcon(Icons.science_outlined), findsNothing);
 
       // 关键: 用户输入的通知文本被保留(不清空)
       expect(find.textContaining('请2024级学生'), findsWidgets);
-    });
-
-    testWidgets('点击"切换到演示模式"使用 Mock 降级提取', (tester) async {
-      setPhoneViewport(tester);
-      final adapter = MockDioAdapter();
-      adapter.registerPostError(
-        '/api/v1/notices/extract-multi',
-        DioException(
-          type: DioExceptionType.connectionError,
-          message: 'Failed',
-          requestOptions: RequestOptions(path: '/api/v1/notices/extract-multi'),
-        ),
-      );
-      final container = makeRealBackendContainer(adapter);
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(wrapApp(container));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // 输入文本
-      await tester.enterText(
-        findMainInput(),
-        '请2024级学生于7月30日前填写实践申请表,并将申请表和证明材料提交至学院办公室。',
-      );
-      await tester.pump();
-
-      // 触发提取 → 失败
-      await tester.tap(findExtractButton());
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // 应显示"切换到演示模式"按钮
-      expect(find.text('切换到演示模式'), findsOneWidget);
-
-      // 点击降级
-      await tester.tap(find.text('切换到演示模式'));
-      await tester.pump();
-
-      // 等待 Mock 提取完成(分步约 2 秒)
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.pump(const Duration(milliseconds: 800));
-      await tester.pump(const Duration(milliseconds: 400));
-
-      // 应显示 SnackBar 提示降级
-      expect(find.textContaining('已使用本地模拟提取'), findsOneWidget);
-
-      // 应显示结果表单
-      expect(find.text('任务信息'), findsOneWidget);
-
-      // 等待 SnackBar 自动消失(避免 timer pending)
-      await tester.pump(const Duration(seconds: 5));
     });
 
     testWidgets('点击"重试"重新触发后端提取', (tester) async {

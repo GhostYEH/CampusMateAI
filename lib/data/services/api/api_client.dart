@@ -32,6 +32,22 @@ class ApiException implements Exception {
       code == 'SERVER_ERROR' ||
       code == 'BAD_GATEWAY';
 
+  /// 是否为认证类错误(401/会话过期)。
+  bool get isAuthError =>
+      code == 'UNAUTHENTICATED' ||
+      code == 'INVALID_CREDENTIALS' ||
+      code == 'INVALID_REFRESH_TOKEN' ||
+      code == 'NOT_AUTHENTICATED' ||
+      code == 'SESSION_EXPIRED' ||
+      httpStatus == 401;
+
+  /// 是否为权限不足(403)。
+  bool get isForbidden =>
+      code == 'FORBIDDEN' || code == 'PERMISSION_DENIED' || httpStatus == 403;
+
+  /// 是否为未找到(404)。
+  bool get isNotFound => code.endsWith('_NOT_FOUND') || httpStatus == 404;
+
   @override
   String toString() => 'ApiException($code, $httpStatus): $message';
 
@@ -40,9 +56,17 @@ class ApiException implements Exception {
     // 网络层错误(无法连接、DNS 失败等)
     if (e.type == DioExceptionType.connectionError ||
         e.type == DioExceptionType.unknown) {
+      // 内部标识: 会话过期(由 AuthInterceptor 设置)
+      if (e.error == 'SESSION_EXPIRED') {
+        return const ApiException(
+          code: 'SESSION_EXPIRED',
+          message: '会话已过期,请重新登录',
+          httpStatus: 401,
+        );
+      }
       return const ApiException(
         code: 'NETWORK_ERROR',
-        message: '无法连接到后端服务,请检查网络或切换到演示模式。',
+        message: '无法连接到后端服务,请检查网络后重试。',
       );
     }
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -90,7 +114,7 @@ class ApiException implements Exception {
 /// 所有 ApiXxxService 通过 [ApiClient] 获取 Dio 实例,便于:
 /// - 集中管理 BaseUrl(支持 dart-define 注入)
 /// - 统一将 DioException 转换为 ApiException
-/// - 测试时通过 MockAdapter 替换网络层
+/// - 测试时通过 Mock Adapter 替换网络层
 class ApiClient {
   ApiClient({
     required String baseUrl,
@@ -120,6 +144,116 @@ class ApiClient {
   Future<Map<String, dynamic>> getHealth() async {
     try {
       final resp = await _dio.get<Map<String, dynamic>>('/api/v1/health');
+      return resp.data ?? {};
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 通用 GET 请求 — 返回解析后的 JSON 数据。
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Options? options,
+  }) async {
+    try {
+      final resp = await _dio.get<Map<String, dynamic>>(
+        path,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        options: options,
+      );
+      return resp.data ?? {};
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 通用 POST 请求。
+  Future<Map<String, dynamic>> post(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Options? options,
+    void Function(int received, int? total)? onReceiveProgress,
+  }) async {
+    try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        options: options,
+        onReceiveProgress: onReceiveProgress,
+      );
+      return resp.data ?? {};
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 通用 PATCH 请求。
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Options? options,
+  }) async {
+    try {
+      final resp = await _dio.patch<Map<String, dynamic>>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        options: options,
+      );
+      return resp.data ?? {};
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 通用 DELETE 请求。
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    CancelToken? cancelToken,
+    Options? options,
+  }) async {
+    try {
+      final resp = await _dio.delete<Map<String, dynamic>>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        cancelToken: cancelToken,
+        options: options,
+      );
+      return resp.data ?? {};
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 文件上传 — 支持 onProgress / cancelToken,返回解析后的 JSON。
+  Future<Map<String, dynamic>> upload(
+    String path, {
+    required dynamic formData,
+    CancelToken? cancelToken,
+    void Function(int sent, int total)? onSendProgress,
+    Options? options,
+  }) async {
+    try {
+      final resp = await _dio.post<Map<String, dynamic>>(
+        path,
+        data: formData,
+        cancelToken: cancelToken,
+        onSendProgress: onSendProgress,
+        options: options,
+      );
       return resp.data ?? {};
     } on DioException catch (e) {
       throw ApiException.fromDio(e);

@@ -191,10 +191,13 @@ class KnowledgeIngestionService:
         return self._retrieval.rebuild()
 
     def import_demo_documents(self) -> int:
-        """导入内置演示资料(若尚未导入)。返回新增数量。
+        """导入内置测试环境资料(若尚未导入)。返回新增数量。
 
-        演示资料代表"仿真校园制度文档"，在检索排序中按官方资料加权，
-        但所有资料明确标注为演示用，并非用户所在学校的真实现行制度。
+        说明:
+        - 测试环境资料明确标注 is_demo=True,用于在 dev/test 环境快速验证检索/RAG 链路。
+        - 资料内容为"仿真校园制度文档",不代表任何真实学校制度。
+        - production 环境下 Settings 校验已禁止 AUTO_IMPORT_DEMO=True,
+          因此本方法在生产路径中不会被调用。
         """
         demo_dir = self._settings.knowledge_base_dir / "demo"
         if not demo_dir.exists():
@@ -206,7 +209,7 @@ class KnowledgeIngestionService:
                     md_file,
                     original_filename=md_file.name,
                     source_type="demo",
-                    source_department="演示资料(仿真校园)",
+                    source_department="测试环境资料(仿真校园)",
                     is_official=True,
                     is_demo=True,
                 )
@@ -215,16 +218,8 @@ class KnowledgeIngestionService:
                 continue
         return added
 
-    def restore_demo_documents(self) -> int:
-        """恢复演示资料 — 重新导入 demo 目录下所有 md 文件。
-
-        不会覆盖用户已导入的资料(基于 content_hash 去重)。
-        返回新增数量(已存在的演示资料不会重复添加)。
-        """
-        return self.import_demo_documents()
-
     def delete_all_user_documents(self) -> int:
-        """删除所有用户导入文档(is_demo=0),保留演示资料。"""
+        """删除所有用户导入文档(is_demo=0),保留测试环境资料。"""
         n = self._repo.delete_all_user_documents()
         if n > 0:
             self._retrieval.mark_stale()

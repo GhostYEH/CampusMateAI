@@ -8,15 +8,19 @@ class MockData {
 
   static final _now = DateTime.now();
 
-  /// 当前用户。
+  /// 当前用户(默认学生演示账号 — 兼容旧的"未登录直进"路径,
+  /// 实际多角色登录走 [MockAuthService])。
   static AppUser get currentUser => const AppUser(
         id: 'u_20240001',
         name: '林知夏',
         nickname: '知夏',
+        role: UserRole.student,
+        avatarSeed: 'zhixia',
         studentId: '2024010132',
         college: '计算机与人工智能学院',
+        major: '计算机科学与技术',
         grade: '2024级',
-        avatarSeed: 'zhixia',
+        className: '计科2024-1班',
       );
 
   /// 校园通知列表(包含演示用的完整通知原文)。

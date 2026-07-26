@@ -164,8 +164,9 @@ void main() {
 
       // 状态卡片渲染
       expect(find.byType(KnowledgeStatusCard), findsOneWidget);
-      // Mock 模式下显示"演示模式知识库"
-      expect(find.text('演示模式知识库'), findsOneWidget);
+      // 知识库类型名称由后端返回的 status.knowledgeBaseType.displayName 决定
+      // (参赛版本约束:不再有"演示模式知识库"字样)
+      expect(find.text('演示模式知识库'), findsNothing);
 
       // 文档列表区域标题(演示资料已内置)
       expect(find.textContaining('已导入文档'), findsOneWidget);

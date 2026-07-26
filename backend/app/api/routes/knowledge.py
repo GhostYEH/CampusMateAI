@@ -19,7 +19,6 @@ from ...schemas.knowledge import (
     DocumentSummary,
     KnowledgeStatus,
     RebuildResponse,
-    RestoreDemoResponse,
 )
 from ...services.container import get_container
 
@@ -255,37 +254,18 @@ async def rebuild_index() -> RebuildResponse:
     )
 
 
-@router.post("/knowledge/restore-demo", response_model=RestoreDemoResponse)
-async def restore_demo_documents() -> RestoreDemoResponse:
-    """恢复演示资料。
-
-    重新导入 demo 目录下所有 md 文件。不会覆盖用户已导入的资料(基于 content_hash 去重)。
-    已存在的演示资料不会重复添加。
-    """
-    container = get_container()
-    added = container.knowledge_ingestion.restore_demo_documents()
-    container.retrieval.rebuild()
-    total_demo = container.document_repository.count_demo_documents()
-    return RestoreDemoResponse(
-        success=True,
-        restored_count=added,
-        total_demo_count=total_demo,
-        message=(
-            f"恢复完成,新增 {added} 份演示资料;当前共 {total_demo} 份演示资料。"
-            if added > 0
-            else f"演示资料已存在,无需恢复;当前共 {total_demo} 份演示资料。"
-        ),
-    )
-
-
 @router.post("/knowledge/manage/{action}", response_model=DataManagementResponse)
 async def data_management(action: str) -> DataManagementResponse:
     """数据管理操作。
 
     支持的 action:
-    - delete_user_documents: 删除所有用户导入的知识库文档(保留演示资料)
-    - delete_all_documents: 删除所有知识库文档(包括演示资料)
-    - restore_demo: 恢复演示资料(等同于 /knowledge/restore-demo)
+    - delete_user_documents: 删除所有用户导入的知识库文档(保留测试环境资料)
+    - delete_all_documents: 删除所有知识库文档(包括测试环境资料)
+
+    备注:
+    - 不再提供"恢复演示资料 / 一键重置演示数据"等生产接口;
+      测试环境资料仅在 dev/test 启动时通过 AUTO_IMPORT_DEMO 导入,
+      production 已被 config 校验拦截。
     """
     container = get_container()
     action = action.strip().lower()
@@ -297,7 +277,7 @@ async def data_management(action: str) -> DataManagementResponse:
             action=action,
             affected_count=n,
             message=(
-                f"已删除 {n} 份用户导入文档,演示资料保留。"
+                f"已删除 {n} 份用户导入文档,测试环境资料保留。"
                 if n > 0
                 else "没有用户导入文档可删除。"
             ),
@@ -309,16 +289,7 @@ async def data_management(action: str) -> DataManagementResponse:
             success=True,
             action=action,
             affected_count=n,
-            message=f"已删除全部 {n} 份知识库文档(包括演示资料)。",
-        )
-    if action == "restore_demo":
-        added = container.knowledge_ingestion.restore_demo_documents()
-        container.retrieval.rebuild()
-        return DataManagementResponse(
-            success=True,
-            action=action,
-            affected_count=added,
-            message=f"恢复完成,新增 {added} 份演示资料。",
+            message=f"已删除全部 {n} 份知识库文档(包括测试环境资料)。",
         )
     raise AppException(
         f"不支持的数据管理操作: {action}",

@@ -58,7 +58,7 @@ class HomePage extends ConsumerWidget {
                 child: StaggeredEnter(
                   child: GreetingHeader(
                     greeting: greeting,
-                    name: user.nickname,
+                    name: user.displayName,
                     date: now,
                     unread: unread,
                   ),

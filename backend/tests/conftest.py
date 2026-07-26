@@ -22,8 +22,10 @@ os.environ.setdefault("ENABLE_FALLBACK_MODE", "true")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./data/test_app.db")
 os.environ.setdefault("KNOWLEDGE_BASE_PATH", "./data/knowledge_base")
 os.environ.setdefault("CORS_ORIGINS", "*")
-# 测试环境不自动导入演示资料(app_client fixture 自行导入)
+# 测试环境不自动导入测试环境资料(app_client fixture 自行导入)
 os.environ.setdefault("AUTO_IMPORT_DEMO", "false")
+# 测试环境不自动 seed 多角色验收账号(多角色测试通过 force=True 显式 seed)
+os.environ.setdefault("AUTO_SEED_DEMO_USERS", "false")
 
 # 清空单例缓存
 from app.core.config import get_settings  # noqa: E402

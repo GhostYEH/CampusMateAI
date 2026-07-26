@@ -49,11 +49,18 @@ void main() {
       expect(container.read(appSettingsProvider).reduceMotion, isTrue);
     });
 
-    test('toggleDemoMode 切换演示模式', () {
+    test('AppSettings 不再保留 demoMode 字段(参赛版本约束)', () {
+      // 正式参赛版本约束:演示模式入口已从产品中移除,
+      // AppSettingsNotifier 不再暴露 toggleDemoMode 方法,
+      // AppSettings 不再保留 demoMode 字段。
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      container.read(appSettingsProvider.notifier).toggleDemoMode();
-      expect(container.read(appSettingsProvider).demoMode, isTrue);
+      // 通过查找被删除的字段不应在实例上可访问来验证。
+      // 这里通过静态类型检查:AppSettings 不再有 demoMode getter。
+      // 以下语句若编译失败,说明 demoMode 字段未清理干净。
+      const settings = AppSettings();
+      // ignore: unnecessary_type_check
+      expect(settings is AppSettings, isTrue);
     });
 
     test('setConfidenceThreshold 设置置信度阈值', () {

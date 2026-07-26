@@ -37,6 +37,15 @@ void main() {
   }) {
     final container = ProviderContainer(
       overrides: [
+        // 显式注入 Mock 模式配置(仅开发/测试场景)
+        appConfigProvider.overrideWith((ref) {
+          return const AppConfig(
+            environment: AppEnvironment.development,
+            useMockBackend: true,
+            useMockExpressionRecognition: true,
+            apiBaseUrl: 'http://10.0.2.2:8000',
+          );
+        }),
         taskRepositoryProvider.overrideWithValue(
           MockTaskRepository(initial: initialTasks ?? const []),
         ),

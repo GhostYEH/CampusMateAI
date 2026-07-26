@@ -1,15 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../providers/app_providers.dart';
 
 /// 应用运行环境。
 ///
 /// 用于决定 Provider 注入 Mock 实现还是真实实现。
-/// - [demo]: 比赛演示模式,使用 Mock,完整演示数据链路。
-/// - [development]: 开发模式,可通过 dart-define 切换 Mock/Real。
-/// - [production]: 生产模式,使用真实后端 / LiteRT(预留)。
+/// - [development]: 开发模式,可通过 dart-define 切换 Mock/Real(仅 debug)。
+/// - [production]: 生产模式,强制使用真实后端 / LiteRT(预留)。
 enum AppEnvironment {
-  demo,
   development,
   production,
 }
@@ -17,55 +14,78 @@ enum AppEnvironment {
 /// 应用配置 — 决定服务实现注入策略。
 ///
 /// 通过 dart-define 注入:
-/// - `USE_MOCK_BACKEND` (true|false): 是否使用 Mock 后端
+/// - `USE_MOCK_BACKEND` (true|false): 是否使用 Mock 后端(默认 false,
+///   仅在 debug 模式下生效,release 强制为 false)
 /// - `API_BASE_URL`: 真实后端地址(如 http://10.0.2.2:8000)
 /// - `USE_MOCK_EXPRESSION` (true|false): 是否使用 Mock 表情识别
 ///
-/// 默认(Mock 模式)保证现有功能继续可用;
-/// 比赛演示模式与"恢复演示数据"不受后端可用性影响。
+/// 正式参赛版本约束(遵循 AGENTS.md §2.4 接口优先, Mock 可替换):
+/// - Release 构建强制 `useMockBackend=false`,确保不引用 Mock 实现。
+/// - 登录必须调用真实认证接口,不提供绕过认证的快捷入口。
+/// - Mock 实现仅供开发与测试使用,通过测试依赖注入控制。
 class AppConfig {
   const AppConfig({
     required this.environment,
     required this.useMockBackend,
     required this.useMockExpressionRecognition,
-    required this.enableDemoMode,
     required this.apiBaseUrl,
   });
 
   final AppEnvironment environment;
+
+  /// 是否使用 Mock 后端。
+  ///
+  /// 仅在 debug 模式下可由 dart-define `USE_MOCK_BACKEND=true` 启用,
+  /// release 模式下始终为 false。
   final bool useMockBackend;
+
+  /// 是否使用 Mock 表情识别。
   final bool useMockExpressionRecognition;
-  final bool enableDemoMode;
 
   /// 后端 API 基础 URL。
   /// - Mock 模式:可为空
   /// - Real 模式:必填,Android 模拟器默认 http://10.0.2.2:8000
   final String apiBaseUrl;
 
-  /// 是否为 Mock 模式(便于 UI 显示"模拟模式"标识)。
+  /// 是否为 Mock 模式(便于在 debug 下显示"模拟模式"标识)。
   bool get isMockMode => useMockBackend || useMockExpressionRecognition;
 
   /// 是否为真实后端模式。
   bool get isRealBackend => !useMockBackend;
 
-  /// 解析 dart-define 的基础配置(不依赖 AppSettings,可在 Provider 中读取)。
+  /// 解析 dart-define 的基础配置。
   ///
   /// dart-define 注入键:
-  /// - `USE_MOCK_BACKEND` (true|false): 默认 true
-  /// - `USE_MOCK_EXPRESSION` (true|false): 默认 true
+  /// - `USE_MOCK_BACKEND` (true|false): 默认 false;release 模式下强制 false
+  /// - `USE_MOCK_EXPRESSION` (true|false): 默认 false;release 模式下强制 false
   /// - `API_BASE_URL`: 默认 http://10.0.2.2:8000(Android 模拟器)
-  static AppConfig fromEnvironment({required bool demoMode}) {
+  static AppConfig fromEnvironment() {
+    // Release 模式下强制禁用所有 Mock,保证正式参赛版本不引用 Mock 实现
+    if (kReleaseMode) {
+      const apiBaseUrl = String.fromEnvironment(
+        'API_BASE_URL',
+        defaultValue: 'http://10.0.2.2:8000',
+      );
+      return const AppConfig(
+        environment: AppEnvironment.production,
+        useMockBackend: false,
+        useMockExpressionRecognition: false,
+        apiBaseUrl: apiBaseUrl,
+      );
+    }
+
+    // Debug / Profile 模式下允许通过 dart-define 切换 Mock
     final useMockStr = const String.fromEnvironment(
       'USE_MOCK_BACKEND',
-      defaultValue: 'true',
+      defaultValue: 'false',
     ).toLowerCase();
-    final useMock = !(useMockStr == 'false' || useMockStr == '0');
+    final useMock = useMockStr == 'true' || useMockStr == '1';
 
     final useMockExprStr = const String.fromEnvironment(
       'USE_MOCK_EXPRESSION',
-      defaultValue: 'true',
+      defaultValue: 'false',
     ).toLowerCase();
-    final useMockExpr = !(useMockExprStr == 'false' || useMockExprStr == '0');
+    final useMockExpr = useMockExprStr == 'true' || useMockExprStr == '1';
 
     const apiBaseUrl = String.fromEnvironment(
       'API_BASE_URL',
@@ -75,19 +95,17 @@ class AppConfig {
       environment: AppEnvironment.development,
       useMockBackend: useMock,
       useMockExpressionRecognition: useMockExpr,
-      enableDemoMode: demoMode,
       apiBaseUrl: apiBaseUrl,
     );
   }
 }
 
-/// 应用配置 Provider — 根据用户设置 + dart-define 派生。
+/// 应用配置 Provider — 仅依赖 dart-define,与 AppSettings 解耦。
 ///
 /// 行为:
-/// - `USE_MOCK_BACKEND=false` 时切换到真实后端实现(由 Provider 注入)。
-/// - `USE_MOCK_BACKEND` 未定义或为 true 时,使用 Mock 实现(保证现有功能可用)。
-/// - 比赛演示模式([AppSettings.demoMode])始终可启用,与后端模式独立。
+/// - Release 模式:强制真实后端,不读取任何运行时开关。
+/// - Debug / Profile 模式:可通过 `USE_MOCK_BACKEND=true` 启用 Mock 实现,
+///   仅供开发与测试使用,不在普通用户界面暴露。
 final appConfigProvider = Provider<AppConfig>((ref) {
-  final settings = ref.watch(appSettingsProvider);
-  return AppConfig.fromEnvironment(demoMode: settings.demoMode);
+  return AppConfig.fromEnvironment();
 });

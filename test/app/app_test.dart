@@ -57,31 +57,27 @@ Future<void> pumpApp(WidgetTester tester) async {
 
 void main() {
   group('AppConfig', () {
-    test('默认为 development 环境,使用 Mock 实现', () {
+    test('默认为 development 环境,使用真实后端(参赛版本约束)', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final config = container.read(appConfigProvider);
       expect(config.environment, AppEnvironment.development);
-      expect(config.useMockBackend, isTrue);
-      expect(config.useMockExpressionRecognition, isTrue);
-      expect(config.isMockMode, isTrue);
+      // 正式参赛版本默认不启用 Mock,确保不引用 Mock 实现
+      expect(config.useMockBackend, isFalse);
+      expect(config.useMockExpressionRecognition, isFalse);
+      expect(config.isMockMode, isFalse);
+      expect(config.isRealBackend, isTrue);
     });
 
-    test('enableDemoMode 跟随 settings.demoMode', () {
+    test('appConfigProvider 与 AppSettings 解耦(无 demoMode 字段)', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      container.read(appSettingsProvider.notifier).toggleDemoMode();
+      // AppSettings 已不再保留 demoMode 字段,
+      // AppConfig 始终从 dart-define 读取 useMockBackend,
+      // 默认值为 false(正式参赛版本约束)
       final config = container.read(appConfigProvider);
-      expect(config.enableDemoMode, isTrue);
-    });
-
-    test('关闭 demoMode 后 enableDemoMode 为 false', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      container.read(appSettingsProvider.notifier).toggleDemoMode();
-      container.read(appSettingsProvider.notifier).toggleDemoMode();
-      final config = container.read(appConfigProvider);
-      expect(config.enableDemoMode, isFalse);
+      expect(config.useMockBackend, isFalse);
+      expect(config.isRealBackend, isTrue);
     });
 
     test('production 环境字段语义检查', () {
@@ -89,7 +85,6 @@ void main() {
         environment: AppEnvironment.production,
         useMockBackend: false,
         useMockExpressionRecognition: false,
-        enableDemoMode: false,
         apiBaseUrl: 'http://test.local',
       );
       expect(config.isMockMode, isFalse);
@@ -143,14 +138,12 @@ void main() {
       const initial = AppSettings(
         darkMode: true,
         reduceMotion: true,
-        demoMode: true,
         reminderLeadMinutes: 30,
       );
       container.read(appSettingsProvider.notifier).restoreFrom(initial);
       final s = container.read(appSettingsProvider);
       expect(s.darkMode, isTrue);
       expect(s.reduceMotion, isTrue);
-      expect(s.demoMode, isTrue);
       expect(s.reminderLeadMinutes, 30);
     });
 
@@ -161,14 +154,12 @@ void main() {
             const AppSettings(
               darkMode: true,
               reduceMotion: true,
-              demoMode: true,
             ),
           );
       expect(container.read(appSettingsProvider).darkMode, isTrue);
       container.read(appSettingsProvider.notifier).resetToDefault();
       expect(container.read(appSettingsProvider).darkMode, isFalse);
       expect(container.read(appSettingsProvider).reduceMotion, isFalse);
-      expect(container.read(appSettingsProvider).demoMode, isFalse);
     });
 
     test('toggleReminder / setReminderLead', () {

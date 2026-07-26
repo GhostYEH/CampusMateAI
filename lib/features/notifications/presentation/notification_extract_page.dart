@@ -11,7 +11,6 @@ import '../../../data/models/notice.dart';
 import '../../../data/models/task.dart';
 import '../../../data/services/api/api_client.dart';
 import '../../../data/services/service_interfaces.dart';
-import '../../../mock/mock_services/mock_services.dart';
 import 'widgets/duplicate_warning_banner.dart';
 import 'widgets/extraction_progress.dart';
 import 'widgets/extraction_save_button.dart';
@@ -375,63 +374,6 @@ class _NotificationExtractPageState
     );
   }
 
-  /// 一次性降级:使用 Mock 提取(后端不可用时仍能完成整理)。
-  ///
-  /// 不会切换全局 AppConfig,仅对本次抽取生效。
-  Future<void> _runMockFallback() async {
-    final text = _textController.text.trim();
-    if (_extracting || text.isEmpty) return;
-
-    setState(() {
-      _extracting = true;
-      _completedSteps.clear();
-      _result = null;
-      _multiResult = null;
-      _selectedTaskIndex = 0;
-      _duplicateResult = null;
-      _duplicateDismissed = false;
-      _extractError = null;
-    });
-
-    try {
-      final mockService = MockNotificationExtractionService();
-      final multi = await mockService.extractMulti(
-        text,
-        onProgress: (step) {
-          if (!mounted) return;
-          setState(() => _completedSteps.add(step));
-        },
-      );
-      if (!mounted) return;
-      final tasks = multi.tasks;
-      if (tasks.isEmpty) {
-        final single = await mockService.extract(text);
-        if (!mounted) return;
-        _populateForm(single);
-        setState(() {
-          _result = single;
-          _multiResult = null;
-          _extracting = false;
-        });
-      } else {
-        _populateForm(tasks.first);
-        setState(() {
-          _result = tasks.first;
-          _multiResult = tasks.length >= 2 ? multi : null;
-          _selectedTaskIndex = 0;
-          _extracting = false;
-        });
-      }
-      _showSnack('已使用本地模拟提取(降级模式)');
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _extracting = false;
-        _extractError = '模拟提取也失败,请检查输入或重启应用';
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(appConfigProvider);
@@ -486,7 +428,6 @@ class _NotificationExtractPageState
                     child: _ExtractionErrorBanner(
                       message: _extractError!,
                       onRetry: _runExtract,
-                      onUseMock: isRealBackend ? _runMockFallback : null,
                     ),
                   ),
                 ],
@@ -592,19 +533,15 @@ class _NotificationExtractPageState
   }
 }
 
-/// 提取失败的内联错误横幅 — 温和不吓人,提供重试与降级入口。
+/// 提取失败的内联错误横幅 — 温和不吓人,提供重试入口。
 class _ExtractionErrorBanner extends StatelessWidget {
   const _ExtractionErrorBanner({
     required this.message,
     required this.onRetry,
-    this.onUseMock,
   });
 
   final String message;
   final VoidCallback onRetry;
-
-  /// "切换到演示模式"回调 — 仅在 Real Backend 模式下提供。
-  final VoidCallback? onUseMock;
 
   @override
   Widget build(BuildContext context) {
@@ -661,15 +598,6 @@ class _ExtractionErrorBanner extends StatelessWidget {
                   isPrimary: true,
                   onTap: onRetry,
                 ),
-                if (onUseMock != null) ...[
-                  const SizedBox(width: 8),
-                  _PillButton(
-                    label: '切换到演示模式',
-                    icon: Icons.science_outlined,
-                    isPrimary: false,
-                    onTap: onUseMock!,
-                  ),
-                ],
               ],
             ),
           ),
