@@ -349,116 +349,54 @@ abstract interface class AnalyticsService {
 /// - [LocalNotificationReminderService]: Android/iOS 真实调度
 /// - [FakeNotificationReminderService]: 测试用,记录所有调用
 /// - Web 端降级实现: 仅维护状态,不调度系统通知
-///
-/// **Android 精确提醒要求**(详见 `docs/reminder_guide.md`):
-/// - 调度使用 `AndroidScheduleMode.exactAllowWhileIdle`
-/// - 仅声明 `SCHEDULE_EXACT_ALARM`(不声明 `USE_EXACT_ALARM`)
-/// - Android 13+ 分别处理 POST_NOTIFICATIONS 与 SCHEDULE_EXACT_ALARM
-/// - 调度前必须检查:通知权限 / canScheduleExactAlarms / 时间在未来
-/// - 精确权限被拒绝时**不得**静默降级为 inexact,返回明确的 failure
 abstract interface class NotificationReminderService {
-  /// 请求通知显示权限(Android 13+ POST_NOTIFICATIONS / iOS alert+badge+sound)。
-  ///
-  /// **不**请求 SCHEDULE_EXACT_ALARM — 该权限需用户在系统"闹钟和提醒"
-  /// 设置页中授予,通过 [openExactAlarmSettings] 跳转。
-  ///
+  /// 请求通知权限。返回是否获得授权。
   /// 已授权时不应重复弹出系统弹窗(由实现负责)。
   Future<bool> requestPermission();
 
-  /// 当前权限状态(不触发系统弹窗)。
-  ///
-  /// - [ReminderPermissionStatus.granted]: 通知显示权限已授权
-  /// - [ReminderPermissionStatus.denied]: 已拒绝
-  /// - [ReminderPermissionStatus.notDetermined]: 未询问
-  /// - [ReminderPermissionStatus.unsupported]: 平台不支持(Web)
-  ReminderPermissionStatus permissionStatus();
-
-  /// 重新从系统读取权限状态。
-  ///
-  /// 用户从系统设置返回应用后调用,使 [permissionStatus] / [canScheduleExactAlarms]
-  /// 反映最新状态。capabilityStatus 也会随权限变化(权限撤销后不再 supported)。
-  Future<void> refreshPermissionStatus();
-
-  /// 是否可调度精确闹钟。
-  ///
-  /// - Android 12+: 返回 `SCHEDULE_EXACT_ALARM` 是否已授予
-  /// - Android <12 / iOS: 返回 `true`(系统不要求该权限)
-  /// - Web: 返回 `false`(平台不支持后台调度)
-  Future<bool> canScheduleExactAlarms();
-
-  /// 打开系统"闹钟和提醒"设置页(Android 12+)。
-  ///
-  /// 其它平台为 no-op(不会抛异常,以便 UI 无差别调用)。
-  Future<void> openExactAlarmSettings();
-
-  /// 打开应用通知设置页。
-  Future<void> openNotificationSettings();
-
   /// 调度一条任务提醒。
   ///
-  /// [taskId] 任务 ID(用于 cancelAllForTask 分组)
-  /// [offsetMinutes] 提前提醒分钟数 — 与 taskId 组合生成**稳定**的 notificationId,
-  ///   同一 taskId+offset 在多次调度中产生相同 ID,从而支持"覆盖旧提醒"。
+  /// [taskId] 任务 ID(用于取消/更新)
   /// [title] 通知标题
   /// [body] 通知正文
   /// [scheduledAt] 触发时间(本地时区)
   ///
-  /// 返回 [ReminderScheduleResult] — UI 据此决定如何反馈给用户:
-  /// - `notificationPermissionDenied`: 提示去开启通知权限
-  /// - `exactAlarmPermissionDenied`: 提示去开启"闹钟和提醒",**不**显示"提醒已设置"
-  /// - `pastTime`: 时间已过,提示用户重新选择
-  /// - `unsupportedPlatform`: Web 平台,展示降级文案
-  /// - `pluginException`: 插件异常,不虚报成功
-  Future<ReminderScheduleResult> scheduleReminder({
+  /// 返回是否成功调度(权限未授予或时间已过返回 false)。
+  Future<bool> scheduleReminder({
     required String taskId,
-    required int offsetMinutes,
     required String title,
     required String body,
     required DateTime scheduledAt,
   });
 
-  /// 取消指定任务+偏移的提醒。
-  Future<void> cancelReminder(String taskId, int offsetMinutes);
+  /// 取消指定任务的提醒。
+  Future<void> cancelReminder(String taskId);
 
-  /// 取消指定任务的所有提醒(支持单任务多偏移时一次清空)。
+  /// 更新指定任务的提醒(等同于 cancel + schedule)。
+  Future<bool> updateReminder({
+    required String taskId,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+  });
+
+  /// 取消指定任务的所有提醒(支持单任务多提醒时)。
   Future<void> cancelAllForTask(String taskId);
-
-  /// 更新指定任务的提醒(等同于 cancelAllForTask + schedule)。
-  ///
-  /// 当 offset 变化时,旧 ID 与新 ID 不同 — 内部会先取消该任务下所有已知偏移的提醒。
-  Future<ReminderScheduleResult> updateReminder({
-    required String taskId,
-    required int offsetMinutes,
-    required String title,
-    required String body,
-    required DateTime scheduledAt,
-  });
-
-  /// 恢复持久化的提醒列表。
-  ///
-  /// 调用时机:
-  /// - 应用启动后(设备重启 / 应用更新后,系统接收器已重建 alarms,
-  ///   但若用户曾撤销 SCHEDULE_EXACT_ALARM 又重新授予,需重新调度)
-  /// - 用户从系统设置授予精确提醒权限返回应用后
-  ///
-  /// 实现要求:
-  /// - 跳过 `taskCompleted` / `taskDeleted` 的条目
-  /// - 跳过 `scheduledAt` 已过去的条目
-  /// - 跳过权限/能力不足时无法调度的条目(返回结果计入失败,但不抛异常)
-  /// - **不重复创建**已存在的提醒(通过 `pendingNotificationRequests` 去重或内存跟踪)
-  ///
-  /// 返回成功恢复的提醒数。
-  Future<int> restoreReminders(List<ReminderEntry> entries);
 
   /// 当前平台能力状态。
   ///
-  /// - [ReminderCapabilityStatus.supported]: 平台支持系统级定时通知(Android/iOS)
-  /// - [ReminderCapabilityStatus.degraded]: 平台不支持后台调度(Web),仅应用内提醒
+  /// - [ReminderCapabilityStatus.supported]: 平台支持系统级定时通知
+  /// - [ReminderCapabilityStatus.degraded]: 平台不支持后台调度(如 Web),仅应用内提醒
   /// - [ReminderCapabilityStatus.unknown]: 尚未检测
-  ///
-  /// **权限撤销会改变能力状态**:Android 上 SCHEDULE_EXACT_ALARM 被撤销后
-  /// 返回 `degraded`(只能 inexact,且本实现拒绝 inexact 降级 → 实际无法调度)。
   ReminderCapabilityStatus capabilityStatus();
+
+  /// 当前权限状态(不触发系统弹窗)。
+  ///
+  /// - [ReminderPermissionStatus.granted]: 已授权
+  /// - [ReminderPermissionStatus.denied]: 已拒绝
+  /// - [ReminderPermissionStatus.notDetermined]: 未询问
+  /// - [ReminderCapabilityStatus.unknown]: 平台不支持
+  ReminderPermissionStatus permissionStatus();
 }
 
 /// 提醒能力状态。
@@ -486,76 +424,4 @@ enum ReminderPermissionStatus {
 
   /// 平台不支持
   unsupported,
-}
-
-/// 提醒调度结果 — 描述一次调度的具体结果。
-///
-/// UI 据此决定如何反馈给用户(是否提示 / 跳转哪里)。
-class ReminderScheduleResult {
-  const ReminderScheduleResult.success(this.notificationId)
-      : success = true,
-        failure = null;
-
-  const ReminderScheduleResult.failed(this.failure)
-      : success = false,
-        notificationId = null;
-
-  /// 是否成功调度。
-  final bool success;
-
-  /// 失败原因(`success == false` 时非空)。
-  final ReminderScheduleFailure? failure;
-
-  /// 实际分配的通知 ID(`success == true` 时非空)。
-  final int? notificationId;
-
-  @override
-  String toString() => success
-      ? 'ReminderScheduleResult.success($notificationId)'
-      : 'ReminderScheduleResult.failed($failure)';
-}
-
-/// 提醒调度失败原因。
-enum ReminderScheduleFailure {
-  /// 通知显示权限未授予(Android 13+ POST_NOTIFICATIONS 被拒绝)。
-  notificationPermissionDenied,
-
-  /// 精确提醒权限未授予(Android 12+ SCHEDULE_EXACT_ALARM 未授予)。
-  ///
-  /// UI 应:不显示"提醒已设置",提示"尚未获得精确提醒权限",
-  /// 提供"前往系统设置"操作,返回后重新检查权限。
-  exactAlarmPermissionDenied,
-
-  /// 提醒时间已过去。
-  pastTime,
-
-  /// 当前平台不支持系统调度(Web)。
-  unsupportedPlatform,
-
-  /// 插件调用异常 — 不虚报成功。
-  pluginException,
-}
-
-/// 用于恢复调度的提醒条目 — 由调用方从持久化任务列表构造。
-///
-/// `offsetMinutes` 用于生成稳定 notificationId(taskId + offset 组合哈希)。
-/// 当 deadline 与 reminderAt 都已持久化时,offset = deadline - reminderAt。
-class ReminderEntry {
-  const ReminderEntry({
-    required this.taskId,
-    required this.title,
-    required this.body,
-    required this.scheduledAt,
-    required this.offsetMinutes,
-    required this.taskCompleted,
-    required this.taskDeleted,
-  });
-
-  final String taskId;
-  final String title;
-  final String body;
-  final DateTime scheduledAt;
-  final int offsetMinutes;
-  final bool taskCompleted;
-  final bool taskDeleted;
 }
