@@ -9,6 +9,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/id_generator.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../data/models/models.dart';
+import '../../notifications/presentation/widgets/reminder_section.dart';
 
 /// 新建待办页面 — 表单驱动,支持校验、加载态与防重复提交。
 class TaskCreatePage extends ConsumerStatefulWidget {
@@ -29,7 +30,8 @@ class _TaskCreatePageState extends ConsumerState<TaskCreatePage> {
   TaskPriority _priority = TaskPriority.medium;
   DateTime? _deadline;
   bool _reminderEnabled = false;
-  int _reminderLeadMinutes = 15;
+  // 默认截止前 2 小时(与 ReminderSection 预设对齐: 120=2h, 1440=24h)。
+  int _reminderLeadMinutes = 120;
   bool _saving = false;
 
   @override
@@ -350,59 +352,15 @@ class _TaskCreatePageState extends ConsumerState<TaskCreatePage> {
   }
 
   Widget _reminderSection() {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.notifications_active_outlined,
-                size: 18,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text('截止提醒', style: AppTypography.subtitle),
-              ),
-              Switch(
-                value: _reminderEnabled,
-                onChanged: (v) => setState(() => _reminderEnabled = v),
-              ),
-            ],
-          ),
-          if (_reminderEnabled) ...[
-            const SizedBox(height: 8),
-            DropdownButtonFormField<int>(
-              initialValue: _reminderLeadMinutes,
-              decoration: const InputDecoration(
-                labelText: '提前提醒时间',
-                prefixIcon: Icon(Icons.schedule_rounded, size: 20),
-              ),
-              items: const [
-                DropdownMenuItem(value: 5, child: Text('提前 5 分钟')),
-                DropdownMenuItem(value: 10, child: Text('提前 10 分钟')),
-                DropdownMenuItem(value: 15, child: Text('提前 15 分钟')),
-                DropdownMenuItem(value: 30, child: Text('提前 30 分钟')),
-                DropdownMenuItem(value: 60, child: Text('提前 1 小时')),
-                DropdownMenuItem(value: 1440, child: Text('提前 1 天')),
-              ],
-              onChanged: (v) {
-                if (v != null) setState(() => _reminderLeadMinutes = v);
-              },
-            ),
-            if (_deadline == null) ...[
-              const SizedBox(height: 8),
-              Text(
-                '提示:未设置截止时间,提醒将无法生效',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.warning,
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
+    // 使用与通知整理页一致的 ReminderSection 组件 — 共享权限检查与状态横幅。
+    // ReminderSection 内部监听 reminderStatusProvider,权限缺失时不切换开关,
+    // 而是显示 ReminderPermissionBanner 引导用户授权(对齐 AGENTS.md "Android 精确提醒完整闭环")。
+    return ReminderSection(
+      enabled: _reminderEnabled,
+      leadMinutes: _reminderLeadMinutes,
+      deadline: _deadline,
+      onToggle: (v) => setState(() => _reminderEnabled = v),
+      onLeadChanged: (v) => setState(() => _reminderLeadMinutes = v),
     );
   }
 
