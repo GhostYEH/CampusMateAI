@@ -9,6 +9,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/id_generator.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../data/models/models.dart';
+import '../../notifications/presentation/widgets/reminder_permission_banner.dart';
 
 /// 新建待办页面 — 表单驱动,支持校验、加载态与防重复提交。
 class TaskCreatePage extends ConsumerStatefulWidget {
@@ -121,9 +122,33 @@ class _TaskCreatePageState extends ConsumerState<TaskCreatePage> {
     try {
       await ref.read(taskListProvider.notifier).createTask(task);
       if (!mounted) return;
+      // 检查提醒调度结果 — 失败时仍保存任务,但单独提示提醒部分
+      // (不虚报"提醒已设置" — Android 精确提醒完整闭环要求)
+      final scheduleResult =
+          ref.read(taskListProvider.notifier).lastScheduleResult;
+      final reminderFeedback =
+          ReminderScheduleFeedback.messageFor(scheduleResult);
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已添加待办')),
+        SnackBar(
+          backgroundColor:
+              reminderFeedback == null ? AppColors.success : AppColors.warning,
+          content: Row(
+            children: [
+              Icon(
+                reminderFeedback == null
+                    ? Icons.check_circle_rounded
+                    : Icons.info_outline_rounded,
+                color: AppColors.onPrimary,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(reminderFeedback ?? '已添加待办'),
+              ),
+            ],
+          ),
+        ),
       );
       context.go('/tasks');
     } catch (_) {
@@ -371,6 +396,8 @@ class _TaskCreatePageState extends ConsumerState<TaskCreatePage> {
               ),
             ],
           ),
+          // 权限引导横幅 — 始终展示,提前告知用户权限状态
+          const ReminderPermissionBanner(compact: true),
           if (_reminderEnabled) ...[
             const SizedBox(height: 8),
             DropdownButtonFormField<int>(

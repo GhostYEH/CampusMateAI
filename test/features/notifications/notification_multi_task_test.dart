@@ -49,13 +49,15 @@ void main() {
       'shows "已拆分为多个任务" when multiple tasks',
       (tester) async {
         final result = makeResult(taskCount: 2);
-        await tester.pumpWidget(wrap(
-          MultiTaskSelector(
-            result: result,
-            selectedIndex: 0,
-            onSelect: (_) {},
+        await tester.pumpWidget(
+          wrap(
+            MultiTaskSelector(
+              result: result,
+              selectedIndex: 0,
+              onSelect: (_) {},
+            ),
           ),
-        ),);
+        );
 
         expect(find.text('已拆分为多个任务'), findsOneWidget);
       },
@@ -63,13 +65,15 @@ void main() {
 
     testWidgets('shows task count badge "2 个任务"', (tester) async {
       final result = makeResult(taskCount: 2);
-      await tester.pumpWidget(wrap(
-        MultiTaskSelector(
-          result: result,
-          selectedIndex: 0,
-          onSelect: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          MultiTaskSelector(
+            result: result,
+            selectedIndex: 0,
+            onSelect: (_) {},
+          ),
         ),
-      ),);
+      );
 
       expect(find.text('2 个任务'), findsOneWidget);
     });
@@ -77,13 +81,15 @@ void main() {
     testWidgets('shows split reason text', (tester) async {
       const reason = '识别到 2 个独立截止时间,已拆分为多任务';
       final result = makeResult(splitReason: reason);
-      await tester.pumpWidget(wrap(
-        MultiTaskSelector(
-          result: result,
-          selectedIndex: 0,
-          onSelect: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          MultiTaskSelector(
+            result: result,
+            selectedIndex: 0,
+            onSelect: (_) {},
+          ),
         ),
-      ),);
+      );
 
       expect(find.text(reason), findsOneWidget);
     });
@@ -92,13 +98,15 @@ void main() {
       'shows "需要人工确认" hint when needsUserConfirmation=true',
       (tester) async {
         final result = makeResult(needsUserConfirmation: true);
-        await tester.pumpWidget(wrap(
-          MultiTaskSelector(
-            result: result,
-            selectedIndex: 0,
-            onSelect: (_) {},
+        await tester.pumpWidget(
+          wrap(
+            MultiTaskSelector(
+              result: result,
+              selectedIndex: 0,
+              onSelect: (_) {},
+            ),
           ),
-        ),);
+        );
 
         expect(
           find.text('拆分结果仅供参考,请人工确认各任务字段后再保存'),
@@ -110,13 +118,15 @@ void main() {
     testWidgets('tapping a task chip calls onSelect callback', (tester) async {
       final result = makeResult(taskCount: 2);
       int? selected;
-      await tester.pumpWidget(wrap(
-        MultiTaskSelector(
-          result: result,
-          selectedIndex: 0,
-          onSelect: (index) => selected = index,
+      await tester.pumpWidget(
+        wrap(
+          MultiTaskSelector(
+            result: result,
+            selectedIndex: 0,
+            onSelect: (index) => selected = index,
+          ),
         ),
-      ),);
+      );
 
       // 点击第二个任务 chip(通过任务名定位)
       final secondChip = find.text('任务 2');
@@ -129,13 +139,15 @@ void main() {
 
     testWidgets('shows "当前编辑第 N 个任务" text', (tester) async {
       final result = makeResult(taskCount: 2);
-      await tester.pumpWidget(wrap(
-        MultiTaskSelector(
-          result: result,
-          selectedIndex: 1,
-          onSelect: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          MultiTaskSelector(
+            result: result,
+            selectedIndex: 1,
+            onSelect: (_) {},
+          ),
         ),
-      ),);
+      );
 
       expect(
         find.text('当前编辑第 2 个任务,保存后将单独生成一条待办'),
@@ -177,9 +189,11 @@ void main() {
       'shows "可能存在重复通知" when isDuplicate=true',
       (tester) async {
         final result = makeResult(matches: [makeMatch()]);
-        await tester.pumpWidget(wrap(
-          DuplicateWarningBanner(result: result, onDismiss: () {}),
-        ),);
+        await tester.pumpWidget(
+          wrap(
+            DuplicateWarningBanner(result: result, onDismiss: () {}),
+          ),
+        );
 
         expect(find.text('可能存在重复通知'), findsOneWidget);
       },
@@ -189,9 +203,11 @@ void main() {
       final result = makeResult(
         matches: [makeMatch(title: '提交实践申请表')],
       );
-      await tester.pumpWidget(wrap(
-        DuplicateWarningBanner(result: result, onDismiss: () {}),
-      ),);
+      await tester.pumpWidget(
+        wrap(
+          DuplicateWarningBanner(result: result, onDismiss: () {}),
+        ),
+      );
 
       expect(find.text('提交实践申请表'), findsOneWidget);
     });
@@ -200,18 +216,22 @@ void main() {
       final result = makeResult(
         matches: [makeMatch(similarity: 0.85)],
       );
-      await tester.pumpWidget(wrap(
-        DuplicateWarningBanner(result: result, onDismiss: () {}),
-      ),);
+      await tester.pumpWidget(
+        wrap(
+          DuplicateWarningBanner(result: result, onDismiss: () {}),
+        ),
+      );
 
       expect(find.text('相似度 85%'), findsOneWidget);
     });
 
     testWidgets('shows "仍要保存" button', (tester) async {
       final result = makeResult(matches: [makeMatch()]);
-      await tester.pumpWidget(wrap(
-        DuplicateWarningBanner(result: result, onDismiss: () {}),
-      ),);
+      await tester.pumpWidget(
+        wrap(
+          DuplicateWarningBanner(result: result, onDismiss: () {}),
+        ),
+      );
 
       expect(find.text('仍要保存'), findsOneWidget);
     });
@@ -219,12 +239,14 @@ void main() {
     testWidgets('tapping "仍要保存" calls onDismiss', (tester) async {
       final result = makeResult(matches: [makeMatch()]);
       bool dismissed = false;
-      await tester.pumpWidget(wrap(
-        DuplicateWarningBanner(
-          result: result,
-          onDismiss: () => dismissed = true,
+      await tester.pumpWidget(
+        wrap(
+          DuplicateWarningBanner(
+            result: result,
+            onDismiss: () => dismissed = true,
+          ),
         ),
-      ),);
+      );
 
       await tester.tap(find.text('仍要保存'));
       await tester.pump();
@@ -236,9 +258,11 @@ void main() {
       'returns SizedBox.shrink when isDuplicate=false',
       (tester) async {
         final result = makeResult(isDuplicate: false);
-        await tester.pumpWidget(wrap(
-          DuplicateWarningBanner(result: result, onDismiss: () {}),
-        ),);
+        await tester.pumpWidget(
+          wrap(
+            DuplicateWarningBanner(result: result, onDismiss: () {}),
+          ),
+        );
 
         expect(find.text('可能存在重复通知'), findsNothing);
         expect(find.text('仍要保存'), findsNothing);
@@ -251,29 +275,33 @@ void main() {
   // ============================================================
   group('ReminderSection', () {
     testWidgets('shows "截止提醒" title', (tester) async {
-      await tester.pumpWidget(wrap(
-        ReminderSection(
-          enabled: false,
-          leadMinutes: 120,
-          deadline: null,
-          onToggle: (_) {},
-          onLeadChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          ReminderSection(
+            enabled: false,
+            leadMinutes: 120,
+            deadline: null,
+            onToggle: (_) {},
+            onLeadChanged: (_) {},
+          ),
         ),
-      ),);
+      );
 
       expect(find.text('截止提醒'), findsOneWidget);
     });
 
     testWidgets('switch is disabled when deadline is null', (tester) async {
-      await tester.pumpWidget(wrap(
-        ReminderSection(
-          enabled: false,
-          leadMinutes: 120,
-          deadline: null,
-          onToggle: (_) {},
-          onLeadChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          ReminderSection(
+            enabled: false,
+            leadMinutes: 120,
+            deadline: null,
+            onToggle: (_) {},
+            onLeadChanged: (_) {},
+          ),
         ),
-      ),);
+      );
 
       final sw = tester.widget<Switch>(find.byType(Switch));
       expect(sw.onChanged, isNull);
@@ -282,15 +310,17 @@ void main() {
     testWidgets(
       'shows "需先设置截止时间才能开启提醒" when no deadline',
       (tester) async {
-        await tester.pumpWidget(wrap(
-          ReminderSection(
-            enabled: false,
-            leadMinutes: 120,
-            deadline: null,
-            onToggle: (_) {},
-            onLeadChanged: (_) {},
+        await tester.pumpWidget(
+          wrap(
+            ReminderSection(
+              enabled: false,
+              leadMinutes: 120,
+              deadline: null,
+              onToggle: (_) {},
+              onLeadChanged: (_) {},
+            ),
           ),
-        ),);
+        );
 
         expect(find.text('需先设置截止时间才能开启提醒'), findsOneWidget);
       },
@@ -299,15 +329,17 @@ void main() {
     testWidgets(
       'shows preset chips "截止前 2 小时" and "截止前 24 小时" when enabled + has deadline',
       (tester) async {
-        await tester.pumpWidget(wrap(
-          ReminderSection(
-            enabled: true,
-            leadMinutes: 120,
-            deadline: DateTime(2099, 12, 31, 23, 59),
-            onToggle: (_) {},
-            onLeadChanged: (_) {},
+        await tester.pumpWidget(
+          wrap(
+            ReminderSection(
+              enabled: true,
+              leadMinutes: 120,
+              deadline: DateTime(2099, 12, 31, 23, 59),
+              onToggle: (_) {},
+              onLeadChanged: (_) {},
+            ),
           ),
-        ),);
+        );
 
         expect(find.text('截止前 2 小时'), findsOneWidget);
         expect(find.text('截止前 24 小时'), findsOneWidget);
@@ -316,15 +348,17 @@ void main() {
 
     testWidgets('tapping a preset chip calls onLeadChanged', (tester) async {
       int? lead;
-      await tester.pumpWidget(wrap(
-        ReminderSection(
-          enabled: true,
-          leadMinutes: 120,
-          deadline: DateTime(2099, 12, 31, 23, 59),
-          onToggle: (_) {},
-          onLeadChanged: (m) => lead = m,
+      await tester.pumpWidget(
+        wrap(
+          ReminderSection(
+            enabled: true,
+            leadMinutes: 120,
+            deadline: DateTime(2099, 12, 31, 23, 59),
+            onToggle: (_) {},
+            onLeadChanged: (m) => lead = m,
+          ),
         ),
-      ),);
+      );
 
       await tester.tap(find.text('截止前 24 小时'));
       await tester.pump();
@@ -335,15 +369,17 @@ void main() {
     testWidgets(
       'shows reminder preview text with date when enabled',
       (tester) async {
-        await tester.pumpWidget(wrap(
-          ReminderSection(
-            enabled: true,
-            leadMinutes: 120,
-            deadline: DateTime(2099, 12, 31, 23, 59),
-            onToggle: (_) {},
-            onLeadChanged: (_) {},
+        await tester.pumpWidget(
+          wrap(
+            ReminderSection(
+              enabled: true,
+              leadMinutes: 120,
+              deadline: DateTime(2099, 12, 31, 23, 59),
+              onToggle: (_) {},
+              onLeadChanged: (_) {},
+            ),
           ),
-        ),);
+        );
 
         // 预览文案: "将在 $dateStr 发送系统通知"
         expect(find.textContaining('将在'), findsOneWidget);

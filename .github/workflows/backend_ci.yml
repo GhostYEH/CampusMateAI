@@ -1,0 +1,118 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    name: Backend Test & Retrieval Eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # CI 中绝不调用真实 LLM；使用降级模式验证 retrieval_summary 与 fallback 行为
+      APP_ENV: test
+      LLM_PROVIDER: none
+      LLM_BASE_URL: ""
+      LLM_API_KEY: ""
+      LLM_MODEL: ""
+      ENABLE_FALLBACK_MODE: "true"
+      DATABASE_URL: "sqlite:///./data/test_app.db"
+      KNOWLEDGE_BASE_PATH: "./data/knowledge_base"
+      AUTO_IMPORT_DEMO: "false"
+      CORS_ORIGINS: "*"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify Python environment
+        working-directory: backend
+        run: |
+          python --version
+          python -c "import sys; print('sys.path[0]:', sys.path[0])"
+
+      - name: Import FastAPI app (syntax check)
+        working-directory: backend
+        run: |
+          python -c "from app.main import app; print('app.title:', app.title)"
+
+      - name: Run pytest
+        working-directory: backend
+        run: |
+          python -m pytest --tb=short -q
+
+      - name: Run retrieval evaluation (human-readable)
+        working-directory: backend
+        run: |
+          python -m scripts.evaluate_retrieval
+
+      - name: Run retrieval evaluation (JSON, for CI parsing)
+        working-directory: backend
+        run: |
+          python -m scripts.evaluate_retrieval --json > /tmp/retrieval_eval.json
+          cat /tmp/retrieval_eval.json
+
+      - name: Verify LLM fallback (LLM_PROVIDER=none)
+        working-directory: backend
+        run: |
+          python -m scripts.check_llm_provider
+
+  backend-llm-stub:
+    name: Backend LLM Stub/Fake Provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APP_ENV: test
+      LLM_PROVIDER: none
+      ENABLE_FALLBACK_MODE: "true"
+      DATABASE_URL: "sqlite:///./data/test_app.db"
+      KNOWLEDGE_BASE_PATH: "./data/knowledge_base"
+      AUTO_IMPORT_DEMO: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run check_llm_provider tests (Fake/Stub Provider)
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_check_llm_provider.py tests/test_llm.py -v --tb=short
+
+      - name: Verify retrieval_summary fallback (no LLM call)
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_counselor.py tests/test_retrieval_evaluation.py -v --tb=short

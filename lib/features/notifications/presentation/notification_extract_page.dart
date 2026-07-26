@@ -21,6 +21,7 @@ import 'widgets/extracted_notice_form.dart';
 import 'widgets/mock_note_banner.dart';
 import 'widgets/multi_task_selector.dart';
 import 'widgets/notice_input_panel.dart';
+import 'widgets/reminder_permission_banner.dart';
 import 'widgets/reminder_section.dart';
 
 /// 通知智能整理页(核心交互流程)。
@@ -337,23 +338,33 @@ class _NotificationExtractPageState
     try {
       await ref.read(taskListProvider.notifier).createTask(task);
       if (!mounted) return;
+      // 检查提醒调度结果 — 失败时仍保存任务,但单独提示提醒部分
+      final scheduleResult =
+          ref.read(taskListProvider.notifier).lastScheduleResult;
+      final reminderFeedback =
+          ReminderScheduleFeedback.messageFor(scheduleResult);
       setState(() {
         _saving = false;
         _saved = true;
       });
       _successController.forward();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: AppColors.success,
+        SnackBar(
+          backgroundColor:
+              reminderFeedback == null ? AppColors.success : AppColors.warning,
           content: Row(
             children: [
               Icon(
-                Icons.check_circle_rounded,
+                reminderFeedback == null
+                    ? Icons.check_circle_rounded
+                    : Icons.info_outline_rounded,
                 color: AppColors.onPrimary,
                 size: 18,
               ),
-              SizedBox(width: 8),
-              Text('已保存为待办'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(reminderFeedback ?? '已保存为待办'),
+              ),
             ],
           ),
         ),

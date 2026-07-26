@@ -17,6 +17,20 @@ class CampusCompanionApp extends ConsumerStatefulWidget {
 
 class _CampusCompanionAppState extends ConsumerState<CampusCompanionApp> {
   @override
+  void initState() {
+    super.initState();
+    // 应用启动后恢复精确提醒(设备重启 / 应用更新 / 权限重新授予后)。
+    // 放在 postFrame 中避免在 build 阶段触发 Provider 状态变更。
+    // restoreReminders 内部通过 pendingNotificationRequests 去重,重复调用安全。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 读取一次以触发 FutureProvider 计算
+      ref.read(reminderRestoreProvider);
+      // 同时初始化权限状态快照(用于 UI 横幅)
+      ref.read(refreshedReminderStatusProvider);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final settings = ref.watch(appSettingsProvider);

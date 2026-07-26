@@ -55,8 +55,11 @@ backend/
 │   │   └── demo/                # 5 份演示资料 Markdown
 │   └── app.db                   # SQLite 数据库文件(运行后自动生成)
 ├── scripts/
-│   └── rebuild_index.py         # 重建索引命令行
-├── tests/                       # 52 个 pytest 测试
+│   ├── rebuild_index.py         # 重建索引命令行
+│   ├── check_llm_provider.py    # LLM 连通性检查(支持 Fake Provider)
+│   ├── evaluate_retrieval.py    # 检索评测(Hit@1/Hit@3/MRR/拒答率/失败样例)
+│   └── _debug_retrieval.py      # 检索调试辅助脚本(不参与 CI)
+├── tests/                       # 112 个 pytest 测试
 ├── .env.example
 ├── pytest.ini
 ├── requirements.txt
@@ -70,8 +73,18 @@ backend/
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+
+# Windows PowerShell(推荐)
+.venv\Scripts\Activate.ps1
+# 若提示执行策略受限,可临时放开(仅当前会话):
+# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# Windows cmd / Git Bash
+.venv\Scripts\activate.bat
+
+# macOS / Linux
+# source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
@@ -128,8 +141,13 @@ python scripts/evaluate_retrieval.py
 python scripts/evaluate_retrieval.py --json   # JSON 输出
 ```
 
-> 检索评测的 fixtures(27 条样例)、指标含义与最新结果说明见 [`../docs/retrieval_evaluation.md`](../docs/retrieval_evaluation.md)。
+> 检索评测的 fixtures(44 条样例)、指标含义与最新结果说明见 [`../docs/retrieval_evaluation.md`](../docs/retrieval_evaluation.md)。
 > 未配置 LLM 时,系统仍使用规则抽取与检索摘要模式正常运行,详见下方"降级模式"。
+>
+> **`retrieval_summary` vs `llm_rag` 区别**:
+> - `retrieval_summary`:LLM 不可用时,直接拼接 BM25 检索段落 + 来源元数据,标注 `evidence_level="retrieval_only"`,不调用 LLM
+> - `llm_rag`:LLM 可用时,基于检索段落调用 LLM 生成自然语言回答,标注 `evidence_level="llm_rag"`
+> - 两者都严格基于知识库,不编造政策/截止时间/材料要求
 
 ## 通知抽取说明
 
@@ -182,12 +200,15 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 
 ### 检索排序
 
-文档与分块的元数据用于优先级排序:
+文档与分块的元数据用于优先级排序(元数据加权合计上限 +0.30,不覆盖明显更高的语义相关性):
 
-1. 未过期 > 过期
-2. 官方 > 非官方
-3. 更新时间新 > 旧
-4. BM25 相关度作为辅助
+1. 未过期 > 过期(+0.15)
+2. 官方 > 非官方(+0.10)
+3. 新鲜度 bonus:30 天内满额 +0.05,30~365 天线性衰减,超过 365 天归零
+4. BM25 相关度作为主体分(标题/小节字段加权 ×2,正文 ×1)
+5. 校园术语同义词对称扩展(奖助学金↔奖学金、暑期实践↔社会实践、政策↔办法 等)
+6. 短查询回退:1 token 短查询 min_overlap=1,2 token 短查询 min_overlap=2,含未知 token 时 +1
+7. 多路召回:复杂查询按标点拆分为子查询,合并去重
 
 ## RAG 问答说明
 
@@ -230,9 +251,11 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 ## 已知限制
 
 - SQLite 单机文件存储,不支持多实例横向扩展(预留 PostgreSQL 迁移)
-- BM25 关键词检索,中文同义词/语义检索能力有限(后续可加向量检索)
+- BM25 关键词检索 + 校园术语同义词扩展(对称),未引入向量数据库 / Embedding 模型,语义检索能力有限
 - 演示资料非真实学校制度,回答仅作演示
-- 没有用户系统,所有请求共享同一知识库
+- 没有用户系统(单租户匿名模式),所有请求共享同一知识库
+- 扫描型 PDF 不支持 OCR(仅提取文本层)
+- CNN 仍为 Mock(后端不涉及 CNN 推理,此限制仅说明项目整体状态)
 
 ## 下一阶段
 

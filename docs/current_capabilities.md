@@ -23,7 +23,7 @@
 - **FastAPI 后端**:健康检查 / 统一异常处理 / 结构化错误响应 / SQLite 线程安全访问
 - **规则通知抽取**:正则匹配截止时间 / 面向对象 / 材料 / 提交方式 / 地点;支持缺失年份推断;不确定时 `needs_confirmation=true` 并在 `warnings` 中说明;永不编造通知中不存在的材料
 - **知识库导入**:支持 MD / TXT / PDF / DOCX,基于内容哈希去重,文件类型 / 大小 / 空文件 / 重复内容均校验,文件名 `sanitize_filename` 防路径穿越
-- **BM25 检索**:jieba 分词 + rank_bm25,元数据优先级排序(未过期 > 过期、官方 > 非官方、新 > 旧)
+- **BM25 检索**:jieba 分词 + rank_bm25,元数据优先级排序(未过期 > 过期、官方 > 非官方、新鲜度 bonus 线性衰减),校园术语同义词对称扩展,标题/小节字段加权,短查询回退策略,多路召回与子查询合并
 - **SSE 流式**:AI 导员流式响应,严格基于知识库回答;恶意 Prompt 通过系统消息约束,不绕过
 - **LLM Provider 连通性检查**:`backend/scripts/check_llm_provider.py` 真实发起最小测试请求,输出配置完整性 / 连接状态 / 响应耗时,失败不阻断后端启动,不打印完整 API Key
 - **检索评测脚本**:`backend/scripts/evaluate_retrieval.py` 真实调用 `RetrievalService.search()`,计算 Hit@1 / Hit@3 / MRR / 正确拒答率 / 错误接受率 / 失败样例 / 平均检索耗时,不写死答案
@@ -53,7 +53,7 @@
 当外部依赖不可用时,系统自动降级,功能仍可正常运行:
 
 - **LLM 未配置时的规则抽取**:`LLM_PROVIDER=none` 或调用失败 / 超时时,`/notices/extract` 走规则模式,返回 `extractor_mode="rules"`
-- **`retrieval_summary` 模式**:LLM 不可用时,`/counselor/chat` 走检索摘要模式,直接拼接关键段落,标注 `evidence_level="retrieval_only"`
+- **`retrieval_summary` 模式**:LLM 不可用时,`/counselor/chat` 走检索摘要模式,直接拼接关键段落,标注 `evidence_level="retrieval_only"`(与 `llm_rag` 模式的区别:`retrieval_summary` 不调用 LLM,仅基于 BM25 检索结果拼接文本;`llm_rag` 在 LLM 可用时调用 LLM 对检索段落做归纳整理,生成更自然的自然语言回答)
 - **后端不可用时**:Flutter 端显示"未连接",提供重试与"切换到演示模式"按钮,不清空用户输入
 - **Web 端本地提醒**:Web 平台不支持系统级定时通知,降级为应用内提醒
 
@@ -72,14 +72,20 @@ CNN 接入接口与数据结构(`ExpressionLabel` / `ExpressionResult` / `Expres
 
 以下能力为本阶段真实限制,代码中未实现或仅占位:
 
-- **CNN 真实训练**:PyTorch + FER2013 + 对比 ResNet18 / MobileNetV3-Small — 未启动
+- **CNN 真实训练**:PyTorch + FER2013 + 对比 ResNet18 / MobileNetV3-Small — 未启动,CNN 仍为 Mock
 - **LiteRT 真实推理**:`LiteRtExpressionRecognitionService` 仍为占位实现
 - **Native Camera**:Platform Channel + CameraX 接入未实现
-- **用户认证**:JWT 多用户认证未实现,当前为单租户匿名模式
+- **用户认证**:JWT 多用户认证未实现,当前为单租户匿名模式(所有请求共享同一知识库)
 - **PostgreSQL**:当前 SQLite 单机文件存储,未迁移
-- **扫描 PDF OCR**:PDF 解析仅提取文本层,扫描件无 OCR
-- **暗色模式**:尚未完整适配
+- **扫描 PDF OCR**:PDF 解析仅提取文本层,扫描件无 OCR(文档已明确说明)
 - **Golden Test**:主要页面截图测试未实现
+
+> 注:深色模式已在第二阶段完整适配(`AppTheme.dark()` + `AppColorScheme` 上下文感知 + 个人中心开关),不再列入"尚未完成"。
+
+## 五、已知限制
+
+- **3 个 Flutter Widget 测试文件未通过 `dart format`**:`test/features/counselor/source_reference_panel_test.dart` / `test/features/notifications/notification_multi_task_test.dart` / `test/features/profile/profile_data_management_test.dart` 存在 `require_trailing_commas` 格式问题,属其他 Agent 维护范围,本 Agent 未修改。CI 配置已正确覆盖 `lib test integration_test`,这些文件需对应 Agent 执行 `dart format` 后 CI 才能全绿。
+- **本地提醒精确推送**:由 Agent B 负责,本 Agent 未修改相关代码。`docs/reminder_guide.md` 由 Agent B 维护,本 Agent 未触碰。
 
 ## 相关文档
 

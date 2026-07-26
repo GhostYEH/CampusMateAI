@@ -100,7 +100,7 @@ campus_mate_ai/
 │   │   ├── knowledge_base/demo/ # 5 份演示资料 Markdown
 │   │   └── app.db               # SQLite 数据库文件(运行后自动生成)
 │   ├── scripts/rebuild_index.py  # 重建索引命令行
-│   ├── tests/                   # 52 个 pytest 测试
+│   ├── tests/                   # 112 个 pytest 测试
 │   ├── .env.example
 │   ├── pytest.ini
 │   ├── requirements.txt
@@ -108,8 +108,9 @@ campus_mate_ai/
 ├── docs/                        # ★ 项目文档(本轮新增)
 │   ├── api_contract.md          # API 契约(请求/响应/错误码/SSE 格式)
 │   └── knowledge_base_guide.md  # 知识库使用指南
-├── test/                        # Flutter 测试(190+ 个,含真实后端 Mock 测试)
-├── .github/workflows/           # GitHub Actions CI
+├── test/                        # Flutter 测试(321 个,含真实后端 Mock 测试)
+├── integration_test/            # Flutter 集成测试(9 条,Android 模拟器 / Web)
+├── .github/workflows/           # GitHub Actions CI(Flutter CI + Backend CI)
 ├── AGENTS.md                    # 项目长期规范
 └── README.md                    # 本文件
 ```
@@ -264,8 +265,17 @@ cd backend
 
 # 1. 创建虚拟环境
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+
+# Windows PowerShell(推荐)
+.venv\Scripts\Activate.ps1
+# 若提示执行策略受限,可临时放开(仅当前会话):
+# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# Windows cmd / Git Bash
+.venv\Scripts\activate.bat
+
+# macOS / Linux
+# source .venv/bin/activate
 
 # 2. 安装依赖
 pip install -r requirements.txt
@@ -386,7 +396,7 @@ python scripts/evaluate_retrieval.py --json
 
 ## 测试覆盖
 
-### Flutter(190+ 测试)
+### Flutter(321 测试)
 
 | 类别 | 测试文件 | 说明 |
 |------|----------|------|
@@ -411,7 +421,7 @@ python scripts/evaluate_retrieval.py --json
 | ★ API 导员服务 | `test/data/services/api/api_counselor_chat_service_test.dart` | SSE 流式 / sources/chunk/done / 网络错误 |
 | ★ API 知识库服务 | `test/data/services/api/api_knowledge_base_service_test.dart` | 文档列表 / 来源解析 / 元数据 |
 
-### Python 后端(52 个 pytest 测试)
+### Python 后端(112 个 pytest 测试)
 
 | 文件 | 说明 |
 |------|------|
@@ -421,15 +431,27 @@ python scripts/evaluate_retrieval.py --json
 | `backend/tests/test_counselor.py` | RAG 问答 / SSE 流式 / 无资料兜底 / 冲突提示 / 过期降权 / 恶意 Prompt 防御 |
 | `backend/tests/test_services.py` | 检索服务 / RAG 编排 / 文档解析 |
 | `backend/tests/test_llm.py` | LLM Stub / 降级模式 / 超时处理 |
+| `backend/tests/test_check_llm_provider.py` | LLM 连通性检查脚本 / Fake Provider 测试 |
+| `backend/tests/test_retrieval_evaluation.py` | 检索评测脚本(44 条 fixtures) |
+| `backend/tests/test_retrieval_ranking.py` | 检索排序逻辑(freshness bonus / 元数据加权 / 同义词扩展 / 短查询回退 / 多路召回) |
 | `backend/tests/conftest.py` | 临时数据库 + 临时知识库目录 + FakeLLM |
 
 ## 持续集成
 
-[`.github/workflows/flutter_ci.yml`](.github/workflows/flutter_ci.yml) 在 push / PR 到 `main` / `master` 时触发:
+CI 在 push / PR 到 `main` / `master` 时触发,包含两个独立 workflow:
 
-1. **analyze-and-test**: 安装依赖 → `dart format --set-exit-if-changed` → `flutter analyze` → `flutter test`
+### Flutter CI — [`.github/workflows/flutter_ci.yml`](.github/workflows/flutter_ci.yml)
+
+1. **analyze-and-test**: 安装依赖 → `dart format --set-exit-if-changed lib test integration_test` → `flutter analyze` → `flutter test --reporter=expanded`
 2. **build-android**: 构建调试 APK 并上传为 artifact(依赖 1 通过)
 3. **build-web**: 构建 Web release 并上传为 artifact(依赖 1 通过)
+
+### Backend CI — [`.github/workflows/backend_ci.yml`](.github/workflows/backend_ci.yml)
+
+1. **backend-test**: 安装 Python 3.11 + 依赖 → 导入 FastAPI app(语法检查) → `pytest` → `evaluate_retrieval`(文本+JSON) → `check_llm_provider`(LLM_PROVIDER=none 验证降级)
+2. **backend-llm-stub**: 单独运行 `test_check_llm_provider.py` / `test_llm.py` / `test_counselor.py` / `test_retrieval_evaluation.py`,验证 Fake/Stub Provider 与 `retrieval_summary` 降级路径
+
+> Backend CI 不调用真实外部 LLM,不要求保存真实 API Key;缓存 pip 依赖但**不**缓存数据库或用户数据;任一后端测试失败时 CI 失败。
 
 ## 前端设计 Skill
 
@@ -443,19 +465,21 @@ python scripts/evaluate_retrieval.py --json
 
 **Flutter**
 
-- `dart format lib test` — 通过
+- `dart format lib test integration_test` — 120 files formatted,3 changed(其他 Agent 维护范围,详见 [`docs/current_capabilities.md`](docs/current_capabilities.md) "已知限制")
 - `flutter analyze` — No issues found
-- `flutter test` — 全部测试通过(190+ tests)
+- `flutter test` — 全部测试通过(321 tests)
 - Android APK 构建 — 通过(core library desugaring 已启用)
 - Web 构建 — 通过
 
 **Python 后端**
 
-- `pytest` — 52 tests passed
-- API 启动健康检查通过
+- `pytest` — 112 tests passed
+- API 启动健康检查通过(`CampusMate AI Backend`)
 - 通知抽取覆盖 15+ 真实校园通知场景
 - 知识库导入/检索/删除全链路测试通过
 - RAG 问答(无资料/冲突/过期/恶意 Prompt)全部覆盖
+- 检索评测:Hit@1=93.75%, Hit@3=100%, MRR=0.9635, 正确拒答率=100%, 错误接受率=0%(44 条 fixtures,0 失败)
+- LLM 降级模式:CI 中 `LLM_PROVIDER=none` 验证 `retrieval_summary` 与 fallback 行为,退出码 0
 
 ## 已知限制与下一阶段
 
@@ -494,7 +518,7 @@ python scripts/evaluate_retrieval.py --json
 - **真实学校正式数据**: 当前知识库为"演示资料",非用户所在学校的真实现行制度
 - **JWT 认证与多用户**: 当前为单租户匿名模式
 - **PostgreSQL / Redis**: 当前 SQLite 单机文件存储
-- **向量检索**: 当前 BM25 关键词检索,中文同义词能力有限
+- **向量检索**: 当前 BM25 关键词检索 + 校园术语同义词扩展(对称),未引入向量数据库 / Embedding 模型
 - **本地提醒调度**: `flutter_local_notifications` 真实定时推送未实现
 - **Golden Test**: 主要页面截图测试未实现
 
@@ -569,7 +593,7 @@ python scripts/evaluate_retrieval.py --json
 **症状**: `ModuleNotFoundError: No module named 'jieba'` 等。
 
 **排查**:
-1. 确认已激活虚拟环境: `.venv\Scripts\activate`
+1. 确认已激活虚拟环境(PowerShell: `.venv\Scripts\Activate.ps1`)
 2. 重新安装依赖: `pip install -r requirements.txt`
 3. Windows 上若 jieba/PyPDF2 安装失败: `pip install --no-build-isolation jieba`
 

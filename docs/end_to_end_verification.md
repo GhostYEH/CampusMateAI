@@ -1,9 +1,9 @@
 # 端到端验证报告
 
-> 验证时间: 2026-07-26
-> 验证环境: Windows + Python 3.x + Flutter Web
+> 验证时间: 2026-07-26(最近一次重新运行)
+> 验证环境: Windows + Python 3.11 + Flutter 3.44.0
 > 后端地址: http://127.0.0.1:8000
-> 验证方式: 真实启动后端 + HTTP 请求 + 脚本验证
+> 验证方式: 真实启动后端 + HTTP 请求 + 脚本验证 + pytest/flutter test/flutter build
 
 ---
 
@@ -262,10 +262,44 @@ flutter run -d chrome --web-port=8080 \
 ### 后端测试
 
 ```
+cd backend
 python -m pytest --tb=short -q
 ```
 
-**结果**: 59 passed in 6.87s
+**结果**: 112 passed in 6.40s
+
+### 检索评测
+
+```
+cd backend
+python -m scripts.evaluate_retrieval
+```
+
+**结果**:
+
+| 指标 | 数值 |
+|------|------|
+| 总样例数 | 44 |
+| 应有答案样例数 | 32 |
+| 应拒答样例数 | 12 |
+| Hit@1 | 30/32 (93.75%) |
+| Hit@3 | 32/32 (100.00%) |
+| MRR | 0.9635 |
+| 正确拒答率 | 100.00% |
+| 错误接受率 | 0.00% |
+| 平均检索耗时 | 0.12 ms |
+| 失败样例 | 0 条 |
+
+### LLM 降级模式验证
+
+```
+cd backend
+# CI 中使用 LLM_PROVIDER=none,不调用真实 LLM
+$env:LLM_PROVIDER="none"
+python -m scripts.check_llm_provider
+```
+
+**结果**: 退出码 0,连接状态 `not_enabled`,系统使用规则抽取与检索摘要模式
 
 ### Flutter 测试
 
@@ -273,7 +307,7 @@ python -m pytest --tb=short -q
 flutter test --reporter compact
 ```
 
-**结果**: 248 passed (All tests passed!)
+**结果**: 321 passed (All tests passed!)
 
 ### Flutter 静态分析
 
@@ -286,10 +320,10 @@ flutter analyze
 ### Dart 格式检查
 
 ```
-dart format --output=none --set-exit-if-changed lib test
+dart format --output=none --set-exit-if-changed lib test integration_test
 ```
 
-**结果**: 100 files, 0 changed(已格式化)
+**结果**: 120 files, 3 changed(3 个 Flutter Widget 测试文件未格式化,属其他 Agent 维护范围)
 
 ### Flutter Web 构建
 
@@ -297,7 +331,7 @@ dart format --output=none --set-exit-if-changed lib test
 flutter build web --release
 ```
 
-**结果**: √ Built build\web (25.1s)
+**结果**: √ Built build\web
 
 ---
 
@@ -352,8 +386,8 @@ flutter build web --release
 - 本地数据持久化(shared_preferences)
 - 深色模式适配
 - 比赛演示模式
-- 后端 59 个测试通过
-- Flutter 248 个测试通过
+- 后端 112 个测试通过
+- Flutter 321 个测试通过
 - flutter analyze 无问题
 - flutter build web --release 成功
 

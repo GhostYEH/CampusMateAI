@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import '../../../../app/design_system/app_colors.dart';
 import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/widgets/app_card.dart';
+import 'reminder_permission_banner.dart';
 
 /// 截止提醒设置区(通知整理页内嵌使用)。
 ///
 /// 提供开关 + 建议提醒时间(截止前 2 小时 / 截止前 24 小时 / 自定义)。
 /// 当未设置截止时间时,提醒开关置灰并显示提示。
+///
+/// **权限引导**(Android 精确提醒完整闭环):
+/// - 内嵌 [ReminderPermissionBanner],自动根据当前权限状态展示对应横幅
+/// - 精确权限被拒时**不**显示"提醒已设置",仅显示"尚未获得精确提醒权限"
+/// - 横幅提供"前往闹钟和提醒 / 前往设置"操作,并在用户从系统返回后自动刷新
 class ReminderSection extends StatelessWidget {
   const ReminderSection({
     super.key,
@@ -65,7 +71,10 @@ class ReminderSection extends StatelessWidget {
                 color: AppColors.textTertiary,
               ),
             ),
-          ] else if (enabled) ...[
+          ],
+          // 权限引导横幅 — 始终展示(即使提醒未启用,提前告知用户权限状态)
+          const ReminderPermissionBanner(compact: true),
+          if (hasDeadline && enabled) ...[
             const SizedBox(height: 10),
             Text(
               '建议提醒时间',
