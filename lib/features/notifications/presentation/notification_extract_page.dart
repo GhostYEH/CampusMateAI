@@ -9,13 +9,19 @@ import '../../../core/utils/id_generator.dart';
 import '../../../core/widgets/staggered_enter.dart';
 import '../../../data/models/notice.dart';
 import '../../../data/models/task.dart';
+import '../../../data/services/api/api_client.dart';
 import '../../../data/services/service_interfaces.dart';
+import '../../../mock/mock_services/mock_services.dart';
+import 'widgets/duplicate_warning_banner.dart';
 import 'widgets/extraction_progress.dart';
 import 'widgets/extraction_save_button.dart';
 import 'widgets/extraction_success_view.dart';
+import 'widgets/extraction_warnings_banner.dart';
 import 'widgets/extracted_notice_form.dart';
 import 'widgets/mock_note_banner.dart';
+import 'widgets/multi_task_selector.dart';
 import 'widgets/notice_input_panel.dart';
+import 'widgets/reminder_section.dart';
 
 /// 通知智能整理页(核心交互流程)。
 ///
@@ -25,7 +31,11 @@ import 'widgets/notice_input_panel.dart';
 ///
 /// 子组件位于 widgets/ 目录,本文件仅负责组合与页面级状态。
 class NotificationExtractPage extends ConsumerStatefulWidget {
-  const NotificationExtractPage({super.key});
+  const NotificationExtractPage({super.key, this.prefilledText});
+
+  /// 由 AI 导员"根据回答创建待办"跳转时预填的文本。
+  /// 用户仍可编辑,不会自动触发抽取 — 必须人工点击"智能提取"。
+  final String? prefilledText;
 
   @override
   ConsumerState<NotificationExtractPage> createState() =>
@@ -40,6 +50,23 @@ class _NotificationExtractPageState
   bool _extracting = false;
   final List<ExtractionStep> _completedSteps = [];
   ExtractedNotice? _result;
+
+  /// 多任务抽取结果(当通知包含多个独立任务时)。
+  MultiExtractResult? _multiResult;
+  int _selectedTaskIndex = 0;
+
+  /// 重复通知检测结果。
+  bool _checkingDuplicate = false;
+  DuplicateCheckResult? _duplicateResult;
+  bool _duplicateDismissed = false;
+
+  /// 提醒设置。
+  bool _reminderEnabled = false;
+  int _reminderLeadMinutes = 120; // 默认截止前 2 小时
+
+  /// 提取失败的错误信息(null 表示无错误)。
+  /// 不清空 [_textController],保留用户输入便于重试。
+  String? _extractError;
 
   // 可编辑表单字段
   final _taskNameCtrl = TextEditingController();
@@ -68,6 +95,10 @@ class _NotificationExtractPageState
       parent: _successController,
       curve: AppMotion.gentleSpring,
     );
+    // 预填文本 — 不自动触发抽取,等用户主动点击
+    if (widget.prefilledText != null && widget.prefilledText!.isNotEmpty) {
+      _textController.text = widget.prefilledText!;
+    }
   }
 
   @override
@@ -90,11 +121,17 @@ class _NotificationExtractPageState
       _extracting = true;
       _completedSteps.clear();
       _result = null;
+      _multiResult = null;
+      _selectedTaskIndex = 0;
+      _duplicateResult = null;
+      _duplicateDismissed = false;
+      _extractError = null;
     });
 
     try {
       final service = ref.read(notificationExtractionProvider);
-      final extracted = await service.extract(
+      // 使用多任务抽取(自动判断是否需要拆分)
+      final multi = await service.extractMulti(
         text,
         onProgress: (step) {
           if (!mounted) return;
@@ -102,15 +139,100 @@ class _NotificationExtractPageState
         },
       );
       if (!mounted) return;
-      _populateForm(extracted);
+      final tasks = multi.tasks;
+      if (tasks.isEmpty) {
+        // 后端返回空,降级为单任务
+        final single = await service.extract(text);
+        if (!mounted) return;
+        _populateForm(single);
+        setState(() {
+          _result = single;
+          _multiResult = null;
+          _extracting = false;
+        });
+        return;
+      }
+      _populateForm(tasks.first);
       setState(() {
-        _result = extracted;
+        _result = tasks.first;
+        _multiResult = tasks.length >= 2 ? multi : null;
+        _selectedTaskIndex = 0;
         _extracting = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      // 保留用户输入的文本(_textController 不变)
+      setState(() {
+        _extracting = false;
+        _extractError = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _extracting = false;
+        _extractError = '提取失败,请重试';
+      });
+    }
+  }
+
+  /// 切换到多任务中的指定任务,重新填充表单。
+  void _selectTask(int index) {
+    final multi = _multiResult;
+    if (multi == null || index < 0 || index >= multi.tasks.length) return;
+    final task = multi.tasks[index];
+    _populateForm(task);
+    setState(() {
+      _selectedTaskIndex = index;
+      _result = task;
+      // 切换任务后重置重复检测
+      _duplicateResult = null;
+      _duplicateDismissed = false;
+    });
+  }
+
+  /// 检查当前通知是否与已保存待办重复。
+  Future<void> _checkForDuplicates() async {
+    if (_checkingDuplicate) return;
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _checkingDuplicate = true);
+    try {
+      final service = ref.read(notificationExtractionProvider);
+      final existingTasks = ref.read(taskListProvider);
+      final recentNotices = <RecentNoticeItem>[];
+      for (final t in existingTasks) {
+        if (t.deleted) continue;
+        recentNotices.add(
+          RecentNoticeItem(
+            noticeId: t.id,
+            title: t.title,
+            task: t.title,
+            sourceName: t.description,
+            sourceText: t.description,
+            deadline: t.deadline,
+          ),
+        );
+      }
+      final result = await service.checkDuplicate(
+        content: text,
+        sourceName:
+            _sourceCtrl.text.trim().isEmpty ? null : _sourceCtrl.text.trim(),
+        taskName: _taskNameCtrl.text.trim().isEmpty
+            ? null
+            : _taskNameCtrl.text.trim(),
+        deadline: _deadline,
+        recentNotices: recentNotices,
+      );
+      if (!mounted) return;
+      setState(() {
+        _duplicateResult = result;
+        _checkingDuplicate = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _extracting = false);
-      _showSnack('提取失败,请重试');
+      // 重复检测失败不阻止保存
+      setState(() => _checkingDuplicate = false);
     }
   }
 
@@ -169,7 +291,29 @@ class _NotificationExtractPageState
       return;
     }
 
+    // 若尚未检查重复,先检查(不阻止保存,仅提示)
+    if (_duplicateResult == null && !_duplicateDismissed) {
+      await _checkForDuplicates();
+      // 若发现重复且用户未忽略,先提示
+      if (_duplicateResult?.isDuplicate == true && !_duplicateDismissed) {
+        _showSnack('检测到可能重复,请确认后再次点击保存');
+        return;
+      }
+    }
+
     setState(() => _saving = true);
+
+    // 计算提醒时间
+    DateTime? reminderAt;
+    if (_reminderEnabled && _deadline != null) {
+      reminderAt = _deadline!.subtract(
+        Duration(minutes: _reminderLeadMinutes),
+      );
+      // 若提醒时间已过去,不设置提醒
+      if (reminderAt.isBefore(DateTime.now())) {
+        reminderAt = null;
+      }
+    }
 
     final task = Task(
       id: IdGenerator.newId('task'),
@@ -186,6 +330,8 @@ class _NotificationExtractPageState
       materials: _materials.where((m) => m.name.trim().isNotEmpty).toList(),
       location:
           _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
+      reminderEnabled: _reminderEnabled && reminderAt != null,
+      reminderAt: reminderAt,
     );
 
     try {
@@ -229,8 +375,68 @@ class _NotificationExtractPageState
     );
   }
 
+  /// 一次性降级:使用 Mock 提取(后端不可用时仍能完成整理)。
+  ///
+  /// 不会切换全局 AppConfig,仅对本次抽取生效。
+  Future<void> _runMockFallback() async {
+    final text = _textController.text.trim();
+    if (_extracting || text.isEmpty) return;
+
+    setState(() {
+      _extracting = true;
+      _completedSteps.clear();
+      _result = null;
+      _multiResult = null;
+      _selectedTaskIndex = 0;
+      _duplicateResult = null;
+      _duplicateDismissed = false;
+      _extractError = null;
+    });
+
+    try {
+      final mockService = MockNotificationExtractionService();
+      final multi = await mockService.extractMulti(
+        text,
+        onProgress: (step) {
+          if (!mounted) return;
+          setState(() => _completedSteps.add(step));
+        },
+      );
+      if (!mounted) return;
+      final tasks = multi.tasks;
+      if (tasks.isEmpty) {
+        final single = await mockService.extract(text);
+        if (!mounted) return;
+        _populateForm(single);
+        setState(() {
+          _result = single;
+          _multiResult = null;
+          _extracting = false;
+        });
+      } else {
+        _populateForm(tasks.first);
+        setState(() {
+          _result = tasks.first;
+          _multiResult = tasks.length >= 2 ? multi : null;
+          _selectedTaskIndex = 0;
+          _extracting = false;
+        });
+      }
+      _showSnack('已使用本地模拟提取(降级模式)');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _extracting = false;
+        _extractError = '模拟提取也失败,请检查输入或重启应用';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final config = ref.watch(appConfigProvider);
+    final isRealBackend = !config.useMockBackend;
+
     return Scaffold(
       backgroundColor: AppColors.bgBase,
       appBar: AppBar(
@@ -251,7 +457,9 @@ class _NotificationExtractPageState
                 96,
               ),
               children: [
-                const StaggeredEnter(child: MockNoteBanner()),
+                StaggeredEnter(
+                  child: MockNoteBanner(isRealBackend: isRealBackend),
+                ),
                 const SizedBox(height: 12),
                 StaggeredEnter(
                   delay: const Duration(milliseconds: 60),
@@ -271,7 +479,42 @@ class _NotificationExtractPageState
                     ),
                   ),
                 ],
+                if (_extractError != null && !_extracting) ...[
+                  const SizedBox(height: 12),
+                  StaggeredEnter(
+                    delay: const Duration(milliseconds: 60),
+                    child: _ExtractionErrorBanner(
+                      message: _extractError!,
+                      onRetry: _runExtract,
+                      onUseMock: isRealBackend ? _runMockFallback : null,
+                    ),
+                  ),
+                ],
                 if (_result != null) ...[
+                  if (_result!.warnings.isNotEmpty ||
+                      _result!.extractorMode == 'rules') ...[
+                    const SizedBox(height: 12),
+                    StaggeredEnter(
+                      delay: const Duration(milliseconds: 60),
+                      child: ExtractionWarningsBanner(
+                        warnings: _result!.warnings,
+                        extractorMode: _result!.extractorMode,
+                        confidence: _result!.confidence,
+                      ),
+                    ),
+                  ],
+                  if (_multiResult != null &&
+                      _multiResult!.tasks.length >= 2) ...[
+                    const SizedBox(height: 12),
+                    StaggeredEnter(
+                      delay: const Duration(milliseconds: 60),
+                      child: MultiTaskSelector(
+                        result: _multiResult!,
+                        selectedIndex: _selectedTaskIndex,
+                        onSelect: _selectTask,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   StaggeredEnter(
                     delay: const Duration(milliseconds: 60),
@@ -294,6 +537,37 @@ class _NotificationExtractPageState
                   ),
                   const SizedBox(height: 12),
                   StaggeredEnter(
+                    delay: const Duration(milliseconds: 80),
+                    child: ReminderSection(
+                      enabled: _reminderEnabled,
+                      leadMinutes: _reminderLeadMinutes,
+                      deadline: _deadline,
+                      onToggle: (v) => setState(() => _reminderEnabled = v),
+                      onLeadChanged: (m) =>
+                          setState(() => _reminderLeadMinutes = m),
+                    ),
+                  ),
+                  if (_checkingDuplicate) ...[
+                    const SizedBox(height: 12),
+                    StaggeredEnter(
+                      child: _DuplicateCheckingIndicator(),
+                    ),
+                  ],
+                  if (_duplicateResult?.isDuplicate == true &&
+                      !_duplicateDismissed) ...[
+                    const SizedBox(height: 12),
+                    StaggeredEnter(
+                      delay: const Duration(milliseconds: 60),
+                      child: DuplicateWarningBanner(
+                        result: _duplicateResult!,
+                        onDismiss: () => setState(
+                          () => _duplicateDismissed = true,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  StaggeredEnter(
                     delay: const Duration(milliseconds: 120),
                     child: ExtractionSaveButton(
                       saving: _saving,
@@ -313,6 +587,169 @@ class _NotificationExtractPageState
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 提取失败的内联错误横幅 — 温和不吓人,提供重试与降级入口。
+class _ExtractionErrorBanner extends StatelessWidget {
+  const _ExtractionErrorBanner({
+    required this.message,
+    required this.onRetry,
+    this.onUseMock,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  /// "切换到演示模式"回调 — 仅在 Real Backend 模式下提供。
+  final VoidCallback? onUseMock;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warningSubtle.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: AppColors.warningSubtle, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.cloud_off_rounded,
+                size: 16,
+                color: AppColors.warning,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '无法连接后端服务',
+                  style: AppTypography.label.copyWith(
+                    fontSize: 12,
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: Text(
+              message,
+              style: AppTypography.caption.copyWith(
+                fontSize: 11.5,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: Row(
+              children: [
+                _PillButton(
+                  label: '重试',
+                  icon: Icons.refresh_rounded,
+                  isPrimary: true,
+                  onTap: onRetry,
+                ),
+                if (onUseMock != null) ...[
+                  const SizedBox(width: 8),
+                  _PillButton(
+                    label: '切换到演示模式',
+                    icon: Icons.science_outlined,
+                    isPrimary: false,
+                    onTap: onUseMock!,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  const _PillButton({
+    required this.label,
+    required this.icon,
+    required this.isPrimary,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isPrimary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isPrimary ? AppColors.primary : AppColors.textSecondary;
+    final bg = isPrimary ? AppColors.primarySubtle : AppColors.bgSurface;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.xs),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppRadius.xs),
+          border: Border.all(color: color, width: 0.6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: AppTypography.label.copyWith(fontSize: 10.5, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 重复检测进行中指示器。
+class _DuplicateCheckingIndicator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primarySubtle.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.8,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '正在检测是否与已保存待办重复...',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }

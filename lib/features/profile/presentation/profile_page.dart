@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/design_system/app_colors.dart';
 import '../../../app/design_system/app_typography.dart';
@@ -7,6 +8,8 @@ import '../../../app/providers/app_providers.dart';
 import '../../../core/storage/data_persistence_service.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/staggered_enter.dart';
+import '../../../data/models/knowledge.dart';
+import 'widgets/backend_status_card.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -55,8 +58,22 @@ class ProfilePage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
+              const StaggeredEnter(
+                delay: Duration(milliseconds: 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(left: 4, bottom: 8),
+                      child: Text('后端连接', style: AppTypography.label),
+                    ),
+                    BackendStatusCard(),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               StaggeredEnter(
-                delay: const Duration(milliseconds: 120),
+                delay: const Duration(milliseconds: 180),
                 child: _SettingsGroup(
                   title: 'AI 导员',
                   children: [
@@ -69,17 +86,18 @@ class ProfilePage extends ConsumerWidget {
                           .read(appSettingsProvider.notifier)
                           .toggleProactiveSuggestion(),
                     ),
-                    const _InfoTile(
-                      icon: Icons.school_outlined,
-                      label: '知识库',
-                      value: '模拟资料来源',
+                    _ActionTile(
+                      icon: Icons.menu_book_rounded,
+                      label: '知识库管理',
+                      subtitle: '查看状态、上传/删除文档、重建索引',
+                      onTap: () => context.push('/knowledge'),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               StaggeredEnter(
-                delay: const Duration(milliseconds: 180),
+                delay: const Duration(milliseconds: 240),
                 child: _SettingsGroup(
                   title: '学习与表情识别',
                   children: [
@@ -124,7 +142,7 @@ class ProfilePage extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               StaggeredEnter(
-                delay: const Duration(milliseconds: 240),
+                delay: const Duration(milliseconds: 300),
                 child: _SettingsGroup(
                   title: '外观与无障碍',
                   children: [
@@ -150,7 +168,46 @@ class ProfilePage extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               StaggeredEnter(
-                delay: const Duration(milliseconds: 300),
+                delay: const Duration(milliseconds: 360),
+                child: _SettingsGroup(
+                  title: '数据管理',
+                  children: [
+                    _ActionTile(
+                      icon: Icons.cleaning_services_rounded,
+                      label: '清除聊天记录',
+                      subtitle: '删除 AI 导员的历史对话',
+                      onTap: () => _confirmClearChat(context, ref),
+                    ),
+                    _ActionTile(
+                      icon: Icons.checklist_rtl_rounded,
+                      label: '清除用户待办',
+                      subtitle: '删除本地所有待办任务',
+                      onTap: () => _confirmClearTasks(context, ref),
+                    ),
+                    _ActionTile(
+                      icon: Icons.folder_delete_outlined,
+                      label: '删除用户导入的知识库文档',
+                      subtitle: '保留仿真演示资料',
+                      onTap: () => _confirmDeleteUserDocuments(context, ref),
+                    ),
+                    _ActionTile(
+                      icon: Icons.restore_page_outlined,
+                      label: '恢复仿真演示资料',
+                      subtitle: '基于哈希去重,不覆盖用户资料',
+                      onTap: () => _confirmRestoreDemoDocs(context, ref),
+                    ),
+                    _ActionTile(
+                      icon: Icons.layers_clear_outlined,
+                      label: '重置 Mock 演示数据',
+                      subtitle: '恢复本地待办与学习记录为默认值',
+                      onTap: () => _confirmRestoreDemo(context, ref),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              StaggeredEnter(
+                delay: const Duration(milliseconds: 420),
                 child: _SettingsGroup(
                   title: '演示与数据',
                   children: [
@@ -180,7 +237,7 @@ class ProfilePage extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               StaggeredEnter(
-                delay: const Duration(milliseconds: 360),
+                delay: const Duration(milliseconds: 420),
                 child: _SettingsGroup(
                   title: '关于',
                   children: [
@@ -268,6 +325,157 @@ class ProfilePage extends ConsumerWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('演示数据已恢复')),
                 );
+              }
+            },
+            child: const Text('恢复'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 清除聊天记录 — 仅影响本地对话,不影响待办或知识库。
+  void _confirmClearChat(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除聊天记录'),
+        content: const Text('将删除 AI 导员的所有历史对话。\n\n'
+            '影响范围:仅本地对话记录。\n'
+            '不影响:待办任务、知识库文档。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(chatMessagesProvider.notifier).clear();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('聊天记录已清除')),
+                );
+              }
+            },
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 清除用户待办 — 仅影响本地任务,不影响知识库。
+  void _confirmClearTasks(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除用户待办'),
+        content: const Text('将删除本地所有待办任务。\n\n'
+            '影响范围:本地待办、提醒设置。\n'
+            '不影响:聊天记录、知识库文档。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () async {
+              Navigator.pop(context);
+              await ref.read(taskRepositoryProvider).clearAll();
+              await ref.read(dataPersistenceProvider).saveTasks();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('待办已清除')),
+                );
+              }
+            },
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 删除用户导入的知识库文档 — 仅删除用户文档,保留演示资料。
+  void _confirmDeleteUserDocuments(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除用户导入的知识库文档'),
+        content: const Text('将删除所有用户导入的知识库文档,保留仿真演示资料。\n\n'
+            '影响范围:仅用户导入的文档。\n'
+            '不影响:待办任务、聊天记录、演示资料。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final result = await ref
+                    .read(knowledgeManagementProvider)
+                    .manageData(DataManagementAction.deleteUserDocuments);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(result.message)),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('删除失败:$e')),
+                  );
+                }
+              }
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 恢复仿真演示资料 — 基于哈希去重,不覆盖用户导入资料。
+  void _confirmRestoreDemoDocs(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('恢复仿真演示资料'),
+        content: const Text('将恢复内置的仿真校园演示资料。\n\n'
+            '基于内容哈希去重,不会覆盖你已导入的资料。\n'
+            '不影响:待办任务、聊天记录、用户导入文档。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final added = await ref
+                    .read(knowledgeManagementProvider)
+                    .restoreDemoDocuments();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        added > 0 ? '已恢复 $added 份演示资料' : '演示资料已存在,无新增',
+                      ),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('恢复失败:$e')),
+                  );
+                }
               }
             },
             child: const Text('恢复'),

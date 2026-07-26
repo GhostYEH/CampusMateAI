@@ -3,54 +3,106 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
+export '../config/app_config.dart';
 import '../../data/models/models.dart';
+import '../../data/services/api/api_client.dart';
+import '../../data/services/api/api_counselor_chat_service.dart';
+import '../../data/services/api/api_knowledge_base_service.dart';
+import '../../data/services/api/api_knowledge_management_service.dart';
+import '../../data/services/api/api_notification_extraction_service.dart';
 import '../../data/services/lite_rt_expression_recognition_service.dart';
+import '../../data/services/local_notification_reminder_service.dart';
 import '../../data/services/service_interfaces.dart';
 import '../../mock/mock_data/mock_data.dart';
+import '../../mock/mock_services/mock_knowledge_management_service.dart';
 import '../../mock/mock_services/mock_services.dart';
+
+// ===== 真实后端 API 客户端(仅在 Real Backend 模式下构造)=====
+
+/// Dio 客户端 Provider — 单例,所有 ApiXxxService 共享。
+///
+/// 仅当 [AppConfig.useMockBackend] 为 false 时才被使用。
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final config = ref.watch(appConfigProvider);
+  return ApiClient(baseUrl: config.apiBaseUrl);
+});
 
 // ===== 服务接口 Providers(依赖抽象接口,通过 AppConfig 切换实现)=====
 
-/// 知识库服务 — 当前 Mock,后续接入 RAG 向量数据库。
+/// 知识库服务 — Mock / Real 通过 AppConfig 切换。
 final knowledgeBaseProvider = Provider<KnowledgeBaseService>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      // TODO(后续阶段): 接入真实 RAG 后端
-      throw UnimplementedError('真实 RAG 知识库尚未接入,请切换到 Mock 模式');
+      return ApiKnowledgeBaseService(ref.watch(apiClientProvider));
     }
     return MockKnowledgeBaseService();
   },
 );
 
-/// 通知智能提取服务 — 当前 Mock,后续接入 FastAPI LLM。
+/// 知识库管理服务 — Mock / Real 通过 AppConfig 切换。
+///
+/// 用于知识库管理页面(状态/列表/上传/删除/重建)。
+/// Mock 模式使用 [MockKnowledgeManagementService] 内存实现;
+/// 真实模式使用 [ApiKnowledgeManagementService] 调用 FastAPI 后端。
+final knowledgeManagementProvider = Provider<KnowledgeManagementService>(
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      return ApiKnowledgeManagementService(ref.watch(apiClientProvider));
+    }
+    return MockKnowledgeManagementService();
+  },
+);
+
+/// 本地提醒服务 — 用于待办截止前的系统通知调度。
+///
+/// 当前实现:
+/// - Android/iOS: [LocalNotificationReminderService] 真实调度系统通知
+/// - Web: 自动降级为应用内提醒(不支持后台调度)
+///
+/// 初始化策略:
+/// - timezone 数据库与插件在 [ReminderBootstrap.initialize] 中预先初始化(main 启动时)
+/// - 实现类内部对 `ensureInitialized` 是幂等的,首次调度时也会惰性初始化
+/// - 因此 Provider 不在此处调用任何初始化方法,避免抽象接口暴露实现细节
+///
+/// 测试时可通过 ProviderScope.override 注入 [FakeNotificationReminderService]。
+final notificationReminderProvider = Provider<NotificationReminderService>(
+  (ref) => LocalNotificationReminderService(),
+);
+
+/// 通知智能提取服务 — Mock / Real 通过 AppConfig 切换。
 final notificationExtractionProvider = Provider<NotificationExtractionService>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      throw UnimplementedError('真实通知提取后端尚未接入,请切换到 Mock 模式');
+      return ApiNotificationExtractionService(ref.watch(apiClientProvider));
     }
     return MockNotificationExtractionService();
   },
 );
 
-/// 任务仓库 — 当前 Mock 内存实现,后续接入 FastAPI + PostgreSQL。
+/// 任务仓库 — 当前 Mock 内存实现。
+///
+/// 真实后端模式下仍使用本地 Mock 仓库(任务为本地状态,本轮不接后端任务 API),
+/// 以保证比赛演示模式可用,且后端不可用时不影响待办功能。
 final taskRepositoryProvider = Provider<TaskRepository>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      throw UnimplementedError('真实任务仓库尚未接入,请切换到 Mock 模式');
+      // 任务本轮保持本地实现(后端不提供任务 CRUD 接口)
+      return MockTaskRepository();
     }
     return MockTaskRepository();
   },
 );
 
-/// AI 导员聊天服务 — 当前 Mock,后续接入 FastAPI + RAG。
+/// AI 导员聊天服务 — Mock / Real 通过 AppConfig 切换。
 final counselorChatProvider = Provider<CounselorChatService>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      throw UnimplementedError('真实 AI 导员后端尚未接入,请切换到 Mock 模式');
+      return ApiCounselorChatService(ref.watch(apiClientProvider));
     }
     return MockCounselorChatService(
       knowledgeBase: ref.watch(knowledgeBaseProvider),
@@ -196,17 +248,27 @@ final unreadNoticeCountProvider = Provider<int>(
 
 /// 待办任务列表(从仓库派生)。
 ///
+/// 集成本地提醒:
+/// - createTask/updateTask: 若 `reminderEnabled && reminderAt != null`,调度系统通知
+/// - toggleComplete: 完成时取消未触发的提醒(避免已完成任务仍弹通知)
+/// - softDelete/hardDelete: 取消对应系统通知
+///
+/// 提醒调度是"尽力而为" — 失败(权限未授予/Web 平台/时间已过)不会阻断任务操作,
+/// 只是不调度系统通知。UI 层通过 [notificationReminderProvider] 的 capabilityStatus
+/// 向用户解释平台限制。
+///
 /// 注意: StateNotifierProvider 会在 provider 销毁时自动调用 notifier.dispose,
 /// 因此无需额外通过 ref.onDispose 注册,否则会导致 dispose 被调用两次。
 final taskListProvider = StateNotifierProvider<TaskListNotifier, List<Task>>(
   (ref) {
     final repo = ref.watch(taskRepositoryProvider);
-    return TaskListNotifier(repo);
+    final reminder = ref.watch(notificationReminderProvider);
+    return TaskListNotifier(repo, reminder);
   },
 );
 
 class TaskListNotifier extends StateNotifier<List<Task>> {
-  TaskListNotifier(this._repo) : super(const []) {
+  TaskListNotifier(this._repo, this._reminder) : super(const []) {
     _refresh();
     _sub = _repo.watchTasks().listen((list) {
       if (mounted) state = list;
@@ -214,33 +276,115 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
   }
 
   final TaskRepository _repo;
+  final NotificationReminderService _reminder;
   late final StreamSubscription<List<Task>> _sub;
 
   void _refresh() {
     state = _repo.tasks;
   }
 
-  Future<Task> createTask(Task task) async {
-    final created = await _repo.createTask(task);
-    return created;
+  /// 构造通知标题与正文。
+  ({String title, String body}) _reminderContent(Task task) {
+    final title = '待办提醒:${task.title}';
+    final remaining = task.deadline?.difference(DateTime.now());
+    String body;
+    if (remaining != null) {
+      if (remaining.isNegative) {
+        body = '已逾期,请尽快处理';
+      } else if (remaining.inHours < 1) {
+        body = '即将截止(${remaining.inMinutes}分钟后)';
+      } else if (remaining.inHours < 24) {
+        body = '${remaining.inHours}小时后截止';
+      } else {
+        body = '${remaining.inDays}天后截止';
+      }
+    } else {
+      body = '请查看任务详情';
+    }
+    return (title: title, body: body);
   }
 
-  Future<void> updateTask(Task task) async => _repo.updateTask(task);
-
-  Future<void> toggleComplete(Task task) async {
-    await _repo.updateTask(
-      task.copyWith(
-        completed: !task.completed,
-        completedAt: !task.completed ? DateTime.now() : null,
-      ),
+  /// 根据 task 的 reminderEnabled/reminderAt 调度或取消系统通知。
+  /// 调用时机: createTask / updateTask 之后。
+  Future<void> _syncReminder(Task task) async {
+    if (task.deleted || task.completed) {
+      // 已删除或已完成 — 取消任何已调度的通知
+      await _reminder.cancelAllForTask(task.id);
+      return;
+    }
+    if (!task.reminderEnabled || task.reminderAt == null) {
+      // 提醒未启用 — 取消已调度的通知
+      await _reminder.cancelAllForTask(task.id);
+      return;
+    }
+    // 提醒启用且有触发时间 — 调度(覆盖旧通知)
+    final content = _reminderContent(task);
+    await _reminder.updateReminder(
+      taskId: task.id,
+      title: content.title,
+      body: content.body,
+      scheduledAt: task.reminderAt!,
     );
   }
 
-  Future<void> softDelete(String id) async => _repo.softDelete(id);
+  Future<Task> createTask(Task task) async {
+    final created = await _repo.createTask(task);
+    // 调度系统通知(若启用)
+    if (created.reminderEnabled && created.reminderAt != null) {
+      await _syncReminder(created);
+    }
+    return created;
+  }
 
-  Future<void> restore(String id) async => _repo.restore(id);
+  Future<void> updateTask(Task task) async {
+    final oldTask = _repo.tasks.where((t) => t.id == task.id).firstOrNull;
+    await _repo.updateTask(task);
+    // 同步系统通知:
+    // - deadline 变化时,通知正文中的剩余时间需要更新
+    // - reminderEnabled/reminderAt 变化时,需要重新调度或取消
+    await _syncReminder(task);
+    // 若 deadline 变化但 reminderAt 未跟随更新,通知正文仍会通过 updateReminder 刷新
+    if (oldTask != null &&
+        oldTask.deadline != task.deadline &&
+        task.reminderEnabled &&
+        task.reminderAt != null) {
+      final content = _reminderContent(task);
+      await _reminder.updateReminder(
+        taskId: task.id,
+        title: content.title,
+        body: content.body,
+        scheduledAt: task.reminderAt!,
+      );
+    }
+  }
 
-  Future<void> hardDelete(String id) async => _repo.hardDelete(id);
+  Future<void> toggleComplete(Task task) async {
+    final updated = task.copyWith(
+      completed: !task.completed,
+      completedAt: !task.completed ? DateTime.now() : null,
+    );
+    await _repo.updateTask(updated);
+    // 完成时取消未触发的提醒;恢复未完成时若 reminderEnabled 则重新调度
+    await _syncReminder(updated);
+  }
+
+  Future<void> softDelete(String id) async {
+    await _repo.softDelete(id);
+    // 软删除也取消系统通知(用户不再需要提醒)
+    await _reminder.cancelAllForTask(id);
+  }
+
+  Future<void> restore(String id) async {
+    await _repo.restore(id);
+    // 恢复后,若任务有启用的提醒,重新调度
+    final task = _repo.tasks.where((t) => t.id == id).firstOrNull;
+    if (task != null) await _syncReminder(task);
+  }
+
+  Future<void> hardDelete(String id) async {
+    await _repo.hardDelete(id);
+    await _reminder.cancelAllForTask(id);
+  }
 
   Future<void> toggleMaterial(Task task, String materialId) async {
     final materials = task.materials.map((m) {
@@ -248,6 +392,19 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
       return m;
     }).toList();
     await _repo.updateTask(task.copyWith(materials: materials));
+  }
+
+  /// 显式设置提醒(供 UI 调用)。
+  ///
+  /// [reminderAt] 为 null 表示关闭提醒。
+  /// 调用后会立即同步系统通知。
+  Future<void> setReminder(Task task, DateTime? reminderAt) async {
+    final updated = task.copyWith(
+      reminderEnabled: reminderAt != null,
+      reminderAt: reminderAt ?? task.reminderAt,
+    );
+    await _repo.updateTask(updated);
+    await _syncReminder(updated);
   }
 
   @override
@@ -393,6 +550,26 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
               );
           }
         },
+        onFinalMeta: (meta) {
+          if (!mounted) return;
+          final idx = state.indexWhere((m) => m.id == streamingId);
+          if (idx >= 0) {
+            final isMock = ref.read(appConfigProvider).useMockBackend;
+            final answerMode = AnswerMode.fromBackendMode(
+              mode: meta.mode,
+              hasUserDocs: meta.hasUserDocs,
+              hasDemoDocs: meta.hasDemoDocs,
+              isMock: isMock,
+            );
+            state = [...state]..[idx] = state[idx].copyWith(
+                answerMode: answerMode,
+                evidenceLevel: EvidenceLevel.fromString(meta.evidenceLevel),
+                confidence: meta.confidence,
+                warnings: meta.warnings,
+                needsHumanConfirmation: meta.needsHumanConfirmation,
+              );
+          }
+        },
       );
       // 确保最终状态
       final idx = state.indexWhere((m) => m.id == streamingId);
@@ -465,3 +642,115 @@ final expressionResultsProvider =
     yield r;
   }
 });
+
+// ===== 后端连接状态 =====
+
+/// 后端连接状态。
+enum BackendConnectionStatus {
+  /// 已连接且知识库就绪
+  connected,
+
+  /// 已连接但知识库为空
+  knowledgeBaseEmpty,
+
+  /// 演示模式(Mock,后端未启用)
+  demoMode,
+
+  /// 网络错误,无法连接
+  disconnected,
+
+  /// 未知(尚未检查)
+  unknown,
+}
+
+/// 后端状态信息。
+class BackendStatus {
+  const BackendStatus({
+    required this.status,
+    this.version = '',
+    this.documentCount = 0,
+    this.chunkCount = 0,
+    this.llmAvailable = false,
+    this.lastChecked,
+    this.errorMessage,
+  });
+
+  final BackendConnectionStatus status;
+  final String version;
+  final int documentCount;
+  final int chunkCount;
+  final bool llmAvailable;
+  final DateTime? lastChecked;
+  final String? errorMessage;
+
+  bool get isAvailable =>
+      status == BackendConnectionStatus.connected ||
+      status == BackendConnectionStatus.knowledgeBaseEmpty;
+}
+
+/// 后端状态 Notifier — 通过 [ApiClient.getHealth] 异步检查。
+///
+/// UI 层通过 [backendStatusProvider] 监听状态变化,显示"已连接/演示模式/未连接"。
+class BackendStatusNotifier extends StateNotifier<AsyncValue<BackendStatus>> {
+  BackendStatusNotifier(this._getConfig) : super(const AsyncValue.loading());
+
+  final AppConfig Function() _getConfig;
+
+  /// 触发健康检查。
+  Future<void> check() async {
+    final config = _getConfig();
+    // Mock 模式直接返回 demoMode
+    if (config.useMockBackend) {
+      state = const AsyncValue.data(
+        BackendStatus(status: BackendConnectionStatus.demoMode),
+      );
+      return;
+    }
+    state = const AsyncValue.loading();
+    try {
+      final client = ApiClient(baseUrl: config.apiBaseUrl);
+      final health = await client.getHealth();
+      final kbInit = health['knowledge_base_initialized'] as bool? ?? false;
+      final status = kbInit
+          ? BackendConnectionStatus.connected
+          : BackendConnectionStatus.knowledgeBaseEmpty;
+      state = AsyncValue.data(
+        BackendStatus(
+          status: status,
+          version: health['version'] as String? ?? '',
+          documentCount: health['document_count'] as int? ?? 0,
+          chunkCount: health['chunk_count'] as int? ?? 0,
+          llmAvailable: health['llm_available'] as bool? ?? false,
+          lastChecked: DateTime.now(),
+        ),
+      );
+    } on ApiException catch (e) {
+      state = AsyncValue.data(
+        BackendStatus(
+          status: BackendConnectionStatus.disconnected,
+          errorMessage: e.message,
+          lastChecked: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      state = AsyncValue.data(
+        BackendStatus(
+          status: BackendConnectionStatus.disconnected,
+          errorMessage: e.toString(),
+          lastChecked: DateTime.now(),
+        ),
+      );
+    }
+  }
+}
+
+/// 后端状态 Provider — UI 通过 ref.watch 读取。
+///
+/// 使用 `ref.read(backendStatusProvider.notifier).check()` 触发检查。
+final backendStatusProvider =
+    StateNotifierProvider<BackendStatusNotifier, AsyncValue<BackendStatus>>(
+  (ref) {
+    // 不监听 appConfigProvider 变化(避免重建循环),通过 check() 主动拉取
+    return BackendStatusNotifier(() => ref.read(appConfigProvider));
+  },
+);

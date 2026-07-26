@@ -370,6 +370,7 @@ class _NoSourceCounselorService implements CounselorChatService {
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,
+    void Function(ChatFinalMeta meta)? onFinalMeta,
     void Function()? onTyping,
   }) async {
     onTyping?.call();

@@ -247,9 +247,9 @@ void main() {
     await tester.tap(findSaveButton());
     await tester.pump();
 
-    // _save() 设置 _saved=true 后显示成功浮层,然后有 1200ms 延迟再跳转。
-    // 先推进少量时间让 _saved=true 和成功动画启动
-    await tester.pump(const Duration(milliseconds: 200));
+    // _save() 现在会先执行重复检测(Mock 150ms 延迟),再实际保存。
+    // 推进足够时间让重复检测完成 + _saved=true + 成功动画启动
+    await tester.pump(const Duration(milliseconds: 400));
 
     // 应出现成功浮层 "已保存为待办"(此时 1200ms 跳转 timer 仍 pending)
     expect(find.text('已保存为待办'), findsWidgets);
@@ -282,6 +282,35 @@ class _EmptyTaskNameExtractionService implements NotificationExtractionService {
     return const ExtractedNotice(
       taskName: '',
       sourceText: '某条通知',
+    );
+  }
+
+  @override
+  Future<MultiExtractResult> extractMulti(
+    String rawNotice, {
+    void Function(ExtractionStep step)? onProgress,
+  }) async {
+    final single = await extract(rawNotice, onProgress: onProgress);
+    return MultiExtractResult(
+      tasks: [single],
+      splitReason: '测试:单任务',
+      needsUserConfirmation: false,
+    );
+  }
+
+  @override
+  Future<DuplicateCheckResult> checkDuplicate({
+    required String content,
+    String? sourceName,
+    String? taskName,
+    DateTime? deadline,
+    required List<RecentNoticeItem> recentNotices,
+  }) async {
+    return const DuplicateCheckResult(
+      isDuplicate: false,
+      matches: [],
+      contentHash: 'test_hash',
+      note: '测试:无重复',
     );
   }
 }

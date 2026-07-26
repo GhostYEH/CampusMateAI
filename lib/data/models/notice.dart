@@ -159,6 +159,10 @@ class CampusNotice extends Equatable {
 ///
 /// 该结构是 [NotificationExtractionService] 的输出,
 /// 字段允许为空(未提取到),用户可手动补全后再保存为待办。
+///
+/// [warnings] 表示"需要人工确认"的温和提示(年份缺失/对象不明等),
+/// 与错误无关 — UI 应以暖色提示形式展示,而非红色错误。
+/// [extractorMode] 标注提取来源: mock|llm|rules。
 class ExtractedNotice extends Equatable {
   const ExtractedNotice({
     required this.taskName,
@@ -171,6 +175,8 @@ class ExtractedNotice extends Equatable {
     this.importance = NoticeImportance.unknown,
     this.confidence = 0,
     this.extractedSteps = const [],
+    this.warnings = const [],
+    this.extractorMode = 'mock',
   });
 
   final String taskName; // 任务名称
@@ -183,6 +189,10 @@ class ExtractedNotice extends Equatable {
   final NoticeImportance importance; // 重要程度
   final double confidence; // 提取整体置信度 0~1
   final List<String> extractedSteps; // 提取过程步骤(用于动态展示)
+
+  // ===== 真实后端扩展字段(对齐后端 NoticeExtractResponse)=====
+  final List<String> warnings; // 需要确认的温和提示(非错误)
+  final String extractorMode; // mock|llm|rules
 
   /// 字段完成度评分(0~1),用于动态进度展示。
   double get completeness {
@@ -197,6 +207,9 @@ class ExtractedNotice extends Equatable {
     return filled / total;
   }
 
+  /// 是否需要人工确认(后端字段透传,便于 UI 决策)。
+  bool get needsConfirmation => warnings.isNotEmpty;
+
   ExtractedNotice copyWith({
     String? taskName,
     String? targetAudience,
@@ -208,6 +221,8 @@ class ExtractedNotice extends Equatable {
     NoticeImportance? importance,
     double? confidence,
     List<String>? extractedSteps,
+    List<String>? warnings,
+    String? extractorMode,
   }) {
     return ExtractedNotice(
       taskName: taskName ?? this.taskName,
@@ -220,6 +235,8 @@ class ExtractedNotice extends Equatable {
       importance: importance ?? this.importance,
       confidence: confidence ?? this.confidence,
       extractedSteps: extractedSteps ?? this.extractedSteps,
+      warnings: warnings ?? this.warnings,
+      extractorMode: extractorMode ?? this.extractorMode,
     );
   }
 
@@ -235,5 +252,7 @@ class ExtractedNotice extends Equatable {
         importance,
         confidence,
         extractedSteps,
+        warnings,
+        extractorMode,
       ];
 }

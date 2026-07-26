@@ -41,9 +41,14 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
     super.initState();
     _inputController = TextEditingController();
     _scrollController = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollToBottom(animated: false),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom(animated: false);
+      // 进入页面时触发后端状态检查(Real 模式)
+      final config = ref.read(appConfigProvider);
+      if (!config.useMockBackend) {
+        ref.read(backendStatusProvider.notifier).check();
+      }
+    });
   }
 
   @override
@@ -116,7 +121,19 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
           TextPosition(offset: _inputController.text.length),
         );
       }
+    } else if (action.type == SuggestedActionType.createTask) {
+      // 后端建议的"创建待办" — 跳转到通知整理页人工确认
+      _navigateToExtractWithPrefill(action.payload);
     }
+  }
+
+  /// "根据回答创建待办" — 把 AI 回答内容作为预填文本,
+  /// 跳转到通知整理页让用户人工确认后再保存。
+  ///
+  /// 满足"不得直接保存模型生成内容"要求。
+  void _navigateToExtractWithPrefill(String? prefilledText) {
+    final text = prefilledText?.isNotEmpty == true ? prefilledText! : '';
+    context.push('/notifications/extract', extra: text);
   }
 
   void _copyMessage(String content) {
@@ -143,11 +160,45 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
   Widget build(BuildContext context) {
     final messages = ref.watch(chatMessagesProvider);
     final isGenerating = _isGenerating(messages);
+    final config = ref.watch(appConfigProvider);
+    final asyncStatus = ref.watch(backendStatusProvider);
 
     // 新消息或流式更新时自动滚动到底部
     ref.listen(chatMessagesProvider, (_, __) {
       _scrollToBottom();
     });
+
+    // 根据 AppConfig + BackendStatus 派生状态副标题
+    String statusSubtitle;
+    Color statusColor;
+    if (config.useMockBackend) {
+      statusSubtitle = '模拟模式 · 校园知识库';
+      statusColor = AppColors.accent;
+    } else {
+      final s = asyncStatus.valueOrNull;
+      if (s == null) {
+        statusSubtitle = '连接中...';
+        statusColor = AppColors.textTertiary;
+      } else {
+        switch (s.status) {
+          case BackendConnectionStatus.connected:
+            statusSubtitle = '真实知识库 · 已连接';
+            statusColor = AppColors.success;
+          case BackendConnectionStatus.knowledgeBaseEmpty:
+            statusSubtitle = '已连接 · 知识库未初始化';
+            statusColor = AppColors.accent;
+          case BackendConnectionStatus.demoMode:
+            statusSubtitle = '模拟模式 · 校园知识库';
+            statusColor = AppColors.accent;
+          case BackendConnectionStatus.disconnected:
+            statusSubtitle = '未连接 · 演示模式';
+            statusColor = AppColors.warning;
+          case BackendConnectionStatus.unknown:
+            statusSubtitle = '...';
+            statusColor = AppColors.textTertiary;
+        }
+      }
+    }
 
     return Scaffold(
       backgroundColor: AppColors.bgBase,
@@ -168,9 +219,26 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('AI 导员', style: AppTypography.subtitle),
-            Text(
-              '模拟模式 · 校园知识库',
-              style: AppTypography.overline.copyWith(fontSize: 10.5),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  statusSubtitle,
+                  style: AppTypography.overline.copyWith(
+                    fontSize: 10.5,
+                    color: statusColor,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -210,10 +278,17 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
                               key: ValueKey(msg.id),
                               message: msg,
                               isFirst: index == 0,
+                              isRealBackend: !config.useMockBackend,
                               onCopy: () => _copyMessage(msg.content),
                               onRegenerate: () => _regenerate(msg.id),
                               onStop: _handleStop,
                               onAction: _handleAction,
+                              onAddToTasks:
+                                  msg.sender == MessageSender.counselor
+                                      ? () => _navigateToExtractWithPrefill(
+                                            msg.content,
+                                          )
+                                      : null,
                             ),
                           ),
                         );

@@ -155,6 +155,157 @@ class MockNotificationExtractionService
     }
     return DateTime(date.year, date.month, date.day, 23, 59);
   }
+
+  @override
+  Future<MultiExtractResult> extractMulti(
+    String rawNotice, {
+    void Function(ExtractionStep step)? onProgress,
+  }) async {
+    final steps = [
+      const ExtractionStep(label: '正在识别通知类型', order: 0),
+      const ExtractionStep(label: '检测多个独立任务', order: 1),
+      const ExtractionStep(label: '解析各任务截止时间', order: 2),
+      const ExtractionStep(label: '识别各任务材料', order: 3),
+      const ExtractionStep(label: '判断是否需要人工确认', order: 4),
+    ];
+
+    for (final step in steps) {
+      onProgress?.call(step);
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    // Mock 多任务拆分规则:
+    // 1. 检测"并于/以及/然后/同时/另外"等连接词 + 多个截止时间
+    // 2. 检测多个"X月X日"日期
+    final text = rawNotice.replaceAll(RegExp(r'\s+'), '');
+    final dateMatches = RegExp(r'(\d{1,2})月(\d{1,2})日').allMatches(text);
+    final hasConnector = RegExp(r'并于|以及|然后|同时|另外|其次|接着').hasMatch(text);
+
+    if ((dateMatches.length >= 2 || hasConnector) && dateMatches.isNotEmpty) {
+      // 尝试按日期拆分
+      final segments = _splitByDates(rawNotice, dateMatches.toList());
+      if (segments.length >= 2) {
+        final tasks = segments.map((s) => _ruleExtract(s)).toList();
+        return MultiExtractResult(
+          tasks: tasks,
+          splitReason: '识别到 ${tasks.length} 个独立截止时间,已拆分为多任务',
+          needsUserConfirmation: true,
+        );
+      }
+    }
+
+    // 无法可靠拆分 — 返回单任务
+    final single = _ruleExtract(rawNotice);
+    return MultiExtractResult(
+      tasks: [single],
+      splitReason: '未识别到可独立拆分的多个任务,合并为单任务',
+      needsUserConfirmation: false,
+    );
+  }
+
+  /// 按日期边界拆分通知原文。
+  List<String> _splitByDates(String raw, List<RegExpMatch> dateMatches) {
+    if (dateMatches.length < 2) return [raw];
+    // 简化策略:在连接词处拆分
+    final connectors = RegExp(r'(并于|以及|然后|同时|另外|其次|接着|;|；)');
+    final parts =
+        raw.split(connectors).where((p) => p.trim().isNotEmpty).toList();
+    if (parts.length >= 2) {
+      return parts;
+    }
+    // 无连接词时,不拆分(避免错误拆分)
+    return [raw];
+  }
+
+  @override
+  Future<DuplicateCheckResult> checkDuplicate({
+    required String content,
+    String? sourceName,
+    String? taskName,
+    DateTime? deadline,
+    required List<RecentNoticeItem> recentNotices,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 150));
+
+    final contentHash = _hashContent(content);
+    final matches = <DuplicateMatch>[];
+
+    for (final recent in recentNotices) {
+      final similarity = _computeSimilarity(content, recent);
+      final reasons = <String>[];
+
+      if (similarity >= 0.85) {
+        reasons.add('content_similarity');
+      }
+      if (recent.sourceText != null &&
+          _hashContent(recent.sourceText!) == contentHash) {
+        reasons.add('content_hash');
+      }
+      if (sourceName != null &&
+          sourceName.isNotEmpty &&
+          sourceName == recent.sourceName &&
+          deadline != null &&
+          recent.deadline != null &&
+          (deadline.difference(recent.deadline!).inMinutes.abs() <= 60)) {
+        reasons.addAll(['source_name', 'deadline']);
+      }
+      if (taskName != null &&
+          taskName.isNotEmpty &&
+          taskName == recent.task &&
+          deadline != null &&
+          recent.deadline != null &&
+          (deadline.difference(recent.deadline!).inMinutes.abs() <= 60)) {
+        reasons.addAll(['task', 'deadline']);
+      }
+
+      if (reasons.isNotEmpty && similarity >= 0.7) {
+        matches.add(
+          DuplicateMatch(
+            noticeId: recent.noticeId,
+            title: recent.title ?? recent.task ?? '已存在通知',
+            sourceName: recent.sourceName,
+            deadline: recent.deadline,
+            similarity: similarity,
+            reasons: reasons,
+          ),
+        );
+      }
+    }
+
+    matches.sort((a, b) => b.similarity.compareTo(a.similarity));
+
+    return DuplicateCheckResult(
+      isDuplicate: matches.isNotEmpty,
+      matches: matches,
+      contentHash: contentHash,
+      note: '仅提示可能重复,不会自动覆盖原待办。请人工确认后决定是否继续保存。',
+    );
+  }
+
+  /// 计算内容哈希(模拟 SHA256,非密码学安全)。
+  String _hashContent(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), '');
+    var hash = 0x811C9DC5;
+    for (final c in normalized.codeUnits) {
+      hash = (hash ^ c) * 0x01000193 & 0xFFFFFFFF;
+    }
+    return 'mock_${hash.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  /// 计算字符级 Jaccard 相似度。
+  double _computeSimilarity(String a, RecentNoticeItem b) {
+    final textA =
+        a.replaceAll(RegExp(r'[\s\p{P}]', unicode: true), '').toLowerCase();
+    final textB = (b.sourceText ?? '')
+        .replaceAll(RegExp(r'[\s\p{P}]', unicode: true), '')
+        .toLowerCase();
+    if (textA.isEmpty || textB.isEmpty) return 0.0;
+    final setA = textA.runes.toSet();
+    final setB = textB.runes.toSet();
+    final intersection = setA.intersection(setB).length;
+    final union = setA.union(setB).length;
+    return union == 0 ? 0.0 : intersection / union;
+  }
 }
 
 /// Mock 任务仓库 — 内存实现,可从持久化层恢复与重置。
@@ -298,6 +449,7 @@ class MockCounselorChatService implements CounselorChatService {
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,
+    void Function(ChatFinalMeta meta)? onFinalMeta,
     void Function()? onTyping,
   }) async {
     _stopRequested = false;
@@ -322,6 +474,18 @@ class MockCounselorChatService implements CounselorChatService {
     }
 
     onActions?.call(actions);
+    // Mock 模式:固定推导为 mockDemo + medium 证据等级
+    onFinalMeta?.call(
+      ChatFinalMeta(
+        mode: sources.isEmpty ? 'no_knowledge' : 'retrieval_summary',
+        evidenceLevel: sources.isEmpty ? 'none' : 'medium',
+        confidence: sources.isEmpty ? 0.0 : 0.6,
+        warnings: sources.isEmpty ? ['Mock 模式:无可靠资料'] : const [],
+        needsHumanConfirmation: false,
+        hasUserDocs: false,
+        hasDemoDocs: sources.isNotEmpty,
+      ),
+    );
     return buffer.toString();
   }
 

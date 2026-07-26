@@ -10,6 +10,7 @@ import 'core/storage/settings_storage.dart';
 import 'core/storage/study_storage.dart';
 import 'core/storage/task_storage.dart';
 import 'data/models/settings.dart';
+import 'data/services/local_notification_reminder_service.dart';
 import 'mock/mock_services/mock_services.dart';
 
 Future<void> main() async {
@@ -18,6 +19,11 @@ Future<void> main() async {
   // 初始化本地存储 (SharedPreferences)
   await SharedPreferencesLocalStorage.initialize();
   final localStorage = SharedPreferencesLocalStorage.instance;
+
+  // 预初始化本地提醒服务(timezone 数据库 + 通知插件)
+  // 失败不阻塞应用启动 — 提醒功能会在首次调度时惰性初始化
+  // Web 平台会自动降级为应用内提醒
+  await ReminderBootstrap.initialize();
 
   // 构造仓储实例 (Mock,单例,供 Provider 与 PersistenceService 共享)
   final taskRepository = MockTaskRepository();

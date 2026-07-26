@@ -41,11 +41,13 @@ class HomePage extends ConsumerWidget {
     final greeting = AppDateUtils.greeting(now);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F8F6),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async =>
               await Future.delayed(const Duration(milliseconds: 600)),
           child: CustomScrollView(
+            cacheExtent: 3000,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ===== 顶部问候区 =====
@@ -72,7 +74,7 @@ class HomePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              const SliverToBoxAdapter(child: SizedBox(height: 22)),
 
               // ===== 快捷入口 =====
               const SliverToBoxAdapter(
@@ -81,7 +83,7 @@ class HomePage extends ConsumerWidget {
                   child: QuickActionSection(),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
               // ===== AI 导员问候 =====
               const SliverToBoxAdapter(
