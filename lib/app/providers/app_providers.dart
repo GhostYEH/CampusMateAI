@@ -55,11 +55,11 @@ final knowledgeManagementProvider = Provider<KnowledgeManagementService>(
   },
 );
 
-/// 本地提醒服务 — 用于待办截止前的系统通知调度。
+/// 本地提醒服务 — 用于待办截止前的系统精确提醒调度(Android 优先)。
 ///
 /// 当前实现:
-/// - Android/iOS: [LocalNotificationReminderService] 真实调度系统通知
-/// - Web: 自动降级为应用内提醒(不支持后台调度)
+/// - Android/iOS: [LocalNotificationReminderService] 使用 `exactAllowWhileIdle`
+/// - Web: 自动降级为应用内提醒(不支持后台精确调度)
 ///
 /// 初始化策略:
 /// - timezone 数据库与插件在 [ReminderBootstrap.initialize] 中预先初始化(main 启动时)
@@ -70,6 +70,43 @@ final knowledgeManagementProvider = Provider<KnowledgeManagementService>(
 final notificationReminderProvider = Provider<NotificationReminderService>(
   (ref) => LocalNotificationReminderService(),
 );
+
+/// 提醒能力与权限快照 — UI 通过此 Provider 监听状态变化。
+///
+/// 调用 `ref.read(reminderStatusProvider.notifier).refresh()` 可主动刷新
+/// (用户从系统设置返回应用后调用)。
+final reminderStatusProvider =
+    StateNotifierProvider<ReminderStatusNotifier, ReminderStatusSnapshot>(
+  (ref) {
+    final service = ref.watch(notificationReminderProvider);
+    return ReminderStatusNotifier(service);
+  },
+);
+
+class ReminderStatusNotifier extends StateNotifier<ReminderStatusSnapshot> {
+  ReminderStatusNotifier(this._service)
+      : super(
+          ReminderStatusSnapshot(
+            capability: _service.capabilityStatus(),
+            permission: _service.permissionStatus(),
+            canScheduleExactAlarms: false,
+          ),
+        );
+
+  final NotificationReminderService _service;
+
+  /// 主动刷新 — 用户从系统设置返回应用后调用。
+  Future<void> refresh() async {
+    await _service.refreshPermissionStatus();
+    final canExact = await _service.canScheduleExactAlarms();
+    if (!mounted) return;
+    state = ReminderStatusSnapshot(
+      capability: _service.capabilityStatus(),
+      permission: _service.permissionStatus(),
+      canScheduleExactAlarms: canExact,
+    );
+  }
+}
 
 /// 通知智能提取服务 — Mock / Real 通过 AppConfig 切换。
 final notificationExtractionProvider = Provider<NotificationExtractionService>(
@@ -248,14 +285,16 @@ final unreadNoticeCountProvider = Provider<int>(
 
 /// 待办任务列表(从仓库派生)。
 ///
-/// 集成本地提醒:
-/// - createTask/updateTask: 若 `reminderEnabled && reminderAt != null`,调度系统通知
-/// - toggleComplete: 完成时取消未触发的提醒(避免已完成任务仍弹通知)
-/// - softDelete/hardDelete: 取消对应系统通知
+/// 集成本地提醒(对齐 AGENTS.md "Android 精确提醒完整闭环"):
+/// - createTask: 若 `reminderEnabled && reminderAt != null`,调度精确提醒
+/// - updateTask: deadline / reminderAt / reminderEnabled 变化时,取消旧提醒并按新设置调度
+/// - toggleComplete: 完成时取消未触发的提醒;恢复未完成时若启用则重新调度
+/// - softDelete/hardDelete: 取消所有相关提醒
+/// - restore: 根据当前设置重新调度
+/// - [restoreAllReminders]: 应用启动 / 权限重授后批量恢复(去重,不重复创建)
 ///
-/// 提醒调度是"尽力而为" — 失败(权限未授予/Web 平台/时间已过)不会阻断任务操作,
-/// 只是不调度系统通知。UI 层通过 [notificationReminderProvider] 的 capabilityStatus
-/// 向用户解释平台限制。
+/// **不静默降级**: 精确权限被拒时,`scheduleReminder` 返回 `exactAlarmPermissionDenied`,
+/// UI 层通过 [ReminderScheduleFeedback] 向用户解释并引导去系统设置授权。
 ///
 /// 注意: StateNotifierProvider 会在 provider 销毁时自动调用 notifier.dispose,
 /// 因此无需额外通过 ref.onDispose 注册,否则会导致 dispose 被调用两次。
@@ -278,6 +317,9 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
   final TaskRepository _repo;
   final NotificationReminderService _reminder;
   late final StreamSubscription<List<Task>> _sub;
+
+  /// 最近一次调度结果(供 UI 显示反馈)。
+  ReminderScheduleFeedback? lastScheduleFeedback;
 
   void _refresh() {
     state = _repo.tasks;
@@ -304,32 +346,45 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
     return (title: title, body: body);
   }
 
-  /// 根据 task 的 reminderEnabled/reminderAt 调度或取消系统通知。
+  /// 从 task 推导 offsetMinutes(提醒相对截止的提前分钟数)。
+  /// 若无 deadline 则返回 0(表示按 reminderAt 精确触发,无偏移概念)。
+  int _offsetMinutesFor(Task task) {
+    final deadline = task.deadline;
+    final reminderAt = task.reminderAt;
+    if (deadline == null || reminderAt == null) return 0;
+    final diff = deadline.difference(reminderAt).inMinutes;
+    return diff < 0 ? 0 : diff;
+  }
+
+  /// 根据 task 的 reminderEnabled/reminderAt 调度或取消精确提醒。
   /// 调用时机: createTask / updateTask 之后。
-  Future<void> _syncReminder(Task task) async {
+  ///
+  /// 返回 [ReminderScheduleFeedback] 供 UI 显示反馈(成功 / 失败原因)。
+  Future<ReminderScheduleFeedback> _syncReminder(Task task) async {
     if (task.deleted || task.completed) {
-      // 已删除或已完成 — 取消任何已调度的通知
       await _reminder.cancelAllForTask(task.id);
-      return;
+      return ReminderScheduleFeedback.cancelled;
     }
     if (!task.reminderEnabled || task.reminderAt == null) {
-      // 提醒未启用 — 取消已调度的通知
       await _reminder.cancelAllForTask(task.id);
-      return;
+      return ReminderScheduleFeedback.cancelled;
     }
-    // 提醒启用且有触发时间 — 调度(覆盖旧通知)
     final content = _reminderContent(task);
-    await _reminder.updateReminder(
+    final offset = _offsetMinutesFor(task);
+    final result = await _reminder.updateReminder(
       taskId: task.id,
+      offsetMinutes: offset,
       title: content.title,
       body: content.body,
       scheduledAt: task.reminderAt!,
     );
+    final feedback = ReminderScheduleFeedback.fromResult(result);
+    lastScheduleFeedback = feedback;
+    return feedback;
   }
 
   Future<Task> createTask(Task task) async {
     final created = await _repo.createTask(task);
-    // 调度系统通知(若启用)
     if (created.reminderEnabled && created.reminderAt != null) {
       await _syncReminder(created);
     }
@@ -339,23 +394,18 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
   Future<void> updateTask(Task task) async {
     final oldTask = _repo.tasks.where((t) => t.id == task.id).firstOrNull;
     await _repo.updateTask(task);
-    // 同步系统通知:
-    // - deadline 变化时,通知正文中的剩余时间需要更新
-    // - reminderEnabled/reminderAt 变化时,需要重新调度或取消
-    await _syncReminder(task);
-    // 若 deadline 变化但 reminderAt 未跟随更新,通知正文仍会通过 updateReminder 刷新
-    if (oldTask != null &&
-        oldTask.deadline != task.deadline &&
-        task.reminderEnabled &&
-        task.reminderAt != null) {
-      final content = _reminderContent(task);
-      await _reminder.updateReminder(
-        taskId: task.id,
-        title: content.title,
-        body: content.body,
-        scheduledAt: task.reminderAt!,
-      );
+
+    // 若旧的提醒偏移与新偏移不同,先取消旧偏移的提醒(避免残留)
+    if (oldTask != null) {
+      final oldOffset = _offsetMinutesFor(oldTask);
+      final newOffset = _offsetMinutesFor(task);
+      if (oldOffset != newOffset && oldTask.reminderEnabled) {
+        await _reminder.cancelReminder(task.id, oldOffset);
+      }
     }
+
+    // 同步系统通知(包括 deadline 变化时刷新正文)
+    await _syncReminder(task);
   }
 
   Future<void> toggleComplete(Task task) async {
@@ -364,19 +414,16 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
       completedAt: !task.completed ? DateTime.now() : null,
     );
     await _repo.updateTask(updated);
-    // 完成时取消未触发的提醒;恢复未完成时若 reminderEnabled 则重新调度
     await _syncReminder(updated);
   }
 
   Future<void> softDelete(String id) async {
     await _repo.softDelete(id);
-    // 软删除也取消系统通知(用户不再需要提醒)
     await _reminder.cancelAllForTask(id);
   }
 
   Future<void> restore(String id) async {
     await _repo.restore(id);
-    // 恢复后,若任务有启用的提醒,重新调度
     final task = _repo.tasks.where((t) => t.id == id).firstOrNull;
     if (task != null) await _syncReminder(task);
   }
@@ -397,14 +444,44 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
   /// 显式设置提醒(供 UI 调用)。
   ///
   /// [reminderAt] 为 null 表示关闭提醒。
-  /// 调用后会立即同步系统通知。
-  Future<void> setReminder(Task task, DateTime? reminderAt) async {
+  /// 调用后会立即同步系统通知,并返回反馈供 UI 显示。
+  Future<ReminderScheduleFeedback> setReminder(
+    Task task,
+    DateTime? reminderAt,
+  ) async {
     final updated = task.copyWith(
       reminderEnabled: reminderAt != null,
       reminderAt: reminderAt ?? task.reminderAt,
     );
     await _repo.updateTask(updated);
-    await _syncReminder(updated);
+    return _syncReminder(updated);
+  }
+
+  /// 应用启动 / 设备重启 / 权限重授后,根据已持久化且未完成的任务恢复精确提醒。
+  ///
+  /// - 已完成 / 已删除 / 已过期 / 未启用提醒的任务跳过
+  /// - 服务层负责去重(同一 (taskId, offsetMinutes) 不重复创建)
+  /// - 返回实际恢复的提醒数量
+  Future<int> restoreAllReminders() async {
+    final entries = <ReminderEntry>[];
+    for (final task in _repo.tasks) {
+      if (task.deleted || task.completed) continue;
+      if (!task.reminderEnabled || task.reminderAt == null) continue;
+      final content = _reminderContent(task);
+      entries.add(
+        ReminderEntry(
+          taskId: task.id,
+          title: content.title,
+          body: content.body,
+          scheduledAt: task.reminderAt!,
+          offsetMinutes: _offsetMinutesFor(task),
+          taskCompleted: task.completed,
+          taskDeleted: task.deleted,
+        ),
+      );
+    }
+    if (entries.isEmpty) return 0;
+    return _reminder.restoreReminders(entries);
   }
 
   @override
@@ -412,6 +489,71 @@ class TaskListNotifier extends StateNotifier<List<Task>> {
     _sub.cancel();
     super.dispose();
   }
+}
+
+/// 提醒调度反馈 — 供 UI 显示成功 / 失败提示。
+enum ReminderScheduleFeedback {
+  /// 调度成功
+  success,
+
+  /// 已取消(任务完成 / 删除 / 关闭提醒)
+  cancelled,
+
+  /// 平台不支持(Web)
+  unsupportedPlatform,
+
+  /// 通知权限未授予
+  notificationPermissionDenied,
+
+  /// 精确提醒权限未授予
+  exactAlarmPermissionDenied,
+
+  /// 提醒时间已过期
+  pastTime,
+
+  /// 插件调用异常(不虚报成功)
+  pluginException;
+
+  static ReminderScheduleFeedback fromResult(ReminderScheduleResult result) {
+    if (result.success) return ReminderScheduleFeedback.success;
+    switch (result.failure!) {
+      case ReminderScheduleFailure.unsupportedPlatform:
+        return ReminderScheduleFeedback.unsupportedPlatform;
+      case ReminderScheduleFailure.notificationPermissionDenied:
+        return ReminderScheduleFeedback.notificationPermissionDenied;
+      case ReminderScheduleFailure.exactAlarmPermissionDenied:
+        return ReminderScheduleFeedback.exactAlarmPermissionDenied;
+      case ReminderScheduleFailure.pastTime:
+        return ReminderScheduleFeedback.pastTime;
+      case ReminderScheduleFailure.pluginException:
+        return ReminderScheduleFeedback.pluginException;
+    }
+  }
+
+  /// 用户可读的反馈文案。
+  String get message {
+    switch (this) {
+      case ReminderScheduleFeedback.success:
+        return '已设置提醒';
+      case ReminderScheduleFeedback.cancelled:
+        return '已取消提醒';
+      case ReminderScheduleFeedback.unsupportedPlatform:
+        return 'Web 端仅提供应用内提醒,精确系统提醒请使用 Android';
+      case ReminderScheduleFeedback.notificationPermissionDenied:
+        return '尚未获得通知权限,无法设置提醒';
+      case ReminderScheduleFeedback.exactAlarmPermissionDenied:
+        return '尚未获得精确提醒权限,请在系统设置中授予"闹钟和提醒"';
+      case ReminderScheduleFeedback.pastTime:
+        return '提醒时间已过期,未调度';
+      case ReminderScheduleFeedback.pluginException:
+        return '提醒调度失败,请稍后重试';
+    }
+  }
+
+  /// 是否应显示"前往系统设置"入口。
+  bool get shouldOfferSettings =>
+      this == ReminderScheduleFeedback.notificationPermissionDenied ||
+      this == ReminderScheduleFeedback.exactAlarmPermissionDenied;
 }
 
 /// 今日任务。
