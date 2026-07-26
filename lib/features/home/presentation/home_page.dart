@@ -47,6 +47,9 @@ class HomePage extends ConsumerWidget {
           onRefresh: () async =>
               await Future.delayed(const Duration(milliseconds: 600)),
           child: CustomScrollView(
+            // ignore: deprecated_member_use
+            // 本地 Flutter 3.41.x 尚无 scrollCacheExtent,3.44+ 才有;
+            // 待本地 SDK 升级后改为 scrollCacheExtent: 3000。
             cacheExtent: 3000,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
