@@ -10,6 +10,16 @@ from typing import Optional
 from ..core.config import Settings, get_settings
 from ..database.sqlite_db import Database, init_db
 from ..repositories.document_repository import DocumentRepository
+from ..repositories.multi_role_repository import (
+    AnnouncementRepository,
+    AssignmentRepository,
+    ClassGroupRepository,
+    CourseRepository,
+    EnrollmentRepository,
+    RefreshTokenRepository,
+    SubmissionRepository,
+    UserRepository,
+)
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
@@ -28,6 +38,15 @@ class ServiceContainer:
     notice_extraction: NoticeExtractionService
     rag: RagService
     llm: Optional[LLMClient]
+    # 多角色仓库
+    user_repository: UserRepository
+    refresh_token_repository: RefreshTokenRepository
+    course_repository: CourseRepository
+    class_group_repository: ClassGroupRepository
+    enrollment_repository: EnrollmentRepository
+    announcement_repository: AnnouncementRepository
+    assignment_repository: AssignmentRepository
+    submission_repository: SubmissionRepository
 
     def ensure_index(self) -> int:
         """确保索引就绪(若 stale 则重建)。返回 chunk 数。"""
@@ -37,19 +56,15 @@ class ServiceContainer:
 _container: Optional[ServiceContainer] = None
 
 
-def build_container(settings: Optional[Settings] = None) -> ServiceContainer:
-    """构造 ServiceContainer 并执行启动初始化。"""
-    global _container
-    s = settings or get_settings()
-    db = init_db(s)
+def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
     repo = DocumentRepository(db)
     retrieval = RetrievalService(repo)
-    ingestion = KnowledgeIngestionService(repo, retrieval, s)
-    llm = build_llm_client(s)
-    notice = NoticeExtractionService(llm, s)
-    rag = RagService(retrieval, llm, s, repo)
+    ingestion = KnowledgeIngestionService(repo, retrieval, settings)
+    llm = build_llm_client(settings)
+    notice = NoticeExtractionService(llm, settings)
+    rag = RagService(retrieval, llm, settings, repo)
     container = ServiceContainer(
-        settings=s,
+        settings=settings,
         db=db,
         document_repository=repo,
         retrieval=retrieval,
@@ -57,12 +72,29 @@ def build_container(settings: Optional[Settings] = None) -> ServiceContainer:
         notice_extraction=notice,
         rag=rag,
         llm=llm,
+        user_repository=UserRepository(db),
+        refresh_token_repository=RefreshTokenRepository(db),
+        course_repository=CourseRepository(db),
+        class_group_repository=ClassGroupRepository(db),
+        enrollment_repository=EnrollmentRepository(db),
+        announcement_repository=AnnouncementRepository(db),
+        assignment_repository=AssignmentRepository(db),
+        submission_repository=SubmissionRepository(db),
     )
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)
     try:
         retrieval.rebuild()
     except Exception:
         pass
+    return container
+
+
+def build_container(settings: Optional[Settings] = None) -> ServiceContainer:
+    """构造 ServiceContainer 并执行启动初始化。"""
+    global _container
+    s = settings or get_settings()
+    db = init_db(s)
+    container = _build_container_inner(s, db)
     _container = container
     return container
 
@@ -78,25 +110,9 @@ def reset_container_for_tests(settings: Optional[Settings] = None) -> ServiceCon
     global _container
     from ..database.sqlite_db import reset_db_for_tests
 
-    reset_db_for_tests()
     s = settings or get_settings()
     db = reset_db_for_tests()
-    repo = DocumentRepository(db)
-    retrieval = RetrievalService(repo)
-    ingestion = KnowledgeIngestionService(repo, retrieval, s)
-    llm = None  # 测试默认不接 LLM
-    notice = NoticeExtractionService(llm, s)
-    rag = RagService(retrieval, llm, s, repo)
-    container = ServiceContainer(
-        settings=s,
-        db=db,
-        document_repository=repo,
-        retrieval=retrieval,
-        knowledge_ingestion=ingestion,
-        notice_extraction=notice,
-        rag=rag,
-        llm=llm,
-    )
+    container = _build_container_inner(s, db)
     _container = container
     return container
 

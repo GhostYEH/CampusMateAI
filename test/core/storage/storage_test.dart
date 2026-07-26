@@ -28,7 +28,6 @@ void main() {
       const settings = AppSettings(
         darkMode: true,
         reduceMotion: true,
-        demoMode: true,
         reminderLeadMinutes: 30,
       );
       await storage.save(settings);
@@ -37,7 +36,6 @@ void main() {
       expect(loaded, isNotNull);
       expect(loaded!.darkMode, isTrue);
       expect(loaded.reduceMotion, isTrue);
-      expect(loaded.demoMode, isTrue);
       expect(loaded.reminderLeadMinutes, 30);
     });
 

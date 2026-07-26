@@ -21,9 +21,15 @@ Future<void> main() async {
   final localStorage = SharedPreferencesLocalStorage.instance;
 
   // 预初始化本地提醒服务(timezone 数据库 + 通知插件)
+  // 不 await — 让它在后台初始化,不阻塞应用启动。
   // 失败不阻塞应用启动 — 提醒功能会在首次调度时惰性初始化
   // Web 平台会自动降级为应用内提醒
-  await ReminderBootstrap.initialize();
+  //
+  // 注:此步骤最重(tz_data.initializeTimeZones 加载 ~150KB 全时区数据库 +
+  // flutter_timezone 平台通道往返 + flutter_local_notifications 初始化),
+  // 改为 fire-and-forget 后可显著缩短启动白屏时间。
+  // ensureInitialized 内部幂等,首次调度时会再检查一次,安全。
+  ReminderBootstrap.initialize();
 
   // 构造仓储实例 (Mock,单例,供 Provider 与 PersistenceService 共享)
   final taskRepository = MockTaskRepository();

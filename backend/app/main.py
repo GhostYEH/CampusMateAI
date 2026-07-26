@@ -17,6 +17,7 @@ from .core.config import get_settings
 from .core.exceptions import register_exception_handlers
 from .core.logging import configure_logging, logger
 from .services.container import build_container, get_container
+from .services.demo_seeder import seed_demo_data
 
 
 @asynccontextmanager
@@ -25,15 +26,24 @@ async def lifespan(app: FastAPI):
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
-    # 启动时尝试导入内置演示资料(若存在且开启)
+    # 启动时导入内置测试环境资料(仅 dev/test 显式开启;production 已被 config 校验拦截)
     if settings.auto_import_demo:
         try:
             added = container.knowledge_ingestion.import_demo_documents()
             if added:
-                logger.info("已导入 {} 份内置演示资料", added)
+                logger.info("已导入 {} 份内置测试环境资料", added)
                 container.retrieval.rebuild()
         except Exception as e:
-            logger.warning("导入演示资料失败: {}", str(e)[:200])
+            logger.warning("导入测试环境资料失败: {}", str(e)[:200])
+    # 多角色验收账号 seeding(仅 dev/test 显式开启;production 已被 config 校验拦截)
+    # 验收账号为普通用户,走完整真实业务流程,无特殊权限或绕过认证逻辑
+    if settings.auto_seed_demo_users:
+        try:
+            stats = seed_demo_data(container)
+            if not stats.get("skipped"):
+                logger.info("多角色验收账号已就绪: {}", stats)
+        except Exception as e:
+            logger.warning("多角色验收账号 seeding 失败: {}", str(e)[:200])
     yield
     # 关闭
     if container.llm is not None and hasattr(container.llm, "aclose"):

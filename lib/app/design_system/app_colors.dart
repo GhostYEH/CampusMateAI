@@ -109,8 +109,17 @@ class AppColorScheme {
 
   // ===== 语义色 =====
   Color get success => AppColors.success;
+  Color get successSubtle => _isDark
+      ? AppColors.success.withValues(alpha: 0.18)
+      : AppColors.successSubtle;
   Color get warning => AppColors.warning;
+  Color get warningSubtle => _isDark
+      ? AppColors.warning.withValues(alpha: 0.18)
+      : AppColors.warningSubtle;
   Color get danger => AppColors.danger;
+  Color get dangerSubtle => _isDark
+      ? AppColors.danger.withValues(alpha: 0.18)
+      : AppColors.dangerSubtle;
   Color get info => AppColors.info;
 
   // ===== 表面 =====

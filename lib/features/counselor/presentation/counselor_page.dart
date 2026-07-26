@@ -19,6 +19,7 @@ import 'widgets/robot_avatar.dart';
 ///
 /// 本文件仅负责组合:
 /// - 顶部 AppBar(机器人头像 + 标题 + 清空对话)
+/// - 上下文条幅(若从课程/通知/任务进入,显示 "正在询问:xxx")
 /// - 消息列表(空 / 流式 / 历史回复)
 /// - 快捷问题栏
 /// - 输入区(发送/停止)
@@ -26,7 +27,13 @@ import 'widgets/robot_avatar.dart';
 /// 业务逻辑(发送/停止/重新生成/清空)位于 [ChatMessagesNotifier]。
 /// 子组件位于 widgets/ 目录。
 class CounselorPage extends ConsumerStatefulWidget {
-  const CounselorPage({super.key});
+  const CounselorPage({
+    super.key,
+    this.context = const CounselorContext(),
+  });
+
+  /// 路由层注入的对话上下文(课程/班级/任务/通知 ID)。
+  final CounselorContext context;
 
   @override
   ConsumerState<CounselorPage> createState() => _CounselorPageState();
@@ -41,6 +48,13 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
     super.initState();
     _inputController = TextEditingController();
     _scrollController = ScrollController();
+    // 注入路由层传入的上下文到 Provider,供 ChatMessagesNotifier 读取
+    if (widget.context.hasContext) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(counselorContextProvider.notifier).state = widget.context;
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(animated: false);
       // 进入页面时触发后端状态检查(Real 模式)
@@ -154,6 +168,9 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
 
   void _clearConversation() {
     ref.read(chatMessagesProvider.notifier).clear();
+    // 同时清除上下文 — 用户主动清空对话意味着开始新会话
+    ref.read(counselorContextProvider.notifier).state =
+        const CounselorContext();
   }
 
   @override
@@ -162,41 +179,38 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
     final isGenerating = _isGenerating(messages);
     final config = ref.watch(appConfigProvider);
     final asyncStatus = ref.watch(backendStatusProvider);
+    final counselorCtx = ref.watch(counselorContextProvider);
 
     // 新消息或流式更新时自动滚动到底部
     ref.listen(chatMessagesProvider, (_, __) {
       _scrollToBottom();
     });
 
-    // 根据 AppConfig + BackendStatus 派生状态副标题
+    // 根据 BackendStatus 派生状态副标题(不再暴露 Mock / 演示模式字样)
     String statusSubtitle;
     Color statusColor;
-    if (config.useMockBackend) {
-      statusSubtitle = '模拟模式 · 校园知识库';
-      statusColor = AppColors.accent;
+    final s = asyncStatus.valueOrNull;
+    if (s == null) {
+      statusSubtitle = '连接中...';
+      statusColor = AppColors.textTertiary;
     } else {
-      final s = asyncStatus.valueOrNull;
-      if (s == null) {
-        statusSubtitle = '连接中...';
-        statusColor = AppColors.textTertiary;
-      } else {
-        switch (s.status) {
-          case BackendConnectionStatus.connected:
-            statusSubtitle = '真实知识库 · 已连接';
-            statusColor = AppColors.success;
-          case BackendConnectionStatus.knowledgeBaseEmpty:
-            statusSubtitle = '已连接 · 知识库未初始化';
-            statusColor = AppColors.accent;
-          case BackendConnectionStatus.demoMode:
-            statusSubtitle = '模拟模式 · 校园知识库';
-            statusColor = AppColors.accent;
-          case BackendConnectionStatus.disconnected:
-            statusSubtitle = '未连接 · 演示模式';
-            statusColor = AppColors.warning;
-          case BackendConnectionStatus.unknown:
-            statusSubtitle = '...';
-            statusColor = AppColors.textTertiary;
-        }
+      switch (s.status) {
+        case BackendConnectionStatus.connected:
+          statusSubtitle = '知识库已就绪';
+          statusColor = AppColors.success;
+        case BackendConnectionStatus.knowledgeBaseEmpty:
+          statusSubtitle = '已连接 · 知识库未初始化';
+          statusColor = AppColors.accent;
+        case BackendConnectionStatus.demoMode:
+          // 不再向用户展示"演示模式"字样,统一显示为服务不可用
+          statusSubtitle = '服务暂时不可用';
+          statusColor = AppColors.warning;
+        case BackendConnectionStatus.disconnected:
+          statusSubtitle = '服务暂时不可用';
+          statusColor = AppColors.warning;
+        case BackendConnectionStatus.unknown:
+          statusSubtitle = '...';
+          statusColor = AppColors.textTertiary;
       }
     }
 
@@ -254,6 +268,7 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (counselorCtx.hasContext) _ContextBanner(context: counselorCtx),
             Expanded(
               child: messages.isEmpty
                   ? const EmptyConversation()
@@ -309,5 +324,76 @@ class _CounselorPageState extends ConsumerState<CounselorPage> {
         ),
       ),
     );
+  }
+}
+
+/// AI 导员对话上下文条幅 — 显示 "正在询问:高等数学 · 第 3 次作业"。
+///
+/// 仅当 `context.hasContext == true` 时显示。
+/// 点击右侧 X 按钮可清除上下文,回到通用问答模式。
+class _ContextBanner extends StatelessWidget {
+  const _ContextBanner({required this.context});
+  final CounselorContext context;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.appColors;
+    final label = this.context.contextLabel ?? _buildFallbackLabel();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.edge,
+        AppSpacing.sm,
+        AppSpacing.edge,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        color: c.primaryContainer.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: c.primarySubtle, width: 0.8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.school_rounded, size: 16, color: c.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '正在询问',
+                  style: AppTypography.label.copyWith(
+                    color: c.textSecondary,
+                    fontSize: 10,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: AppTypography.body.copyWith(
+                    color: c.textPrimary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 没有 contextLabel 时的回退文案。
+  String _buildFallbackLabel() {
+    final parts = <String>[];
+    if (context.assignmentId != null) parts.add('当前任务');
+    if (context.announcementId != null) parts.add('当前通知');
+    if (context.courseId != null) parts.add('当前课程');
+    return parts.isEmpty ? '当前上下文' : parts.join(' · ');
   }
 }

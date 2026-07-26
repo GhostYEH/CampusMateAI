@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -158,6 +159,7 @@ class _StudyCompanionPageState extends ConsumerState<StudyCompanionPage> {
   Widget build(BuildContext context) {
     final session = ref.watch(currentStudySessionProvider).valueOrNull;
     final settings = ref.watch(appSettingsProvider);
+    final config = ref.watch(appConfigProvider);
     final expressionAsync = ref.watch(expressionResultsProvider);
     final reduceMotion = ref.watch(reduceMotionProvider);
 
@@ -179,8 +181,9 @@ class _StudyCompanionPageState extends ConsumerState<StudyCompanionPage> {
     final isStudying = session != null && session.state != StudyState.completed;
     final expressionEnabled = settings.expressionRecognitionEnabled &&
         settings.cameraPermissionGranted;
-    // Mock 控制台仅在演示模式显示(普通用户不显示)
-    final showMockConsole = settings.demoMode;
+    // Mock 控制台仅在 debug 模式且启用 Mock 后端时显示(普通用户不显示)
+    // 正式参赛版本 Release 构建下 kDebugMode=false,Mock 控制台永远不可见
+    final showMockConsole = kDebugMode && config.useMockBackend;
 
     return Scaffold(
       appBar: AppBar(

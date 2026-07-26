@@ -7,13 +7,14 @@ import '../../../../app/providers/app_providers.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../core/widgets/app_card.dart';
 
-/// 后端连接状态卡片 — 显示当前模式与后端健康状态。
+/// 后端连接状态卡片 — 显示后端健康状态。
 ///
 /// 设计原则(遵循 frontend-design skill 的"晨曦校园"方向):
 /// - 状态色:成功用 success(绿)、未连接用 warning(暖)、未初始化用 accent(暖橙)
 /// - 不用红色 — 后端不可用不应让用户感到惊吓
 /// - 卡片克制,内嵌状态徽章 + 关键信息列表
 /// - 失败时提供"重试"按钮,不清空已输入数据
+/// - 不在 UI 暴露 Mock 切换入口,不显示"演示模式"等误导文案
 class BackendStatusCard extends ConsumerWidget {
   const BackendStatusCard({super.key});
 
@@ -22,14 +23,17 @@ class BackendStatusCard extends ConsumerWidget {
     final config = ref.watch(appConfigProvider);
     final asyncStatus = ref.watch(backendStatusProvider);
 
-    // Mock 模式:固定展示"演示模式"状态
+    // Mock 模式(debug 开发专用):显示"未连接后端"中性状态,
+    // 不在普通用户界面暴露 Mock 字样或演示模式标识
     if (config.useMockBackend) {
       return _ModeBadge(
-        mode: _BackendMode.demo,
+        mode: _BackendMode.disconnected,
         apiBaseUrl: config.apiBaseUrl,
         status: const BackendStatus(
-          status: BackendConnectionStatus.demoMode,
+          status: BackendConnectionStatus.disconnected,
+          errorMessage: '后端服务未配置,请使用真实后端登录。',
         ),
+        onRetry: () => ref.read(backendStatusProvider.notifier).check(),
       );
     }
 
@@ -64,7 +68,7 @@ class BackendStatusCard extends ConsumerWidget {
   }
 }
 
-enum _BackendMode { demo, checking, connected, kbEmpty, error }
+enum _BackendMode { checking, connected, kbEmpty, error, disconnected }
 
 class _ModeBadge extends StatelessWidget {
   const _ModeBadge({
@@ -108,7 +112,9 @@ class _ModeBadge extends StatelessWidget {
               Expanded(
                 child: Text(info.title, style: AppTypography.subtitle),
               ),
-              if (mode == _BackendMode.error && onRetry != null)
+              if ((mode == _BackendMode.error ||
+                      mode == _BackendMode.disconnected) &&
+                  onRetry != null)
                 _RetryButton(onRetry: onRetry!),
               if (mode == _BackendMode.checking)
                 const SizedBox(
@@ -149,7 +155,9 @@ class _ModeBadge extends StatelessWidget {
                 value:
                     '${AppDateUtils.formatDate(status!.lastChecked!)} ${AppDateUtils.formatTime(status!.lastChecked!)}',
               ),
-            if (status!.errorMessage != null && mode == _BackendMode.error)
+            if (status!.errorMessage != null &&
+                (mode == _BackendMode.error ||
+                    mode == _BackendMode.disconnected))
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Container(
@@ -188,12 +196,6 @@ class _ModeBadge extends StatelessWidget {
 
   _ModeVisual _modeInfo(_BackendMode mode) {
     switch (mode) {
-      case _BackendMode.demo:
-        return const _ModeVisual(
-          title: '演示模式',
-          subtitle: '当前使用 Mock 数据,所有后端能力为本地模拟。可切换到真实后端模式以启用 RAG。',
-          color: AppColors.accent,
-        );
       case _BackendMode.checking:
         return const _ModeVisual(
           title: '检查中',
@@ -214,8 +216,14 @@ class _ModeBadge extends StatelessWidget {
         );
       case _BackendMode.error:
         return const _ModeVisual(
-          title: '未连接',
-          subtitle: '无法连接到后端服务。可点击重试,或切换到演示模式继续使用。',
+          title: '服务暂时不可用',
+          subtitle: '无法连接到后端服务。可点击重试,或稍后再试。',
+          color: AppColors.warning,
+        );
+      case _BackendMode.disconnected:
+        return const _ModeVisual(
+          title: '服务暂时不可用',
+          subtitle: '无法连接到后端服务。可点击重试,或稍后再试。',
           color: AppColors.warning,
         );
     }

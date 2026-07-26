@@ -21,6 +21,15 @@ void main() {
   }) {
     final container = ProviderContainer(
       overrides: [
+        // 显式注入 Mock 模式配置(仅开发/测试场景)
+        appConfigProvider.overrideWith((ref) {
+          return const AppConfig(
+            environment: AppEnvironment.development,
+            useMockBackend: true,
+            useMockExpressionRecognition: true,
+            apiBaseUrl: 'http://10.0.2.2:8000',
+          );
+        }),
         taskRepositoryProvider.overrideWithValue(
           MockTaskRepository(initial: const []),
         ),
@@ -68,7 +77,7 @@ void main() {
         matching: find.byType(FilledButton),
       );
 
-  testWidgets('AI 导员页:渲染 AppBar、模拟模式标注与初始问候', (tester) async {
+  testWidgets('AI 导员页:渲染 AppBar、状态副标题与初始问候', (tester) async {
     setPhoneViewport(tester);
     final container = makeContainer();
     await tester.pumpWidget(
@@ -78,8 +87,10 @@ void main() {
 
     // AppBar 标题
     expect(find.text('AI 导员'), findsOneWidget);
-    // 模拟模式标注
-    expect(find.text('模拟模式 · 校园知识库'), findsOneWidget);
+    // 参赛版本约束:不向用户暴露"演示模式"字样,
+    // Mock 模式下统一显示为"服务暂时不可用"
+    expect(find.text('模拟模式 · 校园知识库'), findsNothing);
+    expect(find.text('演示模式'), findsNothing);
   });
 
   testWidgets('AI 导员页:初始问候消息来自 MockData', (tester) async {

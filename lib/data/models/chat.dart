@@ -336,3 +336,64 @@ enum EvidenceLevel {
     }
   }
 }
+
+/// AI 导员对话上下文 — 学生从课程/通知/任务进入时携带。
+///
+/// 用途(AGENTS.md §7 "AI 导员融合"):
+/// - UI 顶部显示 "正在询问:高等数学 · 第 3 次作业"
+/// - 后端按上下文优先返回:任务原文 → 课程资料 → 学校知识库
+/// - 防止学生通过 AI 读取其他班级任务 / 教师草稿 / 其他学生提交
+class CounselorContext extends Equatable {
+  const CounselorContext({
+    this.courseId,
+    this.classId,
+    this.assignmentId,
+    this.announcementId,
+    this.contextLabel,
+  });
+
+  final String? courseId;
+  final String? classId;
+  final String? assignmentId;
+  final String? announcementId;
+
+  /// 用于 UI 顶部展示的简短标签(例如 "高等数学 · 第 3 次作业")。
+  final String? contextLabel;
+
+  /// 是否有任意上下文。
+  bool get hasContext =>
+      courseId != null ||
+      classId != null ||
+      assignmentId != null ||
+      announcementId != null;
+
+  /// 生成发送给后端的 conversationId(嵌入上下文,后端可解析)。
+  ///
+  /// 格式: `conv_main:course_xxx:class_yyy:assignment_zzz:announcement_www`
+  /// 没有 context 时退化为 `conv_main`。
+  String toConversationId() {
+    final parts = <String>['conv_main'];
+    if (courseId != null) parts.add('course:$courseId');
+    if (classId != null) parts.add('class:$classId');
+    if (assignmentId != null) parts.add('assignment:$assignmentId');
+    if (announcementId != null) parts.add('announcement:$announcementId');
+    return parts.join(':');
+  }
+
+  /// 从路由 extra(Map) 构造。
+  factory CounselorContext.fromExtra(Object? extra) {
+    if (extra is! Map) return const CounselorContext();
+    final map = Map<String, dynamic>.from(extra);
+    return CounselorContext(
+      courseId: map['course_id'] as String?,
+      classId: map['class_id'] as String?,
+      assignmentId: map['assignment_id'] as String?,
+      announcementId: map['announcement_id'] as String?,
+      contextLabel: map['context_title'] as String?,
+    );
+  }
+
+  @override
+  List<Object?> get props =>
+      [courseId, classId, assignmentId, announcementId, contextLabel];
+}

@@ -38,6 +38,11 @@ class ChatRequest(BaseModel):
         description="最近待办(JSON 对象列表)，用于个性化提示",
     )
     stream: bool = Field(True, description="是否使用 SSE 流式响应")
+    # 多角色上下文(可选): 后端会校验当前用户是否有权访问这些资源
+    course_id: Optional[str] = Field(None, description="课程 ID(需有权限)")
+    class_id: Optional[str] = Field(None, description="班级 ID(需有权限)")
+    assignment_id: Optional[str] = Field(None, description="任务 ID(需有权限)")
+    announcement_id: Optional[str] = Field(None, description="通知 ID(需有权限)")
 
 
 class ChatFinalMeta(BaseModel):

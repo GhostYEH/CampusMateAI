@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(title);
-CREATE INDEX IF NOT EXISTS idx_documents_is_demo ON documents(is_demo);
+-- idx_documents_is_demo 在 _migrate() 中创建:旧库可能缺 is_demo 列,
+-- 在 ALTER TABLE 之前创建索引会触发 "no such column: is_demo"。
 
 CREATE TABLE IF NOT EXISTS chunks (
     chunk_id TEXT PRIMARY KEY,
@@ -70,6 +71,175 @@ CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+"""
+
+
+# 多角色协同平台 schema —— 教师/课程/班级/学生/任务/提交。
+# 所有新表均使用 IF NOT EXISTS，保证幂等。
+# 不破坏既有 documents/chunks/conversations/app_meta 表。
+MULTI_ROLE_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'student',
+    display_name TEXT,
+    student_number TEXT,
+    teacher_number TEXT,
+    college TEXT,
+    major TEXT,
+    grade TEXT,
+    avatar_url TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_student_number ON users(student_number);
+CREATE INDEX IF NOT EXISTS idx_users_teacher_number ON users(teacher_number);
+-- SQLite 支持部分唯一索引(NULL 不参与唯一约束)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_number_unique
+    ON users(student_number) WHERE student_number IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_teacher_number_unique
+    ON users(teacher_number) WHERE teacher_number IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    revoked INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+
+CREATE TABLE IF NOT EXISTS courses (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT,
+    semester TEXT,
+    description TEXT,
+    teacher_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
+
+CREATE TABLE IF NOT EXISTS class_groups (
+    id TEXT PRIMARY KEY,
+    course_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    class_code TEXT,
+    invite_code TEXT NOT NULL UNIQUE,
+    description TEXT,
+    capacity INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_class_groups_course_id ON class_groups(course_id);
+
+CREATE TABLE IF NOT EXISTS enrollments (
+    id TEXT PRIMARY KEY,
+    class_group_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    member_role TEXT NOT NULL DEFAULT 'student',
+    status TEXT NOT NULL DEFAULT 'active',
+    joined_at TEXT NOT NULL,
+    UNIQUE(class_group_id, user_id),
+    FOREIGN KEY(class_group_id) REFERENCES class_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_enrollments_class_group_id ON enrollments(class_group_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_user_id ON enrollments(user_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id TEXT PRIMARY KEY,
+    class_group_id TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    require_read INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft',
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(class_group_id) REFERENCES class_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_announcements_class_group_id ON announcements(class_group_id);
+CREATE INDEX IF NOT EXISTS idx_announcements_status ON announcements(status);
+CREATE INDEX IF NOT EXISTS idx_announcements_published_at ON announcements(published_at);
+
+CREATE TABLE IF NOT EXISTS announcement_read_receipts (
+    announcement_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (announcement_id, student_id),
+    FOREIGN KEY(announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+    FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_read_receipts_announcement_id ON announcement_read_receipts(announcement_id);
+CREATE INDEX IF NOT EXISTS idx_read_receipts_student_id ON announcement_read_receipts(student_id);
+
+CREATE TABLE IF NOT EXISTS assignments (
+    id TEXT PRIMARY KEY,
+    class_group_id TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    deadline TEXT,
+    submission_types TEXT,
+    max_score REAL,
+    allow_resubmit INTEGER DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'draft',
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(class_group_id) REFERENCES class_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_assignments_class_group_id ON assignments(class_group_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status);
+CREATE INDEX IF NOT EXISTS idx_assignments_deadline ON assignments(deadline);
+
+CREATE TABLE IF NOT EXISTS submissions (
+    id TEXT PRIMARY KEY,
+    assignment_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    text_content TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    submitted_at TEXT,
+    updated_at TEXT NOT NULL,
+    score REAL,
+    teacher_comment TEXT,
+    UNIQUE(assignment_id, student_id),
+    FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_submissions_assignment_id ON submissions(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_student_id ON submissions(student_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
+
+CREATE TABLE IF NOT EXISTS submission_attachments (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    mime_type TEXT,
+    size_bytes INTEGER,
+    storage_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(submission_id) REFERENCES submissions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_submission_attachments_submission_id ON submission_attachments(submission_id);
 """
 
 
@@ -118,6 +288,7 @@ class Database:
             conn = self._connect()
             try:
                 conn.executescript(SCHEMA_SQL)
+                conn.executescript(MULTI_ROLE_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
@@ -138,6 +309,7 @@ class Database:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_is_demo ON documents(is_demo)"
         )
+        # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -162,6 +334,31 @@ class Database:
                 yield conn
             finally:
                 self._release(conn)
+
+    def dispose(self) -> None:
+        """释放底层连接(主要用于测试清理)。
+
+        - 内存模式: 关闭共享连接。
+        - 文件模式: 执行 WAL checkpoint(TRUNCATE) 以便释放 -wal/-shm 文件锁,
+          让外部 cleanup(如 TemporaryDirectory) 能在 Windows 上删除 db 文件。
+        """
+        with self._lock:
+            if self._is_memory:
+                if self._shared_conn is not None:
+                    try:
+                        self._shared_conn.close()
+                    finally:
+                        self._shared_conn = None
+                return
+            # 文件模式: 短连接做 checkpoint
+            try:
+                conn = sqlite3.connect(self._db_path, timeout=30.0)
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.commit()
+                conn.close()
+            except Exception:
+                # 测试清理不应因 checkpoint 失败而中断
+                pass
 
 
 _db_instance: Database | None = None

@@ -1,11 +1,15 @@
 import 'package:equatable/equatable.dart';
 
 /// 应用设置(可持久化)。
+///
+/// 正式参赛版本约束(遵循 AGENTS.md §2):
+/// - 不再保留 `demoMode` 字段 — 演示模式入口已从正式产品中移除。
+/// - Mock 实现仅供开发与测试使用,通过测试依赖注入控制,
+///   不在普通用户设置中暴露。
 class AppSettings extends Equatable {
   const AppSettings({
     this.darkMode = false,
     this.reduceMotion = false,
-    this.demoMode = false,
     this.notificationSourcesEnabled = true,
     this.reminderEnabled = true,
     this.reminderLeadMinutes = 60,
@@ -21,7 +25,6 @@ class AppSettings extends Equatable {
 
   final bool darkMode; // 深色模式
   final bool reduceMotion; // 减少动态效果
-  final bool demoMode; // 比赛演示模式
   final bool notificationSourcesEnabled; // 通知来源开关
   final bool reminderEnabled; // 提醒开关
   final int reminderLeadMinutes; // 提前提醒分钟数
@@ -37,7 +40,6 @@ class AppSettings extends Equatable {
   AppSettings copyWith({
     bool? darkMode,
     bool? reduceMotion,
-    bool? demoMode,
     bool? notificationSourcesEnabled,
     bool? reminderEnabled,
     int? reminderLeadMinutes,
@@ -53,7 +55,6 @@ class AppSettings extends Equatable {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
       reduceMotion: reduceMotion ?? this.reduceMotion,
-      demoMode: demoMode ?? this.demoMode,
       notificationSourcesEnabled:
           notificationSourcesEnabled ?? this.notificationSourcesEnabled,
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
@@ -79,7 +80,6 @@ class AppSettings extends Equatable {
   Map<String, dynamic> toJson() => {
         'darkMode': darkMode,
         'reduceMotion': reduceMotion,
-        'demoMode': demoMode,
         'notificationSourcesEnabled': notificationSourcesEnabled,
         'reminderEnabled': reminderEnabled,
         'reminderLeadMinutes': reminderLeadMinutes,
@@ -96,7 +96,6 @@ class AppSettings extends Equatable {
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
         darkMode: json['darkMode'] as bool? ?? false,
         reduceMotion: json['reduceMotion'] as bool? ?? false,
-        demoMode: json['demoMode'] as bool? ?? false,
         notificationSourcesEnabled:
             json['notificationSourcesEnabled'] as bool? ?? true,
         reminderEnabled: json['reminderEnabled'] as bool? ?? true,
@@ -121,7 +120,6 @@ class AppSettings extends Equatable {
   List<Object?> get props => [
         darkMode,
         reduceMotion,
-        demoMode,
         notificationSourcesEnabled,
         reminderEnabled,
         reminderLeadMinutes,

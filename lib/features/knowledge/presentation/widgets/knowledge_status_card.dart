@@ -16,11 +16,9 @@ class KnowledgeStatusCard extends StatelessWidget {
   const KnowledgeStatusCard({
     super.key,
     required this.status,
-    required this.isMockMode,
   });
 
   final KnowledgeStatusInfo status;
-  final bool isMockMode;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +37,7 @@ class KnowledgeStatusCard extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  isMockMode ? '演示模式知识库' : status.knowledgeBaseType.displayName,
+                  status.knowledgeBaseType.displayName,
                   style: AppTypography.subtitle,
                 ),
               ),

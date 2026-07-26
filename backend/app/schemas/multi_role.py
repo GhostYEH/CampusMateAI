@@ -1,0 +1,428 @@
+"""多角色协同平台请求/响应 schema (Pydantic v2)。
+
+涵盖: 认证、用户、课程、班级、选课、通知、任务、提交、附件、工作台、分页。
+所有时间字段以 ISO 8601 字符串(带时区)表示。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ===== 分页通用 =====
+
+
+class PageMeta(BaseModel):
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
+    has_more: bool = False
+
+
+class Page(BaseModel):
+    """统一分页响应。"""
+    items: List[Any] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
+    has_more: bool = False
+
+    @classmethod
+    def from_rows(
+        cls,
+        items: List[Any],
+        *,
+        total: int,
+        page: int,
+        page_size: int,
+    ) -> "Page":
+        return cls(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            has_more=(page * page_size) < total,
+        )
+
+
+# ===== 认证 =====
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=1)
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "Bearer"
+    expires_in: int = Field(..., description="access token 有效期(秒)")
+
+
+class UserPublic(BaseModel):
+    id: str
+    username: str
+    role: str
+    display_name: Optional[str] = None
+    student_number: Optional[str] = None
+    teacher_number: Optional[str] = None
+    college: Optional[str] = None
+    major: Optional[str] = None
+    grade: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_active: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class UserCreate(BaseModel):
+    """管理员创建用户请求(仅 admin 角色可调用)。
+
+    约束:
+    - username: 3-64 字符,仅字母/数字/下划线
+    - password: 8-128 字符(由后端 PBKDF2 哈希后存储,不入日志)
+    - role: student / teacher / admin
+    - 学号/工号二选一,与角色一致(student→student_number,teacher→teacher_number)
+    """
+
+    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+    role: str = Field(..., pattern="^(student|teacher|admin)$")
+    display_name: Optional[str] = Field(None, max_length=128)
+    student_number: Optional[str] = Field(None, max_length=32)
+    teacher_number: Optional[str] = Field(None, max_length=32)
+    college: Optional[str] = Field(None, max_length=64)
+    major: Optional[str] = Field(None, max_length=64)
+    grade: Optional[str] = Field(None, max_length=32)
+
+
+class AuthMeResponse(BaseModel):
+    user: UserPublic
+    access_token: Optional[str] = None
+    expires_in: Optional[int] = None
+
+
+# ===== 课程 =====
+
+
+class CourseCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    code: Optional[str] = Field(None, max_length=64)
+    semester: Optional[str] = Field(None, max_length=32)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: str = Field("draft", pattern="^(draft|active|archived)$")
+
+
+class CourseUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    code: Optional[str] = Field(None, max_length=64)
+    semester: Optional[str] = Field(None, max_length=32)
+    description: Optional[str] = Field(None, max_length=2000)
+    status: Optional[str] = Field(None, pattern="^(draft|active|archived)$")
+
+
+class CourseOut(BaseModel):
+    id: str
+    name: str
+    code: Optional[str] = None
+    semester: Optional[str] = None
+    description: Optional[str] = None
+    teacher_id: str
+    teacher_name: Optional[str] = None
+    status: str
+    created_at: str
+    updated_at: str
+
+
+# ===== 班级 =====
+
+
+class ClassCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    class_code: Optional[str] = Field(None, max_length=64)
+    description: Optional[str] = Field(None, max_length=2000)
+    capacity: Optional[int] = Field(None, ge=1, le=1000)
+
+
+class ClassUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=128)
+    class_code: Optional[str] = Field(None, max_length=64)
+    description: Optional[str] = Field(None, max_length=2000)
+    capacity: Optional[int] = Field(None, ge=1, le=1000)
+
+
+class ClassOut(BaseModel):
+    id: str
+    course_id: str
+    name: str
+    class_code: Optional[str] = None
+    invite_code: str
+    description: Optional[str] = None
+    capacity: Optional[int] = None
+    created_at: str
+    updated_at: str
+
+
+class ClassJoinRequest(BaseModel):
+    invite_code: str = Field(..., min_length=1, max_length=32)
+
+
+class ClassMemberOut(BaseModel):
+    user_id: str
+    username: str
+    display_name: Optional[str] = None
+    student_number: Optional[str] = None
+    teacher_number: Optional[str] = None
+    college: Optional[str] = None
+    major: Optional[str] = None
+    grade: Optional[str] = None
+    avatar_url: Optional[str] = None
+    role: str
+    enrollment_id: str
+    member_role: str
+    status: str
+    joined_at: str
+
+
+# ===== 通知 =====
+
+
+class AnnouncementCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=20000)
+    require_read: bool = False
+    status: str = Field("draft", pattern="^(draft|published|archived)$")
+
+
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    content: Optional[str] = Field(None, min_length=1, max_length=20000)
+    require_read: Optional[bool] = None
+    status: Optional[str] = Field(None, pattern="^(draft|published|archived)$")
+
+
+class AnnouncementOut(BaseModel):
+    id: str
+    class_group_id: str
+    author_id: str
+    author_name: Optional[str] = None
+    title: str
+    content: str
+    require_read: bool
+    status: str
+    published_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+    has_read: Optional[bool] = Field(None, description="当前学生视角是否已读(教师/管理员为 null)")
+
+
+class ReadReceiptOut(BaseModel):
+    user_id: str
+    username: str
+    display_name: Optional[str] = None
+    student_number: Optional[str] = None
+    read_at: str
+
+
+class ReadStatusOut(BaseModel):
+    announcement_id: str
+    total_recipients: int
+    read_count: int
+    unread_count: int
+    receipts: List[ReadReceiptOut] = Field(default_factory=list)
+
+
+# ===== 任务 =====
+
+
+class AssignmentCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=20000)
+    deadline: Optional[str] = Field(None, description="ISO 8601 带时区")
+    submission_types: List[str] = Field(default_factory=list, max_length=10)
+    max_score: Optional[float] = Field(None, ge=0, le=1000)
+    allow_resubmit: bool = True
+    status: str = Field("draft", pattern="^(draft|published|closed|archived)$")
+
+
+class AssignmentUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=20000)
+    deadline: Optional[str] = None
+    submission_types: Optional[List[str]] = Field(None, max_length=10)
+    max_score: Optional[float] = Field(None, ge=0, le=1000)
+    allow_resubmit: Optional[bool] = None
+    status: Optional[str] = Field(None, pattern="^(draft|published|closed|archived)$")
+
+
+class AssignmentOut(BaseModel):
+    id: str
+    class_group_id: str
+    author_id: str
+    author_name: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    deadline: Optional[str] = None
+    submission_types: List[str] = Field(default_factory=list)
+    max_score: Optional[float] = None
+    allow_resubmit: bool
+    status: str
+    published_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class AssignmentStatsOut(BaseModel):
+    assignment_id: str
+    total_students: int
+    submitted: int
+    not_submitted: int
+    draft: int
+    late: int
+    graded: int
+    pending_grading: int
+    avg_score: Optional[float] = None
+
+
+class StudentStatusItem(BaseModel):
+    student_id: str
+    student_name: str
+    student_number: Optional[str] = None
+    submission_id: Optional[str] = None
+    submission_status: str
+    submitted_at: Optional[str] = None
+    is_late: bool
+    score: Optional[float] = None
+    teacher_comment: Optional[str] = None
+    read_status: str
+    read_at: Optional[str] = None
+
+
+# ===== 提交 =====
+
+
+class SubmissionCreate(BaseModel):
+    text_content: Optional[str] = Field(None, max_length=50000)
+    submit: bool = False  # True=直接提交,False=保存草稿
+
+
+class SubmissionUpdate(BaseModel):
+    text_content: Optional[str] = Field(None, max_length=50000)
+
+
+class SubmissionGrade(BaseModel):
+    score: Optional[float] = Field(None, ge=0, le=1000)
+    teacher_comment: Optional[str] = Field(None, max_length=5000)
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    submission_id: str
+    original_filename: str
+    stored_filename: str
+    mime_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    created_at: str
+
+
+class SubmissionOut(BaseModel):
+    id: str
+    assignment_id: str
+    student_id: str
+    student_name: Optional[str] = None
+    student_number: Optional[str] = None
+    college: Optional[str] = None
+    major: Optional[str] = None
+    grade: Optional[str] = None
+    text_content: Optional[str] = None
+    status: str
+    submitted_at: Optional[str] = None
+    updated_at: str
+    score: Optional[float] = None
+    teacher_comment: Optional[str] = None
+    attachments: List[AttachmentOut] = Field(default_factory=list)
+
+
+# ===== 工作台 =====
+
+
+class TeacherDashboard(BaseModel):
+    course_count: int
+    class_count: int
+    student_count: int
+    active_assignment_count: int
+    pending_submission_count: int
+    unread_announcement_count: int
+    overdue_student_count: int
+    recent_assignments: List[dict] = Field(default_factory=list)
+    recent_activity: List[dict] = Field(default_factory=list)
+
+
+class StudentDashboard(BaseModel):
+    enrolled_course_count: int
+    unread_announcement_count: int
+    pending_assignment_count: int
+    overdue_assignment_count: int
+    due_soon_assignments: List[dict] = Field(default_factory=list)
+    recent_announcements: List[dict] = Field(default_factory=list)
+
+
+# ===== AI 上下文 =====
+
+
+class CounselorContext(BaseModel):
+    """AI 导员请求的可选教学上下文(权限校验由后端执行)。"""
+    course_id: Optional[str] = None
+    class_id: Optional[str] = None
+    assignment_id: Optional[str] = None
+    announcement_id: Optional[str] = None
+
+
+__all__ = [
+    "PageMeta",
+    "Page",
+    "LoginRequest",
+    "RefreshRequest",
+    "LogoutRequest",
+    "TokenPair",
+    "UserPublic",
+    "UserCreate",
+    "AuthMeResponse",
+    "CourseCreate",
+    "CourseUpdate",
+    "CourseOut",
+    "ClassCreate",
+    "ClassUpdate",
+    "ClassOut",
+    "ClassJoinRequest",
+    "ClassMemberOut",
+    "AnnouncementCreate",
+    "AnnouncementUpdate",
+    "AnnouncementOut",
+    "ReadReceiptOut",
+    "ReadStatusOut",
+    "AssignmentCreate",
+    "AssignmentUpdate",
+    "AssignmentOut",
+    "AssignmentStatsOut",
+    "StudentStatusItem",
+    "SubmissionCreate",
+    "SubmissionUpdate",
+    "SubmissionGrade",
+    "AttachmentOut",
+    "SubmissionOut",
+    "TeacherDashboard",
+    "StudentDashboard",
+    "CounselorContext",
+]

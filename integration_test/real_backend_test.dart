@@ -118,7 +118,6 @@ void main() {
             environment: AppEnvironment.production,
             useMockBackend: false,
             useMockExpressionRecognition: true,
-            enableDemoMode: false,
             apiBaseUrl: _apiBaseUrl,
           ),
         ),

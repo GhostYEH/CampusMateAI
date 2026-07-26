@@ -76,14 +76,6 @@ class DeleteResponse(BaseModel):
     document_id: str
 
 
-class RestoreDemoResponse(BaseModel):
-    """恢复演示资料响应。"""
-    success: bool
-    restored_count: int
-    total_demo_count: int
-    message: str
-
-
 class DataManagementResponse(BaseModel):
     """数据清理操作响应。"""
     success: bool
@@ -98,6 +90,5 @@ __all__ = [
     "KnowledgeStatus",
     "RebuildResponse",
     "DeleteResponse",
-    "RestoreDemoResponse",
     "DataManagementResponse",
 ]
