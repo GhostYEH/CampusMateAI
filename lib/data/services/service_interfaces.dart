@@ -338,70 +338,168 @@ abstract interface class AnalyticsService {
   Future<void> setUserId(String? userId);
 }
 
-/// 本地提醒服务抽象 — 调度系统级定时通知。
+/// 本地提醒服务抽象 — 调度系统级精确提醒(Android 优先)。
 ///
-/// 抽象目的:
-/// - 让 UI / Notifier 不直接依赖 `flutter_local_notifications` 插件
-/// - 单元测试时可注入 [FakeNotificationReminderService]
-/// - Web 平台降级为应用内提醒(不调度系统通知)
+/// 设计目标(对齐 AGENTS.md "Android 精确提醒完整闭环"):
+/// - Android 使用 `AndroidScheduleMode.exactAllowWhileIdle`,**不**静默降级为 inexact
+/// - 仅声明 `SCHEDULE_EXACT_ALARM`,不声明 `USE_EXACT_ALARM`
+/// - 调度前必须检查: 通知权限 / canScheduleExactAlarms / 时间在未来 / 任务未完成
+/// - 精确权限被拒绝时: 返回明确失败,不显示"提醒已设置",提供打开系统设置入口
+/// - 重启 / 应用更新 / 权限重授后: 通过 [restoreReminders] 按持久化状态恢复,**去重**
+/// - 提醒 ID 由 `taskId + offsetMinutes` 稳定生成(FNV-1a),不依赖 Dart hashCode
+/// - Web 平台: 返回 [ReminderCapabilityStatus.degraded],不调用 Android 插件 API
 ///
 /// 实现类:
 /// - [LocalNotificationReminderService]: Android/iOS 真实调度
 /// - [FakeNotificationReminderService]: 测试用,记录所有调用
-/// - Web 端降级实现: 仅维护状态,不调度系统通知
 abstract interface class NotificationReminderService {
-  /// 请求通知权限。返回是否获得授权。
-  /// 已授权时不应重复弹出系统弹窗(由实现负责)。
+  /// 请求通知显示权限(Android 13+ POST_NOTIFICATIONS / iOS alert+badge+sound)。
+  ///
+  /// - 已授权时不重复弹窗
+  /// - 已拒绝时不自动重新请求(由 UI 引导用户去系统设置)
+  /// - 同时请求 Android 12+ 的精确提醒权限(SCHEDULE_EXACT_ALARM)
+  ///
+  /// 返回是否获得**通知显示**权限。精确提醒权限需另行通过 [canScheduleExactAlarms] 检查。
   Future<bool> requestPermission();
 
-  /// 调度一条任务提醒。
+  /// 刷新权限状态缓存(不弹窗)。
   ///
-  /// [taskId] 任务 ID(用于取消/更新)
-  /// [title] 通知标题
-  /// [body] 通知正文
-  /// [scheduledAt] 触发时间(本地时区)
+  /// 用户从系统设置返回应用后,UI 应主动调用此方法同步状态。
+  Future<void> refreshPermissionStatus();
+
+  /// 当前通知显示权限状态(不弹窗,基于缓存)。
+  ReminderPermissionStatus permissionStatus();
+
+  /// 当前平台是否可调度精确提醒(Android 12+ `SCHEDULE_EXACT_ALARM` 已授予)。
   ///
-  /// 返回是否成功调度(权限未授予或时间已过返回 false)。
-  Future<bool> scheduleReminder({
+  /// - Android: 调用 `AndroidFlutterLocalNotificationsPlugin.canScheduleExactNotifications()`
+  /// - iOS / Web: 返回 true(iOS 无此概念) / false(Web 不支持后台调度)
+  Future<bool> canScheduleExactAlarms();
+
+  /// 打开系统"闹钟和提醒"设置页(Android 12+,对应 SCHEDULE_EXACT_ALARM)。
+  ///
+  /// iOS / Web 上为 no-op(可由 UI 层判断 capability 后决定是否显示按钮)。
+  Future<void> openExactAlarmSettings();
+
+  /// 打开应用通知设置页(用于通知权限被拒绝时引导用户)。
+  Future<void> openNotificationSettings();
+
+  /// 调度一条精确提醒。
+  ///
+  /// 调度前检查(任一失败则返回对应 [ReminderScheduleFailure],**不**静默降级):
+  /// 1. 通知权限已授予(否则尝试请求一次,仍失败则返回 `notificationPermissionDenied`)
+  /// 2. Android 上 [canScheduleExactAlarms] 为 true(否则返回 `exactAlarmPermissionDenied`)
+  /// 3. [scheduledAt] 在未来(否则返回 `pastTime`)
+  /// 4. 插件调用未抛异常(否则返回 `pluginException`)
+  /// 5. Web 平台直接返回 `unsupportedPlatform`
+  ///
+  /// [offsetMinutes] 提醒相对截止时间的提前分钟数(0 表示按 [scheduledAt] 精确触发)。
+  /// 与 [taskId] 一起决定稳定的通知 ID,同一组合重复调度时覆盖旧提醒。
+  Future<ReminderScheduleResult> scheduleReminder({
     required String taskId,
+    required int offsetMinutes,
     required String title,
     required String body,
     required DateTime scheduledAt,
   });
 
-  /// 取消指定任务的提醒。
-  Future<void> cancelReminder(String taskId);
+  /// 取消指定任务在指定偏移上的提醒。
+  Future<void> cancelReminder(String taskId, int offsetMinutes);
 
-  /// 更新指定任务的提醒(等同于 cancel + schedule)。
-  Future<bool> updateReminder({
-    required String taskId,
-    required String title,
-    required String body,
-    required DateTime scheduledAt,
-  });
-
-  /// 取消指定任务的所有提醒(支持单任务多提醒时)。
+  /// 取消指定任务的所有提醒(支持单任务多偏移)。
   Future<void> cancelAllForTask(String taskId);
+
+  /// 更新指定任务在指定偏移上的提醒(等同于 cancel + schedule,但保留同一通知 ID)。
+  Future<ReminderScheduleResult> updateReminder({
+    required String taskId,
+    required int offsetMinutes,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+  });
+
+  /// 应用启动 / 设备重启 / 权限重授后,根据已持久化且未完成的任务恢复精确提醒。
+  ///
+  /// - 已过期 / 已完成 / 已删除的任务不恢复
+  /// - 同一 (taskId, offsetMinutes) 已存在的不重复调度
+  /// - 返回实际(重新)调度的提醒数量
+  Future<int> restoreReminders(List<ReminderEntry> entries);
 
   /// 当前平台能力状态。
   ///
-  /// - [ReminderCapabilityStatus.supported]: 平台支持系统级定时通知
-  /// - [ReminderCapabilityStatus.degraded]: 平台不支持后台调度(如 Web),仅应用内提醒
+  /// - [ReminderCapabilityStatus.supported]: 平台支持系统级精确提醒(Android/iOS)
+  /// - [ReminderCapabilityStatus.degraded]: 平台不支持后台调度(Web),仅应用内提醒
   /// - [ReminderCapabilityStatus.unknown]: 尚未检测
   ReminderCapabilityStatus capabilityStatus();
+}
 
-  /// 当前权限状态(不触发系统弹窗)。
-  ///
-  /// - [ReminderPermissionStatus.granted]: 已授权
-  /// - [ReminderPermissionStatus.denied]: 已拒绝
-  /// - [ReminderPermissionStatus.notDetermined]: 未询问
-  /// - [ReminderCapabilityStatus.unknown]: 平台不支持
-  ReminderPermissionStatus permissionStatus();
+/// 提醒调度结果。
+class ReminderScheduleResult {
+  const ReminderScheduleResult({
+    required this.success,
+    required this.notificationId,
+    required this.failure,
+  });
+
+  /// 成功结果。
+  const ReminderScheduleResult.success(this.notificationId)
+      : success = true,
+        failure = null;
+
+  /// 失败结果。
+  const ReminderScheduleResult.failed(this.failure)
+      : success = false,
+        notificationId = null;
+
+  final bool success;
+  final int? notificationId;
+  final ReminderScheduleFailure? failure;
+
+  bool get isFailure => !success;
+}
+
+/// 提醒调度失败原因。
+enum ReminderScheduleFailure {
+  /// 平台不支持后台精确调度(Web)
+  unsupportedPlatform,
+
+  /// 通知显示权限未授予
+  notificationPermissionDenied,
+
+  /// 精确提醒权限(SCHEDULE_EXACT_ALARM)未授予
+  exactAlarmPermissionDenied,
+
+  /// 提醒时间不在未来
+  pastTime,
+
+  /// 插件调用抛异常(不虚报成功)
+  pluginException,
+}
+
+/// 持久化的提醒条目 — 用于 [NotificationReminderService.restoreReminders]。
+class ReminderEntry {
+  const ReminderEntry({
+    required this.taskId,
+    required this.offsetMinutes,
+    required this.title,
+    required this.body,
+    required this.scheduledAt,
+    required this.taskCompleted,
+    required this.taskDeleted,
+  });
+
+  final String taskId;
+  final int offsetMinutes;
+  final String title;
+  final String body;
+  final DateTime scheduledAt;
+  final bool taskCompleted;
+  final bool taskDeleted;
 }
 
 /// 提醒能力状态。
 enum ReminderCapabilityStatus {
-  /// 平台支持系统级定时通知(Android/iOS)
+  /// 平台支持系统级精确提醒(Android/iOS)
   supported,
 
   /// 平台不支持后台调度(Web),仅应用内提醒
@@ -424,4 +522,41 @@ enum ReminderPermissionStatus {
 
   /// 平台不支持
   unsupported,
+}
+
+/// 提醒能力与权限的快照(供 UI 监听)。
+class ReminderStatusSnapshot {
+  const ReminderStatusSnapshot({
+    required this.capability,
+    required this.permission,
+    required this.canScheduleExactAlarms,
+  });
+
+  final ReminderCapabilityStatus capability;
+  final ReminderPermissionStatus permission;
+  final bool canScheduleExactAlarms;
+
+  /// 当前是否可以真正调度系统精确提醒(综合判断)。
+  bool get canSchedule =>
+      capability == ReminderCapabilityStatus.supported &&
+      permission == ReminderPermissionStatus.granted &&
+      canScheduleExactAlarms;
+}
+
+/// 提醒 ID 生成工具 — 跨进程稳定,基于 FNV-1a 哈希。
+///
+/// 不使用 Dart 默认 `hashCode`(不同进程 / 不同 VM 实例结果可能不同),
+/// 改用确定性的 FNV-1a 32-bit 哈希,对 `taskId + ':' + offsetMinutes` 计算,
+/// 折叠到 16-bit 空间(0..65535)避免与系统其他通知冲突。
+int notificationIdFor(String taskId, int offsetMinutes) {
+  final key = '$taskId:$offsetMinutes';
+  // FNV-1a 32-bit
+  var hash = 0x811C9DC5;
+  for (final c in key.codeUnits) {
+    hash ^= c;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  // 折叠到 16-bit 空间并避开 0(系统保留)
+  final folded = (hash ^ (hash >> 16)) & 0xFFFF;
+  return folded == 0 ? 1 : folded;
 }
