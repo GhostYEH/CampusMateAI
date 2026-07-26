@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:campus_companion/app/app.dart';
-import 'package:campus_companion/app/config/app_config.dart';
 import 'package:campus_companion/app/providers/app_providers.dart';
 import 'package:campus_companion/core/storage/data_persistence_service.dart';
 import 'package:campus_companion/core/storage/local_storage.dart';
@@ -91,9 +90,11 @@ void main() {
         useMockBackend: false,
         useMockExpressionRecognition: false,
         enableDemoMode: false,
+        apiBaseUrl: 'http://test.local',
       );
       expect(config.isMockMode, isFalse);
       expect(config.environment, AppEnvironment.production);
+      expect(config.apiBaseUrl, 'http://test.local');
     });
   });
 

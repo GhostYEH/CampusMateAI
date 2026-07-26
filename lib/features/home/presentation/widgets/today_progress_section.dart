@@ -28,63 +28,118 @@ class TodayProgressSection extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.edge),
       child: AppCard(
-        padding: const EdgeInsets.all(18),
-        backgroundColor: AppColors.primary,
-        borderColor: AppColors.primary,
+        padding: EdgeInsets.zero,
+        backgroundColor: const Color(0xFF245A73),
+        borderColor: const Color(0xFF245A73),
         showBorder: false,
         shadow: AppShadows.elevated,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                AnimatedProgressRing(
-                  progress: progress,
-                  size: 64,
-                  strokeWidth: 6,
-                  color: AppColors.onPrimary,
-                  trackColor: AppColors.onPrimary.withValues(alpha: 0.2),
-                  showLabel: true,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '今日任务进度',
-                        style: AppTypography.label.copyWith(
-                          color: AppColors.onPrimary.withValues(alpha: 0.8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          child: Stack(
+            children: [
+              const Positioned(
+                right: -34,
+                top: -52,
+                child: _DecorativeOrb(size: 150, opacity: .07),
+              ),
+              const Positioned(
+                right: 70,
+                bottom: -58,
+                child: _DecorativeOrb(size: 116, opacity: .045),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '今日任务进度',
+                                style: AppTypography.overline.copyWith(
+                                  color: AppColors.onPrimary
+                                      .withValues(alpha: 0.68),
+                                  letterSpacing: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 7),
+                              Text(
+                                todayTaskCount == 0
+                                    ? '今天暂无截止任务'
+                                    : '今天有 $todayTaskCount 项截止',
+                                style: AppTypography.title.copyWith(
+                                  color: AppColors.onPrimary,
+                                  fontSize: 19,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        todayTaskCount == 0
-                            ? '今天暂无截止任务'
-                            : '今天有 $todayTaskCount 项截止',
-                        style: AppTypography.subtitle.copyWith(
-                          color: AppColors.onPrimary,
+                        AnimatedProgressRing(
+                          progress: progress,
+                          size: 66,
+                          strokeWidth: 6,
+                          color: const Color(0xFFFFC28E),
+                          trackColor:
+                              AppColors.onPrimary.withValues(alpha: 0.14),
+                          showLabel: true,
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      height: 1,
+                      color: AppColors.onPrimary.withValues(alpha: .13),
+                    ),
+                    const SizedBox(height: 14),
+                    if (nearest != null)
+                      _NearestTask(nearest: nearest!)
+                    else
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.event_available_rounded,
+                            size: 18,
+                            color: Color(0xFFFFC28E),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '近期没有截止任务',
+                            style: AppTypography.caption.copyWith(
+                              color:
+                                  AppColors.onPrimary.withValues(alpha: 0.82),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: Color(0x33FFFFFF), height: 1),
-            const SizedBox(height: 14),
-            if (nearest != null)
-              _NearestTask(nearest: nearest!)
-            else
-              Text(
-                '没有临近截止的任务,可以安排一些自主学习',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.onPrimary.withValues(alpha: 0.85),
+                  ],
                 ),
               ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _DecorativeOrb extends StatelessWidget {
+  const _DecorativeOrb({required this.size, required this.opacity});
+  final double size;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: opacity),
+        shape: BoxShape.circle,
       ),
     );
   }

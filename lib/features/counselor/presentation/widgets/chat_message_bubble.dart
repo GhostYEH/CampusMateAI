@@ -4,6 +4,8 @@ import '../../../../app/design_system/app_colors.dart';
 import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../data/models/chat.dart';
+import 'answer_meta_badge.dart';
+import 'counselor_markdown_body.dart';
 import 'source_reference_panel.dart';
 import 'suggested_action_chips.dart';
 import 'typing_indicator.dart';
@@ -23,6 +25,8 @@ class ChatMessageBubble extends StatelessWidget {
     required this.onRegenerate,
     required this.onStop,
     required this.onAction,
+    this.isRealBackend = false,
+    this.onAddToTasks,
   });
 
   final ChatMessage message;
@@ -31,6 +35,12 @@ class ChatMessageBubble extends StatelessWidget {
   final VoidCallback onRegenerate;
   final VoidCallback onStop;
   final void Function(SuggestedAction) onAction;
+
+  /// 是否为真实后端模式 — 影响来源区标题与字段展示。
+  final bool isRealBackend;
+
+  /// "根据回答创建待办"回调 — 由父组件注入,跳转到通知整理页人工确认。
+  final VoidCallback? onAddToTasks;
 
   bool get _isUser => message.sender == MessageSender.user;
   bool get _isStreaming => message.isStreaming;
@@ -66,8 +76,18 @@ class ChatMessageBubble extends StatelessWidget {
                   ),
                 ),
                 if (!isUser && !_isStreaming) ...[
+                  // 模式徽章 + 证据等级 + 创建待办按钮
+                  AnswerMetaBadge(
+                    message: message,
+                    onAddToTasks: onAddToTasks,
+                  ),
                   if (message.sources.isNotEmpty)
-                    SourceReferencePanel(sources: message.sources)
+                    SourceReferencePanel(
+                      sources: message.sources,
+                      isRealBackend: isRealBackend,
+                      hasConflict:
+                          message.evidenceLevel == EvidenceLevel.conflict,
+                    )
                   else if (!isFirst && message.content.isNotEmpty)
                     const NoSourcesHint(),
                   if (message.actions.isNotEmpty)
@@ -133,25 +153,37 @@ class ChatMessageBubble extends StatelessWidget {
         ],
       );
     }
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: content,
-            style: AppTypography.body.copyWith(
-              color: isUser ? AppColors.onPrimary : AppColors.textPrimary,
-            ),
-          ),
-          if (!isUser && _isStreaming)
-            WidgetSpan(
-              alignment: PlaceholderAlignment.baseline,
-              baseline: TextBaseline.alphabetic,
-              child: BlinkingCursor(
-                color: isUser ? AppColors.onPrimary : AppColors.primary,
+    // 用户消息: 永远使用纯文本
+    if (isUser) {
+      return Text(
+        content,
+        style: AppTypography.body.copyWith(color: AppColors.onPrimary),
+      );
+    }
+    // AI 流式输出中: 纯文本 + 闪烁光标(避免半截 Markdown 抖动)
+    if (_isStreaming) {
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: content,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textPrimary,
               ),
             ),
-        ],
-      ),
-    );
+            const WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: BlinkingCursor(color: AppColors.primary),
+            ),
+          ],
+        ),
+      );
+    }
+    // AI 输出完成: 切换为 Markdown 排版
+    if (content.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return CounselorMarkdownBody(content: content);
   }
 }

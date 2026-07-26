@@ -78,3 +78,7 @@ coverage/
 *.local
 .env
 .env.*
+
+# Generated / temporary artifacts
+tmp/
+**/verify_notice_output.txt

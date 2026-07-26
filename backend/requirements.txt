@@ -1,0 +1,29 @@
+# ===== Web 框架 =====
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# ===== 配置与校验 =====
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# ===== 中文处理与检索 =====
+jieba==0.42.1
+rank-bm25==0.2.2
+
+# ===== HTTP 客户端(调用 LLM) =====
+httpx==0.28.1
+
+# ===== 文档解析(可选,按需启用) =====
+# 仅支持 Markdown/TXT 时可注释掉下面两行
+PyPDF2==3.0.1
+python-docx==1.1.2
+
+# ===== 日志 =====
+loguru==0.7.3
+
+# ===== 测试 =====
+pytest==8.3.4
+pytest-asyncio==0.25.2
+anyio==4.7.0

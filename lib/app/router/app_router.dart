@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/home/presentation/home_page.dart';
+import '../../features/knowledge/presentation/knowledge_management_page.dart';
 import '../../features/tasks/presentation/tasks_page.dart';
 import '../../features/counselor/presentation/counselor_page.dart';
 import '../../features/study_companion/presentation/study_companion_page.dart';
@@ -74,7 +75,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/notifications/extract',
-        builder: (context, state) => const NotificationExtractPage(),
+        builder: (context, state) {
+          // 支持从 AI 导员"根据回答创建待办"跳转时预填文本
+          final extra = state.extra;
+          final prefilledText = extra is String ? extra : null;
+          return NotificationExtractPage(prefilledText: prefilledText);
+        },
+      ),
+      GoRoute(
+        path: '/knowledge',
+        builder: (context, state) => const KnowledgeManagementPage(),
       ),
     ],
   );
