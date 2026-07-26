@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/design_system/app_colors.dart';
 import '../../../../app/design_system/app_typography.dart';
+import '../../../../app/providers/app_providers.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../data/services/service_interfaces.dart';
+import 'reminder_permission_banner.dart';
 
 /// 截止提醒设置区(通知整理页内嵌使用)。
 ///
 /// 提供开关 + 建议提醒时间(截止前 2 小时 / 截止前 24 小时 / 自定义)。
 /// 当未设置截止时间时,提醒开关置灰并显示提示。
-class ReminderSection extends StatelessWidget {
+///
+/// **Android 精确提醒集成**(对齐 AGENTS.md "Android 精确提醒完整闭环"):
+/// - 监听 [reminderStatusProvider],当权限缺失时显示 [ReminderPermissionBanner]
+/// - **不**静默降级为非精确提醒
+/// - **不**显示"提醒已设置"当精确权限被拒绝时
+/// - Web 平台显示降级提示(Web 端仅提供应用内提醒,精确系统提醒请使用 Android)
+/// - 用户从系统设置返回应用后,自动重新检查权限([_LifecycleObserver])
+class ReminderSection extends ConsumerStatefulWidget {
   const ReminderSection({
     super.key,
     required this.enabled,
@@ -28,14 +39,93 @@ class ReminderSection extends StatelessWidget {
   final DateTime? deadline;
 
   /// 切换提醒开关。
+  ///
+  /// 当权限缺失时,本组件**不会**调用此回调(开关被阻止切换),
+  /// 而是显示 [ReminderPermissionBanner] 引导用户授权。
   final ValueChanged<bool> onToggle;
 
   /// 切换提前提醒时间。
   final ValueChanged<int> onLeadChanged;
 
   @override
+  ConsumerState<ReminderSection> createState() => _ReminderSectionState();
+}
+
+class _ReminderSectionState extends ConsumerState<ReminderSection>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    // 监听应用生命周期 — 用户从系统设置返回后重新检查权限
+    WidgetsBinding.instance.addObserver(this);
+    // 首次构建后异步刷新权限状态(可能已在 main 中初始化,但刷新一次确保最新)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(reminderStatusProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 用户从系统设置返回应用 — 主动刷新权限状态
+      ref.read(reminderStatusProvider.notifier).refresh();
+    }
+  }
+
+  /// 判断当前应显示哪种权限横幅(null 表示不显示)。
+  ReminderPermissionBannerType? _bannerType(
+    ReminderStatusSnapshot status,
+  ) {
+    if (status.capability == ReminderCapabilityStatus.degraded) {
+      return ReminderPermissionBannerType.webDegraded;
+    }
+    if (status.permission == ReminderPermissionStatus.denied) {
+      return ReminderPermissionBannerType.notificationDenied;
+    }
+    if (status.permission == ReminderPermissionStatus.granted &&
+        !status.canScheduleExactAlarms) {
+      return ReminderPermissionBannerType.exactAlarmDenied;
+    }
+    return null;
+  }
+
+  /// 切换提醒开关时,先检查权限。
+  /// 若权限缺失,**不**切换开关,而是显示横幅。
+  Future<void> _handleToggle(bool value) async {
+    if (!value) {
+      // 关闭提醒 — 直接执行,无需权限检查
+      widget.onToggle(false);
+      return;
+    }
+    // 开启提醒 — 检查权限
+    final status = ref.read(reminderStatusProvider);
+    final bannerType = _bannerType(status);
+    if (bannerType != null) {
+      // 权限缺失 — 不切换开关,显示横幅(横幅已由 build 显示)
+      // 若用户尚未被询问过权限(notDetermined),主动请求一次
+      if (status.permission == ReminderPermissionStatus.notDetermined) {
+        final service = ref.read(notificationReminderProvider);
+        await service.requestPermission();
+        await ref.read(reminderStatusProvider.notifier).refresh();
+      }
+      return;
+    }
+    widget.onToggle(true);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasDeadline = deadline != null;
+    final status = ref.watch(reminderStatusProvider);
+    final bannerType = _bannerType(status);
+    final hasDeadline = widget.deadline != null;
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,8 +142,9 @@ class ReminderSection extends StatelessWidget {
                 child: Text('截止提醒', style: AppTypography.subtitle),
               ),
               Switch(
-                value: enabled && hasDeadline,
-                onChanged: hasDeadline ? onToggle : null,
+                value: widget.enabled && hasDeadline,
+                // 当权限缺失时,开关仍可点击(触发 _handleToggle 引导授权)
+                onChanged: hasDeadline ? _handleToggle : null,
               ),
             ],
           ),
@@ -65,7 +156,7 @@ class ReminderSection extends StatelessWidget {
                 color: AppColors.textTertiary,
               ),
             ),
-          ] else if (enabled) ...[
+          ] else if (widget.enabled) ...[
             const SizedBox(height: 10),
             Text(
               '建议提醒时间',
@@ -80,13 +171,13 @@ class ReminderSection extends StatelessWidget {
               children: [
                 _PresetChip(
                   label: '截止前 2 小时',
-                  selected: leadMinutes == 120,
-                  onTap: () => onLeadChanged(120),
+                  selected: widget.leadMinutes == 120,
+                  onTap: () => widget.onLeadChanged(120),
                 ),
                 _PresetChip(
                   label: '截止前 24 小时',
-                  selected: leadMinutes == 1440,
-                  onTap: () => onLeadChanged(1440),
+                  selected: widget.leadMinutes == 1440,
+                  onTap: () => widget.onLeadChanged(1440),
                 ),
               ],
             ),
@@ -107,11 +198,19 @@ class ReminderSection extends StatelessWidget {
                 DropdownMenuItem(value: 2880, child: Text('提前 2 天')),
               ],
               onChanged: (v) {
-                if (v != null) onLeadChanged(v);
+                if (v != null) widget.onLeadChanged(v);
               },
             ),
             const SizedBox(height: 8),
-            _ReminderPreview(leadMinutes: leadMinutes, deadline: deadline!),
+            _ReminderPreview(
+              leadMinutes: widget.leadMinutes,
+              deadline: widget.deadline!,
+            ),
+          ],
+          // 权限缺失横幅 — 仅在权限缺失时显示
+          if (bannerType != null) ...[
+            const SizedBox(height: 10),
+            ReminderPermissionBanner(type: bannerType),
           ],
         ],
       ),
@@ -122,7 +221,7 @@ class ReminderSection extends StatelessWidget {
   /// 若 leadMinutes 不在预设列表中,回退到 120(2 小时)。
   int get _dropdownValue {
     const presets = {30, 60, 120, 360, 1440, 2880};
-    return presets.contains(leadMinutes) ? leadMinutes : 120;
+    return presets.contains(widget.leadMinutes) ? widget.leadMinutes : 120;
   }
 }
 
