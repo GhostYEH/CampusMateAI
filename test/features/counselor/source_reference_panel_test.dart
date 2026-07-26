@@ -44,11 +44,9 @@ void main() {
       'shows "知识库来源" title when isRealBackend=true',
       (tester) async {
         final sources = [makeSource(id: 's1', title: '学生手册')];
-        await tester.pumpWidget(
-          wrap(
-            SourceReferencePanel(sources: sources, isRealBackend: true),
-          ),
-        );
+        await tester.pumpWidget(wrap(
+          SourceReferencePanel(sources: sources, isRealBackend: true),
+        ),);
 
         expect(find.text('知识库来源'), findsOneWidget);
         expect(find.text('参考来源(模拟)'), findsNothing);
@@ -59,11 +57,9 @@ void main() {
       'shows "参考来源(模拟)" when isRealBackend=false (mock)',
       (tester) async {
         final sources = [makeSource(id: 's1', title: '学生手册')];
-        await tester.pumpWidget(
-          wrap(
-            SourceReferencePanel(sources: sources, isRealBackend: false),
-          ),
-        );
+        await tester.pumpWidget(wrap(
+          SourceReferencePanel(sources: sources, isRealBackend: false),
+        ),);
 
         expect(find.text('参考来源(模拟)'), findsOneWidget);
         expect(find.text('知识库来源'), findsNothing);
@@ -115,11 +111,9 @@ void main() {
           makeSource(id: 's1', title: '文件A'),
           makeSource(id: 's2', title: '文件B'),
         ];
-        await tester.pumpWidget(
-          wrap(
-            SourceReferencePanel(sources: sources, hasConflict: true),
-          ),
-        );
+        await tester.pumpWidget(wrap(
+          SourceReferencePanel(sources: sources, hasConflict: true),
+        ),);
 
         // 标题变为 "参考来源(模拟) · 资料冲突"
         expect(
@@ -151,11 +145,9 @@ void main() {
             publishedAt: DateTime(2024, 6, 1),
           ),
         ];
-        await tester.pumpWidget(
-          wrap(
-            SourceReferencePanel(sources: sources, hasConflict: true),
-          ),
-        );
+        await tester.pumpWidget(wrap(
+          SourceReferencePanel(sources: sources, hasConflict: true),
+        ),);
 
         // "较新官方" 徽章应出现(仅最新的官方来源被高亮)
         expect(find.text('较新官方'), findsOneWidget);
@@ -259,13 +251,11 @@ void main() {
     testWidgets(
       'shows correct mode label for AnswerMode.mockDemo',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(answerMode: AnswerMode.mockDemo),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(answerMode: AnswerMode.mockDemo),
           ),
-        );
+        ),);
 
         expect(find.text('Mock 演示模式'), findsOneWidget);
       },
@@ -274,13 +264,11 @@ void main() {
     testWidgets(
       'shows correct mode label for AnswerMode.userLlmRag',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(answerMode: AnswerMode.userLlmRag),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(answerMode: AnswerMode.userLlmRag),
           ),
-        );
+        ),);
 
         expect(find.text('用户知识库 · LLM RAG'), findsOneWidget);
       },
@@ -289,13 +277,11 @@ void main() {
     testWidgets(
       'shows correct mode label for AnswerMode.demoRetrievalSummary',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(answerMode: AnswerMode.demoRetrievalSummary),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(answerMode: AnswerMode.demoRetrievalSummary),
           ),
-        );
+        ),);
 
         expect(find.text('仿真知识库 · 检索摘要'), findsOneWidget);
       },
@@ -304,13 +290,11 @@ void main() {
     testWidgets(
       'shows correct mode label for AnswerMode.noKnowledge',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(answerMode: AnswerMode.noKnowledge),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(answerMode: AnswerMode.noKnowledge),
           ),
-        );
+        ),);
 
         expect(find.text('无知识库依据'), findsOneWidget);
       },
@@ -319,13 +303,11 @@ void main() {
     testWidgets(
       'shows evidence level label "依据较充分" for high',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(evidenceLevel: EvidenceLevel.high),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(evidenceLevel: EvidenceLevel.high),
           ),
-        );
+        ),);
 
         expect(find.text('依据较充分'), findsOneWidget);
       },
@@ -334,13 +316,11 @@ void main() {
     testWidgets(
       'shows evidence level label for medium',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(evidenceLevel: EvidenceLevel.medium),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(evidenceLevel: EvidenceLevel.medium),
           ),
-        );
+        ),);
 
         expect(find.text('依据有限,建议核对原文'), findsOneWidget);
       },
@@ -349,13 +329,11 @@ void main() {
     testWidgets(
       'shows evidence level label for conflict',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(evidenceLevel: EvidenceLevel.conflict),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(evidenceLevel: EvidenceLevel.conflict),
           ),
-        );
+        ),);
 
         expect(
           find.text('资料存在冲突,需要人工确认'),
@@ -365,15 +343,13 @@ void main() {
     );
 
     testWidgets('shows warnings when provided', (tester) async {
-      await tester.pumpWidget(
-        wrap(
-          AnswerMetaBadge(
-            message: makeMessage(
-              warnings: ['该资料已过期,仅作历史参考'],
-            ),
+      await tester.pumpWidget(wrap(
+        AnswerMetaBadge(
+          message: makeMessage(
+            warnings: ['该资料已过期,仅作历史参考'],
           ),
         ),
-      );
+      ),);
 
       expect(find.text('该资料已过期,仅作历史参考'), findsOneWidget);
     });
@@ -381,13 +357,11 @@ void main() {
     testWidgets(
       'is hidden when AnswerMode.unknown',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(answerMode: AnswerMode.unknown),
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(answerMode: AnswerMode.unknown),
           ),
-        );
+        ),);
 
         // 不应显示任何模式或证据文案
         expect(find.text('Mock 演示模式'), findsNothing);
@@ -399,14 +373,12 @@ void main() {
     testWidgets(
       'shows "根据回答创建待办" button when onAddToTasks provided',
       (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            AnswerMetaBadge(
-              message: makeMessage(),
-              onAddToTasks: () {},
-            ),
+        await tester.pumpWidget(wrap(
+          AnswerMetaBadge(
+            message: makeMessage(),
+            onAddToTasks: () {},
           ),
-        );
+        ),);
 
         expect(find.text('根据回答创建待办'), findsOneWidget);
       },
