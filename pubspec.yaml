@@ -5,7 +5,7 @@ version: 0.1.0+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
-  flutter: '>=3.22.0'
+  flutter: '>=3.24.0'
 
 dependencies:
   flutter:
@@ -25,6 +25,8 @@ dependencies:
   # 本地提醒
   flutter_local_notifications: ^17.2.1
   timezone: ^0.9.4
+  # 系统时区(IANA 名称)— DateTime.now().timeZoneName 不可靠,见 AGENTS.md 提醒规范
+  flutter_timezone: ^3.0.1
 
   # 摄像头(后续CNN接入预留)
   camera: ^0.11.0+1
