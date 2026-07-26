@@ -18,7 +18,8 @@ void main() {
   /// ReminderSection 现在是 ConsumerStatefulWidget,需要 ProviderScope。
   /// 注入 FakeNotificationReminderService 以避免依赖真实插件。
   Widget wrap(Widget child, {FakeNotificationReminderService? reminder}) {
-    final fake = reminder ?? FakeNotificationReminderService()..grantPermission();
+    final fake = reminder ?? FakeNotificationReminderService()
+      ..grantPermission();
     return ProviderScope(
       overrides: [
         notificationReminderProvider.overrideWith((ref) => fake),

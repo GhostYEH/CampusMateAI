@@ -145,16 +145,18 @@ void main() {
       setPhoneViewport(tester);
 
       // 使用带初始任务的仓库,验证 clearAll 生效
-      final repoWithTasks = MockTaskRepository(initial: [
-        Task(
-          id: 'test_task_1',
-          title: '测试任务',
-          category: TaskCategory.study,
-          priority: TaskPriority.high,
-          createdAt: DateTime.now(),
-          source: TaskSource.manual,
-        ),
-      ],);
+      final repoWithTasks = MockTaskRepository(
+        initial: [
+          Task(
+            id: 'test_task_1',
+            title: '测试任务',
+            category: TaskCategory.study,
+            priority: TaskPriority.high,
+            createdAt: DateTime.now(),
+            source: TaskSource.manual,
+          ),
+        ],
+      );
       // 前置断言:仓库非空
       expect(repoWithTasks.tasks, isNotEmpty);
 
