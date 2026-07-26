@@ -4,15 +4,15 @@
 
 > 数据快照(最近一次验证):
 >
-> - 后端测试:`pytest` — 89 passed
-> - Flutter 测试:`flutter test`(不含 `integration_test`)— 321 passed
+> - 后端测试:`pytest` — 112 passed
+> - Flutter 测试:`flutter test`(不含 `integration_test`)— 339 passed
 > - 集成测试:`integration_test/` 共 9 条
 >   - `app_flow_test.dart` 4 条,运行于 Android 模拟器
 >   - `real_backend_test.dart` 5 条,无后端时优雅跳过
 > - `flutter analyze` — No issues found
-> - `dart format lib test` — 120 files formatted, 3 changed
-> - `evaluate_retrieval.py` — Hit@1=70%, Hit@3=75%, MRR=0.7250, 正确拒答率=100%, 错误接受率=0%, 平均检索耗时=0.08ms(fixtures expected_titles 已与实际演示文档标题对齐;剩余 5 条失败为 BM25 在短查询/同义表达上的真实质量缺口,详见 [`retrieval_evaluation.md`](retrieval_evaluation.md))
-> - `check_llm_provider.py` — LLM 已配置(`LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL=https://spark-api-open.xf-yun.com/v1`, `LLM_MODEL=lite`),连接 OK,响应耗时 856ms
+> - `dart format lib test integration_test` — 121 files formatted, 0 changed(统一收尾已修复 3 个 `require_trailing_commas` 问题)
+> - `evaluate_retrieval.py` — Hit@1=93.75%, Hit@3=100%, MRR=0.9635, 正确拒答率=100%, 错误接受率=0%, 平均检索耗时=0.12ms(44 条 fixtures,0 失败;基线对照与改进措施详见 [`retrieval_evaluation.md`](retrieval_evaluation.md))
+> - `check_llm_provider.py`(LLM_PROVIDER=none)— 未启用 LLM,降级模式正常(exit 0);配置 LLM 后可走真实 LLM 抽取与 RAG 回答
 
 ## 一、已真实完成
 
@@ -84,8 +84,10 @@ CNN 接入接口与数据结构(`ExpressionLabel` / `ExpressionResult` / `Expres
 
 ## 五、已知限制
 
-- **3 个 Flutter Widget 测试文件未通过 `dart format`**:`test/features/counselor/source_reference_panel_test.dart` / `test/features/notifications/notification_multi_task_test.dart` / `test/features/profile/profile_data_management_test.dart` 存在 `require_trailing_commas` 格式问题,属其他 Agent 维护范围,本 Agent 未修改。CI 配置已正确覆盖 `lib test integration_test`,这些文件需对应 Agent 执行 `dart format` 后 CI 才能全绿。
-- **本地提醒精确推送**:由 Agent B 负责,本 Agent 未修改相关代码。`docs/reminder_guide.md` 由 Agent B 维护,本 Agent 未触碰。
+- **Android 精确提醒未完成真机验证**:已通过单元测试覆盖提醒生命周期(创建/修改/完成/删除/重启恢复)、时区处理、权限拒绝时不虚报成功;但后台触发、锁屏触发、设备重启恢复等场景未在真实 Android 设备上验证。单元测试不能替代真机验证。
+- **CNN 仍为 Mock**:`MockExpressionRecognitionService` 模拟多帧平滑,LiteRT 真实推理未接入。
+- **单租户匿名模式**:无 JWT 多用户认证,所有请求共享同一知识库。
+- **扫描 PDF OCR**:PDF 解析仅提取文本层,扫描件无 OCR。
 
 ## 相关文档
 

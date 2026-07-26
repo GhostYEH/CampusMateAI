@@ -387,7 +387,7 @@ flutter build web --release
 - 深色模式适配
 - 比赛演示模式
 - 后端 112 个测试通过
-- Flutter 321 个测试通过
+- Flutter 339 个测试通过
 - flutter analyze 无问题
 - flutter build web --release 成功
 
