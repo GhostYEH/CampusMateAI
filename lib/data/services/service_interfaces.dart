@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'expression_service_status.dart';
 
 /// 通知智能提取服务抽象。
 ///
@@ -165,12 +166,23 @@ abstract interface class TaskRepository {
 abstract interface class CounselorChatService {
   /// 流式发送消息,逐段返回内容。
   ///
+  /// [conversationId] 仅作会话标识,**不得**用于编码业务上下文(对齐要求 #2)。
+  /// 业务上下文必须通过 [context] 参数传递,后端会校验用户是否有权访问。
+  ///
+  /// [context] 对话上下文(课程/班级/任务/通知/学习会话/自报状态/最近待办)。
+  ///   - 真实后端实现会把 [CounselorContext.toContextJson] 合并到 JSON Body,
+  ///     作为独立字段发送,后端会重新校验任务归属与权限。
+  ///   - Mock 实现可忽略此参数(仅在回答中体现上下文标签)。
+  ///   - 普通入口(无上下文)应传 `const CounselorContext()`,不发送任何上下文字段。
+  ///
   /// [onChunk] 接收增量文本,[onSources] 接收引用来源,
-  /// [onActions] 接收建议操作,[onFinalMeta] 接收最终元数据(模式/证据等级/置信度/警告)。
+  /// [onActions] 接收建议操作,[onFinalMeta] 接收最终元数据(模式/证据等级/置信度/警告/
+  /// 上下文使用情况)。
   /// 返回完整消息内容。调用方可通过取消 [onChunk] 流终止。
   Future<String> send(
     String message, {
     required String conversationId,
+    CounselorContext context = const CounselorContext(),
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,
@@ -197,6 +209,8 @@ class ChatFinalMeta {
     required this.needsHumanConfirmation,
     required this.hasUserDocs,
     required this.hasDemoDocs,
+    this.contextUsed = const {},
+    this.contextWarnings = const [],
   });
 
   /// 后端返回的模式: llm | retrieval_summary | no_knowledge
@@ -219,6 +233,19 @@ class ChatFinalMeta {
 
   /// 是否包含仿真演示文档(用于推导 [AnswerMode])
   final bool hasDemoDocs;
+
+  /// 后端实际采纳的上下文摘要(对齐要求 #11)。
+  ///
+  /// 例如: `{"course_id": "...", "course_name": "高等数学",
+  /// "recent_tasks_count": 3, "recent_tasks_verified_count": 2}`。
+  /// UI 可据此展示"本次回答参考了你的 3 项待办与高等数学课程"。
+  final Map<String, dynamic> contextUsed;
+
+  /// 上下文相关告警(对齐要求 #11)。
+  ///
+  /// 例如: `["无权访问任务 xxx,已忽略", "recent_tasks 包含用户本地待办,未经后端验证"]`。
+  /// UI 应在回答下方温和展示,提示用户哪些上下文未被采纳。
+  final List<String> contextWarnings;
 }
 
 /// 校园知识库服务抽象(预留向量数据库接口)。
@@ -288,34 +315,155 @@ abstract interface class KnowledgeManagementService {
 
 /// 学习会话仓库抽象。
 ///
+/// 同时支持 Mock 与真实后端:
+/// - Mock 模式 ([MockStudySessionRepository]): 内存状态机 + 本地持久化
+/// - 真实后端 ([ApiStudySessionRepository]): 调用 FastAPI `/api/v1/study/sessions`
+///   - 所有状态机校验与用户隔离由后端完成
+///   - 网络失败抛 [ApiException],**不**伪造保存成功
+///
+/// 状态机(权威): active --pause--> paused --resume--> active --finish--> completed
+/// 禁止: 已结束会话再次暂停/恢复/结束; 未暂停会话直接恢复; 结束时间早于开始时间(由后端校验)。
+///
 /// 持久化相关方法([historySnapshot]/[restoreHistoryFrom]/[clearHistory]/
-/// [resetToDemo])用于本地缓存管理;真实后端实现可作为 no-op。
+/// [resetToDemo])用于本地缓存管理;真实后端实现可作为 no-op 或维护本地缓存。
 abstract interface class StudySessionRepository {
+  /// 当前会话(本地缓存,可能为 null)。
+  ///
+  /// 真实后端模式下,应用启动后应调用 [getActiveSession] 从后端拉取并填充此字段。
   StudySession? get current;
+
+  /// 当前会话流(用于 UI 实时更新)。
   Stream<StudySession> watchCurrent();
-  Future<StudySession> start({String? goalId, String? taskId});
-  Future<void> pause();
-  Future<void> resume();
-  Future<StudySession> end({String? selfReportMood});
+
+  /// 开始新的学习会话。
+  ///
+  /// [goal] 自由文本目标(可选)。
+  /// [relatedTaskId] 关联任务 ID(可选,后端会校验权限)。
+  /// 返回创建的会话(active 状态)。
+  Future<StudySession> start({String? goal, String? relatedTaskId});
+
+  /// 暂停当前会话(开启一条休息记录)。
+  ///
+  /// [reason] 休息原因(可选)。
+  /// 返回更新后的会话(paused 状态,含新增的休息记录)。
+  Future<StudySession> pause({String? reason});
+
+  /// 恢复当前会话(关闭最近一条休息记录,累加 pause_seconds)。
+  ///
+  /// 返回更新后的会话(active 状态)。
+  Future<StudySession> resume();
+
+  /// 结束当前会话(填写文字感受,关闭所有未结束休息)。
+  ///
+  /// [selfReport] 用户主动填写的文字感受(可选)。
+  /// [selfReportTags] 感受标签(可选)。
+  /// **selfReport 仅由用户主动输入,不根据表情自动填写**(科学边界)。
+  ///
+  /// 返回更新后的会话(completed 状态,含 duration_seconds)。
+  Future<StudySession> finish({
+    String? selfReport,
+    List<String>? selfReportTags,
+  });
+
+  /// 部分更新会话。
+  ///
+  /// - goal/relatedTaskId: 仅未结束会话可改(后端校验)。
+  /// - selfReport/selfReportTags/expressionSignal: 任意状态可改。
+  /// - 未传字段(null)不更新。
+  Future<StudySession> updateSession({
+    String? goal,
+    String? relatedTaskId,
+    String? selfReport,
+    List<String>? selfReportTags,
+    Map<String, dynamic>? expressionSignal,
+  });
+
+  /// 获取未结束会话(用于应用重启后恢复)。
+  ///
+  /// 返回当前 active/paused 会话(含休息记录);若无则返回 null。
+  /// 真实后端模式下应答后端 `/sessions/active`。
+  Future<StudySession?> getActiveSession();
+
+  /// 获取会话详情(含休息记录)。
+  ///
+  /// 跨用户访问返回 null(后端 404)。
+  Future<StudySession?> getSession(String sessionId);
+
+  /// 列出历史会话(按开始时间倒序)。
   Future<List<StudySession>> history({int limit = 30});
+
+  /// 今日学习总时长(基于已结束会话的 duration_seconds 累加)。
   Future<Duration> todayTotal();
 
   /// 当前内存历史记录的可持久化快照。
   List<StudySession> get historySnapshot;
 
   /// 从持久化数据恢复历史记录(替换内存数据)。
+  ///
+  /// 仅 Mock 模式使用;真实后端模式下为 no-op(数据由后端权威)。
   Future<void> restoreHistoryFrom(List<StudySession> saved);
 
   /// 清空历史记录(用于"清除本地数据")。
+  ///
+  /// 真实后端模式下应同时调用后端 DELETE 接口(若存在);否则仅清空本地缓存。
   Future<void> clearHistory();
 
   /// 重置为演示历史(用于"恢复演示数据")。
+  ///
+  /// 仅 Mock 模式使用;真实后端模式下为 no-op。
   Future<void> resetToDemo();
 }
 
+/// 任务拆解服务抽象。
+///
+/// 实现类:
+/// - [ApiTaskBreakdownService]: 调用 FastAPI `/api/v1/study/task-breakdown`,
+///   后端负责 LLM/规则降级/知识库依赖/任务权限校验。
+/// - [MockTaskBreakdownService]: 本地规则化拆解,标注 mode=rule_fallback。
+///
+/// 科学边界:
+/// - 输出步骤只涉及可观察的学习/事务动作,不进行心理诊断或情绪判断。
+/// - 涉及校园政策的步骤必须依赖知识库(后端校验)。
+/// - 无 LLM 时使用规则化降级拆解,响应中 mode 标注为 rule_fallback。
+abstract interface class TaskBreakdownService {
+  /// 拆解一个学习目标为结构化步骤。
+  ///
+  /// [request] 任务拆解请求(task_id 或自由文本 goal,可同时提供)。
+  /// 返回 [TaskBreakdownResponse],包含 mode、steps、warnings。
+  ///
+  /// 抛 [ApiException] 表示网络/权限/校验错误。
+  Future<TaskBreakdownResponse> breakdown(TaskBreakdownRequest request);
+}
+
 /// 表情识别服务抽象(强制接口,见 AGENTS.md §6)。
+///
+/// 实现类:
+/// - [MockExpressionRecognitionService]: Mock 模式,带"Mock"标识(仅 Debug)
+/// - [LiteRtExpressionRecognitionService]: 真实 CNN + LiteRT + 摄像头
+///
+/// **科学边界**(AGENTS.md §3):
+/// 仅识别可观察到的面部表情,不进行心理诊断。
+/// 低置信度时返回 `ExpressionLabel.unknown` 并由 UI 提示
+/// "暂时无法稳定判断当前表情",且不触发情绪安慰。
 abstract interface class ExpressionRecognitionService {
+  /// 表情识别结果流(每帧一个结果,已时序平滑)。
+  ///
+  /// 低置信度/未检测到人脸时,仍会发出 [ExpressionResult] 但
+  /// `isLowConfidence=true` 或 `hasFace=false`,UI 不应触发情绪安慰。
   Stream<ExpressionResult> get results;
+
+  /// 服务状态流(模型加载 / 摄像头 / 平台降级 / 性能指标)。
+  ///
+  /// UI 通过此流显示:
+  /// - 模型已加载/失败/未安装
+  /// - 摄像头状态(运行中/已停止/权限拒绝)
+  /// - 平台降级说明(Web / 桌面不支持 TFLite / ML Kit)
+  /// - 推理延迟与已处理帧数
+  ///
+  /// Release 模式下模型加载失败时,通过此流暴露错误,
+  /// **不静默回退 Mock**(AGENTS.md §2.4)。
+  Stream<ExpressionServiceStatus> get status;
+
   bool get isRunning;
   Future<void> initialize();
   Future<void> start();
@@ -325,11 +473,43 @@ abstract interface class ExpressionRecognitionService {
 }
 
 /// 权限服务抽象。
+///
+/// 实现类:
+/// - [MockPermissionService]: 测试用,内存状态
+/// - [DevicePermissionService]: 真实 `permission_handler` 实现
+///
+/// **不反复弹窗**(AGENTS.md §2.3):
+/// 用户拒绝后,UI 应通过 [cameraPermissionStatus] 判断是否为永久拒绝,
+/// 永久拒绝时引导用户去系统设置,而非反复调用 [requestCamera]。
 abstract interface class PermissionService {
   Future<bool> requestCamera();
   Future<bool> requestNotifications();
   Future<bool> get hasCamera;
   Future<bool> get hasNotifications;
+
+  /// 当前摄像头权限状态(不弹窗,基于系统缓存)。
+  ///
+  /// 用于 UI 判断:
+  /// - [PermissionStatus.notDetermined]: 未询问,可调用 [requestCamera]
+  /// - [PermissionStatus.denied]: 已拒绝但可再次询问(由用户主动触发)
+  /// - [PermissionStatus.permanentlyDenied]: 永久拒绝,需引导去系统设置
+  /// - [PermissionStatus.granted]: 已授权
+  Future<PermissionStatus> get cameraPermissionStatus;
+
+  /// 当前通知权限状态(不弹窗)。
+  Future<PermissionStatus> get notificationPermissionStatus;
+
+  /// 打开应用系统设置页(用于永久拒绝后引导用户授权)。
+  Future<void> openAppSettings();
+}
+
+/// 权限状态(对齐 `permission_handler` 的 PermissionStatus,但解耦实现)。
+enum PermissionStatus {
+  granted,
+  denied,
+  permanentlyDenied,
+  notDetermined,
+  unsupported,
 }
 
 /// 分析服务抽象(埋点,当前 Mock)。

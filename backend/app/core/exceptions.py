@@ -241,6 +241,32 @@ class InvalidTransition(AppException):
     message = "状态转换不被允许。"
 
 
+class StudySessionNotFound(AppException):
+    code = "STUDY_SESSION_NOT_FOUND"
+    http_status = 404
+    message = "学习会话不存在。"
+
+
+class StudyBreakNotFound(AppException):
+    code = "STUDY_BREAK_NOT_FOUND"
+    http_status = 404
+    message = "休息记录不存在。"
+
+
+class PersonalTaskNotFound(AppException):
+    code = "PERSONAL_TASK_NOT_FOUND"
+    http_status = 404
+    message = "个人待办不存在。"
+
+
+class PersonalTaskConflict(AppException):
+    """个人待办状态冲突(如已完成/已删除的任务再次操作)。"""
+
+    code = "PERSONAL_TASK_CONFLICT"
+    http_status = 409
+    message = "个人待办当前状态不允许该操作。"
+
+
 def _build_error_body(
     code: str,
     message: str,
@@ -330,5 +356,9 @@ __all__ = [
     "AttachmentTooLarge",
     "AttachmentTypeNotAllowed",
     "InvalidTransition",
+    "StudySessionNotFound",
+    "StudyBreakNotFound",
+    "PersonalTaskNotFound",
+    "PersonalTaskConflict",
     "register_exception_handlers",
 ]

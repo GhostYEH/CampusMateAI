@@ -64,6 +64,16 @@ enum TaskSource {
 }
 
 /// 个人待办任务。
+///
+/// 字段对齐后端 `personal_tasks` 表(见 backend/app/database/sqlite_db.py):
+/// - [sourceText] 保留原通知文本,确保后端可追溯(对齐后端要求 #4)
+/// - [sourceName] 通知来源(如 "教务处")
+/// - [targetStudents] 通知面向对象(如 "2024级各班")
+/// - [submissionMethod] 提交方式
+/// - [reminderMinutes] 提前提醒分钟数(对齐后端 `reminder_minutes`)
+///
+/// 本地提醒调度仍使用 [reminderEnabled] + [reminderAt](绝对时间),
+/// 由 [ApiTaskRepository] 在读写后端时与 [reminderMinutes] 互相转换。
 class Task extends Equatable {
   const Task({
     required this.id,
@@ -82,6 +92,11 @@ class Task extends Equatable {
     this.reminderEnabled = false,
     this.reminderAt,
     this.sourceNoticeId,
+    this.sourceText,
+    this.sourceName,
+    this.targetStudents,
+    this.submissionMethod,
+    this.reminderMinutes,
   });
 
   final String id;
@@ -100,6 +115,12 @@ class Task extends Equatable {
   final bool reminderEnabled;
   final DateTime? reminderAt;
   final String? sourceNoticeId; // 关联通知ID
+  // ===== 后端 personal_tasks 表对齐字段(用于原文追溯与同步)=====
+  final String? sourceText; // 原通知全文(确保后端可追溯)
+  final String? sourceName; // 通知来源(如 "教务处")
+  final String? targetStudents; // 通知面向对象(如 "2024级各班")
+  final String? submissionMethod; // 提交方式
+  final int? reminderMinutes; // 提前提醒分钟数(对齐后端)
 
   /// 是否今日截止或逾期(用于"即将截止"判断)。
   bool get isOverdue =>
@@ -134,6 +155,11 @@ class Task extends Equatable {
     bool? reminderEnabled,
     DateTime? reminderAt,
     String? sourceNoticeId,
+    String? sourceText,
+    String? sourceName,
+    String? targetStudents,
+    String? submissionMethod,
+    int? reminderMinutes,
   }) {
     return Task(
       id: id ?? this.id,
@@ -152,6 +178,11 @@ class Task extends Equatable {
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
       reminderAt: reminderAt ?? this.reminderAt,
       sourceNoticeId: sourceNoticeId ?? this.sourceNoticeId,
+      sourceText: sourceText ?? this.sourceText,
+      sourceName: sourceName ?? this.sourceName,
+      targetStudents: targetStudents ?? this.targetStudents,
+      submissionMethod: submissionMethod ?? this.submissionMethod,
+      reminderMinutes: reminderMinutes ?? this.reminderMinutes,
     );
   }
 
@@ -172,6 +203,11 @@ class Task extends Equatable {
         'reminderEnabled': reminderEnabled,
         'reminderAt': reminderAt?.toIso8601String(),
         'sourceNoticeId': sourceNoticeId,
+        'sourceText': sourceText,
+        'sourceName': sourceName,
+        'targetStudents': targetStudents,
+        'submissionMethod': submissionMethod,
+        'reminderMinutes': reminderMinutes,
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -197,6 +233,11 @@ class Task extends Equatable {
         reminderEnabled: json['reminderEnabled'] as bool? ?? false,
         reminderAt: (json['reminderAt'] as String?)?.let(DateTime.tryParse),
         sourceNoticeId: json['sourceNoticeId'] as String?,
+        sourceText: json['sourceText'] as String?,
+        sourceName: json['sourceName'] as String?,
+        targetStudents: json['targetStudents'] as String?,
+        submissionMethod: json['submissionMethod'] as String?,
+        reminderMinutes: (json['reminderMinutes'] as num?)?.toInt(),
       );
 
   @override
@@ -217,6 +258,11 @@ class Task extends Equatable {
         reminderEnabled,
         reminderAt,
         sourceNoticeId,
+        sourceText,
+        sourceName,
+        targetStudents,
+        submissionMethod,
+        reminderMinutes,
       ];
 }
 

@@ -243,6 +243,82 @@ CREATE INDEX IF NOT EXISTS idx_submission_attachments_submission_id ON submissio
 """
 
 
+# 个人待办 schema —— 学生从通知抽取生成的个人任务。
+# 与 assignments(教师发布的班级作业)严格分离:
+# - user_id 绑定 JWT 用户,禁止跨用户读取
+# - source_text 保留原通知文本,确保可追溯
+# - deleted_at 软删除字段,避免立即物理删除
+PERSONAL_TASK_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS personal_tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    target_students TEXT,
+    deadline TEXT,
+    materials TEXT,
+    submission_method TEXT,
+    location TEXT,
+    source_name TEXT,
+    source_text TEXT,
+    source_notice_id TEXT,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    status TEXT NOT NULL DEFAULT 'pending',
+    reminder_minutes INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    deleted_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_deadline ON personal_tasks(deadline);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_priority ON personal_tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_status ON personal_tasks(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_deadline ON personal_tasks(user_id, deadline);
+"""
+
+
+# 学习陪伴 schema —— 学习会话 / 休息记录。
+# 所有记录绑定 user_id(JWT 用户隔离)。状态机由仓库层与路由层共同校验。
+STUDY_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS study_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    goal TEXT,
+    related_task_id TEXT,
+    started_at TEXT NOT NULL,
+    paused_at TEXT,
+    ended_at TEXT,
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    pause_seconds INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    self_report TEXT,
+    self_report_tags TEXT,
+    expression_signal TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_user_id ON study_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_status ON study_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_user_status ON study_sessions(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_started_at ON study_sessions(started_at);
+
+CREATE TABLE IF NOT EXISTS study_breaks (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_study_breaks_session_id ON study_breaks(session_id);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -289,6 +365,8 @@ class Database:
             try:
                 conn.executescript(SCHEMA_SQL)
                 conn.executescript(MULTI_ROLE_SCHEMA_SQL)
+                conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
+                conn.executescript(STUDY_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

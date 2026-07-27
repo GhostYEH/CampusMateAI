@@ -20,12 +20,15 @@ from ..repositories.multi_role_repository import (
     SubmissionRepository,
     UserRepository,
 )
+from ..repositories.personal_task_repository import PersonalTaskRepository
+from ..repositories.study_session_repository import StudySessionRepository
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
 from ..services.notice_extraction_service import NoticeExtractionService
 from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
+from ..services.task_breakdown_service import TaskBreakdownService
 
 
 @dataclass
@@ -47,6 +50,11 @@ class ServiceContainer:
     announcement_repository: AnnouncementRepository
     assignment_repository: AssignmentRepository
     submission_repository: SubmissionRepository
+    # 个人待办仓库(学生从通知抽取生成的任务)
+    personal_task_repository: PersonalTaskRepository
+    # 学习陪伴
+    study_session_repository: StudySessionRepository
+    task_breakdown_service: TaskBreakdownService
 
     def ensure_index(self) -> int:
         """确保索引就绪(若 stale 则重建)。返回 chunk 数。"""
@@ -63,6 +71,17 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     llm = build_llm_client(settings)
     notice = NoticeExtractionService(llm, settings)
     rag = RagService(retrieval, llm, settings, repo)
+    assignment_repo = AssignmentRepository(db)
+    personal_task_repo = PersonalTaskRepository(db)
+    # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
+    study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
+    # TaskBreakdownService 只解析 PersonalTask(不再接受 Assignment ID)
+    task_breakdown = TaskBreakdownService(
+        personal_task_repo=personal_task_repo,
+        retrieval=retrieval,
+        llm=llm,
+        settings=settings,
+    )
     container = ServiceContainer(
         settings=settings,
         db=db,
@@ -78,8 +97,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         class_group_repository=ClassGroupRepository(db),
         enrollment_repository=EnrollmentRepository(db),
         announcement_repository=AnnouncementRepository(db),
-        assignment_repository=AssignmentRepository(db),
+        assignment_repository=assignment_repo,
         submission_repository=SubmissionRepository(db),
+        personal_task_repository=personal_task_repo,
+        study_session_repository=study_session_repo,
+        task_breakdown_service=task_breakdown,
     )
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)
     try:
