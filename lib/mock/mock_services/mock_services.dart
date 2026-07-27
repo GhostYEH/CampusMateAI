@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 
 import '../../data/models/models.dart';
+import '../../data/services/api/api_client.dart';
+import '../../data/services/expression_service_status.dart';
 import '../../data/services/service_interfaces.dart';
 import '../mock_data/mock_data.dart';
 import 'expression_smoother.dart';
@@ -446,6 +448,7 @@ class MockCounselorChatService implements CounselorChatService {
   Future<String> send(
     String message, {
     required String conversationId,
+    CounselorContext context = const CounselorContext(),
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,
@@ -460,7 +463,7 @@ class MockCounselorChatService implements CounselorChatService {
     onSources?.call(sources);
     await Future.delayed(const Duration(milliseconds: 220));
 
-    final reply = _buildReply(message, sources);
+    final reply = _buildReply(message, sources, context);
     final actions = _buildActions(message);
 
     // 逐字流式输出(按 UTF-16 码单元拆分,中文 BMP 字符可正常逐字显示)
@@ -475,6 +478,24 @@ class MockCounselorChatService implements CounselorChatService {
 
     onActions?.call(actions);
     // Mock 模式:固定推导为 mockDemo + medium 证据等级
+    // 同时回填上下文使用情况(对齐要求 #11,Mock 也返回 contextUsed/Warnings)
+    final contextUsed = <String, dynamic>{};
+    if (context.courseId != null) contextUsed['course_id'] = context.courseId;
+    if (context.classId != null) contextUsed['class_id'] = context.classId;
+    if (context.assignmentId != null) {
+      contextUsed['assignment_id'] = context.assignmentId;
+    }
+    if (context.announcementId != null) {
+      contextUsed['announcement_id'] = context.announcementId;
+    }
+    if (context.recentTasks.isNotEmpty) {
+      contextUsed['recent_tasks_count'] = context.recentTasks.length;
+      contextUsed['recent_tasks_verified_count'] = 0;
+    }
+    final contextWarnings = <String>[];
+    if (context.expressionSignal != null) {
+      contextWarnings.add('Mock 模式:expression_signal 未接入,已忽略');
+    }
     onFinalMeta?.call(
       ChatFinalMeta(
         mode: sources.isEmpty ? 'no_knowledge' : 'retrieval_summary',
@@ -484,6 +505,8 @@ class MockCounselorChatService implements CounselorChatService {
         needsHumanConfirmation: false,
         hasUserDocs: false,
         hasDemoDocs: sources.isNotEmpty,
+        contextUsed: contextUsed,
+        contextWarnings: contextWarnings,
       ),
     );
     return buffer.toString();
@@ -509,10 +532,18 @@ class MockCounselorChatService implements CounselorChatService {
   @override
   void stop() => _stopRequested = true;
 
-  String _buildReply(String message, List<KnowledgeSource> sources) {
+  String _buildReply(
+    String message,
+    List<KnowledgeSource> sources,
+    CounselorContext context,
+  ) {
     final msg = message.trim();
+    // 上下文条幅前缀(若从课程/任务/通知进入,Mock 也体现上下文)
+    final ctxPrefix = context.contextLabel != null
+        ? '(上下文:${context.contextLabel})\n\n'
+        : '';
     if (msg.contains('综合测评')) {
-      return '综合测评由学业成绩、思想品德、社会实践、创新创业四部分组成,'
+      return '$ctxPrefix综合测评由学业成绩、思想品德、社会实践、创新创业四部分组成,'
           '各占 60%、15%、15%、10%。你需要准备:① 本学期成绩单;'
           '② 思想品德评议表;③ 社会实践证明(志愿服务、社团活动等);'
           '④ 创新创业材料(竞赛、论文、专利等,可选项)。\n\n'
@@ -520,35 +551,45 @@ class MockCounselorChatService implements CounselorChatService {
           '具体以学校最新文件为准。';
     }
     if (msg.contains('实践') && (msg.contains('申请') || msg.contains('学分'))) {
-      return '实践学分申请流程:① 填写实践申请表;② 准备活动证明与总结报告;'
+      return '$ctxPrefix实践学分申请流程:① 填写实践申请表;② 准备活动证明与总结报告;'
           '③ 纸质版交学院办公室,电子版发指定邮箱;④ 学院审核认定。\n\n'
           '注意实践学分需在毕业前完成认定,逾期不予受理。'
           '我可以帮你把这条通知整理成待办,设置提醒。';
     }
     if (msg.contains('奖学金')) {
-      return '校级奖学金要求:一等奖学金综合测评排名前 5% 且无挂科;'
+      return '$ctxPrefix校级奖学金要求:一等奖学金综合测评排名前 5% 且无挂科;'
           '二等奖学金排名前 15%。申请需在学生系统提交,附个人陈述和成绩单,\n'
           '结果公示 3 个工作日。\n\n'
           '下面是模拟资料来源,正式申请前请确认学院当年的具体细则。';
     }
     if (msg.contains('快截止') || msg.contains('任务')) {
-      return '我帮你看了下,你有 2 项任务临近截止:「综合测评材料汇总」'
+      // 若上下文带有真实 recent_tasks,Mock 也基于真实任务回复
+      if (context.recentTasks.isNotEmpty) {
+        final titles = context.recentTasks
+            .take(3)
+            .map((t) => '「${t.title}」')
+            .join('、');
+        return '$ctxPrefix你最近有这些待办:$titles。\n\n'
+            '建议先处理截止最近的一项,需要我帮你拆分今天的任务,'
+            '或者开启学习陪伴专注一段时间吗?';
+      }
+      return '$ctxPrefix我帮你看了下,你有 2 项任务临近截止:「综合测评材料汇总」'
           '和「提交实践申请表」。建议今天先处理综合测评,因为它的截止更近。\n\n'
           '需要我帮你拆分今天的任务,或者开启学习陪伴专注一段时间吗?';
     }
     if (msg.contains('拆分') || msg.contains('安排')) {
-      return '好的,我帮你拆分一下今天:\n'
+      return '$ctxPrefix好的,我帮你拆分一下今天:\n'
           '① 上午:整理综合测评的学业成绩与思想品德材料(约 40 分钟);\n'
           '② 下午:补齐社会实践证明(约 30 分钟);\n'
           '③ 晚上:写实践申请表的总结报告(约 50 分钟)。\n\n'
           '每段之间安排 10 分钟休息,效率会更好。要不要现在开启学习陪伴?';
     }
     if (msg.contains('选课')) {
-      return '通识选修课补退选在每学期第 8 周,通过教务系统操作,'
+      return '$ctxPrefix通识选修课补退选在每学期第 8 周,通过教务系统操作,'
           '每门课容量有限先到先得。退选不影响其他已选课程。'
           '具体操作路径:教务系统 → 选课管理 → 补退选。';
     }
-    return '我理解你想了解「$msg」。当前我使用的是模拟知识库,'
+    return '$ctxPrefix我理解你想了解「$msg」。当前我使用的是模拟知识库,'
         '能回答综合测评、实践学分、奖学金、选课等常见问题。\n\n'
         '如果是更具体的个人情况,建议你咨询辅导员或学院办公室,'
         '他们能给你最准确的信息。';
@@ -613,17 +654,49 @@ class MockKnowledgeBaseService implements KnowledgeBaseService {
   }
 }
 
-/// Mock 学习会话仓库。
+/// Mock 学习会话仓库 — 内存状态机,对齐后端 API 行为。
+///
+/// 实现完整状态机: active --pause--> paused --resume--> active --finish--> completed。
+/// 同时维护休息记录(StudyBreak)与累计暂停秒数。
+///
+/// 与后端 [ApiStudySessionRepository] 实现同一接口,可在 AppConfig 切换时无缝替换。
 class MockStudySessionRepository implements StudySessionRepository {
   StudySession? _current;
   final _controller = StreamController<StudySession>.broadcast();
   final List<StudySession> _history = [];
   DateTime? _startedAt;
   int _elapsedSeconds = 0;
+  int _pauseSeconds = 0;
   Timer? _tick;
+  final List<StudyBreak> _breaks = [];
 
   MockStudySessionRepository() {
     _history.addAll(MockData.studyHistory);
+  }
+
+  /// 注入一个预设的"未结束会话",用于测试应用重启后恢复场景。
+  ///
+  /// 模拟应用重启后从后端拉取到的未结束会话:
+  /// - 更新 [_current] 并通过流发射,使 [currentStudySessionProvider] 收到更新
+  /// - 同步内部计时器状态,使后续 pause/resume/finish 行为正确
+  ///
+  /// **注意**:此方法不启动 Mock 的秒级 tick — 真实后端模式下 duration 由后端
+  /// 在 pause/finish 时计算并返回,不需要客户端 tick。测试场景下启动 tick 会
+  /// 留下 pending FakeTimer 导致测试断言失败。
+  ///
+  /// **仅供测试使用**(对应 [ApiStudySessionRepository.getActiveSession]
+  /// 在拉取到未结束会话后调用 `_emit(session)` 的行为)。
+  void injectForRecovery(StudySession session) {
+    _current = session;
+    _startedAt = session.startedAt;
+    _elapsedSeconds = session.durationSeconds;
+    _pauseSeconds = session.pauseSeconds;
+    _breaks
+      ..clear()
+      ..addAll(session.breaks);
+    // 不启动 tick — 见方法文档说明
+    _stopTick();
+    _emit();
   }
 
   @override
@@ -633,16 +706,24 @@ class MockStudySessionRepository implements StudySessionRepository {
   Stream<StudySession> watchCurrent() => _controller.stream;
 
   @override
-  Future<StudySession> start({String? goalId, String? taskId}) async {
+  Future<StudySession> start({
+    String? goal,
+    String? relatedTaskId,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 80));
     _startedAt = DateTime.now();
     _elapsedSeconds = 0;
+    _pauseSeconds = 0;
+    _breaks.clear();
     _current = StudySession(
       id: 's_${DateTime.now().millisecondsSinceEpoch}',
       startedAt: _startedAt!,
       durationSeconds: 0,
       state: StudyState.focusing,
-      goalId: goalId,
-      taskId: taskId,
+      goalId: goal,
+      taskId: relatedTaskId,
+      status: StudySessionStatus.active,
+      breaks: const [],
     );
     _startTick();
     _emit();
@@ -650,46 +731,168 @@ class MockStudySessionRepository implements StudySessionRepository {
   }
 
   @override
-  Future<void> pause() async {
-    if (_current == null) return;
+  Future<StudySession> pause({String? reason}) async {
+    if (_current == null) {
+      throw const ApiException(
+        code: 'NO_ACTIVE_SESSION',
+        message: '当前没有进行中的学习会话',
+      );
+    }
+    if (_current!.status != StudySessionStatus.active) {
+      throw const ApiException(
+        code: 'INVALID_TRANSITION',
+        message: '当前状态不允许暂停,仅 active 会话可暂停',
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 60));
     _stopTick();
+    final now = DateTime.now();
+    _breaks.add(
+      StudyBreak(
+        id: 'brk_${now.millisecondsSinceEpoch}',
+        sessionId: _current!.id,
+        startedAt: now,
+        reason: reason,
+        createdAt: now,
+      ),
+    );
     _current = _current!.copyWith(
       state: StudyState.paused,
       durationSeconds: _elapsedSeconds,
+      status: StudySessionStatus.paused,
+      pausedAt: now,
+      breaks: List.unmodifiable(_breaks),
     );
     _emit();
+    return _current!;
   }
 
   @override
-  Future<void> resume() async {
-    if (_current == null) return;
-    _current = _current!.copyWith(state: StudyState.focusing);
+  Future<StudySession> resume() async {
+    if (_current == null) {
+      throw const ApiException(
+        code: 'NO_ACTIVE_SESSION',
+        message: '当前没有进行中的学习会话',
+      );
+    }
+    if (_current!.status != StudySessionStatus.paused) {
+      throw const ApiException(
+        code: 'INVALID_TRANSITION',
+        message: '当前状态不允许恢复,仅 paused 会话可恢复',
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 60));
+    final now = DateTime.now();
+    // 关闭最近一条未结束的休息记录,累加 pause_seconds
+    final openIdx = _breaks.lastIndexWhere((b) => b.isOpen);
+    if (openIdx >= 0) {
+      final openBreak = _breaks[openIdx];
+      final addedPause = now.difference(openBreak.startedAt).inSeconds;
+      if (addedPause > 0) _pauseSeconds += addedPause;
+      _breaks[openIdx] = openBreak.copyWith(endedAt: now);
+    }
+    _current = _current!.copyWith(
+      state: StudyState.focusing,
+      status: StudySessionStatus.active,
+      pausedAt: null,
+      pauseSeconds: _pauseSeconds,
+      breaks: List.unmodifiable(_breaks),
+    );
     _startTick();
     _emit();
+    return _current!;
   }
 
   @override
-  Future<StudySession> end({String? selfReportMood}) async {
+  Future<StudySession> finish({
+    String? selfReport,
+    List<String>? selfReportTags,
+  }) async {
+    if (_current == null) {
+      throw const ApiException(
+        code: 'NO_ACTIVE_SESSION',
+        message: '当前没有进行中的学习会话',
+      );
+    }
+    if (_current!.status == StudySessionStatus.completed) {
+      throw const ApiException(
+        code: 'INVALID_TRANSITION',
+        message: '会话已结束,不能再次结束',
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 80));
     _stopTick();
-    final ended = (_current ??
-            StudySession(
-              id: 's_empty',
-              startedAt: DateTime.now(),
-              durationSeconds: 0,
-              state: StudyState.completed,
-            ))
-        .copyWith(
-      endedAt: DateTime.now(),
+    final now = DateTime.now();
+    // 关闭所有未结束的休息记录,累加 pause_seconds
+    for (var i = 0; i < _breaks.length; i++) {
+      if (_breaks[i].isOpen) {
+        final addedPause = now.difference(_breaks[i].startedAt).inSeconds;
+        if (addedPause > 0) _pauseSeconds += addedPause;
+        _breaks[i] = _breaks[i].copyWith(endedAt: now);
+      }
+    }
+    final ended = _current!.copyWith(
+      endedAt: now,
       durationSeconds: _elapsedSeconds,
       state: StudyState.completed,
-      selfReportMood: selfReportMood,
+      status: StudySessionStatus.completed,
+      pausedAt: null,
+      pauseSeconds: _pauseSeconds,
+      selfReport: selfReport,
+      selfReportMood: selfReport,
+      selfReportTags: selfReportTags ?? const [],
+      breaks: List.unmodifiable(_breaks),
     );
     _history.insert(0, ended);
     _current = null;
     _startedAt = null;
     _elapsedSeconds = 0;
-    _emit();
+    _pauseSeconds = 0;
+    _breaks.clear();
     return ended;
+  }
+
+  @override
+  Future<StudySession> updateSession({
+    String? goal,
+    String? relatedTaskId,
+    String? selfReport,
+    List<String>? selfReportTags,
+    Map<String, dynamic>? expressionSignal,
+  }) async {
+    if (_current == null) {
+      throw const ApiException(
+        code: 'NO_ACTIVE_SESSION',
+        message: '当前没有进行中的学习会话',
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 50));
+    _current = _current!.copyWith(
+      goalId: goal ?? _current!.goalId,
+      taskId: relatedTaskId ?? _current!.taskId,
+      selfReport: selfReport ?? _current!.selfReport,
+      selfReportMood: selfReport ?? _current!.selfReportMood,
+      selfReportTags: selfReportTags ?? _current!.selfReportTags,
+      expressionSignal: expressionSignal ?? _current!.expressionSignal,
+    );
+    _emit();
+    return _current!;
+  }
+
+  @override
+  Future<StudySession?> getActiveSession() async {
+    await Future.delayed(const Duration(milliseconds: 50));
+    return _current;
+  }
+
+  @override
+  Future<StudySession?> getSession(String sessionId) async {
+    await Future.delayed(const Duration(milliseconds: 40));
+    if (_current?.id == sessionId) return _current;
+    for (final s in _history) {
+      if (s.id == sessionId) return s;
+    }
+    return null;
   }
 
   @override
@@ -769,6 +972,10 @@ class MockStudySessionRepository implements StudySessionRepository {
 ///
 /// 明确标注 Mock 模式,不伪造真实 CNN 能力。
 /// 可通过 [injectMockLabel] 注入指定表情用于演示。
+///
+/// **仅在 Debug 模式且 USE_MOCK_EXPRESSION=true 时启用**(AGENTS.md §2.4)。
+/// Release 构建下 `AppConfig.useMockExpressionRecognition` 始终为 false,
+/// 此类不会被实例化,UI 也不会显示 Mock 标识。
 class MockExpressionRecognitionService implements ExpressionRecognitionService {
   MockExpressionRecognitionService({
     required double confidenceThreshold,
@@ -782,6 +989,14 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
   final ExpressionSmoother _smoother;
   final int suggestionCooldownMinutes;
   final _controller = StreamController<ExpressionResult>.broadcast();
+  final _statusController =
+      StreamController<ExpressionServiceStatus>.broadcast()..add(
+    const ExpressionServiceStatus(
+      modelState: ExpressionModelState.ready,
+      cameraState: CameraState.idle,
+      modelVersion: 'mock-v0.1',
+    ),
+  );
   Timer? _timer;
   bool _running = false;
   final _rand = Random();
@@ -793,6 +1008,9 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
   Stream<ExpressionResult> get results => _controller.stream;
 
   @override
+  Stream<ExpressionServiceStatus> get status => _statusController.stream;
+
+  @override
   bool get isRunning => _running;
 
   /// 注入 Mock 表情(演示用)。null 表示随机漂移。
@@ -801,6 +1019,13 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
   @override
   Future<void> initialize() async {
     await Future.delayed(const Duration(milliseconds: 200));
+    _statusController.add(
+      const ExpressionServiceStatus(
+        modelState: ExpressionModelState.ready,
+        cameraState: CameraState.idle,
+        modelVersion: 'mock-v0.1',
+      ),
+    );
   }
 
   @override
@@ -808,6 +1033,13 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
     if (_running) return;
     _running = true;
     _smoother.reset();
+    _statusController.add(
+      const ExpressionServiceStatus(
+        modelState: ExpressionModelState.ready,
+        cameraState: CameraState.running,
+        modelVersion: 'mock-v0.1',
+      ),
+    );
     _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       _produceFrame();
     });
@@ -818,6 +1050,13 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
     _timer?.cancel();
     _timer = null;
     _running = false;
+    _statusController.add(
+      const ExpressionServiceStatus(
+        modelState: ExpressionModelState.ready,
+        cameraState: CameraState.stopped,
+        modelVersion: 'mock-v0.1',
+      ),
+    );
   }
 
   @override
@@ -830,6 +1069,7 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
   Future<void> dispose() async {
     await stop();
     await _controller.close();
+    await _statusController.close();
   }
 
   void _produceFrame() {
@@ -899,9 +1139,19 @@ class MockPermissionService implements PermissionService {
   bool _camera = false;
   bool _notifications = true;
 
+  /// 测试用:模拟永久拒绝(用于验证 UI 不会反复弹窗)。
+  bool _cameraPermanentlyDenied = false;
+
+  /// 测试用:设置摄像头永久拒绝状态。
+  void setCameraPermanentlyDenied(bool value) {
+    _cameraPermanentlyDenied = value;
+    _camera = false;
+  }
+
   @override
   Future<bool> requestCamera() async {
     await Future.delayed(const Duration(milliseconds: 300));
+    if (_cameraPermanentlyDenied) return false;
     _camera = true;
     return _camera;
   }
@@ -918,6 +1168,25 @@ class MockPermissionService implements PermissionService {
 
   @override
   Future<bool> get hasNotifications async => _notifications;
+
+  @override
+  Future<PermissionStatus> get cameraPermissionStatus async {
+    if (_cameraPermanentlyDenied) return PermissionStatus.permanentlyDenied;
+    return _camera
+        ? PermissionStatus.granted
+        : PermissionStatus.notDetermined;
+  }
+
+  @override
+  Future<PermissionStatus> get notificationPermissionStatus async =>
+      _notifications
+          ? PermissionStatus.granted
+          : PermissionStatus.notDetermined;
+
+  @override
+  Future<void> openAppSettings() async {
+    // Mock: no-op
+  }
 }
 
 /// Mock 分析服务。

@@ -6,6 +6,7 @@ import '../../../../app/design_system/app_typography.dart';
 import '../../../../app/providers/app_providers.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../data/models/study.dart';
 
 /// 学习记录摘要 — 今日总时长 / 近期次数 / 平均专注率。
 class StudyHistorySummary extends ConsumerWidget {
@@ -49,7 +50,7 @@ class StudyHistorySummary extends ConsumerWidget {
               Expanded(
                 child: _stat(
                   '平均专注',
-                  '${((historyAsync.valueOrNull?.fold<double>(0, (a, s) => a + s.focusRatio) ?? 0) / (historyAsync.valueOrNull?.length ?? 1) * 100).round()}%',
+                  '${_avgFocusPercent(historyAsync.valueOrNull)}%',
                   AppColors.accent,
                 ),
               ),
@@ -103,5 +104,17 @@ class StudyHistorySummary extends ConsumerWidget {
     final m = d.inMinutes;
     if (m < 60) return '$m 分钟';
     return '${m ~/ 60} 小时 ${m % 60} 分钟';
+  }
+
+  /// 计算平均专注百分比,容忍 NaN/Infinity 与空列表。
+  String _avgFocusPercent(List<StudySession>? history) {
+    if (history == null || history.isEmpty) return '0';
+    final sum = history.fold<double>(0, (a, s) => a + s.focusRatio);
+    if (sum.isNaN || sum.isInfinite) return '0';
+    final avg = sum / history.length;
+    if (avg.isNaN || avg.isInfinite) return '0';
+    final pct = (avg * 100).round();
+    if (pct.isNaN || pct.isInfinite) return '0';
+    return pct.toString();
   }
 }

@@ -14,6 +14,8 @@ from .routes import (
     health,
     knowledge,
     notices,
+    personal_tasks,
+    study,
     submissions,
 )
 
@@ -30,5 +32,9 @@ api_router.include_router(announcements.router, tags=["announcements"])
 api_router.include_router(assignments.router, tags=["assignments"])
 api_router.include_router(submissions.router, tags=["submissions"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
+# 学习陪伴
+api_router.include_router(study.router)
+# 个人待办(学生从通知抽取)
+api_router.include_router(personal_tasks.router)
 
 __all__ = ["api_router"]

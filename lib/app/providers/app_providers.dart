@@ -11,12 +11,18 @@ import '../../data/services/api/api_counselor_chat_service.dart';
 import '../../data/services/api/api_knowledge_base_service.dart';
 import '../../data/services/api/api_knowledge_management_service.dart';
 import '../../data/services/api/api_notification_extraction_service.dart';
+import '../../data/services/api/api_study_session_repository.dart';
+import '../../data/services/api/api_task_breakdown_service.dart';
+import '../../data/services/api/api_task_repository.dart';
+import '../../data/services/device_permission_service.dart';
+import '../../data/services/expression_service_status.dart';
 import '../../data/services/lite_rt_expression_recognition_service.dart';
 import '../../data/services/local_notification_reminder_service.dart';
 import '../../data/services/service_interfaces.dart';
 import '../../mock/mock_data/mock_data.dart';
 import '../../mock/mock_services/mock_knowledge_management_service.dart';
 import '../../mock/mock_services/mock_services.dart';
+import '../../mock/mock_services/mock_task_breakdown_service.dart';
 
 // ===== 真实后端 API 客户端(仅在 Real Backend 模式下构造)=====
 
@@ -120,16 +126,21 @@ final notificationExtractionProvider = Provider<NotificationExtractionService>(
   },
 );
 
-/// 任务仓库 — 当前 Mock 内存实现。
+/// 任务仓库 — Mock / Real 通过 AppConfig 切换。
 ///
-/// 真实后端模式下仍使用本地 Mock 仓库(任务为本地状态,本轮不接后端任务 API),
-/// 以保证比赛演示模式可用,且后端不可用时不影响待办功能。
+/// 真实后端模式(`USE_MOCK_BACKEND=false`)下使用 [ApiTaskRepository],
+/// 调用 `/api/v1/tasks` 系列接口实现真实持久化(对齐后端个人待办闭环)。
+/// Mock 模式下使用 [MockTaskRepository],保证离线可用与演示模式可运行。
+///
+/// 网络错误时 [ApiTaskRepository] 抛 [ApiException],由 UI 层展示错误,
+/// 不静默伪装成功(对齐 Flutter 要求 #8)。
+/// 本地通知提醒仍由 [TaskListNotifier] 通过 [notificationReminderProvider] 调度,
+/// 与后端任务状态同步(对齐 Flutter 要求 #7)。
 final taskRepositoryProvider = Provider<TaskRepository>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      // 任务本轮保持本地实现(后端不提供任务 CRUD 接口)
-      return MockTaskRepository();
+      return ApiTaskRepository(ref.watch(apiClientProvider));
     }
     return MockTaskRepository();
   },
@@ -148,20 +159,47 @@ final counselorChatProvider = Provider<CounselorChatService>(
   },
 );
 
-/// 学习会话仓库 — 当前 Mock,后续接入 FastAPI。
+/// 学习会话仓库 — Mock / Real 通过 AppConfig 切换。
+///
+/// - Mock 模式: [MockStudySessionRepository] 内存状态机 + 本地持久化
+/// - 真实后端: [ApiStudySessionRepository] 调用 FastAPI `/api/v1/study/sessions`,
+///   状态机校验与用户隔离由后端完成,网络失败抛 [ApiException](不伪造保存成功)。
 final studySessionRepositoryProvider = Provider<StudySessionRepository>(
   (ref) {
     final config = ref.watch(appConfigProvider);
     if (!config.useMockBackend) {
-      throw UnimplementedError('真实学习会话仓库尚未接入,请切换到 Mock 模式');
+      return ApiStudySessionRepository(ref.watch(apiClientProvider));
     }
-    return MockStudySessionRepository();
+    final repo = MockStudySessionRepository();
+    ref.onDispose(repo.dispose);
+    return repo;
   },
 );
 
-/// 权限服务 — 当前 Mock。
+/// 任务拆解服务 — Mock / Real 通过 AppConfig 切换。
+///
+/// - Mock 模式: [MockTaskBreakdownService] 本地规则化拆解,标注 mode=rule_fallback
+/// - 真实后端: [ApiTaskBreakdownService] 调用 FastAPI `/api/v1/study/task-breakdown`,
+///   后端负责 LLM/规则降级/知识库依赖/任务权限校验。
+final taskBreakdownServiceProvider = Provider<TaskBreakdownService>(
+  (ref) {
+    final config = ref.watch(appConfigProvider);
+    if (!config.useMockBackend) {
+      return ApiTaskBreakdownService(ref.watch(apiClientProvider));
+    }
+    return MockTaskBreakdownService();
+  },
+);
+
+/// 权限服务 — 真实实现基于 `permission_handler`。
+///
+/// 测试时可通过 ProviderScope.override 注入 [MockPermissionService]。
+///
+/// **不反复弹窗**(AGENTS.md §2.3):
+/// UI 通过 [cameraPermissionStatus] 判断是否为永久拒绝,
+/// 永久拒绝时引导用户去系统设置,而非反复调用 [requestCamera]。
 final permissionServiceProvider = Provider<PermissionService>(
-  (ref) => MockPermissionService(),
+  (ref) => DevicePermissionService(),
 );
 
 /// 分析服务 — 当前 Mock。
@@ -171,20 +209,30 @@ final analyticsServiceProvider = Provider<AnalyticsService>(
 
 /// 表情识别服务 — 暴露抽象接口,UI 不依赖具体 Mock 类型。
 ///
-/// 当前阶段:始终返回 Mock 实现。
-/// 后续阶段:根据 [AppConfig.useMockExpressionRecognition] 切换为
-/// [LiteRtExpressionRecognitionService](真实 CNN + LiteRT)。
+/// 切换策略(对齐 AGENTS.md §2.4):
+/// - 真实模式(`useMockExpressionRecognition=false`):
+///   返回 [LiteRtExpressionRecognitionService],真实摄像头 + ML Kit + TFLite。
+///   Release 构建下强制真实模式,模型加载失败通过 [expressionStatusProvider]
+///   暴露错误,不静默回退 Mock。
+/// - Mock 模式(`useMockExpressionRecognition=true`,仅 Debug):
+///   返回 [MockExpressionRecognitionService],带明显 Mock 标识。
+///
+/// **生命周期管理**:
+/// Provider 销毁时调用 service.dispose,确保摄像头/Interpreter/StreamController
+/// 都被正确释放。
 final expressionRecognitionProvider =
     Provider<ExpressionRecognitionService>((ref) {
   final config = ref.watch(appConfigProvider);
   final settings = ref.watch(appSettingsProvider);
 
   if (!config.useMockExpressionRecognition) {
-    // 真实 LiteRT 模型尚未接入,所有方法会抛 UnimplementedError。
-    // 接入计划见 lite_rt_expression_recognition_service.dart 注释。
-    return LiteRtExpressionRecognitionService();
+    // 真实 LiteRT 模式
+    final service = LiteRtExpressionRecognitionService();
+    ref.onDispose(service.dispose);
+    return service;
   }
 
+  // Mock 模式(仅 Debug,Release 已在 AppConfig 中强制禁用)
   final service = MockExpressionRecognitionService(
     confidenceThreshold: settings.expressionConfidenceThreshold,
     stableFrames: settings.expressionStableFrames,
@@ -192,6 +240,25 @@ final expressionRecognitionProvider =
   );
   ref.onDispose(service.dispose);
   return service;
+});
+
+/// 表情识别服务状态流 — UI 通过此 Provider 监听模型/摄像头/性能指标。
+///
+/// 包含:
+/// - 模型状态(加载中 / 已就绪 / 失败 / 未安装)
+/// - 摄像头状态(空闲 / 启动中 / 运行中 / 已停止 / 错误 / 权限拒绝)
+/// - 平台降级说明(Web / 桌面不支持 TFLite / ML Kit)
+/// - 推理延迟与已处理帧数
+///
+/// Release 模式下模型加载失败时,通过此流暴露错误,**不静默回退 Mock**。
+final expressionStatusProvider =
+    StreamProvider<ExpressionServiceStatus>((ref) async* {
+  final service = ref.watch(expressionRecognitionProvider);
+  // 初始化时发出初始状态
+  yield ExpressionServiceStatus.initial();
+  await for (final s in service.status) {
+    yield s;
+  }
 });
 
 /// Mock 表情控制入口 — 仅在 Mock 模式下返回 Mock 实例,否则返回 null。
@@ -677,12 +744,22 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
 
     try {
       final service = ref.read(counselorChatProvider);
-      // 读取当前 AI 导员上下文(若有),嵌入 conversationId
-      // 后端可解析 `conv_main:course_xxx:assignment_yyy` 格式做权限过滤。
+      // 读取当前 AI 导员上下文(由路由层注入,可能包含 course_id/class_id/
+      // assignment_id/announcement_id/study_session_id/self_report 等)。
       final ctx = ref.read(counselorContextProvider);
+      // 注入真实最近待办(对齐要求 #4): 从当前登录用户的真实任务仓库取最近 5 项
+      // 未完成且未删除的任务,只发送必要字段(id/title/deadline/priority/status)。
+      // 后端会重新校验归属,这里只是为了让 AI 导员能给出个性化执行建议。
+      final recentTasks = _buildRecentTasksFromRepo();
+      final mergedCtx = ctx.recentTasks.isEmpty && recentTasks.isNotEmpty
+          ? ctx.copyWith(recentTasks: recentTasks)
+          : ctx;
+      // conversation_id 仅作会话标识,不再嵌入业务上下文(对齐要求 #2)。
+      // 业务上下文通过 mergedCtx.toContextJson() 作为独立 JSON 字段发送。
       final content = await service.send(
         text,
-        conversationId: ctx.toConversationId(),
+        conversationId: 'conv_main',
+        context: mergedCtx,
         onChunk: (chunk) {
           if (!mounted) return;
           final idx = state.indexWhere((m) => m.id == streamingId);
@@ -750,6 +827,37 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
     } finally {
       _generating = false;
     }
+  }
+
+  /// 从当前登录用户的真实任务仓库构造最近待办列表(对齐要求 #4/#5)。
+  ///
+  /// 仅发送必要字段: id/title/deadline/priority/status。
+  /// 后端会重新校验任务归属,这里只是为了让 AI 导员能给出个性化执行建议。
+  /// 最多 5 条,优先未完成且未删除的任务。
+  List<CounselorRecentTask> _buildRecentTasksFromRepo() {
+    final tasks = ref.read(taskListProvider);
+    final upcoming = tasks
+        .where((t) => !t.completed && !t.deleted)
+        .toList()
+      ..sort((a, b) {
+        // 有截止时间的排前,按截止时间升序
+        final ad = a.deadline;
+        final bd = b.deadline;
+        if (ad != null && bd != null) return ad.compareTo(bd);
+        if (ad != null) return -1;
+        if (bd != null) return 1;
+        return b.priority.weight.compareTo(a.priority.weight);
+      });
+    return upcoming.take(5).map((t) {
+      final dl = t.deadline;
+      return CounselorRecentTask(
+        id: t.id,
+        title: t.title,
+        deadline: dl?.toIso8601String(),
+        priority: t.priority.name,
+        status: t.completed ? 'completed' : 'pending',
+      );
+    }).toList(growable: false);
   }
 
   void stop() {

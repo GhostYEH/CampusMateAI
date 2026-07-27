@@ -54,6 +54,34 @@ class MockDioAdapter extends Interceptor {
     );
   }
 
+  /// 注册一个 PATCH 路由。
+  void registerPatch(
+    String path, {
+    dynamic data,
+    int statusCode = 200,
+    Map<String, List<String>>? headers,
+  }) {
+    _upsertRoute(
+      'PATCH',
+      path,
+      _MockResponse(data, statusCode, headers),
+    );
+  }
+
+  /// 注册一个 PUT 路由。
+  void registerPut(
+    String path, {
+    dynamic data,
+    int statusCode = 200,
+    Map<String, List<String>>? headers,
+  }) {
+    _upsertRoute(
+      'PUT',
+      path,
+      _MockResponse(data, statusCode, headers),
+    );
+  }
+
   /// 注册一个 DELETE 路由。
   void registerDelete(
     String path, {
@@ -116,6 +144,7 @@ class MockDioAdapter extends Interceptor {
         path: options.path,
         data: options.data,
         headers: Map<String, dynamic>.from(options.headers),
+        queryParameters: Map<String, dynamic>.from(options.queryParameters),
       ),
     );
 
@@ -254,9 +283,11 @@ class RecordedRequest {
     required this.path,
     required this.data,
     required this.headers,
+    this.queryParameters = const {},
   });
   final String method;
   final String path;
   final dynamic data;
   final Map<String, dynamic> headers;
+  final Map<String, dynamic> queryParameters;
 }
