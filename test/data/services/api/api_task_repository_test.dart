@@ -178,7 +178,9 @@ void main() {
       expect(created.reminderMinutes, 90);
       expect(created.reminderEnabled, isTrue);
       expect(
-          created.reminderAt, deadline.subtract(const Duration(minutes: 90)),);
+        created.reminderAt,
+        deadline.subtract(const Duration(minutes: 90)),
+      );
     });
   });
 
@@ -263,9 +265,10 @@ void main() {
       adapter.registerDelete(
         '/api/v1/tasks/ptask_del',
         data: _backendTaskJson(
-            id: 'ptask_del',
-            status: 'deleted',
-            deletedAt: '2025-01-02T00:00:00+00:00',),
+          id: 'ptask_del',
+          status: 'deleted',
+          deletedAt: '2025-01-02T00:00:00+00:00',
+        ),
       );
       await repo.softDelete('ptask_del');
       // deleted 状态不在 tasks 中

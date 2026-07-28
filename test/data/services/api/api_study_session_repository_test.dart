@@ -698,7 +698,10 @@ void main() {
       final json = _sessionJson(
         breaks: [
           _breakJson(
-              id: 'b1', reason: '喝水', endedAt: '2025-01-01T09:32:00+00:00',),
+            id: 'b1',
+            reason: '喝水',
+            endedAt: '2025-01-01T09:32:00+00:00',
+          ),
           _breakJson(id: 'b2', reason: null, endedAt: null),
         ],
       );

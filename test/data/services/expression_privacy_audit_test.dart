@@ -129,7 +129,8 @@ void main() {
   group('表情识别隐私审计 - 学习陪伴页面不引入文件保存', () {
     test('study_companion_page.dart 不包含文件写入或上传调用', () {
       final file = File(
-          'lib/features/study_companion/presentation/study_companion_page.dart',);
+        'lib/features/study_companion/presentation/study_companion_page.dart',
+      );
       expect(file.existsSync(), isTrue);
       final source = file.readAsStringSync();
 
@@ -147,7 +148,8 @@ void main() {
 
     test('expression_panel.dart 不包含文件写入或上传调用', () {
       final file = File(
-          'lib/features/study_companion/presentation/widgets/expression_panel.dart',);
+        'lib/features/study_companion/presentation/widgets/expression_panel.dart',
+      );
       expect(file.existsSync(), isTrue);
       final source = file.readAsStringSync();
 
