@@ -4,6 +4,11 @@
 > 验证环境: Windows + Python 3.11 + Flutter 3.44.0
 > 后端地址: http://127.0.0.1:8000
 > 验证方式: 真实启动后端 + HTTP 请求 + 脚本验证 + pytest/flutter test/flutter build
+>
+> **说明**: 本报告中引用的临时验证脚本(`tests/_verify_notice_cases.py`、
+> `tests/_verify_knowledge_and_rag.py`)已于后续仓库清理中移除,
+> 对应用例已迁移到正式 pytest 套件 `backend/tests/test_notice_extraction.py`
+> 等文件中,可通过 `python -m pytest` 复跑。本报告保留作为历史记录。
 
 ---
 

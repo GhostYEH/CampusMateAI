@@ -39,7 +39,7 @@ CNN 识别的是**可观察到的面部表情**,不进行心理诊断。界面�
 - **google_fonts** 字体
 - **mocktail** 单元测试 Mock
 
-**Python 后端**(本轮新增,位于 [`backend/`](backend/))
+**Python 后端**(位于 [`backend/`](backend/))
 
 - **FastAPI** + **Pydantic v2**(数据校验与 API 契约)
 - **SQLite**(原型数据存储,预留 PostgreSQL 迁移)
@@ -81,7 +81,7 @@ campus_mate_ai/
 │   └── mock/                     # Mock 数据与 Mock 服务实现
 │       ├── mock_data/            # 真实中文 Mock 数据
 │       └── mock_services/        # Mock 服务 + 表情多帧平滑
-├── backend/                      # ★ Python FastAPI 后端(本轮新增)
+├── backend/                      # ★ Python FastAPI 后端
 │   ├── app/
 │   │   ├── api/routes/           # health / notices / knowledge / counselor 路由
 │   │   ├── core/                 # config / exceptions / logging / security
@@ -100,15 +100,19 @@ campus_mate_ai/
 │   │   ├── knowledge_base/demo/ # 5 份演示资料 Markdown
 │   │   └── app.db               # SQLite 数据库文件(运行后自动生成)
 │   ├── scripts/rebuild_index.py  # 重建索引命令行
-│   ├── tests/                   # 112 个 pytest 测试
+│   ├── tests/                   # pytest 测试(309 个)
 │   ├── .env.example
 │   ├── pytest.ini
 │   ├── requirements.txt
 │   └── README.md                # 后端专属文档
-├── docs/                        # ★ 项目文档(本轮新增)
-│   ├── api_contract.md          # API 契约(请求/响应/错误码/SSE 格式)
-│   └── knowledge_base_guide.md  # 知识库使用指南
-├── test/                        # Flutter 测试(321 个,含真实后端 Mock 测试)
+├── docs/                        # ★ 项目文档
+│   ├── api_overview.md          # API 概览(请求/响应/错误码/SSE 格式/RBAC)
+│   ├── knowledge_base_guide.md  # 知识库使用指南
+│   ├── reminder_guide.md        # 本地提醒功能指南
+│   ├── retrieval_evaluation.md  # 检索评测指南
+│   ├── reports/                 # 验证报告
+│   └── cnn/                     # CNN 训练与 LiteRT 部署文档
+├── test/                        # Flutter 测试(707 个,含真实后端 Mock 测试)
 ├── integration_test/            # Flutter 集成测试(9 条,Android 模拟器 / Web)
 ├── .github/workflows/           # GitHub Actions CI(Flutter CI + Backend CI)
 ├── AGENTS.md                    # 项目长期规范
@@ -387,16 +391,14 @@ python scripts/evaluate_retrieval.py --json
 > 本地提醒功能基于 `flutter_local_notifications`,在 Android 系统层调度任务截止时间通知,详见 [`docs/reminder_guide.md`](docs/reminder_guide.md)。
 >
 > 检索评测的指标含义、fixtures 结构与最新结果说明见 [`docs/retrieval_evaluation.md`](docs/retrieval_evaluation.md)。
->
-> 当前各能力的"真实完成 / 降级模式 / 仅 Mock / 尚未完成"分类见 [`docs/current_capabilities.md`](docs/current_capabilities.md)。
 
 > 详细后端启动、知识库导入、降级模式说明见 [`backend/README.md`](backend/README.md)。
-> API 契约(请求/响应/错误码/SSE 格式)见 [`docs/api_contract.md`](docs/api_contract.md)。
+> API 概览(请求/响应/错误码/SSE 格式/RBAC 权限矩阵)见 [`docs/api_overview.md`](docs/api_overview.md)。
 > 知识库使用指南见 [`docs/knowledge_base_guide.md`](docs/knowledge_base_guide.md)。
 
 ## 测试覆盖
 
-### Flutter(339 测试)
+### Flutter(707 测试)
 
 | 类别 | 测试文件 | 说明 |
 |------|----------|------|
@@ -421,7 +423,7 @@ python scripts/evaluate_retrieval.py --json
 | ★ API 导员服务 | `test/data/services/api/api_counselor_chat_service_test.dart` | SSE 流式 / sources/chunk/done / 网络错误 |
 | ★ API 知识库服务 | `test/data/services/api/api_knowledge_base_service_test.dart` | 文档列表 / 来源解析 / 元数据 |
 
-### Python 后端(112 个 pytest 测试)
+### Python 后端(309 个 pytest 测试)
 
 | 文件 | 说明 |
 |------|------|
@@ -465,20 +467,20 @@ CI 在 push / PR 到 `main` / `master` 时触发,包含两个独立 workflow:
 
 **Flutter**
 
-- `dart format lib test integration_test` — 120 files formatted,3 changed(其他 Agent 维护范围,详见 [`docs/current_capabilities.md`](docs/current_capabilities.md) "已知限制")
+- `dart format lib test integration_test` — 120 files formatted,3 changed(其他 Agent 维护范围)
 - `flutter analyze` — No issues found
-- `flutter test` — 全部测试通过(321 tests)
+- `flutter test` — 全部测试通过(707 tests)
 - Android APK 构建 — 通过(core library desugaring 已启用)
 - Web 构建 — 通过
 
 **Python 后端**
 
-- `pytest` — 112 tests passed
+- `pytest` — 309 tests passed
 - API 启动健康检查通过(`CampusMate AI Backend`)
 - 通知抽取覆盖 15+ 真实校园通知场景
 - 知识库导入/检索/删除全链路测试通过
 - RAG 问答(无资料/冲突/过期/恶意 Prompt)全部覆盖
-- 检索评测:Hit@1=93.75%, Hit@3=100%, MRR=0.9635, 正确拒答率=100%, 错误接受率=0%(44 条 fixtures,0 失败)
+- 检索评测:Hit@1=90.62%, Hit@3=100%, MRR=0.9479, 正确拒答率=100%, 错误接受率=0%(44 条 fixtures,0 失败)
 - LLM 降级模式:CI 中 `LLM_PROVIDER=none` 验证 `retrieval_summary` 与 fallback 行为,退出码 0
 
 ## 已知限制与下一阶段
@@ -508,7 +510,14 @@ CI 在 push / PR 到 `main` / `master` 时触发,包含两个独立 workflow:
 - RAG 问答(SSE 流式 + 来源引用 + 冲突提示 + 过期降权 + 恶意 Prompt 防御)
 - LLM 降级模式(无 API Key 时走检索摘要模式)
 - 5 份标注"演示资料"的内置文档
-- pytest 完整覆盖(52 个测试)
+- JWT 认证 + 多角色 RBAC(student / teacher / admin)
+- 课程 / 班级 / 通知 / 任务 / 提交 全 CRUD + 状态机
+- 教师工作台 + 学生工作台(聚合 SQL,无 N+1)
+- 附件上传与下载(安全校验 + 路径穿越防御)
+- AI 导员上下文融合(权限校验 + 草稿隔离)
+- 数据库迁移(旧库兼容 + 幂等)
+- 正式 Release 强约束(`production` 禁止启用任何 Mock 业务开关)
+- pytest 完整覆盖
 
 ### 当前阶段尚未完成(真实限制)
 
@@ -516,7 +525,6 @@ CI 在 push / PR 到 `main` / `master` 时触发,包含两个独立 workflow:
 - **LiteRT 真实推理**: `LiteRtExpressionRecognitionService` 仍为占位实现
 - **真实学校系统接入**: 未连接真实学校通知源 / 教务系统
 - **真实学校正式数据**: 当前知识库为"演示资料",非用户所在学校的真实现行制度
-- **JWT 认证与多用户**: 当前为单租户匿名模式
 - **PostgreSQL / Redis**: 当前 SQLite 单机文件存储
 - **向量检索**: 当前 BM25 关键词检索 + 校园术语同义词扩展(对称),未引入向量数据库 / Embedding 模型
 - **本地提醒调度**: `flutter_local_notifications` 真实定时推送未实现
@@ -524,7 +532,7 @@ CI 在 push / PR 到 `main` / `master` 时触发,包含两个独立 workflow:
 
 ### 下一阶段建议
 
-- 接入 PostgreSQL + JWT 多用户认证
+- 接入 PostgreSQL + Redis
 - 引入向量检索 + 中文 Embedding 模型(改善同义词/语义检索)
 - CNN 模型训练 + LiteRT 真实部署 + Platform Channel 接 CameraX
 - `flutter_local_notifications` 真实定时推送

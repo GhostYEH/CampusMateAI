@@ -6,7 +6,7 @@ import 'api_client.dart';
 
 /// 真实后端知识库管理服务 — 调用 FastAPI 的知识库管理接口。
 ///
-/// 后端接口(对齐 docs/api_contract.md):
+/// 后端接口(对齐 docs/api_overview.md):
 /// - GET    /api/v1/knowledge/status
 /// - GET    /api/v1/knowledge/documents
 /// - POST   /api/v1/knowledge/documents          (multipart/form-data)
