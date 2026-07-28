@@ -83,9 +83,8 @@ backend/
 ├── scripts/
 │   ├── rebuild_index.py         # 重建索引命令行
 │   ├── check_llm_provider.py    # LLM 连通性检查(支持 Fake Provider)
-│   ├── evaluate_retrieval.py    # 检索评测(Hit@1/Hit@3/MRR/拒答率/失败样例)
-│   └── _debug_retrieval.py      # 检索调试辅助脚本(不参与 CI)
-├── tests/                       # 196 个 pytest 测试(含 84 个多角色测试)
+│   └── evaluate_retrieval.py    # 检索评测(Hit@1/Hit@3/MRR/拒答率/失败样例)
+├── tests/                       # pytest 测试(含多角色测试)
 ├── .env.example
 ├── pytest.ini
 ├── requirements.txt
@@ -259,9 +258,9 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 
 降级模式保证无 LLM Key 时仍可运行真实业务流程,但绝不返回伪造的 LLM 结果或 Mock 业务数据。
 
-## API 契约
+## API 概览
 
-完整请求/响应字段、错误码、SSE 事件格式参见 [`../docs/api_contract.md`](../docs/api_contract.md)。
+完整请求/响应字段、错误码、SSE 事件格式、RBAC 权限矩阵参见 [`../docs/api_overview.md`](../docs/api_overview.md)。
 
 ## 知识库使用指南
 
@@ -278,7 +277,7 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 - 错误响应不泄露用户名是否存在(`INVALID_CREDENTIALS` 统一返回)
 - 教师只能访问与教学直接相关的学生信息,不得跨课程读取(详见下方 RBAC 矩阵)
 
-## 多角色协同平台(本轮新增)
+## 多角色协同平台
 
 ### 角色与权限矩阵
 
@@ -308,14 +307,14 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 
 **禁止** 教师访问:学生私人 AI 对话、私人待办、个人学习陪伴记录、摄像头画面、表情识别结果、
 与当前课程无关的信息、密码和 token。详见
-[`../docs/multi_role_api_contract.md` §8](../docs/multi_role_api_contract.md#8-ai-导员上下文融合)。
+[`../docs/api_overview.md` §RBAC 权限矩阵](../docs/api_overview.md#rbac-权限矩阵简表)。
 
 ### AI 导员上下文融合
 
 `POST /api/v1/counselor/chat` 新增可选上下文字段 `course_id` / `class_id` / `assignment_id` /
 `announcement_id`。携带任一字段时必须携带有效 access token,后端会真实校验访问权限,
 草稿对学生不可见。详见
-[`../docs/multi_role_api_contract.md` §8](../docs/multi_role_api_contract.md#8-ai-导员上下文融合)。
+[`../docs/api_overview.md` §4 AI 导员](../docs/api_overview.md#4-ai-导员-counselor)。
 
 ### 验收账号(dev/test 环境)
 
@@ -374,7 +373,7 @@ production 已被 config 校验拦截):
 - 任务提醒推送未实现(由客户端轮询 dashboard)
 - 多角色权限测试不覆盖 SSE 流式 AI 上下文(仅覆盖非流式)
 
-## 正式 Release 强约束(本轮新增)
+## 正式 Release 强约束
 
 正式 Release 不得启用任何 Mock 业务开关。`Settings._normalize` 在 `app_env=production` 下强制校验:
 

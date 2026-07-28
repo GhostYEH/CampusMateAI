@@ -5,7 +5,7 @@ import 'api/api_client.dart';
 
 /// 多角色服务接口汇总 — UI 层只依赖抽象接口,通过 Riverpod 注入 Mock 或 Real 实现。
 ///
-/// 接口路径严格对齐 `docs/multi_role_api_contract.md`(若后端 Agent 已生成)
+/// 接口路径严格对齐 `docs/api_overview.md`(API 概览)
 /// 与用户任务说明中的固定 API 列表。
 ///
 /// 后端使用 snake_case,Dart 模型内部使用 camelCase,

@@ -87,6 +87,10 @@ tmp/
 **/verify_notice_output.txt
 *.mp4
 
+# Build artifacts (APK / Web / etc.) — 产物不纳入版本控制
+artifacts/
+*.apk
+
 # Python cache
 __pycache__/
 *.py[cod]

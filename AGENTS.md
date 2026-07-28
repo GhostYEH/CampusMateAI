@@ -8,8 +8,8 @@
 
 - 面向大学生的移动端智能陪伴助手,参赛计算机设计大赛。
 - 核心能力: 校园通知智能整理、个人待办与截止提醒、AI 导员问答(基于本校知识库)、基于 CNN 的面部表情识别、学习状态记录与轻量陪伴。
-- 当前阶段: **第一阶段 — 高质量可运行前端原型**(Mock 业务闭环)。
-- 后续阶段: 后端(FastAPI + RAG)、CNN 训练与 LiteRT 部署。
+- 当前阶段: Flutter 高质量原型 + FastAPI 真实后端(Mock 与 Real 双模式可切换)。
+- 后续阶段: CNN 训练与 LiteRT 部署、PostgreSQL 迁移、向量检索。
 
 ## 2. 强制规范
 
@@ -55,12 +55,12 @@ CNN 识别的是**可观察到的面部表情**,不是心理诊断。代码与�
 - 应用主体: Flutter / Dart
 - 状态管理: Riverpod (`flutter_riverpod`)
 - 路由: `go_router`
-- 网络: `Dio`(封装,当前 Mock)
-- 本地数据: 当前内存 + `shared_preferences`(后续可迁移 Drift/SQLite)
+- 网络: `Dio`(封装,Mock 与 Real 双模式)
+- 本地数据: `shared_preferences`(后续可迁移 Drift/SQLite)
 - 本地提醒: `flutter_local_notifications`
 - 摄像头: `camera`(后续 Platform Channel 接 Kotlin CameraX)
 - CNN 部署: 后续 LiteRT
-- 后端(预留): Python / FastAPI / PostgreSQL / RAG / JWT
+- 后端: Python / FastAPI / SQLite / RAG / JWT / BM25(预留 PostgreSQL 迁移)
 - CNN 训练(预留): PyTorch / torchvision / FER2013 / 对比 ResNet18、MobileNetV3-Small
 
 ## 5. 代码架构(Feature-first)

@@ -104,7 +104,7 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
   -F "is_official=true"
 ```
 
-详细字段见 [API 契约](api_contract.md#3-知识库-knowledge)。
+详细字段见 [API 概览](api_overview.md#3-知识库-knowledge)。
 
 ### 通过文件系统
 
