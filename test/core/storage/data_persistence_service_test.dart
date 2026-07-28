@@ -125,8 +125,8 @@ void main() {
 
   group('DataPersistenceService.saveStudyHistory', () {
     test('保存学习历史后可被 StudyStorage 读回', () async {
-      await studyRepo.start(goalId: 'goal_a');
-      await studyRepo.end(selfReportMood: '专注');
+      await studyRepo.start(goal: 'goal_a');
+      await studyRepo.finish(selfReport: '专注');
 
       await service.saveStudyHistory();
       final loaded = await StudyStorage(localStorage).loadHistory();

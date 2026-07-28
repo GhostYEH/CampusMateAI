@@ -86,7 +86,10 @@ class AppShadows {
 class AppTypography {
   AppTypography._();
 
+  static const String fontFamily = 'NotoSansSC';
+
   static const TextStyle display = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 30,
     fontWeight: FontWeight.w700,
     height: 1.2,
@@ -95,6 +98,7 @@ class AppTypography {
   );
 
   static const TextStyle headline = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 22,
     fontWeight: FontWeight.w700,
     height: 1.25,
@@ -103,6 +107,7 @@ class AppTypography {
   );
 
   static const TextStyle title = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 17,
     fontWeight: FontWeight.w600,
     height: 1.3,
@@ -110,6 +115,7 @@ class AppTypography {
   );
 
   static const TextStyle subtitle = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 15,
     fontWeight: FontWeight.w600,
     height: 1.35,
@@ -117,6 +123,7 @@ class AppTypography {
   );
 
   static const TextStyle body = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 14,
     fontWeight: FontWeight.w400,
     height: 1.5,
@@ -124,6 +131,7 @@ class AppTypography {
   );
 
   static const TextStyle bodyStrong = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 14,
     fontWeight: FontWeight.w600,
     height: 1.5,
@@ -131,6 +139,7 @@ class AppTypography {
   );
 
   static const TextStyle caption = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 12.5,
     fontWeight: FontWeight.w400,
     height: 1.4,
@@ -138,6 +147,7 @@ class AppTypography {
   );
 
   static const TextStyle label = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 12,
     fontWeight: FontWeight.w600,
     height: 1.3,
@@ -146,6 +156,7 @@ class AppTypography {
   );
 
   static const TextStyle overline = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 11,
     fontWeight: FontWeight.w600,
     height: 1.2,
@@ -154,6 +165,7 @@ class AppTypography {
   );
 
   static const TextStyle metric = TextStyle(
+    fontFamily: fontFamily,
     fontSize: 28,
     fontWeight: FontWeight.w700,
     height: 1.1,

@@ -73,6 +73,37 @@ def _h(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _extract_sse_done_payload(text: str) -> dict:
+    """从 SSE 文本中提取 event: done 的 data JSON 负载。
+
+    SSE 事件格式:
+        event: done
+        data: {"answer": "...", "context_used": {...}, ...}
+
+    若未找到 done 事件,返回空 dict(便于断言 .get(...) 默认值)。
+    """
+    import json as _json
+
+    # 按事件块切分(SSE 事件之间以空行分隔)
+    blocks = text.replace("\r\n", "\n").split("\n\n")
+    for block in blocks:
+        lines = block.split("\n")
+        is_done = False
+        data_lines: list[str] = []
+        for line in lines:
+            if line.startswith("event:") and "done" in line:
+                is_done = True
+            elif line.startswith("data:"):
+                data_lines.append(line[len("data:"):].strip())
+        if is_done and data_lines:
+            payload = "\n".join(data_lines)
+            try:
+                return _json.loads(payload)
+            except Exception:
+                return {}
+    return {}
+
+
 # 测试用辅助: 在 teacher_demo 的某个班级下创建一个新任务,并发布。
 def _create_and_publish_assignment(
     app_client, teacher_token, *, deadline=None, allow_resubmit=True
@@ -873,7 +904,12 @@ def test_counselor_with_assignment_context_student_allowed(
 def test_counselor_with_draft_assignment_student_forbidden(
     app_client_with_demo, teacher_token, student_token
 ):
-    """学生提问时携带草稿任务 ID 应被拒绝(不可见)。"""
+    """学生提问时携带草稿任务 ID 应被忽略 + warning(不暴露存在性)。
+
+    新设计(对齐要求 #8): 对不存在/越权/已删除的上下文对象忽略并生成 warning,
+    不抛异常,返回 200。草稿任务对学生不可见,统一以"不可访问"措辞提示,
+    不暴露草稿存在性。
+    """
     from app.services.container import get_container
 
     container = get_container()
@@ -893,7 +929,7 @@ def test_counselor_with_draft_assignment_student_forbidden(
         headers=_h(teacher_token),
     ).json()
     asg_id = create["id"]
-    # 学生通过 AI 接口尝试访问草稿 → 404
+    # 学生通过 AI 接口尝试访问草稿 → 200 + warning(忽略+warning,不抛异常)
     resp = app_client_with_demo.post(
         "/api/v1/counselor/chat",
         json={
@@ -903,14 +939,23 @@ def test_counselor_with_draft_assignment_student_forbidden(
         },
         headers=_h(student_token),
     )
-    assert resp.status_code == 404
-    assert resp.json()["code"] == "ASSIGNMENT_NOT_FOUND"
+    assert resp.status_code == 200
+    body = resp.json()
+    # 上下文应被忽略(assignment_id 不在 context_used 中)
+    assert "assignment_id" not in body["context_used"]
+    # 应生成 warning(统一"不可访问"措辞,不暴露草稿存在性)
+    cw = body["context_warnings"]
+    assert any("不可访问" in w or "已忽略" in w for w in cw)
 
 
 def test_counselor_with_other_teacher_course_forbidden(
     app_client_with_demo, teacher_token, teacher2_token, student_token
 ):
-    """学生提问时携带不属于自己班级的任务 ID 应被拒绝。"""
+    """学生提问时携带不属于自己班级的任务 ID 应被忽略 + warning(对齐要求 #8)。
+
+    新设计: 越权上下文对象不抛异常,返回 200,在 context_warnings 中提示。
+    不暴露草稿/未授权对象的存在性,统一以"不可访问"措辞提示。
+    """
     # teacher2 创建课程与班级
     course2 = app_client_with_demo.post(
         "/api/v1/courses",
@@ -929,6 +974,7 @@ def test_counselor_with_other_teacher_course_forbidden(
         headers=_h(teacher2_token),
     ).json()
     # student_demo(未加入 teacher2 的班级)尝试用 AI 提问
+    # → 越权 assignment_id 被忽略,返回 200 + warning
     resp = app_client_with_demo.post(
         "/api/v1/counselor/chat",
         json={
@@ -938,7 +984,12 @@ def test_counselor_with_other_teacher_course_forbidden(
         },
         headers=_h(student_token),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+    body = resp.json()
+    # 越权 assignment_id 应被忽略
+    assert "assignment_id" not in body["context_used"]
+    cw = body["context_warnings"]
+    assert any("不可访问" in w or "已忽略" in w for w in cw)
 
 
 def test_counselor_anonymous_no_context(app_client_with_demo):
@@ -1013,10 +1064,10 @@ def test_counselor_sse_student_with_assignment_context_allowed(
 def test_counselor_sse_student_with_draft_assignment_forbidden(
     app_client_with_demo, teacher_token, student_token
 ):
-    """SSE 流式: 学生通过 SSE 提问时携带草稿任务 ID 应被拒绝(404 ASSIGNMENT_NOT_FOUND)。
+    """SSE 流式: 学生通过 SSE 提问时携带草稿任务 ID 应被忽略 + warning(对齐要求 #8)。
 
-    关键: _collect_teaching_context 在 StreamingResponse 返回之前同步执行,
-          抛出的 AssignmentNotFound 由 FastAPI 处理,返回标准 JSON 错误(非 SSE)。
+    新设计: 草稿任务对学生不可见,统一以"不可访问"措辞提示,
+    不暴露草稿存在性。返回 200 + SSE 事件流,在 done 事件中包含 context_warnings。
     """
     from app.services.container import get_container
 
@@ -1039,7 +1090,7 @@ def test_counselor_sse_student_with_draft_assignment_forbidden(
     asg_id = create["id"]
 
     # 学生通过 SSE 流式接口尝试访问草稿
-    # 注意: TestClient.stream 在错误响应时不会抛错,但应返回 4xx 状态码与 JSON 错误体
+    # → 越权 assignment_id 被忽略,返回 200 + SSE 事件流 + context_warnings
     with app_client_with_demo.stream(
         "POST",
         "/api/v1/counselor/chat",
@@ -1050,21 +1101,27 @@ def test_counselor_sse_student_with_draft_assignment_forbidden(
         },
         headers=_h(student_token),
     ) as resp:
-        assert resp.status_code == 404
-        # 错误响应是标准 JSON,不是 SSE
-        assert "text/event-stream" not in resp.headers.get("content-type", "")
-        # 读取错误体
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
         body = b""
         for chunk in resp.iter_bytes():
             body += chunk
-        err = json.loads(body.decode("utf-8"))
-        assert err["code"] == "ASSIGNMENT_NOT_FOUND"
+        text = body.decode("utf-8")
+        # 必须包含 done 事件
+        assert "event: done" in text
+        # 不应出现 error 事件
+        assert "event: error" not in text
+        # 解析 done 事件中的 context_warnings
+        done_data = _extract_sse_done_payload(text)
+        assert "assignment_id" not in done_data.get("context_used", {})
+        cw = done_data.get("context_warnings", [])
+        assert any("不可访问" in w or "已忽略" in w for w in cw)
 
 
 def test_counselor_sse_student_with_other_teacher_course_forbidden(
     app_client_with_demo, teacher_token, teacher2_token, student_token
 ):
-    """SSE 流式: 学生携带不属于自己班级的任务 ID 应被拒绝(403 FORBIDDEN)。"""
+    """SSE 流式: 学生携带不属于自己班级的任务 ID 应被忽略 + warning(对齐要求 #8)。"""
     # teacher2 创建课程与班级
     course2 = app_client_with_demo.post(
         "/api/v1/courses",
@@ -1082,6 +1139,7 @@ def test_counselor_sse_student_with_other_teacher_course_forbidden(
         headers=_h(teacher2_token),
     ).json()
     # student_demo(未加入 teacher2 的班级)尝试用 SSE 提问
+    # → 越权 assignment_id 被忽略,返回 200 + SSE 事件流 + context_warnings
     with app_client_with_demo.stream(
         "POST",
         "/api/v1/counselor/chat",
@@ -1092,19 +1150,24 @@ def test_counselor_sse_student_with_other_teacher_course_forbidden(
         },
         headers=_h(student_token),
     ) as resp:
-        assert resp.status_code == 403
-        assert "text/event-stream" not in resp.headers.get("content-type", "")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
         body = b""
         for chunk in resp.iter_bytes():
             body += chunk
-        err = json.loads(body.decode("utf-8"))
-        assert err["code"] == "FORBIDDEN"
+        text = body.decode("utf-8")
+        assert "event: done" in text
+        assert "event: error" not in text
+        done_data = _extract_sse_done_payload(text)
+        assert "assignment_id" not in done_data.get("context_used", {})
+        cw = done_data.get("context_warnings", [])
+        assert any("不可访问" in w or "已忽略" in w for w in cw)
 
 
 def test_counselor_sse_teacher_with_other_teacher_assignment_forbidden(
     app_client_with_demo, teacher_token, teacher2_token
 ):
-    """SSE 流式: 教师 A 通过 SSE 携带教师 B 的任务 ID 应被拒绝(403)。"""
+    """SSE 流式: 教师 A 通过 SSE 携带教师 B 的任务 ID 应被忽略 + warning(对齐要求 #8)。"""
     # teacher2 创建课程/班级/任务
     course2 = app_client_with_demo.post(
         "/api/v1/courses",
@@ -1122,6 +1185,7 @@ def test_counselor_sse_teacher_with_other_teacher_assignment_forbidden(
         headers=_h(teacher2_token),
     ).json()
     # teacher_demo(非该课程教师)尝试用 SSE 访问 teacher2 的任务
+    # → 越权 assignment_id 被忽略,返回 200 + SSE 事件流 + context_warnings
     with app_client_with_demo.stream(
         "POST",
         "/api/v1/counselor/chat",
@@ -1132,13 +1196,18 @@ def test_counselor_sse_teacher_with_other_teacher_assignment_forbidden(
         },
         headers=_h(teacher_token),
     ) as resp:
-        assert resp.status_code == 403
-        assert "text/event-stream" not in resp.headers.get("content-type", "")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
         body = b""
         for chunk in resp.iter_bytes():
             body += chunk
-        err = json.loads(body.decode("utf-8"))
-        assert err["code"] == "FORBIDDEN"
+        text = body.decode("utf-8")
+        assert "event: done" in text
+        assert "event: error" not in text
+        done_data = _extract_sse_done_payload(text)
+        assert "assignment_id" not in done_data.get("context_used", {})
+        cw = done_data.get("context_warnings", [])
+        assert any("不可访问" in w or "已忽略" in w for w in cw)
 
 
 def test_counselor_sse_anonymous_no_context_allowed(app_client_with_demo):

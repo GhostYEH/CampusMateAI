@@ -10,7 +10,11 @@ class AppTheme {
   AppTheme._();
 
   static ThemeData light() {
-    final base = ThemeData.light(useMaterial3: true);
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      fontFamily: AppTypography.fontFamily,
+    );
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.bgBase,
       colorScheme: const ColorScheme.light(
@@ -167,7 +171,11 @@ class AppTheme {
   }
 
   static ThemeData dark() {
-    final base = ThemeData.dark(useMaterial3: true);
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      fontFamily: AppTypography.fontFamily,
+    );
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.darkBgBase,
       colorScheme: const ColorScheme.dark(

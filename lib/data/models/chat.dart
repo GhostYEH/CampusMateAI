@@ -337,12 +337,67 @@ enum EvidenceLevel {
   }
 }
 
+/// AI 导员上下文中的"最近待办"条目(仅必要字段,对齐后端 CounselorRecentTask)。
+///
+/// 重要(对齐用户新要求):
+/// - recent_tasks 现在只表示 PersonalTask(用户个人待办),不表示 Assignment。
+/// - 教师作业只能通过 [CounselorContext.assignmentId] 传递,不得放入 recent_tasks。
+/// - 后端会通过 PersonalTaskRepository 重新查询,客户端传入的
+///   title/deadline/priority/status 一律视为 hint,不得作为事实使用。
+/// - 未登录用户: recent_tasks 全部忽略 + warning。
+/// - 已登录用户: 后端按 user_id 查询;不存在 / 越权 / 已软删除的任务
+///   不得进入上下文,会被忽略并生成 warning。
+/// - 前端发送的任务必须来自真实 ApiTaskRepository 缓存,
+///   不得从 MockTaskRepository 取任务(USE_MOCK_BACKEND=false 时)。
+class CounselorRecentTask extends Equatable {
+  const CounselorRecentTask({
+    required this.id,
+    this.title,
+    this.deadline,
+    this.priority,
+    this.status,
+  });
+
+  /// PersonalTask ID(必填,后端据此查询数据库)。
+  final String id;
+
+  /// 客户端 hint(后端不信任,仅作 debug 用途)。
+  /// 后端会使用数据库权威 title 覆盖此字段。
+  final String? title;
+
+  /// 客户端 hint(后端不信任)。
+  /// ISO8601 字符串或可读文案,后端会使用数据库权威 deadline 覆盖。
+  final String? deadline;
+
+  /// 客户端 hint(后端不信任)。
+  /// 后端会使用数据库权威 priority 覆盖。
+  final String? priority;
+
+  /// 客户端 hint(后端不信任)。
+  /// 后端会使用数据库权威 status 覆盖。
+  final String? status;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        if (title != null) 'title': title,
+        if (deadline != null) 'deadline': deadline,
+        if (priority != null) 'priority': priority,
+        if (status != null) 'status': status,
+      };
+
+  @override
+  List<Object?> get props => [id, title, deadline, priority, status];
+}
+
 /// AI 导员对话上下文 — 学生从课程/通知/任务进入时携带。
 ///
 /// 用途(AGENTS.md §7 "AI 导员融合"):
 /// - UI 顶部显示 "正在询问:高等数学 · 第 3 次作业"
 /// - 后端按上下文优先返回:任务原文 → 课程资料 → 学校知识库
 /// - 防止学生通过 AI 读取其他班级任务 / 教师草稿 / 其他学生提交
+///
+/// 重要(对齐要求 #2): 前端不得再仅把上下文编码进 conversation_id,
+/// 必须通过 [toContextJson] 生成独立上下文字段放入 JSON Body 发送。
 class CounselorContext extends Equatable {
   const CounselorContext({
     this.courseId,
@@ -350,6 +405,10 @@ class CounselorContext extends Equatable {
     this.assignmentId,
     this.announcementId,
     this.contextLabel,
+    this.studySessionId,
+    this.selfReport,
+    this.expressionSignal,
+    this.recentTasks = const [],
   });
 
   final String? courseId;
@@ -360,17 +419,37 @@ class CounselorContext extends Equatable {
   /// 用于 UI 顶部展示的简短标签(例如 "高等数学 · 第 3 次作业")。
   final String? contextLabel;
 
-  /// 是否有任意上下文。
+  /// 当前学习会话 ID(可选,用于学习陪伴场景)。
+  final String? studySessionId;
+
+  /// 用户自报状态(如"有些疲惫"),仅作个性化参考。
+  final String? selfReport;
+
+  /// 表情信号(预留,当前为空,留给 CNN 分支接入)。
+  /// 后端当前实现会忽略此字段并生成 warning。
+  final Map<String, dynamic>? expressionSignal;
+
+  /// 最近待办条目(仅必要字段)。
+  /// 后端会重新校验归属,越权条目会被忽略并生成 warning。
+  final List<CounselorRecentTask> recentTasks;
+
+  /// 是否有任意上下文(用于 UI 判断是否显示上下文条幅)。
   bool get hasContext =>
       courseId != null ||
       classId != null ||
       assignmentId != null ||
-      announcementId != null;
+      announcementId != null ||
+      studySessionId != null ||
+      selfReport != null ||
+      expressionSignal != null ||
+      recentTasks.isNotEmpty;
 
-  /// 生成发送给后端的 conversationId(嵌入上下文,后端可解析)。
+  /// 生成发送给后端的 conversationId(仅作会话标识,不再嵌入业务上下文)。
   ///
-  /// 格式: `conv_main:course_xxx:class_yyy:assignment_zzz:announcement_www`
-  /// 没有 context 时退化为 `conv_main`。
+  /// 旧实现把 course/class/assignment/announcement 编码进 conversation_id,
+  /// 已弃用。新代码必须使用 [toContextJson] 把上下文作为独立字段发送。
+  @Deprecated('使用 toContextJson() 把上下文作为独立 JSON 字段发送,'
+      '不要编码进 conversation_id')
   String toConversationId() {
     final parts = <String>['conv_main'];
     if (courseId != null) parts.add('course:$courseId');
@@ -380,20 +459,97 @@ class CounselorContext extends Equatable {
     return parts.join(':');
   }
 
+  /// 生成发送给后端的独立上下文 JSON 字段(对齐后端 ChatRequest)。
+  ///
+  /// 调用方应把返回的 Map 合并到请求 Body 中,与 message/conversation_id/stream
+  /// 并列发送。后端会校验当前用户是否有权访问这些资源,越权/不存在/已删除的
+  /// 对象会被忽略并生成 warning。
+  ///
+  /// 注意(对齐要求 #5): recent_tasks 只发送必要字段
+  /// (id/title/deadline/priority/status),不发送描述/附件/创建时间等。
+  Map<String, dynamic> toContextJson() {
+    final json = <String, dynamic>{};
+    if (courseId != null) json['course_id'] = courseId;
+    if (classId != null) json['class_id'] = classId;
+    if (assignmentId != null) json['assignment_id'] = assignmentId;
+    if (announcementId != null) json['announcement_id'] = announcementId;
+    if (studySessionId != null) json['study_session_id'] = studySessionId;
+    if (selfReport != null) json['self_report'] = selfReport;
+    if (expressionSignal != null) json['expression_signal'] = expressionSignal;
+    if (recentTasks.isNotEmpty) {
+      json['recent_tasks'] = recentTasks.map((t) => t.toJson()).toList();
+    }
+    return json;
+  }
+
   /// 从路由 extra(Map) 构造。
   factory CounselorContext.fromExtra(Object? extra) {
     if (extra is! Map) return const CounselorContext();
     final map = Map<String, dynamic>.from(extra);
+    final recentTasksRaw = map['recent_tasks'];
+    List<CounselorRecentTask> recentTasks = const [];
+    if (recentTasksRaw is List) {
+      recentTasks = recentTasksRaw
+          .whereType<Map>()
+          .map((m) => CounselorRecentTask(
+                id: m['id']?.toString() ?? '',
+                title: m['title']?.toString() ?? '',
+                deadline: m['deadline']?.toString(),
+                priority: m['priority']?.toString(),
+                status: m['status']?.toString(),
+              ),)
+          .where((t) => t.id.isNotEmpty)
+          .toList(growable: false);
+    }
     return CounselorContext(
       courseId: map['course_id'] as String?,
       classId: map['class_id'] as String?,
       assignmentId: map['assignment_id'] as String?,
       announcementId: map['announcement_id'] as String?,
       contextLabel: map['context_title'] as String?,
+      studySessionId: map['study_session_id'] as String?,
+      selfReport: map['self_report'] as String?,
+      expressionSignal: map['expression_signal'] is Map
+          ? Map<String, dynamic>.from(map['expression_signal'] as Map)
+          : null,
+      recentTasks: recentTasks,
+    );
+  }
+
+  CounselorContext copyWith({
+    String? courseId,
+    String? classId,
+    String? assignmentId,
+    String? announcementId,
+    String? contextLabel,
+    String? studySessionId,
+    String? selfReport,
+    Map<String, dynamic>? expressionSignal,
+    List<CounselorRecentTask>? recentTasks,
+  }) {
+    return CounselorContext(
+      courseId: courseId ?? this.courseId,
+      classId: classId ?? this.classId,
+      assignmentId: assignmentId ?? this.assignmentId,
+      announcementId: announcementId ?? this.announcementId,
+      contextLabel: contextLabel ?? this.contextLabel,
+      studySessionId: studySessionId ?? this.studySessionId,
+      selfReport: selfReport ?? this.selfReport,
+      expressionSignal: expressionSignal ?? this.expressionSignal,
+      recentTasks: recentTasks ?? this.recentTasks,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [courseId, classId, assignmentId, announcementId, contextLabel];
+  List<Object?> get props => [
+        courseId,
+        classId,
+        assignmentId,
+        announcementId,
+        contextLabel,
+        studySessionId,
+        selfReport,
+        expressionSignal,
+        recentTasks,
+      ];
 }

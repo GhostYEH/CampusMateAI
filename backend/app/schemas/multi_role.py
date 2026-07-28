@@ -376,6 +376,10 @@ class StudentDashboard(BaseModel):
     overdue_assignment_count: int
     due_soon_assignments: List[dict] = Field(default_factory=list)
     recent_announcements: List[dict] = Field(default_factory=list)
+    # 个人待办(学生从通知抽取,与教师发布的 assignments 严格分离)
+    pending_personal_task_count: int = 0
+    overdue_personal_task_count: int = 0
+    due_soon_personal_tasks: List[dict] = Field(default_factory=list)
 
 
 # ===== AI 上下文 =====

@@ -16,7 +16,11 @@ import '../../data/services/api/api_task_breakdown_service.dart';
 import '../../data/services/api/api_task_repository.dart';
 import '../../data/services/device_permission_service.dart';
 import '../../data/services/expression_service_status.dart';
-import '../../data/services/lite_rt_expression_recognition_service.dart';
+// 条件导入:Web 平台使用 stub(不依赖 dart:ffi / TFLite / ML Kit),
+// 原生平台(Android/iOS/桌面)使用真实 LiteRT 实现。
+import '../../data/services/lite_rt_expression_recognition_service_web.dart'
+    if (dart.library.io)
+    '../../data/services/lite_rt_expression_recognition_service.dart';
 import '../../data/services/local_notification_reminder_service.dart';
 import '../../data/services/service_interfaces.dart';
 import '../../mock/mock_data/mock_data.dart';

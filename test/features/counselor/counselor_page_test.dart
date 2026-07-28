@@ -378,6 +378,7 @@ class _NoSourceCounselorService implements CounselorChatService {
   Future<String> send(
     String message, {
     required String conversationId,
+    CounselorContext context = const CounselorContext(),
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,

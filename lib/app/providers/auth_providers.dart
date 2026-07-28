@@ -7,6 +7,7 @@ import '../../core/storage/local_storage.dart';
 import '../../data/models/models.dart';
 import '../../data/services/api/api_client.dart';
 import '../../data/services/api/api_multi_role_services.dart';
+import '../../data/services/api/api_task_repository.dart';
 import '../../data/services/api/auth_interceptor.dart';
 import '../../data/services/api/token_storage.dart';
 import '../../data/services/multi_role_service_interfaces.dart';
@@ -145,6 +146,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Mock 模式下,把用户注入到各 Mock service 的 setCurrentUser
       if (config.useMockBackend) {
         _injectMockCurrentUser(session.user);
+      } else {
+        // 真实后端模式:登录成功后,主动拉取当前用户的个人待办,
+        // 避免 UI 首次渲染时显示空列表(对齐 Flutter 要求 #9:可保留只读缓存)。
+        // 失败不阻塞登录,UI 会通过 TaskListNotifier 监听并展示错误。
+        try {
+          final repo = _ref.read(taskRepositoryProvider);
+          if (repo is ApiTaskRepository) {
+            await repo.refresh();
+          }
+        } catch (_) {
+          // 网络错误不阻塞登录,用户进入页面后会看到错误提示
+        }
       }
 
       state = AuthState(
@@ -188,6 +201,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     // 重置旧版 currentUserProvider 到默认值,避免页面残留登录状态
     _ref.read(currentUserProvider.notifier).state = MockData.currentUser;
+
+    // 真实后端模式:登出时清空本地任务缓存,
+    // 避免下一位登录用户看到上一位用户的任务(对齐 Flutter 要求 #11)。
+    if (!config.useMockBackend) {
+      try {
+        final repo = _ref.read(taskRepositoryProvider);
+        if (repo is ApiTaskRepository) {
+          await repo.clearAll();
+        }
+      } catch (_) {
+        // 清空缓存失败不阻塞登出
+      }
+    }
 
     state = AuthState.empty;
   }

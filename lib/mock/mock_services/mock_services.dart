@@ -478,7 +478,10 @@ class MockCounselorChatService implements CounselorChatService {
 
     onActions?.call(actions);
     // Mock 模式:固定推导为 mockDemo + medium 证据等级
-    // 同时回填上下文使用情况(对齐要求 #11,Mock 也返回 contextUsed/Warnings)
+    // 同时回填上下文使用情况(对齐用户新要求,Mock 也返回 contextUsed/Warnings)
+    // 推荐结构: recent_tasks_count / recent_tasks_accepted_count /
+    // recent_tasks_ignored_count / self_report_present。
+    // 不回传 self_report 原文,不回传 expression_signal 内容。
     final contextUsed = <String, dynamic>{};
     if (context.courseId != null) contextUsed['course_id'] = context.courseId;
     if (context.classId != null) contextUsed['class_id'] = context.classId;
@@ -488,10 +491,12 @@ class MockCounselorChatService implements CounselorChatService {
     if (context.announcementId != null) {
       contextUsed['announcement_id'] = context.announcementId;
     }
-    if (context.recentTasks.isNotEmpty) {
-      contextUsed['recent_tasks_count'] = context.recentTasks.length;
-      contextUsed['recent_tasks_verified_count'] = 0;
-    }
+    // recent_tasks 计数(Mock 模式不校验归属,全部视为 accepted)
+    contextUsed['recent_tasks_count'] = context.recentTasks.length;
+    contextUsed['recent_tasks_accepted_count'] = context.recentTasks.length;
+    contextUsed['recent_tasks_ignored_count'] = 0;
+    // self_report 只记录是否存在,不回传原文
+    contextUsed['self_report_present'] = context.selfReport != null;
     final contextWarnings = <String>[];
     if (context.expressionSignal != null) {
       contextWarnings.add('Mock 模式:expression_signal 未接入,已忽略');

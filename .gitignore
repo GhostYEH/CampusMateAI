@@ -71,6 +71,9 @@ linked_assets.yaml
 # Coverage
 coverage/
 
+# Golden 测试失败对比图(测试产物,不纳入版本控制)
+test/**/failures/
+
 # IDE
 .vscode/
 
@@ -82,3 +85,25 @@ coverage/
 # Generated / temporary artifacts
 tmp/
 **/verify_notice_output.txt
+*.mp4
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.whl
+
+# Backend runtime data(用户提交附件 / SQLite 文件 / 上传缓存)
+backend/data/submission_attachments/
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm
+backend/data/uploads/
+
+# CNN 训练产物与工程验证模型(随机工程模型,不纳入版本控制)
+# 正式部署模型位于 assets/models/expression_model.tflite
+ml/expression_recognition/artifacts/
+ml/expression_recognition/data/
+ml/**/fer2013*/

@@ -118,8 +118,8 @@ void main() {
 
     test('override 的 studyRepository 被注入到 studyHistoryProvider', () async {
       final repo = MockStudySessionRepository();
-      await repo.start(goalId: 'goal_x');
-      await repo.end(selfReportMood: '良好');
+      await repo.start(goal: 'goal_x');
+      await repo.finish(selfReport: '良好');
 
       final container = ProviderContainer(
         overrides: [studySessionRepositoryProvider.overrideWithValue(repo)],

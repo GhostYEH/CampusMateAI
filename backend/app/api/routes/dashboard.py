@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 
 from ...core.exceptions import Forbidden
 from ...models.multi_role import UserRow
+from ...repositories.personal_task_repository import _load_materials
 from ...schemas.multi_role import StudentDashboard, TeacherDashboard
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
@@ -38,10 +39,14 @@ def student_dashboard(
             overdue_assignment_count=0,
             due_soon_assignments=[],
             recent_announcements=[],
+            pending_personal_task_count=0,
+            overdue_personal_task_count=0,
+            due_soon_personal_tasks=[],
         )
     now_iso = datetime.now(timezone.utc).isoformat()
     sub_repo = container.submission_repository
     asg_repo = container.assignment_repository
+    ptask_repo = container.personal_task_repository
 
     enrolled = sub_repo.count_student_enrolled_courses(user.id)
     unread = sub_repo.count_student_unread_announcements(user.id)
@@ -66,6 +71,32 @@ def student_dashboard(
             due_soon_filtered.append(item)
     # recent_student_announcements 实现位于 SubmissionRepository(复用班级/已读聚合查询)
     recent_anns = sub_repo.recent_student_announcements(user.id, limit=5)
+
+    # 个人待办统计(来自 personal_tasks 表,严格按 user_id 隔离)
+    pending_ptasks = ptask_repo.count_pending(user.id)
+    overdue_ptasks = ptask_repo.count_overdue(user.id, now_iso=now_iso)
+    recent_ptasks_rows = ptask_repo.list_recent_pending(user.id, limit=5)
+    # 过滤出 deadline 在未来 7 天内(并加上无 deadline 的最近项)
+    due_soon_ptasks: list[dict] = []
+    no_deadline_ptasks: list[dict] = []
+    for row in recent_ptasks_rows:
+        item = _personal_task_to_dashboard_dict(row)
+        if row.deadline is None:
+            no_deadline_ptasks.append(item)
+            continue
+        try:
+            dl_dt = datetime.fromisoformat(row.deadline.replace("Z", "+00:00"))
+        except ValueError:
+            no_deadline_ptasks.append(item)
+            continue
+        days = (dl_dt - now).total_seconds() / 86400
+        if 0 <= days <= 7:
+            due_soon_ptasks.append(item)
+    # 若 7 天内任务不足 5 条,用无 deadline 的最近任务补齐
+    remaining = 5 - len(due_soon_ptasks)
+    if remaining > 0:
+        due_soon_ptasks.extend(no_deadline_ptasks[:remaining])
+
     return StudentDashboard(
         enrolled_course_count=enrolled,
         unread_announcement_count=unread,
@@ -73,7 +104,26 @@ def student_dashboard(
         overdue_assignment_count=overdue,
         due_soon_assignments=due_soon_filtered,
         recent_announcements=recent_anns,
+        pending_personal_task_count=pending_ptasks,
+        overdue_personal_task_count=overdue_ptasks,
+        due_soon_personal_tasks=due_soon_ptasks,
     )
+
+
+def _personal_task_to_dashboard_dict(row) -> dict:
+    """将 PersonalTaskRow 转为 dashboard 字典(仅暴露必要字段)。"""
+    return {
+        "id": row.id,
+        "title": row.title,
+        "deadline": row.deadline,
+        "priority": row.priority,
+        "source_name": row.source_name,
+        "source_notice_id": row.source_notice_id,
+        "materials": _load_materials(row.materials),
+        "reminder_minutes": row.reminder_minutes,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
 
 
 @router.get("/teacher", response_model=TeacherDashboard)
