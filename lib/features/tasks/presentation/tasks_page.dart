@@ -101,7 +101,8 @@ class _TasksPageState extends ConsumerState<TasksPage>
               ref
                   .read(taskListProvider.notifier)
                   .updateTask(
-                      task.copyWith(completed: false, completedAt: null),)
+                    task.copyWith(completed: false, completedAt: null),
+                  )
                   .catchError((e) {
                 if (!mounted) return;
                 _showErrorSnack(e is ApiException ? e.message : '撤销失败,请重试');

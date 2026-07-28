@@ -619,7 +619,8 @@ class TaskBreakdownResponse extends Equatable {
     final stepsRaw = (json['steps'] as List?) ?? const [];
     return TaskBreakdownResponse(
       mode: TaskBreakdownMode.fromString(
-          json['mode'] as String? ?? 'rule_fallback',),
+        json['mode'] as String? ?? 'rule_fallback',
+      ),
       steps: stepsRaw
           .whereType<Map<String, dynamic>>()
           .map(TaskBreakdownStep.fromJson)
