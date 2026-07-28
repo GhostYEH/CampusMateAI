@@ -101,8 +101,13 @@ void main() {
     test('channels=3 (RGB) 时输出 3 通道张量', () {
       const config = ExpressionModelConfig(
         labels: [
-          'angry', 'disgust', 'fear', 'happy',
-          'neutral', 'sad', 'surprise',
+          'angry',
+          'disgust',
+          'fear',
+          'happy',
+          'neutral',
+          'sad',
+          'surprise',
         ],
         inputHeight: 48,
         inputWidth: 48,
@@ -152,8 +157,13 @@ void main() {
     test('standardize: 像素值被归一化到均值附近', () {
       const config = ExpressionModelConfig(
         labels: [
-          'angry', 'disgust', 'fear', 'happy',
-          'neutral', 'sad', 'surprise',
+          'angry',
+          'disgust',
+          'fear',
+          'happy',
+          'neutral',
+          'sad',
+          'surprise',
         ],
         inputHeight: 48,
         inputWidth: 48,

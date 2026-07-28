@@ -129,16 +129,19 @@ void main() {
 
     test('refresh 解析后端列表响应并刷新缓存', () async {
       final (repo, adapter) = _setupRepo();
-      adapter.registerGet('/api/v1/tasks', data: {
-        'items': [
-          _backendTaskJson(id: 'ptask_1', title: '任务A'),
-          _backendTaskJson(id: 'ptask_2', title: '任务B', status: 'completed'),
-          _backendTaskJson(id: 'ptask_3', title: '任务C', status: 'deleted'),
-        ],
-        'total': 3,
-        'page': 1,
-        'page_size': 200,
-      },);
+      adapter.registerGet(
+        '/api/v1/tasks',
+        data: {
+          'items': [
+            _backendTaskJson(id: 'ptask_1', title: '任务A'),
+            _backendTaskJson(id: 'ptask_2', title: '任务B', status: 'completed'),
+            _backendTaskJson(id: 'ptask_3', title: '任务C', status: 'deleted'),
+          ],
+          'total': 3,
+          'page': 1,
+          'page_size': 200,
+        },
+      );
 
       await repo.refresh();
       // deleted 状态的任务不在 tasks 中(被过滤)
@@ -174,7 +177,8 @@ void main() {
       // 后端返回的 reminder_minutes=90,应反推 reminderAt = deadline - 90min
       expect(created.reminderMinutes, 90);
       expect(created.reminderEnabled, isTrue);
-      expect(created.reminderAt, deadline.subtract(const Duration(minutes: 90)));
+      expect(
+          created.reminderAt, deadline.subtract(const Duration(minutes: 90)),);
     });
   });
 
@@ -258,7 +262,10 @@ void main() {
 
       adapter.registerDelete(
         '/api/v1/tasks/ptask_del',
-        data: _backendTaskJson(id: 'ptask_del', status: 'deleted', deletedAt: '2025-01-02T00:00:00+00:00'),
+        data: _backendTaskJson(
+            id: 'ptask_del',
+            status: 'deleted',
+            deletedAt: '2025-01-02T00:00:00+00:00',),
       );
       await repo.softDelete('ptask_del');
       // deleted 状态不在 tasks 中
@@ -350,8 +357,13 @@ void main() {
 
       expect(
         () => repo.createTask(_newTask()),
-        throwsA(predicate((e) =>
-            e is ApiException && (e.code == 'TIMEOUT' || e.code == 'NETWORK_ERROR'),),),
+        throwsA(
+          predicate(
+            (e) =>
+                e is ApiException &&
+                (e.code == 'TIMEOUT' || e.code == 'NETWORK_ERROR'),
+          ),
+        ),
       );
       expect(repo.tasks, isEmpty);
     });
@@ -429,28 +441,34 @@ void main() {
     test('refresh 后缓存替换为新用户的数据(旧用户任务消失)', () async {
       final (repo, adapter) = _setupRepo();
       // 用户A 登录后拉取的任务
-      adapter.registerGet('/api/v1/tasks', data: {
-        'items': [
-          _backendTaskJson(id: 'ptask_userA_1', title: '用户A的任务1'),
-          _backendTaskJson(id: 'ptask_userA_2', title: '用户A的任务2'),
-        ],
-        'total': 2,
-        'page': 1,
-        'page_size': 200,
-      },);
+      adapter.registerGet(
+        '/api/v1/tasks',
+        data: {
+          'items': [
+            _backendTaskJson(id: 'ptask_userA_1', title: '用户A的任务1'),
+            _backendTaskJson(id: 'ptask_userA_2', title: '用户A的任务2'),
+          ],
+          'total': 2,
+          'page': 1,
+          'page_size': 200,
+        },
+      );
       await repo.refresh();
       expect(repo.tasks.length, 2);
       expect(repo.tasks.any((t) => t.title == '用户A的任务1'), isTrue);
 
       // 用户A 登出,用户B 登录后拉取的任务
-      adapter.registerGet('/api/v1/tasks', data: {
-        'items': [
-          _backendTaskJson(id: 'ptask_userB_1', title: '用户B的任务1'),
-        ],
-        'total': 1,
-        'page': 1,
-        'page_size': 200,
-      },);
+      adapter.registerGet(
+        '/api/v1/tasks',
+        data: {
+          'items': [
+            _backendTaskJson(id: 'ptask_userB_1', title: '用户B的任务1'),
+          ],
+          'total': 1,
+          'page': 1,
+          'page_size': 200,
+        },
+      );
       await repo.refresh();
       // 用户A 的任务应完全消失
       expect(repo.tasks.length, 1);
@@ -463,24 +481,27 @@ void main() {
   group('ApiTaskRepository - 派生查询', () {
     test('getUpcoming 返回未完成且有截止时间的任务', () async {
       final (repo, adapter) = _setupRepo();
-      adapter.registerGet('/api/v1/tasks', data: {
-        'items': [
-          _backendTaskJson(
-            id: 'ptask_1',
-            title: '未来任务',
-            deadline: '2099-12-31T23:59:00+00:00',
-          ),
-          _backendTaskJson(
-            id: 'ptask_2',
-            title: '已完成',
-            status: 'completed',
-            deadline: '2099-12-31T23:59:00+00:00',
-          ),
-        ],
-        'total': 2,
-        'page': 1,
-        'page_size': 200,
-      },);
+      adapter.registerGet(
+        '/api/v1/tasks',
+        data: {
+          'items': [
+            _backendTaskJson(
+              id: 'ptask_1',
+              title: '未来任务',
+              deadline: '2099-12-31T23:59:00+00:00',
+            ),
+            _backendTaskJson(
+              id: 'ptask_2',
+              title: '已完成',
+              status: 'completed',
+              deadline: '2099-12-31T23:59:00+00:00',
+            ),
+          ],
+          'total': 2,
+          'page': 1,
+          'page_size': 200,
+        },
+      );
       await repo.refresh();
 
       final upcoming = await repo.getUpcoming(limit: 10);
@@ -490,16 +511,22 @@ void main() {
 
     test('getCompleted 仅返回已完成任务', () async {
       final (repo, adapter) = _setupRepo();
-      adapter.registerGet('/api/v1/tasks', data: {
-        'items': [
-          _backendTaskJson(id: 'ptask_1', title: '待办', status: 'pending'),
-          _backendTaskJson(
-              id: 'ptask_2', title: '已完成', status: 'completed',),
-        ],
-        'total': 2,
-        'page': 1,
-        'page_size': 200,
-      },);
+      adapter.registerGet(
+        '/api/v1/tasks',
+        data: {
+          'items': [
+            _backendTaskJson(id: 'ptask_1', title: '待办', status: 'pending'),
+            _backendTaskJson(
+              id: 'ptask_2',
+              title: '已完成',
+              status: 'completed',
+            ),
+          ],
+          'total': 2,
+          'page': 1,
+          'page_size': 200,
+        },
+      );
       await repo.refresh();
 
       final completed = await repo.getCompleted();

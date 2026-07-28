@@ -337,13 +337,11 @@ class _NotificationExtractPageState
           ? null
           : _textController.text.trim(),
       // sourceName 来自表单的"通知来源"字段
-      sourceName: _sourceCtrl.text.trim().isEmpty
-          ? null
-          : _sourceCtrl.text.trim(),
+      sourceName:
+          _sourceCtrl.text.trim().isEmpty ? null : _sourceCtrl.text.trim(),
       // targetStudents 来自"面向对象"字段
-      targetStudents: _audienceCtrl.text.trim().isEmpty
-          ? null
-          : _audienceCtrl.text.trim(),
+      targetStudents:
+          _audienceCtrl.text.trim().isEmpty ? null : _audienceCtrl.text.trim(),
       // submissionMethod 来自"提交方式"字段
       submissionMethod: _submitMethodCtrl.text.trim().isEmpty
           ? null

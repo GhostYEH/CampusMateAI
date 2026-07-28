@@ -42,12 +42,11 @@ class TaskBreakdownPanel extends ConsumerStatefulWidget {
 
   /// 接受步骤的回调(返回 true 表示已成功创建待办)。
   /// 若为 null,则使用默认行为(通过 taskListProvider 创建)。
-  final Future<bool> Function(TaskBreakdownStep step, TaskBreakdownResponse resp)?
-      onAcceptStep;
+  final Future<bool> Function(
+      TaskBreakdownStep step, TaskBreakdownResponse resp,)? onAcceptStep;
 
   @override
-  ConsumerState<TaskBreakdownPanel> createState() =>
-      _TaskBreakdownPanelState();
+  ConsumerState<TaskBreakdownPanel> createState() => _TaskBreakdownPanelState();
 }
 
 class _TaskBreakdownPanelState extends ConsumerState<TaskBreakdownPanel> {
@@ -88,7 +87,8 @@ class _TaskBreakdownPanelState extends ConsumerState<TaskBreakdownPanel> {
     try {
       final service = ref.read(taskBreakdownServiceProvider);
       final resp = await service.breakdown(
-        TaskBreakdownRequest(taskId: taskId, goal: goalText.isEmpty ? null : goalText),
+        TaskBreakdownRequest(
+            taskId: taskId, goal: goalText.isEmpty ? null : goalText,),
       );
       if (!mounted) return;
       setState(() {
@@ -177,9 +177,7 @@ class _TaskBreakdownPanelState extends ConsumerState<TaskBreakdownPanel> {
     final task = Task(
       id: 'task_${DateTime.now().millisecondsSinceEpoch}_${step.stepNumber}',
       title: title,
-      category: step.isPolicyStep
-          ? TaskCategory.material
-          : TaskCategory.study,
+      category: step.isPolicyStep ? TaskCategory.material : TaskCategory.study,
       priority: TaskPriority.medium,
       createdAt: now,
       source: TaskSource.counselor,
@@ -260,8 +258,7 @@ class _TaskBreakdownPanelState extends ConsumerState<TaskBreakdownPanel> {
               const SizedBox(width: 6),
               const Text('任务拆解', style: AppTypography.subtitle),
               const Spacer(),
-              if (_response != null)
-                _ModeBadge(mode: _response!.mode),
+              if (_response != null) _ModeBadge(mode: _response!.mode),
             ],
           ),
           const SizedBox(height: 12),
@@ -368,18 +365,21 @@ class _BreakdownResultView extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.warningSubtle,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+              border:
+                  Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 14, color: AppColors.warning),
+                    const Icon(Icons.info_outline,
+                        size: 14, color: AppColors.warning,),
                     const SizedBox(width: 4),
                     Text(
                       '提示',
-                      style: AppTypography.label.copyWith(color: AppColors.warning),
+                      style: AppTypography.label
+                          .copyWith(color: AppColors.warning),
                     ),
                   ],
                 ),
@@ -444,9 +444,7 @@ class _StepCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: step.isPolicyStep
-            ? AppColors.accentContainer
-            : c.bgElevated,
+        color: step.isPolicyStep ? AppColors.accentContainer : c.bgElevated,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: step.isPolicyStep
@@ -465,9 +463,7 @@ class _StepCard extends StatelessWidget {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: step.isPolicyStep
-                      ? AppColors.accent
-                      : c.primary,
+                  color: step.isPolicyStep ? AppColors.accent : c.primary,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -493,7 +489,8 @@ class _StepCard extends StatelessWidget {
               ),
               if (step.isPolicyStep)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.accent,
                     borderRadius: BorderRadius.circular(6),

@@ -5,7 +5,8 @@ import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../data/models/expression.dart';
 import '../../../../data/services/expression_service_status.dart';
-import '../../../../data/services/service_interfaces.dart' show PermissionStatus;
+import '../../../../data/services/service_interfaces.dart'
+    show PermissionStatus;
 import 'expression_result_view.dart';
 import 'mock_expression_control.dart';
 
@@ -229,17 +230,12 @@ class ExpressionPanel extends StatelessWidget {
                   size: 16,
                 ),
           label: Text(
-            isRequestingPermission
-                ? '请求权限中…'
-                : (userEnabled ? '关闭识别' : '开启识别'),
+            isRequestingPermission ? '请求权限中…' : (userEnabled ? '关闭识别' : '开启识别'),
           ),
           style: FilledButton.styleFrom(
-            backgroundColor: userEnabled
-                ? AppColors.dangerSubtle
-                : AppColors.primarySubtle,
-            foregroundColor: userEnabled
-                ? AppColors.danger
-                : AppColors.primary,
+            backgroundColor:
+                userEnabled ? AppColors.dangerSubtle : AppColors.primarySubtle,
+            foregroundColor: userEnabled ? AppColors.danger : AppColors.primary,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             minimumSize: const Size(0, 32),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -362,7 +358,8 @@ class ExpressionPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AppTypography.bodyStrong.copyWith(color: color)),
+                Text(title,
+                    style: AppTypography.bodyStrong.copyWith(color: color),),
                 if (detail != null) ...[
                   const SizedBox(height: 4),
                   Text(

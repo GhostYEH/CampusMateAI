@@ -116,7 +116,15 @@ class ExpressionModelConfig {
   /// **注意**:这是兜底,实际应使用 cnn-training 分支提供的 preprocess.json。
   factory ExpressionModelConfig.fer2013Default() {
     return const ExpressionModelConfig(
-      labels: ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'],
+      labels: [
+        'angry',
+        'disgust',
+        'fear',
+        'happy',
+        'neutral',
+        'sad',
+        'surprise',
+      ],
       inputHeight: 48,
       inputWidth: 48,
       channels: 1,
@@ -148,35 +156,43 @@ class ExpressionModelConfig {
     final inputSize = (preprocessJson['input_size'] as List?)
             ?.map((e) => (e as num).toInt())
             .toList() ??
-        [inputShape.length >= 3 ? inputShape[1] : 48,
-         inputShape.length >= 3 ? inputShape[2] : 48,];
+        [
+          inputShape.length >= 3 ? inputShape[1] : 48,
+          inputShape.length >= 3 ? inputShape[2] : 48,
+        ];
     final channels = (preprocessJson['channels'] as num?)?.toInt() ??
         (inputShape.length >= 4 ? inputShape[3] : 1);
     final colorMode = (preprocessJson['color_mode'] as String?) ?? 'grayscale';
     final resizeMethod =
         (preprocessJson['resize_method'] as String?) ?? 'bilinear';
     final faceCrop = preprocessJson['face_crop'] as Map<String, dynamic>?;
-    final outputClasses = (preprocessJson['output_classes'] as num?)?.toInt() ?? 7;
+    final outputClasses =
+        (preprocessJson['output_classes'] as num?)?.toInt() ?? 7;
     final outputFormat =
         (preprocessJson['output_format'] as String?) ?? 'softmax';
     final modelVersion = (preprocessJson['model_version'] as String?) ??
         (modelCardJson?['model_version'] as String?) ??
         'unknown';
 
-    final labels = (labelsJson?['labels'] as List?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        const ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
+    final labels =
+        (labelsJson?['labels'] as List?)?.map((e) => e.toString()).toList() ??
+            const [
+              'angry',
+              'disgust',
+              'fear',
+              'happy',
+              'neutral',
+              'sad',
+              'surprise',
+            ];
 
     final normJson =
         preprocessJson['normalization'] as Map<String, dynamic>? ?? {};
     final normMethod = (normJson['method'] as String?) ?? 'divide_255';
-    final meanList = (normJson['mean'] as List?)
-        ?.map((e) => (e as num).toDouble())
-        .toList();
-    final stdList = (normJson['std'] as List?)
-        ?.map((e) => (e as num).toDouble())
-        .toList();
+    final meanList =
+        (normJson['mean'] as List?)?.map((e) => (e as num).toDouble()).toList();
+    final stdList =
+        (normJson['std'] as List?)?.map((e) => (e as num).toDouble()).toList();
     final scale = (normJson['scale'] as num?)?.toDouble() ?? 1.0;
 
     final normalization = ExpressionNormalization(
@@ -307,7 +323,8 @@ class ExpressionModelConfig {
       // 兼容下划线/连字符变体
       'angry_', 'disgust_', 'fear_', 'happy_', 'neutral_', 'sad_', 'surprise_',
     };
-    final normalized = label.toLowerCase().replaceAll('-', '').replaceAll('_', '');
+    final normalized =
+        label.toLowerCase().replaceAll('-', '').replaceAll('_', '');
     return known.any((k) => k.replaceAll('_', '') == normalized);
   }
 
@@ -320,8 +337,7 @@ class ExpressionModelConfig {
   }
 
   @override
-  String toString() =>
-      'ExpressionModelConfig(modelVersion=$modelVersion, '
+  String toString() => 'ExpressionModelConfig(modelVersion=$modelVersion, '
       'input=${inputHeight}x${inputWidth}x$channels, '
       'labels=$labels, outputClasses=$outputClasses, '
       'sha256=${modelSha256?.substring(0, 12) ?? "n/a"}...)';

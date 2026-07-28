@@ -491,13 +491,15 @@ class CounselorContext extends Equatable {
     if (recentTasksRaw is List) {
       recentTasks = recentTasksRaw
           .whereType<Map>()
-          .map((m) => CounselorRecentTask(
-                id: m['id']?.toString() ?? '',
-                title: m['title']?.toString() ?? '',
-                deadline: m['deadline']?.toString(),
-                priority: m['priority']?.toString(),
-                status: m['status']?.toString(),
-              ),)
+          .map(
+            (m) => CounselorRecentTask(
+              id: m['id']?.toString() ?? '',
+              title: m['title']?.toString() ?? '',
+              deadline: m['deadline']?.toString(),
+              priority: m['priority']?.toString(),
+              status: m['status']?.toString(),
+            ),
+          )
           .where((t) => t.id.isNotEmpty)
           .toList(growable: false);
     }

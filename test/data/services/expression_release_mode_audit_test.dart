@@ -45,14 +45,18 @@ void main() {
 
       // 注释中应明确说明 Release 强制真实模式
       expect(
-        source.contains('Release') || source.contains('release') || source.contains('kReleaseMode'),
+        source.contains('Release') ||
+            source.contains('release') ||
+            source.contains('kReleaseMode'),
         isTrue,
         reason: 'AppConfig 应在注释中说明 Release 模式行为',
       );
     });
 
-    test('app_providers.dart 在非 Mock 模式下注入 LiteRtExpressionRecognitionService', () {
-      final source = File('lib/app/providers/app_providers.dart').readAsStringSync();
+    test('app_providers.dart 在非 Mock 模式下注入 LiteRtExpressionRecognitionService',
+        () {
+      final source =
+          File('lib/app/providers/app_providers.dart').readAsStringSync();
 
       // 必须引用 LiteRt 服务
       expect(
@@ -70,8 +74,11 @@ void main() {
       );
     });
 
-    test('app_providers.dart 在 Mock 模式下注入 MockExpressionRecognitionService (仅 Debug)', () {
-      final source = File('lib/app/providers/app_providers.dart').readAsStringSync();
+    test(
+        'app_providers.dart 在 Mock 模式下注入 MockExpressionRecognitionService (仅 Debug)',
+        () {
+      final source =
+          File('lib/app/providers/app_providers.dart').readAsStringSync();
 
       // Mock 分支应仅在 useMockExpressionRecognition=true 时触发
       expect(
@@ -81,7 +88,9 @@ void main() {
       );
     });
 
-    test('LiteRtExpressionRecognitionService 不引用 MockExpressionRecognitionService', () {
+    test(
+        'LiteRtExpressionRecognitionService 不引用 MockExpressionRecognitionService',
+        () {
       // 真实服务必须独立于 Mock 实现,不能在加载失败时静默回退到 Mock
       final source = File(
         'lib/data/services/lite_rt_expression_recognition_service.dart',

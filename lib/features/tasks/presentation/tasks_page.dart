@@ -100,7 +100,8 @@ class _TasksPageState extends ConsumerState<TasksPage>
             onPressed: () {
               ref
                   .read(taskListProvider.notifier)
-                  .updateTask(task.copyWith(completed: false, completedAt: null))
+                  .updateTask(
+                      task.copyWith(completed: false, completedAt: null),)
                   .catchError((e) {
                 if (!mounted) return;
                 _showErrorSnack(e is ApiException ? e.message : '撤销失败,请重试');
@@ -147,8 +148,11 @@ class _TasksPageState extends ConsumerState<TasksPage>
         backgroundColor: AppColors.danger,
         content: Row(
           children: [
-            const Icon(Icons.error_outline_rounded,
-                color: AppColors.onPrimary, size: 18,),
+            const Icon(
+              Icons.error_outline_rounded,
+              color: AppColors.onPrimary,
+              size: 18,
+            ),
             const SizedBox(width: 8),
             Expanded(child: Text(message)),
           ],

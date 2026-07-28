@@ -126,7 +126,8 @@ class ExpressionPreprocessor {
 
         if (c == 1) {
           // 灰度
-          final gray = (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0, 255);
+          final gray =
+              (0.299 * r + 0.587 * g + 0.114 * b).round().clamp(0, 255);
           tensor[(y * w + x)] = config.normalization.apply(gray, 0);
         } else if (c == 3) {
           // RGB 或 BGR

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:campus_companion/data/models/expression.dart';
 import 'package:campus_companion/data/services/expression_service_status.dart';
-import 'package:campus_companion/data/services/service_interfaces.dart' show PermissionStatus;
+import 'package:campus_companion/data/services/service_interfaces.dart'
+    show PermissionStatus;
 import 'package:campus_companion/features/study_companion/presentation/widgets/expression_panel.dart';
 
 void main() {
@@ -212,8 +213,7 @@ void main() {
                   modelState: ExpressionModelState.idle,
                   cameraState: CameraState.idle,
                   modelVersion: '',
-                  platformDegradation:
-                      'Web 平台不支持 TFLite CNN 推理与 ML Kit 人脸检测,'
+                  platformDegradation: 'Web 平台不支持 TFLite CNN 推理与 ML Kit 人脸检测,'
                       '表情识别功能不可用。请在 Android 或 iOS 设备上使用。',
                 ),
               ),
@@ -314,7 +314,10 @@ void main() {
         ),
       );
 
-      final allText = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data ?? '').join(' ');
+      final allText = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) => t.data ?? '')
+          .join(' ');
       // 禁止出现诊断式文案
       expect(allText, isNot(contains('你很焦虑')));
       expect(allText, isNot(contains('你抑郁了')));

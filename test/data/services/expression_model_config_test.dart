@@ -50,7 +50,9 @@ void main() {
       expect(config.labels.length, 7);
     });
 
-    test('标签顺序符合 FER2013 标准 (angry, disgust, fear, happy, neutral, sad, surprise)', () {
+    test(
+        '标签顺序符合 FER2013 标准 (angry, disgust, fear, happy, neutral, sad, surprise)',
+        () {
       final preprocess = {
         'input_size': [48, 48],
         'channels': 1,

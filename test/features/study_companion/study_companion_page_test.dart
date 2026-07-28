@@ -333,8 +333,7 @@ void main() {
   });
 
   group('StudyCompanionPage - 应用重启后恢复未结束会话', () {
-    testWidgets('启动时检测到未结束 active 会话,自动恢复到专注中状态',
-        (tester) async {
+    testWidgets('启动时检测到未结束 active 会话,自动恢复到专注中状态', (tester) async {
       setPhoneViewport(tester);
       // 预设一个 active 会话(模拟应用重启前未结束)
       final now = DateTime.now();
@@ -347,7 +346,8 @@ void main() {
         status: StudySessionStatus.active,
         breaks: const [],
       );
-      final repo = _ScriptedStudySessionRepository(preActiveSession: preSession);
+      final repo =
+          _ScriptedStudySessionRepository(preActiveSession: preSession);
       final container = makeContainer(studyRepo: repo);
 
       await tester.pumpWidget(
@@ -368,8 +368,7 @@ void main() {
       expect(find.text('开始学习'), findsNothing);
     });
 
-    testWidgets('启动时检测到未结束 paused 会话,自动恢复到暂停状态',
-        (tester) async {
+    testWidgets('启动时检测到未结束 paused 会话,自动恢复到暂停状态', (tester) async {
       setPhoneViewport(tester);
       final now = DateTime.now();
       final preSession = StudySession(
@@ -389,7 +388,8 @@ void main() {
           ),
         ],
       );
-      final repo = _ScriptedStudySessionRepository(preActiveSession: preSession);
+      final repo =
+          _ScriptedStudySessionRepository(preActiveSession: preSession);
       final container = makeContainer(studyRepo: repo);
 
       await tester.pumpWidget(
@@ -433,8 +433,7 @@ void main() {
   });
 
   group('StudyCompanionPage - 网络失败不伪造保存成功', () {
-    testWidgets('开始学习失败时显示错误 SnackBar,不切换到专注中状态',
-        (tester) async {
+    testWidgets('开始学习失败时显示错误 SnackBar,不切换到专注中状态', (tester) async {
       setPhoneViewport(tester);
       final repo = _FailingStudySessionRepository();
       final container = makeContainer(studyRepo: repo);

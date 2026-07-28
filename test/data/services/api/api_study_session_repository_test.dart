@@ -70,8 +70,7 @@ Map<String, dynamic> _breakJson({
 
 void main() {
   group('ApiStudySessionRepository - 创建会话', () {
-    test('start 发送 POST /sessions,goal 与 related_task_id 注入 body',
-        () async {
+    test('start 发送 POST /sessions,goal 与 related_task_id 注入 body', () async {
       final (repo, adapter) = _setupRepo();
       adapter.registerPost(
         '/api/v1/study/sessions',
@@ -273,18 +272,27 @@ void main() {
       final (repo, _) = _setupRepo();
       expect(
         () => repo.pause(),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'NO_ACTIVE_SESSION',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'NO_ACTIVE_SESSION',
+          ),
+        ),
       );
       expect(
         () => repo.resume(),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'NO_ACTIVE_SESSION',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'NO_ACTIVE_SESSION',
+          ),
+        ),
       );
       expect(
         () => repo.finish(),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'NO_ACTIVE_SESSION',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'NO_ACTIVE_SESSION',
+          ),
+        ),
       );
     });
   });
@@ -479,9 +487,10 @@ void main() {
     test('仅累计今日已结束会话的 duration_seconds', () async {
       final (repo, adapter) = _setupRepo();
       final now = DateTime.now();
-      final todayIso = DateTime(now.year, now.month, now.day, 9, 0).toIso8601String();
-      final yesterdayIso = DateTime(now.year, now.month, now.day - 1, 9, 0)
-          .toIso8601String();
+      final todayIso =
+          DateTime(now.year, now.month, now.day, 9, 0).toIso8601String();
+      final yesterdayIso =
+          DateTime(now.year, now.month, now.day - 1, 9, 0).toIso8601String();
 
       adapter.registerGet(
         '/api/v1/study/sessions',
@@ -565,8 +574,11 @@ void main() {
 
       expect(
         () => repo.start(goal: '测试'),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'SERVER_ERROR',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'SERVER_ERROR',
+          ),
+        ),
       );
       expect(repo.current, isNull);
     });
@@ -591,8 +603,11 @@ void main() {
 
       expect(
         () => repo.pause(),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'INVALID_TRANSITION',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'INVALID_TRANSITION',
+          ),
+        ),
       );
     });
 
@@ -615,8 +630,11 @@ void main() {
 
       expect(
         () => repo.finish(selfReport: '   '),
-        throwsA(predicate((e) =>
-            e is ApiException && e.code == 'VALIDATION_FAILED',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'VALIDATION_FAILED',
+          ),
+        ),
       );
       // 失败时 current 仍保留(会话未结束)
       expect(repo.current, isNotNull);
@@ -679,7 +697,8 @@ void main() {
     test('StudySession.fromJson 解析休息记录', () {
       final json = _sessionJson(
         breaks: [
-          _breakJson(id: 'b1', reason: '喝水', endedAt: '2025-01-01T09:32:00+00:00'),
+          _breakJson(
+              id: 'b1', reason: '喝水', endedAt: '2025-01-01T09:32:00+00:00',),
           _breakJson(id: 'b2', reason: null, endedAt: null),
         ],
       );
