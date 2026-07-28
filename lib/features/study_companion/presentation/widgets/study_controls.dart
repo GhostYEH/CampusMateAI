@@ -87,19 +87,17 @@ class StudyControls extends StatelessWidget {
                     value: null,
                     child: Text('不关联', style: AppTypography.body),
                   ),
-                  ...relatedTasks
-                          .take(kMaxRelatedTaskOptions)
-                          .map(
-                            (t) => DropdownMenuItem<String?>(
-                              value: t.id,
-                              child: Text(
-                                t.title,
-                                style: AppTypography.body,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                  ...relatedTasks.take(kMaxRelatedTaskOptions).map(
+                        (t) => DropdownMenuItem<String?>(
+                          value: t.id,
+                          child: Text(
+                            t.title,
+                            style: AppTypography.body,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
+                        ),
+                      ),
                 ],
                 onChanged: onRelatedTaskChanged,
               ),

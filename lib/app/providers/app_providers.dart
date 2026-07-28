@@ -19,8 +19,7 @@ import '../../data/services/expression_service_status.dart';
 // 条件导入:Web 平台使用 stub(不依赖 dart:ffi / TFLite / ML Kit),
 // 原生平台(Android/iOS/桌面)使用真实 LiteRT 实现。
 import '../../data/services/lite_rt_expression_recognition_service_web.dart'
-    if (dart.library.io)
-    '../../data/services/lite_rt_expression_recognition_service.dart';
+    if (dart.library.io) '../../data/services/lite_rt_expression_recognition_service.dart';
 import '../../data/services/local_notification_reminder_service.dart';
 import '../../data/services/service_interfaces.dart';
 import '../../mock/mock_data/mock_data.dart';
@@ -840,9 +839,7 @@ class ChatMessagesNotifier extends StateNotifier<List<ChatMessage>> {
   /// 最多 5 条,优先未完成且未删除的任务。
   List<CounselorRecentTask> _buildRecentTasksFromRepo() {
     final tasks = ref.read(taskListProvider);
-    final upcoming = tasks
-        .where((t) => !t.completed && !t.deleted)
-        .toList()
+    final upcoming = tasks.where((t) => !t.completed && !t.deleted).toList()
       ..sort((a, b) {
         // 有截止时间的排前,按截止时间升序
         final ad = a.deadline;

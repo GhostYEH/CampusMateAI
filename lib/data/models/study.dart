@@ -351,16 +351,19 @@ class StudySession extends Equatable {
           0,
       state: state,
       goalId: (json['goalId'] ?? json['goal'] ?? json['goal_id']) as String?,
-      taskId: (json['taskId'] ?? json['related_task_id'] ?? json['taskId']) as String?,
+      taskId: (json['taskId'] ?? json['related_task_id'] ?? json['taskId'])
+          as String?,
       focusRatio: (json['focusRatio'] as num?)?.toDouble() ?? 0,
-      selfReportMood: (json['selfReportMood'] ?? json['self_report']) as String?,
+      selfReportMood:
+          (json['selfReportMood'] ?? json['self_report']) as String?,
       status: status,
       pausedAt: _parseOptionalDate(json['pausedAt'] ?? json['paused_at']),
       pauseSeconds: (json['pauseSeconds'] as num?)?.toInt() ??
           (json['pause_seconds'] as num?)?.toInt() ??
           0,
       selfReport: (json['selfReport'] ?? json['self_report']) as String?,
-      selfReportTags: _parseTagsList(json['selfReportTags'] ?? json['self_report_tags']),
+      selfReportTags:
+          _parseTagsList(json['selfReportTags'] ?? json['self_report_tags']),
       expressionSignal: signal,
       breaks: breaks,
       createdAt: _parseOptionalDate(json['createdAt'] ?? json['created_at']),
@@ -460,7 +463,8 @@ enum TaskBreakdownMode {
     return TaskBreakdownMode.ruleFallback;
   }
 
-  String get wireName => this == TaskBreakdownMode.llm ? 'llm' : 'rule_fallback';
+  String get wireName =>
+      this == TaskBreakdownMode.llm ? 'llm' : 'rule_fallback';
 
   String get displayName => this == TaskBreakdownMode.llm ? 'AI 生成' : '规则建议';
 }
@@ -478,7 +482,8 @@ class TaskBreakdownRequest extends Equatable {
   /// 自由文本目标。
   final String? goal;
 
-  bool get isEmpty => (taskId == null || taskId!.isEmpty) &&
+  bool get isEmpty =>
+      (taskId == null || taskId!.isEmpty) &&
       (goal == null || goal!.trim().isEmpty);
 
   Map<String, dynamic> toJson() => {
@@ -613,7 +618,8 @@ class TaskBreakdownResponse extends Equatable {
   factory TaskBreakdownResponse.fromJson(Map<String, dynamic> json) {
     final stepsRaw = (json['steps'] as List?) ?? const [];
     return TaskBreakdownResponse(
-      mode: TaskBreakdownMode.fromString(json['mode'] as String? ?? 'rule_fallback'),
+      mode: TaskBreakdownMode.fromString(
+          json['mode'] as String? ?? 'rule_fallback',),
       steps: stepsRaw
           .whereType<Map<String, dynamic>>()
           .map(TaskBreakdownStep.fromJson)

@@ -105,15 +105,17 @@ void main() {
       final (service, _) = _setupService();
       expect(
         () => service.breakdown(const TaskBreakdownRequest()),
-        throwsA(predicate(
-            (e) => e is ApiException && e.code == 'VALIDATION_FAILED',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'VALIDATION_FAILED',
+          ),
+        ),
       );
     });
   });
 
   group('ApiTaskBreakdownService - 个人任务拆解', () {
-    test('task_id 注入 body,响应填充 related_task_id 与 related_task_title',
-        () async {
+    test('task_id 注入 body,响应填充 related_task_id 与 related_task_title', () async {
       final (service, adapter) = _setupService();
       adapter.registerPost(
         '/api/v1/study/task-breakdown',
@@ -298,8 +300,11 @@ void main() {
 
       expect(
         () => service.breakdown(const TaskBreakdownRequest(goal: '测试')),
-        throwsA(predicate(
-            (e) => e is ApiException && e.code == 'UNAUTHORIZED',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'UNAUTHORIZED',
+          ),
+        ),
       );
     });
 
@@ -313,8 +318,11 @@ void main() {
 
       expect(
         () => service.breakdown(const TaskBreakdownRequest(goal: '测试')),
-        throwsA(predicate(
-            (e) => e is ApiException && e.code == 'VALIDATION_FAILED',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'VALIDATION_FAILED',
+          ),
+        ),
       );
     });
 
@@ -328,8 +336,11 @@ void main() {
 
       expect(
         () => service.breakdown(const TaskBreakdownRequest(goal: '测试')),
-        throwsA(predicate(
-            (e) => e is ApiException && e.code == 'INTERNAL_ERROR',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'INTERNAL_ERROR',
+          ),
+        ),
       );
     });
 
@@ -338,8 +349,7 @@ void main() {
       adapter.registerPostError(
         '/api/v1/study/task-breakdown',
         DioException(
-          requestOptions:
-              RequestOptions(path: '/api/v1/study/task-breakdown'),
+          requestOptions: RequestOptions(path: '/api/v1/study/task-breakdown'),
           type: DioExceptionType.connectionTimeout,
         ),
       );
@@ -359,8 +369,11 @@ void main() {
 
       expect(
         () => service.breakdown(const TaskBreakdownRequest(goal: '测试')),
-        throwsA(predicate(
-            (e) => e is ApiException && e.code == 'EMPTY_RESPONSE',),),
+        throwsA(
+          predicate(
+            (e) => e is ApiException && e.code == 'EMPTY_RESPONSE',
+          ),
+        ),
       );
     });
   });

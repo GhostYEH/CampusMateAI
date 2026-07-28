@@ -50,8 +50,7 @@ class ExpressionServiceStatus extends Equatable {
       modelState == ExpressionModelState.ready && platformDegradation == null;
 
   /// 当前是否正在推理(模型就绪 + 摄像头运行中)。
-  bool get isInferring =>
-      isModelReady && cameraState == CameraState.running;
+  bool get isInferring => isModelReady && cameraState == CameraState.running;
 
   ExpressionServiceStatus copyWith({
     ExpressionModelState? modelState,

@@ -522,8 +522,7 @@ void main() {
       expect(data.containsKey('expression_signal'), isFalse);
     });
 
-    test('done 事件含 context_used/context_warnings 时被正确解析(对齐要求 #11)',
-        () async {
+    test('done 事件含 context_used/context_warnings 时被正确解析(对齐要求 #11)', () async {
       adapter.registerPostSseStream(
         '/api/v1/counselor/chat',
         ssePayloads: [
@@ -571,13 +570,13 @@ void main() {
         isTrue,
       );
       expect(
-        capturedMeta!.contextWarnings.any((w) => w.contains('expression_signal')),
+        capturedMeta!.contextWarnings
+            .any((w) => w.contains('expression_signal')),
         isTrue,
       );
     });
 
-    test('done 事件无 context_used/context_warnings 时使用默认空值(SSE 兼容)',
-        () async {
+    test('done 事件无 context_used/context_warnings 时使用默认空值(SSE 兼容)', () async {
       adapter.registerPostSseStream(
         '/api/v1/counselor/chat',
         ssePayloads: [

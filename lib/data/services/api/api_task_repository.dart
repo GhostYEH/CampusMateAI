@@ -330,7 +330,8 @@ class ApiTaskRepository implements TaskRepository {
     if (id == null) return null;
     final status = (json['status'] as String?) ?? 'pending';
     final deadlineStr = json['deadline'] as String?;
-    final deadline = deadlineStr == null ? null : DateTime.tryParse(deadlineStr);
+    final deadline =
+        deadlineStr == null ? null : DateTime.tryParse(deadlineStr);
     final reminderMinutes = (json['reminder_minutes'] as num?)?.toInt();
 
     // 从 reminder_minutes 与 deadline 反推 reminderAt(用于本地提醒调度)

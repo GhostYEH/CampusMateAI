@@ -544,9 +544,8 @@ class MockCounselorChatService implements CounselorChatService {
   ) {
     final msg = message.trim();
     // 上下文条幅前缀(若从课程/任务/通知进入,Mock 也体现上下文)
-    final ctxPrefix = context.contextLabel != null
-        ? '(上下文:${context.contextLabel})\n\n'
-        : '';
+    final ctxPrefix =
+        context.contextLabel != null ? '(上下文:${context.contextLabel})\n\n' : '';
     if (msg.contains('综合测评')) {
       return '$ctxPrefix综合测评由学业成绩、思想品德、社会实践、创新创业四部分组成,'
           '各占 60%、15%、15%、10%。你需要准备:① 本学期成绩单;'
@@ -570,10 +569,8 @@ class MockCounselorChatService implements CounselorChatService {
     if (msg.contains('快截止') || msg.contains('任务')) {
       // 若上下文带有真实 recent_tasks,Mock 也基于真实任务回复
       if (context.recentTasks.isNotEmpty) {
-        final titles = context.recentTasks
-            .take(3)
-            .map((t) => '「${t.title}」')
-            .join('、');
+        final titles =
+            context.recentTasks.take(3).map((t) => '「${t.title}」').join('、');
         return '$ctxPrefix你最近有这些待办:$titles。\n\n'
             '建议先处理截止最近的一项,需要我帮你拆分今天的任务,'
             '或者开启学习陪伴专注一段时间吗?';
@@ -995,13 +992,14 @@ class MockExpressionRecognitionService implements ExpressionRecognitionService {
   final int suggestionCooldownMinutes;
   final _controller = StreamController<ExpressionResult>.broadcast();
   final _statusController =
-      StreamController<ExpressionServiceStatus>.broadcast()..add(
-    const ExpressionServiceStatus(
-      modelState: ExpressionModelState.ready,
-      cameraState: CameraState.idle,
-      modelVersion: 'mock-v0.1',
-    ),
-  );
+      StreamController<ExpressionServiceStatus>.broadcast()
+        ..add(
+          const ExpressionServiceStatus(
+            modelState: ExpressionModelState.ready,
+            cameraState: CameraState.idle,
+            modelVersion: 'mock-v0.1',
+          ),
+        );
   Timer? _timer;
   bool _running = false;
   final _rand = Random();
@@ -1177,9 +1175,7 @@ class MockPermissionService implements PermissionService {
   @override
   Future<PermissionStatus> get cameraPermissionStatus async {
     if (_cameraPermanentlyDenied) return PermissionStatus.permanentlyDenied;
-    return _camera
-        ? PermissionStatus.granted
-        : PermissionStatus.notDetermined;
+    return _camera ? PermissionStatus.granted : PermissionStatus.notDetermined;
   }
 
   @override

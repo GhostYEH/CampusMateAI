@@ -484,9 +484,8 @@ class _StudyCompanionPageState extends ConsumerState<StudyCompanionPage>
     // 监听待办列表,用于关联待办选择
     final tasks = ref.watch(taskListProvider);
     // 仅显示未完成且未删除的待办作为可关联项
-    final relatedTasks = tasks
-        .where((t) => !t.completed && !t.deleted)
-        .toList();
+    final relatedTasks =
+        tasks.where((t) => !t.completed && !t.deleted).toList();
 
     // 监听表情结果,更新最近稳定结果 & 派生学习状态
     ref.listen(expressionResultsProvider, (prev, next) {
