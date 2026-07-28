@@ -42,6 +42,15 @@ jobs:
       - name: Run tests
         run: flutter test --reporter=expanded
 
+      - name: Upload golden failure images
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-golden-failures
+          path: test/features/auth/failures/
+          retention-days: 1
+          if-no-files-found: ignore
+
   build-android:
     name: Build Android APK
     needs: analyze-and-test
