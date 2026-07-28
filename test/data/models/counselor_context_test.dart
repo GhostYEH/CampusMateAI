@@ -236,7 +236,9 @@ void main() {
       );
       final json = task.toJson();
       expect(
-          json.keys.toSet(), {'id', 'title', 'deadline', 'priority', 'status'},);
+        json.keys.toSet(),
+        {'id', 'title', 'deadline', 'priority', 'status'},
+      );
       expect(json['id'], 't_001');
       expect(json['title'], '提交实验报告');
     });
