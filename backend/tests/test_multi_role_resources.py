@@ -835,7 +835,7 @@ def test_student_status_endpoint(
 
 
 def test_student_status_filter_by_status(
-    app_client_with_demo, teacher_token
+    app_client_with_demo, teacher_token, student01_token
 ):
     """student-status 支持按提交状态筛选。"""
     from app.services.container import get_container
@@ -850,13 +850,26 @@ def test_student_status_filter_by_status(
         course_id=course.id, page=1, page_size=10
     )
     cls_id = classes[0].id
-    asgs, _ = container.assignment_repository.list_assignments(
-        cls_id, status="published", page=1, page_size=10
+    assignment = app_client_with_demo.post(
+        f"/api/v1/classes/{cls_id}/assignments",
+        json={
+            "title": "student-status filter isolation",
+            "status": "published",
+            "allow_resubmit": True,
+        },
+        headers=_h(teacher_token),
     )
-    asg = asgs[0]
+    assert assignment.status_code == 201
+    asg_id = assignment.json()["id"]
+    submission = app_client_with_demo.post(
+        f"/api/v1/assignments/{asg_id}/submissions",
+        json={"text_content": "submitted for status filter", "submit": True},
+        headers=_h(student01_token),
+    )
+    assert submission.status_code == 201
     # 筛选已提交
     resp = app_client_with_demo.get(
-        f"/api/v1/assignments/{asg.id}/student-status?submission_status=submitted",
+        f"/api/v1/assignments/{asg_id}/student-status?submission_status=submitted",
         headers=_h(teacher_token),
     )
     assert resp.status_code == 200

@@ -255,23 +255,23 @@ def print_report(result: CheckResult) -> None:
         print(f"响应样本: {result.sample_response}")
     print("-" * 60)
     if result.connection_status == "ok":
-        print("✓ LLM Provider 可用,系统可使用 LLM 抽取与 LLM RAG 模式。")
+        print("[OK] LLM Provider 可用,系统可使用 LLM 抽取与 LLM RAG 模式。")
     elif result.connection_status == "not_enabled":
         print("ℹ 未启用 LLM,系统使用规则抽取和检索摘要模式,功能仍可正常运行。")
     elif result.connection_status == "auth_failed":
-        print("✗ 认证失败,请检查 API Key 是否正确或已过期。")
+        print("[ERROR] 认证失败,请检查 API Key 是否正确或已过期。")
     elif result.connection_status == "model_not_found":
-        print("✗ 模型不存在,请检查 LLM_MODEL 配置。")
+        print("[ERROR] 模型不存在,请检查 LLM_MODEL 配置。")
     elif result.connection_status == "rate_limited":
-        print("⚠ 限流,请稍后重试或提升配额。")
+        print("[WARN] 限流,请稍后重试或提升配额。")
     elif result.connection_status == "timeout":
-        print("⚠ 请求超时,请检查网络或 LLM_BASE_URL 是否可达。")
+        print("[WARN] 请求超时,请检查网络或 LLM_BASE_URL 是否可达。")
     elif result.connection_status == "server_error":
-        print("✗ 服务错误,请稍后重试或联系 Provider。")
+        print("[ERROR] 服务错误,请稍后重试或联系 Provider。")
     elif result.connection_status == "empty_response":
-        print("✗ 响应为空,请检查模型配置。")
+        print("[ERROR] 响应为空,请检查模型配置。")
     elif result.connection_status == "config_error":
-        print("✗ 配置错误,请补全环境变量后重试。")
+        print("[ERROR] 配置错误,请补全环境变量后重试。")
     print("=" * 60)
 
 

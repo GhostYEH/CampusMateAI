@@ -358,8 +358,10 @@ class ExpressionPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: AppTypography.bodyStrong.copyWith(color: color),),
+                Text(
+                  title,
+                  style: AppTypography.bodyStrong.copyWith(color: color),
+                ),
                 if (detail != null) ...[
                   const SizedBox(height: 4),
                   Text(

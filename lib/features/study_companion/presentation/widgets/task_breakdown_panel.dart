@@ -43,7 +43,9 @@ class TaskBreakdownPanel extends ConsumerStatefulWidget {
   /// 接受步骤的回调(返回 true 表示已成功创建待办)。
   /// 若为 null,则使用默认行为(通过 taskListProvider 创建)。
   final Future<bool> Function(
-      TaskBreakdownStep step, TaskBreakdownResponse resp,)? onAcceptStep;
+    TaskBreakdownStep step,
+    TaskBreakdownResponse resp,
+  )? onAcceptStep;
 
   @override
   ConsumerState<TaskBreakdownPanel> createState() => _TaskBreakdownPanelState();
@@ -88,7 +90,9 @@ class _TaskBreakdownPanelState extends ConsumerState<TaskBreakdownPanel> {
       final service = ref.read(taskBreakdownServiceProvider);
       final resp = await service.breakdown(
         TaskBreakdownRequest(
-            taskId: taskId, goal: goalText.isEmpty ? null : goalText,),
+          taskId: taskId,
+          goal: goalText.isEmpty ? null : goalText,
+        ),
       );
       if (!mounted) return;
       setState(() {
@@ -373,8 +377,11 @@ class _BreakdownResultView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.info_outline,
-                        size: 14, color: AppColors.warning,),
+                    const Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: AppColors.warning,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '提示',
