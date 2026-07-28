@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:campus_companion/app/config/app_config.dart';
 import 'package:campus_companion/app/providers/app_providers.dart';
 import 'package:campus_companion/app/theme/app_theme.dart';
@@ -54,9 +56,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
+    final goldenFile = Platform.isLinux
+        ? 'goldens/login_page_362x716_linux.png'
+        : 'goldens/login_page_362x716.png';
     await expectLater(
       find.byKey(goldenKey),
-      matchesGoldenFile('goldens/login_page_362x716.png'),
+      matchesGoldenFile(goldenFile),
     );
   });
 }
