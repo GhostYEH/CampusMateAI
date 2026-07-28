@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:campus_companion/data/models/chat.dart';
 import 'package:campus_companion/data/services/api/api_client.dart';
 import 'package:campus_companion/data/services/api/api_counselor_chat_service.dart';
+import 'package:campus_companion/data/services/service_interfaces.dart';
 
 import '../../../helpers/mock_dio_adapter.dart';
 
@@ -413,6 +414,232 @@ void main() {
       expect(data['message'], '问题');
       expect(data['conversation_id'], 'conv_xyz');
       expect(data['stream'], isTrue);
+    });
+
+    test('携带上下文时 body 包含独立上下文字段(对齐要求 #3)', () async {
+      adapter.registerPostSseStream(
+        '/api/v1/counselor/chat',
+        ssePayloads: [
+          _sse('done', {
+            'answer': '回答',
+            'sources': [],
+            'confidence': 0.5,
+            'evidence_level': 'medium',
+            'needs_human_confirmation': false,
+            'suggested_actions': [],
+            'conversation_id': 'conv_ctx',
+            'mode': 'llm',
+            'warnings': [],
+            'context_used': {
+              'course_id': 'c_001',
+              'course_name': '高等数学',
+              'recent_tasks_count': 1,
+              'recent_tasks_verified_count': 1,
+            },
+            'context_warnings': [],
+          }),
+        ],
+      );
+
+      const context = CounselorContext(
+        courseId: 'c_001',
+        classId: 'cls_101',
+        assignmentId: 'a_001',
+        recentTasks: [
+          CounselorRecentTask(
+            id: 't_001',
+            title: '提交实验报告',
+            deadline: '2026-09-20T23:59:59',
+            priority: 'high',
+            status: 'pending',
+          ),
+        ],
+      );
+
+      await service.send(
+        '这个任务要交什么?',
+        conversationId: 'conv_ctx',
+        context: context,
+      );
+
+      expect(adapter.recordedRequests, isNotEmpty);
+      final req = adapter.recordedRequests.last;
+      final data = req.data as Map<String, dynamic>;
+      // 基本字段
+      expect(data['message'], '这个任务要交什么?');
+      expect(data['conversation_id'], 'conv_ctx');
+      expect(data['stream'], isTrue);
+      // 独立上下文字段(不编码进 conversation_id)
+      expect(data['course_id'], 'c_001');
+      expect(data['class_id'], 'cls_101');
+      expect(data['assignment_id'], 'a_001');
+      // recent_tasks 序列化为 List<Map>
+      expect(data['recent_tasks'], isA<List>());
+      final tasks = data['recent_tasks'] as List;
+      expect(tasks.length, 1);
+      expect(tasks.first['id'], 't_001');
+      expect(tasks.first['title'], '提交实验报告');
+      expect(tasks.first['deadline'], '2026-09-20T23:59:59');
+      expect(tasks.first['priority'], 'high');
+      expect(tasks.first['status'], 'pending');
+      // contextLabel 不应发送给后端
+      expect(data.containsKey('context_label'), isFalse);
+      expect(data.containsKey('context_title'), isFalse);
+    });
+
+    test('普通入口(空上下文)不发送无关字段(对齐要求 #3)', () async {
+      adapter.registerPostSseStream(
+        '/api/v1/counselor/chat',
+        ssePayloads: [
+          _sse('done', {
+            'answer': '回答',
+            'sources': [],
+            'confidence': 0.5,
+            'evidence_level': 'medium',
+            'needs_human_confirmation': false,
+            'suggested_actions': [],
+            'conversation_id': 'conv_plain',
+            'mode': 'llm',
+            'warnings': [],
+          }),
+        ],
+      );
+
+      await service.send('普通问题', conversationId: 'conv_plain');
+
+      expect(adapter.recordedRequests, isNotEmpty);
+      final req = adapter.recordedRequests.last;
+      final data = req.data as Map<String, dynamic>;
+      // 只应有 message / conversation_id / stream 三个字段
+      expect(data.keys.toSet(), {'message', 'conversation_id', 'stream'});
+      expect(data.containsKey('course_id'), isFalse);
+      expect(data.containsKey('class_id'), isFalse);
+      expect(data.containsKey('assignment_id'), isFalse);
+      expect(data.containsKey('announcement_id'), isFalse);
+      expect(data.containsKey('recent_tasks'), isFalse);
+      expect(data.containsKey('study_session_id'), isFalse);
+      expect(data.containsKey('self_report'), isFalse);
+      expect(data.containsKey('expression_signal'), isFalse);
+    });
+
+    test('done 事件含 context_used/context_warnings 时被正确解析(对齐要求 #11)',
+        () async {
+      adapter.registerPostSseStream(
+        '/api/v1/counselor/chat',
+        ssePayloads: [
+          _sse('done', {
+            'answer': '回答',
+            'sources': [],
+            'confidence': 0.5,
+            'evidence_level': 'medium',
+            'needs_human_confirmation': false,
+            'suggested_actions': [],
+            'conversation_id': 'conv_meta',
+            'mode': 'llm',
+            'warnings': ['引用资料中包含已过期内容'],
+            'context_used': {
+              'course_id': 'c_001',
+              'course_name': '高等数学',
+              'recent_tasks_count': 2,
+              'recent_tasks_verified_count': 1,
+              'self_report': '有些疲惫',
+            },
+            'context_warnings': [
+              '任务 t_002 不可访问,已忽略',
+              'recent_tasks 包含用户本地待办,未经后端验证,仅作个性化参考',
+              'expression_signal 当前未接入 CNN,已忽略',
+            ],
+          }),
+        ],
+      );
+
+      ChatFinalMeta? capturedMeta;
+      await service.send(
+        '问题',
+        conversationId: 'conv_meta',
+        onFinalMeta: (m) => capturedMeta = m,
+      );
+
+      expect(capturedMeta, isNotNull);
+      expect(capturedMeta!.contextUsed['course_id'], 'c_001');
+      expect(capturedMeta!.contextUsed['recent_tasks_count'], 2);
+      expect(capturedMeta!.contextUsed['recent_tasks_verified_count'], 1);
+      expect(capturedMeta!.contextUsed['self_report'], '有些疲惫');
+      expect(capturedMeta!.contextWarnings.length, 3);
+      expect(
+        capturedMeta!.contextWarnings.any((w) => w.contains('不可访问')),
+        isTrue,
+      );
+      expect(
+        capturedMeta!.contextWarnings.any((w) => w.contains('expression_signal')),
+        isTrue,
+      );
+    });
+
+    test('done 事件无 context_used/context_warnings 时使用默认空值(SSE 兼容)',
+        () async {
+      adapter.registerPostSseStream(
+        '/api/v1/counselor/chat',
+        ssePayloads: [
+          _sse('done', {
+            'answer': '回答',
+            'sources': [],
+            'confidence': 0.5,
+            'evidence_level': 'medium',
+            'needs_human_confirmation': false,
+            'suggested_actions': [],
+            'conversation_id': 'conv_no_ctx',
+            'mode': 'llm',
+            'warnings': [],
+            // 故意不提供 context_used / context_warnings
+          }),
+        ],
+      );
+
+      ChatFinalMeta? capturedMeta;
+      await service.send(
+        '问题',
+        conversationId: 'conv_no_ctx',
+        onFinalMeta: (m) => capturedMeta = m,
+      );
+
+      expect(capturedMeta, isNotNull);
+      expect(capturedMeta!.contextUsed, isEmpty);
+      expect(capturedMeta!.contextWarnings, isEmpty);
+    });
+
+    test('study_session_id 与 self_report 被序列化为独立字段', () async {
+      adapter.registerPostSseStream(
+        '/api/v1/counselor/chat',
+        ssePayloads: [
+          _sse('done', {
+            'answer': '回答',
+            'sources': [],
+            'confidence': 0.5,
+            'evidence_level': 'medium',
+            'needs_human_confirmation': false,
+            'suggested_actions': [],
+            'conversation_id': 'conv_ss',
+            'mode': 'llm',
+            'warnings': [],
+          }),
+        ],
+      );
+
+      const context = CounselorContext(
+        studySessionId: 'ss_001',
+        selfReport: '有些疲惫',
+      );
+      await service.send(
+        '我有点累,该怎么安排?',
+        conversationId: 'conv_ss',
+        context: context,
+      );
+
+      final req = adapter.recordedRequests.last;
+      final data = req.data as Map<String, dynamic>;
+      expect(data['study_session_id'], 'ss_001');
+      expect(data['self_report'], '有些疲惫');
     });
   });
 }

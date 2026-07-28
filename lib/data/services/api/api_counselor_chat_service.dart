@@ -32,6 +32,7 @@ class ApiCounselorChatService implements CounselorChatService {
   Future<String> send(
     String message, {
     required String conversationId,
+    CounselorContext context = const CounselorContext(),
     void Function(String chunk)? onChunk,
     void Function(List<KnowledgeSource> sources)? onSources,
     void Function(List<SuggestedAction> actions)? onActions,
@@ -45,13 +46,21 @@ class ApiCounselorChatService implements CounselorChatService {
     List<SuggestedAction> finalActions = [];
 
     try {
+      // 构造请求 Body: message + conversation_id(仅会话标识)+ stream
+      // + 独立上下文字段(对齐要求 #2/#3)。
+      // 后端会校验用户是否有权访问这些资源,越权/不存在/已删除的对象会被忽略 + warning。
+      final body = <String, dynamic>{
+        'message': message,
+        'conversation_id': conversationId,
+        'stream': true,
+        // 合并上下文字段(course_id/class_id/assignment_id/announcement_id/
+        // study_session_id/self_report/expression_signal/recent_tasks)。
+        // 普通入口(context 为空)不会添加任何字段,与旧请求兼容。
+        ...context.toContextJson(),
+      };
       final response = _client.dio.post<ResponseBody>(
         '/api/v1/counselor/chat',
-        data: {
-          'message': message,
-          'conversation_id': conversationId,
-          'stream': true,
-        },
+        data: body,
         options: Options(
           responseType: ResponseType.stream,
           headers: {'Accept': 'text/event-stream'},
@@ -183,6 +192,8 @@ class ApiCounselorChatService implements CounselorChatService {
   /// 从 `done` 事件 data 解析最终元数据。
   ///
   /// 推导 hasUserDocs / hasDemoDocs: 通过 sources 列表中的 isDemo 标志判断。
+  /// 解析 context_used / context_warnings: 后端返回的上下文使用情况与告警
+  /// (对齐要求 #11,done 事件增加这两个元数据字段)。
   ChatFinalMeta? _parseFinalMeta(
     Map<String, dynamic> data,
     List<KnowledgeSource> sources,
@@ -198,6 +209,15 @@ class ApiCounselorChatService implements CounselorChatService {
         (data['needs_human_confirmation'] as bool?) ?? false;
     final hasUserDocs = sources.any((s) => !s.isDemo);
     final hasDemoDocs = sources.any((s) => s.isDemo);
+    // 解析上下文使用情况(对齐要求 #11)
+    final contextUsedRaw = data['context_used'];
+    Map<String, dynamic> contextUsed = const {};
+    if (contextUsedRaw is Map) {
+      contextUsed = Map<String, dynamic>.from(contextUsedRaw);
+    }
+    final contextWarnings = ((data['context_warnings'] as List?) ?? [])
+        .map((e) => e.toString())
+        .toList(growable: false);
     return ChatFinalMeta(
       mode: mode,
       evidenceLevel: evidenceLevel,
@@ -206,6 +226,8 @@ class ApiCounselorChatService implements CounselorChatService {
       needsHumanConfirmation: needsHumanConfirmation,
       hasUserDocs: hasUserDocs,
       hasDemoDocs: hasDemoDocs,
+      contextUsed: contextUsed,
+      contextWarnings: contextWarnings,
     );
   }
 

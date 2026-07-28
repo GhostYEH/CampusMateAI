@@ -234,16 +234,18 @@ class ChatFinalMeta {
   /// 是否包含仿真演示文档(用于推导 [AnswerMode])
   final bool hasDemoDocs;
 
-  /// 后端实际采纳的上下文摘要(对齐要求 #11)。
+  /// 后端实际采纳的上下文摘要(对齐用户新要求)。
   ///
-  /// 例如: `{"course_id": "...", "course_name": "高等数学",
-  /// "recent_tasks_count": 3, "recent_tasks_verified_count": 2}`。
-  /// UI 可据此展示"本次回答参考了你的 3 项待办与高等数学课程"。
+  /// 推荐结构: `{"recent_tasks_count": 2, "recent_tasks_accepted_count": 1,
+  /// "recent_tasks_ignored_count": 1, "self_report_present": true}`。
+  /// 不回传 self_report 原文,不回传 expression_signal 内容。
+  /// UI 可据此展示"本次回答参考了你的 1 项待办"。
   final Map<String, dynamic> contextUsed;
 
-  /// 上下文相关告警(对齐要求 #11)。
+  /// 上下文相关告警(对齐用户新要求)。
   ///
-  /// 例如: `["无权访问任务 xxx,已忽略", "recent_tasks 包含用户本地待办,未经后端验证"]`。
+  /// 例如: `["任务 xxx 不存在或无权访问,已忽略",
+  /// "expression_signal 当前未接入 CNN,已忽略"]`。
   /// UI 应在回答下方温和展示,提示用户哪些上下文未被采纳。
   final List<String> contextWarnings;
 }

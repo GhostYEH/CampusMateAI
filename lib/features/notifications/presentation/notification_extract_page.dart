@@ -331,6 +331,27 @@ class _NotificationExtractPageState
           _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
       reminderEnabled: _reminderEnabled && reminderAt != null,
       reminderAt: reminderAt,
+      // ===== 后端 personal_tasks 对齐字段(确保原文可追溯)=====
+      // sourceText 保留原通知全文(_textController 为用户粘贴的原文)
+      sourceText: _textController.text.trim().isEmpty
+          ? null
+          : _textController.text.trim(),
+      // sourceName 来自表单的"通知来源"字段
+      sourceName: _sourceCtrl.text.trim().isEmpty
+          ? null
+          : _sourceCtrl.text.trim(),
+      // targetStudents 来自"面向对象"字段
+      targetStudents: _audienceCtrl.text.trim().isEmpty
+          ? null
+          : _audienceCtrl.text.trim(),
+      // submissionMethod 来自"提交方式"字段
+      submissionMethod: _submitMethodCtrl.text.trim().isEmpty
+          ? null
+          : _submitMethodCtrl.text.trim(),
+      // reminderMinutes 提前提醒分钟数(对齐后端字段)
+      reminderMinutes: (_reminderEnabled && reminderAt != null)
+          ? _reminderLeadMinutes
+          : null,
     );
 
     try {
@@ -360,6 +381,11 @@ class _NotificationExtractPageState
       await Future.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
       context.go('/home');
+    } on ApiException catch (e) {
+      // 后端真实失败:不静默伪装成功(对齐 Flutter 要求 #8)
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _showSnack('保存失败:${e.message}');
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);

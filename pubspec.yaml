@@ -28,8 +28,23 @@ dependencies:
   # 系统时区(IANA 名称)— DateTime.now().timeZoneName 不可靠,见 AGENTS.md 提醒规范
   flutter_timezone: ^3.0.1
 
-  # 摄像头(后续CNN接入预留)
+  # 摄像头(CNN 表情识别帧源)
   camera: ^0.11.0+1
+
+  # LiteRT/TFLite CNN 推理(Android/iOS/桌面,Web 不支持 → 显示明确降级)
+  tflite_flutter: ^0.12.1
+
+  # 人脸检测(仅 Android/iOS,Web 不支持 → 显示明确降级)
+  google_mlkit_face_detection: ^0.14.0
+
+  # 运行时权限请求(摄像头/通知)
+  permission_handler: ^12.0.3
+
+  # 图像处理(裁剪/缩放/通道转换/归一化)
+  image: ^4.2.0
+
+  # SHA-256 校验(TFLite 模型完整性验证)
+  crypto: ^3.0.6
 
   # 工具库
   intl: ^0.20.2
@@ -43,6 +58,7 @@ dependencies:
 
   # 文件选择(知识库文档上传)
   file_picker: ^8.1.4
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:
@@ -57,3 +73,15 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/home/
+    - assets/images/auth/
+    - assets/videos/
+    # CNN 表情识别模型与配置(真实 FER2013 MobileNetV3-Small)
+    - assets/models/expression_model.tflite
+    - assets/models/labels.json
+    - assets/models/preprocess.json
+    - assets/models/model_card.json
+    - assets/models/
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-VF.ttf

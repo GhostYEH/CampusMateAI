@@ -12,10 +12,18 @@ class ExpressionResultView extends StatelessWidget {
     super.key,
     required this.result,
     required this.recentStable,
+    this.inferenceMillis,
+    this.processedFrames,
   });
 
   final ExpressionResult result;
   final List<ExpressionResult> recentStable;
+
+  /// 最近一次推理耗时(ms),用于性能指标显示。
+  final int? inferenceMillis;
+
+  /// 已处理帧数,用于显示运行情况。
+  final int? processedFrames;
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +156,32 @@ class ExpressionResultView extends StatelessWidget {
             }).toList(),
           ),
         ],
+        // 性能指标(推理延迟 / 帧数)— 真实模式有意义,Mock 模式为 null
+        if (inferenceMillis != null || processedFrames != null) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(
+                Icons.speed_rounded,
+                size: 12,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                [
+                  if (inferenceMillis != null) '推理 ${inferenceMillis}ms',
+                  if (processedFrames != null) '已处理 $processedFrames 帧',
+                ].join(' · '),
+                style: AppTypography.overline.copyWith(fontSize: 10),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 6),
+        const Text(
+          '仅作辅助,不代表真实情绪',
+          style: AppTypography.overline,
+        ),
       ],
     );
   }

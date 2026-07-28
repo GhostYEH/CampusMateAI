@@ -10,6 +10,7 @@ import '../../../core/widgets/cards.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../core/widgets/staggered_enter.dart';
 import '../../../data/models/task.dart';
+import '../../../data/services/api/api_client.dart';
 
 /// 待办主页面 — Tab 切换 + 搜索 + 类别筛选 + 日历视图。
 class TasksPage extends ConsumerStatefulWidget {
@@ -82,7 +83,11 @@ class _TasksPageState extends ConsumerState<TasksPage>
 
   void _toggleComplete(Task task) {
     final wasCompleted = task.completed;
-    ref.read(taskListProvider.notifier).toggleComplete(task);
+    // 异步调用后端,失败时显示错误(对齐 Flutter 要求 #8:不静默伪装成功)
+    ref.read(taskListProvider.notifier).toggleComplete(task).catchError((e) {
+      if (!mounted) return;
+      _showErrorSnack(e is ApiException ? e.message : '操作失败,请重试');
+    });
     if (!mounted) return;
     if (!wasCompleted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -93,9 +98,13 @@ class _TasksPageState extends ConsumerState<TasksPage>
           action: SnackBarAction(
             label: '撤销',
             onPressed: () {
-              ref.read(taskListProvider.notifier).updateTask(
-                    task.copyWith(completed: false, completedAt: null),
-                  );
+              ref
+                  .read(taskListProvider.notifier)
+                  .updateTask(task.copyWith(completed: false, completedAt: null))
+                  .catchError((e) {
+                if (!mounted) return;
+                _showErrorSnack(e is ApiException ? e.message : '撤销失败,请重试');
+              });
             },
           ),
         ),
@@ -104,7 +113,10 @@ class _TasksPageState extends ConsumerState<TasksPage>
   }
 
   void _softDelete(Task task) {
-    ref.read(taskListProvider.notifier).softDelete(task.id);
+    ref.read(taskListProvider.notifier).softDelete(task.id).catchError((e) {
+      if (!mounted) return;
+      _showErrorSnack(e is ApiException ? e.message : '删除失败,请重试');
+    });
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,10 +126,58 @@ class _TasksPageState extends ConsumerState<TasksPage>
         action: SnackBarAction(
           label: '撤销',
           onPressed: () {
-            ref.read(taskListProvider.notifier).restore(task.id);
+            ref
+                .read(taskListProvider.notifier)
+                .restore(task.id)
+                .catchError((e) {
+              if (!mounted) return;
+              _showErrorSnack(e is ApiException ? e.message : '恢复失败,请重试');
+            });
           },
         ),
       ),
+    );
+  }
+
+  void _showErrorSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.danger,
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                color: AppColors.onPrimary, size: 18,),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 跳转到 AI 导员,携带当前用户的真实最近待办(对齐要求 #4)。
+  ///
+  /// 仅发送必要字段(id/title/deadline/priority/status),后端会重新校验归属。
+  /// 若当前没有任何待办,仍然跳转(只是不携带 recent_tasks)。
+  void _askCounselorWithTasks() {
+    final upcoming = ref.read(upcomingTasksProvider);
+    final recentTasks = upcoming.take(5).map((t) {
+      return {
+        'id': t.id,
+        'title': t.title,
+        'deadline': t.deadline?.toIso8601String(),
+        'priority': t.priority.name,
+        'status': t.completed ? 'completed' : 'pending',
+      };
+    }).toList(growable: false);
+    context.go(
+      '/counselor',
+      extra: <String, dynamic>{
+        'context_title': recentTasks.isEmpty ? '我的待办' : '我的最近待办',
+        'recent_tasks': recentTasks,
+      },
     );
   }
 
@@ -133,6 +193,11 @@ class _TasksPageState extends ConsumerState<TasksPage>
       appBar: AppBar(
         title: const Text('待办'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.support_agent_rounded),
+            tooltip: '问 AI 导员',
+            onPressed: _askCounselorWithTasks,
+          ),
           IconButton(
             icon: Icon(
               _searchExpanded ? Icons.search_off_rounded : Icons.search_rounded,
