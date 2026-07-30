@@ -1,87 +1,30 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 网络访问(预留后端接入) -->
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <!-- 摄像头(CNN 表情识别) -->
-    <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-feature android:name="android.hardware.camera" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
-    <!-- 通知显示权限(Android 13+ 需运行时申请) -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <!-- 振动(用于轻量提醒反馈) -->
-    <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- 精确提醒权限(Android 12+ SCHEDULE_EXACT_ALARM,需用户在"闹钟和提醒"设置中授予)。
-         注意:本项目按规范仅声明 SCHEDULE_EXACT_ALARM,不声明 USE_EXACT_ALARM。
-         原因:USE_EXACT_ALARM 在 Play Store 上有更严格审核,且不需用户主动授予,
-         与本项目"用户主动授予精确提醒权限"的可控流程不符。 -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <!-- 设备重启后恢复已调度的精确提醒(flutter_local_notifications BootReceiver 需要) -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
-        android:label="校园智伴"
-        android:name="${applicationName}"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="true">
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Campusai"
+        tools:targetApi="31">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
-            <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Campusai">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-        <!-- flutter_local_notifications — 定时通知接收器(到点触发时弹出通知)。
-             android:exported=false: 仅本应用内部触发,不暴露给其他应用。 -->
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
-        <!-- flutter_local_notifications — 设备重启 / 应用更新后恢复已调度的精确提醒。
-             intent-filter actions 按 flutter_local_notifications 官方文档配置:
-             - BOOT_COMPLETED: 标准设备重启
-             - MY_PACKAGE_REPLACED: 应用更新后恢复
-             - QUICKBOOT_POWERON / com.htc.intent.action.QUICKBOOT_POWERON: 厂商快速开机
-             android:exported=false: 系统广播(BOOT_COMPLETED 等)仍可投递到 exported=false
-             的接收器,同时阻止其他应用任意触发,符合安全最佳实践。 -->
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
-            </intent-filter>
-        </receiver>
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
 </manifest>

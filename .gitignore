@@ -126,3 +126,26 @@ backend/data/uploads/
 ml/expression_recognition/artifacts/
 ml/expression_recognition/data/
 ml/**/fer2013*/
+
+# AI Agent / IDE 辅助文件
+.arts/
+.codeartsdoer/
+AGENTS.md
+web/AGENTS.md
+
+# SDK / 工具下载(非项目代码)
+jdk17.zip
+*.zip
+
+# 构建产物
+artifacts/
+
+# 后端自动生成的 API 规范
+backend/openapi.json
+
+# Flutter 插件依赖(自动生成)
+.flutter-plugins-dependencies
+
+# Android 测试文件
+android/app/src/androidTest/
+android/app/src/test/
