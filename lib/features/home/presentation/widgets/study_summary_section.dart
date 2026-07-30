@@ -5,10 +5,7 @@ import '../../../../app/design_system/app_colors.dart';
 import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/widgets/app_card.dart';
 
-/// 首页今日学习概览卡片 — 呼吸圆点 + 时长 + 趋势图标。
-///
-/// 提取自原 HomePage 的 _StudyOverview 与 _BreathingDot。
-/// 呼吸动画遵循"减少动态效果"设置(由调用方决定是否启用,当前默认开启)。
+/// 首页今日学习概览卡片 — 静息圆点 + 时长 + 提示语。
 class StudySummarySection extends StatelessWidget {
   const StudySummarySection({
     super.key,
@@ -21,6 +18,7 @@ class StudySummarySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     final minutes = todayTotal?.inMinutes ?? 0;
     final h = minutes ~/ 60;
     final m = minutes % 60;
@@ -28,16 +26,17 @@ class StudySummarySection extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.edge),
       child: AppCard(
         onTap: () => context.go('/study'),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
+        borderRadius: 12,
         child: Row(
           children: [
-            _BreathingDot(reduceMotion: reduceMotion),
-            const SizedBox(width: 12),
+            _StudyDot(reduceMotion: reduceMotion),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('今日学习', style: AppTypography.label),
+                  Text('今日学习', style: AppTypography.label),
                   const SizedBox(height: 2),
                   Text(
                     h > 0 ? '$h 小时 $m 分钟' : '$m 分钟',
@@ -46,10 +45,10 @@ class StudySummarySection extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.trending_up_rounded, color: AppColors.success),
+            Icon(Icons.trending_up_rounded, color: c.success, size: 20),
             const SizedBox(width: 4),
-            const Text(
-              '专注还不错的样子',
+            Text(
+              hoursToLabel(h),
               style: AppTypography.caption,
             ),
           ],
@@ -57,18 +56,25 @@ class StudySummarySection extends StatelessWidget {
       ),
     );
   }
+
+  String hoursToLabel(int hours) {
+    if (hours <= 0) return '还没开始呢';
+    if (hours < 2) return '刚开始状态不错';
+    if (hours < 4) return '专注状态很好';
+    return '今日学习状态很棒';
+  }
 }
 
-class _BreathingDot extends StatefulWidget {
-  const _BreathingDot({required this.reduceMotion});
+class _StudyDot extends StatefulWidget {
+  const _StudyDot({required this.reduceMotion});
 
   final bool reduceMotion;
 
   @override
-  State<_BreathingDot> createState() => _BreathingDotState();
+  State<_StudyDot> createState() => _StudyDotState();
 }
 
-class _BreathingDotState extends State<_BreathingDot>
+class _StudyDotState extends State<_StudyDot>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
 
@@ -76,10 +82,9 @@ class _BreathingDotState extends State<_BreathingDot>
   void initState() {
     super.initState();
     _c = AnimationController(
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 1400),
       vsync: this,
     );
-    // 开启"减少动态效果"时停止 repeat,保持静止状态。
     if (!widget.reduceMotion) {
       _c.repeat(reverse: true);
     } else {
@@ -106,23 +111,16 @@ class _BreathingDotState extends State<_BreathingDot>
 
   Widget _buildDot(double value) {
     return Container(
-      width: 14,
-      height: 14,
+      width: 12,
+      height: 12,
       decoration: BoxDecoration(
         color: AppColors.success.withValues(alpha: 0.3 + 0.5 * value),
         shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.success.withValues(alpha: 0.3 * value),
-            blurRadius: 8 + 6 * value,
-            spreadRadius: 1,
-          ),
-        ],
       ),
       child: Center(
         child: Container(
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           decoration: const BoxDecoration(
             color: AppColors.success,
             shape: BoxShape.circle,

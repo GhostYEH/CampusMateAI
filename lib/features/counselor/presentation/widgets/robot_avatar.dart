@@ -5,7 +5,7 @@ import '../../../../app/design_system/app_typography.dart';
 
 /// AI 导员机器人头像 — 圆形主色 subtle 底 + smart_toy 图标。
 class RobotAvatar extends StatelessWidget {
-  const RobotAvatar({super.key, this.size = 28, this.iconSize = 16});
+  const RobotAvatar({super.key, this.size = 26, this.iconSize = 15});
 
   final double size;
   final double iconSize;
@@ -34,27 +34,28 @@ class EmptyConversation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(
-              color: AppColors.primarySubtle,
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: c.primarySubtle,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.smart_toy_rounded,
-              size: 32,
-              color: AppColors.primary,
+              size: 30,
+              color: c.primary,
             ),
           ),
-          const SizedBox(height: 16),
-          const Text('开始和 AI 导员对话吧', style: AppTypography.subtitle),
+          const SizedBox(height: 14),
+          Text('开始和 AI 导员对话吧', style: AppTypography.subtitle),
           const SizedBox(height: 6),
-          const Text('模拟模式 · 校园知识库', style: AppTypography.caption),
+          Text('模拟模式 · 校园知识库', style: AppTypography.caption),
         ],
       ),
     );

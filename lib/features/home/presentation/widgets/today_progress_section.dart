@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../../../app/design_system/app_colors.dart';
 import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/utils/date_utils.dart';
-import '../../../../core/widgets/app_card.dart';
-import '../../../../core/widgets/progress_ring.dart';
 import '../../../../data/models/task.dart';
 
-/// 首页今日概览英雄卡片 — 动画进度环 + 最紧急任务倒计时。
-///
-/// 提取自原 HomePage 的 _TodayOverview 与 _NearestTask。
+/// 今日节奏 — 以校园日程单为原型。
 class TodayProgressSection extends StatelessWidget {
   const TodayProgressSection({
     super.key,
@@ -25,178 +22,173 @@ class TodayProgressSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
+    final percent = (progress.clamp(0, 1) * 100).round();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.edge),
-      child: AppCard(
-        padding: EdgeInsets.zero,
-        backgroundColor: const Color(0xFF245A73),
-        borderColor: const Color(0xFF245A73),
-        showBorder: false,
-        shadow: AppShadows.elevated,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          child: Stack(
-            children: [
-              const Positioned(
-                right: -34,
-                top: -52,
-                child: _DecorativeOrb(size: 150, opacity: .07),
-              ),
-              const Positioned(
-                right: 70,
-                bottom: -58,
-                child: _DecorativeOrb(size: 116, opacity: .045),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF183E56),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF183E56).withValues(alpha: .18),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '今日任务进度',
-                                style: AppTypography.overline.copyWith(
-                                  color: AppColors.onPrimary
-                                      .withValues(alpha: 0.68),
-                                  letterSpacing: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 7),
-                              Text(
-                                todayTaskCount == 0
-                                    ? '今天暂无截止任务'
-                                    : '今天有 $todayTaskCount 项截止',
-                                style: AppTypography.title.copyWith(
-                                  color: AppColors.onPrimary,
-                                  fontSize: 19,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          '今日进度',
+                          style: AppTypography.overline.copyWith(
+                            color: const Color(0xFF8DD7E8),
+                            letterSpacing: .8,
                           ),
                         ),
-                        AnimatedProgressRing(
-                          progress: progress,
-                          size: 66,
-                          strokeWidth: 6,
-                          color: const Color(0xFFFFC28E),
-                          trackColor:
-                              AppColors.onPrimary.withValues(alpha: 0.14),
-                          showLabel: true,
+                        const SizedBox(height: 6),
+                        Text(
+                          todayTaskCount == 0
+                              ? '今天暂无截止任务'
+                              : '今天有 $todayTaskCount 项截止',
+                          style: AppTypography.title.copyWith(
+                            color: Colors.white,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    Container(
-                      height: 1,
-                      color: AppColors.onPrimary.withValues(alpha: .13),
-                    ),
-                    const SizedBox(height: 14),
-                    if (nearest != null)
-                      _NearestTask(nearest: nearest!)
-                    else
-                      Row(
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '$percent%',
+                        style: AppTypography.metric.copyWith(
+                          color: Colors.white,
+                          fontSize: 24,
+                        ),
+                      ),
+                      Text(
+                        '已完成',
+                        style: AppTypography.caption.copyWith(
+                          color: Colors.white.withValues(alpha: .6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progress.clamp(0, 1)),
+                duration: AppMotion.slow,
+                curve: AppMotion.emphasized,
+                builder: (context, value, _) => ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: value,
+                    minHeight: 3,
+                    backgroundColor: const Color(0xFF31586C),
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFFFFA767)),
+                  ),
+                ),
+              ),
+            ),
+            InkWell(
+              onTap: nearest == null ? null : () => context.go('/tasks'),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 14, 13),
+                child: nearest == null
+                    ? Row(
                         children: [
-                          const Icon(
-                            Icons.event_available_rounded,
-                            size: 18,
-                            color: Color(0xFFFFC28E),
+                          PhosphorIcon(
+                            PhosphorIconsRegular.checkCircle,
+                            size: 17,
+                            color: c.success,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '近期没有截止任务',
-                            style: AppTypography.caption.copyWith(
-                              color:
-                                  AppColors.onPrimary.withValues(alpha: 0.82),
+                            '接下来没有紧急截止事项',
+                            style: AppTypography.body.copyWith(
+                              color: Colors.white.withValues(alpha: .7),
                             ),
                           ),
                         ],
-                      ),
-                  ],
-                ),
+                      )
+                    : _NearestTask(task: nearest!),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _DecorativeOrb extends StatelessWidget {
-  const _DecorativeOrb({required this.size, required this.opacity});
-  final double size;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: opacity),
-        shape: BoxShape.circle,
-      ),
-    );
-  }
-}
-
 class _NearestTask extends StatelessWidget {
-  const _NearestTask({required this.nearest});
-  final Task nearest;
+  const _NearestTask({required this.task});
+
+  final Task task;
 
   @override
   Widget build(BuildContext context) {
-    final countdown = AppDateUtils.deadlineCountdown(nearest.deadline);
-    return GestureDetector(
-      onTap: () => context.go('/tasks'),
-      child: Row(
-        children: [
-          const Icon(Icons.flag_rounded, color: AppColors.onPrimary, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '最紧急',
-                  style: AppTypography.label.copyWith(
-                    color: AppColors.onPrimary.withValues(alpha: 0.7),
-                    fontSize: 11,
-                  ),
+    final c = context.appColors;
+    return Row(
+      children: [
+        PhosphorIcon(
+          PhosphorIconsRegular.flagPennant,
+          size: 17,
+          color: c.accent,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '最紧急',
+                style: AppTypography.overline.copyWith(
+                  color: Colors.white.withValues(alpha: .5),
                 ),
-                Text(
-                  nearest.title,
-                  style: AppTypography.bodyStrong.copyWith(
-                    color: AppColors.onPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.onPrimary.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              countdown.text,
-              style: AppTypography.label.copyWith(
-                color: AppColors.onPrimary,
-                fontWeight: FontWeight.w700,
               ),
-            ),
+              Text(
+                task.title,
+                style: AppTypography.bodyStrong.copyWith(
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          AppDateUtils.deadlineCountdown(task.deadline).text,
+          style: AppTypography.label.copyWith(
+            color: c.accent,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(width: 2),
+        PhosphorIcon(
+          PhosphorIconsRegular.caretRight,
+          size: 14,
+          color: Colors.white.withValues(alpha: .4),
+        ),
+      ],
     );
   }
 }

@@ -340,13 +340,21 @@ class _WebRegisterLayout extends StatelessWidget {
               ),
               Flexible(
                 flex: 4,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: StaggeredEnter(
-                      delay: const Duration(milliseconds: 160),
-                      child: form,
+                child: ClipRect(
+                  child: SingleChildScrollView(
+                    key: const ValueKey('web-register-form-scroll'),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 460),
+                        child: StaggeredEnter(
+                          delay: const Duration(milliseconds: 160),
+                          child: form,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -367,7 +375,8 @@ class _RegisterHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+      mainAxisAlignment:
+          compact ? MainAxisAlignment.center : MainAxisAlignment.start,
       children: [
         Container(
           width: compact ? 44 : 54,
@@ -389,7 +398,8 @@ class _RegisterHeader extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Column(
-          crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
           children: [
             Text(
               '创建账号',

@@ -77,6 +77,9 @@ test/**/failures/
 # IDE
 .vscode/
 
+# Claude AI local settings
+.claude/
+
 # Local storage / environment
 *.local
 .env
@@ -97,6 +100,18 @@ __pycache__/
 *.egg-info/
 .eggs/
 *.whl
+.pytest_cache/
+.venv/
+.venv_check/
+
+# Frontend dependencies and local tooling caches
+node_modules/
+.npm-cache/
+.playwright-mcp/
+
+# Local QA screenshots and logs
+*-audit.png
+*.log
 
 # Backend runtime data(用户提交附件 / SQLite 文件 / 上传缓存)
 backend/data/submission_attachments/

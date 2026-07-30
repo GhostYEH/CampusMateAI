@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import '../../app/design_system/app_colors.dart';
 import '../../app/design_system/app_typography.dart';
 
-/// 统一卡片样式 — 以边框为主、微弱阴影为辅,不堆叠。
+/// 统一卡片样式 — 以边框为主、微弱阴影为辅,避免堆叠。
 ///
-/// 默认使用 [AppColorScheme] 自适应浅色/深色模式;
-/// 调用方可显式覆盖 `borderColor` / `backgroundColor` 以自定义。
+/// 默认圆角 12(符合设计规范 6–14px 范围),
+/// 默认使用 [AppColorScheme] 自适应浅色/深色模式。
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -13,7 +13,7 @@ class AppCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.margin,
     this.onTap,
-    this.borderRadius = 18,
+    this.borderRadius = 12,
     this.borderColor,
     this.backgroundColor,
     this.shadow = AppShadows.subtle,
@@ -40,7 +40,7 @@ class AppCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(borderRadius),
-        border: showBorder ? Border.all(color: border, width: 0.8) : null,
+        border: showBorder ? Border.all(color: border, width: 0.6) : null,
         boxShadow: shadow,
       ),
       child: Material(
@@ -79,7 +79,7 @@ class SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 18, color: c.primary),
+          Icon(icon, size: 17, color: c.primary),
           const SizedBox(width: 6),
         ],
         Expanded(
@@ -104,7 +104,7 @@ class SectionHeader extends StatelessWidget {
             onPressed: onAction,
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 32),
+              minimumSize: const Size(0, 30),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(actionLabel!, style: AppTypography.label),

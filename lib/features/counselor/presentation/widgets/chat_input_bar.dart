@@ -17,8 +17,9 @@ class QuickQuestionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return SizedBox(
-      height: 38,
+      height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(
@@ -30,10 +31,10 @@ class QuickQuestionBar extends StatelessWidget {
         itemBuilder: (context, index) {
           final q = MockData.quickQuestions[index];
           return ActionChip(
-            label: Text(q, style: AppTypography.label.copyWith(fontSize: 11.5)),
+            label: Text(q, style: AppTypography.label.copyWith(fontSize: 11)),
             onPressed: enabled ? () => onPick(q) : null,
-            backgroundColor: AppColors.bgSurface,
-            side: const BorderSide(color: AppColors.border, width: 0.6),
+            backgroundColor: c.bgSurface,
+            side: BorderSide(color: c.border, width: 0.6),
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
@@ -45,9 +46,6 @@ class QuickQuestionBar extends StatelessWidget {
 }
 
 /// 输入区 — TextField + 发送/停止按钮。
-///
-/// 流式中显示"停止",非流式中显示"发送"。
-/// 防重复点击:发送按钮在 isGenerating 时切换为停止按钮。
 class ChatComposer extends StatelessWidget {
   const ChatComposer({
     super.key,
@@ -64,13 +62,14 @@ class ChatComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Container(
       padding:
           const EdgeInsets.fromLTRB(AppSpacing.edge, 6, AppSpacing.edge, 8),
-      decoration: const BoxDecoration(
-        color: AppColors.bgSurface,
+      decoration: BoxDecoration(
+        color: c.bgSurface,
         border: Border(
-          top: BorderSide(color: AppColors.border, width: 0.6),
+          top: BorderSide(color: c.border, width: 0.6),
         ),
       ),
       child: Row(
@@ -87,27 +86,25 @@ class ChatComposer extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: '问问 AI 导员...',
                 hintStyle: AppTypography.body.copyWith(
-                  color: AppColors.textTertiary,
+                  color: c.textTertiary,
                 ),
                 filled: true,
-                fillColor: AppColors.bgSunken,
+                fillColor: c.bgSunken,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  borderSide: const BorderSide(
-                    color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: c.primary,
                     width: 1.2,
                   ),
                 ),
@@ -118,34 +115,34 @@ class ChatComposer extends StatelessWidget {
           if (isGenerating)
             FilledButton.icon(
               onPressed: onStop,
-              icon: const Icon(Icons.stop_rounded, size: 18),
+              icon: const Icon(Icons.stop_rounded, size: 17),
               label: const Text('停止'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.danger,
+                backgroundColor: c.danger,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 12,
+                  vertical: 11,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             )
           else
             FilledButton.icon(
               onPressed: onSend,
-              icon: const Icon(Icons.send_rounded, size: 18),
+              icon: const Icon(Icons.send_rounded, size: 17),
               label: const Text('发送'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: c.primary,
                 foregroundColor: AppColors.onPrimary,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 12,
+                  vertical: 11,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
