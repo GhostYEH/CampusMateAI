@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../app/design_system/app_colors.dart';
@@ -101,6 +102,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
+  void _goRegister() {
+    // 登录进行中禁止跳转,避免状态错乱
+    if (ref.read(authNotifierProvider).status == AuthStatus.loading) return;
+    FocusScope.of(context).unfocus();
+    // 把当前输入的用户名带过去,方便注册时预填
+    final username = _usernameController.text.trim();
+    context.go(
+      '/register',
+      extra: username.isEmpty ? null : username,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authNotifierProvider);
@@ -152,6 +165,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         setState(() => _rememberUsername = value);
       },
       onForgotPassword: _showPasswordHelp,
+      onRegister: _goRegister,
       onSubmit: _submit,
     );
   }
@@ -423,6 +437,7 @@ class _LoginPanel extends StatelessWidget {
     required this.onToggleObscure,
     required this.onRememberChanged,
     required this.onForgotPassword,
+    required this.onRegister,
     required this.onSubmit,
   });
 
@@ -437,6 +452,7 @@ class _LoginPanel extends StatelessWidget {
   final VoidCallback onToggleObscure;
   final ValueChanged<bool> onRememberChanged;
   final VoidCallback onForgotPassword;
+  final VoidCallback onRegister;
   final VoidCallback onSubmit;
 
   @override
@@ -586,6 +602,29 @@ class _LoginPanel extends StatelessWidget {
                   fontWeight: FontWeight.w400,
                   letterSpacing: 0,
                 ),
+              ),
+              const SizedBox(height: 14),
+              // 注册入口 — 与登录按钮形成对称动作,
+              // 用 OutlinedBorder 保持视觉层级低于主登录按钮
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '还没有账号?',
+                    style: AppTypography.caption.copyWith(
+                      color: _textSecondary,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: isLoading ? null : onRegister,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _cyan,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 36),
+                    ),
+                    child: const Text('注册账号'),
+                  ),
+                ],
               ),
             ],
           ),

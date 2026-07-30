@@ -1,4 +1,4 @@
-"""认证路由 — login / refresh / logout / me / admin 创建用户。
+"""认证路由 — login / register / refresh / logout / me / admin 创建用户。
 
 设计要点:
 - 登录失败统一返回 401 INVALID_CREDENTIALS,不泄露用户名是否存在。
@@ -6,6 +6,8 @@
 - refresh token 仅以哈希存入数据库,不可逆。
 - logout 撤销 refresh token(可选撤销 access token: 当前实现不维护 access token 状态,
   因为其有效期短,泄露风险有限;若需要强制下线,可扩展 jti 黑名单)。
+- POST /auth/register: 公开注册接口,仅允许 student/teacher 角色。
+  admin 必须由管理员通过 /auth/admin/users 创建。
 - POST /auth/admin/users: 仅 admin 可创建教师/学生/管理员账号,执行完整真实业务流程,
   无任何"演示专用通道"。所有验收账号均通过此接口创建。
 """
@@ -39,6 +41,7 @@ from ...schemas.multi_role import (
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
+    RegisterRequest,
     TokenPair,
     UserCreate,
     UserPublic,
@@ -66,6 +69,52 @@ def login(
     if not verify_password(req.password, user.password_hash):
         raise InvalidCredentials()
     return _issue_tokens(user, settings, container)
+
+
+@router.post("/register", response_model=UserPublic, status_code=201)
+def register(
+    req: RegisterRequest,
+    container: ServiceContainer = Depends(_container),
+) -> UserPublic:
+    """公开注册接口(无需鉴权)。
+
+    限制:
+    - 仅允许注册 student / teacher 角色;admin 必须由管理员通过 /auth/admin/users 创建。
+    - 注册成功后用户仍需走 /auth/login 登录获取 token(注册不自动登录)。
+    - 用户名/学号/工号唯一性校验、角色一致性校验同 admin_create_user。
+
+    安全:
+    - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希。
+    - 返回 UserPublic(不含 password_hash)。
+    """
+    # 角色一致性校验
+    if req.role == "student" and req.teacher_number:
+        raise ValidationFailed("学生角色不应携带 teacher_number")
+    if req.role == "teacher" and req.student_number:
+        raise ValidationFailed("教师角色不应携带 student_number")
+
+    user_repo = container.user_repository
+    # 唯一性校验
+    if user_repo.get_user_by_username(req.username):
+        raise UsernameExists()
+    if req.student_number and user_repo.get_user_by_student_number(req.student_number):
+        raise StudentNumberExists()
+    if req.teacher_number and user_repo.get_user_by_teacher_number(req.teacher_number):
+        raise TeacherNumberExists()
+
+    hashed = hash_password(req.password)
+    created = user_repo.create_user(
+        username=req.username,
+        password_hash=hashed,
+        role=req.role,
+        display_name=req.display_name,
+        student_number=req.student_number,
+        teacher_number=req.teacher_number,
+        college=req.college,
+        major=req.major,
+        grade=req.grade,
+    )
+    return UserPublic(**created.to_public_dict())
 
 
 @router.post("/refresh", response_model=TokenPair)
@@ -194,6 +243,11 @@ def _issue_tokens(
         refresh_token=refresh_token,
         token_type="Bearer",
         expires_in=settings.access_token_expire_minutes * 60,
+        expires_at=datetime.fromtimestamp(
+            access_payload.exp,
+            tz=timezone.utc,
+        ).isoformat(),
+        user=UserPublic(**user.to_public_dict()),
     )
 
 

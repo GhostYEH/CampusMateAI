@@ -456,8 +456,10 @@ class Submission extends Equatable {
         studentName: json['studentName'] as String? ??
             json['student_name'] as String? ??
             '',
-        studentNo:
-            json['studentNo'] as String? ?? json['student_no'] as String? ?? '',
+        studentNo: json['studentNo'] as String? ??
+            json['student_no'] as String? ??
+            json['student_number'] as String? ??
+            '',
         classId:
             json['classId'] as String? ?? json['class_id'] as String? ?? '',
         courseId:
@@ -465,21 +467,26 @@ class Submission extends Equatable {
         status: SubmissionStatus.fromString(
           json['status'] as String?,
         ),
-        content: json['content'] as String? ?? '',
+        content:
+            json['content'] as String? ?? json['text_content'] as String? ?? '',
         attachments: ((json['attachments'] ?? const []) as List)
             .whereType<Map<String, dynamic>>()
             .map(Attachment.fromJson)
             .toList(growable: false),
         submittedAt: DateTime.parse(
-          json['submittedAt'] as String? ?? json['submitted_at'] as String,
+          json['submittedAt'] as String? ??
+              json['submitted_at'] as String? ??
+              json['updated_at'] as String,
         ),
         updatedAt: json['updatedAt'] is String
             ? DateTime.tryParse(json['updatedAt'] as String)
             : (json['updated_at'] is String
                 ? DateTime.tryParse(json['updated_at'] as String)
                 : null),
-        grade: (json['grade'] as num?)?.toDouble(),
-        comment: json['comment'] as String?,
+        grade: (json['score'] as num?)?.toDouble() ??
+            (json['grade'] is num ? (json['grade'] as num).toDouble() : null),
+        comment:
+            json['comment'] as String? ?? json['teacher_comment'] as String?,
         gradedAt: json['gradedAt'] is String
             ? DateTime.tryParse(json['gradedAt'] as String)
             : (json['graded_at'] is String

@@ -13,7 +13,7 @@ import 'api/api_client.dart';
 
 // ===== 认证服务 =====
 
-/// 认证服务 — 登录 / 刷新 / 退出 / 当前用户。
+/// 认证服务 — 登录 / 注册 / 刷新 / 退出 / 当前用户。
 ///
 /// 凭证规范(AGENTS.md):
 /// - 不在日志中打印 token
@@ -26,6 +26,12 @@ abstract interface class AuthService {
   ///
   /// 失败时抛 [ApiException],UI 层根据 code 映射为 [AuthFailure] 文案。
   Future<AuthSession> login(LoginCredentials credentials);
+
+  /// 公开注册 — 仅允许 student / teacher 角色。
+  ///
+  /// 成功返回新创建的 [AppUser](不含密码);失败抛 [ApiException]。
+  /// 注册成功后用户仍需调用 [login] 获取 token(注册不自动登录)。
+  Future<AppUser> register(RegisterCredentials credentials);
 
   /// 刷新 access_token(使用 refresh_token)。
   ///

@@ -1,0 +1,21 @@
+- generic [ref=f1e115] [cursor=pointer]:
+  - alertdialog:
+    - generic "Alert":
+      - generic: 本次学习感受
+      - generic:
+        - group:
+          - generic: 本次学习时长 1 分钟,休息 0 分钟。
+          - generic: 本次感受(可选)
+          - generic [ref=f1e116]:
+            - textbox "例如:这章难点在多元函数求导,需要再练两道题。" [ref=f1e117]
+            - generic: 500 characters remaining
+          - generic: 标签(可选)
+          - checkbox "专注" [ref=f1e118]
+          - checkbox "分心" [ref=f1e119]
+          - checkbox "疲惫" [ref=f1e120]
+          - checkbox "有收获" [ref=f1e121]
+          - checkbox "需要复盘" [ref=f1e122]
+          - checkbox "进度顺利" [ref=f1e123]
+          - generic: 说明:文字感受仅作日常辅助参考,不进行心理诊断。如需专业支持,请咨询辅导员或学校心理咨询中心。
+      - button "不填写并结束" [active] [ref=f1e124]
+      - button "保存并结束" [ref=f1e125]

@@ -96,6 +96,9 @@ def test_login_success_returns_token_pair(app_client_with_demo):
     assert body["refresh_token"]
     assert body["token_type"] == "Bearer"
     assert body["expires_in"] > 0
+    assert body["expires_at"]
+    assert body["user"]["username"] == "teacher_demo"
+    assert body["user"]["role"] == "teacher"
 
 
 def test_login_wrong_password_returns_401(app_client_with_demo):
@@ -540,3 +543,19 @@ def test_student_cannot_reset_invite_code(
         headers=_auth_header(s_access),
     )
     assert resp.status_code == 403
+
+
+def test_student_can_list_own_assignments(app_client_with_demo, student_tokens):
+    access_token, _ = student_tokens
+    resp = app_client_with_demo.get(
+        "/api/v1/student/assignments",
+        params={"sort_by": "deadline", "sort_desc": "false"},
+        headers=_auth_header(access_token),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] >= 1
+    assert body["items"]
+    assert body["items"][0]["id"]
+    assert body["items"][0]["course_id"]
+    assert body["items"][0]["created_at"]

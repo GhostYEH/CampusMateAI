@@ -84,6 +84,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   ///
   /// Mock 模式下直接进入未认证状态(由登录页选择演示账号)。
   /// Real 模式下从 [TokenStorage] 读取会话,若有效则尝试 getCurrentUser 验证。
+  ///
+  /// 角色限制(对齐「学生专用 APK」需求):
+  /// 若 [AppConfig.effectiveRestrictToStudent] 为 true 且恢复出的会话不是
+  /// student 角色,本地会话会被清除,引导用户重新登录学生账号。
   Future<void> _init() async {
     final config = _ref.read(appConfigProvider);
     if (config.useMockBackend) {
@@ -95,6 +99,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final tokenStorage = _ref.read(tokenStorageProvider);
     final session = await tokenStorage.loadSession();
     if (session == null) {
+      state = AuthState.empty;
+      return;
+    }
+
+    // 学生专用 APK:恢复出的非学生会话视为非法,清除并退出登录
+    // (例如用户之前在多角色 APK 登录过教师,切换到学生专用 APK 后必须重新登录)
+    if (config.effectiveRestrictToStudent &&
+        session.user.role != UserRole.student) {
+      await tokenStorage.clear();
       state = AuthState.empty;
       return;
     }
@@ -128,14 +141,40 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// - 持久化会话(TokenStorage)
   /// - 更新 currentUserProvider(通过 session.user)
   /// - 注入到 Mock services 的 setCurrentUser(若 Mock 模式)
+  ///
+  /// 角色限制(对齐「学生专用 APK」需求):
+  /// 若 [AppConfig.effectiveRestrictToStudent] 为 true(即非 Web 平台 +
+  /// `RESTRICT_TO_STUDENT=true`),且登录用户角色不是 student,
+  /// 登录会被拒绝:不持久化 session、不进入 authenticated 状态,
+  /// 在 [AuthState.errorMessage] 中写入引导文案,让用户改用 Web 端。
+  /// 已签发的服务端 token 会被 logout 撤销,避免悬挂会话。
   Future<AuthSession?> login(LoginCredentials credentials) async {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
     try {
       final authService = _ref.read(authServiceProvider);
       final session = await authService.login(credentials);
 
-      // 持久化会话(Real 模式)
       final config = _ref.read(appConfigProvider);
+
+      // 学生专用 APK 拦截:非学生角色不允许进入应用。
+      // 仅在原生平台 + RESTRICT_TO_STUDENT=true 时生效,Web 端永远放行。
+      if (config.effectiveRestrictToStudent &&
+          session.user.role != UserRole.student) {
+        // 撤销后端刚签发的 token,避免留下可被复用的有效会话
+        try {
+          await authService.logout(session.refreshToken);
+        } catch (_) {
+          // 撤销失败不阻塞拦截流程,本地状态仍然会被清理
+        }
+        state = AuthState(
+          status: AuthStatus.unauthenticated,
+          errorMessage: '该账号为${session.user.role.displayName}角色,'
+              '请使用 Web 端登录。学生专用 App 仅支持学生账号。',
+        );
+        return null;
+      }
+
+      // 持久化会话(Real 模式)
       if (!config.useMockBackend) {
         await _ref.read(tokenStorageProvider).saveSession(session);
       }
@@ -178,6 +217,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return null;
     }
+  }
+
+  /// 注册新用户(公开接口,无需鉴权)。
+  ///
+  /// 设计:
+  /// - 不修改 [AuthState](注册不改变登录状态,用户仍需走 [login] 获取 token)。
+  /// - 成功返回新创建的 [AppUser](不含密码)。
+  /// - 失败抛 [ApiException],由 UI 层捕获并显示友好文案。
+  ///
+  /// 与 [login] 不同,注册错误不写入 [AuthState.errorMessage],
+  /// 避免污染登录页错误展示。注册页应自行捕获异常维护本地错误状态。
+  Future<AppUser> register(RegisterCredentials credentials) async {
+    final authService = _ref.read(authServiceProvider);
+    return authService.register(credentials);
   }
 
   /// 登出。

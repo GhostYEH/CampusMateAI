@@ -33,6 +33,50 @@ class ApiAuthService implements AuthService {
   }
 
   @override
+  Future<AppUser> register(RegisterCredentials credentials) async {
+    final data = await _client.post(
+      '/api/v1/auth/register',
+      data: credentials.toJson(),
+    );
+    return _parseUserPublic(data);
+  }
+
+  /// 将后端 [UserPublic] JSON 转换为前端 [AppUser]。
+  ///
+  /// 字段映射差异:
+  /// - 后端 `display_name` → 前端 `name` / `nickname`
+  /// - 后端 `student_number` → 前端 `studentId`
+  /// - 后端 `teacher_number` → 前端 `teacherId`
+  /// - 后端 `created_at` → 前端 `createdAt`(ISO 字符串)
+  AppUser _parseUserPublic(Map<String, dynamic> data) {
+    final displayName = data['display_name'] as String? ??
+        data['displayName'] as String? ??
+        data['username'] as String? ??
+        '';
+    final createdAtStr =
+        data['created_at'] as String? ?? data['createdAt'] as String?;
+    return AppUser(
+      id: data['id'] as String,
+      name: displayName,
+      nickname: displayName,
+      role: UserRole.fromString(data['role'] as String?),
+      avatarSeed: (data['avatar_url'] as String?) ??
+          (data['avatarUrl'] as String?) ??
+          (data['id'] as String),
+      studentId:
+          data['student_number'] as String? ?? data['studentId'] as String?,
+      college: data['college'] as String?,
+      major: data['major'] as String?,
+      grade: data['grade'] as String?,
+      teacherId:
+          data['teacher_number'] as String? ?? data['teacherId'] as String?,
+      createdAt: createdAtStr == null || createdAtStr.isEmpty
+          ? null
+          : DateTime.tryParse(createdAtStr),
+    );
+  }
+
+  @override
   Future<AuthSession> refresh(String refreshToken) async {
     final data = await _client.post(
       '/api/v1/auth/refresh',
@@ -57,7 +101,8 @@ class ApiAuthService implements AuthService {
   @override
   Future<AppUser> getCurrentUser() async {
     final data = await _client.get('/api/v1/auth/me');
-    return AppUser.fromJson(data);
+    final userJson = data['user'] as Map<String, dynamic>? ?? data;
+    return _parseUserPublic(userJson);
   }
 
   AuthSession _parseSession(Map<String, dynamic> data) {
@@ -80,7 +125,7 @@ class ApiAuthService implements AuthService {
     }
 
     return AuthSession(
-      user: AppUser.fromJson(userJson),
+      user: _parseUserPublic(userJson),
       accessToken: accessToken,
       refreshToken: refreshToken,
       expiresAt: DateTime.parse(expiresAtStr),
@@ -462,10 +507,10 @@ class ApiSubmissionService implements SubmissionService {
     List<Attachment> attachments = const [],
   }) async {
     final data = await _client.post(
-      '/api/v1/assignments/$assignmentId/draft',
+      '/api/v1/assignments/$assignmentId/submissions',
       data: {
-        'content': content,
-        'attachments': attachments.map((a) => a.toJson()).toList(),
+        'text_content': content,
+        'submit': false,
       },
     );
     return Submission.fromJson(data);
@@ -480,8 +525,8 @@ class ApiSubmissionService implements SubmissionService {
     final data = await _client.post(
       '/api/v1/assignments/$assignmentId/submissions',
       data: {
-        'content': content,
-        'attachments': attachments.map((a) => a.toJson()).toList(),
+        'text_content': content,
+        'submit': true,
       },
     );
     return Submission.fromJson(data);
@@ -493,12 +538,20 @@ class ApiSubmissionService implements SubmissionService {
     required String content,
     List<Attachment> attachments = const [],
   }) async {
+    final existing = await getMySubmission(assignmentId);
+    if (existing == null) {
+      return submit(
+        assignmentId: assignmentId,
+        content: content,
+        attachments: attachments,
+      );
+    }
+    await _client.patch(
+      '/api/v1/submissions/${existing.id}',
+      data: {'text_content': content},
+    );
     final data = await _client.post(
-      '/api/v1/assignments/$assignmentId/resubmit',
-      data: {
-        'content': content,
-        'attachments': attachments.map((a) => a.toJson()).toList(),
-      },
+      '/api/v1/submissions/${existing.id}/submit',
     );
     return Submission.fromJson(data);
   }

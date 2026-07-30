@@ -63,13 +63,6 @@ class LogoutRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
-class TokenPair(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "Bearer"
-    expires_in: int = Field(..., description="access token 有效期(秒)")
-
-
 class UserPublic(BaseModel):
     id: str
     username: str
@@ -86,6 +79,15 @@ class UserPublic(BaseModel):
     updated_at: str = ""
 
 
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "Bearer"
+    expires_in: int = Field(..., description="access token 有效期(秒)")
+    expires_at: str = Field(..., description="access token 到期时间(ISO 8601)")
+    user: UserPublic
+
+
 class UserCreate(BaseModel):
     """管理员创建用户请求(仅 admin 角色可调用)。
 
@@ -99,6 +101,29 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=8, max_length=128)
     role: str = Field(..., pattern="^(student|teacher|admin)$")
+    display_name: Optional[str] = Field(None, max_length=128)
+    student_number: Optional[str] = Field(None, max_length=32)
+    teacher_number: Optional[str] = Field(None, max_length=32)
+    college: Optional[str] = Field(None, max_length=64)
+    major: Optional[str] = Field(None, max_length=64)
+    grade: Optional[str] = Field(None, max_length=32)
+
+
+class RegisterRequest(BaseModel):
+    """公开注册请求(无需鉴权,仅限 student/teacher 自注册)。
+
+    约束:
+    - username: 3-64 字符,仅字母/数字/下划线
+    - password: 8-128 字符
+    - role: 仅允许 student / teacher(admin 必须由管理员创建)
+    - display_name: 选填,≤128 字符
+    - student_number / teacher_number: 选填,与 role 一致(后端校验)
+    - college / major / grade: 选填,学生常用
+    """
+
+    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+    role: str = Field("student", pattern="^(student|teacher)$")
     display_name: Optional[str] = Field(None, max_length=128)
     student_number: Optional[str] = Field(None, max_length=32)
     teacher_number: Optional[str] = Field(None, max_length=32)
@@ -402,6 +427,7 @@ __all__ = [
     "TokenPair",
     "UserPublic",
     "UserCreate",
+    "RegisterRequest",
     "AuthMeResponse",
     "CourseCreate",
     "CourseUpdate",

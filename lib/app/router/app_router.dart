@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_page.dart';
+import '../../features/auth/presentation/register_page.dart';
 import '../../features/home/presentation/home_page.dart';
 import '../../features/knowledge/presentation/knowledge_management_page.dart';
 import '../../features/counselor/presentation/counselor_page.dart';
@@ -58,13 +59,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       final loc = state.matchedLocation;
       final isLoggedIn = status == AuthStatus.authenticated;
       final isOnLogin = loc == '/login';
+      final isOnRegister = loc == '/register';
 
       // 初始化中: 不做任何重定向,等待 session 恢复完成
       if (status == AuthStatus.initial) return null;
 
       // 未登录:
       if (!isLoggedIn) {
-        if (isOnLogin) return null;
+        // /login 与 /register 都是公开入口,未登录可访问
+        if (isOnLogin || isOnRegister) return null;
         // Mock 模式下首页直接跳登录,避免空白
         return '/login';
       }
@@ -72,8 +75,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 已登录:
       final role = auth.session?.user.role;
 
-      // 已登录访问 /login → 跳转到角色默认页
-      if (isOnLogin) {
+      // 已登录访问 /login 或 /register → 跳转到角色默认页
+      // (避免已登录用户重复注册或看到登录页)
+      if (isOnLogin || isOnRegister) {
         return _defaultLocationForRole(role);
       }
 
@@ -91,6 +95,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => LoginPage(
           initialError: state.extra is String ? state.extra as String : null,
         ),
+      ),
+
+      // ===== 注册页(公开入口,未登录可访问) =====
+      GoRoute(
+        path: '/register',
+        builder: (context, state) {
+          // 支持从登录页预填用户名(用户尝试登录不存在时,可一键带过去注册)
+          final extra = state.extra;
+          final prefilledUsername =
+              extra is String ? extra : null;
+          return RegisterPage(prefilledUsername: prefilledUsername);
+        },
       ),
 
       // ===== 学生 Shell =====
@@ -316,8 +332,8 @@ String _defaultLocationForRole(UserRole? role) {
 
 /// 检查角色是否可访问指定路径。
 bool _roleCanAccess(UserRole? role, String location) {
-  // /login 任何角色都可访问(已登录会跳转)
-  if (location == '/login') return true;
+  // /login 与 /register 任何角色都可访问(已登录会跳转到默认页)
+  if (location == '/login' || location == '/register') return true;
 
   // 学生路径前缀
   if (location.startsWith('/teacher/')) {

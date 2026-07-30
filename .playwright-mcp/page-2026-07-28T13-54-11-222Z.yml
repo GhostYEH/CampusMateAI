@@ -1,0 +1,19 @@
+- generic [ref=f1e5]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "学习陪伴" [active] [level=2]
+            - button "隐私说明" [ref=f1e126]
+          - group:
+            - generic: 已完成 01:31 专注计时中
+            - group "本次学习已完成":
+              - button "再来一次" [ref=f1e127]
+            - generic [ref=f1e128]:
+              - textbox "任务拆解 输入学习目标,例如:复习高数第三章" [ref=f1e129]
+              - button "请求拆解" [ref=f1e130]
+            - group "表情识别 未开启 真实 CNN · 加载中… · 仅识别可观察表情,不作心理诊断 主动开启后才会启动摄像头 点击上方\"开启识别\"启动摄像头 帧数据仅在本地处理,不会上传或保存":
+              - button "开启识别" [ref=f1e131]
+            - generic: AI 导员陪伴 本次学习完成,辛苦了!记得给自己一点正向反馈。
+            - generic: 学习记录 0 分钟 今日 3 次 近 3 次 75% 平均专注 1天前 学习 90 分钟 · 专注 82% 2天前 学习 75 分钟 · 专注 75% 3天前 学习 105 分钟 · 专注 68%

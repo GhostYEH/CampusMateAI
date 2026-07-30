@@ -163,6 +163,28 @@ def list_submissions(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
+@router.get(
+    "/assignments/{assignment_id}/my-submission",
+    response_model=SubmissionOut,
+)
+def get_my_submission(
+    assignment_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> SubmissionOut:
+    if user.role != "student":
+        raise Forbidden("仅学生可查看自己的提交")
+    sub = container.submission_repository.get_submission_for_student(
+        assignment_id,
+        user.id,
+    )
+    if sub is None:
+        raise SubmissionNotFound()
+    out = _enrich_with_student_info(container, sub)
+    out.attachments = _load_attachments(container, sub.id)
+    return out
+
+
 @router.post("/assignments/{assignment_id}/submissions", response_model=SubmissionOut, status_code=201)
 def create_submission(
     assignment_id: str,

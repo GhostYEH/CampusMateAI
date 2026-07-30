@@ -8,20 +8,27 @@ import '../../data/services/api/api_client.dart';
 import '../../data/services/multi_role_service_interfaces.dart';
 import '../mock_data/multi_role_mock_data.dart';
 
-/// Mock 认证服务 — 支持三个演示账号快捷登录。
+/// Mock 认证服务 — 支持三个演示账号快捷登录,并支持公开注册。
 ///
 /// 凭证:
 /// - student_demo / Demo123456 → 学生 林知夏
 /// - teacher_demo / Demo123456 → 教师 张明远
 /// - admin_demo / Demo123456 → 管理员
 ///
-/// 任何其他用户名/密码返回 invalidCredentials 错误。
+/// 任何其他用户名/密码返回 invalidCredentials 错误(除非通过 [register] 创建)。
 /// Mock 模式下 token 为固定伪造值,仅用于本地状态保持,不发送到任何后端。
 class MockAuthService implements AuthService {
   MockAuthService();
 
   /// 已登录会话(用于 refresh / getCurrentUser 的状态保持)。
   AuthSession? _session;
+
+  /// Mock 注册的用户表(username → AppUser),用于登录校验。
+  /// 仅存在于内存中,应用重启后清空。
+  final Map<String, AppUser> _registeredUsers = {};
+
+  /// Mock 注册用户的密码表(与 [_registeredUsers] 同步维护)。
+  final Map<String, String> _registeredPasswords = {};
   final _random = Random();
 
   @override
@@ -47,6 +54,103 @@ class MockAuthService implements AuthService {
     );
     _session = session;
     return session;
+  }
+
+  @override
+  Future<AppUser> register(RegisterCredentials credentials) async {
+    await Future.delayed(const Duration(milliseconds: 520));
+
+    // 角色限制:仅允许 student / teacher
+    if (credentials.role == UserRole.admin) {
+      throw const ApiException(
+        code: 'VALIDATION_FAILED',
+        message: '管理员账号必须由管理员创建,不可自注册',
+        httpStatus: 422,
+      );
+    }
+
+    // 角色一致性校验
+    if (credentials.role == UserRole.student && credentials.teacherNumber != null) {
+      throw const ApiException(
+        code: 'VALIDATION_FAILED',
+        message: '学生角色不应携带 teacher_number',
+        httpStatus: 422,
+      );
+    }
+    if (credentials.role == UserRole.teacher && credentials.studentNumber != null) {
+      throw const ApiException(
+        code: 'VALIDATION_FAILED',
+        message: '教师角色不应携带 student_number',
+        httpStatus: 422,
+      );
+    }
+
+    // 唯一性校验:用户名
+    final usernameKey = credentials.username.toLowerCase();
+    if (_registeredUsers.containsKey(usernameKey) ||
+        _isBuiltinUsername(credentials.username)) {
+      throw const ApiException(
+        code: 'USERNAME_EXISTS',
+        message: '用户名已存在',
+        httpStatus: 409,
+      );
+    }
+
+    // 学号唯一性
+    if (credentials.studentNumber != null) {
+      final exists = _registeredUsers.values.any(
+        (u) => u.studentId == credentials.studentNumber,
+      );
+      if (exists) {
+        throw const ApiException(
+          code: 'STUDENT_NUMBER_EXISTS',
+          message: '学号已存在',
+          httpStatus: 409,
+        );
+      }
+    }
+    // 工号唯一性
+    if (credentials.teacherNumber != null) {
+      final exists = _registeredUsers.values.any(
+        (u) => u.teacherId == credentials.teacherNumber,
+      );
+      if (exists) {
+        throw const ApiException(
+          code: 'TEACHER_NUMBER_EXISTS',
+          message: '工号已存在',
+          httpStatus: 409,
+        );
+      }
+    }
+
+    final displayName = (credentials.displayName == null ||
+            credentials.displayName!.isEmpty)
+        ? credentials.username
+        : credentials.displayName!;
+    final newUser = AppUser(
+      id: 'u_mock_${usernameKey}_${_random.nextInt(0xFFFFFF)}',
+      name: displayName,
+      nickname: displayName,
+      role: credentials.role,
+      avatarSeed: credentials.username,
+      studentId: credentials.studentNumber,
+      college: credentials.college,
+      major: credentials.major,
+      grade: credentials.grade,
+      teacherId: credentials.teacherNumber,
+      createdAt: DateTime.now(),
+    );
+    _registeredUsers[usernameKey] = newUser;
+    _registeredPasswords[usernameKey] = credentials.password;
+    return newUser;
+  }
+
+  /// 用户名是否与内置演示账号冲突。
+  bool _isBuiltinUsername(String username) {
+    final lower = username.toLowerCase();
+    return lower == 'student_demo' ||
+        lower == 'teacher_demo' ||
+        lower == 'admin_demo';
   }
 
   @override
@@ -92,8 +196,18 @@ class MockAuthService implements AuthService {
   }
 
   AppUser? _matchUser(String username, String password) {
+    final usernameKey = username.toLowerCase();
+    // 优先匹配 Mock 注册的用户(密码由用户自定义)
+    final registered = _registeredUsers[usernameKey];
+    if (registered != null) {
+      if (_registeredPasswords[usernameKey] == password) {
+        return registered;
+      }
+      return null;
+    }
+    // 内置演示账号统一密码 Demo123456
     if (password != 'Demo123456') return null;
-    switch (username.toLowerCase()) {
+    switch (usernameKey) {
       case 'student_demo':
         return MultiRoleMockData.studentDemoUser;
       case 'teacher_demo':

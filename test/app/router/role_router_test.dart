@@ -42,6 +42,16 @@ class _FakeAuthService implements AuthService {
   }
 
   @override
+  Future<AppUser> register(RegisterCredentials credentials) async {
+    return const AppUser(
+      id: 'u_registered',
+      name: '注册用户',
+      role: UserRole.student,
+      avatarSeed: 'registered',
+    );
+  }
+
+  @override
   Future<AuthSession> refresh(String refreshToken) async {
     throw _invalidRefreshToken;
   }
