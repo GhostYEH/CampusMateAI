@@ -4,44 +4,58 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.campusai.ui.theme.CampusaiTheme
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.navigation.compose.rememberNavController
+import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.ui.navigation.AppNavHost
+import com.example.campusai.ui.screens.login.LoginScreen
+import com.example.campusai.ui.screens.shell.AppShell
+import com.example.campusai.ui.theme.CampusAITheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val repository = AppRepository(application)
+
         setContent {
-            CampusaiTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+            val darkMode by repository.darkMode.collectAsState()
+            val view = LocalView.current
+            SideEffect {
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !darkMode
+                    isAppearanceLightNavigationBars = !darkMode
                 }
+            }
+            CampusAITheme(darkTheme = darkMode) {
+                CampusAIApp(repository)
             }
         }
     }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun CampusAIApp(repository: AppRepository) {
+    val session by repository.session.collectAsState()
+    val navController = rememberNavController()
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    CampusaiTheme {
-        Greeting("Android")
+    if (session == null) {
+        LoginScreen(
+            repository = repository,
+            onLoginSuccess = { }
+        )
+    } else {
+        AppShell(
+            navController = navController,
+            repository = repository
+        ) {
+            AppNavHost(
+                navController = navController,
+                repository = repository
+            )
+        }
     }
 }

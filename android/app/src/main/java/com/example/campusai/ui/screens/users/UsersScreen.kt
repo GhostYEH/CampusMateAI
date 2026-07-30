@@ -5,7 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.ModeBadge
+import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 
 data class UserRow(val name: String, val id: String, val role: String, val status: String)
@@ -27,6 +28,7 @@ data class UserRow(val name: String, val id: String, val role: String, val statu
 @Composable
 fun UsersScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     val users = listOf(
         UserRow("林知夏", "2024010132", "学生", "正常"),
         UserRow("张明远", "T20180456", "教师", "正常"),
@@ -100,14 +102,15 @@ fun UsersScreen(repository: AppRepository) {
             }
         }
 
-        items(users) { user ->
+        itemsIndexed(users) { index, user ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(Surface)
                     .border(1.dp, Line, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .enterAnimation(delayMs = index * 60, enabled = !reduceMotion),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {

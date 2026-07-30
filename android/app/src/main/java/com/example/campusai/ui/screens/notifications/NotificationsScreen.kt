@@ -1,6 +1,11 @@
 package com.example.campusai.ui.screens.notifications
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -21,12 +26,14 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.ExtractResult
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.ModeBadge
+import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
 fun NotificationsScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     val scope = rememberCoroutineScope()
 
     var noticeText by remember {
@@ -66,7 +73,8 @@ fun NotificationsScreen(repository: AppRepository) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Surface)
                 .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .padding(22.dp),
+                .padding(22.dp)
+                .enterAnimation(delayMs = 60, enabled = !reduceMotion),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("粘贴校园通知", style = MaterialTheme.typography.titleMedium)
@@ -115,7 +123,8 @@ fun NotificationsScreen(repository: AppRepository) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Surface)
                 .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .padding(22.dp),
+                .padding(22.dp)
+                .enterAnimation(enabled = !reduceMotion),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text("提取结果", style = MaterialTheme.typography.titleMedium)
@@ -131,56 +140,65 @@ fun NotificationsScreen(repository: AppRepository) {
                     Spacer(Modifier.height(10.dp))
                     Text("提取结果会显示在这里", color = Muted, fontSize = 12.sp)
                 }
-            } else if (result.error != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(AlertErrorBg)
-                        .padding(10.dp, 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Warning, null, tint = AlertErrorText, modifier = Modifier.size(16.dp))
-                    Text(result.error, color = AlertErrorText, fontSize = 13.sp)
-                }
-            } else {
-                var editTitle by remember(result) { mutableStateOf(result.title) }
-                var editSource by remember(result) { mutableStateOf(result.source) }
-                var editDeadline by remember(result) { mutableStateOf(result.deadline) }
-
-                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("标题") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
-                OutlinedTextField(value = editSource, onValueChange = { editSource = it }, label = { Text("来源") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
-                OutlinedTextField(value = editDeadline, onValueChange = { editDeadline = it }, label = { Text("截止时间") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
-
-                if (result.tasks.isNotEmpty()) {
-                    Text("识别出的事项", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    result.tasks.forEach { task ->
-                        Text("• $task", fontSize = 13.sp, color = TextPrimary)
-                    }
-                }
-
-                Text(
-                    "置信度 ${Math.round(result.confidence * 100)}%，结果仅供确认。",
-                    color = Muted, fontSize = 12.sp
-                )
-
-                Button(
-                    onClick = {
-                        scope.launch {
-                            repository.addTask(editTitle, editDeadline)
-                            extracted = result.copy(saved = true)
+            }
+            AnimatedVisibility(
+                visible = result != null,
+                enter = expandVertically(animationSpec = tween(400)) + fadeIn(animationSpec = tween(300)),
+                exit = shrinkVertically(animationSpec = tween(300)) + fadeOut(animationSpec = tween(200)),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (result?.error != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AlertErrorBg)
+                                .padding(10.dp, 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Warning, null, tint = AlertErrorText, modifier = Modifier.size(16.dp))
+                            Text(result.error, color = AlertErrorText, fontSize = 13.sp)
                         }
-                    },
-                    enabled = !result.saved,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
-                ) {
-                    Text(if (result.saved) "已保存到待办" else "确认并保存", fontWeight = FontWeight.SemiBold)
+                    } else if (result != null) {
+                        var editTitle by remember(result) { mutableStateOf(result.title) }
+                        var editSource by remember(result) { mutableStateOf(result.source) }
+                        var editDeadline by remember(result) { mutableStateOf(result.deadline) }
+
+                        OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("标题") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
+                        OutlinedTextField(value = editSource, onValueChange = { editSource = it }, label = { Text("来源") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
+                        OutlinedTextField(value = editDeadline, onValueChange = { editDeadline = it }, label = { Text("截止时间") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = InputBorder))
+
+                        if (result.tasks.isNotEmpty()) {
+                            Text("识别出的事项", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            result.tasks.forEach { task ->
+                                Text("• $task", fontSize = 13.sp, color = TextPrimary)
+                            }
+                        }
+
+                        Text(
+                            "置信度 ${Math.round(result.confidence * 100)}%，结果仅供确认。",
+                            color = Muted, fontSize = 12.sp
+                        )
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    repository.addTask(editTitle, editDeadline)
+                                    extracted = result.copy(saved = true)
+                                }
+                            },
+                            enabled = !result.saved,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                        ) {
+                            Text(if (result.saved) "已保存到待办" else "确认并保存", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
             }
         }
-    }
+}
 }
 

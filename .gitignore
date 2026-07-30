@@ -18,18 +18,6 @@
 *.iws
 .idea/
 
-# Flutter / Dart / Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-flutter_*.png
-linked_assets.yaml
-
 # Android related
 **/android/**/gradle-wrapper.jar
 .gradle/
@@ -89,6 +77,7 @@ test/**/failures/
 tmp/
 **/verify_notice_output.txt
 *.mp4
+!android/app/src/main/res/raw/login_campus.mp4
 
 # Build artifacts (APK / Web / etc.) — 产物不纳入版本控制
 artifacts/
@@ -122,7 +111,6 @@ backend/data/*.db-shm
 backend/data/uploads/
 
 # CNN 训练产物与工程验证模型(随机工程模型,不纳入版本控制)
-# 正式部署模型位于 assets/models/expression_model.tflite
 ml/expression_recognition/artifacts/
 ml/expression_recognition/data/
 ml/**/fer2013*/
@@ -142,9 +130,6 @@ artifacts/
 
 # 后端自动生成的 API 规范
 backend/openapi.json
-
-# Flutter 插件依赖(自动生成)
-.flutter-plugins-dependencies
 
 # Android 测试文件
 android/app/src/androidTest/

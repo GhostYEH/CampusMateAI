@@ -3,7 +3,7 @@
 > Python FastAPI 后端 — 校园通知结构化抽取 / 校园知识库 RAG 问答 /
 > **教师-课程-班级-学生协同平台**
 
-本后端为 Flutter 应用 [CampusMate AI](../README.md) 提供真实业务能力。
+本后端为原生 Android(Kotlin Compose)移动端与 Vue 3 Web 前端提供真实业务能力。
 **正式 Release 不包含任何"演示模式"或 Mock 业务切换开关**;所有教师、学生、课程、班级、通知、任务、提交、已读状态和统计数据均来自真实 FastAPI 接口与持久化数据库。
 
 ## 当前能力

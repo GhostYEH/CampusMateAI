@@ -29,6 +29,15 @@ class AppRepository(application: Application) {
     private val _reduceMotion = MutableStateFlow(false)
     val reduceMotion: StateFlow<Boolean> = _reduceMotion.asStateFlow()
 
+    private val _darkMode = MutableStateFlow(false)
+    val darkMode: StateFlow<Boolean> = _darkMode.asStateFlow()
+
+    private val _remindersEnabled = MutableStateFlow(true)
+    val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
+
+    private val _demoMode = MutableStateFlow(true)
+    val demoMode: StateFlow<Boolean> = _demoMode.asStateFlow()
+
     private val taskMutex = Mutex()
     private val _tasks = MutableStateFlow<List<Task>>(defaultTasks())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
@@ -40,16 +49,41 @@ class AppRepository(application: Application) {
     private val _notices = MutableStateFlow(defaultNotices())
     val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
 
+    private val _courses = MutableStateFlow(defaultCourses())
+    val courses: StateFlow<List<Course>> = _courses.asStateFlow()
+
     private val demos = mapOf(
-        "student_demo" to User("林知夏", "student", "计算机学院 · 大二"),
-        "teacher_demo" to User("张明远", "teacher", "计算机学院 · 副教授"),
-        "admin_demo" to User("系统管理员", "admin", "信息中心"),
+        "student_demo" to User("林知夏", "student", "计算机科学与技术 · 大三", "lin.zhixia@campus.edu.cn", "138 0000 2026", "2024020318"),
+        "teacher_demo" to User("张明远", "teacher", "计算机学院 · 副教授", "zhang.mingyuan@campus.edu.cn", "", "T20180306"),
+        "admin_demo" to User("系统管理员", "admin", "信息中心", "admin@campus.edu.cn", "", "A0001"),
     )
 
     init {
-        scope.launch { dataStore.session.collect { _session.value = it } }
+        scope.launch {
+            dataStore.session.collect { stored ->
+                val defaults = stored?.let { user ->
+                    demos.values.firstOrNull { it.name == user.name && it.role == user.role }
+                }
+                val hydrated = if (stored != null && defaults != null) {
+                    stored.copy(
+                        detail = if (
+                            stored.name == "林知夏" &&
+                            stored.detail in setOf("计算机学院 · 大二", "计算机学院·大二")
+                        ) defaults.detail else stored.detail,
+                        email = stored.email.ifBlank { defaults.email },
+                        phone = stored.phone.ifBlank { defaults.phone },
+                        studentId = stored.studentId.ifBlank { defaults.studentId },
+                    )
+                } else stored
+                _session.value = hydrated
+                if (hydrated != null && hydrated != stored) dataStore.saveSession(hydrated)
+            }
+        }
         scope.launch { dataStore.mockMode.collect { _mockMode.value = it } }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
+        scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
+        scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
+        scope.launch { dataStore.demoMode.collect { _demoMode.value = it } }
     }
 
     suspend fun login(username: String, password: String): User {
@@ -113,6 +147,40 @@ class AppRepository(application: Application) {
         dataStore.setReduceMotion(enabled)
     }
 
+    suspend fun setDarkMode(enabled: Boolean) {
+        _darkMode.value = enabled
+        dataStore.setDarkMode(enabled)
+    }
+
+    suspend fun setRemindersEnabled(enabled: Boolean) {
+        _remindersEnabled.value = enabled
+        dataStore.setRemindersEnabled(enabled)
+    }
+
+    suspend fun setDemoMode(enabled: Boolean) {
+        _demoMode.value = enabled
+        dataStore.setDemoMode(enabled)
+    }
+
+    suspend fun updateProfile(
+        name: String,
+        detail: String,
+        email: String,
+        phone: String,
+        studentId: String,
+    ) {
+        val current = _session.value ?: throw IllegalStateException("当前未登录")
+        val updated = current.copy(
+            name = name.trim(),
+            detail = detail.trim(),
+            email = email.trim(),
+            phone = phone.trim(),
+            studentId = studentId.trim(),
+        )
+        _session.value = updated
+        dataStore.saveSession(updated)
+    }
+
     suspend fun chat(message: String): String {
         if (_backendOnline.value && !_mockMode.value) {
             val resp = ApiClient.api.chat(ChatRequest(message))
@@ -147,6 +215,15 @@ class AppRepository(application: Application) {
         Task(2, "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false),
         Task(3, "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false),
         Task(4, "图书馆座位预约", "今天 14:00", "学习安排", true),
+    )
+
+    private fun defaultCourses() = listOf(
+        Course("数据结构", "CS2103", "专业必修", "张明远", "教学楼 2-305"),
+        Course("计算机组成原理", "CS2201", "专业必修", "刘文青", "实验楼 A-204"),
+        Course("高等数学（下）", "MA1202", "学科基础", "王建国", "博学楼 1-401"),
+        Course("大学英语 IV", "EN1404", "公共基础", "陈思雨", "明德楼 3-208"),
+        Course("操作系统原理", "CS2304", "专业核心", "赵启航", "教学楼 4-302"),
+        Course("计算机网络", "CS2402", "专业核心", "周立新", "实验楼 B-310"),
     )
 
     private fun defaultNotices() = listOf(

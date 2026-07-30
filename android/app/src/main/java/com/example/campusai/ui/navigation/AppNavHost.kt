@@ -11,6 +11,8 @@ import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.generic.GenericScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
+import com.example.campusai.ui.screens.profile.AccountScreen
+import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.study.StudyScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.users.UsersScreen
@@ -37,7 +39,11 @@ fun AppNavHost(
         composable("counselor") { CounselorScreen(repository) }
         composable("study") { StudyScreen(repository) }
         composable("courses") { CoursesScreen(repository) }
-        composable("profile") { ProfileScreen(repository) }
+        composable("profile") {
+            ProfileScreen(repository) { route -> navController.navigate(route) { launchSingleTop = true } }
+        }
+        composable("settings") { SettingsScreen(repository) { navController.popBackStack() } }
+        composable("account") { AccountScreen(repository) { navController.popBackStack() } }
         composable("users") { UsersScreen(repository) }
         composable("publish") { GenericScreen(repository, "publish") }
         composable("stats") { GenericScreen(repository, "stats") }

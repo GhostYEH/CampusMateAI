@@ -15,3 +15,41 @@
 @media(max-width:900px){.next-action{margin-right:0}}
 .schedule .section-head>div{display:flex;gap:4px}.schedule .section-head>div button{min-width:28px;height:28px;justify-content:center;border:1px solid var(--line);border-radius:6px;background:#fff}
 @media(max-width:620px){.notification-button{display:none}.topbar{padding-right:14px}.command-search kbd{display:none}}
+
+/* ===== Markdown 渲染（聊天消息） ===== */
+.md-content { line-height: 1.75; word-break: break-word; }
+.md-content p { margin: 0.4em 0; }
+.md-content p:first-child { margin-top: 0; }
+.md-content p:last-child { margin-bottom: 0; }
+.md-content ul,
+.md-content ol { margin: 0.3em 0; padding-left: 1.4em; }
+.md-content li { margin: 0.15em 0; }
+.md-content strong { font-weight: 700; }
+.md-content em { font-style: italic; }
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4 { margin: 0.6em 0 0.2em; font-size: inherit; font-weight: 700; }
+.md-content h2 { font-size: 1.1em; }
+.md-content h3 { font-size: 1.05em; }
+.md-content code { background: #eef2f5; border-radius: 4px; padding: 1px 5px; font-size: 0.9em; }
+.md-content pre { background: #f0f3f6; border-radius: 6px; padding: 10px; overflow-x: auto; margin: 0.5em 0; }
+.md-content pre code { background: transparent; padding: 0; }
+.md-content a { color: var(--primary); text-decoration: underline; }
+.md-content blockquote { border-left: 3px solid #c5d5e0; margin: 0.4em 0; padding: 2px 12px; color: #4a5b68; }
+.md-content table { border-collapse: collapse; width: 100%; margin: 0.4em 0; font-size: 0.9em; }
+.md-content th,
+.md-content td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; }
+.md-content th { background: #f0f5f8; font-weight: 650; }
+
+/* 闪烁光标（流式输出等待中） */
+.blink-cursor { animation: blink-cursor 1s step-end infinite; }
+@keyframes blink-cursor { 50% { opacity: 0; } }
+
+/* 流式写入中的消息底部显示光标 */
+article.streaming .md-content:last-child::after {
+  content: "▌";
+  animation: blink-cursor 1s step-end infinite;
+  color: var(--primary);
+  margin-left: 1px;
+}

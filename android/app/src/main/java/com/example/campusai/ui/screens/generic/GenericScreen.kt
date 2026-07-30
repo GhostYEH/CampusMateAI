@@ -20,11 +20,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.ModeBadge
+import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 
 @Composable
 fun GenericScreen(repository: AppRepository, section: String) {
     val mockMode by repository.mockMode.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     val titleMap = mapOf(
         "publish" to "发布中心",
         "stats" to "教学统计",
@@ -70,7 +72,8 @@ fun GenericScreen(repository: AppRepository, section: String) {
                     .clip(RoundedCornerShape(10.dp))
                     .background(Surface)
                     .border(1.dp, Line, RoundedCornerShape(10.dp))
-                    .padding(14.dp),
+                    .padding(14.dp)
+                    .enterAnimation(delayMs = i * 80, enabled = !reduceMotion),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(

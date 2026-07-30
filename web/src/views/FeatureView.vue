@@ -2,8 +2,18 @@
 import { computed, onBeforeUnmount, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useAppStore } from "../stores/app";
-import { chat as apiChat, extractNotice } from "../services/api";
+import { chatStream, extractNotice } from "../services/api";
+import { marked } from "marked";
 import UiIcon from "../components/UiIcon.vue";
+
+// Markdown 渲染配置
+marked.setOptions({ breaks: true, gfm: true });
+function renderMarkdown(text) {
+  if (!text) return "";
+  // 简单防 XSS：过滤 script 标签
+  const sanitized = text.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+  return marked.parse(sanitized);
+}
 
 const route = useRoute();
 const store = useAppStore();
@@ -16,6 +26,7 @@ const extracting = ref(false);
 const extracted = ref(null);
 const message = ref("");
 const sending = ref(false);
+const chatAreaEl = ref(null);
 const messages = ref([{ role:"assistant", text:"你好，我是 AI 导员小夏。你可以问我课程流程、奖助政策、校园服务等问题。当前回答来自 Mock 知识库，仅供演示参考。" }]);
 const seconds = ref(25 * 60);
 const timerRunning = ref(false);
@@ -34,13 +45,67 @@ async function runExtract() {
 }
 function saveExtracted() { if (!extracted.value?.title) return; store.addTask(extracted.value.title, extracted.value.deadline); extracted.value.saved=true; }
 async function send() {
-  const text = message.value.trim(); if (!text) return; messages.value.push({role:"user",text}); message.value=""; sending.value=true;
+  const text = message.value.trim(); if (!text) return;
+  messages.value.push({ role: "user", text });
+  message.value = "";
+  sending.value = true;
+
+  // 创建一个"流式写入中"的临时消息
+  const pendingMsg = { role: "assistant", text: "", streaming: true };
+  messages.value.push(pendingMsg);
+  scrollToBottom();
+
   try {
-    let answer;
-    if (store.backendOnline && !store.mockMode) { const data=await apiChat(text); answer=data.answer || data.message; }
-    else answer = text.includes("奖学金") ? "奖学金通常综合考察学业成绩、综合素质与志愿服务。不同奖项条件不同，建议先查看学院本学年评审通知。我可以继续帮你整理申请材料清单。" : "我已经记录你的问题。当前为 Mock 知识库模式，建议以学校教务处或学院最新通知为准。需要的话，我可以帮你把相关步骤整理成待办。";
-    messages.value.push({role:"assistant",text:answer});
-  } catch { messages.value.push({role:"assistant",text:"暂时无法连接知识库，请检查网络后重试。"}); } finally { sending.value=false; }
+    if (store.backendOnline && !store.mockMode) {
+      await chatStream(text, {
+        onChunk(chunkText) {
+          pendingMsg.text += chunkText;
+          messages.value = [...messages.value]; // 触发响应式
+          scrollToBottom();
+        },
+        onDone() {
+          pendingMsg.streaming = false;
+          if (!pendingMsg.text.trim()) {
+            pendingMsg.text = "暂时无法连接知识库，请检查网络后重试。";
+          }
+          messages.value = [...messages.value];
+          scrollToBottom();
+        },
+        onError(err) {
+          pendingMsg.streaming = false;
+          if (!pendingMsg.text.trim()) {
+            pendingMsg.text = `连接失败：${err.message}`;
+          }
+          messages.value = [...messages.value];
+          scrollToBottom();
+        },
+      });
+    } else {
+      // Mock 模式（非流式）
+      const answer = text.includes("奖学金")
+        ? "奖学金通常综合考察学业成绩、综合素质与志愿服务。不同奖项条件不同，建议先查看学院本学年评审通知。我可以继续帮你整理申请材料清单。"
+        : "我已经记录你的问题。当前为 Mock 知识库模式，建议以学校教务处或学院最新通知为准。需要的话，我可以帮你把相关步骤整理成待办。";
+      pendingMsg.text = answer;
+      pendingMsg.streaming = false;
+      messages.value = [...messages.value];
+      scrollToBottom();
+    }
+  } catch {
+    pendingMsg.streaming = false;
+    if (!pendingMsg.text.trim()) {
+      pendingMsg.text = "暂时无法连接知识库，请检查网络后重试。";
+    }
+    messages.value = [...messages.value];
+    scrollToBottom();
+  } finally {
+    sending.value = false;
+  }
+}
+function scrollToBottom() {
+  setTimeout(() => {
+    const el = chatAreaEl.value;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 10);
 }
 function toggleTimer() { timerRunning.value=!timerRunning.value; if(timerRunning.value) timer=setInterval(()=>{ if(seconds.value>0) seconds.value--; else toggleTimer(); },1000); else clearInterval(timer); }
 function resetTimer() { clearInterval(timer); timerRunning.value=false; seconds.value=25*60; }
@@ -62,7 +127,7 @@ onBeforeUnmount(()=>clearInterval(timer));
     </section>
 
     <section v-else-if="section === 'counselor'" class="chat-layout">
-      <div class="chat-main surface"><div class="chat-head"><span class="robot-avatar"><UiIcon name="PhRobot" :size="28" /></span><div><h2>AI 导员小夏 <em>Mock</em></h2><p>校园事务问答 · 不替代学校正式通知</p></div></div><div class="messages"><article v-for="(m,i) in messages" :key="i" :class="m.role"><p>{{ m.text }}</p></article><article v-if="sending" class="assistant typing">正在查找校园知识库…</article></div><form class="chat-input" @submit.prevent="send"><textarea v-model="message" rows="2" placeholder="输入你的校园事务问题…"></textarea><button class="primary-button" :disabled="sending || !message.trim()" aria-label="发送"><UiIcon name="PhPaperPlaneTilt" /></button></form></div>
+      <div class="chat-main surface"><div class="chat-head"><span class="robot-avatar"><UiIcon name="PhRobot" :size="28" /></span><div><h2>AI 导员小夏 <em>{{ store.mockMode ? 'Mock' : 'DeepSeek' }}</em></h2><p>校园事务问答 · 不替代学校正式通知</p></div></div><div class="messages" ref="chatAreaEl"><article v-for="(m,i) in messages" :key="i" :class="[m.role, { streaming: m.streaming }]"><div v-if="m.role === 'assistant' && m.text" class="md-content" v-html="renderMarkdown(m.text)"></div><p v-else-if="m.role === 'user'">{{ m.text }}</p><p v-else-if="m.role === 'assistant' && !m.text" class="blink-cursor">▌</p></article></div><form class="chat-input" @submit.prevent="send"><textarea v-model="message" rows="2" placeholder="输入你的校园事务问题…"></textarea><button class="primary-button" :disabled="sending || !message.trim()" aria-label="发送"><UiIcon name="PhPaperPlaneTilt" /></button></form></div>
       <aside class="surface suggestions"><h2>可以这样问</h2><button v-for="q in ['奖学金申请条件有哪些？','如何办理课程重修？','校园卡挂失后怎么补办？','图书馆期末开放到几点？']" :key="q" @click="message=q">{{ q }}<UiIcon name="PhCaretRight" /></button><div class="safe-note"><UiIcon name="PhShieldCheck" /><p>回答仅提供校园事务辅助，不进行心理或疾病诊断。</p></div></aside>
     </section>
 

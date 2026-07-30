@@ -1,261 +1,518 @@
 package com.example.campusai.ui.screens.dashboard
 
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Grade
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.campusai.data.model.Notice
+import com.example.campusai.R
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.MockBadge
-import com.example.campusai.ui.components.SectionHead
-import com.example.campusai.ui.theme.*
+import com.example.campusai.ui.components.AnimatedCircularProgress
+import com.example.campusai.ui.components.AnimatedPercent
+import com.example.campusai.ui.components.breathingFloat
+import com.example.campusai.ui.components.campusClickable
+import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.profile.ReferenceAvatar
+import com.example.campusai.ui.theme.Accent
+import com.example.campusai.ui.theme.Background
+import com.example.campusai.ui.theme.DangerText
+import com.example.campusai.ui.theme.Line
+import com.example.campusai.ui.theme.Muted
+import com.example.campusai.ui.theme.Primary
+import com.example.campusai.ui.theme.PrimarySoft
+import com.example.campusai.ui.theme.Success
+import com.example.campusai.ui.theme.Surface
+import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
+
+private val HeroBlue = Color(0xFF5368E8)
+private val HeroBlueDeep = Color(0xFF3449C7)
+private val HeroMist = Color(0xFFDCE5FF)
+private val WarmOrange = Color(0xFFFFA43A)
+private val Mint = Color(0xFF35B99A)
 
 @Composable
 fun DashboardScreen(
     repository: AppRepository,
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
 ) {
     val session by repository.session.collectAsState()
     val tasks by repository.tasks.collectAsState()
-    val notices by repository.notices.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     val role = session?.role ?: "student"
-
-    val animatedAlpha by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(400, easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f))
-    )
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .graphicsLayer { alpha = animatedAlpha },
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .background(Background)
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        when (role) {
-                            "student" -> "早上好，${session?.name ?: "同学"}"
-                            "teacher" -> "教学工作台"
-                            else -> "系统管理概览"
-                        },
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        when (role) {
-                            "student" -> "把今天的校园生活理清楚，专注重要的事。"
-                            "teacher" -> "课程、班级和待批任务都在这里。"
-                            else -> "查看平台运行状态与关键管理任务。"
-                        },
-                        color = Muted, fontSize = 13.sp
-                    )
-                }
-                OutlinedButton(
-                    onClick = { },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)
+        if (role == "student") {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .campusClickable { onNavigate("profile") },
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Tune, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("自定义首页", fontSize = 13.sp)
+                    ReferenceAvatar(size = 42.dp)
+                    Column(Modifier.padding(start = 10.dp)) {
+                        Text(
+                            session?.name ?: "林知夏",
+                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "点击头像进入个人中心",
+                            color = Muted,
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
             }
-        }
-
-        if (role == "student") {
-            item { NextActionCard(onNavigate) }
-            item { TaskNoticeCourseRow(tasks, notices, pendingCount, repository, onNavigate) }
-            item { WeeklyScheduleCard() }
-            item { CompanionRail(onNavigate) }
+            item { ExamHero(onNavigate, reduceMotion) }
+            item { QuickActions(pendingCount, onNavigate, reduceMotion) }
+            item { TodayCourseCard(onNavigate, reduceMotion) }
+            item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
+            item { CampusUpdates(onNavigate, reduceMotion) }
         } else {
-            item { RoleOverviewCards(role) }
-            item { RoleActivityPanel(role) }
+            item {
+                RoleDashboard(
+                    name = session?.name ?: "校园用户",
+                    role = role,
+                    onNavigate = onNavigate,
+                    reduceMotion = reduceMotion,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun NextActionCard(onNavigate: (String) -> Unit) {
+private fun ExamHero(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(188.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(HeroBlue)
+            .campusClickable { onNavigate("tasks") }
+            .enterAnimation(enabled = !reduceMotion)
+            .breathingFloat(enabled = !reduceMotion, amplitude = 3f, periodMs = 4000),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.campus_login_poster),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to HeroBlueDeep.copy(alpha = .97f),
+                    .55f to HeroBlue.copy(alpha = .82f),
+                    1f to HeroBlue.copy(alpha = .18f),
+                ),
+            ),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(.72f)
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                "期末考试周进行中",
+                color = Color.White,
+                fontSize = 23.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-.4).sp,
+            )
+            Spacer(Modifier.height(7.dp))
+            Text("合理规划时间，稳住节奏，我们能赢。", color = HeroMist, fontSize = 12.sp)
+            Spacer(Modifier.height(19.dp))
+            Row(
+                modifier = Modifier
+                    .border(1.dp, Color.White.copy(alpha = .72f), CircleShape)
+                    .padding(horizontal = 15.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("查看复习计划", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(7.dp))
+                Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+        }
+        Row(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            repeat(4) { index ->
+                Box(
+                    Modifier
+                        .size(if (index == 0) 7.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (index == 0) 1f else .42f)),
+                )
+            }
+        }
+    }
+}
+
+private data class QuickAction(
+    val title: String,
+    val route: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val color: Color,
+)
+
+@Composable
+private fun QuickActions(
+    pendingCount: Int,
+    onNavigate: (String) -> Unit,
+    reduceMotion: Boolean,
+) {
+    val actions = listOf(
+        QuickAction("课程表", "courses", Icons.Default.CalendarMonth, Color(0xFF6B66E8)),
+        QuickAction("待办任务", "tasks", Icons.Default.CheckCircle, Color(0xFF397CEF)),
+        QuickAction("校园通知", "notifications", Icons.Default.Notifications, Mint),
+        QuickAction("学习陪伴", "study", Icons.Default.EventAvailable, WarmOrange),
+        QuickAction("AI 导员", "counselor", Icons.Default.SmartToy, Color(0xFF7368E9)),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Surface, RoundedCornerShape(24.dp))
+            .padding(horizontal = 8.dp, vertical = 16.dp)
+            .enterAnimation(delayMs = 70, enabled = !reduceMotion),
+    ) {
+        actions.forEachIndexed { index, action ->
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .campusClickable { onNavigate(action.route) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(action.color),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(action.icon, action.title, tint = Color.White, modifier = Modifier.size(24.dp))
+                    if (index == 1 && pendingCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFF4A43)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                pendingCount.coerceAtMost(9).toString(),
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(action.title, color = TextPrimary, fontSize = 11.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayCourseCard(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFF0F7FB))
-            .border(1.dp, Line, RoundedCornerShape(10.dp))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .background(Surface, RoundedCornerShape(24.dp))
+            .padding(16.dp)
+            .enterAnimation(delayMs = 120, enabled = !reduceMotion),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            Text("下一步行动", fontWeight = FontWeight.Bold, color = TextPrimary)
-            Box(
-                modifier = Modifier.size(52.dp).clip(CircleShape).border(2.dp, Color(0xFFD7E9F5), CircleShape),
-                contentAlignment = Alignment.Center
+        SectionTitle("今日课程", "查看全部") { onNavigate("courses") }
+        Spacer(Modifier.height(13.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1.02f)
+                    .height(166.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFF4259E8), Color(0xFF7B78F7)),
+                        ),
+                    )
+                    .campusClickable { onNavigate("courses") }
+                    .padding(15.dp),
             ) {
-                Text("1", color = Primary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "下一节",
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = .16f), CircleShape)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                Text("数据结构", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                CourseMeta(Icons.Default.Schedule, "10:00 · 进行中")
+                Spacer(Modifier.height(8.dp))
+                CourseMeta(Icons.Default.LocationOn, "C-202 · 李老师")
+            }
+            Column(
+                modifier = Modifier
+                    .weight(.98f)
+                    .height(166.dp)
+                    .border(1.dp, Line, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                CourseTimeline("高等数学", "08:00 · B-301", "已结束", false)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Line))
+                CourseTimeline("计算机网络", "14:00 · A-105", "未开始", true)
             }
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionItem("《数据结构》作业提交", "今天 23:59 截止", isDanger = true, modifier = Modifier.weight(1f))
-            ActionItem("图书馆预约", "今天 14:00", modifier = Modifier.weight(1f))
-        }
-        Button(
-            onClick = { onNavigate("tasks") },
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Primary),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Text("去完成", fontWeight = FontWeight.SemiBold)
-            Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(16.dp))
-        }
     }
 }
 
 @Composable
-private fun ActionItem(title: String, subtitle: String, isDanger: Boolean = false, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.padding(start = 12.dp)) {
-        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        Text(subtitle, fontSize = 12.sp, color = if (isDanger) DangerText else Muted)
+private fun CourseMeta(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = Color.White.copy(alpha = .88f), modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(text, color = Color.White.copy(alpha = .9f), fontSize = 11.sp)
     }
 }
 
 @Composable
-private fun TaskNoticeCourseRow(
+private fun CourseTimeline(title: String, meta: String, state: String, upcoming: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(9.dp).clip(CircleShape)
+                .background(if (upcoming) HeroBlue else Color.White)
+                .border(1.5.dp, HeroBlue, CircleShape),
+        )
+        Spacer(Modifier.width(9.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(meta, color = Muted, fontSize = 9.5.sp)
+        }
+        Text(
+            state,
+            color = if (upcoming) HeroBlue else Muted,
+            fontSize = 9.sp,
+            modifier = Modifier.background(PrimarySoft, CircleShape).padding(horizontal = 7.dp, vertical = 5.dp),
+        )
+    }
+}
+
+@Composable
+private fun OverviewAndDeadlines(
     tasks: List<Task>,
-    notices: List<Notice>,
-    pendingCount: Int,
-    repository: AppRepository,
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    reduceMotion: Boolean,
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            DataPanel {
-                SectionHead("截止提醒", badge = pendingCount, actionLabel = "全部待办", onAction = { onNavigate("tasks") })
-                Spacer(Modifier.height(8.dp))
-                tasks.take(5).forEach { task ->
-                    TaskRow(task, repository)
+    Row(
+        modifier = Modifier.fillMaxWidth().enterAnimation(delayMs = 170, enabled = !reduceMotion),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(.88f)
+                .height(191.dp)
+                .background(Surface, RoundedCornerShape(22.dp))
+                .padding(15.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("学习总览", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Default.Visibility, null, tint = Muted, modifier = Modifier.size(19.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f).background(Background, RoundedCornerShape(16.dp)).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("本周进度", color = Muted, fontSize = 10.sp)
+                    AnimatedPercent(target = 72, color = TextPrimary, fontSize = 28.sp)
+                    Text("较上周 ↑12%", color = Success, fontSize = 10.sp)
+                }
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(65.dp)) {
+                    AnimatedCircularProgress(
+                        targetProgress = 0.72f,
+                        delayMs = 400,
+                        color = HeroBlue,
+                        trackColor = PrimarySoft,
+                        strokeWidth = 7.dp,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Icon(Icons.Default.BarChart, null, tint = HeroBlue, modifier = Modifier.size(22.dp))
                 }
             }
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            DataPanel {
-                SectionHead("校园通知", actionLabel = "全部通知", onAction = { onNavigate("notifications") })
-                Spacer(Modifier.height(8.dp))
-                notices.forEach { notice ->
-                    NoticeRowCompact(notice)
-                }
+        Column(
+            modifier = Modifier
+                .weight(1.12f)
+                .height(191.dp)
+                .background(Surface, RoundedCornerShape(22.dp))
+                .padding(15.dp),
+        ) {
+            SectionTitle("近期截止", "更多") { onNavigate("tasks") }
+            Spacer(Modifier.height(9.dp))
+            tasks.filterNot { it.done }.take(2).forEachIndexed { index, task ->
+                DeadlineRow(task, index == 0, onToggle = {})
+                if (index == 0) Spacer(Modifier.height(7.dp))
             }
         }
     }
 }
 
 @Composable
-private fun TaskRow(task: Task, repository: AppRepository) {
-    val scope = rememberCoroutineScope()
+private fun DeadlineRow(task: Task, urgent: Boolean, onToggle: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .background(Background, RoundedCornerShape(12.dp))
+            .campusClickable(onClick = onToggle)
+            .padding(horizontal = 9.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Checkbox(
-            checked = task.done,
-            onCheckedChange = { scope.launch { repository.toggleTask(task.id) } },
-            modifier = Modifier.size(17.dp),
-            colors = CheckboxDefaults.colors(checkedColor = Success, uncheckedColor = Muted)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                task.title,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (task.done) Muted else TextPrimary
+        Box(
+            Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                .background(if (urgent) Color(0xFFE8F0FF) else Color(0xFFFFF0D7)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.AutoStories,
+                null,
+                tint = if (urgent) Color(0xFF3D7DF0) else WarmOrange,
+                modifier = Modifier.size(17.dp),
             )
-            Text(task.due, fontSize = 11.sp, color = if (task.done) Muted else DangerText)
         }
-        Text(task.course, fontSize = 10.sp, color = Primary, modifier = Modifier
-            .background(PrimarySoft, RoundedCornerShape(4.dp))
-            .padding(horizontal = 5.dp, vertical = 2.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(task.title, color = TextPrimary, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(task.due, color = if (urgent) DangerText else WarmOrange, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
 @Composable
-private fun NoticeRowCompact(notice: Notice) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(9.dp)
+private fun CampusUpdates(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Surface, RoundedCornerShape(24.dp))
+            .padding(16.dp)
+            .enterAnimation(delayMs = 220, enabled = !reduceMotion),
     ) {
-        if (notice.unread) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(UnreadDot))
-        } else {
-            Spacer(Modifier.size(6.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(notice.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(notice.source, fontSize = 11.sp, color = Muted)
-        }
-        Text(notice.time, fontSize = 11.sp, color = Muted)
-    }
-}
-
-@Composable
-private fun WeeklyScheduleCard() {
-    val days = listOf(
-        "周一" to listOf("数据结构", "高等数学（下）"),
-        "周二" to listOf("操作系统", "大学英语 IV"),
-        "周三" to listOf("计算机组成原理", "体育"),
-        "周四" to listOf("数据库系统", "高等数学（下）"),
-        "周五" to listOf("操作系统", ""),
-    )
-    DataPanel {
-        SectionHead("本周课表")
-        Spacer(Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(days) { (day, classes) ->
+        SectionTitle("校园动态", "查看更多") { onNavigate("notifications") }
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(
+                listOf(
+                    Triple("图书馆延长开放时间", "考试周开放至 22:00", "图书馆"),
+                    Triple("“互联网+”校内选拔", "展示你的创意，赢取成长支持", "学工处"),
+                ),
+            ) { item ->
                 Column(
                     modifier = Modifier
-                        .width(80.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(PrimarySoft)
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .width(236.dp)
+                        .border(1.dp, Line, RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp))
+                        .campusClickable { onNavigate("notifications") },
                 ) {
-                    Text(day, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Primary)
-                    classes.forEach { cls ->
-                        if (cls.isNotEmpty()) Text(cls, fontSize = 10.sp, color = TextPrimary, maxLines = 1)
+                    Box(Modifier.fillMaxWidth().height(76.dp)) {
+                        Image(
+                            painter = painterResource(R.drawable.campus_login_poster),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                if (item.third == "图书馆") Color.Transparent
+                                else HeroBlue.copy(alpha = .62f),
+                            ),
+                        )
+                        Icon(
+                            if (item.third == "图书馆") Icons.Default.School else Icons.Default.Campaign,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.align(Alignment.Center).size(28.dp),
+                        )
+                    }
+                    Column(Modifier.padding(11.dp)) {
+                        Text(item.first, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(item.second, color = Muted, fontSize = 10.sp, maxLines = 1)
                     }
                 }
             }
@@ -264,143 +521,64 @@ private fun WeeklyScheduleCard() {
 }
 
 @Composable
-private fun CompanionRail(onNavigate: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        DataPanel(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("AI 导员", style = MaterialTheme.typography.titleSmall)
-                MockBadge()
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("有问题，问小夏。", fontSize = 13.sp, color = Muted)
-            Spacer(Modifier.height(8.dp))
-            listOf("期末考试周的自习教室推荐", "如何申请课程重修？", "奖学金申请条件有哪些？").forEach { q ->
-                OutlinedButton(
-                    onClick = { onNavigate("counselor") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
-                ) {
-                    Text(q, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(14.dp))
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-        }
-        DataPanel(modifier = Modifier.weight(1f)) {
-            Text("学习陪伴", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(8.dp))
-            Text("本周学习时长", fontSize = 12.sp, color = Muted)
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("12.6", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Primary)
-                Text("小时", fontSize = 12.sp, color = Muted)
-            }
-            Spacer(Modifier.height(8.dp))
-            MiniBars(listOf(42, 58, 36, 76, 64, 88, 50))
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("专注状态", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Text("识别结果仅供辅助参考", fontSize = 9.sp, color = Muted)
-                }
-                Text("良好", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Success)
-            }
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { onNavigate("study") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary)
-            ) {
-                Text("开始学习", fontWeight = FontWeight.SemiBold)
-            }
+private fun SectionTitle(title: String, action: String, onAction: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Row(Modifier.campusClickable(onClick = onAction), verticalAlignment = Alignment.CenterVertically) {
+            Text(action, color = Muted, fontSize = 10.5.sp)
+            Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(16.dp))
         }
     }
 }
 
 @Composable
-private fun MiniBars(heights: List<Int>) {
-    Row(modifier = Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        heights.forEach { h ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(PrimarySoft),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(h / 100f)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(Primary.copy(alpha = 0.6f))
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RoleOverviewCards(role: String) {
-    val items = if (role == "teacher") listOf("3" to "进行中课程", "5" to "教学班级", "90" to "学生人数", "12" to "待批作业")
-    else listOf("1,248" to "活跃用户", "42" to "课程总数", "99.9%" to "服务可用率", "6" to "待处理事项")
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        items.forEach { (value, label) ->
-            DataPanel(modifier = Modifier.weight(1f)) {
-                Text(value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Primary)
-                Text(label, fontSize = 12.sp, color = Muted)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RoleActivityPanel(role: String) {
-    val activities = if (role == "teacher") listOf("批改数据结构第三次作业", "发布计算机网络课程通知", "查看高等数学提交统计", "更新操作系统课程资料")
-    else listOf("知识库索引构建完成", "教师张明远创建新课程", "夜间备份任务执行成功", "学生账号批量导入完成")
-    DataPanel {
-        SectionHead(if (role == "teacher") "近期教学任务" else "系统动态", actionLabel = "查看全部", onAction = { })
-        Spacer(Modifier.height(8.dp))
-        activities.forEachIndexed { i, activity ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp)
-            ) {
-                Icon(
-                    if (role == "teacher") Icons.Default.Description else Icons.Default.MonitorHeart,
-                    null, tint = Primary,
-                    modifier = Modifier.size(20.dp).background(PrimarySoft, CircleShape).padding(3.dp)
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(activity, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("${i + 1} 小时前", fontSize = 11.sp, color = Muted)
-                }
-                Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun DataPanel(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
+private fun RoleDashboard(
+    name: String,
+    role: String,
+    onNavigate: (String) -> Unit,
+    reduceMotion: Boolean,
 ) {
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(10.dp))
-            .padding(14.dp),
-        content = content
-    )
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Surface, RoundedCornerShape(24.dp))
+            .padding(22.dp)
+            .enterAnimation(enabled = !reduceMotion),
+    ) {
+        Text(if (role == "teacher") "教学工作台" else "系统管理概览", color = TextPrimary, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("$name，今天也一起把事情理清楚。", color = Muted, fontSize = 13.sp)
+        Spacer(Modifier.height(22.dp))
+        val metrics = if (role == "teacher") {
+            listOf("3" to "进行中课程", "12" to "待批作业", "90" to "学生人数")
+        } else {
+            listOf("1,248" to "活跃用户", "42" to "课程总数", "99.9%" to "服务可用率")
+        }
+        metrics.forEach { (value, label) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
+                    Icon(if (role == "teacher") Icons.Default.School else Icons.Default.Grade, null, tint = Primary)
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(label, color = TextPrimary, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                Text(value, color = Primary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(13.dp))
+                .background(Primary)
+                .campusClickable { onNavigate(if (role == "teacher") "courses" else "users") }
+                .padding(vertical = 13.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text("查看详情", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
 }
-
