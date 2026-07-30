@@ -1,6 +1,6 @@
 """通知结构化抽取的请求与响应 schema。
 
-字段设计兼容现有 Flutter `ExtractedNotice` 模型，并扩展 warnings 字段。
+字段设计兼容现有移动端 `ExtractedNotice` 模型，并扩展 warnings 字段。
 """
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ class MultiNoticeExtractResponse(BaseModel):
 
 class NoticeExtractResponse(BaseModel):
     title: str = Field(..., description="通知标题/任务名(可为空字符串)")
-    task: str = Field(..., description="任务名(对齐 Flutter taskName)")
+    task: str = Field(..., description="任务名(对齐移动端 taskName)")
     target_students: Optional[str] = Field(None, description="面向对象")
     deadline: Optional[datetime] = Field(None, description="截止时间(ISO 8601)")
     materials: List[MaterialItem] = Field(default_factory=list)

@@ -15,19 +15,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.ui.components.AnimatedBar
+import com.example.campusai.ui.components.AnimatedCircularProgress
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.MockBadge
+import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.delay
 
 @Composable
 fun StudyScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
 
     var seconds by remember { mutableStateOf(25 * 60) }
     var timerRunning by remember { mutableStateOf(false) }
@@ -43,9 +48,18 @@ fun StudyScreen(repository: AppRepository) {
     val minutes = (seconds / 60).toString().padStart(2, '0')
     val secs = (seconds % 60).toString().padStart(2, '0')
 
+    val totalSeconds = 25 * 60
+    val timerProgress = seconds.toFloat() / totalSeconds.toFloat()
+
     val animatedAlpha by animateFloatAsState(
         targetValue = 1f,
         animationSpec = tween(400, easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f))
+    )
+
+    val timerScale by animateFloatAsState(
+        targetValue = if (timerRunning) 1.02f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 200f),
+        label = "timer-scale",
     )
 
     Column(
@@ -74,18 +88,35 @@ fun StudyScreen(repository: AppRepository) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Surface)
                 .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .padding(24.dp),
+                .padding(24.dp)
+                .enterAnimation(enabled = !reduceMotion),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("本次专注", color = Muted, fontSize = 14.sp)
-            Text(
-                "$minutes:$secs",
-                fontSize = 58.sp,
-                fontWeight = FontWeight.Bold,
-                color = Primary,
-                letterSpacing = 2.sp
-            )
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(170.dp).scale(timerScale)) {
+                AnimatedCircularProgress(
+                    targetProgress = timerProgress,
+                    color = if (timerRunning) Primary else Primary.copy(alpha = 0.5f),
+                    trackColor = PrimarySoft,
+                    strokeWidth = 9.dp,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "$minutes:$secs",
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary,
+                        letterSpacing = 2.sp,
+                    )
+                    Text(
+                        if (timerRunning) "专注中…" else "准备就绪",
+                        color = Muted,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -121,7 +152,8 @@ fun StudyScreen(repository: AppRepository) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Surface)
                 .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .padding(14.dp),
+                .padding(14.dp)
+                .enterAnimation(delayMs = 60, enabled = !reduceMotion),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -173,12 +205,18 @@ fun StudyScreen(repository: AppRepository) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Surface)
                 .border(1.dp, Line, RoundedCornerShape(10.dp))
-                .padding(14.dp),
+                .padding(14.dp)
+                .enterAnimation(delayMs = 120, enabled = !reduceMotion),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("本周学习记录", style = MaterialTheme.typography.titleSmall)
             val heights = listOf(32, 56, 45, 80, 62, 90, 40)
             val labels = listOf("一", "二", "三", "四", "五", "六", "日")
+            val barColors = listOf(
+                Primary.copy(alpha = 0.4f), Primary.copy(alpha = 0.4f), Primary.copy(alpha = 0.4f),
+                Primary.copy(alpha = 0.75f), Primary.copy(alpha = 0.5f),
+                Primary.copy(alpha = 0.85f), Primary.copy(alpha = 0.4f),
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().height(80.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -194,12 +232,14 @@ fun StudyScreen(repository: AppRepository) {
                                 .weight(1f),
                             contentAlignment = Alignment.BottomCenter
                         ) {
-                            Box(
+                            AnimatedBar(
+                                fraction = h / 100f,
+                                delayMs = i * 80,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .fillMaxHeight(h / 100f)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Primary.copy(alpha = 0.6f))
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = barColors[i],
                             )
                         }
                         Text(labels[i], fontSize = 10.sp, color = Muted)

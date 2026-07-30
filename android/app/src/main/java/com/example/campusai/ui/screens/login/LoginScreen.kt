@@ -1,28 +1,61 @@
 package com.example.campusai.ui.screens.login
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -30,285 +63,297 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.theme.*
+import com.example.campusai.ui.components.CampusVideoBackground
+import com.example.campusai.ui.components.campusClickable
+import com.example.campusai.ui.components.enterAnimation
 import kotlinx.coroutines.launch
 
+private val LoginInk = Color(0xFF111A31)
+private val LoginBlue = Color(0xFF596AF0)
+private val LoginBlueDeep = Color(0xFF3E50D9)
+private val LoginWarm = Color(0xFFFFA45B)
+private val FormText = Color(0xFFF8FAFF)
+private val FormMuted = Color(0xBDEBF0FF)
+
 @Composable
-fun LoginScreen(
-    repository: AppRepository,
-    onLoginSuccess: () -> Unit
-) {
+fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-
+    val mockMode by repository.mockMode.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     var username by remember { mutableStateOf("student_demo") }
     var password by remember { mutableStateOf("Demo123456") }
     var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    val mockMode by repository.mockMode.collectAsState()
 
-    val animatedAlpha by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = tween(durationMillis = 650, easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f))
-    )
+    fun submit() {
+        if (loading) return
+        focusManager.clearFocus()
+        if (username.isBlank() || password.isBlank()) {
+            error = if (username.isBlank()) "请输入学号、工号或用户名。" else "请输入密码后继续。"
+            return
+        }
+        scope.launch {
+            loading = true
+            error = ""
+            try {
+                repository.login(username.trim(), password)
+                onLoginSuccess()
+            } catch (e: Exception) {
+                error = e.message ?: "暂时无法登录，请检查网络后重试。"
+            } finally {
+                loading = false
+            }
+        }
+    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LoginBg)
-    ) {
+    Box(Modifier.fillMaxSize().background(LoginInk)) {
+        CampusVideoBackground(
+            videoRes = R.raw.login_campus,
+            posterRes = R.drawable.campus_login_poster,
+            motionEnabled = !reduceMotion,
+            modifier = Modifier.fillMaxSize(),
+        )
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0x7A020C19),
-                            Color(0xBA020C19),
-                            Color(0xE0020C19)
-                        )
-                    )
-                )
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color(0x5C091632),
+                    .38f to Color(0x52091632),
+                    .68f to Color(0xC4091632),
+                    1f to Color(0xF0091632),
+                ),
+            ),
         )
 
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 40.dp, vertical = 58.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState()),
         ) {
             Column(
                 modifier = Modifier
-                    .weight(1.2f)
-                    .graphicsLayer { alpha = animatedAlpha; translationY = 16f * (1f - animatedAlpha) },
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, top = 20.dp, end = 24.dp)
+                    .enterAnimation(delayMs = 30, enabled = !reduceMotion),
             ) {
-                BrandRow(light = true)
-                Spacer(Modifier.height(24.dp))
-                Column {
-                    Text(
-                        "你的校园事务工作台",
-                        color = Color(0xFFC3D5E1),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.08.sp
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "把今天的校园生活\n理清楚。",
-                        color = Color.White,
-                        fontSize = 42.sp,
-                        lineHeight = 47.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.04).sp
-                    )
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        "通知、课程、任务和 AI 导员，都在一个清晰的入口。",
-                        color = Color(0xFFC3D5E1),
-                        fontSize = 17.sp
-                    )
-                }
-                Spacer(Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(38.dp)) {
-                    FeatureTag("通知智能整理")
-                    FeatureTag("任务协同管理")
-                    FeatureTag("AI 导员陪伴")
-                }
+                LoginBrand(mockMode)
+                Spacer(Modifier.height(66.dp))
+                Text(
+                    "欢迎回到校园",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    lineHeight = 38.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-.5).sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "课程、通知与每一个重要截止，\n都替你稳稳记着。",
+                    color = Color.White.copy(alpha = .82f),
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                )
             }
 
+            Spacer(Modifier.height(42.dp))
             Column(
                 modifier = Modifier
-                    .width(430.dp)
-                    .graphicsLayer { alpha = animatedAlpha; translationY = 16f * (1f - animatedAlpha) }
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(LoginPanelBg)
-                    .padding(34.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, top = 18.dp, end = 24.dp, bottom = 24.dp)
+                    .enterAnimation(delayMs = 130, enabled = !reduceMotion),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column {
-                    Text(
-                        "欢迎回来",
-                        color = Muted,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.08.sp
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        "账号登录",
-                        color = TextPrimary,
-                        fontSize = 27.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "使用学号、工号或管理员账号登录",
-                        color = Muted,
-                        fontSize = 13.sp
-                    )
-                }
+                Text("登录 CampusMate", color = FormText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (mockMode) "当前为 Mock 演示模式，可使用下方身份快速体验。"
+                    else "使用学校统一身份账号继续。",
+                    color = FormMuted,
+                    fontSize = 11.5.sp,
+                )
 
-                OutlinedTextField(
+                LoginField(
+                    label = "账号",
                     value = username,
-                    onValueChange = { username = it },
-                    label = { Text("账号") },
-                    placeholder = { Text("请输入学号 / 工号 / 用户名") },
-                    leadingIcon = { Icon(Icons.Default.Person, null, tint = Muted) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(9.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Primary,
-                        unfocusedBorderColor = InputBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
+                    placeholder = "学号 / 工号 / 用户名",
+                    icon = { Icon(Icons.Default.Person, null, tint = FormMuted, modifier = Modifier.size(18.dp)) },
+                    onValueChange = { username = it; error = "" },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) })
+                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                 )
-
-                OutlinedTextField(
+                LoginField(
+                    label = "密码",
                     value = password,
-                    onValueChange = { password = it },
-                    label = { Text("密码") },
-                    placeholder = { Text("请输入密码") },
-                    leadingIcon = { Icon(Icons.Default.Lock, null, tint = Muted) },
-                    trailingIcon = {
-                        IconButton(onClick = { showPassword = !showPassword }) {
-                            Icon(
-                                if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                if (showPassword) "隐藏密码" else "显示密码",
-                                tint = Muted
-                            )
-                        }
+                    placeholder = "请输入密码",
+                    icon = { Icon(Icons.Default.Lock, null, tint = FormMuted, modifier = Modifier.size(18.dp)) },
+                    trailing = {
+                        Icon(
+                            if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            if (showPassword) "隐藏密码" else "显示密码",
+                            tint = FormMuted,
+                            modifier = Modifier.size(20.dp).campusClickable { showPassword = !showPassword },
+                        )
                     },
+                    onValueChange = { password = it; error = "" },
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(9.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Primary,
-                        unfocusedBorderColor = InputBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        focusManager.clearFocus()
-                        scope.launch {
-                            loading = true; error = ""
-                            try { repository.login(username.trim(), password); onLoginSuccess() }
-                            catch (e: Exception) { error = e.message ?: "登录失败，请稍后重试" }
-                            finally { loading = false }
-                        }
-                    })
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                 )
 
-                if (error.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(AlertErrorBg)
-                            .padding(10.dp, 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Warning, null, tint = AlertErrorText, modifier = Modifier.size(16.dp))
-                        Text(error, color = AlertErrorText, fontSize = 13.sp)
+                AnimatedContent(
+                    targetState = error,
+                    transitionSpec = { fadeIn() togetherWith fadeOut() using SizeTransform(clip = false) },
+                    label = "login-error",
+                ) { message ->
+                    if (message.isNotEmpty()) {
+                        Text(
+                            message,
+                            color = Color(0xFFFFC5BF),
+                            fontSize = 11.5.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0x663E171A), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                        )
                     }
                 }
 
-                Button(
-                    onClick = {
-                        scope.launch {
-                            loading = true; error = ""
-                            try { repository.login(username.trim(), password); onLoginSuccess() }
-                            catch (e: Exception) { error = e.message ?: "登录失败，请稍后重试" }
-                            finally { loading = false }
-                        }
-                    },
-                    enabled = !loading,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary, disabledContainerColor = Primary.copy(alpha = 0.55f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(51.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White)
+                        .campusClickable(enabled = !loading) { submit() },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                 ) {
-                    Text(if (loading) "正在登录…" else "登录", fontWeight = FontWeight.SemiBold)
-                    if (!loading) Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(18.dp))
+                    if (loading) {
+                        CircularProgressIndicator(color = LoginBlueDeep, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Text("进入校园空间", color = LoginBlueDeep, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.size(8.dp))
+                        Icon(Icons.Default.ArrowForward, null, tint = LoginBlueDeep, modifier = Modifier.size(17.dp))
+                    }
                 }
 
-                Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("演示账号", color = Muted, fontSize = 12.sp)
-                    DemoButton("学生") { username = "student_demo"; password = "Demo123456" }
-                    DemoButton("教师") { username = "teacher_demo"; password = "Demo123456" }
-                    DemoButton("管理员") { username = "admin_demo"; password = "Demo123456" }
+                    Text("快速体验", color = FormMuted, fontSize = 10.5.sp)
+                    DemoChip("学生") { username = "student_demo"; password = "Demo123456"; error = "" }
+                    DemoChip("教师") { username = "teacher_demo"; password = "Demo123456"; error = "" }
+                    DemoChip("管理") { username = "admin_demo"; password = "Demo123456"; error = "" }
                 }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(Accent))
-                    Text(
-                        if (mockMode) "当前为 Mock 演示模式" else "将连接真实后端",
-                        color = Muted, fontSize = 11.sp
-                    )
-                }
+                Text(
+                    "登录即表示你已阅读并同意校园数据使用说明",
+                    color = Color.White.copy(alpha = .48f),
+                    fontSize = 9.5.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BrandRow(light: Boolean = false) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun LoginBrand(mockMode: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF2675AA)),
-            contentAlignment = Alignment.Center
+            Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(LoginWarm),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.School, null, tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.School, null, tint = Color.White, modifier = Modifier.size(23.dp))
         }
+        Spacer(Modifier.width(10.dp))
         Column {
-            Text("CampusMate AI", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "校园信息中枢",
-                color = if (light) Color(0xFFB8CEDE) else Color(0xFF6F8290),
-                fontSize = 11.sp
-            )
+            Text("CampusMate AI", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("校园事务 · 温和陪伴", color = Color.White.copy(alpha = .7f), fontSize = 9.5.sp)
         }
+        Spacer(Modifier.weight(1f))
+        Text(
+            if (mockMode) "MOCK" else "ONLINE",
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = .8.sp,
+            modifier = Modifier
+                .border(1.dp, Color.White.copy(alpha = .46f), CircleShape)
+                .padding(horizontal = 9.dp, vertical = 5.dp),
+        )
     }
 }
 
 @Composable
-private fun FeatureTag(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text(text, color = Color(0xFFDCE9F0), fontSize = 14.sp)
+private fun LoginField(
+    label: String,
+    value: String,
+    placeholder: String,
+    icon: @Composable () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
+    onValueChange: (String) -> Unit,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val underlineColor by animateColorAsState(
+        targetValue = if (focused) Color.White else Color.White.copy(alpha = .32f),
+        label = "login-field-line",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, color = FormMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(color = FormText, fontSize = 14.sp),
+            cursorBrush = SolidColor(Color.White),
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+            decorationBox = { input ->
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(45.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(11.dp),
+                    ) {
+                        icon()
+                        Box(Modifier.weight(1f)) {
+                            if (value.isEmpty()) {
+                                Text(placeholder, color = Color.White.copy(alpha = .46f), fontSize = 13.sp)
+                            }
+                            input()
+                        }
+                        trailing?.invoke()
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(underlineColor))
+                }
+            },
+        )
     }
 }
 
 @Composable
-private fun DemoButton(label: String, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)
-    ) {
-        Text(label, fontSize = 12.sp)
-    }
+private fun DemoChip(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = FormText,
+        fontSize = 10.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .border(1.dp, Color.White.copy(alpha = .34f), CircleShape)
+            .background(Color.White.copy(alpha = .08f), CircleShape)
+            .campusClickable(onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+    )
 }
-

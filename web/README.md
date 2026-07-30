@@ -1,6 +1,6 @@
 # CampusMate AI Vue Web
 
-独立的 Vue 3 Web 前端，基于现有 Flutter 功能与 FastAPI 接口重构。
+独立的 Vue 3 Web 前端，基于移动端功能与 FastAPI 接口实现。
 
 ## 本地运行
 

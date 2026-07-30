@@ -90,7 +90,16 @@ class OpenAICompatibleClient:
             raise LLMError(f"LLM HTTP {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
         try:
-            content = data["choices"][0]["message"]["content"] or ""
+            msg = data["choices"][0]["message"]
+            content = msg.get("content") or ""
+            # DeepSeek 推理模型把思考过程放在 reasoning_content 字段，
+            # content 可能为空或只包含最终答案；两者都需要保留。
+            reasoning = msg.get("reasoning_content") or ""
+            # 合并 reasoning + content，避免 content 为空时丢失回答
+            if not content and reasoning:
+                content = reasoning
+            elif reasoning:
+                content = f"{reasoning}\n\n{content}"
             finish = data["choices"][0].get("finish_reason", "stop")
         except (KeyError, IndexError, TypeError) as e:
             raise LLMError(f"LLM 返回结构异常: {e}") from e
@@ -144,11 +153,16 @@ class OpenAICompatibleClient:
                         import json
 
                         obj = json.loads(data)
-                        delta = obj.get("choices", [{}])[0].get("delta", {}).get("content")
+                        delta = obj.get("choices", [{}])[0].get("delta", {})
+                        # DeepSeek V4 Flash 等推理模型在流式输出中，
+                        # 先发送 reasoning_content（思考过程），后发送 content（最终答案）。
+                        # 这里只取 content，避免思考过程暴露给用户。
+                        # 非流式 chat() 方法中会将 reasoning_content 回退合并。
+                        text = delta.get("content") or ""
                     except (ValueError, IndexError, KeyError, TypeError):
                         continue
-                    if delta:
-                        yield delta
+                    if text:
+                        yield text
         except httpx.TimeoutException as e:
             raise LLMTimeoutError("LLM 流式请求超时") from e
         except httpx.HTTPError as e:

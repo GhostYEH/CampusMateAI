@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class ChatSource(BaseModel):
-    """知识库引用来源(对齐 Flutter KnowledgeSource + 扩展字段)。"""
+    """知识库引用来源(对齐移动端 KnowledgeSource + 扩展字段)。"""
     document_id: str
     title: str
     section: Optional[str] = None

@@ -21,6 +21,9 @@ class AppDataStore(private val context: Context) {
     private val KEY_REFRESH_TOKEN = stringPreferencesKey("campus_refresh_token")
     private val KEY_MOCK_MODE = booleanPreferencesKey("campus_mock_mode")
     private val KEY_REDUCE_MOTION = booleanPreferencesKey("campus_reduce_motion")
+    private val KEY_DARK_MODE = booleanPreferencesKey("campus_dark_mode")
+    private val KEY_REMINDERS = booleanPreferencesKey("campus_reminders")
+    private val KEY_DEMO_MODE = booleanPreferencesKey("campus_demo_mode")
 
     val session: Flow<User?> = context.dataStore.data.map { prefs ->
         prefs[KEY_SESSION]?.let { json: String ->
@@ -29,7 +32,10 @@ class AppDataStore(private val context: Context) {
                 User(
                     name = obj.optString("name", ""),
                     role = obj.optString("role", "student"),
-                    detail = obj.optString("detail", "")
+                    detail = obj.optString("detail", ""),
+                    email = obj.optString("email", ""),
+                    phone = obj.optString("phone", ""),
+                    studentId = obj.optString("studentId", ""),
                 )
             } catch (_: Exception) { null }
         }
@@ -47,12 +53,19 @@ class AppDataStore(private val context: Context) {
         prefs[KEY_REDUCE_MOTION] ?: false
     }
 
+    val darkMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DARK_MODE] ?: false }
+    val remindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_REMINDERS] ?: true }
+    val demoMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DEMO_MODE] ?: true }
+
     suspend fun saveSession(user: User) {
         context.dataStore.edit { prefs ->
             val json = JSONObject()
             json.put("name", user.name)
             json.put("role", user.role)
             json.put("detail", user.detail)
+            json.put("email", user.email)
+            json.put("phone", user.phone)
+            json.put("studentId", user.studentId)
             prefs[KEY_SESSION] = json.toString()
         }
     }
@@ -82,5 +95,17 @@ class AppDataStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[KEY_REDUCE_MOTION] = enabled
         }
+    }
+
+    suspend fun setDarkMode(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_DARK_MODE] = enabled }
+    }
+
+    suspend fun setRemindersEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_REMINDERS] = enabled }
+    }
+
+    suspend fun setDemoMode(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_DEMO_MODE] = enabled }
     }
 }
