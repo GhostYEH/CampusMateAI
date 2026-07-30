@@ -5,6 +5,8 @@ import '../../../app/providers/app_providers.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/widgets/state_views.dart';
 import '../../../core/widgets/staggered_enter.dart';
+import '../../../core/widgets/responsive_layout.dart';
+import '../../../data/models/task.dart';
 import 'widgets/counselor_greeting_section.dart';
 import 'widgets/greeting_header.dart';
 import 'widgets/latest_notice_section.dart';
@@ -40,96 +42,260 @@ class HomePage extends ConsumerWidget {
     final reduceMotion = ref.watch(reduceMotionProvider);
     final greeting = AppDateUtils.greeting(now);
 
+    final content = layoutTierOf(context).isExpanded
+        ? _DesktopHome(
+            greeting: greeting,
+            name: user.displayName,
+            date: now,
+            unread: unread,
+            progress: todayProgress,
+            nearest: nearest,
+            todayTaskCount: todayTasks.length,
+            todayTotal: todayTotal.valueOrNull,
+            reduceMotion: reduceMotion,
+          )
+        : _MobileHome(
+            greeting: greeting,
+            name: user.displayName,
+            date: now,
+            unread: unread,
+            progress: todayProgress,
+            nearest: nearest,
+            todayTaskCount: todayTasks.length,
+            todayTotal: todayTotal.valueOrNull,
+            reduceMotion: reduceMotion,
+          );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8F6),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async =>
               await Future.delayed(const Duration(milliseconds: 600)),
-          child: CustomScrollView(
-            // ignore: deprecated_member_use
-            // 本地 Flutter 3.41.x 尚无 scrollCacheExtent,3.44+ 才有;
-            // 待本地 SDK 升级后改为 scrollCacheExtent: 3000。
-            cacheExtent: 3000,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // ===== 顶部问候区 =====
-              SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  child: GreetingHeader(
-                    greeting: greeting,
-                    name: user.displayName,
-                    date: now,
-                    unread: unread,
-                  ),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-
-              // ===== 今日概览(英雄卡片) =====
-              SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: const Duration(milliseconds: 60),
-                  child: TodayProgressSection(
-                    progress: todayProgress,
-                    nearest: nearest,
-                    todayTaskCount: todayTasks.length,
-                  ),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 22)),
-
-              // ===== 快捷入口 =====
-              const SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: Duration(milliseconds: 120),
-                  child: QuickActionSection(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
-
-              // ===== AI 导员问候 =====
-              const SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: Duration(milliseconds: 180),
-                  child: CounselorGreetingSection(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              // ===== 即将截止任务 =====
-              const SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: Duration(milliseconds: 240),
-                  child: UrgentTaskSection(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              // ===== 最新通知(横向滑动) =====
-              const SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: Duration(milliseconds: 360),
-                  child: LatestNoticeSection(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-              // ===== 学习时长概览 =====
-              SliverToBoxAdapter(
-                child: StaggeredEnter(
-                  delay: const Duration(milliseconds: 480),
-                  child: StudySummarySection(
-                    todayTotal: todayTotal.valueOrNull,
-                    reduceMotion: reduceMotion,
-                  ),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
-          ),
+          child: content,
         ),
       ),
+    );
+  }
+}
+
+class _MobileHome extends StatelessWidget {
+  const _MobileHome({
+    required this.greeting,
+    required this.name,
+    required this.date,
+    required this.unread,
+    required this.progress,
+    required this.nearest,
+    required this.todayTaskCount,
+    required this.todayTotal,
+    required this.reduceMotion,
+  });
+
+  final String greeting;
+  final String name;
+  final DateTime date;
+  final int unread;
+  final double progress;
+  final Task? nearest;
+  final int todayTaskCount;
+  final Duration? todayTotal;
+  final bool reduceMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      // ignore: deprecated_member_use
+      // 本地 Flutter 3.41.x 尚无 scrollCacheExtent,3.44+ 才有;
+      // 待本地 SDK 升级后改为 scrollCacheExtent: 3000。
+      cacheExtent: 3000,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // ===== 顶部问候区 =====
+        SliverToBoxAdapter(
+          child: StaggeredEnter(
+            child: GreetingHeader(
+              greeting: greeting,
+              name: name,
+              date: date,
+              unread: unread,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+        // ===== 今日概览(英雄卡片) =====
+        SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: const Duration(milliseconds: 60),
+            child: TodayProgressSection(
+              progress: progress,
+              nearest: nearest,
+              todayTaskCount: todayTaskCount,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 22)),
+
+        // ===== 快捷入口 =====
+        const SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: Duration(milliseconds: 120),
+            child: QuickActionSection(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 18)),
+
+        // ===== AI 导员问候 =====
+        const SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: Duration(milliseconds: 180),
+            child: CounselorGreetingSection(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+        // ===== 即将截止任务 =====
+        const SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: Duration(milliseconds: 240),
+            child: UrgentTaskSection(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+        // ===== 最新通知(横向滑动) =====
+        const SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: Duration(milliseconds: 360),
+            child: LatestNoticeSection(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+        // ===== 学习时长概览 =====
+        SliverToBoxAdapter(
+          child: StaggeredEnter(
+            delay: const Duration(milliseconds: 480),
+            child: StudySummarySection(
+              todayTotal: todayTotal,
+              reduceMotion: reduceMotion,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+  }
+}
+
+class _DesktopHome extends StatelessWidget {
+  const _DesktopHome({
+    required this.greeting,
+    required this.name,
+    required this.date,
+    required this.unread,
+    required this.progress,
+    required this.nearest,
+    required this.todayTaskCount,
+    required this.todayTotal,
+    required this.reduceMotion,
+  });
+
+  final String greeting;
+  final String name;
+  final DateTime date;
+  final int unread;
+  final double progress;
+  final Task? nearest;
+  final int todayTaskCount;
+  final Duration? todayTotal;
+  final bool reduceMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      cacheExtent: 2400,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1440),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 18, 12, 32),
+                child: Column(
+                  children: [
+                    StaggeredEnter(
+                      child: GreetingHeader(
+                        greeting: greeting,
+                        name: name,
+                        date: date,
+                        unread: unread,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 7,
+                          child: Column(
+                            children: [
+                              StaggeredEnter(
+                                delay: const Duration(milliseconds: 60),
+                                child: TodayProgressSection(
+                                  progress: progress,
+                                  nearest: nearest,
+                                  todayTaskCount: todayTaskCount,
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                              const StaggeredEnter(
+                                delay: Duration(milliseconds: 120),
+                                child: QuickActionSection(),
+                              ),
+                              const SizedBox(height: 22),
+                              const StaggeredEnter(
+                                delay: Duration(milliseconds: 180),
+                                child: UrgentTaskSection(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            children: [
+                              const StaggeredEnter(
+                                delay: Duration(milliseconds: 100),
+                                child: CounselorGreetingSection(),
+                              ),
+                              const SizedBox(height: 22),
+                              const StaggeredEnter(
+                                delay: Duration(milliseconds: 160),
+                                child: LatestNoticeSection(),
+                              ),
+                              const SizedBox(height: 22),
+                              StaggeredEnter(
+                                delay: const Duration(milliseconds: 220),
+                                child: StudySummarySection(
+                                  todayTotal: todayTotal,
+                                  reduceMotion: reduceMotion,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

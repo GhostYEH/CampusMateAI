@@ -1,0 +1,21 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@phosphor-icons/vue": "^2.2.1",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "axios": "^1.11.0",
+    "pinia": "^3.0.3",
+    "vite": "6.4.2",
+    "vue": "^3.5.18",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {}
+}

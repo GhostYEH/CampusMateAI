@@ -10,9 +10,6 @@ import '../../../../core/widgets/cards.dart';
 import '../../../../core/widgets/staggered_enter.dart';
 
 /// 首页"即将截止"任务区 — 区段标题 + 任务列表 + 空状态。
-///
-/// 提取自原 HomePage 的 upcoming 区块。
-/// 列表使用懒加载,空状态有专门设计的占位卡片。
 class UrgentTaskSection extends ConsumerWidget {
   const UrgentTaskSection({super.key, this.maxItems = 3});
 
@@ -35,7 +32,7 @@ class UrgentTaskSection extends ConsumerWidget {
             onAction: () => context.go('/tasks'),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         if (upcoming.isEmpty)
           const _EmptyUpcoming()
         else
@@ -69,20 +66,26 @@ class _EmptyUpcoming extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding:
-          const EdgeInsets.symmetric(horizontal: AppSpacing.edge, vertical: 8),
-      child: AppCard(
+          const EdgeInsets.symmetric(horizontal: AppSpacing.edge, vertical: 4),
+      child: Container(
         padding: const EdgeInsets.symmetric(vertical: 24),
+        decoration: BoxDecoration(
+          color: c.bgSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: c.border, width: 0.6),
+        ),
         child: Column(
           children: [
-            const Icon(
+            Icon(
               Icons.event_available_rounded,
-              size: 30,
-              color: AppColors.textTertiary,
+              size: 28,
+              color: c.textTertiary,
             ),
-            const SizedBox(height: 8),
-            const Text('近期没有截止任务', style: AppTypography.caption),
+            const SizedBox(height: 6),
+            Text('近期没有截止任务', style: AppTypography.caption),
             TextButton(
               onPressed: () => context.go('/tasks'),
               child: const Text('去安排一下'),

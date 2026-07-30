@@ -8,9 +8,6 @@ import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/cards.dart';
 
 /// 首页"校园通知"横向滑动区 — 紧凑卡片列表。
-///
-/// 提取自原 HomePage 的校园通知区块。
-/// 横向 ListView 懒加载,默认显示所有未读通知。
 class LatestNoticeSection extends ConsumerWidget {
   const LatestNoticeSection({super.key});
 
@@ -30,14 +27,14 @@ class LatestNoticeSection extends ConsumerWidget {
             onAction: () => context.push('/notifications'),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         SizedBox(
-          height: 132,
+          height: 124,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.edge),
             itemCount: notices.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, i) {
               final n = notices[i];
               return SizedBox(

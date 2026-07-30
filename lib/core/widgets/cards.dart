@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../app/design_system/app_colors.dart';
 import '../../app/design_system/app_typography.dart';
 import '../../core/utils/date_utils.dart';
-import '../../core/widgets/app_card.dart';
 import '../../core/widgets/deadline_chip.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/task.dart';
@@ -68,125 +67,126 @@ class _TaskCardState extends ConsumerState<TaskCard>
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
+    final c = context.appColors;
     final reduceMotion = ref.watch(reduceMotionProvider);
-    return AppCard(
-      onTap: widget.onTap,
-      padding: EdgeInsets.all(widget.compact ? 12 : 14),
-      borderColor: task.completed ? AppColors.border : AppColors.border,
-      backgroundColor:
-          task.completed ? AppColors.bgSunken : AppColors.bgSurface,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 勾选按钮
-          GestureDetector(
-            onTap: widget.onToggle,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2, right: 12),
-              child: AnimatedScale(
-                scale: 1,
-                duration: AppMotion.fast,
-                child: _checkbox(reduceMotion),
-              ),
-            ),
-          ),
-          // 内容
-          Expanded(
-            child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        color: task.completed ? c.bgSunken : c.bgSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.border, width: 0.6),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: EdgeInsets.all(widget.compact ? 12 : 14),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const PriorityDot(priority: TaskPriority.medium),
-                    const SizedBox(width: 6),
-                    PriorityDot(priority: task.priority),
-                    const SizedBox(width: 8),
-                    CategoryIcon(category: task.category, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        task.title,
-                        style: AppTypography.subtitle.copyWith(
-                          decoration: task.completed
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: task.completed
-                              ? AppColors.textTertiary
-                              : AppColors.textPrimary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2, right: 10),
+                    child: _checkbox(reduceMotion, c),
+                  ),
                 ),
-                if (!widget.compact) ...[
-                  if (task.description != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      task.description!,
-                      style: AppTypography.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      DeadlineChip(deadline: task.deadline),
-                      if (task.location != null)
-                        _metaChip(
-                          Icons.place_outlined,
-                          task.location!,
-                          AppColors.textTertiary,
+                      Row(
+                        children: [
+                          PriorityDot(priority: task.priority),
+                          const SizedBox(width: 6),
+                          CategoryIcon(category: task.category, size: 15),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: AppTypography.subtitle.copyWith(
+                                decoration: task.completed
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: task.completed
+                                    ? c.textTertiary
+                                    : c.textPrimary,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!widget.compact) ...[
+                        if (task.description != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            task.description!,
+                            style: AppTypography.caption,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            DeadlineChip(deadline: task.deadline),
+                            if (task.location != null)
+                              _metaChip(
+                                Icons.place_outlined,
+                                task.location!,
+                                c.textTertiary,
+                              ),
+                            if (widget.showSource)
+                              _metaChip(
+                                Icons.link_rounded,
+                                task.source.displayName,
+                                c.textTertiary,
+                              ),
+                          ],
                         ),
-                      if (widget.showSource)
-                        _metaChip(
-                          Icons.link_rounded,
-                          task.source.displayName,
-                          AppColors.textTertiary,
-                        ),
+                        if (task.materials.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _materialsBar(task, c),
+                        ],
+                      ] else if (task.deadline != null) ...[
+                        const SizedBox(height: 6),
+                        DeadlineChip(deadline: task.deadline, compact: true),
+                      ],
                     ],
                   ),
-                  if (task.materials.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    _materialsBar(task),
-                  ],
-                ] else if (task.deadline != null) ...[
-                  const SizedBox(height: 6),
-                  DeadlineChip(deadline: task.deadline, compact: true),
-                ],
+                ),
+                if (widget.trailing != null) widget.trailing!,
               ],
             ),
           ),
-          if (widget.trailing != null) widget.trailing!,
-        ],
+        ),
       ),
     );
   }
 
-  Widget _checkbox(bool reduceMotion) {
-    const size = 22.0;
+  Widget _checkbox(bool reduceMotion, AppColorScheme c) {
+    const size = 20.0;
     if (reduceMotion) {
       return Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: widget.task.completed ? AppColors.primary : Colors.transparent,
+          color: widget.task.completed ? c.primary : Colors.transparent,
           shape: BoxShape.circle,
           border: Border.all(
-            color: widget.task.completed
-                ? AppColors.primary
-                : AppColors.borderStrong,
-            width: 1.6,
+            color: widget.task.completed ? c.primary : c.borderStrong,
+            width: 1.5,
           ),
         ),
         child: widget.task.completed
-            ? const Icon(Icons.check, size: 14, color: AppColors.onPrimary)
+            ? const Icon(Icons.check, size: 13, color: AppColors.onPrimary)
             : null,
       );
     }
@@ -199,23 +199,23 @@ class _TaskCardState extends ConsumerState<TaskCard>
           decoration: BoxDecoration(
             color: Color.lerp(
               Colors.transparent,
-              AppColors.primary,
+              c.primary,
               _checkController.value,
             ),
             shape: BoxShape.circle,
             border: Border.all(
               color: Color.lerp(
-                AppColors.borderStrong,
-                AppColors.primary,
+                c.borderStrong,
+                c.primary,
                 _checkController.value,
               )!,
-              width: 1.6,
+              width: 1.5,
             ),
           ),
           child: FadeTransition(
             opacity: _checkController,
             child:
-                const Icon(Icons.check, size: 14, color: AppColors.onPrimary),
+                const Icon(Icons.check, size: 13, color: AppColors.onPrimary),
           ),
         );
       },
@@ -241,7 +241,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
     );
   }
 
-  Widget _materialsBar(Task task) {
+  Widget _materialsBar(Task task, AppColorScheme c) {
     final required = task.materials.where((m) => m.required).toList();
     if (required.isEmpty) return const SizedBox.shrink();
     final done = required.where((m) => m.done).length;
@@ -250,7 +250,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
       children: [
         const Icon(
           Icons.inventory_2_outlined,
-          size: 13,
+          size: 12,
           color: AppColors.textTertiary,
         ),
         const SizedBox(width: 4),
@@ -267,9 +267,9 @@ class _TaskCardState extends ConsumerState<TaskCard>
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: progress,
-              minHeight: 4,
-              backgroundColor: AppColors.bgSunken,
-              color: progress == 1 ? AppColors.success : AppColors.primary,
+              minHeight: 3,
+              backgroundColor: c.bgSunken,
+              color: progress == 1 ? c.success : c.primary,
             ),
           ),
         ),
@@ -287,94 +287,111 @@ class NoticeCard extends StatelessWidget {
     this.compact = false,
   });
 
-  final dynamic notice; // CampusNotice
+  final dynamic notice;
   final VoidCallback? onTap;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     final n = notice;
     final importanceColor = _importanceColor(n.importance);
-    return AppCard(
-      onTap: onTap,
-      padding: EdgeInsets.all(compact ? 12 : 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!n.read)
-            Container(
-              margin: const EdgeInsets.only(top: 6),
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: AppColors.accent,
-                shape: BoxShape.circle,
-              ),
-            )
-          else
-            const SizedBox(width: 7),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        color: c.bgSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.border, width: 0.6),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 12 : 14),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                if (!n.read)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: AppColors.accent,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                else
+                  const SizedBox(width: 6),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: importanceColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              n.importance.displayName,
+                              style: AppTypography.label.copyWith(
+                                color: importanceColor,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            n.source,
+                            style: AppTypography.label.copyWith(
+                              color: c.textTertiary,
+                              fontWeight: FontWeight.w400,
+                              fontSize: 10,
+                            ),
+                          ),
+                          Text(
+                            AppDateUtils.relativeTime(n.publishedAt),
+                            style: AppTypography.label.copyWith(
+                              color: c.textTertiary,
+                              fontWeight: FontWeight.w400,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
                       ),
-                      decoration: BoxDecoration(
-                        color: importanceColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
+                      const SizedBox(height: 5),
+                      Text(
+                        n.title,
+                        style: AppTypography.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      child: Text(
-                        n.importance.displayName,
-                        style: AppTypography.label.copyWith(
-                          color: importanceColor,
-                          fontSize: 10.5,
+                      if (!compact) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          n.content,
+                          style: AppTypography.caption,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      n.source,
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.textTertiary,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      AppDateUtils.relativeTime(n.publishedAt),
-                      style: AppTypography.label.copyWith(
-                        color: AppColors.textTertiary,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  n.title,
-                  style: AppTypography.subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (!compact) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    n.content,
-                    style: AppTypography.caption,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -408,23 +425,24 @@ class QuickActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return GestureDetector(
       onTap: () => context.push(route),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 24),
+            Icon(icon, color: color, size: 22),
             const SizedBox(height: 6),
             Text(
               label,
               style: AppTypography.label.copyWith(
-                color: AppColors.textPrimary,
+                color: c.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,

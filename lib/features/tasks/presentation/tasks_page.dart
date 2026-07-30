@@ -28,8 +28,8 @@ class _TasksPageState extends ConsumerState<TasksPage>
 
   bool _searchExpanded = false;
   bool _showCalendar = false;
-  TaskCategory? _categoryFilter; // null = 全部
-  DateTime? _selectedDay; // 日历视图选中的日期
+  TaskCategory? _categoryFilter;
+  DateTime? _selectedDay;
 
   static const List<_TabSpec> _tabs = [
     _TabSpec(label: '今日'),
@@ -53,7 +53,6 @@ class _TasksPageState extends ConsumerState<TasksPage>
     super.dispose();
   }
 
-  /// 按搜索词 + 类别过滤,然后排序(截止升序,未截止在前,已完成在后)。
   List<Task> _filteredTasks(List<Task> source) {
     final q = _searchController.text.trim().toLowerCase();
     var list = source;
@@ -82,14 +81,12 @@ class _TasksPageState extends ConsumerState<TasksPage>
   }
 
   void _toggleComplete(Task task) {
-    final wasCompleted = task.completed;
-    // 异步调用后端,失败时显示错误(对齐 Flutter 要求 #8:不静默伪装成功)
     ref.read(taskListProvider.notifier).toggleComplete(task).catchError((e) {
       if (!mounted) return;
       _showErrorSnack(e is ApiException ? e.message : '操作失败,请重试');
     });
     if (!mounted) return;
-    if (!wasCompleted) {
+    if (!task.completed) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -162,10 +159,6 @@ class _TasksPageState extends ConsumerState<TasksPage>
     );
   }
 
-  /// 跳转到 AI 导员,携带当前用户的真实最近待办(对齐要求 #4)。
-  ///
-  /// 仅发送必要字段(id/title/deadline/priority/status),后端会重新校验归属。
-  /// 若当前没有任何待办,仍然跳转(只是不携带 recent_tasks)。
   void _askCounselorWithTasks() {
     final upcoming = ref.read(upcomingTasksProvider);
     final recentTasks = upcoming.take(5).map((t) {
@@ -188,6 +181,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     final todayTasks = ref.watch(todayTasksProvider);
     final upcomingTasks = ref.watch(upcomingTasksProvider);
     final completedTasks = ref.watch(completedTasksProvider);
@@ -205,7 +199,9 @@ class _TasksPageState extends ConsumerState<TasksPage>
           ),
           IconButton(
             icon: Icon(
-              _searchExpanded ? Icons.search_off_rounded : Icons.search_rounded,
+              _searchExpanded
+                  ? Icons.search_off_rounded
+                  : Icons.search_rounded,
             ),
             tooltip: '搜索',
             onPressed: () {
@@ -231,27 +227,34 @@ class _TasksPageState extends ConsumerState<TasksPage>
         ],
         bottom: _showCalendar
             ? null
-            : TabBar(
-                controller: _tabController,
-                isScrollable: false,
-                tabs: [for (final t in _tabs) Tab(text: t.label)],
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(44),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: false,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    tabs: [for (final t in _tabs) Tab(text: t.label)],
+                  ),
+                ),
               ),
       ),
       body: Column(
         children: [
-          if (_searchExpanded && !_showCalendar) _searchBar(),
-          if (_showCalendar) _calendarView(allTasks),
-          if (!_showCalendar) _categoryChips(),
+          if (_searchExpanded && !_showCalendar) _searchBar(c),
+          if (_showCalendar) _calendarView(allTasks, c),
+          if (!_showCalendar) _categoryChips(c),
           Expanded(
             child: _showCalendar
-                ? _dayTasksView(allTasks)
+                ? _dayTasksView(allTasks, c)
                 : TabBarView(
                     controller: _tabController,
                     children: [
-                      _listBody(_filteredTasks(todayTasks)),
-                      _listBody(_filteredTasks(upcomingTasks)),
-                      _listBody(_filteredTasks(completedTasks)),
-                      _listBody(_filteredTasks(allTasks)),
+                      _listBody(_filteredTasks(todayTasks), c),
+                      _listBody(_filteredTasks(upcomingTasks), c),
+                      _listBody(_filteredTasks(completedTasks), c),
+                      _listBody(_filteredTasks(allTasks), c),
                     ],
                   ),
           ),
@@ -265,7 +268,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
     );
   }
 
-  Widget _searchBar() {
+  Widget _searchBar(AppColorScheme c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.edge,
@@ -292,10 +295,10 @@ class _TasksPageState extends ConsumerState<TasksPage>
     );
   }
 
-  Widget _categoryChips() {
+  Widget _categoryChips(AppColorScheme c) {
     final categories = <TaskCategory?>[null, ...TaskCategory.values];
     return SizedBox(
-      height: 44,
+      height: 42,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(
@@ -311,22 +314,20 @@ class _TasksPageState extends ConsumerState<TasksPage>
           return GestureDetector(
             onTap: () => setState(() => _categoryFilter = cat),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: selected ? AppColors.primary : AppColors.bgSunken,
-                borderRadius: BorderRadius.circular(999),
+                color: selected ? c.primary : c.bgSurface,
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: selected ? AppColors.primary : Colors.transparent,
-                  width: 0.8,
+                  color: selected ? c.primary : c.border,
+                  width: 0.6,
                 ),
               ),
               child: Center(
                 child: Text(
                   label,
                   style: AppTypography.label.copyWith(
-                    color: selected
-                        ? AppColors.onPrimary
-                        : AppColors.textSecondary,
+                    color: selected ? c.onPrimary : c.textSecondary,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
@@ -338,7 +339,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
     );
   }
 
-  Widget _calendarView(List<Task> allTasks) {
+  Widget _calendarView(List<Task> allTasks, AppColorScheme c) {
     final now = DateTime.now();
     final firstOfMonth = DateTime(now.year, now.month, 1);
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
@@ -352,128 +353,127 @@ class _TasksPageState extends ConsumerState<TasksPage>
       }
     }
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(
-        AppSpacing.edge,
-        8,
-        AppSpacing.edge,
-        4,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.edge, 8, AppSpacing.edge, 4,
       ),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.bgSurface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border, width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '${now.year}年${now.month}月',
-                style: AppTypography.subtitle,
-              ),
-              const Spacer(),
-              Text(
-                '共 ${daysWithTasks.length} 天有任务',
-                style: AppTypography.caption,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: ['一', '二', '三', '四', '五', '六', '日'].map((w) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    w,
-                    style: AppTypography.label.copyWith(
-                      color: AppColors.textTertiary,
-                      fontSize: 11,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: c.bgSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.border, width: 0.6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '${now.year}年${now.month}月',
+                  style: AppTypography.subtitle,
+                ),
+                const Spacer(),
+                Text(
+                  '共 ${daysWithTasks.length} 天有任务',
+                  style: AppTypography.caption,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: ['一', '二', '三', '四', '五', '六', '日'].map((w) {
+                return Expanded(
+                  child: Center(
+                    child: Text(
+                      w,
+                      style: AppTypography.label.copyWith(
+                        color: c.textTertiary,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 6),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 4,
-              crossAxisSpacing: 0,
-              childAspectRatio: 1,
+                );
+              }).toList(),
             ),
-            itemCount: firstWeekday + daysInMonth,
-            itemBuilder: (context, index) {
-              if (index < firstWeekday) return const SizedBox.shrink();
-              final day = index - firstWeekday + 1;
-              final isToday = day == now.day;
-              final isSelected = _selectedDay != null &&
-                  _selectedDay!.year == now.year &&
-                  _selectedDay!.month == now.month &&
-                  _selectedDay!.day == day;
-              final hasTask = daysWithTasks.contains(day);
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedDay =
-                        isSelected ? null : DateTime(now.year, now.month, day);
-                  });
-                },
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primary
-                        : isToday
-                            ? AppColors.primarySubtle
-                            : Colors.transparent,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '$day',
-                        style: AppTypography.body.copyWith(
-                          color: isSelected
-                              ? AppColors.onPrimary
-                              : isToday
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
-                          fontWeight: isToday || isSelected
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                          fontSize: 13,
-                        ),
-                      ),
-                      if (hasTask)
-                        Container(
-                          width: 4,
-                          height: 4,
-                          margin: const EdgeInsets.only(top: 2),
-                          decoration: BoxDecoration(
+            const SizedBox(height: 4),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisSpacing: 2,
+                crossAxisSpacing: 0,
+                childAspectRatio: 1,
+              ),
+              itemCount: firstWeekday + daysInMonth,
+              itemBuilder: (context, index) {
+                if (index < firstWeekday) return const SizedBox.shrink();
+                final day = index - firstWeekday + 1;
+                final isToday = day == now.day;
+                final isSelected = _selectedDay != null &&
+                    _selectedDay!.year == now.year &&
+                    _selectedDay!.month == now.month &&
+                    _selectedDay!.day == day;
+                final hasTask = daysWithTasks.contains(day);
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedDay =
+                          isSelected ? null : DateTime(now.year, now.month, day);
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? c.primary
+                          : isToday
+                              ? c.primarySubtle
+                              : Colors.transparent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '$day',
+                          style: AppTypography.body.copyWith(
                             color: isSelected
-                                ? AppColors.onPrimary
-                                : AppColors.primary,
-                            shape: BoxShape.circle,
+                                ? c.onPrimary
+                                : isToday
+                                    ? c.primary
+                                    : c.textPrimary,
+                            fontWeight: isToday || isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            fontSize: 13,
                           ),
                         ),
-                    ],
+                        if (hasTask)
+                          Container(
+                            width: 4,
+                            height: 4,
+                            margin: const EdgeInsets.only(top: 2),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? c.onPrimary
+                                  : c.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-        ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _dayTasksView(List<Task> allTasks) {
+  Widget _dayTasksView(List<Task> allTasks, AppColorScheme c) {
     if (_selectedDay == null) {
       return const Center(
         child: Padding(
@@ -508,10 +508,10 @@ class _TasksPageState extends ConsumerState<TasksPage>
         message: AppDateUtils.formatDate(_selectedDay!),
       );
     }
-    return _listBody(_sortTasks(dayTasks));
+    return _listBody(_sortTasks(dayTasks), c);
   }
 
-  Widget _listBody(List<Task> tasks) {
+  Widget _listBody(List<Task> tasks, AppColorScheme c) {
     if (tasks.isEmpty) {
       return EmptyStateView(
         icon: Icons.checklist_rounded,
@@ -529,7 +529,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
         AppSpacing.edge,
         88,
       ),
-      separator: const SizedBox(height: 10),
+      separator: const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final task = tasks[index];
         return Dismissible(
@@ -553,7 +553,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
             } else {
               _softDelete(task);
             }
-            return false; // 不真删除,由数据驱动 UI
+            return false;
           },
           child: TaskCard(
             task: task,
@@ -573,7 +573,7 @@ class _TasksPageState extends ConsumerState<TasksPage>
     return Container(
       alignment: alignment,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      color: color.withValues(alpha: 0.10),
+      color: color.withValues(alpha: 0.08),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

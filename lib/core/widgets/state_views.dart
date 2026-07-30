@@ -29,15 +29,15 @@ class EmptyStateView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 72,
-            height: 72,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
               color: c.bgSunken,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 32, color: c.textTertiary),
+            child: Icon(icon, size: 28, color: c.textTertiary),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           Text(title, style: AppTypography.subtitle),
           if (message != null) ...[
             const SizedBox(height: 6),
@@ -82,7 +82,7 @@ class ErrorStateView extends StatelessWidget {
         children: [
           Icon(
             Icons.error_outline_rounded,
-            size: 36,
+            size: 34,
             color: c.danger,
           ),
           const SizedBox(height: 12),
@@ -114,12 +114,12 @@ class LoadingView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2.2),
           ),
           if (label != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(label!, style: AppTypography.caption),
           ],
         ],

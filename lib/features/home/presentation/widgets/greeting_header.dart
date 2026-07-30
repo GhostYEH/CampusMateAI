@@ -6,8 +6,6 @@ import '../../../../app/design_system/app_typography.dart';
 import '../../../../core/utils/date_utils.dart';
 
 /// 首页顶部问候区 — 时间问候 + 日期 + 未读角标 + 通知/头像入口。
-///
-/// 提取自原 HomePage 的 _Header。
 class GreetingHeader extends StatelessWidget {
   const GreetingHeader({
     super.key,
@@ -24,6 +22,7 @@ class GreetingHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.appColors;
     return Padding(
       padding:
           const EdgeInsets.fromLTRB(AppSpacing.edge, 16, AppSpacing.edge, 0),
@@ -35,7 +34,7 @@ class GreetingHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$greeting,$name',
+                  '$greeting，$name',
                   style: AppTypography.headline,
                 ),
                 const SizedBox(height: 4),
@@ -46,20 +45,20 @@ class GreetingHeader extends StatelessWidget {
                       style: AppTypography.caption,
                     ),
                     if (unread > 0) ...[
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 7,
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.accentSubtle,
+                          color: c.accentSubtle,
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           '$unread 条未读',
                           style: AppTypography.label.copyWith(
-                            color: AppColors.accent,
+                            color: c.accent,
                             fontSize: 10.5,
                           ),
                         ),
@@ -70,42 +69,41 @@ class GreetingHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => context.push('/notifications'),
             child: Stack(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.primarySubtle,
+                    color: c.primarySubtle,
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border, width: 0.8),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.notifications_none_rounded,
-                    color: AppColors.primary,
-                    size: 22,
+                    color: c.primary,
+                    size: 20,
                   ),
                 ),
                 if (unread > 0)
                   Positioned(
-                    right: 2,
-                    top: 2,
+                    right: 1,
+                    top: 1,
                     child: Container(
                       padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: AppColors.accent,
+                      decoration: BoxDecoration(
+                        color: c.accent,
                         shape: BoxShape.circle,
                       ),
                       constraints:
-                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
                       child: Text(
                         '$unread',
                         style: const TextStyle(
                           color: AppColors.onAccent,
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: FontWeight.w600,
                         ),
                         textAlign: TextAlign.center,
@@ -115,23 +113,22 @@ class GreetingHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => context.go('/profile'),
             child: Container(
-              width: 44,
-              height: 44,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: c.primary,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border, width: 0.8),
               ),
               child: const Center(
                 child: Text(
                   '知',
                   style: TextStyle(
                     color: AppColors.onPrimary,
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

@@ -210,15 +210,15 @@ class _FilterChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: selected ? c.primary : c.bgSurface,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: selected ? c.primary : c.border,
-              width: 1,
+              width: 0.6,
             ),
           ),
           child: Center(
@@ -289,7 +289,7 @@ class _CourseCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: c.bgSurface,
             borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: c.border, width: 1),
+            border: Border.all(color: c.border, width: 0.6),
           ),
           child: Row(
             children: [
