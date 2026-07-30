@@ -16,6 +16,62 @@ class LoginCredentials extends Equatable {
   List<Object?> get props => [username, password];
 }
 
+/// 注册请求凭据 — 与后端 RegisterRequest 对齐。
+///
+/// 仅允许 student / teacher 角色;admin 必须由管理员创建。
+class RegisterCredentials extends Equatable {
+  const RegisterCredentials({
+    required this.username,
+    required this.password,
+    this.role = UserRole.student,
+    this.displayName,
+    this.studentNumber,
+    this.teacherNumber,
+    this.college,
+    this.major,
+    this.grade,
+  });
+
+  final String username;
+  final String password;
+  final UserRole role;
+  final String? displayName;
+  final String? studentNumber;
+  final String? teacherNumber;
+  final String? college;
+  final String? major;
+  final String? grade;
+
+  /// 序列化为后端期望的 snake_case JSON。
+  Map<String, dynamic> toJson() => {
+        'username': username,
+        'password': password,
+        'role': role.name,
+        if (displayName != null && displayName!.isNotEmpty)
+          'display_name': displayName,
+        if (studentNumber != null && studentNumber!.isNotEmpty)
+          'student_number': studentNumber,
+        if (teacherNumber != null && teacherNumber!.isNotEmpty)
+          'teacher_number': teacherNumber,
+        if (college != null && college!.isNotEmpty) 'college': college,
+        if (major != null && major!.isNotEmpty) 'major': major,
+        if (grade != null && grade!.isNotEmpty) 'grade': grade,
+      };
+
+  @override
+  List<Object?> get props => [
+        username,
+        password,
+        role,
+        displayName,
+        studentNumber,
+        teacherNumber,
+        college,
+        major,
+        grade,
+      ];
+}
+
 /// 认证会话 — 登录成功后由后端返回(Mock 或 Real)。
 ///
 /// 包含 access_token / refresh_token / expires_at 与当前用户信息。

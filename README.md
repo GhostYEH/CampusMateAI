@@ -350,9 +350,25 @@ flutter test
 # 构建 Android APK(debug)
 flutter build apk --debug
 
+# 构建学生专用 Release APK
+# (RESTRICT_TO_STUDENT=true: 非学生角色登录会被拦截并提示改用 Web 端)
+flutter build apk --release --dart-define=RESTRICT_TO_STUDENT=true
+
+# 构建多角色 Release APK(教师/管理员也可登录,适用于内部测试)
+flutter build apk --release
+
 # 构建 Web
 flutter build web --release
 ```
+
+**角色分工约定**:
+- **Android 学生专用 APK**:打包时传 `--dart-define=RESTRICT_TO_STUDENT=true`,
+  登录阶段会拦截非学生角色(教师/管理员),提示「请使用 Web 端登录」。
+  已签发的服务端 token 会被主动撤销,避免悬挂会话。
+- **Web 端**:不传 `RESTRICT_TO_STUDENT`,师生均可登录,教师进入 `/teacher/workbench`,
+  学生进入 `/home`,管理员进入 `/admin/users`。
+- 拦截逻辑位于 `lib/app/providers/auth_providers.dart` 的 `AuthNotifier.login`,
+  通过 `AppConfig.effectiveRestrictToStudent` 判断(Web 平台永远放行)。
 
 ### 六、后端工程命令
 

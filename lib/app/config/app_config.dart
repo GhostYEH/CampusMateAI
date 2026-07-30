@@ -18,6 +18,8 @@ enum AppEnvironment {
 ///   仅在 debug 模式下生效,release 强制为 false)
 /// - `API_BASE_URL`: 真实后端地址(如 http://10.0.2.2:8000)
 /// - `USE_MOCK_EXPRESSION` (true|false): 是否使用 Mock 表情识别
+/// - `RESTRICT_TO_STUDENT` (true|false): 是否将非学生角色拦截在登录页
+///   (默认 false。打包学生专用 APK 时传 true,Web 端不传保持 false)
 ///
 /// 正式参赛版本约束(遵循 AGENTS.md §2.4 接口优先, Mock 可替换):
 /// - Release 构建强制 `useMockBackend=false`,确保不引用 Mock 实现。
@@ -29,6 +31,7 @@ class AppConfig {
     required this.useMockBackend,
     required this.useMockExpressionRecognition,
     required this.apiBaseUrl,
+    this.restrictToStudent = false,
   });
 
   final AppEnvironment environment;
@@ -47,6 +50,24 @@ class AppConfig {
   /// - Real 模式:必填,Android 模拟器默认 http://10.0.2.2:8000
   final String apiBaseUrl;
 
+  /// 是否仅允许学生角色登录(用于学生专用 APK 打包)。
+  ///
+  /// 为 true 时,登录成功后若用户角色不是 student,会拒绝进入应用并提示
+  /// 「请使用 Web 端登录教师/管理员账号」,session 不会被持久化。
+  ///
+  /// 仅在非 Web 平台生效(Web 端师生均可,通过 [effectiveRestrictToStudent] 计算)。
+  /// 默认 false,Web 端与教师 APK 不传此 define 时保持开放。
+  final bool restrictToStudent;
+
+  /// 实际生效的「仅学生」开关。
+  ///
+  /// Web 平台永远返回 false(师生均可使用 Web);
+  /// 原生平台(Android/iOS/桌面)返回 [restrictToStudent] 的值。
+  bool get effectiveRestrictToStudent {
+    if (kIsWeb) return false;
+    return restrictToStudent;
+  }
+
   /// 是否为 Mock 模式(便于在 debug 下显示"模拟模式"标识)。
   bool get isMockMode => useMockBackend || useMockExpressionRecognition;
 
@@ -59,18 +80,28 @@ class AppConfig {
   /// - `USE_MOCK_BACKEND` (true|false): 默认 false;release 模式下强制 false
   /// - `USE_MOCK_EXPRESSION` (true|false): 默认 false;release 模式下强制 false
   /// - `API_BASE_URL`: 默认 http://10.0.2.2:8000(Android 模拟器)
+  /// - `RESTRICT_TO_STUDENT` (true|false): 默认 false;Web 端永远为 false
   static AppConfig fromEnvironment() {
+    // RESTRICT_TO_STUDENT 在所有模式下都生效(包括 release),由 dart-define 控制。
+    // Web 平台永远为 false(由 [effectiveRestrictToStudent] 兜底,这里仍读取原值)。
+    final restrictStr = const String.fromEnvironment(
+      'RESTRICT_TO_STUDENT',
+      defaultValue: 'false',
+    ).toLowerCase();
+    final restrictToStudent = restrictStr == 'true' || restrictStr == '1';
+
     // Release 模式下强制禁用所有 Mock,保证正式参赛版本不引用 Mock 实现
     if (kReleaseMode) {
       const apiBaseUrl = String.fromEnvironment(
         'API_BASE_URL',
         defaultValue: 'http://10.0.2.2:8000',
       );
-      return const AppConfig(
+      return AppConfig(
         environment: AppEnvironment.production,
         useMockBackend: false,
         useMockExpressionRecognition: false,
         apiBaseUrl: apiBaseUrl,
+        restrictToStudent: restrictToStudent,
       );
     }
 
@@ -96,6 +127,7 @@ class AppConfig {
       useMockBackend: useMock,
       useMockExpressionRecognition: useMockExpr,
       apiBaseUrl: apiBaseUrl,
+      restrictToStudent: restrictToStudent,
     );
   }
 }

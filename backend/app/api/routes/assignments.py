@@ -98,6 +98,36 @@ def list_assignments(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
+@router.get("/student/assignments", response_model=Page)
+def list_student_assignments(
+    status: Optional[str] = Query(
+        None,
+        pattern="^(pending|submitted|overdue|graded)$",
+    ),
+    search: Optional[str] = Query(None, max_length=200),
+    sort_by: str = Query("deadline", pattern="^(deadline|created_at|title)$"),
+    sort_desc: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> Page:
+    if user.role != "student":
+        raise Forbidden("仅学生可访问学生任务列表")
+    items, total = container.assignment_repository.list_assignments_for_student(
+        user.id,
+        submission_status=status,
+        search=search,
+        sort_by=sort_by,
+        sort_desc=sort_desc,
+        page=page,
+        page_size=page_size,
+    )
+    for item in items:
+        item["author_name"] = _author_name(container, item["author_id"])
+    return Page.from_rows(items, total=total, page=page, page_size=page_size)
+
+
 @router.post("/classes/{class_id}/assignments", response_model=AssignmentOut, status_code=201)
 def create_assignment(
     class_id: str,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:campus_companion/app/providers/app_providers.dart';
 import 'package:campus_companion/core/widgets/state_views.dart';
@@ -70,6 +71,20 @@ class _FakeAuthService implements AuthService {
   @override
   Future<AppUser> getCurrentUser() async {
     await Future.delayed(delay);
+    return sessionUser ??
+        const AppUser(
+          id: 'u_test',
+          name: '测试用户',
+          role: UserRole.student,
+          avatarSeed: 'test',
+        );
+  }
+
+  @override
+  Future<AppUser> register(RegisterCredentials credentials) async {
+    await Future.delayed(delay);
+    // 登录页测试不直接验证注册逻辑,这里返回一个稳定用户即可。
+    // 注册流程的完整测试在 register_page_test.dart 中覆盖。
     return sessionUser ??
         const AppUser(
           id: 'u_test',
@@ -164,6 +179,44 @@ void main() {
       expect(find.text('密码'), findsOneWidget);
       // 登录按钮
       expect(find.text('登录'), findsOneWidget);
+      // 注册入口(参赛版本必须暴露公开注册通道)
+      expect(find.text('还没有账号?'), findsOneWidget);
+      expect(find.text('注册账号'), findsOneWidget);
+    });
+
+    testWidgets('点击「注册账号」按钮跳转到 /register', (tester) async {
+      final container = makeContainer(
+        authService: _FakeAuthService(),
+      );
+      // 使用 MaterialApp.router + GoRouter,验证按钮触发路由跳转
+      final router = GoRouter(
+        initialLocation: '/login',
+        routes: [
+          GoRoute(
+            path: '/login',
+            builder: (context, state) => const LoginPage(),
+          ),
+          GoRoute(
+            path: '/register',
+            builder: (context, state) =>
+                const Scaffold(body: Center(child: Text('注册页占位'))),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await pumpLogin(tester);
+
+      // 点击「注册账号」按钮
+      await tester.tap(find.text('注册账号'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+
+      // 验证跳转到 /register
+      expect(find.text('注册页占位'), findsOneWidget);
     });
 
     testWidgets('不显示任何"演示模式"或"快捷登录"入口(参赛版本约束)', (tester) async {

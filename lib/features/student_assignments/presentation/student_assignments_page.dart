@@ -101,6 +101,9 @@ class _StudentAssignmentsPageState
           const SizedBox(height: AppSpacing.sm),
           Expanded(
             child: PagedListView<Assignment>(
+              key: ValueKey(
+                'student_assignments_$_status-$_search-$_sortBy-$_sortDesc',
+              ),
               fetchPage: (page, pageSize) => svc.listStudentAssignments(
                 status: _status == 'all' ? null : _status,
                 search: _search.isEmpty ? null : _search,

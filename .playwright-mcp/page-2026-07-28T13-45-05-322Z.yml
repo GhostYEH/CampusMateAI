@@ -1,0 +1,32 @@
+- generic [ref=f1e5] [cursor=pointer]:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic: 欢迎回来
+          - generic: 账号登录
+          - generic: CampusMate AI
+          - generic: 请输入密码后继续。
+          - generic: 校园事务智能陪伴助手
+          - generic: 账号
+          - generic: 智能协同 · 高效学习 · 连接校园
+          - textbox "请输入学号 / 工号 / 用户名" [ref=f1e10]: student_demo
+          - generic: 欢迎回来， 把今天的校园生活理清楚。
+          - generic: 密码
+          - generic [ref=f1e11]:
+            - textbox "请输入密码" [ref=f1e12]
+            - button "显示密码" [ref=f1e13]
+          - checkbox [ref=f1e14]
+          - button "记住账号" [ref=f1e15]
+          - generic: 通知、任务、学习陪伴和 AI 导员，都在同一个清晰的入口。
+          - button "登录" [active] [ref=f1e16]
+          - generic: 登录即表示同意遵守《校园网络安全规范》
+          - button "注册账号" [ref=f1e17]
+          - generic: 通知智能整理
+          - generic: 任务协同管理
+          - generic: AI 导员陪伴
+          - generic: 还没有账号?
+          - generic: 重要信息不遗漏
+          - generic: 学习事务更清楚
+          - generic: 答疑提醒更专业
+          - button "忘记密码？" [ref=f1e18]
