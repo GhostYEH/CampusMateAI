@@ -10,6 +10,7 @@ import {
   getTeacherCourses,
   getTeacherOverview,
   updateAssignmentStatus,
+  uploadAssignmentAttachment,
 } from "../services/portalRepository";
 
 const props = defineProps({ section: { type: String, default: "" } });
@@ -32,6 +33,10 @@ const selectedAssignment = ref(null);
 const insight = ref(null);
 const insightLoading = ref(false);
 const toast = ref("");
+const selectedFiles = ref([]);
+const uploadingFiles = ref(false);
+const uploadProgress = ref(0);
+const fileInputRef = ref(null);
 const form = reactive({
   title: "",
   class_group_id: "",
@@ -79,6 +84,32 @@ function resetForm() {
     submission_types: ["text", "file"],
     status: "published",
   });
+  selectedFiles.value = [];
+  uploadProgress.value = 0;
+}
+function formatFileSize(bytes) {
+  if (!bytes) return "未知大小";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+function handleFileSelect(event) {
+  const files = event.target.files;
+  if (!files || !files.length) return;
+  for (const f of files) {
+    if (f.size > 10 * 1024 * 1024) {
+      flash(`文件 "${f.name}" 超过 10MB 限制，已跳过`);
+      continue;
+    }
+    if (selectedFiles.value.some((item) => item.name === f.name && item.size === f.size)) {
+      continue;
+    }
+    selectedFiles.value.push(f);
+  }
+  if (fileInputRef.value) fileInputRef.value.value = "";
+}
+function removeFile(index) {
+  selectedFiles.value.splice(index, 1);
 }
 async function load() {
   loading.value = true;
