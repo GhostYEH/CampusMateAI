@@ -29,6 +29,27 @@ export async function createTeacherAssignment(payload) {
   return data;
 }
 
+export async function uploadAssignmentAttachment(assignmentId, file, onProgress) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await client.post(
+    `/assignments/${assignmentId}/attachments`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: onProgress
+        ? (event) => onProgress(Math.round((event.loaded * 100) / (event.total || file.size)))
+        : undefined,
+    },
+  );
+  return data;
+}
+
+export async function listAssignmentAttachments(assignmentId) {
+  const { data } = await client.get(`/assignments/${assignmentId}/attachments`);
+  return data;
+}
+
 export async function updateAssignmentStatus(assignmentId, status) {
   const action = status === "published" ? "publish" : "close";
   const { data } = await client.post(`/assignments/${assignmentId}/${action}`);

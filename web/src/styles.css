@@ -393,6 +393,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .row-actions button{border-radius:10px}
 .portal-drawer{background:#f7f8fc;border-radius:24px 0 0 24px}
 .portal-modal{border-radius:var(--radius)}
+.insight-modal{display:flex;flex-direction:column;overflow:hidden;padding:0}
+.insight-modal>.drawer-head{flex:0 0 auto;padding:24px 24px 17px;background:#fff}
+.insight-modal-body{min-height:0;overflow-y:auto;padding:0 24px 24px;overscroll-behavior:contain;scrollbar-gutter:stable}
+.insight-modal-body>.insight-metrics{margin-top:18px}
+.insight-modal-body>.modal-loading{margin-top:18px}
 .portal-loading i,.modal-loading i{border-radius:18px}
 .activity-create-card{background:#f0f2ff;border-color:#aab2f2;color:var(--primary)}
 

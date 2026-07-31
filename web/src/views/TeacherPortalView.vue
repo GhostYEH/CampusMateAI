@@ -264,6 +264,7 @@ onMounted(load);
     <div v-if="selectedAssignment" class="portal-overlay" role="presentation" @click.self="selectedAssignment = null" @keydown.esc="selectedAssignment = null">
       <section class="portal-modal insight-modal" role="dialog" aria-modal="true" aria-labelledby="assignment-insight-title">
         <div class="drawer-head"><div><span>任务完成情况</span><h2 id="assignment-insight-title">{{ selectedAssignment.title }}</h2></div><button class="icon-button" @click="selectedAssignment = null" aria-label="关闭"><UiIcon name="PhX" /></button></div>
+        <div class="insight-modal-body">
         <div v-if="insightLoading" class="modal-loading"><i></i><i></i><i></i></div>
         <template v-else-if="insight">
           <div class="insight-metrics">
@@ -281,6 +282,7 @@ onMounted(load);
             </article>
           </div>
         </template>
+        </div>
       </section>
     </div>
     </Teleport>
