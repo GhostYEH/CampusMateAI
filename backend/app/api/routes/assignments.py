@@ -324,4 +324,171 @@ def assignment_student_status(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
+# ===== 任务附件 =====
+
+
+def _guess_mime(ext: str) -> str:
+    return {
+        "txt": "text/plain",
+        "md": "text/markdown",
+        "pdf": "application/pdf",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "zip": "application/zip",
+        "py": "text/x-python",
+        "cpp": "text/x-c++",
+        "java": "text/x-java",
+        "c": "text/x-c",
+    }.get(ext, "application/octet-stream")
+
+
+@router.post("/assignments/{assignment_id}/attachments", response_model=AssignmentAttachmentOut, status_code=201)
+async def upload_assignment_attachment(
+    assignment_id: str,
+    file: UploadFile = File(...),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> AssignmentAttachmentOut:
+    """上传任务附件(教师/管理员)。
+
+    权限:
+    - 教师: 只能给自己创建的任务上传附件
+    - 管理员: 可以给任意任务上传附件
+    """
+    a = container.assignment_repository.get_assignment(assignment_id)
+    if a is None:
+        raise AssignmentNotFound()
+    cls = container.class_group_repository.get_class(a.class_group_id)
+    if cls is None:
+        raise ClassGroupNotFound()
+    _assert_can_manage_class(cls, user, container)
+    if a.author_id != user.id and user.role != "admin":
+        raise Forbidden("只能给自己创建的任务上传附件")
+    # 文件名安全校验
+    try:
+        safe_name = sanitize_filename(file.filename or "")
+    except ValueError as e:
+        raise FileNameUnsafe(str(e)) from e
+    # 扩展名白名单
+    ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if ext not in _ALLOWED_EXT:
+        raise AttachmentTypeNotAllowed(f"不支持的文件类型: .{ext}")
+    # 大小校验
+    content = await file.read()
+    size = len(content)
+    if size > _MAX_SIZE_BYTES:
+        raise AttachmentTooLarge("附件不能超过 10MB")
+    if size == 0:
+        raise FileNameUnsafe("文件为空")
+    # 存储路径
+    settings = get_settings()
+    base_dir = settings.knowledge_base_dir.parent / "assignment_attachments" / assignment_id
+    base_dir.mkdir(parents=True, exist_ok=True)
+    import uuid
+    stored_filename = f"{uuid.uuid4().hex[:16]}_{safe_name}"
+    storage_path = base_dir / stored_filename
+    if is_path_traversal(storage_path, base_dir):
+        raise FileNameUnsafe("存储路径非法")
+    storage_path.write_bytes(content)
+    mime = file.content_type or _guess_mime(ext)
+    att = container.assignment_repository.add_attachment(
+        assignment_id=assignment_id,
+        author_id=user.id,
+        original_filename=safe_name,
+        stored_filename=stored_filename,
+        mime_type=mime,
+        size_bytes=size,
+        storage_path=str(storage_path),
+    )
+    return AssignmentAttachmentOut(
+        id=att.id,
+        assignment_id=att.assignment_id,
+        author_id=att.author_id,
+        original_filename=att.original_filename,
+        stored_filename=att.stored_filename,
+        mime_type=att.mime_type,
+        size_bytes=att.size_bytes,
+        created_at=att.created_at,
+    )
+
+
+@router.get("/assignments/{assignment_id}/attachments")
+def list_assignment_attachments(
+    assignment_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> List[AssignmentAttachmentOut]:
+    """列出任务的所有附件。
+
+    权限:
+    - 学生: 只能看到自己所在班级已发布任务的附件
+    - 教师/管理员: 可查看任意有权限的任务的附件
+    """
+    a = container.assignment_repository.get_assignment(assignment_id)
+    if a is None:
+        raise AssignmentNotFound()
+    cls = container.class_group_repository.get_class(a.class_group_id)
+    if cls is None:
+        raise ClassGroupNotFound()
+    _assert_can_view_class(cls, user, container)
+    if user.role == "student" and a.status not in ("published", "closed"):
+        raise AssignmentNotFound()
+    rows = container.assignment_repository.list_attachments(assignment_id)
+    return [
+        AssignmentAttachmentOut(
+            id=r.id,
+            assignment_id=r.assignment_id,
+            author_id=r.author_id,
+            original_filename=r.original_filename,
+            stored_filename=r.stored_filename,
+            mime_type=r.mime_type,
+            size_bytes=r.size_bytes,
+            created_at=r.created_at,
+        ) for r in rows
+    ]
+
+
+@router.get("/assignments/{assignment_id}/attachments/{attachment_id}")
+def download_assignment_attachment(
+    assignment_id: str,
+    attachment_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+):
+    """下载任务附件。
+
+    权限:
+    - 学生: 只能下载自己所在班级已发布任务的附件
+    - 教师/管理员: 可下载任意有权限的任务的附件
+    """
+    a = container.assignment_repository.get_assignment(assignment_id)
+    if a is None:
+        raise AssignmentNotFound()
+    cls = container.class_group_repository.get_class(a.class_group_id)
+    if cls is None:
+        raise ClassGroupNotFound()
+    _assert_can_view_class(cls, user, container)
+    if user.role == "student" and a.status not in ("published", "closed"):
+        raise AssignmentNotFound()
+    att = container.assignment_repository.get_attachment(attachment_id)
+    if att is None or att.assignment_id != assignment_id:
+        raise NotFoundError("附件不存在或不属于该任务")
+    settings = get_settings()
+    attachments_root = (settings.knowledge_base_dir.parent / "assignment_attachments").resolve()
+    storage_path = Path(att.storage_path).resolve()
+    if is_path_traversal(storage_path, attachments_root):
+        raise NotFoundError("附件文件已被删除")
+    if not storage_path.exists() or not storage_path.is_file():
+        raise NotFoundError("附件文件已被删除")
+    return FileResponse(
+        str(storage_path),
+        filename=att.original_filename,
+        media_type=att.mime_type or "application/octet-stream",
+    )
+
+
 __all__ = ["router"]
