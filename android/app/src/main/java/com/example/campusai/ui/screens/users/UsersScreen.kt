@@ -29,12 +29,15 @@ data class UserRow(val name: String, val id: String, val role: String, val statu
 fun UsersScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val users = listOf(
+    val users = remember { mutableStateListOf(
         UserRow("林知夏", "2024010132", "学生", "正常"),
         UserRow("张明远", "T20180456", "教师", "正常"),
         UserRow("刘文静", "T20170628", "教师", "正常"),
         UserRow("陈一诺", "2024010108", "学生", "正常"),
-    )
+    ) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var newId by remember { mutableStateOf("") }
 
     val animatedAlpha by animateFloatAsState(
         targetValue = 1f,
@@ -75,7 +78,7 @@ fun UsersScreen(repository: AppRepository) {
             ) {
                 Text("平台用户", style = MaterialTheme.typography.titleSmall)
                 Button(
-                    onClick = { },
+                    onClick = { showCreateDialog = true },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
@@ -120,6 +123,26 @@ fun UsersScreen(repository: AppRepository) {
                 Text(user.status, fontSize = 13.sp, color = SuccessText, modifier = Modifier.weight(0.5f))
             }
         }
+    }
+
+    if (showCreateDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("创建用户") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("姓名") }, singleLine = true)
+                    OutlinedTextField(value = newId, onValueChange = { newId = it }, label = { Text("学号/工号") }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = newName.isNotBlank() && newId.isNotBlank(), onClick = {
+                    users.add(UserRow(newName.trim(), newId.trim(), "学生", "待启用"))
+                    newName = ""; newId = ""; showCreateDialog = false
+                }) { Text("创建") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateDialog = false }) { Text("取消") } },
+        )
     }
 }
 

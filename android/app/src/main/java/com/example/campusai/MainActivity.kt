@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.ui.navigation.AppNavHost
 import com.example.campusai.ui.screens.login.LoginScreen
 import com.example.campusai.ui.screens.shell.AppShell
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
         }
 
         val repository = AppRepository(application)
+        val moduleRepositories = ModuleRepositories.create(application, repository)
 
         setContent {
             val darkMode by repository.darkMode.collectAsState()
@@ -43,14 +45,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
             CampusAITheme(darkTheme = darkMode) {
-                CampusAIApp(repository)
+                CampusAIApp(repository, moduleRepositories)
             }
         }
     }
 }
 
 @Composable
-fun CampusAIApp(repository: AppRepository) {
+fun CampusAIApp(repository: AppRepository, modules: ModuleRepositories) {
     val session by repository.session.collectAsState()
     val navController = rememberNavController()
 
@@ -66,7 +68,8 @@ fun CampusAIApp(repository: AppRepository) {
         ) {
             AppNavHost(
                 navController = navController,
-                repository = repository
+                repository = repository,
+                modules = modules,
             )
         }
     }

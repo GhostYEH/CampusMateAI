@@ -1,16 +1,30 @@
 package com.example.campusai.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.ModuleRepositories
+import com.example.campusai.ui.screens.classrooms.ClassroomsScreen
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.CoursesScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
-import com.example.campusai.ui.screens.generic.GenericScreen
+import com.example.campusai.ui.screens.exams.ExamDetailScreen
+import com.example.campusai.ui.screens.exams.ExamEditScreen
+import com.example.campusai.ui.screens.exams.ExamsScreen
+import com.example.campusai.ui.screens.focus.FocusScreen
+import com.example.campusai.ui.screens.admin.AdminSystemScreen
+import com.example.campusai.ui.screens.teacher.TeacherPublishScreen
+import com.example.campusai.ui.screens.teacher.TeacherStatsScreen
+import com.example.campusai.ui.screens.lostfound.LostFoundDetailScreen
+import com.example.campusai.ui.screens.lostfound.LostFoundPublishScreen
+import com.example.campusai.ui.screens.lostfound.LostFoundScreen
+import com.example.campusai.ui.screens.lostfound.MyLostFoundScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
@@ -18,16 +32,26 @@ import com.example.campusai.ui.screens.profile.AccountScreen
 import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
+import com.example.campusai.ui.screens.services.GenericServiceFormScreen
+import com.example.campusai.ui.screens.services.LeaveRequestScreen
+import com.example.campusai.ui.screens.services.MyRequestsScreen
+import com.example.campusai.ui.screens.services.RepairRequestScreen
+import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
+import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.study.StudyScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.users.UsersScreen
+import java.net.URLEncoder
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
-    repository: AppRepository
+    repository: AppRepository,
+    modules: ModuleRepositories,
 ) {
+    fun go(route: String) = navController.navigate(route) { launchSingleTop = true }
+
     NavHost(
         navController = navController,
         startDestination = "home"
@@ -41,9 +65,7 @@ fun AppNavHost(
             }
         }
         composable("tasks") {
-            TasksScreen(repository) { route ->
-                navController.navigate(route) { launchSingleTop = true }
-            }
+            TasksScreen(repository) { route -> go(route) }
         }
         composable("task_detail/{taskId}") { backStackEntry ->
             val taskId = backStackEntry.arguments?.getString("taskId")?.toLongOrNull() ?: 0L
@@ -55,11 +77,23 @@ fun AppNavHost(
             )
         }
         composable("notifications") { NotificationsScreen(repository) }
-        composable("counselor") { CounselorScreen(repository) }
+        composable(
+            route = "counselor?prompt={prompt}",
+            arguments = listOf(navArgument("prompt") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }),
+        ) { backStackEntry ->
+            CounselorScreen(
+                repository = repository,
+                initialPrompt = backStackEntry.arguments?.getString("prompt"),
+            )
+        }
         composable("study") { StudyScreen(repository) }
         composable("courses") { CoursesScreen(repository) }
         composable("profile") {
-            ProfileScreen(repository) { route -> navController.navigate(route) { launchSingleTop = true } }
+            ProfileScreen(repository) { route -> go(route) }
         }
         composable("settings") {
             SettingsScreen(
@@ -77,7 +111,7 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "files",
                 onBack = { navController.popBackStack() },
-                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+                onNavigate = { route -> go(route) },
             )
         }
         composable("activities") {
@@ -85,7 +119,7 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "activities",
                 onBack = { navController.popBackStack() },
-                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+                onNavigate = { route -> go(route) },
             )
         }
         composable("favorites") {
@@ -93,13 +127,13 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "favorites",
                 onBack = { navController.popBackStack() },
-                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+                onNavigate = { route -> go(route) },
             )
         }
         composable("users") { UsersScreen(repository) }
-        composable("publish") { GenericScreen(repository, "publish") }
-        composable("stats") { GenericScreen(repository, "stats") }
-        composable("system") { GenericScreen(repository, "system") }
+        composable("publish") { TeacherPublishScreen(modules.teacher) }
+        composable("stats") { TeacherStatsScreen(modules.teacher) }
+        composable("system") { AdminSystemScreen(repository) }
         composable(
             route = "campus-news-detail/{newsId}",
             arguments = listOf(navArgument("newsId") { type = NavType.StringType }),
@@ -109,6 +143,173 @@ fun AppNavHost(
                 newsId = newsId,
                 repository = repository,
                 onBack = { navController.popBackStack() },
+            )
+        }
+
+        // ── 考试安排 ──
+        composable("exams") {
+            val reduceMotion by repository.reduceMotion.collectAsState()
+            ExamsScreen(
+                repository = modules.exams,
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("exam_detail/$id") },
+                onOpenEdit = { id -> go("exam_edit/${id ?: 0L}") },
+            )
+        }
+        composable(
+            route = "exam_detail/{examId}",
+            arguments = listOf(navArgument("examId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            val examId = backStackEntry.arguments?.getLong("examId") ?: 0L
+            ExamDetailScreen(
+                examId = examId,
+                repository = modules.exams,
+                onBack = { navController.popBackStack() },
+                onEdit = { id -> go("exam_edit/$id") },
+            )
+        }
+        composable(
+            route = "exam_edit/{examId}",
+            arguments = listOf(navArgument("examId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            ExamEditScreen(
+                examId = backStackEntry.arguments?.getLong("examId") ?: 0L,
+                repository = modules.exams,
+                appRepository = repository,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // ── 空教室 ──
+        composable("classrooms") {
+            val reduceMotion by repository.reduceMotion.collectAsState()
+            ClassroomsScreen(
+                repository = modules.classrooms,
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // ── 办事大厅 ──
+        composable("services") {
+            val reduceMotion by repository.reduceMotion.collectAsState()
+            ServicesScreen(
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> go(route) },
+            )
+        }
+        composable("service_leave") {
+            LeaveRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_repair") {
+            RepairRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(
+            route = "service_form/{kind}",
+            arguments = listOf(navArgument("kind") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            GenericServiceFormScreen(
+                kind = backStackEntry.arguments?.getString("kind") ?: "feedback",
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_mine") {
+            MyRequestsScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("service_detail/$id") },
+            )
+        }
+        composable(
+            route = "service_detail/{requestId}",
+            arguments = listOf(navArgument("requestId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            ServiceRequestDetailScreen(
+                requestId = backStackEntry.arguments?.getLong("requestId") ?: 0L,
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // ── 专注自习 ──
+        composable("focus") {
+            val reduceMotion by repository.reduceMotion.collectAsState()
+            FocusScreen(
+                repository = modules.focus,
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+                onOpenCounselorPlan = { prompt ->
+                    val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
+                    go("counselor?prompt=$encoded")
+                },
+            )
+        }
+
+        // ── 失物招领 ──
+        composable("lostfound") {
+            LostFoundScreen(
+                repository = modules.lostFound,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("lostfound_detail/$id") },
+                onOpenPublish = { go("lostfound_publish") },
+                onOpenMine = { go("lostfound_mine") },
+            )
+        }
+        composable("lostfound_publish") {
+            LostFoundPublishScreen(
+                repository = modules.lostFound,
+                appRepository = repository,
+                onBack = { navController.popBackStack() },
+                onPublished = { id ->
+                    navController.navigate("lostfound_detail/$id") {
+                        popUpTo("lostfound") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(
+            route = "lostfound_detail/{itemId}",
+            arguments = listOf(navArgument("itemId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            LostFoundDetailScreen(
+                itemId = backStackEntry.arguments?.getLong("itemId") ?: 0L,
+                repository = modules.lostFound,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable("lostfound_mine") {
+            MyLostFoundScreen(
+                repository = modules.lostFound,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("lostfound_detail/$id") },
             )
         }
     }

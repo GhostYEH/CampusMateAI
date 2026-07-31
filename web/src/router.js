@@ -3,9 +3,18 @@ import LoginView from "./views/LoginView.vue";
 import AppShell from "./views/AppShell.vue";
 import DashboardView from "./views/DashboardView.vue";
 import FeatureView from "./views/FeatureView.vue";
-import TeacherPortalView from "./views/TeacherPortalView.vue";
 import AdminPortalView from "./views/AdminPortalView.vue";
 import StudentActivitiesView from "./views/StudentActivitiesView.vue";
+
+const TeacherDashboardView = () => import("./views/teacher/TeacherDashboardView.vue");
+const TeacherCoursesView = () => import("./views/teacher/TeacherCoursesView.vue");
+const TeacherCourseDetailView = () => import("./views/teacher/TeacherCourseDetailView.vue");
+const TeacherAnnouncementsView = () => import("./views/teacher/TeacherAnnouncementsView.vue");
+const TeacherAssignmentsView = () => import("./views/teacher/TeacherAssignmentsView.vue");
+const TeacherAssignmentDetailView = () => import("./views/teacher/TeacherAssignmentDetailView.vue");
+const TeacherGradingView = () => import("./views/teacher/TeacherGradingView.vue");
+const TeacherAnalyticsView = () => import("./views/teacher/TeacherAnalyticsView.vue");
+const TeacherAiAssistantView = () => import("./views/teacher/TeacherAiAssistantView.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,9 +23,17 @@ const router = createRouter({
     { path: "/", component: AppShell, children: [
       { path: "", redirect: "/home" },
       { path: "home", component: DashboardView },
-      { path: "publish", component: TeacherPortalView, meta: { roles: ["teacher"] } },
-      { path: "stats", component: TeacherPortalView, meta: { roles: ["teacher"] } },
-      { path: "teacher-courses", component: TeacherPortalView, props: { section: "courses" }, meta: { roles: ["teacher"] } },
+
+      { path: "teacher/dashboard", component: TeacherDashboardView, meta: { roles: ["teacher"] } },
+      { path: "teacher/courses", component: TeacherCoursesView, meta: { roles: ["teacher"] } },
+      { path: "teacher/courses/:courseId", component: TeacherCourseDetailView, meta: { roles: ["teacher"] } },
+      { path: "teacher/announcements", component: TeacherAnnouncementsView, meta: { roles: ["teacher"] } },
+      { path: "teacher/assignments", component: TeacherAssignmentsView, meta: { roles: ["teacher"] } },
+      { path: "teacher/assignments/:assignmentId", component: TeacherAssignmentDetailView, meta: { roles: ["teacher"] } },
+      { path: "teacher/grading", component: TeacherGradingView, meta: { roles: ["teacher"] } },
+      { path: "teacher/analytics", component: TeacherAnalyticsView, meta: { roles: ["teacher"] } },
+      { path: "teacher/ai-assistant", component: TeacherAiAssistantView, meta: { roles: ["teacher"] } },
+
       { path: "users", component: AdminPortalView, meta: { roles: ["admin"] } },
       { path: "activities", component: AdminPortalView, meta: { roles: ["admin"] } },
       { path: "system", component: AdminPortalView, meta: { roles: ["admin"] } },

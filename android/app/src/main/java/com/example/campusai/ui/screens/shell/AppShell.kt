@@ -125,7 +125,8 @@ fun AppShell(
         else -> studentNavItems
     }.take(5)
     val backStack by navController.currentBackStackEntryAsState()
-    val route = backStack?.destination?.route ?: "home"
+    // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
+    val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
     val isProfileFlow = route in profileRoutes
 

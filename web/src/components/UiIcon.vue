@@ -1,17 +1,46 @@
 <script setup>
 import {
-  PhArrowCounterClockwise, PhArrowRight, PhBell, PhBookOpen, PhBookmarkSimple, PhCalendarBlank,
-  PhCalendarStar, PhChalkboardTeacher,
-  PhCaretRight, PhChartBar, PhChartLineUp, PhCheckCircle, PhCheckSquare,
-  PhCheck, PhCircle, PhClipboardText, PhClock, PhClockCounterClockwise, PhFileText, PhGear,
-  PhGraduationCap, PhHouse, PhList, PhLock, PhMagnifyingGlass, PhPaperPlaneTilt,
-  PhPause, PhPlay, PhPlus, PhPulse, PhRobot, PhShieldCheck, PhSidebarSimple,
-  PhSignOut, PhSlidersHorizontal, PhSmiley, PhSparkle, PhSquaresFour, PhStopCircle,
-  PhStudent, PhTrash, PhUser, PhUsers, PhWarningCircle, PhEye, PhEyeSlash,
-  PhX,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
+  PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
+  PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
+  PhChatCircleText, PhChatTeardropText, PhCheck, PhCheckCircle, PhCheckSquare,
+  PhChevronDown, PhChevronLeft, PhChevronRight, PhCircle, PhCircleNotch,
+  PhClipboardText, PhClock, PhClockCounterClockwise, PhCloudSlash, PhCopy,
+  PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
+  PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
+  PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
+  PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
+  PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
+  PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
+  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, ThumbsUp, PhThumbsUp,
+  PhUpload, PhUser, PhUsers, PhUsersThree, PhWarningCircle, PhEye, PhEyeSlash, PhEraser, PhX,
 } from "@phosphor-icons/vue";
-const props = defineProps({ name: { type: String, required: true }, size: { type: [Number, String], default: 20 }, weight: { type: String, default: "regular" } });
-const icons = { PhArrowCounterClockwise, PhArrowRight, PhBell, PhBookOpen, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher, PhCaretRight, PhChartBar, PhChartLineUp, PhCheck, PhCheckCircle, PhCheckSquare, PhCircle, PhClipboardText, PhClock, PhClockCounterClockwise, PhFileText, PhGear, PhGraduationCap, PhHouse, PhList, PhLock, PhMagnifyingGlass, PhPaperPlaneTilt, PhPause, PhPlay, PhPlus, PhPulse, PhRobot, PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley, PhSparkle, PhSquaresFour, PhStopCircle, PhStudent, PhTrash, PhUser, PhUsers, PhWarningCircle, PhEye, PhEyeSlash, PhX };
+
+const props = defineProps({
+  name: { type: String, required: true },
+  size: { type: [Number, String], default: 20 },
+  weight: { type: String, default: "regular" },
+});
+
+const icons = {
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
+  PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
+  PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
+  PhChatCircleText, PhChatTeardropText, PhCheck, PhCheckCircle, PhCheckSquare,
+  PhChevronDown, PhChevronLeft, PhChevronRight, PhCircle, PhCircleNotch,
+  PhClipboardText, PhClock, PhClockCounterClockwise, PhCloudSlash, PhCopy,
+  PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
+  PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
+  PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
+  PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
+  PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
+  PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
+  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, ThumbsUp, PhThumbsUp,
+  PhUpload, PhUser, PhUsers, PhUsersThree, PhWarningCircle, PhEye, PhEyeSlash, PhEraser, PhX,
+};
+
 const icon = icons[props.name] || PhCircle;
 </script>
 <template><component :is="icon" :size="size" :weight="weight" aria-hidden="true" /></template>
