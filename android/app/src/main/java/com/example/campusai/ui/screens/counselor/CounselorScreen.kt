@@ -36,7 +36,6 @@ import com.example.campusai.data.model.ChatMessage
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.MockBadge
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.TypingIndicator
 import com.example.campusai.ui.components.enterAnimation
@@ -48,6 +47,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun CounselorScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
+    val backendOnline by repository.backendOnline.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -91,8 +91,12 @@ fun CounselorScreen(repository: AppRepository) {
 
     LaunchedEffect(expressionEnabled, expressionService) {
         if (expressionEnabled) {
-            expressionService.initialize()
-            expressionService.start()
+            try {
+                expressionService.initialize()
+                expressionService.start()
+            } catch (_: Exception) {
+                // 服务会把可展示的错误写入 status；页面保持可操作。
+            }
         } else if (expressionStatus !is ExpressionServiceStatus.Off) {
             expressionService.stop()
         }
@@ -108,12 +112,16 @@ fun CounselorScreen(repository: AppRepository) {
         }
     }
 
-    var messages by remember {
+    var messages by remember(mockMode) {
         mutableStateOf(
             listOf(
                 ChatMessage(
                     "assistant",
-                    "你好，我是 AI 导员小夏。课程流程、奖助政策、校园服务，都可以来问我。当前回答来自 Mock 知识库，仅供演示参考。",
+                    if (mockMode) {
+                        "你好，我是 AI 导员小夏。课程流程、奖助政策、校园服务，都可以来问我。当前为 Mock 知识库演示模式。"
+                    } else {
+                        "你好，我是 AI 导员小夏。课程流程、奖助政策、校园服务，都可以来问我。回答会结合校园知识库与后端配置的模型。"
+                    },
                 ),
             ),
         )
@@ -123,7 +131,9 @@ fun CounselorScreen(repository: AppRepository) {
         val question = text.trim()
         if (question.isEmpty() || sending) return
         val expressionAtSend = expressionResult.takeIf {
-            expressionEnabled &&
+            !mockMode &&
+                backendOnline &&
+                expressionEnabled &&
                 it.isStable &&
                 it.confidence >= 0.60 &&
                 it.label != ExpressionLabel.UNKNOWN &&
@@ -147,11 +157,16 @@ fun CounselorScreen(repository: AppRepository) {
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Background)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Background)
+            .padding(bottom = 112.dp), // 让出底部 Tab 栏 + 系统导航栏空间，避免输入框被遮挡
+    ) {
         LazyColumn(
             modifier = Modifier.weight(1f),
             state = listState,
-            contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 18.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { CounselorHeader(mockMode) }
@@ -170,7 +185,6 @@ fun CounselorScreen(repository: AppRepository) {
                     onToggle = {
                         if (expressionEnabled) {
                             expressionEnabled = false
-                            scope.launch { expressionService.stop() }
                         } else if (cameraPermissionGranted) {
                             permissionDenied = false
                             expressionEnabled = true
@@ -245,7 +259,6 @@ fun CounselorScreen(repository: AppRepository) {
     }
 }
 
-@Composable
 @Composable
 private fun CounselorExpressionPanel(
     enabled: Boolean,
@@ -410,14 +423,14 @@ private fun CounselorHeader(mockMode: Boolean) {
 }
 
 @Composable
-private fun CounselorHero(reduceMotion: Boolean) {
+private fun CounselorHero(reduceMotion: Boolean, mockMode: Boolean) {
     Box(
-        Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(24.dp))
+        Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(24.dp))
             .background(Surface).border(1.dp, Line, RoundedCornerShape(24.dp))
             .enterAnimation(enabled = !reduceMotion),
     ) {
         Row(
-            Modifier.fillMaxSize().padding(20.dp),
+            Modifier.fillMaxSize().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(15.dp),
         ) {
@@ -428,17 +441,22 @@ private fun CounselorHero(reduceMotion: Boolean) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("校园事务助手", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    MockBadge()
+                    ModeBadge(mockMode)
                 }
                 Text("帮你整理办事流程、材料和下一步", color = Muted, fontSize = 12.sp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Box(Modifier.size(7.dp).clip(CircleShape).background(Success))
-                    Text("Mock 知识库在线 · 结果仅供演示", color = Muted, fontSize = 10.sp)
+                    Text(
+                        if (mockMode) "Mock 知识库在线 · 结果仅供演示"
+                        else "真实后端链路 · 模型由服务端配置",
+                        color = Muted,
+                        fontSize = 10.sp,
+                    )
                 }
             }
         }
         Box(
-            Modifier.align(Alignment.BottomStart).padding(start = 20.dp)
+            Modifier.align(Alignment.BottomStart).padding(start = 16.dp)
                 .width(52.dp).height(3.dp).clip(CircleShape).background(Accent),
         )
     }
@@ -473,6 +491,23 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
             )
+            if (isUser && message.expressionLabel != null) {
+                Spacer(Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Face,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.78f),
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "已附带表情观察：${message.expressionLabel.displayName()}",
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = 9.sp,
+                    )
+                }
+            }
             if (!isUser) {
                 Spacer(Modifier.height(7.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -511,38 +546,69 @@ private fun ChatComposer(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
 ) {
+    val canSend = value.isNotBlank() && !sending
     Column(
-        Modifier.fillMaxWidth().background(Surface).border(1.dp, Line)
-            .navigationBarsPadding().imePadding().padding(12.dp, 10.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        Modifier
+            .fillMaxWidth()
+            .background(Surface)
+            .border(1.dp, Line)
+            .imePadding()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("输入你的校园事务问题…", fontSize = 13.sp) },
+                placeholder = { Text("输入你的校园事务问题…", fontSize = 13.sp, color = Muted) },
                 maxLines = 4,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Primary,
                     unfocusedBorderColor = InputBorder,
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    cursorColor = Primary,
                 ),
             )
             FilledIconButton(
                 onClick = onSend,
-                enabled = value.isNotBlank() && !sending,
-                modifier = Modifier.size(50.dp),
+                enabled = canSend,
+                modifier = Modifier.size(48.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = Primary,
                     contentColor = Color.White,
+                    disabledContainerColor = PrimarySoft,
+                    disabledContentColor = Primary.copy(alpha = 0.45f),
                 ),
-            ) { Icon(if (sending) Icons.Default.HourglassTop else Icons.Default.Send, "发送") }
+            ) {
+                Icon(
+                    if (sending) Icons.Default.HourglassTop else Icons.Default.Send,
+                    contentDescription = "发送",
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            Icon(Icons.Default.Shield, null, tint = Success, modifier = Modifier.size(13.dp))
-            Text("仅提供校园事务辅助，不替代学校正式通知或专业咨询", color = Muted, fontSize = 9.sp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                Icons.Default.Shield,
+                null,
+                tint = Success,
+                modifier = Modifier.size(12.dp),
+            )
+            Text(
+                "仅提供校园事务辅助，不替代学校正式通知或专业咨询",
+                color = Muted,
+                fontSize = 10.sp,
+            )
         }
     }
 }

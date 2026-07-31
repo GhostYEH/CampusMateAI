@@ -111,7 +111,7 @@
         .replace(/env\(safe-area-inset-bottom\)/g, '0px')
       const style = document.createElement('style')
       style.textContent = css + `
-        .profile-entry{padding-top:58px}
+        .profile-entry{padding-top:42px}
         .profile-copy,.profile-name,.profile-hint,.hero-dots i,.course-state-dot{display:block}
         .next-detail img{width:${27 * ratio}px;height:${27 * ratio}px}
         .deadline-icon-wrap img{width:${35 * ratio}px;height:${35 * ratio}px}
@@ -129,7 +129,8 @@
       const centerX = rect.width / 2
       const centerY = rect.height / 2
       const radius = Math.min(rect.width, rect.height) / 2 - 6
-      context.lineWidth = 8
+      context.lineWidth = 6
+      context.lineCap = 'round'
       context.strokeStyle = darkMode ? '#203F50' : '#E6EEF4'
       context.beginPath()
       context.arc(centerX, centerY, radius, 0, Math.PI * 2)

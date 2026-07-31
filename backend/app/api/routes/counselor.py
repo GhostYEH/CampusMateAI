@@ -25,14 +25,11 @@ self_report(对齐用户新要求):
 - 不得出现在错误日志或调试日志中;
 - context_used 只记录 self_report_present=true/false。
 
-expression_signal(对齐用户新要求,安全降级):
-- 真实 CNN 融合尚未开始,expression_signal 非空时继续忽略;
-- 增加 context_warning;
-- 不写入 LLM prompt;
-- 不触发危机判断;
-- 不保存;
-- 不在日志输出;
-- 不宣称表情上下文融合已完成。
+expression_signal(对齐用户新要求,安全边界):
+- 只接收稳定的 CNN 表情标签与置信度，不接收原始图像;
+- 经过白名单与置信度校验后，以辅助提示传给 LLM;
+- 不触发危机判断，不保存，不在日志输出;
+- 不得把可观察表情表述为心理或医学结论。
 
 学生询问"这个任务要交什么"时:
 - 优先使用教师发布的任务原文(通过 assignment_id 传递)。
@@ -521,7 +518,7 @@ async def chat(
         expression_warning,
     )
 
-    # 构造 recent_tasks + self_report 提示片段(传入 self_report,但 expression_signal 不传入)
+    # 构造 recent_tasks + self_report 提示片段；表情信号单独走安全提示
     tasks_hint = _build_recent_tasks_hint(sanitized_tasks, req.self_report)
 
     if req.stream:
@@ -581,8 +578,8 @@ async def _stream_answer(
     - 当知识库无资料时,仍然返回"建议咨询辅导员"标准提示;
     - 任务上下文仅用于"已采纳时"的个性化执行建议,不能凭空生成校园规则。
 
-    重要(对齐用户新要求): expression_signal 严禁进入本层。
-    - expression_signal 在路由层已安全降级,不传入 RAG 服务;
+    重要(对齐用户新要求): expression_signal 只以经过校验的文字提示进入本层。
+    - 不传入原始表情对象或图像;
     - self_report 通过 tasks_hint 注入(已标注"仅供个性化参考");
     - recent_tasks 已通过 PersonalTaskRepository 验证,使用数据库权威字段。
     """

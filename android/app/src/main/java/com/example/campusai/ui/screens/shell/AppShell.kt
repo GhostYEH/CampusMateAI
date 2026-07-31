@@ -79,6 +79,14 @@ import kotlinx.coroutines.launch
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
+/**
+ * Bottom dock visible height reserved on top of the system navigation bar.
+ * Equals 76dp (dock row) + 6dp (top padding) + 10dp (bottom padding).
+ * Screens that draw content above the dock (FABs, lists' bottom contentPadding)
+ * should add this height to their own bottom insets.
+ */
+val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
+
 val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
@@ -121,8 +129,8 @@ fun AppShell(
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
     val isProfileFlow = route in profileRoutes
 
-    Column(
-        Modifier.fillMaxSize().background(Background)
+    Box(
+        Modifier.fillMaxSize().background(Background),
     ) {
         // The app uses page content and the bottom dock as its navigation model;
         // no secondary personal header is shown above the main tabs.
@@ -140,11 +148,13 @@ fun AppShell(
             )
         }
         Box(
-            Modifier.weight(1f).then(
+            Modifier.fillMaxSize().then(
                 if (route == "home" || isProfileFlow) Modifier else Modifier.statusBarsPadding(),
             ),
         ) { content() }
         CampusDock(
+            modifier = Modifier
+                .align(Alignment.BottomCenter),
             items = navItems,
             route = route,
             pendingCount = pendingCount,
@@ -235,6 +245,7 @@ private fun CampusTopBar(
 
 @Composable
 private fun CampusDock(
+    modifier: Modifier = Modifier,
     items: List<NavItem>,
     route: String,
     pendingCount: Int,
@@ -244,7 +255,7 @@ private fun CampusDock(
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
     val primaryColor = Primary
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 10.dp),

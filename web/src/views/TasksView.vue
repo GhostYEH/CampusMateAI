@@ -104,7 +104,6 @@ function removeTask(task) {
     <div v-if="toast" class="tasks-toast" role="status"><UiIcon name="PhCheckCircle" weight="fill" />{{ toast }}</div>
     <header class="tasks-heading">
       <div><span class="tasks-kicker"><i></i>今日安排</span><h1>待办</h1><p>今天先完成最重要的一小步</p></div>
-      <span class="tasks-mode"><i></i>Mock 模式</span>
     </header>
 
     <section class="task-progress-card" aria-label="今日进度">

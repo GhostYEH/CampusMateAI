@@ -1,7 +1,7 @@
 <view class="page tab-page home-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
   <button
     class="profile-entry enter"
-    style="padding-top: {{statusBarHeight + 34}}px;"
+    style="padding-top: {{statusBarHeight + 18}}px;"
     bindtap="openProfile"
     aria-label="进入个人中心"
   >

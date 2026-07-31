@@ -32,6 +32,7 @@ import com.example.campusai.data.model.FavoriteItem
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -69,23 +70,10 @@ fun PersonalHubScreen(
         containerColor = Background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            if (section == PersonalSection.Files) {
-                SmallFloatingActionButton(
-                    onClick = { showAddFile = true },
-                    containerColor = Primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Icon(Icons.Default.Add, "添加文件记录")
-                }
-            }
-        },
     ) { inner ->
-        Column(
-            Modifier.fillMaxSize().padding(inner).background(Background),
-        ) {
-            PersonalHubHeader(section.label, onBack)
+        Box(Modifier.fillMaxSize().padding(inner).background(Background)) {
+            Column(Modifier.fillMaxSize()) {
+                PersonalHubHeader(section.label, onBack)
             PersonalSectionTabs(
                 selected = section,
                 onSelected = {
@@ -174,6 +162,21 @@ fun PersonalHubScreen(
                             }
                         },
                     )
+                }
+            }
+            }
+
+            if (section == PersonalSection.Files) {
+                SmallFloatingActionButton(
+                    onClick = { showAddFile = true },
+                    containerColor = Primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 18.dp, bottom = BottomDockReservedHeight + 12.dp),
+                ) {
+                    Icon(Icons.Default.Add, "添加文件记录")
                 }
             }
         }

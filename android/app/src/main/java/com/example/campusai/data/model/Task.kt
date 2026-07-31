@@ -5,5 +5,6 @@ data class Task(
     val title: String,
     val due: String,
     val course: String,
-    val done: Boolean
+    val done: Boolean,
+    val description: String = "",
 )

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -103,11 +106,18 @@ fun CoursesScreen(repository: AppRepository) {
             else -> true
         }
     }
+    val floatingDockScrollPadding =
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
 
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().background(Background),
-        contentPadding = PaddingValues(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 30.dp),
+        contentPadding = PaddingValues(
+            start = 14.dp,
+            top = 12.dp,
+            end = 14.dp,
+            bottom = floatingDockScrollPadding,
+        ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { CoursesHeader(mockMode, reduceMotion) }

@@ -10,7 +10,6 @@ const error = ref("");
 const activities = ref([]);
 const query = ref("");
 const selected = ref(null);
-const useMock = computed(() => store.mockMode || !store.backendOnline);
 const filtered = computed(() => activities.value.filter((item) => `${item.title}${item.summary}${item.location}`.includes(query.value)));
 const categoryLabel = { campus: "校园活动", academic: "学术交流", volunteer: "志愿服务", competition: "竞赛", lecture: "讲座", sports: "体育" };
 function format(value) {
@@ -19,7 +18,7 @@ function format(value) {
 async function load() {
   loading.value = true;
   error.value = "";
-  try { activities.value = (await getActivities(useMock.value, { status: "published" })).items; }
+  try { activities.value = (await getActivities({ status: "published" })).items; }
   catch (err) { error.value = err.response?.data?.message || "活动加载失败"; }
   finally { loading.value = false; }
 }

@@ -1,20 +1,43 @@
 <view class="page tab-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
   <campus-header
-    title="我的课程"
-    subtitle="本学期课程与上课安排"
+    title="课程"
+    subtitle="把这周的学习节奏握在手里"
     mode="{{mockMode ? 'Mock 数据' : '真实后端'}}"
   />
 
   <view class="page-body">
-    <view class="week-summary enter">
-      <view>
-        <view class="week-kicker">本周课表</view>
-        <view class="week-value">{{courses.length}} 门课程</view>
+    <view wx:if="{{courses.length > 0}}" class="course-hero enter">
+      <view class="course-hero-main">
+        <view class="course-hero-kicker"><view class="hero-accent-dot"></view><text>下一节课 · {{courses[0].time}}</text></view>
+        <view class="course-hero-name">{{courses[0].name}}</view>
+        <view class="course-hero-meta">{{courses[0].location}} · {{courses[0].teacher}}</view>
+        <view class="course-hero-actions">
+          <button bindtap="scrollToCourses">本周课表</button>
+          <button bindtap="openDetail">课程详情</button>
+        </view>
       </view>
-      <view class="week-copy">周五还有两节专业核心课，记得提前整理实验材料。</view>
+      <view class="course-hero-side">
+        <view class="course-hero-icon">课</view>
+        <view class="course-hero-count">{{courses.length}} 门</view>
+      </view>
     </view>
 
-    <scroll-view class="filter-scroll enter enter-delay-1" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="course-metrics enter enter-delay-1">
+      <view class="course-metric"><view class="metric-value primary">{{courses.length}}</view><view class="metric-label">门课程</view></view>
+      <view class="metric-divider"></view>
+      <view class="course-metric"><view class="metric-value green">18</view><view class="metric-label">本周学时</view></view>
+      <view class="metric-divider"></view>
+      <view class="course-metric"><view class="metric-value orange">26.5</view><view class="metric-label">已修学分</view></view>
+      <view class="metric-divider"></view>
+      <view class="course-metric"><view class="metric-value purple">96%</view><view class="metric-label">出勤率</view></view>
+    </view>
+
+    <view class="course-section-head enter enter-delay-2">
+      <view class="course-section-title">我的课表</view>
+      <view class="course-section-count">{{filtered.length}} 门课程</view>
+    </view>
+
+    <scroll-view class="filter-scroll enter enter-delay-2" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="filter-row">
         <button
           wx:for="{{filters}}"
@@ -49,22 +72,24 @@
 
     <view wx:else class="course-list">
       <view wx:for="{{filtered}}" wx:key="code" class="course-card enter" style="animation-delay: {{index * 45}}ms;">
-        <view class="course-top">
-          <view class="course-code">{{item.code}}</view>
-          <view class="course-type">{{item.type}}</view>
-        </view>
-        <view class="course-name">{{item.name}}</view>
-        <view class="course-detail">
-          <view class="detail-block">
-            <view class="detail-label">时间</view>
-            <view class="detail-value">{{item.weekday}} · {{item.time}}</view>
+        <view class="course-code-box">{{item.code}}</view>
+        <view class="course-main">
+          <view class="course-title-row">
+            <view class="course-name">{{item.name}}</view>
+            <view class="course-type">{{item.type}}</view>
           </view>
-          <view class="detail-block">
-            <view class="detail-label">地点</view>
-            <view class="detail-value">{{item.location}}</view>
+          <view class="course-teacher">{{item.teacher}} · {{item.location}}</view>
+          <view class="course-meta-row">
+            <text>{{item.weekday}} {{item.time}}</text>
+            <text>{{item.code}}</text>
           </view>
         </view>
-        <view class="course-teacher">{{item.teacher}}老师</view>
+        <view class="course-attendance">
+          <view class="attendance-bar"><view class="attendance-fill" style="width: {{index === 0 ? 96 : index === 1 ? 92 : 94}}%;"></view></view>
+          <view class="attendance-value">{{index === 0 ? '96%' : index === 1 ? '92%' : '94%'}}</view>
+          <view class="attendance-label">出勤率</view>
+        </view>
+        <view class="course-chevron">›</view>
       </view>
     </view>
   </view>

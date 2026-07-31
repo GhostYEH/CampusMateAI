@@ -5,6 +5,7 @@
       wx:key="pagePath"
       class="tab-item {{selected === index ? 'selected' : ''}}"
       data-path="{{item.pagePath}}"
+      data-index="{{index}}"
       bindtap="switchTab"
       aria-label="{{item.text}}"
     >

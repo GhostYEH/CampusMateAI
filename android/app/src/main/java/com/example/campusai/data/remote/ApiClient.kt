@@ -6,10 +6,11 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.example.campusai.BuildConfig
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private const val BASE_URL = "http://10.0.2.2:8000/api/v1/"
+    private val BASE_URL = BuildConfig.API_BASE_URL
 
     private var accessToken: String? = null
 

@@ -372,6 +372,18 @@ class AssignmentOut(BaseModel):
     published_at: Optional[str] = None
     created_at: str
     updated_at: str
+    attachments: List["AssignmentAttachmentOut"] = Field(default_factory=list)
+
+
+class AssignmentAttachmentOut(BaseModel):
+    id: str
+    assignment_id: str
+    author_id: str
+    original_filename: str
+    stored_filename: str
+    mime_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    created_at: str
 
 
 class AssignmentStatsOut(BaseModel):
@@ -521,6 +533,7 @@ __all__ = [
     "SubmissionUpdate",
     "SubmissionGrade",
     "AttachmentOut",
+    "AssignmentAttachmentOut",
     "SubmissionOut",
     "TeacherDashboard",
     "StudentDashboard",

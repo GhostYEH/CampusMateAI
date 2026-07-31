@@ -11,6 +11,7 @@
         <view class="hero-label">今日进度</view>
         <view class="hero-value">{{pendingCount === 0 ? '都完成啦' : '还有 ' + pendingCount + ' 项'}}</view>
         <view class="hero-copy">专注当下，不必一次做完所有事。</view>
+        <view class="hero-priority"><view class="priority-dot"></view><text>优先处理临近截止任务</text></view>
       </view>
       <view class="progress-badge">
         <view class="progress-value">{{progress}}%</view>
@@ -19,7 +20,8 @@
     </view>
 
     <view class="task-toolbar enter enter-delay-1">
-      <view class="filters">
+      <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="filters">
         <button
           wx:for="{{filters}}"
           wx:key="*this"
@@ -27,8 +29,14 @@
           data-filter="{{item}}"
           bindtap="chooseFilter"
         >{{item}}</button>
-      </view>
-      <button class="add-button" hover-class="button-pressed" bindtap="openAdd">新建待办</button>
+        </view>
+      </scroll-view>
+      <button class="add-button" hover-class="button-pressed" bindtap="openAdd">＋ 新建</button>
+    </view>
+
+    <view class="task-section-head enter enter-delay-2">
+      <view class="task-section-title">{{filter}}</view>
+      <view class="task-section-count">{{filtered.length}} 项</view>
     </view>
 
     <state-view
@@ -48,9 +56,9 @@
 
     <view wx:else class="task-list">
       <view wx:for="{{filtered}}" wx:key="id" class="task-card {{item.done ? 'done' : ''}} enter" style="animation-delay: {{index * 45}}ms;">
-        <button class="check-button {{item.done ? 'checked' : ''}}" data-id="{{item.id}}" bindtap="toggleTask" aria-label="切换完成状态">
+        <view class="check-button {{item.done ? 'checked' : ''}}" data-id="{{item.id}}" bindtap="toggleTask" aria-label="切换完成状态" role="button">
           <view class="check-core"></view>
-        </button>
+        </view>
         <view class="task-main" data-id="{{item.id}}" bindtap="toggleTask">
           <view class="task-title">{{item.title}}</view>
           <view class="task-meta">
@@ -58,7 +66,7 @@
             <text> · {{item.course}}</text>
           </view>
         </view>
-        <button class="delete-button" data-id="{{item.id}}" bindtap="deleteTask">删除</button>
+        <button class="delete-button" data-id="{{item.id}}" bindtap="deleteTask">移除</button>
       </view>
     </view>
   </view>

@@ -18,6 +18,7 @@ from typing import List, Optional
 from ..database.sqlite_db import Database
 from ..models.multi_role import (
     AnnouncementRow,
+    AssignmentAttachmentRow,
     AssignmentRow,
     CampusActivityRow,
     ClassGroupRow,
@@ -1320,6 +1321,65 @@ class AssignmentRepository:
                 (teacher_id,),
             )
             return int(cur.fetchone()["n"])
+
+    # ===== 任务附件 =====
+
+    def add_attachment(
+        self,
+        *,
+        assignment_id: str,
+        author_id: str,
+        original_filename: str,
+        stored_filename: str,
+        mime_type: Optional[str],
+        size_bytes: int,
+        storage_path: str,
+    ) -> AssignmentAttachmentRow:
+        aid = _new_id("aatt")
+        now = _now_iso()
+        with self._db.transaction() as conn:
+            conn.execute(
+                """INSERT INTO assignment_attachments
+                   (id, assignment_id, author_id, original_filename, stored_filename,
+                    mime_type, size_bytes, storage_path, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (aid, assignment_id, author_id, original_filename, stored_filename,
+                 mime_type, size_bytes, storage_path, now),
+            )
+        return self.get_attachment(aid)  # type: ignore[return-value]
+
+    def get_attachment(self, attachment_id: str) -> Optional[AssignmentAttachmentRow]:
+        with self._db.query() as conn:
+            cur = conn.execute(
+                "SELECT * FROM assignment_attachments WHERE id = ?",
+                (attachment_id,),
+            )
+            row = cur.fetchone()
+            return AssignmentAttachmentRow.from_row(row) if row else None
+
+    def list_attachments(self, assignment_id: str) -> List[AssignmentAttachmentRow]:
+        with self._db.query() as conn:
+            cur = conn.execute(
+                "SELECT * FROM assignment_attachments WHERE assignment_id = ? ORDER BY created_at ASC",
+                (assignment_id,),
+            )
+            return [AssignmentAttachmentRow.from_row(r) for r in cur.fetchall()]
+
+    def delete_attachment(self, attachment_id: str) -> Optional[str]:
+        """Delete attachment and return its storage_path for file cleanup."""
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "SELECT storage_path FROM assignment_attachments WHERE id = ?",
+                (attachment_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            conn.execute(
+                "DELETE FROM assignment_attachments WHERE id = ?",
+                (attachment_id,),
+            )
+            return row["storage_path"]
 
 
 # ===== 提交仓库 =====

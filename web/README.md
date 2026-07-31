@@ -11,14 +11,10 @@ npm run dev
 
 默认地址：`http://127.0.0.1:5173`
 
-## 数据模式
+## 后端连接
 
-- 默认使用 Mock 模式，演示账号密码统一为 `Demo123456`：
-  - `student_demo`
-  - `teacher_demo`
-  - `admin_demo`
-- 设置 `VITE_API_BASE_URL` 并将 `campus_mock_mode` 设为 `false` 后使用真实后端。
-- 所有 AI、知识库和表情识别 Mock 能力均在页面中明确标注。
+Web 端统一使用真实 FastAPI 接口，不再提供 Mock 模式或本地演示数据分支。
+启动 `backend` 后，使用后端数据库中的账号登录；API 地址可通过 `VITE_API_BASE_URL` 配置，默认走 Vite 代理 `/api/v1`。
 
 ## 构建
 

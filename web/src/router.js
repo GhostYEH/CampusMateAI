@@ -27,8 +27,10 @@ const router = createRouter({
 });
 router.beforeEach((to) => {
   const saved = localStorage.getItem("campus_session");
+  const hasToken = Boolean(localStorage.getItem("campus_access_token"));
   let session = null;
   try { session = saved ? JSON.parse(saved) : null; } catch { localStorage.removeItem("campus_session"); }
+  if (!hasToken) session = null;
   if (!to.meta.public && !session) return "/login";
   if (to.path === "/login" && session) return "/home";
   const roles = to.matched.flatMap((record) => record.meta.roles || []);

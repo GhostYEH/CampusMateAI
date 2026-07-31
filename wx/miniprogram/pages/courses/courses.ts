@@ -15,6 +15,10 @@ Page({
   },
   onShow() {
     this.load()
+    wx.nextTick(() => {
+      const tabBar = this.getTabBar()
+      if (tabBar) tabBar.sync()
+    })
   },
   load() {
     const settings = repository.getSettings()
@@ -40,5 +44,18 @@ Page({
       ? this.data.courses
       : this.data.courses.filter((course) => course.type === filter)
     this.setData({ filter, filtered })
+  },
+  scrollToCourses() {
+    wx.pageScrollTo({ scrollTop: 0, duration: 180 })
+  },
+  openDetail() {
+    const course = this.data.courses[0]
+    if (!course) return
+    wx.showModal({
+      title: course.name,
+      content: `${course.code}\n${course.teacher} · ${course.location}\n${course.weekday} ${course.time}`,
+      showCancel: false,
+      confirmText: '知道了',
+    })
   },
 })

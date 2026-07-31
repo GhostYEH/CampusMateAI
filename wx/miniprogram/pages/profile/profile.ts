@@ -20,6 +20,10 @@ Page({
       settings,
       apiBaseUrlInput: settings.apiBaseUrl,
     })
+    wx.nextTick(() => {
+      const tabBar = this.getTabBar()
+      if (tabBar) tabBar.sync()
+    })
   },
   toggleMock(event: WechatMiniprogram.SwitchChange) {
     this.saveSetting({ mockMode: event.detail.value })

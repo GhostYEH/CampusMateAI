@@ -262,6 +262,21 @@ CREATE TABLE IF NOT EXISTS submission_attachments (
     FOREIGN KEY(submission_id) REFERENCES submissions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_submission_attachments_submission_id ON submission_attachments(submission_id);
+
+CREATE TABLE IF NOT EXISTS assignment_attachments (
+    id TEXT PRIMARY KEY,
+    assignment_id TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    mime_type TEXT,
+    size_bytes INTEGER,
+    storage_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_assignment_attachments_assignment_id ON assignment_attachments(assignment_id);
 """
 
 

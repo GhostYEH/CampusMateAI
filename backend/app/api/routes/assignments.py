@@ -1,26 +1,36 @@
-"""任务路由 — 列表/创建/详情/更新/发布/关闭/统计/学生状态。
+"""任务路由 — 列表/创建/详情/更新/发布/关闭/统计/学生状态/附件。
 
 权限:
 - 列表: 学生只看已发布任务;教师/管理员可看草稿。
 - 创建/更新/发布/关闭: 教师(须为本班级负责教师)或管理员。
 - 统计/student-status: 教师或管理员。
+- 附件: 上传(教师/管理员),下载(有权限的教师/学生/管理员),列表(有权限的教师/学生/管理员)。
 """
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 
+from ...core.config import Settings, get_settings
 from ...core.exceptions import (
     AssignmentNotFound,
+    AttachmentTooLarge,
+    AttachmentTypeNotAllowed,
     ClassGroupNotFound,
+    FileNameUnsafe,
     Forbidden,
     InvalidTransition,
+    NotFoundError,
 )
+from ...core.security import is_path_traversal, sanitize_filename
 from ...models.multi_role import AssignmentRow, UserRow
 from ...schemas.multi_role import (
+    AssignmentAttachmentOut,
     AssignmentCreate,
     AssignmentOut,
     AssignmentStatsOut,
@@ -34,6 +44,13 @@ from .classes import _assert_can_manage_class, _assert_can_view_class
 
 router = APIRouter(tags=["assignments"])
 
+# 允许的附件 MIME/扩展(与提交附件白名单一致)
+_ALLOWED_EXT = {
+    "txt", "md", "pdf", "doc", "docx", "xls", "xlsx",
+    "ppt", "pptx", "png", "jpg", "jpeg", "gif", "zip", "py", "cpp", "java", "c",
+}
+_MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
+
 
 def _container() -> ServiceContainer:
     return get_container()
@@ -43,6 +60,7 @@ def _assignment_to_out(
     a: AssignmentRow,
     *,
     author_name: Optional[str] = None,
+    container: Optional[ServiceContainer] = None,
 ) -> AssignmentOut:
     types = []
     if a.submission_types:
@@ -52,6 +70,21 @@ def _assignment_to_out(
                 types = []
         except (ValueError, TypeError):
             types = []
+    att_out: List[AssignmentAttachmentOut] = []
+    if container is not None:
+        att_rows = container.assignment_repository.list_attachments(a.id)
+        att_out = [
+            AssignmentAttachmentOut(
+                id=r.id,
+                assignment_id=r.assignment_id,
+                author_id=r.author_id,
+                original_filename=r.original_filename,
+                stored_filename=r.stored_filename,
+                mime_type=r.mime_type,
+                size_bytes=r.size_bytes,
+                created_at=r.created_at,
+            ) for r in att_rows
+        ]
     return AssignmentOut(
         id=a.id,
         class_group_id=a.class_group_id,
@@ -67,6 +100,7 @@ def _assignment_to_out(
         published_at=a.published_at,
         created_at=a.created_at,
         updated_at=a.updated_at,
+        attachments=att_out,
     )
 
 
@@ -94,7 +128,7 @@ def list_assignments(
     rows, total = container.assignment_repository.list_assignments(
         class_id, status=status_filter, page=page, page_size=page_size,
     )
-    items = [_assignment_to_out(r, author_name=_author_name(container, r.author_id)) for r in rows]
+    items = [_assignment_to_out(r, author_name=_author_name(container, r.author_id), container=container) for r in rows]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
@@ -150,7 +184,7 @@ def create_assignment(
         allow_resubmit=req.allow_resubmit,
         status=req.status,
     )
-    return _assignment_to_out(a, author_name=user.display_name or user.username)
+    return _assignment_to_out(a, author_name=user.display_name or user.username, container=container)
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentOut)
@@ -168,7 +202,7 @@ def get_assignment(
     _assert_can_view_class(cls, user, container)
     if user.role == "student" and a.status not in ("published", "closed"):
         raise AssignmentNotFound()
-    return _assignment_to_out(a, author_name=_author_name(container, a.author_id))
+    return _assignment_to_out(a, author_name=_author_name(container, a.author_id), container=container)
 
 
 @router.patch("/assignments/{assignment_id}", response_model=AssignmentOut)
@@ -191,7 +225,7 @@ def update_assignment(
     updated = container.assignment_repository.update_assignment(assignment_id, fields=fields)
     if updated is None:
         raise AssignmentNotFound()
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id))
+    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
 
 
 @router.post("/assignments/{assignment_id}/publish", response_model=AssignmentOut)
@@ -212,7 +246,7 @@ def publish_assignment(
     updated = container.assignment_repository.publish(assignment_id)
     if updated is None:
         raise InvalidTransition("任务当前状态不允许发布")
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id))
+    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
 
 
 @router.post("/assignments/{assignment_id}/close", response_model=AssignmentOut)
@@ -233,7 +267,7 @@ def close_assignment(
     updated = container.assignment_repository.close(assignment_id)
     if updated is None:
         raise InvalidTransition("任务当前状态不允许关闭")
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id))
+    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
 
 
 @router.get("/assignments/{assignment_id}/stats", response_model=AssignmentStatsOut)

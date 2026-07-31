@@ -29,17 +29,19 @@ button::after {
 }
 
 .page {
-  min-height: 100vh;
+  min-height: 100dvh;
   box-sizing: border-box;
+  overflow-x: hidden;
   background: var(--background);
 }
 
 .page-body {
+  box-sizing: border-box;
   padding: 24rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));
 }
 
 .tab-page .page-body {
-  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(220rpx + env(safe-area-inset-bottom));
 }
 
 .section-title {

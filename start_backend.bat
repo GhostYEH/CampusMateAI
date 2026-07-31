@@ -1,43 +1,57 @@
 @echo off
-chcp 65001 >nul
-title CampusMate AI Backend
+chcp 65001 >nul 2>&1
+setlocal enabledelayedexpansion
 
 cd /d "%~dp0backend"
 
-if not exist ".venv\Scripts\python.exe" (
-    echo [提示] 未找到虚拟环境 .venv,正在自动创建(首次较慢,请稍候)...
-    python -m venv .venv
-    if errorlevel 1 (
-        echo [错误] 创建虚拟环境失败,请确认已安装 Python 3.10+ 并已加入 PATH
-        pause
-        exit /b 1
-    )
-    call .venv\Scripts\activate.bat
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    if errorlevel 1 (
-        echo [错误] 安装依赖失败,请检查网络或 requirements.txt
-        pause
-        exit /b 1
-    )
-    echo [成功] 虚拟环境已创建并安装依赖
+echo ============================================
+echo   CampusMate AI Backend
+echo ============================================
+
+:: 1. check / copy .env
+if not exist ".env" (
+    echo [1/4] .env not found, copying from .env.example ...
+    copy /y ".env.example" ".env" >nul
+    echo        .env created. Edit backend\.env to configure LLM.
+) else (
+    echo [1/4] .env exists, skip
 )
 
-echo ========================================
-echo  CampusMate AI Backend
-echo  监听: http://0.0.0.0:8000
-echo  文档: http://localhost:8000/docs
-echo  健康: http://localhost:8000/api/v1/health
-echo ========================================
+:: 2. activate venv
+echo [2/4] Activating Python venv ...
+if exist "venv\Scripts\activate.bat" (
+    call "venv\Scripts\activate.bat"
+) else (
+    echo [ERROR] venv\Scripts\activate.bat not found!
+    echo         Please run in backend\: python -m venv venv
+    pause
+    exit /b 1
+)
+
+:: 3. install deps (with China mirror fallback)
+echo [3/4] Installing dependencies ...
+
+:: try default PyPI first, fallback to Tsinghua mirror on timeout
+pip install -r requirements.txt --default-timeout=60 2>&1
+if errorlevel 1 (
+    echo.
+    echo        Default PyPI timeout, retrying with Tsinghua mirror ...
+    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --default-timeout=60
+    if errorlevel 1 (
+        echo [WARNING] Dependency install failed, trying to continue anyway...
+    )
+)
+
+:: 4. start uvicorn
+echo [4/4] Starting FastAPI ...
 echo.
-echo [提示] 此窗口必须保持打开,关闭即停止后端
-echo [提示] 按 Ctrl+C 可停止服务
+echo    Backend : http://localhost:8000
+echo    API Docs: http://localhost:8000/docs
+echo    Health  : http://localhost:8000/
+echo    Press Ctrl+C to stop
+echo ============================================
 echo.
 
-".venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-echo.
-echo ========================================
-echo  后端已停止
-echo ========================================
 pause

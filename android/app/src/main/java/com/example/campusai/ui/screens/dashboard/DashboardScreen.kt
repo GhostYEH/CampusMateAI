@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
@@ -91,16 +95,24 @@ fun DashboardScreen(
 ) {
     val session by repository.session.collectAsState()
     val tasks by repository.tasks.collectAsState()
+    val campusNews by repository.campusNews.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val role = session?.role ?: "student"
+    val floatingDockScrollPadding =
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(Background)
             .statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 22.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 12.dp,
+            end = 16.dp,
+            bottom = floatingDockScrollPadding,
+        ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         if (role == "student") {
@@ -131,7 +143,7 @@ fun DashboardScreen(
             item { QuickActions(pendingCount, onNavigate, reduceMotion) }
             item { TodayCourseCard(onNavigate, reduceMotion) }
             item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
-            item { CampusUpdates(onNavigate, reduceMotion) }
+            item { CampusUpdates(campusNews, onNavigate, reduceMotion) }
         } else {
             item {
                 RoleDashboard(
@@ -466,7 +478,11 @@ private fun DeadlineRow(task: Task, urgent: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun CampusUpdates(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
+private fun CampusUpdates(
+    items: List<com.example.campusai.data.model.CampusNews>,
+    onNavigate: (String) -> Unit,
+    reduceMotion: Boolean,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -477,18 +493,13 @@ private fun CampusUpdates(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
         SectionTitle("校园动态", "查看更多") { onNavigate("notifications") }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(
-                listOf(
-                    Triple("图书馆延长开放时间", "考试周开放至 22:00", "图书馆"),
-                    Triple("“互联网+”校内选拔", "展示你的创意，赢取成长支持", "学工处"),
-                ),
-            ) { item ->
+            items(items, key = { it.id }) { item ->
                 Column(
                     modifier = Modifier
                         .width(236.dp)
                         .border(1.dp, Line, RoundedCornerShape(16.dp))
                         .clip(RoundedCornerShape(16.dp))
-                        .campusClickable { onNavigate("notifications") },
+                        .campusClickable { onNavigate("campus-news-detail/${item.id}") },
                 ) {
                     Box(Modifier.fillMaxWidth().height(76.dp)) {
                         Image(
@@ -497,22 +508,29 @@ private fun CampusUpdates(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                if (item.third == "图书馆") Color.Transparent
-                                else HeroBlue.copy(alpha = .62f),
-                            ),
-                        )
+                        val overlayColor = when {
+                            item.category.contains("学习") -> HeroBlue.copy(alpha = .62f)
+                            item.category.contains("创新") || item.category.contains("比赛") -> WarmOrange.copy(alpha = .55f)
+                            item.category.contains("心理") || item.category.contains("活动") -> Color(0xFF8B5CF6).copy(alpha = .55f)
+                            else -> Success.copy(alpha = .55f)
+                        }
+                        Box(Modifier.fillMaxSize().background(overlayColor))
+                        val icon = when {
+                            item.category.contains("学习") -> Icons.Default.School
+                            item.category.contains("创新") || item.category.contains("比赛") -> Icons.Default.Campaign
+                            item.category.contains("心理") -> Icons.Default.Favorite
+                            else -> Icons.Default.Notifications
+                        }
                         Icon(
-                            if (item.third == "图书馆") Icons.Default.School else Icons.Default.Campaign,
+                            icon,
                             null,
                             tint = Color.White,
                             modifier = Modifier.align(Alignment.Center).size(28.dp),
                         )
                     }
                     Column(Modifier.padding(11.dp)) {
-                        Text(item.first, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text(item.second, color = Muted, fontSize = 10.sp, maxLines = 1)
+                        Text(item.title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(item.summary, color = Muted, fontSize = 10.sp, maxLines = 1)
                     }
                 }
             }

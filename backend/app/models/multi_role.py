@@ -307,6 +307,33 @@ class SubmissionAttachmentRow:
 
 
 @dataclass
+class AssignmentAttachmentRow:
+    id: str
+    assignment_id: str
+    author_id: str
+    original_filename: str
+    stored_filename: str
+    mime_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    storage_path: str = ""
+    created_at: str = ""
+
+    @classmethod
+    def from_row(cls, row) -> "AssignmentAttachmentRow":
+        return cls(
+            id=row["id"],
+            assignment_id=row["assignment_id"],
+            author_id=row["author_id"],
+            original_filename=row["original_filename"],
+            stored_filename=row["stored_filename"],
+            mime_type=row["mime_type"],
+            size_bytes=row["size_bytes"],
+            storage_path=row["storage_path"],
+            created_at=row["created_at"],
+        )
+
+
+@dataclass
 class StudentAssignmentStatus:
     """单个任务下学生状态的聚合视图(通过 SQL 聚合生成,不单独建表)。"""
 
@@ -331,5 +358,6 @@ __all__ = [
     "AssignmentRow",
     "SubmissionRow",
     "SubmissionAttachmentRow",
+    "AssignmentAttachmentRow",
     "StudentAssignmentStatus",
 ]

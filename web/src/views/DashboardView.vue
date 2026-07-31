@@ -53,7 +53,7 @@ const days = [
       </div>
       <section class="schedule data-panel"><div class="section-head"><h2>本周课表</h2><div><button aria-label="上一周">‹</button><button>今天</button><button aria-label="下一周">›</button></div></div><div class="week-grid"><article v-for="(day,i) in days" :key="day[0]" :class="{today:i===4}"><strong>{{ day[0] }}</strong><small>{{ day[1] }}</small><p>{{ day[2] }}</p><p>{{ day[3] }}</p></article></div></section>
       <aside class="companion-rail">
-        <section class="companion"><div class="section-head"><h2>AI 导员 <em>Mock</em></h2><UiIcon name="PhRobot" :size="32" /></div><p>有问题，问小夏。</p><button v-for="q in ['期末考试周的自习教室推荐','如何申请课程重修？','奖学金申请条件有哪些？']" :key="q" @click="router.push('/counselor')">{{ q }}<UiIcon name="PhCaretRight" /></button></section>
+        <section class="companion"><div class="section-head"><h2>AI 导员 <em>真实后端</em></h2><UiIcon name="PhRobot" :size="32" /></div><p>有问题，问小夏。</p><button v-for="q in ['期末考试周的自习教室推荐','如何申请课程重修？','奖学金申请条件有哪些？']" :key="q" @click="router.push('/counselor')">{{ q }}<UiIcon name="PhCaretRight" /></button></section>
         <section class="study-card"><h2>学习陪伴</h2><p>本周学习时长</p><strong>12.6<small> 小时</small></strong><div class="mini-bars"><i v-for="h in [42,58,36,76,64,88,50]" :key="h" :style="{height:h+'%'}"></i></div><div class="focus-score"><span>专注状态<small>识别结果仅供辅助参考</small></span><b>良好</b></div><button class="primary-button" @click="router.push('/study')">开始学习</button></section>
       </aside>
     </template>
