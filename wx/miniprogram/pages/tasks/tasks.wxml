@@ -1,0 +1,81 @@
+<view class="page tab-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
+  <campus-header
+    title="待办"
+    subtitle="今天先完成最重要的一小步"
+    mode="{{mockMode ? 'Mock 数据' : '真实后端'}}"
+  />
+
+  <view class="page-body">
+    <view class="task-hero enter">
+      <view>
+        <view class="hero-label">今日进度</view>
+        <view class="hero-value">{{pendingCount === 0 ? '都完成啦' : '还有 ' + pendingCount + ' 项'}}</view>
+        <view class="hero-copy">专注当下，不必一次做完所有事。</view>
+      </view>
+      <view class="progress-badge">
+        <view class="progress-value">{{progress}}%</view>
+        <view class="progress-caption">已完成</view>
+      </view>
+    </view>
+
+    <view class="task-toolbar enter enter-delay-1">
+      <view class="filters">
+        <button
+          wx:for="{{filters}}"
+          wx:key="*this"
+          class="filter {{filter === item ? 'selected' : ''}}"
+          data-filter="{{item}}"
+          bindtap="chooseFilter"
+        >{{item}}</button>
+      </view>
+      <button class="add-button" hover-class="button-pressed" bindtap="openAdd">新建待办</button>
+    </view>
+
+    <state-view
+      wx:if="{{loading}}"
+      state="loading"
+      title="正在整理待办"
+      description="马上就好"
+    />
+    <state-view
+      wx:elif="{{filtered.length === 0}}"
+      state="empty"
+      title="{{filter === '待完成' ? '待办已清空，做得不错' : '这里暂时没有内容'}}"
+      description="给自己留一点休息时间吧"
+      actionText="{{filter === '待完成' ? '添加一项待办' : ''}}"
+      bindaction="openAdd"
+    />
+
+    <view wx:else class="task-list">
+      <view wx:for="{{filtered}}" wx:key="id" class="task-card {{item.done ? 'done' : ''}} enter" style="animation-delay: {{index * 45}}ms;">
+        <button class="check-button {{item.done ? 'checked' : ''}}" data-id="{{item.id}}" bindtap="toggleTask" aria-label="切换完成状态">
+          <view class="check-core"></view>
+        </button>
+        <view class="task-main" data-id="{{item.id}}" bindtap="toggleTask">
+          <view class="task-title">{{item.title}}</view>
+          <view class="task-meta">
+            <text class="task-due">{{item.due}}</text>
+            <text> · {{item.course}}</text>
+          </view>
+        </view>
+        <button class="delete-button" data-id="{{item.id}}" bindtap="deleteTask">删除</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showAdd}}" class="sheet-mask" bindtap="closeAdd">
+    <view class="sheet enter" catchtap="stopPropagation">
+      <view class="sheet-handle"></view>
+      <view class="sheet-title">新建待办</view>
+      <view class="sheet-copy">把任务写清楚，开始会更轻松。</view>
+      <view class="input-label">任务名称</view>
+      <input class="field" value="{{titleInput}}" placeholder="例如：完成数据结构实验报告" bindinput="onTitleInput" />
+      <view class="input-label">截止时间</view>
+      <input class="field" value="{{dueInput}}" placeholder="例如：今天 23:59" bindinput="onDueInput" />
+      <view class="sheet-actions">
+        <button class="secondary-button" bindtap="closeAdd">取消</button>
+        <button class="primary-button" disabled="{{!titleInput}}" bindtap="addTask">添加任务</button>
+      </view>
+    </view>
+  </view>
+</view>

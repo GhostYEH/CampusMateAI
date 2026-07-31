@@ -13,6 +13,7 @@ from ..repositories.document_repository import DocumentRepository
 from ..repositories.multi_role_repository import (
     AnnouncementRepository,
     AssignmentRepository,
+    CampusActivityRepository,
     ClassGroupRepository,
     CourseRepository,
     EnrollmentRepository,
@@ -48,6 +49,7 @@ class ServiceContainer:
     class_group_repository: ClassGroupRepository
     enrollment_repository: EnrollmentRepository
     announcement_repository: AnnouncementRepository
+    campus_activity_repository: CampusActivityRepository
     assignment_repository: AssignmentRepository
     submission_repository: SubmissionRepository
     # 个人待办仓库(学生从通知抽取生成的任务)
@@ -97,6 +99,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         class_group_repository=ClassGroupRepository(db),
         enrollment_repository=EnrollmentRepository(db),
         announcement_repository=AnnouncementRepository(db),
+        campus_activity_repository=CampusActivityRepository(db),
         assignment_repository=assignment_repo,
         submission_repository=SubmissionRepository(db),
         personal_task_repository=personal_task_repo,

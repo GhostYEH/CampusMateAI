@@ -5,12 +5,13 @@ import { probeBackend, realLogin } from "../services/api";
 const demos = {
   student_demo: { name: "林知夏", role: "student", detail: "计算机学院 · 大二" },
   teacher_demo: { name: "张明远", role: "teacher", detail: "计算机学院 · 副教授" },
-  admin_demo: { name: "系统管理员", role: "admin", detail: "信息中心" },
+  admin_demo: { name: "系统管理员", role: "admin", detail: "信息中心", id: "u_a1" },
 };
 export const useAppStore = defineStore("app", () => {
   const session = ref(JSON.parse(localStorage.getItem("campus_session") || "null"));
   const backendOnline = ref(false);
-  const mockMode = ref(localStorage.getItem("campus_mock_mode") !== "false");
+  const storedMockMode = localStorage.getItem("campus_mock_mode");
+  const mockMode = ref(storedMockMode === null ? import.meta.env.DEV : storedMockMode === "true");
   const reduceMotion = ref(localStorage.getItem("campus_reduce_motion") === "true");
   const tasks = ref(JSON.parse(localStorage.getItem("campus_tasks") || "null") || [
     { id: 1, title: "《数据结构》作业三：链表与栈", due: "今天 23:59", course: "课程作业", done: false },
@@ -27,9 +28,10 @@ export const useAppStore = defineStore("app", () => {
   const pendingCount = computed(() => tasks.value.filter((t) => !t.done).length);
   const persist = () => localStorage.setItem("campus_tasks", JSON.stringify(tasks.value));
   function toggleTask(id) { const t = tasks.value.find((x) => x.id === id); if (t) t.done = !t.done; persist(); }
-  function addTask(title, due = "待设置") { tasks.value.unshift({ id: Date.now(), title, due, course: "个人待办", done: false }); persist(); }
+  function addTask(title, due = "待设置", course = "个人待办", details = {}) { tasks.value.unshift({ id: Date.now(), title, due, course, done: false, ...details }); persist(); }
+  function updateTask(id, updates) { const task = tasks.value.find((item) => item.id === id); if (task) Object.assign(task, updates); persist(); }
   function deleteTask(id) { tasks.value = tasks.value.filter((x) => x.id !== id); persist(); }
-  async function login(username, password) {
+  async function login(username, password, expectedRole) {
     backendOnline.value = mockMode.value ? false : await probeBackend();
     let user;
     if (backendOnline.value && !mockMode.value) user = await realLogin(username, password);
@@ -37,11 +39,21 @@ export const useAppStore = defineStore("app", () => {
       if (!demos[username] || password !== "Demo123456") throw new Error("账号或密码不正确");
       user = demos[username];
     }
-    session.value = user;
-    localStorage.setItem("campus_session", JSON.stringify(user));
-    return user;
+    const normalized = {
+      ...user,
+      name: user.name || user.display_name || user.username,
+      detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", teacher: "教师", admin: "管理员" }[user.role]),
+    };
+    if (expectedRole && normalized.role !== expectedRole) {
+      localStorage.removeItem("campus_access_token");
+      localStorage.removeItem("campus_refresh_token");
+      throw new Error(`该账号不是${{ student: "学生", teacher: "教师", admin: "管理员" }[expectedRole]}账号，请切换登录入口`);
+    }
+    session.value = normalized;
+    localStorage.setItem("campus_session", JSON.stringify(normalized));
+    return normalized;
   }
   function logout() { localStorage.removeItem("campus_session"); localStorage.removeItem("campus_access_token"); session.value = null; }
   function setReduceMotion(v) { reduceMotion.value = v; localStorage.setItem("campus_reduce_motion", String(v)); }
-  return { session, backendOnline, mockMode, reduceMotion, tasks, notices, pendingCount, login, logout, toggleTask, addTask, deleteTask, setReduceMotion };
+  return { session, backendOnline, mockMode, reduceMotion, tasks, notices, pendingCount, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
 });

@@ -1,0 +1,71 @@
+<view class="page tab-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
+  <campus-header
+    title="我的课程"
+    subtitle="本学期课程与上课安排"
+    mode="{{mockMode ? 'Mock 数据' : '真实后端'}}"
+  />
+
+  <view class="page-body">
+    <view class="week-summary enter">
+      <view>
+        <view class="week-kicker">本周课表</view>
+        <view class="week-value">{{courses.length}} 门课程</view>
+      </view>
+      <view class="week-copy">周五还有两节专业核心课，记得提前整理实验材料。</view>
+    </view>
+
+    <scroll-view class="filter-scroll enter enter-delay-1" scroll-x enhanced show-scrollbar="{{false}}">
+      <view class="filter-row">
+        <button
+          wx:for="{{filters}}"
+          wx:key="*this"
+          class="filter-chip {{filter === item ? 'selected' : ''}}"
+          data-filter="{{item}}"
+          bindtap="chooseFilter"
+        >{{item}}</button>
+      </view>
+    </scroll-view>
+
+    <state-view
+      wx:if="{{loading}}"
+      state="loading"
+      title="正在整理课表"
+      description="课程信息马上就好"
+    />
+    <state-view
+      wx:elif="{{error}}"
+      state="error"
+      title="课程加载失败"
+      description="{{error}}"
+      actionText="重新加载"
+      bindaction="load"
+    />
+    <state-view
+      wx:elif="{{filtered.length === 0}}"
+      state="empty"
+      title="没有匹配课程"
+      description="换一个分类看看"
+    />
+
+    <view wx:else class="course-list">
+      <view wx:for="{{filtered}}" wx:key="code" class="course-card enter" style="animation-delay: {{index * 45}}ms;">
+        <view class="course-top">
+          <view class="course-code">{{item.code}}</view>
+          <view class="course-type">{{item.type}}</view>
+        </view>
+        <view class="course-name">{{item.name}}</view>
+        <view class="course-detail">
+          <view class="detail-block">
+            <view class="detail-label">时间</view>
+            <view class="detail-value">{{item.weekday}} · {{item.time}}</view>
+          </view>
+          <view class="detail-block">
+            <view class="detail-label">地点</view>
+            <view class="detail-value">{{item.location}}</view>
+          </view>
+        </view>
+        <view class="course-teacher">{{item.teacher}}老师</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,25 @@
+model: baseline_cnn
+seed: 20260731
+input_size: 48
+input_channels: 1
+normalization:
+  mean: [0.5]
+  std: [0.5]
+pretrained: false
+batch_size: 256
+num_workers: 4
+max_epochs: 30
+early_stopping_patience: 6
+learning_rate: 0.001
+weight_decay: 0.0001
+label_smoothing: 0.05
+loss: weighted_cross_entropy
+gradient_clip_norm: 1.0
+amp: true
+augmentation:
+  horizontal_flip_probability: 0.5
+  rotation_degrees: 8
+  translate_fraction: 0.08
+  scale: [0.9, 1.1]
+  brightness: 0.12
+  contrast: 0.12

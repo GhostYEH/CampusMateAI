@@ -36,8 +36,15 @@ import kotlinx.coroutines.delay
 fun PulseEffect(
     color: Color = Primary,
     pulseSize: Dp = 8.dp,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    if (!enabled) {
+        Box(
+            modifier = modifier.size(pulseSize).clip(CircleShape).background(color.copy(alpha = .25f)),
+        )
+        return
+    }
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -67,7 +74,8 @@ fun PulseEffect(
         Box(
             modifier = Modifier
                 .clip(CircleShape)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .background(color.copy(alpha = .24f)),
         )
     }
 }
@@ -178,7 +186,19 @@ fun TypingIndicator(
     modifier: Modifier = Modifier,
     dotColor: Color = Color(0xFF8896B8),
     dotSize: Dp = 6.dp,
+    enabled: Boolean = true,
 ) {
+    if (!enabled) {
+        androidx.compose.foundation.layout.Row(
+            modifier = modifier,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
+        ) {
+            repeat(3) {
+                Box(Modifier.size(dotSize).clip(CircleShape).background(dotColor))
+            }
+        }
+        return
+    }
     val infiniteTransition = rememberInfiniteTransition(label = "typing")
     val delays = listOf(0, 200, 400)
     Box(
@@ -203,7 +223,8 @@ fun TypingIndicator(
                     modifier = Modifier
                         .size(dotSize)
                         .scale(scale)
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .background(dotColor),
                 )
             }
         }

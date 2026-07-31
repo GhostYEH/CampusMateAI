@@ -1,0 +1,103 @@
+.tab-shell {
+  --tab-bg: #ffffff;
+  --tab-line: #dfe6eb;
+  --tab-text: #687c89;
+  --tab-selected: #2d6c92;
+  --tab-selected-bg: #e7f2f8;
+  position: fixed;
+  z-index: 999;
+  right: 24rpx;
+  bottom: calc(16rpx + env(safe-area-inset-bottom));
+  left: 24rpx;
+}
+
+.tab-shell.dark-tab {
+  --tab-bg: #132630;
+  --tab-line: #2a414d;
+  --tab-text: #a8bac4;
+  --tab-selected: #8ac1df;
+  --tab-selected-bg: #173d52;
+}
+
+.tab-bar {
+  height: 124rpx;
+  padding: 8rpx 12rpx;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4rpx;
+  border: 2rpx solid var(--tab-line);
+  border-radius: 38rpx;
+  background: var(--tab-bg);
+  box-sizing: border-box;
+  box-shadow: 0 10rpx 34rpx rgba(17, 40, 53, 0.08);
+}
+
+.dark-tab .tab-bar {
+  box-shadow: none;
+}
+
+.tab-item {
+  min-width: 0;
+  height: 104rpx;
+  margin: 0;
+  padding: 7rpx 2rpx 5rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 28rpx;
+  color: var(--tab-text);
+  background: transparent;
+  line-height: 1;
+}
+
+.icon-wrap {
+  position: relative;
+  width: 76rpx;
+  height: 54rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+}
+
+.selected .icon-wrap {
+  background: var(--tab-selected-bg);
+}
+
+.tab-icon {
+  width: 44rpx;
+  height: 44rpx;
+}
+
+.tab-label {
+  overflow: hidden;
+  font-size: 21rpx;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected .tab-label {
+  color: var(--tab-selected);
+  font-weight: 700;
+}
+
+.task-badge {
+  position: absolute;
+  top: -5rpx;
+  right: 2rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  padding: 0 7rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3rpx solid var(--tab-bg);
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: #f26c50;
+  font-size: 16rpx;
+  font-weight: 750;
+  box-sizing: border-box;
+}

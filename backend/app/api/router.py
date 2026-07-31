@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .routes import (
+    activities,
     announcements,
     assignments,
     auth,
@@ -26,6 +27,7 @@ api_router.include_router(knowledge.router, tags=["knowledge"])
 api_router.include_router(counselor.router, tags=["counselor"])
 # 多角色协同平台
 api_router.include_router(auth.router, tags=["auth"])
+api_router.include_router(activities.router, tags=["activities"])
 api_router.include_router(courses.router, tags=["courses"])
 api_router.include_router(classes.router, tags=["classes"])
 api_router.include_router(announcements.router, tags=["announcements"])

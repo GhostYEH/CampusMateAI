@@ -4,7 +4,7 @@
 > **教师-课程-班级-学生协同平台**
 
 本后端为原生 Android(Kotlin Compose)移动端与 Vue 3 Web 前端提供真实业务能力。
-**正式 Release 不包含任何"演示模式"或 Mock 业务切换开关**;所有教师、学生、课程、班级、通知、任务、提交、已读状态和统计数据均来自真实 FastAPI 接口与持久化数据库。
+**正式 Release 默认连接真实 FastAPI 接口与持久化数据库**;所有教师、学生、课程、班级、通知、任务、提交、已读状态和统计数据均以服务端数据为准。
 
 ## 当前能力
 
@@ -38,7 +38,7 @@
 - 用户注册接口(生产由管理员创建;dev/test 可通过 seeder 或仓库创建验收账号)
 - 附件下载接口(当前仅上传 + 列表)
 - 任务提醒推送(由客户端轮询 dashboard)
-- **任何"演示模式 / 一键重置演示数据 / 比赛演示数据恢复"等生产接口**(已下线)
+- **任何一键重置测试数据等生产接口**(已下线)
 
 ## 目录结构
 
@@ -298,6 +298,9 @@ curl -X POST http://localhost:8000/api/v1/knowledge/documents \
 | 提交 — 查看 | 仅自己 | 自己班级所有学生 | 全部 |
 | 提交 — 修改 | 仅自己(未截止) | ❌ | ❌ |
 | 提交 — 评分/评论 | ❌ | ✅(自己课程) | ✅ |
+| 全校活动 — 查看 | 仅已发布 | 仅已发布 | 全部状态 |
+| 全校活动 — 创建/发布/结束 | ❌ | ❌ | ✅ |
+| 平台账号 — 查询/创建/停用 | ❌ | ❌ | ✅ |
 | 工作台 | `/student/dashboard` | `/teacher/dashboard` | 两者均可 |
 
 ### 教师可见的学生信息边界(强制)
@@ -331,7 +334,7 @@ production 已被 config 校验拦截):
 | `student_demo` | `Demo123456` | student |
 | `admin_demo` | `Demo123456` | admin |
 
-完整 seeding 规模:2 教师 / 3 课程 / 4 班级 / 31 学生 / 6 通知 / 8 任务,
+完整 seeding 规模:2 教师 / 3 课程 / 4 班级 / 31 学生 / 6 通知 / 8 任务 / 3 全校活动,
 覆盖已读/未读/已交/未交/逾期/已评分等不同状态。所有 seeding 数据明确标注
 (display_name 含"(演示)"后缀,文档 `is_demo=true`),不冒充真实学校数据。
 正式生产环境中,验收账号应由管理员通过真实业务流程在数据库中创建。
@@ -350,7 +353,8 @@ production 已被 config 校验拦截):
 
 - 沿用现有 SQLite 封装,不重建 `app.db`,不破坏知识库 / 通知抽取 / RAG 表
 - 新增多角色表(users / courses / class_groups / enrollments / announcements /
-  announcement_read_receipts / assignments / submissions / submission_attachments)
+  announcement_read_receipts / assignments / submissions / submission_attachments /
+  campus_activities)
 - 索引: `users.username` / `users.student_number` / `users.teacher_number` /
   `courses.teacher_id` / `class_groups.course_id` / `enrollments.class_group_id` /
   `enrollments.user_id` / `announcements.class_group_id` / `assignments.class_group_id` /
@@ -368,9 +372,8 @@ production 已被 config 校验拦截):
 
 ### 当前限制
 
-- 附件下载接口尚未实现(当前仅上传 + 列表)
-- 用户注册接口未实现(生产由管理员创建)
 - 任务提醒推送未实现(由客户端轮询 dashboard)
+- 活动报名目前只提供信息发布与学生可见链路,正式报名需对接学校报名系统
 - 多角色权限测试不覆盖 SSE 流式 AI 上下文(仅覆盖非流式)
 
 ## 正式 Release 强约束

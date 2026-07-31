@@ -1,0 +1,90 @@
+<view class="page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
+  <campus-header
+    title="校园通知"
+    subtitle="重要信息，清楚整理"
+    mode="{{mockMode ? 'Mock 提取' : '真实后端'}}"
+    back
+  />
+
+  <view class="page-body">
+    <view class="extract-panel surface enter">
+      <view class="extract-head">
+        <view>
+          <view class="section-title">粘贴通知，智能提取</view>
+          <view class="section-subtitle">识别标题、来源、截止时间与待办步骤</view>
+        </view>
+        <view class="ai-label">AI 辅助</view>
+      </view>
+      <textarea
+        class="notice-input"
+        value="{{sourceText}}"
+        maxlength="2000"
+        placeholder="粘贴班群、公众号或教务通知正文"
+        bindinput="onSourceText"
+      ></textarea>
+      <button
+        class="primary-button extract-button"
+        disabled="{{!sourceText || extracting}}"
+        loading="{{extracting}}"
+        bindtap="extract"
+      >{{extracting ? '正在提取…' : '开始智能提取'}}</button>
+      <view class="mock-note">提取结果仅供确认，保存前请核对原通知。</view>
+    </view>
+
+    <view wx:if="{{result}}" class="result-panel enter">
+      <view class="result-accent"></view>
+      <view class="result-content">
+        <view class="result-top">
+          <view class="result-title">提取结果</view>
+          <view class="confidence">置信度 {{result.confidence * 100}}%</view>
+        </view>
+        <view class="result-name">{{result.title}}</view>
+        <view class="result-meta">{{result.source}} · {{result.deadline}}</view>
+        <view class="step-title">识别出的事项</view>
+        <view wx:for="{{result.tasks}}" wx:key="*this" class="result-step">
+          <view class="step-index">{{index + 1}}</view>
+          <view>{{item}}</view>
+        </view>
+        <button
+          class="{{result.saved ? 'secondary-button' : 'primary-button'}} save-button"
+          disabled="{{result.saved}}"
+          bindtap="saveTask"
+        >{{result.saved ? '已保存到待办' : '确认并保存到待办'}}</button>
+        <button wx:if="{{result.saved}}" class="view-task-button" bindtap="openTasks">去待办中查看</button>
+      </view>
+    </view>
+
+    <view class="notice-section enter enter-delay-1">
+      <view class="section-head">
+        <view>
+          <view class="section-title">最近通知</view>
+          <view class="section-subtitle">{{filtered.length}} 条结果</view>
+        </view>
+        <input class="search" value="{{query}}" placeholder="搜索标题或来源" bindinput="onQuery" />
+      </view>
+
+      <state-view
+        wx:if="{{loading}}"
+        state="loading"
+        title="正在同步通知"
+        description="重要信息马上就好"
+      />
+      <state-view
+        wx:elif="{{filtered.length === 0}}"
+        state="empty"
+        title="没有匹配通知"
+        description="换个关键词试试"
+      />
+      <view wx:else class="notice-list">
+        <view wx:for="{{filtered}}" wx:key="id" class="notice-item">
+          <view class="notice-status {{item.unread ? 'unread' : ''}}"></view>
+          <view class="notice-main">
+            <view class="notice-title">{{item.title}}</view>
+            <view class="notice-meta">{{item.source}} · {{item.time}}</view>
+          </view>
+          <view wx:if="{{item.unread}}" class="unread-label">未读</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

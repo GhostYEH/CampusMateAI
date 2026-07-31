@@ -1,0 +1,17 @@
+{
+  "name": "campus-ai-wechat-miniprogram",
+  "version": "1.0.0",
+  "description": "大学生校园事务智能陪伴助手微信小程序端",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^2.8.3-1",
+    "typescript": "4.9.5"
+  }
+}

@@ -109,6 +109,15 @@ class UserCreate(BaseModel):
     grade: Optional[str] = Field(None, max_length=32)
 
 
+class UserAdminUpdate(BaseModel):
+    display_name: Optional[str] = Field(None, min_length=1, max_length=128)
+    role: Optional[str] = Field(None, pattern="^(student|teacher|admin)$")
+    college: Optional[str] = Field(None, max_length=64)
+    major: Optional[str] = Field(None, max_length=64)
+    grade: Optional[str] = Field(None, max_length=32)
+    is_active: Optional[bool] = None
+
+
 class RegisterRequest(BaseModel):
     """公开注册请求(无需鉴权,仅限 student/teacher 自注册)。
 
@@ -266,6 +275,63 @@ class ReadStatusOut(BaseModel):
     read_count: int
     unread_count: int
     receipts: List[ReadReceiptOut] = Field(default_factory=list)
+
+
+# ===== 全校活动 =====
+
+
+class CampusActivityCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    summary: Optional[str] = Field(None, max_length=500)
+    content: str = Field(..., min_length=1, max_length=20000)
+    category: str = Field(
+        "campus",
+        pattern="^(campus|academic|volunteer|competition|lecture|sports)$",
+    )
+    location: Optional[str] = Field(None, max_length=200)
+    registration_deadline: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=1, le=100000)
+    status: str = Field("draft", pattern="^(draft|published)$")
+
+
+class CampusActivityUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    summary: Optional[str] = Field(None, max_length=500)
+    content: Optional[str] = Field(None, min_length=1, max_length=20000)
+    category: Optional[str] = Field(
+        None,
+        pattern="^(campus|academic|volunteer|competition|lecture|sports)$",
+    )
+    location: Optional[str] = Field(None, max_length=200)
+    registration_deadline: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=1, le=100000)
+    status: Optional[str] = Field(
+        None,
+        pattern="^(draft|published|closed|archived)$",
+    )
+
+
+class CampusActivityOut(BaseModel):
+    id: str
+    author_id: str
+    author_name: Optional[str] = None
+    title: str
+    summary: Optional[str] = None
+    content: str
+    category: str
+    location: Optional[str] = None
+    registration_deadline: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
+    capacity: Optional[int] = None
+    status: str
+    published_at: Optional[str] = None
+    created_at: str
+    updated_at: str
 
 
 # ===== 任务 =====
@@ -427,6 +493,7 @@ __all__ = [
     "TokenPair",
     "UserPublic",
     "UserCreate",
+    "UserAdminUpdate",
     "RegisterRequest",
     "AuthMeResponse",
     "CourseCreate",
@@ -442,6 +509,9 @@ __all__ = [
     "AnnouncementOut",
     "ReadReceiptOut",
     "ReadStatusOut",
+    "CampusActivityCreate",
+    "CampusActivityUpdate",
+    "CampusActivityOut",
     "AssignmentCreate",
     "AssignmentUpdate",
     "AssignmentOut",

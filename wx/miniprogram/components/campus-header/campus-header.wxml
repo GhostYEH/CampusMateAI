@@ -1,0 +1,13 @@
+<view class="header" style="padding-top: {{statusBarHeight}}px;">
+  <view class="header-row">
+    <button wx:if="{{back}}" class="back-button" hover-class="back-pressed" bindtap="onBack" aria-label="返回">返回</button>
+    <view class="heading">
+      <view class="title">{{title}}</view>
+      <view wx:if="{{subtitle}}" class="subtitle">{{subtitle}}</view>
+    </view>
+    <view wx:if="{{mode}}" class="mode-badge">
+      <view class="mode-dot"></view>
+      <text>{{mode}}</text>
+    </view>
+  </view>
+</view>

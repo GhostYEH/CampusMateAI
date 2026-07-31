@@ -110,10 +110,25 @@ backend/data/*.db-wal
 backend/data/*.db-shm
 backend/data/uploads/
 
-# CNN 训练产物与工程验证模型(随机工程模型,不纳入版本控制)
+# CNN 训练产物与工程验证模型(不纳入版本控制)
 ml/expression_recognition/artifacts/
 ml/expression_recognition/data/
 ml/**/fer2013*/
+ml/expression_recognition/.venv/
+ml/expression_recognition/.venv-export/
+ml/expression_recognition/manifests/*.csv
+ml/expression_recognition/manifests/*.jsonl
+ml/expression_recognition/manifests/*.json
+ml/expression_recognition/reports/generated/
+ml/expression_recognition/runs/
+ml/expression_recognition/exports/*.tflite
+ml/expression_recognition/exports/*.pt
+ml/expression_recognition/exports/*.pth
+ml/expression_recognition/exports/*.log
+ml/expression_recognition/exports/**/*.tflite
+ml/expression_recognition/exports/**/*.pt
+ml/expression_recognition/exports/**/*.pth
+ml/expression_recognition/exports/**/*.log
 
 # AI Agent / IDE 辅助文件
 .arts/
@@ -134,3 +149,8 @@ backend/openapi.json
 # Android 测试文件
 android/app/src/androidTest/
 android/app/src/test/
+!android/app/src/test/
+!android/app/src/test/**
+
+# Android 构建损坏时的临时备份目录(构建产物,不纳入版本控制)
+android/app/build-corrupt-backup-20260731/

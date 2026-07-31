@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from ...core.config import Settings, get_settings
 from ...core.exceptions import (
@@ -23,6 +23,7 @@ from ...core.exceptions import (
     StudentNumberExists,
     TeacherNumberExists,
     Unauthorized,
+    UserNotFound,
     UsernameExists,
     ValidationFailed,
 )
@@ -40,10 +41,12 @@ from ...schemas.multi_role import (
     AuthMeResponse,
     LoginRequest,
     LogoutRequest,
+    Page,
     RefreshRequest,
     RegisterRequest,
     TokenPair,
     UserCreate,
+    UserAdminUpdate,
     UserPublic,
 )
 from ...services.container import ServiceContainer, get_container
@@ -216,6 +219,49 @@ def admin_create_user(
         grade=req.grade,
     )
     return UserPublic(**created.to_public_dict())
+
+
+@router.get("/admin/users", response_model=Page)
+def admin_list_users(
+    role: str | None = Query(None, pattern="^(student|teacher|admin)$"),
+    is_active: bool | None = Query(None),
+    query: str | None = Query(None, max_length=128),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user: UserRow = Depends(require_role("admin")),
+    container: ServiceContainer = Depends(_container),
+) -> Page:
+    rows, total = container.user_repository.list_users(
+        role=role,
+        is_active=is_active,
+        query=query,
+        page=page,
+        page_size=page_size,
+    )
+    items = [UserPublic(**row.to_public_dict()) for row in rows]
+    return Page.from_rows(items, total=total, page=page, page_size=page_size)
+
+
+@router.patch("/admin/users/{user_id}", response_model=UserPublic)
+def admin_update_user(
+    user_id: str,
+    req: UserAdminUpdate,
+    user: UserRow = Depends(require_role("admin")),
+    container: ServiceContainer = Depends(_container),
+) -> UserPublic:
+    target = container.user_repository.get_user_by_id(user_id)
+    if target is None:
+        raise UserNotFound()
+    fields = req.model_dump(exclude_unset=True)
+    if target.id == user.id:
+        if fields.get("is_active") is False:
+            raise ValidationFailed("不能停用当前登录的管理员账号")
+        if "role" in fields and fields["role"] != "admin":
+            raise ValidationFailed("不能修改当前登录账号的管理员角色")
+    updated = container.user_repository.update_user(user_id, fields=fields)
+    if updated is None:
+        raise UserNotFound()
+    return UserPublic(**updated.to_public_dict())
 
 
 def _issue_tokens(

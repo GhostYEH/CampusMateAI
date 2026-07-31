@@ -1,5 +1,14 @@
 package com.example.campusai.ui.screens.counselor
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.view.PreviewView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,12 +25,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campusai.data.expression.CameraExpressionRecognitionService
+import com.example.campusai.data.expression.ExpressionServiceStatus
+import com.example.campusai.data.expression.ObservableExpressionRecognitionService
 import com.example.campusai.data.model.ChatMessage
+import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.MockBadge
 import com.example.campusai.ui.components.ModeBadge
@@ -29,21 +42,72 @@ import com.example.campusai.ui.components.TypingIndicator
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.components.slideInAnimation
 import com.example.campusai.ui.theme.*
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-
-private val AiBlue = Color(0xFF5368E8)
-private val AiBlueDeep = Color(0xFF3449C7)
-private val AiOrange = Color(0xFFFFA43A)
 
 @Composable
 fun CounselorScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val expressionService = remember(mockMode) {
+        repository.createExpressionRecognitionService(mockMode)
+    }
+    val observableService = expressionService as ObservableExpressionRecognitionService
+    val expressionStatus by observableService.status.collectAsState()
+    val expressionResult by expressionService.results().collectAsState(
+        initial = ExpressionResult(
+            ExpressionLabel.UNKNOWN,
+            0.0,
+            emptyMap(),
+            System.currentTimeMillis(),
+            false,
+            "not-loaded",
+        ),
+    )
+    var expressionEnabled by remember(expressionService) { mutableStateOf(false) }
+    var permissionDenied by remember(expressionService) { mutableStateOf(false) }
+    val cameraPermissionGranted = mockMode || ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.CAMERA,
+    ) == PackageManager.PERMISSION_GRANTED
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        permissionDenied = !granted
+        if (granted) expressionEnabled = true
+    }
+    val disposalScope = remember(expressionService) {
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate,
+        )
+    }
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(expressionEnabled, expressionService) {
+        if (expressionEnabled) {
+            expressionService.initialize()
+            expressionService.start()
+        } else if (expressionStatus !is ExpressionServiceStatus.Off) {
+            expressionService.stop()
+        }
+    }
+
+    DisposableEffect(expressionService) {
+        onDispose {
+            (expressionService as? CameraExpressionRecognitionService)?.unbindCamera()
+            disposalScope.launch {
+                expressionService.dispose()
+                disposalScope.cancel()
+            }
+        }
+    }
+
     var messages by remember {
         mutableStateOf(
             listOf(
@@ -58,13 +122,23 @@ fun CounselorScreen(repository: AppRepository) {
     fun sendMessage(text: String) {
         val question = text.trim()
         if (question.isEmpty() || sending) return
+        val expressionAtSend = expressionResult.takeIf {
+            expressionEnabled &&
+                it.isStable &&
+                it.confidence >= 0.60 &&
+                it.label != ExpressionLabel.UNKNOWN &&
+                it.label != ExpressionLabel.NO_FACE
+        }
         scope.launch {
-            messages = messages + ChatMessage("user", question)
+            messages = messages + ChatMessage("user", question, expressionAtSend?.label)
             input = ""
             sending = true
             error = null
             try {
-                messages = messages + ChatMessage("assistant", repository.chat(question))
+                messages = messages + ChatMessage(
+                    "assistant",
+                    repository.chat(question, expressionAtSend),
+                )
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
             } finally {
@@ -81,7 +155,31 @@ fun CounselorScreen(repository: AppRepository) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { CounselorHeader(mockMode) }
-            item { CounselorHero(reduceMotion) }
+            item { CounselorHero(reduceMotion, mockMode) }
+            item {
+                CounselorExpressionPanel(
+                    enabled = expressionEnabled,
+                    mockMode = mockMode,
+                    permissionDenied = permissionDenied,
+                    cameraPermissionGranted = cameraPermissionGranted,
+                    status = expressionStatus,
+                    result = expressionResult,
+                    reduceMotion = reduceMotion,
+                    expressionService = expressionService,
+                    lifecycleOwner = lifecycleOwner,
+                    onToggle = {
+                        if (expressionEnabled) {
+                            expressionEnabled = false
+                            scope.launch { expressionService.stop() }
+                        } else if (cameraPermissionGranted) {
+                            permissionDenied = false
+                            expressionEnabled = true
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                )
+            }
             item {
                 Text("你可以这样问", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(9.dp))
@@ -101,7 +199,7 @@ fun CounselorScreen(repository: AppRepository) {
                             colors = SuggestionChipDefaults.suggestionChipColors(
                                 containerColor = Surface,
                                 labelColor = TextPrimary,
-                                iconContentColor = AiBlue,
+                                iconContentColor = Primary,
                             ),
                             border = SuggestionChipDefaults.suggestionChipBorder(
                                 enabled = true,
@@ -115,7 +213,7 @@ fun CounselorScreen(repository: AppRepository) {
                 ChatBubble(message, reduceMotion)
             }
             if (sending) {
-                item { TypingBubble() }
+                item { TypingBubble(reduceMotion) }
             }
             error?.let { message ->
                 item {
@@ -148,6 +246,159 @@ fun CounselorScreen(repository: AppRepository) {
 }
 
 @Composable
+@Composable
+private fun CounselorExpressionPanel(
+    enabled: Boolean,
+    mockMode: Boolean,
+    permissionDenied: Boolean,
+    cameraPermissionGranted: Boolean,
+    status: ExpressionServiceStatus,
+    result: ExpressionResult,
+    reduceMotion: Boolean,
+    expressionService: com.example.campusai.data.expression.ExpressionRecognitionService,
+    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    onToggle: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Surface)
+            .border(1.dp, Line, RoundedCornerShape(20.dp))
+            .padding(14.dp)
+            .enterAnimation(enabled = !reduceMotion),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("表情辅助", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    "只发送稳定的表情标签，不上传摄像头画面",
+                    color = Muted,
+                    fontSize = 11.sp,
+                )
+            }
+            Surface(color = PrimarySoft, shape = RoundedCornerShape(999.dp)) {
+                Text(
+                    if (mockMode) "Mock CNN" else "本机 LiteRT",
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                    color = Primary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        if (enabled && !mockMode && cameraPermissionGranted &&
+            expressionService is CameraExpressionRecognitionService
+        ) {
+            AndroidView(
+                factory = { previewContext ->
+                    PreviewView(previewContext).apply {
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        expressionService.bindCamera(lifecycleOwner, this)
+                    }
+                },
+                update = { expressionService.bindCamera(lifecycleOwner, it) },
+                onRelease = { expressionService.unbindCamera() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                when (status) {
+                    ExpressionServiceStatus.NoFace -> Icons.Default.FaceRetouchingOff
+                    ExpressionServiceStatus.LowConfidence -> Icons.Default.HelpOutline
+                    is ExpressionServiceStatus.Error -> Icons.Default.ErrorOutline
+                    ExpressionServiceStatus.Initializing -> Icons.Default.Downloading
+                    ExpressionServiceStatus.Off -> Icons.Default.VisibilityOff
+                    else -> Icons.Default.EmojiEmotions
+                },
+                contentDescription = null,
+                tint = Primary,
+                modifier = Modifier.size(23.dp),
+            )
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    expressionTitle(enabled, status, result),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                )
+                Text(
+                    when {
+                        permissionDenied -> "未获得摄像头权限，可再次点击开启"
+                        !enabled -> "关闭后不分析表情，消息也不会附带表情信号"
+                        status is ExpressionServiceStatus.Error -> status.message
+                        result.isStable -> "置信度 ${(result.confidence * 100).toInt()}%，仅供辅助参考"
+                        else -> "正在观察连续画面，未达到稳定条件"
+                    },
+                    color = if (status is ExpressionServiceStatus.Error) Danger else Muted,
+                    fontSize = 10.sp,
+                )
+            }
+        }
+        Button(
+            onClick = onToggle,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (enabled) PrimarySoft else Primary,
+                contentColor = if (enabled) Primary else Color.White,
+            ),
+        ) {
+            Icon(
+                if (enabled) Icons.Default.VideocamOff else Icons.Default.Videocam,
+                contentDescription = null,
+                modifier = Modifier.size(17.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(if (enabled) "关闭表情辅助" else "开启表情辅助")
+        }
+        Text(
+            "CNN 识别的是可观察到的面部表情，不代表心理状态或医学判断。",
+            color = Muted,
+            fontSize = 10.sp,
+        )
+    }
+}
+
+private fun expressionTitle(
+    enabled: Boolean,
+    status: ExpressionServiceStatus,
+    result: ExpressionResult,
+): String = when {
+    !enabled -> "表情辅助已关闭"
+    status is ExpressionServiceStatus.Error -> "本机识别暂不可用"
+    status == ExpressionServiceStatus.Initializing -> "正在加载本机模型"
+    status == ExpressionServiceStatus.NoFace || result.label == ExpressionLabel.NO_FACE ->
+        "画面中暂未检测到人脸"
+    status == ExpressionServiceStatus.LowConfidence || result.label == ExpressionLabel.UNKNOWN ->
+        "暂时无法稳定判断当前表情"
+    !result.isStable -> "正在观察连续画面"
+    else -> "当前表情可能偏${result.label.displayName()}"
+}
+
+private fun ExpressionLabel.displayName(): String = when (this) {
+    ExpressionLabel.HAPPY -> "愉快"
+    ExpressionLabel.NEUTRAL -> "中性"
+    ExpressionLabel.SAD -> "低落"
+    ExpressionLabel.ANGRY -> "生气"
+    ExpressionLabel.FEAR -> "紧张"
+    ExpressionLabel.SURPRISE -> "惊讶"
+    ExpressionLabel.DISGUST -> "厌恶"
+    ExpressionLabel.UNKNOWN -> "不确定"
+    ExpressionLabel.NO_FACE -> "无脸"
+}
+
+@Composable
 private fun CounselorHeader(mockMode: Boolean) {
     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -161,35 +412,35 @@ private fun CounselorHeader(mockMode: Boolean) {
 @Composable
 private fun CounselorHero(reduceMotion: Boolean) {
     Box(
-        Modifier.fillMaxWidth().height(146.dp).clip(RoundedCornerShape(26.dp))
-            .background(Brush.linearGradient(listOf(AiBlue, AiBlueDeep)))
+        Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(24.dp))
+            .background(Surface).border(1.dp, Line, RoundedCornerShape(24.dp))
             .enterAnimation(enabled = !reduceMotion),
     ) {
-        Box(
-            Modifier.size(150.dp).offset(x = 250.dp, y = (-54).dp).clip(CircleShape)
-                .background(Color.White.copy(alpha = .08f)),
-        )
         Row(
             Modifier.fillMaxSize().padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(15.dp),
         ) {
             Box(
-                Modifier.size(58.dp).clip(RoundedCornerShape(19.dp)).background(Color.White.copy(alpha = .16f)),
+                Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(PrimarySoft),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.SmartToy, null, tint = Color.White, modifier = Modifier.size(32.dp)) }
+            ) { Icon(Icons.Default.SupportAgent, null, tint = Primary, modifier = Modifier.size(30.dp)) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("导员小夏", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("校园事务助手", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     MockBadge()
                 }
-                Text("我会结合校园知识库帮你整理流程与材料", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
+                Text("帮你整理办事流程、材料和下一步", color = Muted, fontSize = 12.sp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF67E4BC)))
-                    Text("在线 · 通常很快回复", color = Color.White.copy(alpha = .82f), fontSize = 10.sp)
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(Success))
+                    Text("Mock 知识库在线 · 结果仅供演示", color = Muted, fontSize = 10.sp)
                 }
             }
         }
+        Box(
+            Modifier.align(Alignment.BottomStart).padding(start = 20.dp)
+                .width(52.dp).height(3.dp).clip(CircleShape).background(Accent),
+        )
     }
 }
 
@@ -212,7 +463,7 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
             Modifier.widthIn(max = 292.dp).clip(
                 if (isUser) RoundedCornerShape(19.dp, 19.dp, 5.dp, 19.dp)
                 else RoundedCornerShape(19.dp, 19.dp, 19.dp, 5.dp),
-            ).background(if (isUser) AiBlue else Surface)
+            ).background(if (isUser) Primary else Surface)
                 .then(if (isUser) Modifier else Modifier.border(1.dp, Line, RoundedCornerShape(19.dp)))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
@@ -234,7 +485,7 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
 }
 
 @Composable
-private fun TypingBubble() {
+private fun TypingBubble(reduceMotion: Boolean) {
     Row(verticalAlignment = Alignment.Bottom) {
         Box(
             Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(RobotAvatarBg),
@@ -247,7 +498,7 @@ private fun TypingBubble() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            TypingIndicator(dotColor = AiBlue)
+            TypingIndicator(dotColor = Primary, enabled = !reduceMotion)
             Text("正在查找校园知识库", color = Muted, fontSize = 12.sp)
         }
     }
@@ -284,7 +535,7 @@ private fun ChatComposer(
                 modifier = Modifier.size(50.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = AiBlue,
+                    containerColor = Primary,
                     contentColor = Color.White,
                 ),
             ) { Icon(if (sending) Icons.Default.HourglassTop else Icons.Default.Send, "发送") }

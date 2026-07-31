@@ -45,16 +45,16 @@ fun CampusVideoBackground(
             modifier = Modifier.fillMaxSize(),
         )
         if (motionEnabled && systemMotionEnabled) {
-            val player = remember {
-                ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(
-                        MediaItem.fromUri("android.resource://${context.packageName}/$videoRes"),
-                    )
-                    repeatMode = Player.REPEAT_MODE_ONE
-                    volume = 0f
-                    playWhenReady = true
-                    prepare()
-                }
+            val player = remember(context, videoRes) {
+                val exoPlayer = ExoPlayer.Builder(context).build()
+                exoPlayer.setMediaItem(
+                    MediaItem.fromUri("android.resource://${context.packageName}/$videoRes"),
+                )
+                exoPlayer.repeatMode = Player.REPEAT_MODE_ONE
+                exoPlayer.volume = 0f
+                exoPlayer.playWhenReady = true
+                exoPlayer.prepare()
+                exoPlayer
             }
             AndroidView(
                 factory = {

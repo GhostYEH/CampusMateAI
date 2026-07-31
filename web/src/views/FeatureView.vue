@@ -5,6 +5,7 @@ import { useAppStore } from "../stores/app";
 import { chatStream, extractNotice } from "../services/api";
 import { marked } from "marked";
 import UiIcon from "../components/UiIcon.vue";
+import TasksView from "./TasksView.vue";
 
 // Markdown 渲染配置
 marked.setOptions({ breaks: true, gfm: true });
@@ -27,7 +28,7 @@ const extracted = ref(null);
 const message = ref("");
 const sending = ref(false);
 const chatAreaEl = ref(null);
-const messages = ref([{ role:"assistant", text:"你好，我是 AI 导员小夏。你可以问我课程流程、奖助政策、校园服务等问题。当前回答来自 Mock 知识库，仅供演示参考。" }]);
+const messages = ref([{ role:"assistant", text:"你好，我是 AI 导员小夏。你可以问我课程流程、奖助政策、校园服务等问题。当前回答来自 Mock 知识库，仅供辅助参考。" }]);
 const seconds = ref(25 * 60);
 const timerRunning = ref(false);
 let timer;
@@ -83,7 +84,7 @@ async function send() {
     } else {
       // Mock 模式（非流式）
       const answer = text.includes("奖学金")
-        ? "奖学金通常综合考察学业成绩、综合素质与志愿服务。不同奖项条件不同，建议先查看学院本学年评审通知。我可以继续帮你整理申请材料清单。"
+      ? "奖学金通常综合考察学业成绩、综合素质与志愿服务。不同奖项条件不同，建议先查看学院本学年评审通知。我可以继续帮你整理申请材料清单。"
         : "我已经记录你的问题。当前为 Mock 知识库模式，建议以学校教务处或学院最新通知为准。需要的话，我可以帮你把相关步骤整理成待办。";
       pendingMsg.text = answer;
       pendingMsg.streaming = false;
@@ -113,7 +114,8 @@ onBeforeUnmount(()=>clearInterval(timer));
 </script>
 
 <template>
-  <main class="feature-page page-enter">
+  <TasksView v-if="section === 'tasks'" />
+  <main v-else class="feature-page page-enter">
     <div class="page-title"><div><h1>{{ titleMap[section] || "校园服务" }}</h1><p>{{ section === "counselor" ? "基于校园知识库的事务问答，当前能力会明确标注 Mock。" : "集中处理与当前模块相关的校园事务。" }}</p></div><span class="mode-badge"><i></i>{{ store.mockMode ? "Mock 模式" : "真实后端" }}</span></div>
 
     <section v-if="section === 'tasks'" class="feature-split">
@@ -140,8 +142,8 @@ onBeforeUnmount(()=>clearInterval(timer));
     <section v-else-if="section === 'courses'" class="course-gallery"><article v-for="(c,i) in courses" :key="c" class="course-card"><span class="course-code">{{ ['DS','CO','MA','EN','OS','CN'][i] }}</span><div><small>{{ i%2 ? "专业基础课" : "专业必修课" }}</small><h2>{{ c }}</h2><p>{{ ['张明远','刘文静','王建国'][i%3] }}老师 · 教学楼 {{ 2+i }}-30{{ i }}</p></div><button class="secondary-button">进入课程<UiIcon name="PhArrowRight" /></button></article></section>
 
     <section v-else-if="section === 'profile'" class="profile-grid">
-      <div class="surface profile-card"><div class="avatar large-avatar">{{ store.session?.name?.slice(0,1) }}</div><h2>{{ store.session?.name }}</h2><p>{{ store.session?.detail }}</p><dl><div><dt>账号角色</dt><dd>{{ store.session?.role }}</dd></div><div><dt>数据模式</dt><dd>{{ store.mockMode ? "Mock 演示" : "真实后端" }}</dd></div><div><dt>服务状态</dt><dd>{{ store.backendOnline ? "已连接" : "离线可用" }}</dd></div></dl></div>
-      <div class="surface settings"><h2>偏好设置</h2><label class="switch-row"><span><strong>减少动态效果</strong><small>减少页面切换与卡片进入动画</small></span><input type="checkbox" :checked="store.reduceMotion" @change="store.setReduceMotion($event.target.checked)" /></label><label class="switch-row"><span><strong>比赛演示模式</strong><small>使用完整自然的校园 Mock 数据链路</small></span><input type="checkbox" checked /></label><label class="switch-row"><span><strong>截止提醒</strong><small>Web 端使用站内提醒</small></span><input type="checkbox" checked /></label></div>
+      <div class="surface profile-card"><div class="avatar large-avatar">{{ store.session?.name?.slice(0,1) }}</div><h2>{{ store.session?.name }}</h2><p>{{ store.session?.detail }}</p><dl><div><dt>账号角色</dt><dd>{{ store.session?.role }}</dd></div><div><dt>服务状态</dt><dd>{{ store.backendOnline ? "已连接" : "离线可用" }}</dd></div></dl></div>
+      <div class="surface settings"><h2>偏好设置</h2><label class="switch-row"><span><strong>减少动态效果</strong><small>减少页面切换与卡片进入动画</small></span><input type="checkbox" :checked="store.reduceMotion" @change="store.setReduceMotion($event.target.checked)" /></label><label class="switch-row"><span><strong>截止提醒</strong><small>Web 端使用站内提醒</small></span><input type="checkbox" checked /></label></div>
     </section>
 
     <section v-else-if="section === 'users'" class="data-panel"><div class="section-head"><h2>平台用户</h2><button class="primary-button"><UiIcon name="PhPlus" />创建用户</button></div><div class="table"><div class="table-head"><span>姓名</span><span>学号 / 工号</span><span>角色</span><span>状态</span><span>操作</span></div><div v-for="u in users" :key="u.id" class="table-row"><strong>{{ u.name }}</strong><span>{{ u.id }}</span><span>{{ u.role }}</span><span class="success-text">{{ u.status }}</span><button>查看</button></div></div></section>

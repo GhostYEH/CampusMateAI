@@ -13,6 +13,7 @@ import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
 import com.example.campusai.ui.screens.profile.AccountScreen
 import com.example.campusai.ui.screens.profile.SettingsScreen
+import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.study.StudyScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.users.UsersScreen
@@ -44,6 +45,30 @@ fun AppNavHost(
         }
         composable("settings") { SettingsScreen(repository) { navController.popBackStack() } }
         composable("account") { AccountScreen(repository) { navController.popBackStack() } }
+        composable("files") {
+            PersonalHubScreen(
+                repository = repository,
+                initialSection = "files",
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+            )
+        }
+        composable("activities") {
+            PersonalHubScreen(
+                repository = repository,
+                initialSection = "activities",
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+            )
+        }
+        composable("favorites") {
+            PersonalHubScreen(
+                repository = repository,
+                initialSection = "favorites",
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } },
+            )
+        }
         composable("users") { UsersScreen(repository) }
         composable("publish") { GenericScreen(repository, "publish") }
         composable("stats") { GenericScreen(repository, "stats") }

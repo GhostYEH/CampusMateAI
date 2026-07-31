@@ -1,48 +1,101 @@
-# Personal Center Reference-Match Design QA
+# Design QA
 
-- Source visual truth path: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-d275a9ed-02f0-43f7-9600-bf10c0eadf61.png`
-- Implementation screenshot path: `F:\demo1\artifacts\profile-qa\profile-reference-final.png`
-- Related implementation screenshots: `F:\demo1\artifacts\profile-qa\settings-reference.png`, `F:\demo1\artifacts\profile-qa\account-reference.png`, `F:\demo1\artifacts\profile-qa\home-avatar-entry.png`
-- Viewport: Pixel 8 Pro emulator, 1344 × 2992 px; the source is a 942 × 1536 px framed concept image.
-- State: student Mock session, light personal center, populated profile.
-- Full-view comparison evidence: `F:\demo1\artifacts\profile-qa\reference-exact-comparison.png`
-- Focused region comparison evidence: `F:\demo1\artifacts\profile-qa\reference-focused-comparison.png`
+- Source visual truth: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-66a06c1d-149f-4224-ab0f-d7061ef0e8c4.png`
+- Implementation screenshot: `F:\demo1\web\qa\design-qa-home.png`
+- Combined comparison: `F:\demo1\web\qa\design-qa-comparison.png`
+- Viewport: 460 × 1024 CSS px, device scale factor 2 (920 × 2048 output)
+- State: student home, light theme, populated Mock data
+
+## Full-view comparison evidence
+
+The source and implementation were normalized to the same 920 × 2048 raster size and reviewed side by side. The Web implementation intentionally keeps its responsive Web information architecture instead of copying the native status bar, avatar header, quick-action strip, or bottom navigation. It matches the source design language through the pale blue-gray canvas, blue campus hero image, white large-radius surfaces, restrained indigo primary actions, orange urgency states, teal completion states, and strong Chinese heading hierarchy.
+
+## Focused region comparison evidence
+
+Focused inspection covered the hero/action region, first task surface, navigation controls, icon rendering, typography, and status colors. These regions were large and readable in the normalized comparison, so no additional crop was needed.
 
 ## Findings
 
-No actionable P0, P1, or P2 mismatch remains.
+- No actionable P0, P1, or P2 findings remain.
+- Typography: Noto Sans SC is loaded locally and preserves the source's sturdy heading-to-body contrast. Long campus strings truncate or wrap without collision.
+- Spacing and layout rhythm: desktop keeps a sidebar and dense multi-column workspace; tablet and mobile collapse to a drawer and single-column flow. The 22 px surface radius and 13 to 15 px control radius remain consistent.
+- Colors and tokens: indigo is the only primary accent; orange is reserved for deadlines and warning counts; teal is reserved for success and completion. Text and controls retain readable contrast.
+- Image quality: the existing campus-night raster is used directly for the hero and retains a useful crop at desktop and mobile sizes. No placeholder art or hand-drawn SVG asset substitutes were introduced.
+- Copy and content: natural campus Mock copy is preserved; Mock AI capability remains explicitly marked.
+- Icons: Phosphor icons are used consistently. Missing mappings for student, teacher, and campus-activity icons were fixed.
+- Behavior and accessibility: task toggles, role login, navigation, sidebar collapse, drawers and existing controls remain functional; keyboard focus and reduced-motion fallbacks are present.
 
-- Fonts and typography: the implementation follows the source hierarchy for “我的”, the account name, major/grade line, quick labels, menu labels, and selected navigation label. Android uses its native Chinese system fallback, so glyph rasterization differs slightly from the framed source, but weight, scale, wrapping, and hierarchy are aligned.
-- Spacing and layout rhythm: the purple hero, identity block, overlapping four-action surface, five-row menu, and bottom dock preserve the source order and spacing relationships. The implementation is taller because it is rendered on the Pixel 8 Pro aspect ratio; the extra space is below the menu rather than inserted between source-matched elements.
-- Colors and visual tokens: the blue-purple gradient, translucent decorative circles and dot motif, white surfaces, pale lavender icon tiles, low-contrast dividers, and purple selected state match the supplied source. Settings and account screens reuse the same tokens.
-- Image quality and asset fidelity: the profile portrait is taken from the supplied visual source and displayed with a circular crop and crisp white ring. It is not replaced with a monogram or placeholder. Material vector icons remain sharp at the tested density; small icon-shape differences are acceptable library substitutions.
-- Copy and content: visible personal-center labels match the source, including “我的文件 / 我的活动 / 我的收藏 / 系统设置 / 我的设置 / 帮助与反馈 / 关于我们”. The identity line is “计算机科学与技术 · 大三”.
-- States and interactions: the home avatar opens the personal center; the identity block opens account editing; both settings entries open system settings; dark mode, reduced motion, reminders, competition demo mode, validation, saving, feedback, and about dialog are wired.
-- Accessibility and responsiveness: Android semantics are present, navigation and switches have practical touch targets, settings/profile content scrolls, account editing supports IME-safe scrolling, and reduced motion is user-configurable.
+## Patches made during QA
 
-## Open Questions
+- Kept the hero call-to-action anchored within the image at desktop widths.
+- Prevented the hero title from leaving a single Chinese character on its own line.
+- Corrected the login image overlay so white story copy has reliable contrast.
+- Corrected the week dates and highlighted the actual current weekday.
+- Added an explicit empty state for a cleared task list.
 
-- None. The device aspect ratio and Android system-status icons are expected platform differences from the framed source image.
+## Follow-up polish
 
-## Patches Made Since Previous QA Pass
+- A future pass can add a real profile photo supplied by the user; the current initial avatar is intentionally functional and avoids inventing a student's identity.
 
-- Replaced the prior unrelated visual direction with the supplied blue-purple reference style.
-- Added the source portrait asset and reference-matched hero decorations.
-- Rebuilt the quick-action surface, five-row menu, and selected bottom navigation.
-- Rebuilt settings and account editing with the same gradient, radii, icon tiles, and surface treatment.
-- Added the clickable avatar identity row at the upper-left of the home screen and verified that it opens “我的”.
-- Migrated the demo identity to “林知夏 / 计算机科学与技术 · 大三”.
+final result: passed
 
-## Implementation Checklist
+## Task composer and detail QA — 2026-07-31
 
-- [x] Compare source and implementation together at full view.
-- [x] Compare the hero and quick-action region at readable size.
-- [x] Verify typography, spacing, colors, imagery, icons, and copy.
-- [x] Verify home-avatar navigation and nested settings/account routes.
-- [x] Verify Kotlin compilation, unit tests, Android lint, installation, and whitespace.
+- Source visual truth: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-78f6aaac-2e88-47a2-94dd-232cf9768625.png`
+- Implementation evidence: Chrome DevTools inline captures of `http://127.0.0.1:4177/tasks` at 390 × 844 CSS px, mobile/touch emulation
+- States reviewed: populated task list, new-task composer, task detail bottom sheet, edit-task composer
 
-## Follow-up Polish
+### Full-view and focused comparison evidence
 
-- P3: If a future device uses a much wider aspect ratio, preserve the existing element proportions and allow the menu region to scroll rather than stretching the hero.
+The composer keeps the same white rounded-surface, indigo action, warm priority accents and pale campus canvas as the task page. The detail view uses a right drawer on larger screens and a bottom sheet on mobile, matching the reference's compact, layered task surfaces while giving the user a clear focus state. Focused inspection covered the composer field rhythm, priority chips, reminder switch, detail fact grid, description block and bottom action bar. No horizontal overflow was observed.
+
+### Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- New-task composer now supports title, deadline, category, priority, optional description, reminder toggle, save and defer actions.
+- Detail view supports open-from-card/list, status summary, deadline/category/priority/reminder facts, description, contextual next-step guidance, edit, complete/restore and delete actions.
+- Existing task persistence remains repository-backed through Pinia/local storage; edit updates preserve the original deadline when no replacement date is entered.
+- The mobile bottom sheet is scrollable and keeps primary actions visible; reduced-motion overrides remain inherited from the project stylesheet.
+- Console check after reload and composer/detail interactions: no warnings or accessibility form-field issues.
+
+### Patches made during this pass
+
+- Added rich composer state and task update support in `web/src/views/TasksView.vue` and `web/src/stores/app.js`.
+- Added responsive task detail drawer/bottom-sheet UI and composer controls in `web/src/styles.css`.
+- Added `name` attributes to composer fields for browser and assistive-technology compatibility.
+
+final result: passed
+
+## Task page redesign QA — 2026-07-31
+
+- Source visual truth: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-78f6aaac-2e88-47a2-94dd-232cf9768625.png`
+- Implementation screenshot: Chrome DevTools inline full-page capture of `http://127.0.0.1:4177/tasks` (mobile emulation; connector file export was unavailable)
+- Viewport: 390 × 844 CSS px, device scale factor 1, mobile/touch emulation
+- State: student demo, light theme, populated Mock task data
+
+### Full-view comparison evidence
+
+The implementation follows the reference's vertical task-workbench rhythm: compact title header, progress card with circular completion ring, pill filters, two priority cards, divided task list, three weekly-plan tiles, and a fixed indigo add button. The pale blue-gray canvas, white surfaces, fine borders, indigo progress/action color, orange urgency, teal completion and lavender/mint/peach category blocks are all represented without adding unrelated decorative assets.
+
+### Focused region comparison evidence
+
+Focused inspection covered the progress ring and metrics, priority-card anatomy, task-row density and truncation, weekly-plan tiles, and the new-task composer. All regions remained readable at 390 px without horizontal overflow.
+
+### Findings
+
+- No actionable P0, P1, or P2 findings remain.
+- Typography: local Noto Sans SC and the existing Chinese hierarchy remain consistent with the reference; long task titles ellipsize cleanly.
+- Spacing and layout rhythm: the page is mobile-first, with 12 px outer padding, 9–14 px section gaps, compact 60 px task rows, and a bottom-safe floating action button.
+- Colors and tokens: indigo is reserved for progress, selection and the primary action; orange marks urgency; teal marks completion; category colors stay soft and low-saturation.
+- Image quality: the reference contains no non-standard imagery required by the task page; Phosphor icons are used for all visible symbols.
+- Copy and content: task content is natural campus Mock data and the page explicitly labels Mock mode.
+- Interaction and accessibility: filters update the list, checkboxes persist completion, delete actions show feedback, and the composer supports title, deadline and category fields. `prefers-reduced-motion` remains respected.
+
+### Patches made during this pass
+
+- Added `web/src/views/TasksView.vue` and routed `/tasks` to it.
+- Extended the existing task repository action to preserve the selected task category.
+- Added task-specific responsive styling and mobile shell treatment in `web/src/styles.css`.
+- Extended the shared Phosphor icon map and removed console prop warnings.
 
 final result: passed

@@ -1,0 +1,7 @@
+<view class="state">
+  <view wx:if="{{state === 'loading'}}" class="loader"></view>
+  <view wx:else class="mark {{state}}">{{state === 'error' ? '出错了' : '空状态'}}</view>
+  <view class="title">{{title}}</view>
+  <view class="description">{{description}}</view>
+  <button wx:if="{{actionText}}" class="action" bindtap="onAction">{{actionText}}</button>
+</view>

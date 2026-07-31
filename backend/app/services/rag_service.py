@@ -454,6 +454,7 @@ def _build_llm_messages(
     query: str,
     context: str,
     recent_tasks: List[Any],
+    expression_hint: Optional[str] = None,
 ) -> List[dict]:
     task_hint = ""
     if recent_tasks:
@@ -469,6 +470,7 @@ def _build_llm_messages(
     user_content = (
         f"用户问题: {query}\n\n"
         f"参考资料(只有这些可作为依据，禁止编造):\n{context or '(无相关资料)'}{task_hint}\n"
+        f"{expression_hint + chr(10) if expression_hint else ''}"
         f"请按规则回答。若无资料，回复标准提示。"
     )
     return [
@@ -533,6 +535,7 @@ class RagService:
         recent_tasks: Optional[List[Any]] = None,
         context_used: Optional[Dict[str, Any]] = None,
         context_warnings: Optional[List[str]] = None,
+        expression_hint: Optional[str] = None,
     ) -> ChatFinalMeta:
         """非流式回答。"""
         events = [
@@ -543,6 +546,7 @@ class RagService:
                 recent_tasks=recent_tasks,
                 context_used=context_used,
                 context_warnings=context_warnings,
+                expression_hint=expression_hint,
             )
         ]
         final = events[-1]
@@ -556,6 +560,7 @@ class RagService:
         recent_tasks: Optional[List[Any]] = None,
         context_used: Optional[Dict[str, Any]] = None,
         context_warnings: Optional[List[str]] = None,
+        expression_hint: Optional[str] = None,
     ) -> AsyncIterator[ChatFinalMeta]:
         """流式回答(SSE 风格)。
 
@@ -630,7 +635,12 @@ class RagService:
         # 优先 LLM
         if self._llm is not None and self._settings.llm_available:
             try:
-                messages = _build_llm_messages(q, context, recent_tasks or [])
+                messages = _build_llm_messages(
+                    q,
+                    context,
+                    recent_tasks or [],
+                    expression_hint=expression_hint,
+                )
                 # 先发一个 sources-only 事件,让客户端先显示来源
                 yield ChatFinalMeta(
                     answer="",
