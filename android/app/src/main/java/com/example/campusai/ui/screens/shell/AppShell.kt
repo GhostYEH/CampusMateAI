@@ -1,21 +1,31 @@
 package com.example.campusai.ui.screens.shell
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,11 +46,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,13 +69,13 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.theme.Background
-import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import com.example.campusai.ui.theme.UnreadDot
+import kotlinx.coroutines.launch
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
@@ -92,6 +110,7 @@ fun AppShell(
 ) {
     val session by repository.session.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsState()
     val navItems = when (session?.role ?: "student") {
         "teacher" -> teacherNavItems
         "admin" -> adminNavItems
@@ -99,17 +118,19 @@ fun AppShell(
     }.take(5)
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "home"
-    val isProfileFlow = route in setOf("profile", "settings", "account")
+    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
+    val isProfileFlow = route in profileRoutes
 
     Column(
-        Modifier.fillMaxSize().background(
-            if (isProfileFlow) Color(0xFFF8F9FD) else Background
-        )
+        Modifier.fillMaxSize().background(Background)
     ) {
-        if (route != "home" && !isProfileFlow) {
+        // The app uses page content and the bottom dock as its navigation model;
+        // no secondary personal header is shown above the main tabs.
+        if (false) {
             CampusTopBar(
                 name = session?.name ?: "校园同学",
                 role = session?.role ?: "student",
+                reduceMotion = reduceMotion,
                 onProfileClick = {
                     navController.navigate("profile") { launchSingleTop = true }
                 },
@@ -118,12 +139,16 @@ fun AppShell(
                 },
             )
         }
-        Box(Modifier.weight(1f)) { content() }
+        Box(
+            Modifier.weight(1f).then(
+                if (route == "home" || isProfileFlow) Modifier else Modifier.statusBarsPadding(),
+            ),
+        ) { content() }
         CampusDock(
             items = navItems,
             route = route,
             pendingCount = pendingCount,
-            referenceStyle = isProfileFlow,
+            reduceMotion = reduceMotion,
             onNavigate = { target ->
                 navController.navigate(target) {
                     popUpTo("home") { inclusive = false }
@@ -138,6 +163,7 @@ fun AppShell(
 private fun CampusTopBar(
     name: String,
     role: String,
+    reduceMotion: Boolean,
     onProfileClick: () -> Unit,
     onNotificationsClick: () -> Unit,
 ) {
@@ -199,6 +225,7 @@ private fun CampusTopBar(
                 PulseEffect(
                     color = UnreadDot,
                     pulseSize = 10.dp,
+                    enabled = !reduceMotion,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -211,54 +238,190 @@ private fun CampusDock(
     items: List<NavItem>,
     route: String,
     pendingCount: Int,
-    referenceStyle: Boolean,
+    reduceMotion: Boolean,
     onNavigate: (String) -> Unit,
 ) {
-    val dockSurface = if (referenceStyle) Color.White else Surface
-    val dockLine = if (referenceStyle) Color(0xFFF0F1F6) else Line
-    Row(
+    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
+    val primaryColor = Primary
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(dockSurface)
-            .border(1.dp, dockLine.copy(alpha = .65f), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
             .navigationBarsPadding()
-            .height(62.dp)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 10.dp),
     ) {
-        items.forEach { item ->
-            val selected = route == item.route ||
-                (item.route == "profile" && route in setOf("settings", "account"))
-            val color by animateColorAsState(
-                if (referenceStyle && selected) Color(0xFF6668F7)
-                else if (referenceStyle) Color(0xFF6D748A)
-                else if (selected) Primary else Muted,
-                label = "dock-color",
-            )
-            val markerWidth by animateDpAsState(
-                if (selected) 22.dp else 0.dp,
-                label = "dock-marker",
-            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(76.dp)
+                .clip(RoundedCornerShape(38.dp))
+                .background(Color.White.copy(alpha = .68f))
+                .drawBehind {
+                    // Two soft highlights create the depth of frosted glass without
+                    // requiring an API-level-specific blur implementation.
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = .34f),
+                        cornerRadius = CornerRadius(size.height / 2f),
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color.White.copy(alpha = .56f), Color.Transparent),
+                            center = Offset(0f, 0f),
+                            radius = size.width * .62f,
+                        ),
+                        radius = size.width * .62f,
+                        center = Offset(0f, 0f),
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(primaryColor.copy(alpha = .08f), Color.Transparent),
+                            center = Offset(size.width, size.height),
+                            radius = size.width * .52f,
+                        ),
+                        radius = size.width * .52f,
+                        center = Offset(size.width, size.height),
+                    )
+                }
+                .border(1.dp, Color.White.copy(alpha = .86f), RoundedCornerShape(38.dp))
+                .padding(horizontal = 7.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items.forEach { item ->
+                val selected = route == item.route ||
+                    (item.route == "profile" && route in profileRoutes)
+                LiquidGlassNavItem(
+                    item = item,
+                    isSelected = selected,
+                    pendingCount = pendingCount,
+                    reduceMotion = reduceMotion,
+                    onNavigate = onNavigate,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.LiquidGlassNavItem(
+    item: NavItem,
+    isSelected: Boolean,
+    pendingCount: Int,
+    reduceMotion: Boolean,
+    onNavigate: (String) -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scope = rememberCoroutineScope()
+    val tapGlow = remember { Animatable(0f) }
+    val primaryColor = Primary
+    val color by animateColorAsState(
+        targetValue = if (isSelected) primaryColor else Muted,
+        label = "dock-color-${item.route}",
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (isSelected && !reduceMotion) 1.08f else 1f,
+        animationSpec = spring(
+            stiffness = if (reduceMotion) 10_000f else 620f,
+            dampingRatio = .78f,
+        ),
+        label = "dock-icon-scale-${item.route}",
+    )
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && !reduceMotion) .96f else 1f,
+        animationSpec = tween(140),
+        label = "dock-press-scale-${item.route}",
+    )
+    val itemShape = RoundedCornerShape(27.dp)
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .padding(horizontal = 2.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
+            ) {
+                if (!reduceMotion) {
+                    scope.launch {
+                        tapGlow.snapTo(1f)
+                        tapGlow.animateTo(
+                            0f,
+                            animationSpec = tween(540, easing = FastOutSlowInEasing),
+                        )
+                    }
+                }
+                onNavigate(item.route)
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(itemShape)
+                .background(
+                    if (isSelected) Color.White.copy(alpha = .66f) else Color.Transparent,
+                )
+                .drawBehind {
+                    val activeGlow = if (isSelected) .9f else 0f
+                    val flashGlow = tapGlow.value
+                    if (activeGlow > 0f || flashGlow > 0f) {
+                        drawRoundRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    primaryColor.copy(alpha = .28f * activeGlow + .34f * flashGlow),
+                                    primaryColor.copy(alpha = .10f * activeGlow + .16f * flashGlow),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(size.width / 2f, size.height / 2f),
+                                radius = size.width * .82f,
+                            ),
+                            cornerRadius = CornerRadius(size.height / 2f),
+                        )
+                    }
+                }
+                .border(
+                    width = if (isSelected) 1.dp else 0.dp,
+                    color = Color.White.copy(alpha = if (isSelected) .78f else 0f),
+                    shape = itemShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(
-                Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .campusClickable { onNavigate(item.route) },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(item.icon, item.label, tint = color, modifier = Modifier.size(20.dp))
+                Box(
+                    modifier = Modifier.height(27.dp).width(42.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = item.label,
+                        tint = color,
+                        modifier = Modifier
+                            .size(21.dp)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            },
+                    )
                     if (item.route == "tasks" && pendingCount > 0) {
                         Box(
-                            Modifier.align(Alignment.TopEnd)
-                                .size(14.dp)
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(16.dp)
                                 .clip(CircleShape)
                                 .background(UnreadDot),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                pendingCount.coerceAtMost(9).toString(),
+                                text = pendingCount.coerceAtMost(9).toString(),
                                 color = Color.White,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
@@ -266,22 +429,12 @@ private fun CampusDock(
                         }
                     }
                 }
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    item.label,
+                    text = item.label,
                     color = color,
-                    fontSize = 9.5.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                )
-                Spacer(Modifier.height(3.dp))
-                Box(
-                    Modifier
-                        .size(width = markerWidth, height = 2.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (selected && referenceStyle) Color(0xFF6668F7)
-                            else if (selected) Primary else Color.Transparent
-                        ),
+                    fontSize = 10.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 )
             }
         }

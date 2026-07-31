@@ -6,12 +6,29 @@ import retrofit2.http.*
 
 data class LoginRequest(val username: String, val password: String)
 data class LoginResponse(val access_token: String, val refresh_token: String)
-data class ChatRequest(val message: String, val session_id: String = "android-session")
+data class ExpressionSignalRequest(
+    val label: String,
+    val confidence: Double,
+    val is_stable: Boolean,
+    val timestamp: Long,
+    val model_version: String,
+)
+data class ChatRequest(
+    val message: String,
+    val session_id: String = "android-session",
+    val stream: Boolean = false,
+    val expression_signal: ExpressionSignalRequest? = null,
+)
 data class ChatResponse(val answer: String? = null, val message: String? = null)
 data class ExtractRequest(val text: String)
 data class HealthResponse(val mode: String? = null)
 data class MeResponse(val user: UserResponse? = null)
-data class UserResponse(val name: String, val role: String, val detail: String = "")
+data class UserResponse(
+    val name: String,
+    val role: String,
+    val detail: String = "",
+    val account_id: String? = null,
+)
 
 interface ApiService {
     @GET("health")

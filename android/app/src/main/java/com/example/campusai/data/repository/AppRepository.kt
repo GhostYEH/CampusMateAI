@@ -2,18 +2,25 @@ package com.example.campusai.data.repository
 
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
+import com.example.campusai.data.expression.ExpressionRecognitionService
+import com.example.campusai.data.expression.MockExpressionRecognitionService
+import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
 import com.example.campusai.data.remote.ApiClient
 import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.ChatRequest
+import com.example.campusai.data.remote.ExpressionSignalRequest
 import com.example.campusai.data.remote.ExtractRequest
+import com.example.campusai.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.security.MessageDigest
 
 class AppRepository(application: Application) {
 
+    private val application = application
     private val dataStore = AppDataStore(application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -23,7 +30,7 @@ class AppRepository(application: Application) {
     private val _backendOnline = MutableStateFlow(false)
     val backendOnline: StateFlow<Boolean> = _backendOnline.asStateFlow()
 
-    private val _mockMode = MutableStateFlow(true)
+    private val _mockMode = MutableStateFlow(BuildConfig.DEBUG)
     val mockMode: StateFlow<Boolean> = _mockMode.asStateFlow()
 
     private val _reduceMotion = MutableStateFlow(false)
@@ -35,8 +42,6 @@ class AppRepository(application: Application) {
     private val _remindersEnabled = MutableStateFlow(true)
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
 
-    private val _demoMode = MutableStateFlow(true)
-    val demoMode: StateFlow<Boolean> = _demoMode.asStateFlow()
 
     private val taskMutex = Mutex()
     private val _tasks = MutableStateFlow<List<Task>>(defaultTasks())
@@ -51,6 +56,22 @@ class AppRepository(application: Application) {
 
     private val _courses = MutableStateFlow(defaultCourses())
     val courses: StateFlow<List<Course>> = _courses.asStateFlow()
+
+    private val personalHubMutex = Mutex()
+    private var personalHubJob: Job? = null
+    private var activeAccountKey: String? = null
+
+    private val _files = MutableStateFlow<List<CampusFile>>(emptyList())
+    val files: StateFlow<List<CampusFile>> = _files.asStateFlow()
+
+    private val _activities = MutableStateFlow<List<CampusActivity>>(emptyList())
+    val activities: StateFlow<List<CampusActivity>> = _activities.asStateFlow()
+
+    private val _favorites = MutableStateFlow<List<FavoriteItem>>(emptyList())
+    val favorites: StateFlow<List<FavoriteItem>> = _favorites.asStateFlow()
+
+    private val _personalHubLoading = MutableStateFlow(false)
+    val personalHubLoading: StateFlow<Boolean> = _personalHubLoading.asStateFlow()
 
     private val demos = mapOf(
         "student_demo" to User("林知夏", "student", "计算机科学与技术 · 大三", "lin.zhixia@campus.edu.cn", "138 0000 2026", "2024020318"),
@@ -77,13 +98,13 @@ class AppRepository(application: Application) {
                 } else stored
                 _session.value = hydrated
                 if (hydrated != null && hydrated != stored) dataStore.saveSession(hydrated)
+                bindPersonalHub(hydrated)
             }
         }
         scope.launch { dataStore.mockMode.collect { _mockMode.value = it } }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
-        scope.launch { dataStore.demoMode.collect { _demoMode.value = it } }
     }
 
     suspend fun login(username: String, password: String): User {
@@ -100,7 +121,8 @@ class AppRepository(application: Application) {
             user = User(
                 name = meUser?.name ?: username,
                 role = meUser?.role ?: "student",
-                detail = meUser?.detail ?: ""
+                detail = meUser?.detail ?: "",
+                accountId = meUser?.account_id.orEmpty(),
             )
         } else {
             val demo = demos[username]
@@ -157,10 +179,107 @@ class AppRepository(application: Application) {
         dataStore.setRemindersEnabled(enabled)
     }
 
-    suspend fun setDemoMode(enabled: Boolean) {
-        _demoMode.value = enabled
-        dataStore.setDemoMode(enabled)
+    suspend fun addFile(name: String, category: String) = personalHubMutex.withLock {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return@withLock
+        _files.value = listOf(
+            CampusFile(
+                id = System.currentTimeMillis(),
+                name = cleanName,
+                category = category,
+                sizeLabel = "本地记录",
+                updatedAt = "刚刚",
+                source = "手动添加",
+            ),
+        ) + _files.value
+        persistPersonalHub()
     }
+
+    suspend fun deleteFile(id: Long) = personalHubMutex.withLock {
+        _files.value = _files.value.filterNot { it.id == id }
+        _favorites.value = _favorites.value.filterNot { it.id == "file:$id" }
+        persistPersonalHub()
+    }
+
+    suspend fun toggleFileFavorite(id: Long) = personalHubMutex.withLock {
+        val target = _files.value.firstOrNull { it.id == id } ?: return@withLock
+        val willFavorite = !target.isFavorite
+        _files.value = _files.value.map {
+            if (it.id == id) it.copy(isFavorite = willFavorite) else it
+        }
+        _favorites.value = if (willFavorite) {
+            listOf(
+                FavoriteItem(
+                    id = "file:$id",
+                    title = target.name,
+                    type = "文件",
+                    subtitle = "${target.category} · ${target.source}",
+                    savedAt = "刚刚",
+                    sourceRoute = "files",
+                ),
+            ) + _favorites.value.filterNot { it.id == "file:$id" }
+        } else {
+            _favorites.value.filterNot { it.id == "file:$id" }
+        }
+        persistPersonalHub()
+    }
+
+    suspend fun toggleActivityJoined(id: Long) = personalHubMutex.withLock {
+        _activities.value = _activities.value.map { activity ->
+            if (activity.id != id) activity
+            else activity.copy(status = if (activity.status == "已报名") "可报名" else "已报名")
+        }
+        persistPersonalHub()
+    }
+
+    suspend fun toggleActivityFavorite(id: Long) = personalHubMutex.withLock {
+        val target = _activities.value.firstOrNull { it.id == id } ?: return@withLock
+        val willFavorite = !target.isFavorite
+        _activities.value = _activities.value.map {
+            if (it.id == id) it.copy(isFavorite = willFavorite) else it
+        }
+        _favorites.value = if (willFavorite) {
+            listOf(
+                FavoriteItem(
+                    id = "activity:$id",
+                    title = target.title,
+                    type = "活动",
+                    subtitle = "${target.date} · ${target.organizer}",
+                    savedAt = "刚刚",
+                    sourceRoute = "activities",
+                ),
+            ) + _favorites.value.filterNot { it.id == "activity:$id" }
+        } else {
+            _favorites.value.filterNot { it.id == "activity:$id" }
+        }
+        persistPersonalHub()
+    }
+
+    suspend fun removeFavorite(id: String) = personalHubMutex.withLock {
+        _favorites.value = _favorites.value.filterNot { it.id == id }
+        when {
+            id.startsWith("file:") -> {
+                val sourceId = id.substringAfter(':').toLongOrNull()
+                _files.value = _files.value.map {
+                    if (it.id == sourceId) it.copy(isFavorite = false) else it
+                }
+            }
+            id.startsWith("activity:") -> {
+                val sourceId = id.substringAfter(':').toLongOrNull()
+                _activities.value = _activities.value.map {
+                    if (it.id == sourceId) it.copy(isFavorite = false) else it
+                }
+            }
+        }
+        persistPersonalHub()
+    }
+
+    fun createExpressionRecognitionService(useMock: Boolean = _mockMode.value): ExpressionRecognitionService =
+        if (useMock) {
+            MockExpressionRecognitionService()
+        } else {
+            RealExpressionRecognitionService(application)
+        }
 
     suspend fun updateProfile(
         name: String,
@@ -181,9 +300,31 @@ class AppRepository(application: Application) {
         dataStore.saveSession(updated)
     }
 
-    suspend fun chat(message: String): String {
+    suspend fun chat(message: String, expression: ExpressionResult? = null): String {
         if (_backendOnline.value && !_mockMode.value) {
-            val resp = ApiClient.api.chat(ChatRequest(message))
+            val expressionSignal = expression
+                ?.takeIf {
+                    it.isStable &&
+                        it.confidence >= 0.60 &&
+                        it.label != ExpressionLabel.UNKNOWN &&
+                        it.label != ExpressionLabel.NO_FACE
+                }
+                ?.let {
+                    ExpressionSignalRequest(
+                        label = it.label.name,
+                        confidence = it.confidence.coerceIn(0.0, 1.0),
+                        is_stable = true,
+                        timestamp = it.timestamp,
+                        model_version = it.modelVersion.take(80),
+                    )
+                }
+            val resp = ApiClient.api.chat(
+                ChatRequest(
+                    message = message,
+                    stream = false,
+                    expression_signal = expressionSignal,
+                ),
+            )
             if (resp.isSuccessful) {
                 val body = resp.body()!!
                 return body.answer ?: body.message ?: "暂无回答"
@@ -232,4 +373,74 @@ class AppRepository(application: Application) {
         Notice(3, "期末考试安排及相关事项说明", "教务处", "5月17日", false),
         Notice(4, "图书馆数据库试用资源更新通知", "图书馆", "5月16日", false),
     )
+
+    private fun bindPersonalHub(user: User?) {
+        personalHubJob?.cancel()
+        if (user == null) {
+            activeAccountKey = null
+            _personalHubLoading.value = false
+            _files.value = emptyList()
+            _activities.value = emptyList()
+            _favorites.value = emptyList()
+            return
+        }
+        val accountKey = accountStorageKey(user)
+        activeAccountKey = accountKey
+        _personalHubLoading.value = true
+        personalHubJob = scope.launch {
+            dataStore.observePersonalHub(accountKey).collect { stored ->
+                val snapshot = stored ?: defaultPersonalHub().also {
+                    dataStore.savePersonalHub(accountKey, it)
+                }
+                _files.value = snapshot.files
+                _activities.value = snapshot.activities
+                _favorites.value = snapshot.favorites
+                _personalHubLoading.value = false
+            }
+        }
+    }
+
+    private suspend fun persistPersonalHub() {
+        val accountKey = activeAccountKey ?: return
+        dataStore.savePersonalHub(
+            accountKey,
+            PersonalHubSnapshot(
+                files = _files.value,
+                activities = _activities.value,
+                favorites = _favorites.value,
+            ),
+        )
+    }
+
+    private fun accountStorageKey(user: User): String {
+        val identity = user.accountId.ifBlank {
+            user.studentId.ifBlank { user.email.ifBlank { "${user.role}:${user.name}" } }
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray())
+            .take(12)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private fun defaultPersonalHub(): PersonalHubSnapshot {
+        val files = listOf(
+            CampusFile(101, "数据结构实验三说明.pdf", "课程资料", "2.4 MB", "今天 10:24", "数据结构", true),
+            CampusFile(102, "奖学金申请材料清单.docx", "校园事务", "860 KB", "昨天 18:40", "学生工作处"),
+            CampusFile(103, "创新创业训练计划书.pdf", "竞赛资料", "1.7 MB", "7月28日", "创新实践中心"),
+        )
+        val activities = listOf(
+            CampusActivity(201, "第十六届程序设计竞赛", "创新实践中心", "8月16日 09:00", "信息楼报告厅", "已报名", true),
+            CampusActivity(202, "图书馆新生志愿讲解员招募", "校图书馆", "8月20日 14:30", "图书馆一层", "可报名"),
+            CampusActivity(203, "暑期社会实践成果分享会", "校团委", "9月03日 19:00", "大学生活动中心", "可报名"),
+        )
+        return PersonalHubSnapshot(
+            files = files,
+            activities = activities,
+            favorites = listOf(
+                FavoriteItem("activity:201", activities.first().title, "活动", "8月16日 · 创新实践中心", "7月30日", "activities"),
+                FavoriteItem("file:101", files.first().name, "文件", "课程资料 · 数据结构", "7月29日", "files"),
+                FavoriteItem("notice:scholarship", "2026 学年奖学金评审通知", "通知", "学生工作处 · 申请流程", "7月26日", "notifications"),
+            ),
+        )
+    }
 }

@@ -7,14 +7,20 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.campusai.data.model.CampusActivity
+import com.example.campusai.data.model.CampusFile
+import com.example.campusai.data.model.FavoriteItem
+import com.example.campusai.data.model.PersonalHubSnapshot
 import com.example.campusai.data.model.User
+import com.example.campusai.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "campus_prefs")
 
-class AppDataStore(private val context: Context) {
+class AppDataStore(private val context: Context) : PersonalHubDataSource {
 
     private val KEY_SESSION = stringPreferencesKey("campus_session")
     private val KEY_ACCESS_TOKEN = stringPreferencesKey("campus_access_token")
@@ -23,7 +29,6 @@ class AppDataStore(private val context: Context) {
     private val KEY_REDUCE_MOTION = booleanPreferencesKey("campus_reduce_motion")
     private val KEY_DARK_MODE = booleanPreferencesKey("campus_dark_mode")
     private val KEY_REMINDERS = booleanPreferencesKey("campus_reminders")
-    private val KEY_DEMO_MODE = booleanPreferencesKey("campus_demo_mode")
 
     val session: Flow<User?> = context.dataStore.data.map { prefs ->
         prefs[KEY_SESSION]?.let { json: String ->
@@ -36,6 +41,7 @@ class AppDataStore(private val context: Context) {
                     email = obj.optString("email", ""),
                     phone = obj.optString("phone", ""),
                     studentId = obj.optString("studentId", ""),
+                    accountId = obj.optString("accountId", ""),
                 )
             } catch (_: Exception) { null }
         }
@@ -46,7 +52,7 @@ class AppDataStore(private val context: Context) {
     }
 
     val mockMode: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
-        prefs[KEY_MOCK_MODE] ?: true
+        prefs[KEY_MOCK_MODE] ?: BuildConfig.DEBUG
     }
 
     val reduceMotion: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
@@ -55,7 +61,6 @@ class AppDataStore(private val context: Context) {
 
     val darkMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DARK_MODE] ?: false }
     val remindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_REMINDERS] ?: true }
-    val demoMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DEMO_MODE] ?: true }
 
     suspend fun saveSession(user: User) {
         context.dataStore.edit { prefs ->
@@ -66,6 +71,7 @@ class AppDataStore(private val context: Context) {
             json.put("email", user.email)
             json.put("phone", user.phone)
             json.put("studentId", user.studentId)
+            json.put("accountId", user.accountId)
             prefs[KEY_SESSION] = json.toString()
         }
     }
@@ -105,7 +111,109 @@ class AppDataStore(private val context: Context) {
         context.dataStore.edit { it[KEY_REMINDERS] = enabled }
     }
 
-    suspend fun setDemoMode(enabled: Boolean) {
-        context.dataStore.edit { it[KEY_DEMO_MODE] = enabled }
+    override fun observePersonalHub(accountKey: String): Flow<PersonalHubSnapshot?> {
+        val key = stringPreferencesKey("campus_personal_hub_v1_$accountKey")
+        return context.dataStore.data.map { prefs ->
+            prefs[key]?.let(::decodePersonalHub)
+        }
+    }
+
+    override suspend fun savePersonalHub(accountKey: String, snapshot: PersonalHubSnapshot) {
+        val key = stringPreferencesKey("campus_personal_hub_v1_$accountKey")
+        context.dataStore.edit { prefs ->
+            prefs[key] = encodePersonalHub(snapshot)
+        }
+    }
+
+    private fun encodePersonalHub(snapshot: PersonalHubSnapshot): String {
+        val root = JSONObject()
+        root.put("files", JSONArray().apply {
+            snapshot.files.forEach { file ->
+                put(JSONObject().apply {
+                    put("id", file.id)
+                    put("name", file.name)
+                    put("category", file.category)
+                    put("sizeLabel", file.sizeLabel)
+                    put("updatedAt", file.updatedAt)
+                    put("source", file.source)
+                    put("isFavorite", file.isFavorite)
+                })
+            }
+        })
+        root.put("activities", JSONArray().apply {
+            snapshot.activities.forEach { activity ->
+                put(JSONObject().apply {
+                    put("id", activity.id)
+                    put("title", activity.title)
+                    put("organizer", activity.organizer)
+                    put("date", activity.date)
+                    put("location", activity.location)
+                    put("status", activity.status)
+                    put("isFavorite", activity.isFavorite)
+                })
+            }
+        })
+        root.put("favorites", JSONArray().apply {
+            snapshot.favorites.forEach { favorite ->
+                put(JSONObject().apply {
+                    put("id", favorite.id)
+                    put("title", favorite.title)
+                    put("type", favorite.type)
+                    put("subtitle", favorite.subtitle)
+                    put("savedAt", favorite.savedAt)
+                    put("sourceRoute", favorite.sourceRoute)
+                })
+            }
+        })
+        return root.toString()
+    }
+
+    private fun decodePersonalHub(raw: String): PersonalHubSnapshot? = try {
+        val root = JSONObject(raw)
+        val filesJson = root.optJSONArray("files") ?: JSONArray()
+        val activitiesJson = root.optJSONArray("activities") ?: JSONArray()
+        val favoritesJson = root.optJSONArray("favorites") ?: JSONArray()
+        PersonalHubSnapshot(
+            files = List(filesJson.length()) { index ->
+                filesJson.getJSONObject(index).let { obj ->
+                    CampusFile(
+                        id = obj.optLong("id"),
+                        name = obj.optString("name"),
+                        category = obj.optString("category"),
+                        sizeLabel = obj.optString("sizeLabel"),
+                        updatedAt = obj.optString("updatedAt"),
+                        source = obj.optString("source"),
+                        isFavorite = obj.optBoolean("isFavorite"),
+                    )
+                }
+            },
+            activities = List(activitiesJson.length()) { index ->
+                activitiesJson.getJSONObject(index).let { obj ->
+                    CampusActivity(
+                        id = obj.optLong("id"),
+                        title = obj.optString("title"),
+                        organizer = obj.optString("organizer"),
+                        date = obj.optString("date"),
+                        location = obj.optString("location"),
+                        status = obj.optString("status"),
+                        isFavorite = obj.optBoolean("isFavorite"),
+                    )
+                }
+            },
+            favorites = List(favoritesJson.length()) { index ->
+                favoritesJson.getJSONObject(index).let { obj ->
+                    FavoriteItem(
+                        id = obj.optString("id"),
+                        title = obj.optString("title"),
+                        type = obj.optString("type"),
+                        subtitle = obj.optString("subtitle"),
+                        savedAt = obj.optString("savedAt"),
+                        sourceRoute = obj.optString("sourceRoute"),
+                    )
+                }
+            },
+        )
+    } catch (_: Exception) {
+        null
     }
 }

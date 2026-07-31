@@ -1,0 +1,246 @@
+.task-hero {
+  padding: 34rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 34rpx;
+  background: var(--surface);
+}
+
+.hero-label {
+  color: var(--muted);
+  font-size: 21rpx;
+}
+
+.hero-value {
+  margin-top: 10rpx;
+  font-size: 42rpx;
+  font-weight: 760;
+}
+
+.hero-copy {
+  max-width: 390rpx;
+  margin-top: 10rpx;
+  color: var(--muted);
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.progress-badge {
+  width: 128rpx;
+  height: 128rpx;
+  flex: none;
+  border: 12rpx solid var(--primary-soft);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.progress-value {
+  font-size: 29rpx;
+  font-weight: 720;
+}
+
+.progress-caption {
+  margin-top: 3rpx;
+  color: var(--muted);
+  font-size: 17rpx;
+}
+
+.task-toolbar {
+  margin-top: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.filters {
+  padding: 7rpx;
+  display: flex;
+  gap: 5rpx;
+  border-radius: 22rpx;
+  background: var(--primary-soft);
+}
+
+.filter {
+  height: 57rpx;
+  margin: 0;
+  padding: 0 17rpx;
+  border-radius: 16rpx;
+  color: var(--muted);
+  background: transparent;
+  font-size: 21rpx;
+}
+
+.filter.selected {
+  color: var(--primary);
+  background: var(--surface);
+  font-weight: 650;
+}
+
+.add-button {
+  min-height: 70rpx;
+  margin: 0;
+  padding: 0 23rpx;
+  border-radius: 20rpx;
+  color: #fff;
+  background: var(--primary);
+  font-size: 22rpx;
+  font-weight: 650;
+}
+
+.task-list {
+  margin-top: 22rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 15rpx;
+}
+
+.task-card {
+  min-height: 116rpx;
+  padding: 20rpx 16rpx 20rpx 20rpx;
+  display: flex;
+  align-items: center;
+  gap: 17rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 28rpx;
+  background: var(--surface);
+  box-sizing: border-box;
+  transition: background 220ms ease, border-color 220ms ease;
+}
+
+.task-card.done {
+  border-color: rgba(78, 140, 106, 0.18);
+  background: rgba(78, 140, 106, 0.06);
+}
+
+.check-button {
+  width: 46rpx;
+  height: 46rpx;
+  min-height: 46rpx;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 3rpx solid var(--primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.check-button.checked {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.check-core {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+}
+
+.check-button.checked .check-core {
+  opacity: 1;
+}
+
+.task-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.task-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 25rpx;
+  line-height: 1.45;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.done .task-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.task-meta {
+  margin-top: 8rpx;
+  color: var(--muted);
+  font-size: 20rpx;
+}
+
+.task-due {
+  color: var(--accent);
+}
+
+.delete-button {
+  width: 78rpx;
+  min-height: 56rpx;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 16rpx;
+  color: var(--muted);
+  background: transparent;
+  font-size: 20rpx;
+}
+
+.sheet-mask {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(7, 20, 36, 0.48);
+}
+
+.sheet {
+  width: 100%;
+  padding: 20rpx 32rpx calc(34rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  border-radius: 40rpx 40rpx 0 0;
+  background: var(--surface);
+}
+
+.sheet-handle {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 26rpx;
+  border-radius: 999rpx;
+  background: var(--line);
+}
+
+.sheet-title {
+  font-size: 38rpx;
+  font-weight: 750;
+}
+
+.sheet-copy {
+  margin-top: 7rpx;
+  color: var(--muted);
+  font-size: 22rpx;
+}
+
+.input-label {
+  margin: 25rpx 0 10rpx;
+  font-size: 22rpx;
+  font-weight: 650;
+}
+
+.sheet-actions {
+  margin-top: 28rpx;
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  gap: 14rpx;
+}

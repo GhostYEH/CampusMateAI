@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -81,10 +79,9 @@ private val FormMuted = Color(0xBDEBF0FF)
 fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    var username by remember { mutableStateOf("student_demo") }
-    var password by remember { mutableStateOf("Demo123456") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
@@ -142,7 +139,7 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
                     .padding(start = 24.dp, top = 20.dp, end = 24.dp)
                     .enterAnimation(delayMs = 30, enabled = !reduceMotion),
             ) {
-                LoginBrand(mockMode)
+                LoginBrand()
                 Spacer(Modifier.height(66.dp))
                 Text(
                     "欢迎回到校园",
@@ -171,8 +168,7 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
             ) {
                 Text("登录 CampusMate", color = FormText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    if (mockMode) "当前为 Mock 演示模式，可使用下方身份快速体验。"
-                    else "使用学校统一身份账号继续。",
+                    "使用学校统一身份账号继续。",
                     color = FormMuted,
                     fontSize = 11.5.sp,
                 )
@@ -242,16 +238,6 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("快速体验", color = FormMuted, fontSize = 10.5.sp)
-                    DemoChip("学生") { username = "student_demo"; password = "Demo123456"; error = "" }
-                    DemoChip("教师") { username = "teacher_demo"; password = "Demo123456"; error = "" }
-                    DemoChip("管理") { username = "admin_demo"; password = "Demo123456"; error = "" }
-                }
                 Text(
                     "登录即表示你已阅读并同意校园数据使用说明",
                     color = Color.White.copy(alpha = .48f),
@@ -264,7 +250,7 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
 }
 
 @Composable
-private fun LoginBrand(mockMode: Boolean) {
+private fun LoginBrand() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(LoginWarm),
@@ -277,17 +263,6 @@ private fun LoginBrand(mockMode: Boolean) {
             Text("CampusMate AI", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text("校园事务 · 温和陪伴", color = Color.White.copy(alpha = .7f), fontSize = 9.5.sp)
         }
-        Spacer(Modifier.weight(1f))
-        Text(
-            if (mockMode) "MOCK" else "ONLINE",
-            color = Color.White,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = .8.sp,
-            modifier = Modifier
-                .border(1.dp, Color.White.copy(alpha = .46f), CircleShape)
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-        )
     }
 }
 
@@ -341,19 +316,4 @@ private fun LoginField(
             },
         )
     }
-}
-
-@Composable
-private fun DemoChip(label: String, onClick: () -> Unit) {
-    Text(
-        label,
-        color = FormText,
-        fontSize = 10.5.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .border(1.dp, Color.White.copy(alpha = .34f), CircleShape)
-            .background(Color.White.copy(alpha = .08f), CircleShape)
-            .campusClickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 7.dp),
-    )
 }

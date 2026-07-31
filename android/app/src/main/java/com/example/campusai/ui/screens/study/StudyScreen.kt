@@ -1,5 +1,9 @@
 package com.example.campusai.ui.screens.study
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -9,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,9 +22,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import com.example.campusai.data.expression.CameraExpressionRecognitionService
+import com.example.campusai.data.expression.ExpressionServiceStatus
+import com.example.campusai.data.expression.ObservableExpressionRecognitionService
+import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.AnimatedBar
 import com.example.campusai.ui.components.AnimatedCircularProgress
@@ -27,21 +42,83 @@ import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.MockBadge
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun StudyScreen(repository: AppRepository) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
+    val expressionService = remember(mockMode) {
+        repository.createExpressionRecognitionService(mockMode)
+    }
+    val disposalScope = remember(expressionService) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+    val observableService = expressionService as ObservableExpressionRecognitionService
+    val expressionStatus by observableService.status.collectAsState()
+    val expressionResult by expressionService.results().collectAsState(
+        initial = ExpressionResult(
+            ExpressionLabel.UNKNOWN,
+            0.0,
+            emptyMap(),
+            System.currentTimeMillis(),
+            false,
+            "not-loaded",
+        ),
+    )
+    var expressionEnabled by remember(expressionService) { mutableStateOf(false) }
+    var permissionDenied by remember(expressionService) { mutableStateOf(false) }
     var seconds by remember { mutableStateOf(25 * 60) }
     var timerRunning by remember { mutableStateOf(false) }
+    val cameraPermissionGranted = mockMode || ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.CAMERA,
+    ) == PackageManager.PERMISSION_GRANTED
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        permissionDenied = !granted
+        if (granted) {
+            expressionEnabled = true
+            coroutineScope.launch {
+                expressionService.initialize()
+                if (timerRunning) expressionService.start()
+            }
+        }
+    }
 
     LaunchedEffect(timerRunning) {
         while (timerRunning && seconds > 0) {
             delay(1000)
             seconds--
             if (seconds <= 0) timerRunning = false
+        }
+    }
+
+    LaunchedEffect(timerRunning, expressionEnabled, expressionService) {
+        if (!expressionEnabled) return@LaunchedEffect
+        if (timerRunning) {
+            expressionService.start()
+        } else {
+            expressionService.pause()
+        }
+    }
+
+    DisposableEffect(expressionService) {
+        onDispose {
+            (expressionService as? CameraExpressionRecognitionService)?.unbindCamera()
+            disposalScope.launch {
+                expressionService.dispose()
+                disposalScope.cancel()
+            }
         }
     }
 
@@ -162,25 +239,130 @@ fun StudyScreen(repository: AppRepository) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("表情识别辅助", style = MaterialTheme.typography.titleSmall)
-                MockBadge()
+                if (mockMode) {
+                    MockBadge()
+                } else {
+                    Surface(
+                        color = PrimarySoft,
+                        shape = RoundedCornerShape(999.dp),
+                    ) {
+                        Text(
+                            "本机 LiteRT",
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                            color = Primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+            if (
+                expressionEnabled &&
+                !mockMode &&
+                cameraPermissionGranted &&
+                expressionService is CameraExpressionRecognitionService
+            ) {
+                AndroidView(
+                    factory = { previewContext ->
+                        PreviewView(previewContext).apply {
+                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                            expressionService.bindCamera(lifecycleOwner, this)
+                        }
+                    },
+                    update = { expressionService.bindCamera(lifecycleOwner, it) },
+                    onRelease = { expressionService.unbindCamera() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(164.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                )
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(PrimarySoft),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.EmojiEmotions, null, tint = Primary, modifier = Modifier.size(28.dp))
+                    Icon(
+                        expressionStatusIcon(expressionStatus),
+                        null,
+                        tint = Primary,
+                        modifier = Modifier.size(28.dp),
+                    )
                 }
-                Column {
-                    Text("当前表情可能偏中性", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("识别结果仅供辅助参考，不代表心理状态或医学判断。", color = Muted, fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        expressionStatusTitle(
+                            enabled = expressionEnabled,
+                            status = expressionStatus,
+                            result = expressionResult,
+                        ),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        expressionStatusDetail(
+                            enabled = expressionEnabled,
+                            permissionDenied = permissionDenied,
+                            status = expressionStatus,
+                            result = expressionResult,
+                        ),
+                        color = if (expressionStatus is ExpressionServiceStatus.Error) Danger else Muted,
+                        fontSize = 11.sp,
+                    )
                 }
+            }
+            Button(
+                onClick = {
+                    if (expressionEnabled) {
+                        expressionEnabled = false
+                        coroutineScope.launch { expressionService.stop() }
+                    } else if (cameraPermissionGranted) {
+                        permissionDenied = false
+                        expressionEnabled = true
+                        coroutineScope.launch {
+                            expressionService.initialize()
+                            if (timerRunning) expressionService.start()
+                        }
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = expressionStatus !is ExpressionServiceStatus.Initializing,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (expressionEnabled) PrimarySoft else Primary,
+                    contentColor = if (expressionEnabled) Primary else MaterialTheme.colorScheme.onPrimary,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                if (expressionStatus is ExpressionServiceStatus.Initializing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Primary,
+                    )
+                } else {
+                    Icon(
+                        if (expressionEnabled) Icons.Default.VideocamOff else Icons.Default.Videocam,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    when {
+                        expressionStatus is ExpressionServiceStatus.Initializing -> "正在加载本机模型"
+                        expressionEnabled -> "关闭表情辅助"
+                        else -> "开启表情辅助"
+                    },
+                )
             }
             Row(
                 modifier = Modifier
@@ -248,5 +430,56 @@ fun StudyScreen(repository: AppRepository) {
             }
         }
     }
+}
+
+private fun expressionStatusIcon(status: ExpressionServiceStatus) = when (status) {
+    ExpressionServiceStatus.NoFace -> Icons.Default.FaceRetouchingOff
+    ExpressionServiceStatus.LowConfidence -> Icons.AutoMirrored.Filled.HelpOutline
+    is ExpressionServiceStatus.Error -> Icons.Default.ErrorOutline
+    ExpressionServiceStatus.Initializing -> Icons.Default.Downloading
+    ExpressionServiceStatus.Off -> Icons.Default.VisibilityOff
+    else -> Icons.Default.EmojiEmotions
+}
+
+private fun expressionStatusTitle(
+    enabled: Boolean,
+    status: ExpressionServiceStatus,
+    result: ExpressionResult,
+): String = when {
+    !enabled -> "表情辅助已关闭"
+    status is ExpressionServiceStatus.Error -> "本机识别暂不可用"
+    status == ExpressionServiceStatus.Initializing -> "正在加载本机模型"
+    status == ExpressionServiceStatus.Paused -> "开始专注后才会分析画面"
+    status == ExpressionServiceStatus.NoFace || result.label == ExpressionLabel.NO_FACE ->
+        "画面中暂未检测到人脸"
+    status == ExpressionServiceStatus.LowConfidence || result.label == ExpressionLabel.UNKNOWN ->
+        "暂时无法稳定判断当前表情"
+    !result.isStable -> "正在观察连续画面…"
+    else -> "当前表情可能偏${result.label.chineseName()}"
+}
+
+private fun expressionStatusDetail(
+    enabled: Boolean,
+    permissionDenied: Boolean,
+    status: ExpressionServiceStatus,
+    result: ExpressionResult,
+): String = when {
+    permissionDenied -> "未获得摄像头权限；可再次点击并在系统提示中授权。"
+    !enabled -> "仅在你主动开启且进入专注时，在本机内存中处理画面。"
+    status is ExpressionServiceStatus.Error -> status.message
+    result.isStable -> "稳定置信度 ${(result.confidence * 100).toInt()}%；结果仅供辅助参考，不代表心理状态或医学判断。"
+    else -> "摄像头画面不保存、不上传，也不会写入日志。"
+}
+
+private fun ExpressionLabel.chineseName(): String = when (this) {
+    ExpressionLabel.HAPPY -> "愉快"
+    ExpressionLabel.NEUTRAL -> "中性"
+    ExpressionLabel.SAD -> "低落"
+    ExpressionLabel.ANGRY -> "生气"
+    ExpressionLabel.FEAR -> "紧张"
+    ExpressionLabel.SURPRISE -> "惊讶"
+    ExpressionLabel.DISGUST -> "厌恶"
+    ExpressionLabel.UNKNOWN -> "不确定"
+    ExpressionLabel.NO_FACE -> "无脸"
 }
 

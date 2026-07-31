@@ -1,0 +1,91 @@
+<view class="page tab-page {{settings.darkMode ? 'dark' : ''}} {{settings.reduceMotion ? 'reduce-motion' : ''}}">
+  <campus-header
+    title="我的"
+    subtitle="账号、偏好与数据模式"
+    mode="{{settings.mockMode ? 'Mock 演示' : '真实后端'}}"
+  />
+
+  <view class="page-body">
+    <view class="profile-card enter">
+      <image class="avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image>
+      <view class="identity">
+        <view class="name">{{user.name}}</view>
+        <view class="detail">{{user.detail}}</view>
+        <view class="account">{{user.studentId}} · {{user.email}}</view>
+      </view>
+    </view>
+
+    <view class="data-mode enter enter-delay-1">
+      <view>
+        <view class="mode-title">当前数据模式</view>
+        <view class="mode-value">{{settings.mockMode ? 'Mock 演示数据' : '真实校园后端'}}</view>
+        <view class="mode-copy">{{settings.mockMode ? '所有 AI 与知识库结果均明确标注为演示' : '请求将发送到你配置的后端地址'}}</view>
+      </view>
+      <switch checked="{{settings.mockMode}}" color="#2F6486" bindchange="toggleMock" />
+    </view>
+
+    <view class="settings-section enter enter-delay-2">
+      <view class="section-label">显示与动效</view>
+      <view class="setting-group surface">
+        <view class="setting-row">
+          <view class="setting-copy">
+            <view class="setting-title">深色模式</view>
+            <view class="setting-subtitle">切换为更适合夜间的深色界面</view>
+          </view>
+          <switch checked="{{settings.darkMode}}" color="#2F6486" bindchange="toggleDark" />
+        </view>
+        <view class="divider"></view>
+        <view class="setting-row">
+          <view class="setting-copy">
+            <view class="setting-title">减少动态效果</view>
+            <view class="setting-subtitle">减少页面进入与状态切换动画</view>
+          </view>
+          <switch checked="{{settings.reduceMotion}}" color="#2F6486" bindchange="toggleMotion" />
+        </view>
+      </view>
+    </view>
+
+    <view class="settings-section enter enter-delay-2">
+      <view class="section-label">提醒与陪伴</view>
+      <view class="setting-group surface">
+        <view class="setting-row">
+          <view class="setting-copy">
+            <view class="setting-title">截止提醒</view>
+            <view class="setting-subtitle">待办临近截止时提醒</view>
+          </view>
+          <switch checked="{{settings.remindersEnabled}}" color="#2F6486" bindchange="toggleReminders" />
+        </view>
+        <view class="divider"></view>
+        <view class="setting-row">
+          <view class="setting-copy">
+            <view class="setting-title">比赛演示模式</view>
+            <view class="setting-subtitle">使用完整、自然的校园演示链路</view>
+          </view>
+          <switch checked="{{settings.demoMode}}" color="#2F6486" bindchange="toggleDemo" />
+        </view>
+      </view>
+    </view>
+
+    <view class="settings-section enter enter-delay-3">
+      <view class="section-label">真实后端</view>
+      <view class="backend-panel surface">
+        <view wx:if="{{!editingUrl}}" class="backend-summary">
+          <view class="setting-copy">
+            <view class="setting-title">服务地址</view>
+            <view class="setting-subtitle">{{settings.apiBaseUrl || '尚未配置，仅可使用 Mock 模式'}}</view>
+          </view>
+          <button class="edit-button" bindtap="editUrl">配置</button>
+        </view>
+        <view wx:else>
+          <input class="field" value="{{apiBaseUrlInput}}" placeholder="例如：https://api.example.edu" bindinput="onUrlInput" />
+          <button class="primary-button save-url" bindtap="saveUrl">保存地址</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="privacy-note">
+      表情识别结果仅供辅助参考；情绪陪伴不进行疾病诊断，也不替代专业心理咨询。
+    </view>
+    <button class="danger-button logout" bindtap="logout">退出登录</button>
+  </view>
+</view>

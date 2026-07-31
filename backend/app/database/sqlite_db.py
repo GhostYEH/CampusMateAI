@@ -178,6 +178,28 @@ CREATE INDEX IF NOT EXISTS idx_announcements_class_group_id ON announcements(cla
 CREATE INDEX IF NOT EXISTS idx_announcements_status ON announcements(status);
 CREATE INDEX IF NOT EXISTS idx_announcements_published_at ON announcements(published_at);
 
+CREATE TABLE IF NOT EXISTS campus_activities (
+    id TEXT PRIMARY KEY,
+    author_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'campus',
+    location TEXT,
+    registration_deadline TEXT,
+    starts_at TEXT,
+    ends_at TEXT,
+    capacity INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft',
+    published_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_campus_activities_status ON campus_activities(status);
+CREATE INDEX IF NOT EXISTS idx_campus_activities_starts_at ON campus_activities(starts_at);
+CREATE INDEX IF NOT EXISTS idx_campus_activities_deadline ON campus_activities(registration_deadline);
+
 CREATE TABLE IF NOT EXISTS announcement_read_receipts (
     announcement_id TEXT NOT NULL,
     student_id TEXT NOT NULL,

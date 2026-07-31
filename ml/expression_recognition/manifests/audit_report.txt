@@ -1,0 +1,86 @@
+{
+  "dataset_root": "K:\\人脸数据集",
+  "seed": 20260731,
+  "validation_fraction": 0.15,
+  "class_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "total_files": 35887,
+  "included_files": 33977,
+  "excluded_files": 1750,
+  "quarantined_files": 160,
+  "pre_clean_counts": {
+    "test": {
+      "angry": 958,
+      "disgust": 111,
+      "fear": 1024,
+      "happy": 1774,
+      "neutral": 1233,
+      "sad": 1247,
+      "surprise": 831
+    },
+    "train": {
+      "angry": 3995,
+      "disgust": 436,
+      "fear": 4097,
+      "happy": 7215,
+      "neutral": 4965,
+      "sad": 4830,
+      "surprise": 3171
+    }
+  },
+  "post_clean_counts": {
+    "test": {
+      "angry": 941,
+      "disgust": 108,
+      "fear": 1005,
+      "happy": 1764,
+      "neutral": 1224,
+      "sad": 1235,
+      "surprise": 788
+    },
+    "train": {
+      "angry": 3210,
+      "disgust": 298,
+      "fear": 3227,
+      "happy": 5975,
+      "neutral": 4099,
+      "sad": 3975,
+      "surprise": 2091
+    },
+    "validation": {
+      "angry": 566,
+      "disgust": 52,
+      "fear": 570,
+      "happy": 1055,
+      "neutral": 723,
+      "sad": 702,
+      "surprise": 369
+    }
+  },
+  "duplicate_statistics": {
+    "exact_duplicate_groups": 1516,
+    "cross_split_duplicate_groups": 506,
+    "cross_label_conflict_groups": 57
+  },
+  "reason_counts": {
+    "cross_label_hash_conflict": 160,
+    "cross_split_duplicate_keep_test": 682,
+    "same_split_exact_duplicate": 1068
+  },
+  "format_counts": {
+    "JPEG": 35887
+  },
+  "size_counts": {
+    "48x48": 35887
+  },
+  "channel_counts": {
+    "1": 35887
+  }
+}

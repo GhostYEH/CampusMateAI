@@ -16,6 +16,9 @@ import com.example.campusai.ui.theme.CampusAITheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 在 super.onCreate 之前切换回正常主题，
+        // 使启动画面主题的 windowBackground 仅在启动瞬间显示
+        setTheme(R.style.Theme_Campusai)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 

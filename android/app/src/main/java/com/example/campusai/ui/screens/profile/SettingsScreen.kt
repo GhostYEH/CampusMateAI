@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.theme.PrimaryHover
 import kotlinx.coroutines.launch
 
 @Composable
@@ -36,8 +37,6 @@ fun SettingsScreen(
     val darkMode by repository.darkMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val reminders by repository.remindersEnabled.collectAsState()
-    val demoMode by repository.demoMode.collectAsState()
-    val mockMode by repository.mockMode.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     ReferenceSystemBars(darkMode)
@@ -91,13 +90,6 @@ fun SettingsScreen(
                             snackbar.showSnackbar(if (it) "截止提醒已开启" else "截止提醒已关闭")
                         }
                     }
-                    SettingsDivider()
-                    SettingsSwitchRow(
-                        icon = Icons.Default.Science,
-                        title = "比赛演示模式",
-                        subtitle = "使用完整、自然的校园 Mock 数据链路",
-                        checked = demoMode,
-                    ) { scope.launch { repository.setDemoMode(it) } }
                 }
             }
             item {
@@ -105,8 +97,6 @@ fun SettingsScreen(
                     title = "数据与服务",
                     modifier = Modifier.enterAnimation(delayMs = 140, enabled = !reduceMotion),
                 ) {
-                    SettingsInfoRow(Icons.Default.Dns, "当前数据模式", if (mockMode) "Mock 演示" else "真实后端")
-                    SettingsDivider()
                     SettingsInfoRow(Icons.Default.Storage, "本地数据", "账号偏好仅保存在本机")
                     SettingsDivider()
                     SettingsInfoRow(Icons.Default.Security, "隐私说明", "识别结果仅供辅助参考")
@@ -143,10 +133,10 @@ internal fun ReferenceSubpageHeader(
             .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(Color(0xFF5E69F5), ReferencePrimary, Color(0xFF8883FA)),
+                    colors = listOf(PrimaryHover, ReferencePrimary, ReferencePrimary.copy(alpha = .86f)),
                     start = Offset.Zero,
                     end = Offset(1000f, 600f),
-                )
+)
             ),
     ) {
         Box(

@@ -1,0 +1,22 @@
+<view class="tab-shell {{darkMode ? 'dark-tab' : ''}}">
+  <view class="tab-bar">
+    <button
+      wx:for="{{list}}"
+      wx:key="pagePath"
+      class="tab-item {{selected === index ? 'selected' : ''}}"
+      data-path="{{item.pagePath}}"
+      bindtap="switchTab"
+      aria-label="{{item.text}}"
+    >
+      <view class="icon-wrap">
+        <image
+          class="tab-icon"
+          src="/assets/icons/tab-{{item.icon}}-{{selected === index ? 'active' : 'inactive'}}-{{darkMode ? 'dark' : 'light'}}.svg"
+          mode="aspectFit"
+        ></image>
+        <view wx:if="{{item.icon === 'tasks' && taskCount > 0}}" class="task-badge">{{taskCount > 9 ? '9+' : taskCount}}</view>
+      </view>
+      <text class="tab-label">{{item.text}}</text>
+    </button>
+  </view>
+</view>

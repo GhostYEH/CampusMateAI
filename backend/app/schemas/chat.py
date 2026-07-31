@@ -89,11 +89,11 @@ class ChatRequest(BaseModel):
         "不得作为校园规则事实,不得绕过 RAG 拒答规则",
         max_length=500,
     )
-    # 表情信号(可选,留给 CNN 分支接入): 当前实现安全降级,后端忽略不进入 LLM
+    # 表情信号(可选): 仅接收客户端 CNN 的稳定标签与置信度,不接收图像
     expression_signal: Optional[Dict[str, Any]] = Field(
         None,
-        description="表情信号(预留,当前实现安全降级:忽略 + warning,"
-        "不进入 LLM prompt,不触发危机判断,不保存,不在日志输出)",
+        description="CNN 观察到的可见表情信号。后端会白名单校验并仅用于调整措辞，"
+        "不用于心理或医学判断，不保存原始图像",
     )
 
     @field_validator("self_report", mode="before")

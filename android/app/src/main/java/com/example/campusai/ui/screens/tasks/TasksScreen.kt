@@ -18,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -33,9 +32,7 @@ import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
-private val TaskBlue = Color(0xFF5368E8)
-private val TaskBlueDeep = Color(0xFF3449C7)
-private val TaskOrange = Color(0xFFFFA43A)
+private val TaskOrange = Color(0xFFE08A4E)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,7 +60,7 @@ fun TasksScreen(repository: AppRepository) {
                 onClick = { showAddSheet = true },
                 icon = { Icon(Icons.Default.Add, null) },
                 text = { Text("新建待办", fontWeight = FontWeight.Bold) },
-                containerColor = TaskBlue,
+                containerColor = Primary,
                 contentColor = Color.White,
                 shape = RoundedCornerShape(16.dp),
             )
@@ -166,44 +163,46 @@ private fun TaskHeader(mockMode: Boolean) {
 private fun TaskHero(tasks: List<Task>, pending: Int, reduceMotion: Boolean) {
     val progress = if (tasks.isEmpty()) 0f else tasks.count { it.done }.toFloat() / tasks.size
     Box(
-        Modifier.fillMaxWidth().height(166.dp).clip(RoundedCornerShape(26.dp))
-            .background(Brush.linearGradient(listOf(TaskBlue, TaskBlueDeep)))
+        Modifier.fillMaxWidth().height(164.dp).clip(RoundedCornerShape(24.dp))
+            .background(Surface).border(1.dp, Line, RoundedCornerShape(24.dp))
             .enterAnimation(enabled = !reduceMotion),
     ) {
-        Box(
-            Modifier.size(160.dp).offset(x = 248.dp, y = (-62).dp).clip(CircleShape)
-                .background(Color.White.copy(alpha = .08f)),
-        )
         Row(
             Modifier.fillMaxSize().padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("今日进度", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
-                Text(
-                    if (pending == 0) "都完成啦" else "还有 $pending 项",
-                    color = Color.White,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                )
-                Text("专注当下，不必一次做完所有事", color = Color.White.copy(alpha = .78f), fontSize = 11.sp)
+                Text("今日进度", color = Muted, fontSize = 12.sp)
+                AnimatedContent(targetState = pending, label = "pending-count") { count ->
+                    Text(
+                        if (count == 0) "都完成啦" else "还有 $count 项",
+                        color = TextPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
+                Text("专注当下，不必一次做完所有事", color = Muted, fontSize = 11.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Bolt, null, tint = TaskOrange, modifier = Modifier.size(16.dp))
-                    Text("优先处理临近截止任务", color = Color.White, fontSize = 11.sp)
+                    Text("优先处理临近截止任务", color = TextPrimary, fontSize = 11.sp)
                 }
             }
             Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(72.dp),
-                    color = TaskOrange,
-                    trackColor = Color.White.copy(alpha = .18f),
+                    color = Primary,
+                    trackColor = Line,
                     strokeWidth = 7.dp,
                 )
-                Text("${(progress * 100).toInt()}%", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("${(progress * 100).toInt()}%", color = TextPrimary, fontWeight = FontWeight.Bold)
             }
         }
+        Box(
+            Modifier.align(Alignment.BottomStart).padding(start = 20.dp)
+                .width(56.dp).height(3.dp).clip(CircleShape).background(Accent),
+        )
     }
 }
 
@@ -310,7 +309,7 @@ private fun AddTaskSheet(onDismiss: () -> Unit, onAdd: (String, String) -> Unit)
                 enabled = title.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = TaskBlue),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
             ) { Text("添加任务", fontWeight = FontWeight.Bold) }
         }
     }

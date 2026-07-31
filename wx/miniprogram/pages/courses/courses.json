@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "campus-header": "/components/campus-header/campus-header",
+    "state-view": "/components/state-view/state-view"
+  }
+}

@@ -1,0 +1,12 @@
+# LiteRT Torch carries a tightly coupled TensorFlow/JAX toolchain. Keep it in
+# a separate environment from CUDA training so conversion cannot destabilize it.
+ai-edge-torch==0.1.1
+ai-edge-quantizer==0.8.0
+ai-edge-litert==2.1.6
+tensorflow==2.17.0
+torch==2.4.1
+torchvision==0.19.1
+numpy<2
+pillow>=11.0
+scikit-learn>=1.5
+PyYAML>=6.0

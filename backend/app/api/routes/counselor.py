@@ -435,6 +435,7 @@ def _build_context_warnings(
     req: ChatRequest,
     teaching_warnings: List[str],
     task_warnings: List[str],
+    expression_warning: Optional[str] = None,
 ) -> List[str]:
     """构造 context_warnings(对齐用户新要求)。
 
@@ -447,12 +448,51 @@ def _build_context_warnings(
     - 不宣称表情上下文融合已完成。
     """
     warnings: List[str] = list(teaching_warnings) + list(task_warnings)
-    if req.expression_signal:
-        # 安全降级: 仅在 warnings 中告知用户"已忽略",不暴露具体内容
-        warnings.append(
-            "expression_signal 当前未接入 CNN,已忽略(不进入 LLM,不触发判断)"
-        )
+    if expression_warning:
+        warnings.append(expression_warning)
     return warnings
+
+
+def _sanitize_expression_signal(
+    req: ChatRequest,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """只保留稳定的 CNN 表情观察，避免把低置信度结果当成情绪结论。"""
+    raw = req.expression_signal
+    if not raw:
+        return None, None
+    if not isinstance(raw, dict):
+        return None, "表情信号格式无效，已忽略"
+
+    allowed_labels = {
+        "HAPPY", "NEUTRAL", "SAD", "ANGRY", "FEAR", "SURPRISE", "DISGUST",
+    }
+    label = str(raw.get("label", "")).upper()
+    try:
+        confidence = float(raw.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    is_stable = raw.get("is_stable") is True
+    if label not in allowed_labels or not is_stable or confidence < 0.60:
+        return None, "当前表情尚未达到稳定置信度，本轮未用于调整回复"
+
+    return {
+        "label": label,
+        "confidence": round(max(0.0, min(1.0, confidence)), 3),
+        "is_stable": True,
+    }, None
+
+
+def _build_expression_hint(signal: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not signal:
+        return None
+    return (
+        "[CNN 表情观察，仅供辅助参考]\n"
+        f"当前可观察到的面部表情标签: {signal['label']}，"
+        f"稳定置信度: {signal['confidence']:.0%}。\n"
+        "这不是心理状态、情绪事实或医学判断。只能在用户主动询问感受、"
+        "或语气需要更温和时谨慎调整措辞；不得据此诊断、下结论或强行进行情绪安慰，"
+        "也不要向用户声称‘识别出了你的心理状态’。"
+    )
 
 
 @router.post("/counselor/chat")
@@ -470,8 +510,16 @@ async def chat(
 
     # 构造 context_used(新结构: count + accepted + ignored + self_report_present)
     context_used = _build_context_used(req, ctx_used, sanitized_tasks)
-    # 构造 context_warnings(包含 expression_signal 安全降级 warning)
-    all_ctx_warnings = _build_context_warnings(req, ctx_warnings, task_warnings)
+    expression_signal, expression_warning = _sanitize_expression_signal(req)
+    expression_hint = _build_expression_hint(expression_signal)
+    context_used["expression_signal_used"] = expression_signal is not None
+    # 构造 context_warnings(包含表情信号校验结果)
+    all_ctx_warnings = _build_context_warnings(
+        req,
+        ctx_warnings,
+        task_warnings,
+        expression_warning,
+    )
 
     # 构造 recent_tasks + self_report 提示片段(传入 self_report,但 expression_signal 不传入)
     tasks_hint = _build_recent_tasks_hint(sanitized_tasks, req.self_report)
@@ -485,6 +533,7 @@ async def chat(
                 tasks_hint,
                 context_used,
                 all_ctx_warnings,
+                expression_hint,
             ),
             media_type="text/event-stream",
             headers={
@@ -496,7 +545,8 @@ async def chat(
     # 非流式: 聚合所有事件后返回最终结果
     final: ChatFinalMeta | None = None
     async for ev in _stream_answer(
-        req, user, context_block, tasks_hint, context_used, all_ctx_warnings
+        req, user, context_block, tasks_hint, context_used, all_ctx_warnings,
+        expression_hint,
     ):
         final = ev
     if final is None:
@@ -523,6 +573,7 @@ async def _stream_answer(
     tasks_hint: str,
     context_used: Dict[str, Any],
     context_warnings: List[str],
+    expression_hint: Optional[str] = None,
 ) -> AsyncIterator[ChatFinalMeta]:
     """内部辅助: 调用 RAG,把多角色上下文与任务上下文注入到 LLM context。
 
@@ -548,6 +599,7 @@ async def _stream_answer(
         recent_tasks=[],  # 已通过 tasks_hint 注入,不再走旧路径
         context_used=context_used,
         context_warnings=context_warnings,
+        expression_hint=expression_hint,
     ):
         yield ev
 
@@ -559,6 +611,7 @@ async def _stream(
     tasks_hint: str,
     context_used: Dict[str, Any],
     context_warnings: List[str],
+    expression_hint: Optional[str] = None,
 ) -> AsyncIterator[bytes]:
     """SSE 流式输出。
 
@@ -577,7 +630,8 @@ async def _stream(
     last_ev: Optional[ChatFinalMeta] = None
     try:
         async for ev in _stream_answer(
-            req, user, context_block, tasks_hint, context_used, context_warnings
+            req, user, context_block, tasks_hint, context_used, context_warnings,
+            expression_hint,
         ):
             last_ev = ev
             if not sources_sent and ev.sources:
