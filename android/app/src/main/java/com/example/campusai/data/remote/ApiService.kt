@@ -30,6 +30,11 @@ data class ExpressionContributionResponse(
 )
 data class ExtractRequest(val text: String)
 data class HealthResponse(val mode: String? = null)
+data class KnowledgeStatusResponse(
+    val mode: String? = null,
+    val document_count: Int? = null,
+    val index_ready: Boolean? = null,
+)
 data class MeResponse(val user: UserResponse? = null)
 data class UserResponse(
     val name: String,
@@ -41,6 +46,9 @@ data class UserResponse(
 interface ApiService {
     @GET("health")
     suspend fun health(): Response<HealthResponse>
+
+    @GET("knowledge/status")
+    suspend fun knowledgeStatus(): Response<KnowledgeStatusResponse>
 
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>

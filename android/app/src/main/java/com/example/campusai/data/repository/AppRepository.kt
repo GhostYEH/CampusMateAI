@@ -22,8 +22,18 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.security.MessageDigest
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AppRepository(application: Application) {
+
+    data class BackendStatus(
+        val online: Boolean,
+        val mode: String,
+        val knowledgeDocuments: Int?,
+        val indexReady: Boolean?,
+        val error: String? = null,
+    )
 
     private val application = application
     private val dataStore = AppDataStore(application)
@@ -49,6 +59,7 @@ class AppRepository(application: Application) {
 
 
     private val taskMutex = Mutex()
+    private var taskJob: Job? = null
     private val _tasks = MutableStateFlow<List<Task>>(defaultTasks())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
 
@@ -109,6 +120,7 @@ class AppRepository(application: Application) {
                 _session.value = hydrated
                 if (hydrated != null && hydrated != stored) dataStore.saveSession(hydrated)
                 bindPersonalHub(hydrated)
+                bindTasks(hydrated)
             }
         }
         scope.launch { dataStore.mockMode.collect { _mockMode.value = it } }
@@ -150,12 +162,36 @@ class AppRepository(application: Application) {
         dataStore.clearSession()
     }
 
+    suspend fun refreshBackendStatus(): BackendStatus {
+        if (_mockMode.value) {
+            _backendOnline.value = false
+            return BackendStatus(false, "Mock 演示模式", null, null)
+        }
+        return try {
+            val health = ApiClient.api.health()
+            val knowledge = ApiClient.api.knowledgeStatus()
+            val online = health.isSuccessful
+            _backendOnline.value = online
+            BackendStatus(
+                online = online,
+                mode = health.body()?.mode ?: "Real",
+                knowledgeDocuments = knowledge.body()?.document_count,
+                indexReady = knowledge.body()?.index_ready,
+                error = if (online) null else "健康检查返回 ${health.code()}",
+            )
+        } catch (error: Exception) {
+            _backendOnline.value = false
+            BackendStatus(false, "Real", null, null, error.message ?: "无法连接后端")
+        }
+    }
+
     suspend fun toggleTask(id: Long) = taskMutex.withLock {
         val list = _tasks.value.toMutableList()
         val idx = list.indexOfFirst { it.id == id }
         if (idx >= 0) {
             list[idx] = list[idx].copy(done = !list[idx].done)
             _tasks.value = list
+            persistTasks()
         }
     }
 
@@ -163,10 +199,12 @@ class AppRepository(application: Application) {
         val list = _tasks.value.toMutableList()
         list.add(0, Task(id = System.currentTimeMillis(), title = title, due = due, course = course, done = false, description = description))
         _tasks.value = list
+        persistTasks()
     }
 
     suspend fun deleteTask(id: Long) = taskMutex.withLock {
         _tasks.value = _tasks.value.filter { it.id != id }
+        persistTasks()
     }
 
     fun getTaskById(id: Long): Task? = _tasks.value.find { it.id == id }
@@ -177,6 +215,7 @@ class AppRepository(application: Application) {
         if (idx >= 0) {
             list[idx] = list[idx].copy(title = title, due = due, course = course, description = description)
             _tasks.value = list
+            persistTasks()
         }
     }
 
@@ -586,6 +625,63 @@ class AppRepository(application: Application) {
         if (!response.isSuccessful) {
             throw IllegalStateException("样本删除失败(${response.code()})")
         }
+    }
+
+    private fun bindTasks(user: User?) {
+        taskJob?.cancel()
+        if (user == null) {
+            _tasks.value = defaultTasks()
+            return
+        }
+        val key = "tasks_${accountStorageKey(user)}"
+        taskJob = scope.launch {
+            dataStore.observeRaw(key).collect { raw ->
+                val stored = raw?.let(::decodeTasks)
+                if (stored == null) {
+                    val defaults = defaultTasks()
+                    _tasks.value = defaults
+                    dataStore.saveRaw(key, encodeTasks(defaults))
+                } else {
+                    _tasks.value = stored
+                }
+            }
+        }
+    }
+
+    private suspend fun persistTasks() {
+        val user = _session.value ?: return
+        dataStore.saveRaw("tasks_${accountStorageKey(user)}", encodeTasks(_tasks.value))
+    }
+
+    private fun encodeTasks(tasks: List<Task>): String = JSONArray().apply {
+        tasks.forEach { task ->
+            put(JSONObject().apply {
+                put("id", task.id)
+                put("title", task.title)
+                put("due", task.due)
+                put("course", task.course)
+                put("done", task.done)
+                put("description", task.description)
+            })
+        }
+    }.toString()
+
+    private fun decodeTasks(raw: String): List<Task>? = try {
+        val json = JSONArray(raw)
+        List(json.length()) { index ->
+            json.getJSONObject(index).let { item ->
+                Task(
+                    id = item.optLong("id"),
+                    title = item.optString("title"),
+                    due = item.optString("due"),
+                    course = item.optString("course"),
+                    done = item.optBoolean("done"),
+                    description = item.optString("description"),
+                )
+            }
+        }
+    } catch (_: Exception) {
+        null
     }
 
     private suspend fun persistPersonalHub() {

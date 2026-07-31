@@ -27,22 +27,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -86,7 +87,6 @@ private val HeroBlue = Color(0xFF5368E8)
 private val HeroBlueDeep = Color(0xFF3449C7)
 private val HeroMist = Color(0xFFDCE5FF)
 private val WarmOrange = Color(0xFFFFA43A)
-private val Mint = Color(0xFF35B99A)
 
 @Composable
 fun DashboardScreen(
@@ -96,7 +96,6 @@ fun DashboardScreen(
     val session by repository.session.collectAsState()
     val tasks by repository.tasks.collectAsState()
     val campusNews by repository.campusNews.collectAsState()
-    val pendingCount by repository.pendingCount.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val role = session?.role ?: "student"
     val floatingDockScrollPadding =
@@ -140,7 +139,7 @@ fun DashboardScreen(
                 }
             }
             item { ExamHero(onNavigate, reduceMotion) }
-            item { QuickActions(pendingCount, onNavigate, reduceMotion) }
+            item { QuickActions(onNavigate, reduceMotion) }
             item { TodayCourseCard(onNavigate, reduceMotion) }
             item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
             item { CampusUpdates(campusNews, onNavigate, reduceMotion) }
@@ -239,16 +238,16 @@ private data class QuickAction(
 
 @Composable
 private fun QuickActions(
-    pendingCount: Int,
     onNavigate: (String) -> Unit,
     reduceMotion: Boolean,
 ) {
+    // 与底部导航不重复的五个校园服务入口
     val actions = listOf(
-        QuickAction("课程表", "courses", Icons.Default.CalendarMonth, Color(0xFF6B66E8)),
-        QuickAction("待办任务", "tasks", Icons.Default.CheckCircle, Color(0xFF397CEF)),
-        QuickAction("校园通知", "notifications", Icons.Default.Notifications, Mint),
-        QuickAction("学习陪伴", "study", Icons.Default.EventAvailable, WarmOrange),
-        QuickAction("AI 导员", "counselor", Icons.Default.SmartToy, Color(0xFF7368E9)),
+        QuickAction("考试安排", "exams", Icons.Default.EventNote, Color(0xFF5B68F2)),
+        QuickAction("空教室", "classrooms", Icons.Default.MeetingRoom, Color(0xFF397CEF)),
+        QuickAction("办事大厅", "services", Icons.Default.AccountBalance, Color(0xFF35B99A)),
+        QuickAction("专注自习", "focus", Icons.Default.Timer, WarmOrange),
+        QuickAction("失物招领", "lostfound", Icons.Default.FindInPage, Color(0xFF7C6BE8)),
     )
     Row(
         modifier = Modifier
@@ -257,7 +256,7 @@ private fun QuickActions(
             .padding(horizontal = 8.dp, vertical = 16.dp)
             .enterAnimation(delayMs = 70, enabled = !reduceMotion),
     ) {
-        actions.forEachIndexed { index, action ->
+        actions.forEach { action ->
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -269,23 +268,6 @@ private fun QuickActions(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(action.icon, action.title, tint = Color.White, modifier = Modifier.size(24.dp))
-                    if (index == 1 && pendingCount > 0) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFFF4A43)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                pendingCount.coerceAtMost(9).toString(),
-                                color = Color.White,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(action.title, color = TextPrimary, fontSize = 11.sp, maxLines = 1)

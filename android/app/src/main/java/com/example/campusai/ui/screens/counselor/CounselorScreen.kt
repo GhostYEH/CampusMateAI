@@ -45,7 +45,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 @Composable
-fun CounselorScreen(repository: AppRepository) {
+fun CounselorScreen(
+    repository: AppRepository,
+    initialPrompt: String? = null,
+) {
     val mockMode by repository.mockMode.collectAsState()
     val backendOnline by repository.backendOnline.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -155,6 +158,12 @@ fun CounselorScreen(repository: AppRepository) {
                 sending = false
             }
         }
+    }
+
+    // 从其他模块（如专注自习"生成学习计划"）进入时自动携带并发送上下文
+    LaunchedEffect(initialPrompt) {
+        val prompt = initialPrompt?.trim().orEmpty()
+        if (prompt.isNotEmpty()) sendMessage(prompt)
     }
 
     Column(

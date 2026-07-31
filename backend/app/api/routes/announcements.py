@@ -238,4 +238,38 @@ def announcement_read_status(
     )
 
 
+@router.delete("/announcements/{announcement_id}")
+def delete_announcement(
+    announcement_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> dict:
+    """刪除通知。
+
+    權限:
+    - 僅作者本人或管理員可刪除。
+    - 已發佈通知需先歸檔(PATCH status=archived)再刪除,避免誤刪線上通知。
+    - 草稿與已歸檔通知可直接刪除。
+
+    安全:
+    - 不暴露其他班級通知的存在性(404 統一)。
+    """
+    ann = container.announcement_repository.get_announcement(announcement_id)
+    if ann is None:
+        raise AnnouncementNotFound()
+    cls = container.class_group_repository.get_class(ann.class_group_id)
+    if cls is None:
+        raise AnnouncementNotFound()
+    _assert_can_manage_class(cls, user, container)
+    if ann.author_id != user.id and user.role != "admin":
+        raise Forbidden("只能刪除自己發佈的通知")
+    if ann.status == "published":
+        from ...core.exceptions import InvalidTransition
+        raise InvalidTransition("已發佈通知請先歸檔再刪除")
+    ok = container.announcement_repository.delete_announcement(announcement_id)
+    if not ok:
+        raise AnnouncementNotFound()
+    return {"ok": True, "message": "通知已刪除"}
+
+
 __all__ = ["router"]

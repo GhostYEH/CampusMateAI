@@ -142,7 +142,27 @@ async function submitAssignment() {
       deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
       max_score: Number(form.max_score),
     };
-    await createTeacherAssignment(payload);
+    const created = await createTeacherAssignment(payload);
+    // 上传附件
+    if (selectedFiles.value.length > 0 && created.id) {
+      uploadingFiles.value = true;
+      let uploaded = 0;
+      for (const file of selectedFiles.value) {
+        try {
+          await uploadAssignmentAttachment(created.id, file, (pct) => {
+            uploadProgress.value = Math.round(
+              ((uploaded + pct / 100) / selectedFiles.value.length) * 100,
+            );
+          });
+          uploaded++;
+          uploadProgress.value = Math.round((uploaded / selectedFiles.value.length) * 100);
+        } catch (uploadErr) {
+          flash(`文件 "${file.name}" 上传失败: ${uploadErr.response?.data?.message || uploadErr.message}`);
+        }
+      }
+      uploadingFiles.value = false;
+      uploadProgress.value = 0;
+    }
     showComposer.value = false;
     resetForm();
     await load();
@@ -151,6 +171,7 @@ async function submitAssignment() {
     error.value = err.response?.data?.message || err.message || "任务保存失败";
   } finally {
     saving.value = false;
+    uploadingFiles.value = false;
   }
 }
 async function changeStatus(item, status) {
@@ -286,7 +307,26 @@ onMounted(load);
         <div class="form-pair"><label>截止时间<input v-model="form.deadline" name="assignment-deadline" type="datetime-local" /></label><label>满分<input v-model.number="form.max_score" name="assignment-max-score" type="number" min="0" max="1000" /></label></div>
         <fieldset><legend>提交方式</legend><label class="check-line"><input v-model="form.submission_types" name="submission-type" type="checkbox" value="text" />在线文本</label><label class="check-line"><input v-model="form.submission_types" name="submission-type" type="checkbox" value="file" />文件附件</label></fieldset>
         <label class="switch-line"><span><strong>允许重新提交</strong><small>截止前学生可以更新提交内容</small></span><input v-model="form.allow_resubmit" name="allow-resubmit" type="checkbox" /></label>
-        <div class="drawer-actions"><button type="button" class="secondary-button" :disabled="saving" @click="form.status = 'draft'; submitAssignment()">保存草稿</button><button class="primary-button" :disabled="saving || !form.title.trim() || !form.class_group_id" @click="form.status = 'published'">{{ saving ? "正在保存" : "确认发布" }}<UiIcon name="PhPaperPlaneTilt" /></button></div>
+        <div class="composer-attachments">
+          <span class="attachments-label"><strong>任务附件</strong><small>可上传课件、参考资料等（单个文件不超过 10MB）</small></span>
+          <div class="attachment-pick-area">
+            <input ref="fileInputRef" type="file" name="assignment-files" multiple accept=".txt,.md,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.py,.cpp,.java,.c" @change="handleFileSelect" />
+            <UiIcon name="PhPaperclip" :size="18" /><span>选择文件上传</span>
+          </div>
+          <div v-if="selectedFiles.length" class="attachment-file-list">
+            <div v-for="(file, idx) in selectedFiles" :key="idx" class="attachment-file-chip">
+              <UiIcon name="PhFile" :size="16" />
+              <span class="file-chip-name">{{ file.name }}</span>
+              <small>{{ formatFileSize(file.size) }}</small>
+              <button type="button" class="chip-remove" @click="removeFile(idx)" aria-label="移除文件"><UiIcon name="PhX" :size="14" /></button>
+            </div>
+          </div>
+          <div v-if="uploadingFiles" class="attachment-upload-bar">
+            <div class="upload-bar-track"><div class="upload-bar-fill" :style="{ width: uploadProgress + '%' }"></div></div>
+            <small>{{ uploadProgress }}%</small>
+          </div>
+        </div>
+        <div class="drawer-actions"><button type="button" class="secondary-button" :disabled="saving" @click="form.status = 'draft'; submitAssignment()">保存草稿</button><button class="primary-button" :disabled="saving || !form.title.trim() || !form.class_group_id" @click="form.status = 'published'">{{ saving ? (uploadingFiles ? "正在上传附件" : "正在保存") : "确认发布" }}<UiIcon name="PhPaperPlaneTilt" /></button></div>
       </form>
     </div>
     </Teleport>

@@ -14,13 +14,14 @@ import com.example.campusai.data.model.PersonalHubSnapshot
 import com.example.campusai.data.model.User
 import com.example.campusai.BuildConfig
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "campus_prefs")
 
-class AppDataStore(private val context: Context) : PersonalHubDataSource {
+class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyValueStorage {
 
     private val KEY_SESSION = stringPreferencesKey("campus_session")
     private val KEY_ACCESS_TOKEN = stringPreferencesKey("campus_access_token")
@@ -109,6 +110,23 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource {
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_REMINDERS] = enabled }
+    }
+
+    // ── 模块通用键值存储（KeyValueStorage） ──
+
+    override fun observeRaw(key: String): Flow<String?> {
+        val prefKey = stringPreferencesKey("campus_module_v1_$key")
+        return context.dataStore.data.map { prefs -> prefs[prefKey] }
+    }
+
+    override suspend fun readRaw(key: String): String? {
+        val prefKey = stringPreferencesKey("campus_module_v1_$key")
+        return context.dataStore.data.map { prefs -> prefs[prefKey] }.first()
+    }
+
+    override suspend fun saveRaw(key: String, value: String) {
+        val prefKey = stringPreferencesKey("campus_module_v1_$key")
+        context.dataStore.edit { prefs -> prefs[prefKey] = value }
     }
 
     override fun observePersonalHub(accountKey: String): Flow<PersonalHubSnapshot?> {

@@ -1,13 +1,15 @@
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
-import TeacherPortalView from "./TeacherPortalView.vue";
 import AdminPortalView from "./AdminPortalView.vue";
 const store = useAppStore();
 const router = useRouter();
 const role = computed(() => store.session?.role || "student");
+onMounted(() => {
+  if (role.value === "teacher") router.replace("/teacher/dashboard");
+});
 const courses = [
   { name:"数据结构", detail:"作业 3 已发布", time:"2小时前" },
   { name:"计算机组成原理", detail:"新增课堂资料", time:"昨天" },
@@ -26,8 +28,7 @@ const days = [
 </script>
 
 <template>
-  <TeacherPortalView v-if="role === 'teacher'" section="home" />
-  <AdminPortalView v-else-if="role === 'admin'" section="home" />
+  <AdminPortalView v-if="role === 'admin'" section="home" />
   <main v-else class="dashboard page-enter">
     <div class="page-title">
       <div><h1>{{ role === "student" ? "早上好，林知夏" : role === "teacher" ? "教学工作台" : "系统管理概览" }}</h1><p>{{ role === "student" ? "把今天的校园生活理清楚，专注重要的事。" : role === "teacher" ? "课程、班级和待批任务都在这里。" : "查看平台运行状态与关键管理任务。" }}</p></div>

@@ -3,6 +3,8 @@ import { computed, ref } from "vue";
 import { useRoute, useRouter, RouterView } from "vue-router";
 import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
+import ToastHost from "../components/teacher/ToastHost.vue";
+import ConfirmHost from "../components/teacher/ConfirmHost.vue";
 
 const store = useAppStore();
 const route = useRoute();
@@ -20,7 +22,14 @@ const roleMenus = {
     ["home","首页","PhHouse"],["courses","课程","PhBookOpen"],["tasks","待办","PhCheckSquare"],["campus-activities","校园活动","PhCalendarStar"],["counselor","AI 导员","PhRobot"],["notifications","通知整理","PhBell"],["study","学习陪伴","PhChartLineUp"],["profile","个人中心","PhUser"],
   ],
   teacher: [
-    ["home","教师工作台","PhSquaresFour"],["teacher-courses","课程与班级","PhBookOpen"],["publish","任务发布","PhPaperPlaneTilt"],["stats","完成情况","PhChartBar"],["profile","个人中心","PhUser"],
+    ["teacher/dashboard","教师工作台","PhSquaresFour"],
+    ["teacher/courses","课程与班级","PhBookOpen"],
+    ["teacher/announcements","通知中心","PhMegaphone"],
+    ["teacher/assignments","作业管理","PhFileText"],
+    ["teacher/grading","批改中心","PhPencilSimpleLine"],
+    ["teacher/analytics","学情分析","PhChartBar"],
+    ["teacher/ai-assistant","AI 教学助理","PhRobot"],
+    ["profile","个人中心","PhUser"],
   ],
   admin: [
     ["home","管理概览","PhSquaresFour"],["activities","校园活动","PhCalendarStar"],["users","账号与角色","PhUsers"],["system","系统状态","PhPulse"],["profile","个人中心","PhUser"],
@@ -29,17 +38,24 @@ const roleMenus = {
 const menus = computed(() => roleMenus[store.session?.role || "student"]);
 function go(section) { router.push(`/${section}`); mobileOpen.value = false; }
 function logout() { store.logout(); router.replace("/login"); }
+function isActive(key) {
+  const path = `/${key}`;
+  if (key === "teacher/dashboard") return route.path === "/teacher/dashboard";
+  return route.path === path || route.path.startsWith(path + "/");
+}
 </script>
 
 <template>
   <div class="app-layout" :class="{ collapsed, 'task-route': route.path === '/tasks' }">
+    <ToastHost />
+    <ConfirmHost />
     <button class="mobile-menu" @click="mobileOpen = true" aria-label="打开导航"><UiIcon name="PhList" /></button>
     <div v-if="mobileOpen" class="mobile-backdrop" @click="mobileOpen = false"></div>
     <aside class="sidebar" :class="{ open: mobileOpen }">
       <div class="brand"><span class="brand-mark"><UiIcon name="PhGraduationCap" :size="23" weight="fill" /></span><div><strong>CampusMate AI</strong><small>校园智能陪伴助手</small></div></div>
       <div class="profile-mini"><div class="avatar">{{ store.session?.name?.slice(0,1) }}</div><div><strong>{{ store.session?.name }}</strong><small>{{ store.session?.detail }}</small></div></div>
       <nav>
-        <button v-for="[key,label,icon] in menus" :key="key" :class="{ active: route.path === `/${key}` }" @click="go(key)">
+        <button v-for="[key,label,icon] in menus" :key="key" :class="{ active: isActive(key) }" @click="go(key)">
           <UiIcon :name="icon" :size="21" /><span>{{ label }}</span><b v-if="key === 'tasks' && store.pendingCount">{{ store.pendingCount }}</b>
         </button>
       </nav>

@@ -19,6 +19,7 @@ from .routes import (
     personal_tasks,
     study,
     submissions,
+    teacher,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -36,6 +37,7 @@ api_router.include_router(announcements.router, tags=["announcements"])
 api_router.include_router(assignments.router, tags=["assignments"])
 api_router.include_router(submissions.router, tags=["submissions"])
 api_router.include_router(dashboard.router, tags=["dashboard"])
+api_router.include_router(teacher.router, tags=["teacher"])
 # 学习陪伴
 api_router.include_router(study.router)
 # 个人待办(学生从通知抽取)
