@@ -13,7 +13,7 @@
         <item name="android:colorPrimaryDark">@color/primary_hover</item>
         <item name="android:colorAccent">@color/accent</item>
         <item name="android:statusBarColor">@color/surface</item>
-        <item name="android:navigationBarColor">@color/surface</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

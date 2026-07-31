@@ -1,13 +1,13 @@
 .home-page {
-  padding-bottom: calc(162rpx + env(safe-area-inset-bottom));
+  padding-bottom: 0;
 }
 
 .profile-entry {
   width: 100%;
-  min-height: 194rpx;
+  min-height: 160rpx;
   margin: 0;
   padding-right: 36rpx;
-  padding-bottom: 28rpx;
+  padding-bottom: 18rpx;
   padding-left: 36rpx;
   display: flex;
   align-items: flex-end;
@@ -20,8 +20,8 @@
 }
 
 .profile-avatar {
-  width: 78rpx;
-  height: 78rpx;
+  width: 70rpx;
+  height: 70rpx;
   flex: none;
   border: 5rpx solid var(--surface);
   border-radius: 50%;
@@ -34,19 +34,20 @@
 }
 
 .profile-name {
-  font-size: 31rpx;
+  font-size: 29rpx;
   line-height: 1.2;
   font-weight: 760;
 }
 
 .profile-hint {
-  margin-top: 12rpx;
+  margin-top: 8rpx;
   color: var(--muted);
-  font-size: 23rpx;
+  font-size: 21rpx;
 }
 
 .home-content {
-  padding: 0 28rpx 34rpx;
+  box-sizing: border-box;
+  padding: 0 28rpx calc(220rpx + env(safe-area-inset-bottom));
 }
 
 .hero {
@@ -59,7 +60,10 @@
 
 .hero-image {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   width: 100%;
   height: 100%;
 }
@@ -85,7 +89,7 @@
 }
 
 .hero-button {
-  width: max-content;
+  width: 280rpx;
   min-height: 66rpx;
   margin: 28rpx 0 0;
   padding: 0 24rpx;
@@ -134,9 +138,8 @@
   min-height: 184rpx;
   margin-top: 22rpx;
   padding: 26rpx 18rpx 22rpx;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 3rpx;
+  display: flex;
+  gap: 0;
   border-radius: 38rpx;
   background: var(--surface);
   box-sizing: border-box;
@@ -144,6 +147,8 @@
 
 .quick-action {
   min-width: 0;
+  width: 0;
+  flex: 1;
   height: 134rpx;
   margin: 0;
   padding: 0;
@@ -227,6 +232,7 @@
 }
 
 .section-head {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -238,15 +244,20 @@
 }
 
 .section-heading {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
   color: var(--text);
   font-size: 34rpx;
   line-height: 1.2;
   font-weight: 780;
   letter-spacing: -1rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .section-link {
-  min-width: max-content;
+  flex: none;
   min-height: 48rpx;
   margin: 0;
   padding: 0;
@@ -254,16 +265,18 @@
   background: transparent;
   font-size: 21rpx;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .today-grid {
   margin-top: 22rpx;
-  display: grid;
-  grid-template-columns: 1.02fr 0.98fr;
+  display: flex;
   gap: 18rpx;
 }
 
 .next-course {
+  min-width: 0;
+  flex: 1.02;
   height: 278rpx;
   padding: 28rpx 26rpx;
   border-radius: 32rpx;
@@ -273,7 +286,7 @@
 }
 
 .next-pill {
-  width: max-content;
+  display: inline-flex;
   padding: 9rpx 16rpx;
   border-radius: 999rpx;
   color: rgba(255, 255, 255, 0.9);
@@ -303,6 +316,8 @@
 }
 
 .course-stack {
+  min-width: 0;
+  flex: 0.98;
   height: 278rpx;
   padding: 0 18rpx;
   border: 2rpx solid var(--line);
@@ -383,21 +398,40 @@
 
 .summary-grid {
   margin-top: 22rpx;
-  display: grid;
-  grid-template-columns: 0.88fr 1.12fr;
+  display: flex;
+  align-items: stretch;
+  flex-wrap: nowrap;
   gap: 18rpx;
 }
 
 .overview-panel,
 .deadline-panel {
   min-width: 0;
+  flex: 1;
   padding: 26rpx 24rpx;
   box-sizing: border-box;
 }
 
+.overview-panel .section-head,
+.deadline-panel .section-head {
+  min-width: 0;
+}
+
+.overview-panel {
+  flex: 0.88;
+}
+
+.deadline-panel {
+  flex: 1.12;
+}
+
 .overview-panel .section-heading,
 .deadline-panel .section-heading {
+  display: block;
+  width: 4em;
+  flex: none;
   font-size: 31rpx;
+  white-space: nowrap;
 }
 
 .eye-icon {
@@ -406,11 +440,11 @@
 }
 
 .overview-inner {
-  min-height: 232rpx;
-  margin-top: 20rpx;
-  padding: 24rpx 18rpx;
+  min-height: 154rpx;
+  margin-top: 14rpx;
+  padding: 16rpx 14rpx;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 5rpx;
   border-radius: 28rpx;
@@ -429,35 +463,36 @@
 }
 
 .overview-value {
-  margin-top: 11rpx;
+  margin-top: 7rpx;
   color: var(--text);
-  font-size: 48rpx;
+  font-size: 40rpx;
   line-height: 1;
   font-weight: 790;
 }
 
 .overview-up {
-  margin-top: 13rpx;
+  margin-top: 6rpx;
   color: var(--success);
-  font-size: 20rpx;
+  font-size: 18rpx;
 }
 
 .progress-canvas {
-  width: 126rpx;
-  height: 126rpx;
+  width: 88rpx;
+  height: 88rpx;
   flex: none;
+  margin-top: 4rpx;
 }
 
 .deadline-list {
-  margin-top: 20rpx;
+  margin-top: 14rpx;
   display: flex;
   flex-direction: column;
   gap: 14rpx;
 }
 
 .deadline-row {
-  min-height: 106rpx;
-  padding: 17rpx 16rpx;
+  min-height: 84rpx;
+  padding: 12rpx 14rpx;
   display: flex;
   align-items: center;
   gap: 15rpx;
@@ -544,6 +579,12 @@
   }
 
   .summary-grid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .overview-panel,
+  .deadline-panel {
+    flex: none;
+    width: 100%;
   }
 }

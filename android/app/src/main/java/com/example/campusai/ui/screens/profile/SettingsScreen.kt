@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     repository: AppRepository,
     onBack: () -> Unit,
+    onOpenContribution: () -> Unit,
 ) {
     val darkMode by repository.darkMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -100,6 +102,19 @@ fun SettingsScreen(
                     SettingsInfoRow(Icons.Default.Storage, "本地数据", "账号偏好仅保存在本机")
                     SettingsDivider()
                     SettingsInfoRow(Icons.Default.Security, "隐私说明", "识别结果仅供辅助参考")
+                }
+            }
+            item {
+                SettingsGroup(
+                    title = "AI 与模型共建",
+                    modifier = Modifier.enterAnimation(delayMs = 210, enabled = !reduceMotion),
+                ) {
+                    SettingsActionRow(
+                        icon = Icons.Default.Face,
+                        title = "CNN 模型共建",
+                        subtitle = "主动拍摄、打标并上传表情样本",
+                        onClick = onOpenContribution,
+                    )
                 }
             }
             item {
@@ -241,6 +256,29 @@ private fun SettingsInfoRow(icon: ImageVector, title: String, value: String) {
             modifier = Modifier.padding(start = 12.dp).weight(1f),
         )
         Text(value, color = ReferenceMuted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SettingsIcon(icon)
+        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(title, color = ReferenceText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(3.dp))
+            Text(subtitle, color = ReferenceMuted, fontSize = 10.5.sp)
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = "打开", tint = ReferenceMuted)
     }
 }
 

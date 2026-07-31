@@ -218,7 +218,8 @@ gradlew.bat :app:assembleDebug      # Windows
 ```
 
 - 默认连接本地后端:`http://10.0.2.2:8000`(Android 模拟器映射到本机)
-- 真机调试: 在 `AppRepository` / `ApiClient` 处将后端地址改为电脑局域网 IP,并确保后端 `CORS_ORIGINS` 允许
+- 真机调试: 构建时传入电脑局域网地址，例如 `gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://192.168.1.20:8000/api/v1/`，并确保手机与电脑同网、端口可访问
+- 发布或跨网络使用: 将 `API_BASE_URL` 指向云服务器的 HTTPS API 地址；安卓端不需要把 FastAPI 打包进 APK
 - 后端不可用时使用本地缓存并明确提示服务状态;开发构建可通过环境配置启用 Mock 数据
 
 ### 三、Web 前端运行(Vue 3)
@@ -288,6 +289,7 @@ python scripts/evaluate_retrieval.py --json
 | `backend/tests/test_notice_extraction.py` | 15+ 真实校园通知场景 |
 | `backend/tests/test_knowledge.py` | 上传 / 查询 / 删除 / 重建 / 状态 / 去重 |
 | `backend/tests/test_counselor.py` | RAG 问答 / SSE 流式 / 无资料兜底 / 冲突提示 / 过期降权 / 恶意 Prompt 防御 |
+| `backend/tests/test_expression_contributions.py` | CNN 共建样本的同意校验、上传保存与用户删除 |
 | `backend/tests/test_services.py` | 检索服务 / RAG 编排 / 文档解析 |
 | `backend/tests/test_llm.py` | LLM Stub / 降级模式 / 超时处理 |
 | `backend/tests/test_check_llm_provider.py` | LLM 连通性检查脚本 |
@@ -377,6 +379,8 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 | `APP_VERSION` | `0.2.0` | 后端版本号 |
 | `DATABASE_URL` | `sqlite:///./data/app.db` | SQLite 数据库路径 |
 | `KNOWLEDGE_BASE_PATH` | `./data/knowledge_base` | 知识库根目录 |
+| `EXPRESSION_CONTRIBUTION_PATH` | `./data/expression_contributions` | CNN 共建样本存储目录 |
+| `MAX_EXPRESSION_CONTRIBUTION_MB` | `3` | 单张 CNN 共建图片最大体积 |
 | `MAX_UPLOAD_MB` | `10` | 单文件最大体积 |
 | `ALLOWED_EXTENSIONS` | `md,txt,pdf,docx` | 允许上传的扩展名 |
 | `AUTO_IMPORT_DEMO` | `true` | 启动时自动导入演示资料 |
@@ -389,7 +393,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 | `CORS_ORIGINS` | `http://localhost:*,http://127.0.0.1:*` | CORS 允许源 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 
-> 移动端后端地址与 Web 端后端地址在客户端配置(`ApiClient` / axios baseURL),默认指向 `http://localhost:8000`(Web)或 `http://10.0.2.2:8000`(Android 模拟器)。
+> 移动端通过 `BuildConfig.API_BASE_URL` 配置后端地址(Web 端使用 Vite proxy + axios)，默认指向 `http://localhost:8000`(Web)或 `http://10.0.2.2:8000`(Android 模拟器)。
 
 ## 常见错误排查
 
@@ -443,3 +447,9 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 Android 学习陪伴页面现已接入 CameraX、ML Kit 本地人脸检测和 LiteRT 表情分类，保留 Mock/Real 双模式。只有用户主动开启、明确授予相机权限且专注计时运行时才在本机内存分析；画面不保存、不上传、不写日志。
 
 训练、审计、评估、导出复现命令和真实指标见 [`ml/expression_recognition/README.md`](ml/expression_recognition/README.md)。该能力仅描述画面中可观察到的面部表情，不用于推断心理状态、疲劳、疾病或危机，也不替代用户自述或专业咨询。低置信度与不稳定结果输出 `UNKNOWN`，不触发安慰。
+
+## CNN 模型共建（用户主动参与）
+
+设置页的“CNN 模型共建”提供单帧采集流程：用户明确同意后授予相机权限，主动拍摄一张照片，自己选择可观察到的表情标签，确认后通过鉴权接口上传。图片在上传前只暂存在 Android `cacheDir`，上传成功后删除本地文件；用户可以删除自己上传到服务器的样本。
+
+后端接口为 `POST /api/v1/contributions/expression-samples` 和 `DELETE /api/v1/contributions/expression-samples/{sample_id}`。默认保存到 `backend/data/expression_contributions/`，可通过 `EXPRESSION_CONTRIBUTION_PATH` 配置；单张图片默认上限为 3 MB。当前接口只负责收集和保存经用户确认的标注数据，供后续人工复核、数据审计和离线 CNN 训练使用，不代表模型已经自动更新。正式部署前应迁移到对象存储、配置访问控制、加密、保留期限和管理员复核流程。

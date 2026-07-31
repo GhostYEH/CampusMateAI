@@ -19,6 +19,10 @@ Page({
   },
   onShow() {
     this.load()
+    wx.nextTick(() => {
+      const tabBar = this.getTabBar()
+      if (tabBar) tabBar.sync()
+    })
   },
   load() {
     const settings = repository.getSettings()

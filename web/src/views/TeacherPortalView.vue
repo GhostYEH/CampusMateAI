@@ -17,7 +17,6 @@ const store = useAppStore();
 const route = useRoute();
 const router = useRouter();
 const current = computed(() => props.section || route.path.slice(1) || "home");
-const useMock = computed(() => store.mockMode || !store.backendOnline);
 const loading = ref(true);
 const error = ref("");
 const saving = ref(false);
@@ -86,9 +85,9 @@ async function load() {
   error.value = "";
   try {
     const [overviewData, courseData, assignmentData] = await Promise.all([
-      getTeacherOverview(useMock.value),
-      getTeacherCourses(useMock.value),
-      getTeacherAssignments(useMock.value),
+      getTeacherOverview(),
+      getTeacherCourses(),
+      getTeacherAssignments(),
     ]);
     overview.value = overviewData;
     courses.value = courseData.courses;
@@ -112,7 +111,7 @@ async function submitAssignment() {
       deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
       max_score: Number(form.max_score),
     };
-    await createTeacherAssignment(useMock.value, payload);
+    await createTeacherAssignment(payload);
     showComposer.value = false;
     resetForm();
     await load();
@@ -125,10 +124,10 @@ async function submitAssignment() {
 }
 async function changeStatus(item, status) {
   try {
-    await updateAssignmentStatus(useMock.value, item.id, status);
+    await updateAssignmentStatus(item.id, status);
     item.status = status;
     flash(status === "published" ? "任务已发布" : "任务已结束");
-    overview.value = await getTeacherOverview(useMock.value);
+    overview.value = await getTeacherOverview();
   } catch (err) {
     flash(err.response?.data?.message || "状态更新失败");
   }
@@ -137,7 +136,7 @@ async function openInsight(item) {
   selectedAssignment.value = item;
   insight.value = null;
   insightLoading.value = true;
-  try { insight.value = await getAssignmentInsight(useMock.value, item); }
+  try { insight.value = await getAssignmentInsight(item); }
   catch (err) { flash(err.response?.data?.message || "提交详情加载失败"); }
   finally { insightLoading.value = false; }
 }

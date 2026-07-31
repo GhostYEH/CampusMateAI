@@ -16,6 +16,11 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.security.MessageDigest
 
 class AppRepository(application: Application) {
@@ -53,6 +58,11 @@ class AppRepository(application: Application) {
 
     private val _notices = MutableStateFlow(defaultNotices())
     val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
+
+    private val _campusNews = MutableStateFlow(defaultCampusNews())
+    val campusNews: StateFlow<List<CampusNews>> = _campusNews.asStateFlow()
+
+    fun getCampusNewsById(id: String): CampusNews? = _campusNews.value.find { it.id == id }
 
     private val _courses = MutableStateFlow(defaultCourses())
     val courses: StateFlow<List<Course>> = _courses.asStateFlow()
@@ -149,14 +159,25 @@ class AppRepository(application: Application) {
         }
     }
 
-    suspend fun addTask(title: String, due: String = "待设置") = taskMutex.withLock {
+    suspend fun addTask(title: String, due: String = "待设置", course: String = "个人待办", description: String = "") = taskMutex.withLock {
         val list = _tasks.value.toMutableList()
-        list.add(0, Task(id = System.currentTimeMillis(), title = title, due = due, course = "个人待办", done = false))
+        list.add(0, Task(id = System.currentTimeMillis(), title = title, due = due, course = course, done = false, description = description))
         _tasks.value = list
     }
 
     suspend fun deleteTask(id: Long) = taskMutex.withLock {
         _tasks.value = _tasks.value.filter { it.id != id }
+    }
+
+    fun getTaskById(id: Long): Task? = _tasks.value.find { it.id == id }
+
+    suspend fun updateTask(id: Long, title: String, due: String, course: String, description: String) = taskMutex.withLock {
+        val list = _tasks.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            list[idx] = list[idx].copy(title = title, due = due, course = course, description = description)
+            _tasks.value = list
+        }
     }
 
     suspend fun setMockMode(enabled: Boolean) {
@@ -352,10 +373,10 @@ class AppRepository(application: Application) {
     }
 
     private fun defaultTasks() = listOf(
-        Task(1, "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false),
-        Task(2, "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false),
-        Task(3, "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false),
-        Task(4, "图书馆座位预约", "今天 14:00", "学习安排", true),
+        Task(1, "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),
+        Task(2, "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
+        Task(3, "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false, "第八届中国国际\"互联网+\"大学生创新创业大赛校内选拔赛。\n\n报名材料：\n- 项目计划书（PDF）\n- 团队信息表\n- 指导教师推荐意见\n\n报名网站：校创新创业中心官网"),
+        Task(4, "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
     )
 
     private fun defaultCourses() = listOf(
@@ -372,6 +393,140 @@ class AppRepository(application: Application) {
         Notice(2, "第十六届程序设计竞赛报名通知", "创新实践中心", "昨天", true),
         Notice(3, "期末考试安排及相关事项说明", "教务处", "5月17日", false),
         Notice(4, "图书馆数据库试用资源更新通知", "图书馆", "5月16日", false),
+    )
+
+    private fun defaultCampusNews() = listOf(
+        CampusNews(
+            id = "news-1",
+            title = "图书馆延长开放时间",
+            summary = "考试周开放至 22:00，增设自习区域",
+            content = """各位同学：
+
+为满足期末考试期间同学们的学习需求，经学校研究决定，图书馆自即日起至本学期结束，开放时间调整如下：
+
+【开放时间】
+• 周一至周五：7:00 - 22:00（延长至晚上十点）
+• 周六、周日：8:00 - 22:00
+• 法定节假日闭馆时间另行通知
+
+【新增自习区域】
+• 图书馆一楼大厅新增 50 个临时自习座位，配有独立台灯和电源插座
+• 三楼电子阅览室免费开放供自带设备学习
+• 研讨室需提前一天通过"校园助手"预约
+
+【温馨提示】
+• 请勿占座，离馆时请带走个人物品
+• 夜间自习请注意安全，建议结伴同行
+• 图书馆入口处设有免费咖啡供应点（每日限量）
+
+图书馆全体工作人员祝同学们考试顺利！""",
+            source = "图书馆",
+            time = "2026-05-18 09:30",
+            category = "学习服务",
+            tags = listOf("图书馆", "考试周", "自习", "开放时间"),
+        ),
+        CampusNews(
+            id = "news-2",
+            title = "\"互联网+\"校内选拔赛报名",
+            summary = "展示你的创意，赢取成长支持与省赛推荐",
+            content = """各学院、各位同学：
+
+为选拔优秀项目参加中国国际"互联网+"大学生创新创业大赛省赛，现启动校内选拔赛。
+
+【参赛对象】
+我校全日制在校本科生、研究生均可报名，鼓励跨学院、跨专业组队。
+
+【赛道设置】
+• 高教主赛道：创意组、初创组、成长组
+• "青年红色筑梦之旅"赛道：公益组、商业组
+
+【关键时间节点】
+• 报名截止：2026年5月25日 18:00
+• 初赛（材料评审）：5月26日 - 5月28日
+• 决赛（路演答辩）：6月2日 14:00 大学生活动中心
+
+【报名方式】
+请将项目商业计划书（PDF）和路演 PPT 发送至 innovation@campus.edu.cn，邮件标题格式：项目名称-负责人姓名-学院。
+
+【支持政策】
+• 获奖项目将获得 1000-5000 元创新创业基金
+• 优秀项目直接推荐参加省赛
+• 参赛同学可获得第二课堂学分
+
+如有疑问请联系创新实践中心李老师：138 0000 5678""",
+            source = "学工处 / 创新实践中心",
+            time = "2026-05-17 14:00",
+            category = "创新创业",
+            tags = listOf("互联网+", "创新创业", "比赛", "报名"),
+            relatedTasks = listOf("5月25日前完成报名材料", "准备商业计划书和路演PPT"),
+        ),
+        CampusNews(
+            id = "news-3",
+            title = "校园网升级及临时断网通知",
+            summary = "教学楼区域周末分时段断网升级",
+            content = """各位同学和老师：
+
+为提升校园网络质量，信息中心计划于本周末进行核心网络设备升级。
+
+【升级时间】
+• 5月19日（周六）23:00 - 5月20日（周日）06:00
+• 预计断网时长不超过 4 小时
+
+【影响范围】
+• 教学楼 1-4 栋、实验楼 A/B 栋有线及无线网络
+• 图书馆无线网络（有线不受影响）
+• 学生宿舍区不受影响
+
+【升级内容】
+• 核心交换机固件更新
+• 无线 AP 信道优化
+• 出口带宽扩容至 10Gbps
+
+【应急安排】
+• 紧急事务可前往图书馆一楼使用有线网络终端
+• 办公教学如受影响，请联系信息中心 6278-0001
+
+升级完成后，上网体验将有明显改善。感谢大家的理解与配合。""",
+            source = "信息中心",
+            time = "2026-05-16 16:00",
+            category = "校园服务",
+            tags = listOf("校园网", "维护", "升级", "通知"),
+        ),
+        CampusNews(
+            id = "news-4",
+            title = "心理健康月系列活动预告",
+            summary = "关注心灵成长，拥抱阳光生活",
+            content = """亲爱的同学们：
+
+五月是心理健康月，校心理健康教育中心策划了丰富多彩的活动，诚邀大家参与。
+
+【活动安排】
+
+🌿 "心灵驿站"开放日
+• 时间：5月20日-24日 每日 14:00-17:00
+• 地点：学生活动中心二楼心理健康中心
+• 内容：心理沙盘体验、放松训练、一对一咨询体验
+
+📝 "写给未来自己的一封信"
+• 在心理健康中心领取信纸，写好后投入"时光信箱"
+• 一年后由中心寄还给你
+• 活动持续整个五月
+
+🎬 心理电影展播
+• 5月21日 19:00《心灵奇旅》- 图书馆报告厅
+• 映后有心理咨询师带领的分享交流环节
+
+👥 团体辅导工作坊
+• "情绪管理与压力应对" 5月23日 15:00
+• "人际关系沟通技巧" 5月25日 15:00
+• 每场限 20 人，请提前扫码报名
+
+所有活动免费向全校学生开放。如有任何心理困扰，欢迎随时预约咨询（预约电话：6278-6688）。""",
+            source = "心理健康教育中心",
+            time = "2026-05-15 10:00",
+            category = "校园活动",
+            tags = listOf("心理健康", "活动", "团体辅导", "电影展播"),
+        ),
     )
 
     private fun bindPersonalHub(user: User?) {
@@ -397,6 +552,39 @@ class AppRepository(application: Application) {
                 _favorites.value = snapshot.favorites
                 _personalHubLoading.value = false
             }
+        }
+    }
+
+    suspend fun uploadExpressionContribution(
+        imageFile: File,
+        label: ExpressionLabel,
+    ): String {
+        check(!_mockMode.value) { "Mock 模式不上传模型共建样本" }
+        check(_backendOnline.value) { "后端未连接，暂时无法上传样本" }
+        val imageBody = imageFile.asRequestBody("image/jpeg".toMediaType())
+        val imagePart = MultipartBody.Part.createFormData(
+            "image",
+            imageFile.name,
+            imageBody,
+        )
+        val response = ApiClient.api.uploadExpressionContribution(
+            image = imagePart,
+            label = label.name.toRequestBody("text/plain".toMediaType()),
+            consent = "true".toRequestBody("text/plain".toMediaType()),
+            modelVersion = "client-expression-v1".toRequestBody("text/plain".toMediaType()),
+        )
+        if (!response.isSuccessful) {
+            throw IllegalStateException("样本上传失败(${response.code()})")
+        }
+        return response.body()?.sample_id ?: throw IllegalStateException("样本上传响应为空")
+    }
+
+    suspend fun deleteExpressionContribution(sampleId: String) {
+        check(!_mockMode.value) { "Mock 模式没有云端样本" }
+        check(_backendOnline.value) { "后端未连接，暂时无法删除样本" }
+        val response = ApiClient.api.deleteExpressionContribution(sampleId)
+        if (!response.isSuccessful) {
+            throw IllegalStateException("样本删除失败(${response.code()})")
         }
     }
 

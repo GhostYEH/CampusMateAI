@@ -58,13 +58,14 @@
 }
 
 .suggestion-row {
-  width: max-content;
   margin-top: 13rpx;
   display: flex;
   gap: 12rpx;
+  white-space: nowrap;
 }
 
 .suggestion {
+  flex: none;
   min-height: 64rpx;
   margin: 0;
   padding: 0 20rpx;
@@ -115,7 +116,7 @@
 }
 
 .citation {
-  width: max-content;
+  display: inline-flex;
   max-width: 100%;
   margin-top: 9rpx;
   padding: 8rpx 13rpx;

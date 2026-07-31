@@ -22,13 +22,13 @@
 .tab-bar {
   height: 124rpx;
   padding: 8rpx 12rpx;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4rpx;
+  display: flex;
+  gap: 0;
   border: 2rpx solid var(--tab-line);
   border-radius: 38rpx;
   background: var(--tab-bg);
   box-sizing: border-box;
+  overflow: hidden;
   box-shadow: 0 10rpx 34rpx rgba(17, 40, 53, 0.08);
 }
 
@@ -38,6 +38,8 @@
 
 .tab-item {
   min-width: 0;
+  width: 0;
+  flex: 1;
   height: 104rpx;
   margin: 0;
   padding: 7rpx 2rpx 5rpx;

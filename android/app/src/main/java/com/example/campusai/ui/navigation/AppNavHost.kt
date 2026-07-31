@@ -2,20 +2,25 @@ package com.example.campusai.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.CoursesScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.generic.GenericScreen
+import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
 import com.example.campusai.ui.screens.profile.AccountScreen
 import com.example.campusai.ui.screens.profile.SettingsScreen
+import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.study.StudyScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
+import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.users.UsersScreen
 
 @Composable
@@ -35,7 +40,20 @@ fun AppNavHost(
                 }
             }
         }
-        composable("tasks") { TasksScreen(repository) }
+        composable("tasks") {
+            TasksScreen(repository) { route ->
+                navController.navigate(route) { launchSingleTop = true }
+            }
+        }
+        composable("task_detail/{taskId}") { backStackEntry ->
+            val taskId = backStackEntry.arguments?.getString("taskId")?.toLongOrNull() ?: 0L
+            TaskDetailScreen(
+                taskId = taskId,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onTaskDeleted = { navController.popBackStack() },
+            )
+        }
         composable("notifications") { NotificationsScreen(repository) }
         composable("counselor") { CounselorScreen(repository) }
         composable("study") { StudyScreen(repository) }
@@ -43,7 +61,16 @@ fun AppNavHost(
         composable("profile") {
             ProfileScreen(repository) { route -> navController.navigate(route) { launchSingleTop = true } }
         }
-        composable("settings") { SettingsScreen(repository) { navController.popBackStack() } }
+        composable("settings") {
+            SettingsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenContribution = { navController.navigate("expression-contribution") },
+            )
+        }
+        composable("expression-contribution") {
+            ExpressionContributionScreen(repository) { navController.popBackStack() }
+        }
         composable("account") { AccountScreen(repository) { navController.popBackStack() } }
         composable("files") {
             PersonalHubScreen(
@@ -73,5 +100,16 @@ fun AppNavHost(
         composable("publish") { GenericScreen(repository, "publish") }
         composable("stats") { GenericScreen(repository, "stats") }
         composable("system") { GenericScreen(repository, "system") }
+        composable(
+            route = "campus-news-detail/{newsId}",
+            arguments = listOf(navArgument("newsId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val newsId = backStackEntry.arguments?.getString("newsId") ?: return@composable
+            CampusNewsDetailScreen(
+                newsId = newsId,
+                repository = repository,
+                onBack = { navController.popBackStack() },
+            )
+        }
     }
 }

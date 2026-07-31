@@ -1,5 +1,7 @@
 package com.example.campusai
 
+import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,6 +23,13 @@ class MainActivity : ComponentActivity() {
         setTheme(R.style.Theme_Campusai)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The bottom dock is intentionally floating. Keep the system navigation
+        // area transparent so it cannot render a second opaque bar behind it.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.navigationBarColor = AndroidColor.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
 
         val repository = AppRepository(application)
 

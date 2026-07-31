@@ -40,7 +40,7 @@ function logout() { store.logout(); router.replace("/login"); }
       <div class="profile-mini"><div class="avatar">{{ store.session?.name?.slice(0,1) }}</div><div><strong>{{ store.session?.name }}</strong><small>{{ store.session?.detail }}</small></div></div>
       <nav>
         <button v-for="[key,label,icon] in menus" :key="key" :class="{ active: route.path === `/${key}` }" @click="go(key)">
-          <UiIcon :name="icon" :size="21" /><span>{{ label }}</span><b v-if="key === 'tasks' && store.pendingCount">{{ store.pendingCount }}</b><em v-if="key === 'counselor'">Mock</em>
+          <UiIcon :name="icon" :size="21" /><span>{{ label }}</span><b v-if="key === 'tasks' && store.pendingCount">{{ store.pendingCount }}</b>
         </button>
       </nav>
       <div class="sidebar-bottom"><button @click="collapsed = !collapsed"><UiIcon name="PhSidebarSimple" /><span>{{ collapsed ? "展开" : "收起" }}</span></button><button @click="logout"><UiIcon name="PhSignOut" /><span>退出登录</span></button></div>

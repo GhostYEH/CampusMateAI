@@ -18,7 +18,6 @@ const store = useAppStore();
 const route = useRoute();
 const router = useRouter();
 const current = computed(() => props.section || route.path.slice(1) || "home");
-const useMock = computed(() => store.mockMode || !store.backendOnline);
 const loading = ref(true);
 const error = ref("");
 const saving = ref(false);
@@ -74,10 +73,10 @@ function iso(value) {
   return value ? new Date(value).toISOString() : null;
 }
 async function loadOverview() {
-  overview.value = await getAdminOverview(useMock.value);
+  overview.value = await getAdminOverview();
 }
 async function loadUsers() {
-  const response = await getAdminUsers(useMock.value, {
+  const response = await getAdminUsers({
     query: userQuery.value || undefined,
     role: userRole.value || undefined,
     is_active: userStatus.value === "" ? undefined : userStatus.value === "active",
@@ -86,7 +85,7 @@ async function loadUsers() {
   userTotal.value = response.total;
 }
 async function loadActivities() {
-  const response = await getActivities(useMock.value, {
+  const response = await getActivities({
     query: activityQuery.value || undefined,
     status: activityStatus.value || undefined,
   });
@@ -120,7 +119,7 @@ async function submitUser() {
       major: userForm.major.trim() || null,
       grade: userForm.role === "student" ? userForm.grade.trim() || null : null,
     };
-    await createAdminUser(useMock.value, payload);
+    await createAdminUser(payload);
     showUserForm.value = false;
     resetUserForm();
     await Promise.all([loadUsers(), loadOverview()]);
@@ -131,7 +130,7 @@ async function submitUser() {
 }
 async function toggleUser(user) {
   try {
-    const updated = await updateAdminUser(useMock.value, user.id, { is_active: !user.is_active });
+    const updated = await updateAdminUser(user.id, { is_active: !user.is_active });
     user.is_active = updated.is_active;
     await loadOverview();
     flash(user.is_active ? "账号已恢复使用" : "账号已停用");
@@ -151,7 +150,7 @@ async function submitActivity() {
       ends_at: iso(activityForm.ends_at),
       capacity: activityForm.capacity ? Number(activityForm.capacity) : null,
     };
-    await createActivity(useMock.value, payload);
+    await createActivity(payload);
     showActivityForm.value = false;
     resetActivityForm();
     await Promise.all([loadActivities(), loadOverview()]);
@@ -162,7 +161,7 @@ async function submitActivity() {
 }
 async function changeActivityStatus(activity, status) {
   try {
-    const updated = await updateActivityStatus(useMock.value, activity.id, status);
+    const updated = await updateActivityStatus(activity.id, status);
     activity.status = updated.status;
     await loadOverview();
     flash(status === "published" ? "活动已发布" : "活动已结束");
@@ -275,7 +274,7 @@ onMounted(load);
         <article v-for="service in [
           ['Web 与 API','正常','教师端、管理端和学生端请求正常','PhGlobe'],
           ['SQLite 数据库','正常','账号、任务和活动数据可读写','PhDatabase'],
-          ['校园知识库',store.mockMode ? 'Mock' : '正常',store.mockMode ? '当前使用演示资料，不代表学校正式内容' : '检索服务已连接','PhBooks'],
+          ['校园知识库',store.backendOnline ? '正常' : '离线',store.backendOnline ? '检索服务已连接' : '后端服务未连接','PhBooks'],
           ['任务调度','正常','截止提醒与发布状态同步正常','PhClockCounterClockwise']
         ]" :key="service[0]">
           <span><UiIcon :name="service[3]" :size="24" /></span><div><h2>{{ service[0] }}</h2><p>{{ service[2] }}</p></div><em>{{ service[1] }}</em>

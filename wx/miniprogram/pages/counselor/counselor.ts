@@ -26,6 +26,10 @@ Page({
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
     })
+    wx.nextTick(() => {
+      const tabBar = this.getTabBar()
+      if (tabBar) tabBar.sync()
+    })
   },
   onInput(event: WechatMiniprogram.Input) {
     this.setData({ input: event.detail.value })

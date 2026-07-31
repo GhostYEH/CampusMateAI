@@ -119,8 +119,8 @@ Page({
       const centerX = width / 2
       const centerY = height / 2
       const radius = Math.min(width, height) / 2 - 6
-      context.lineWidth = 8
-      context.lineCap = 'butt'
+      context.lineWidth = 6
+      context.lineCap = 'round'
       context.strokeStyle = this.data.darkMode ? '#203F50' : '#E6EEF4'
       context.beginPath()
       context.arc(centerX, centerY, radius, 0, Math.PI * 2)

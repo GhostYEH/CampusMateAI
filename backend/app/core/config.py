@@ -34,6 +34,8 @@ class Settings(BaseSettings):
 
     # ===== 知识库 =====
     knowledge_base_path: str = "./data/knowledge_base"
+    expression_contribution_path: str = "./data/expression_contributions"
+    max_expression_contribution_mb: int = 3
     max_upload_mb: int = 10
     # 用字符串表示，逗号分隔；通过 allowed_extensions_list 属性获取列表
     allowed_extensions: str = "md,txt,pdf,docx"

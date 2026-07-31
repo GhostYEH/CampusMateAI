@@ -29,6 +29,7 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -36,7 +37,7 @@ private val TaskOrange = Color(0xFFE08A4E)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TasksScreen(repository: AppRepository) {
+fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     val tasks by repository.tasks.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
     val mockMode by repository.mockMode.collectAsState()
@@ -53,22 +54,15 @@ fun TasksScreen(repository: AppRepository) {
         }
     }
 
-    Scaffold(
-        containerColor = Background,
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddSheet = true },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("新建待办", fontWeight = FontWeight.Bold) },
-                containerColor = Primary,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(16.dp),
-            )
-        },
-    ) { inner ->
+    Box(Modifier.fillMaxSize().background(Background)) {
         LazyColumn(
-            Modifier.fillMaxSize().padding(inner).background(Background),
-            contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp),
+            Modifier.fillMaxSize().background(Background),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 12.dp,
+                end = 16.dp,
+                bottom = BottomDockReservedHeight + 76.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item { TaskHeader(mockMode) }
@@ -111,12 +105,25 @@ fun TasksScreen(repository: AppRepository) {
                     TaskCard(
                         task = task,
                         reduceMotion = reduceMotion,
+                        onClick = { onNavigate("task_detail/${task.id}") },
                         onToggle = { scope.launch { repository.toggleTask(task.id) } },
                         onDelete = { deletingTask = task },
                     )
                 }
             }
         }
+
+        ExtendedFloatingActionButton(
+            onClick = { showAddSheet = true },
+            icon = { Icon(Icons.Default.Add, null) },
+            text = { Text("新建待办", fontWeight = FontWeight.Bold) },
+            containerColor = Primary,
+            contentColor = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = BottomDockReservedHeight + 12.dp),
+        )
     }
 
     if (showAddSheet) {
@@ -210,6 +217,7 @@ private fun TaskHero(tasks: List<Task>, pending: Int, reduceMotion: Boolean) {
 private fun TaskCard(
     task: Task,
     reduceMotion: Boolean,
+    onClick: () -> Unit,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -221,8 +229,6 @@ private fun TaskCard(
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(container)
             .border(1.dp, if (task.done) Success.copy(alpha = .18f) else Line, RoundedCornerShape(20.dp))
-            .campusClickable(onClick = onToggle)
-            .padding(start = 12.dp, top = 12.dp, end = 6.dp, bottom = 12.dp)
             .enterAnimation(enabled = !reduceMotion),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -231,8 +237,15 @@ private fun TaskCard(
             checked = task.done,
             onCheckedChange = { onToggle() },
             colors = CheckboxDefaults.colors(checkedColor = Success, uncheckedColor = Primary),
+            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
         )
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .campusClickable(onClick = onClick)
+                .padding(top = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
             Text(
                 task.title,
                 fontSize = 14.sp,
@@ -249,7 +262,7 @@ private fun TaskCard(
                 Text(task.course, color = Muted, fontSize = 11.sp)
             }
         }
-        IconButton(onClick = onDelete) {
+        IconButton(onClick = onDelete, modifier = Modifier.padding(end = 6.dp)) {
             Icon(Icons.Default.DeleteOutline, "删除待办", tint = Muted, modifier = Modifier.size(20.dp))
         }
     }

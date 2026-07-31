@@ -1,6 +1,8 @@
 package com.example.campusai.data.remote
 
 import com.example.campusai.data.model.ExtractResult
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -20,6 +22,12 @@ data class ChatRequest(
     val expression_signal: ExpressionSignalRequest? = null,
 )
 data class ChatResponse(val answer: String? = null, val message: String? = null)
+data class ExpressionContributionResponse(
+    val sample_id: String,
+    val label: String,
+    val status: String,
+    val message: String,
+)
 data class ExtractRequest(val text: String)
 data class HealthResponse(val mode: String? = null)
 data class MeResponse(val user: UserResponse? = null)
@@ -45,4 +53,18 @@ interface ApiService {
 
     @POST("notices/extract-multi")
     suspend fun extractNotice(@Body request: ExtractRequest): Response<ExtractResult>
+
+    @Multipart
+    @POST("contributions/expression-samples")
+    suspend fun uploadExpressionContribution(
+        @Part image: MultipartBody.Part,
+        @Part("label") label: RequestBody,
+        @Part("consent") consent: RequestBody,
+        @Part("model_version") modelVersion: RequestBody,
+    ): Response<ExpressionContributionResponse>
+
+    @DELETE("contributions/expression-samples/{sampleId}")
+    suspend fun deleteExpressionContribution(
+        @Path("sampleId") sampleId: String,
+    ): Response<ExpressionContributionResponse>
 }

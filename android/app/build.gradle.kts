@@ -21,6 +21,17 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        val configuredApiBaseUrl = (project.findProperty("API_BASE_URL") as String?)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: "http://10.0.2.2:8000/api/v1/"
+        val normalizedApiBaseUrl = if (configuredApiBaseUrl.endsWith("/")) {
+            configuredApiBaseUrl
+        } else {
+            "$configuredApiBaseUrl/"
+        }
+        buildConfigField("String", "API_BASE_URL", "\"$normalizedApiBaseUrl\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

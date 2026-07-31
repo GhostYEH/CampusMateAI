@@ -22,7 +22,7 @@
 - self_report: 仅作个性化参考,不得作为事实依据,不得绕过 RAG 拒答规则
   (无资料时仍返回 no_knowledge 标准提示)。
   self_report 不得完整写入普通日志 / 错误日志 / 调试日志。
-- expression_signal: 严禁进入本层(由 counselor 路由安全降级,不传入本服务)。
+- expression_signal: 仅接收 counselor 路由生成的安全文字提示，不接收原始对象或图像。
 - context_used / context_warnings: 由 counselor 路由构造,本层只透传到最终元数据。
 """
 from __future__ import annotations

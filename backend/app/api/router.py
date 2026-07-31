@@ -10,6 +10,7 @@ from .routes import (
     auth,
     classes,
     counselor,
+    contributions,
     courses,
     dashboard,
     health,
@@ -25,6 +26,7 @@ api_router.include_router(health.router, tags=["health"])
 api_router.include_router(notices.router, tags=["notices"])
 api_router.include_router(knowledge.router, tags=["knowledge"])
 api_router.include_router(counselor.router, tags=["counselor"])
+api_router.include_router(contributions.router, tags=["contributions"])
 # 多角色协同平台
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])

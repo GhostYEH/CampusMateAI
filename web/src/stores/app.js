@@ -2,16 +2,15 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { probeBackend, realLogin } from "../services/api";
 
-const demos = {
-  student_demo: { name: "林知夏", role: "student", detail: "计算机学院 · 大二" },
-  teacher_demo: { name: "张明远", role: "teacher", detail: "计算机学院 · 副教授" },
-  admin_demo: { name: "系统管理员", role: "admin", detail: "信息中心", id: "u_a1" },
-};
 export const useAppStore = defineStore("app", () => {
-  const session = ref(JSON.parse(localStorage.getItem("campus_session") || "null"));
+  const accessToken = localStorage.getItem("campus_access_token");
+  const savedSession = localStorage.getItem("campus_session");
+  let parsedSession = null;
+  try { parsedSession = savedSession ? JSON.parse(savedSession) : null; } catch { /* ignore invalid local state */ }
+  if (!accessToken) localStorage.removeItem("campus_session");
+  const session = ref(accessToken ? parsedSession : null);
   const backendOnline = ref(false);
-  const storedMockMode = localStorage.getItem("campus_mock_mode");
-  const mockMode = ref(storedMockMode === null ? import.meta.env.DEV : storedMockMode === "true");
+  void probeBackend().then((online) => { backendOnline.value = online; });
   const reduceMotion = ref(localStorage.getItem("campus_reduce_motion") === "true");
   const tasks = ref(JSON.parse(localStorage.getItem("campus_tasks") || "null") || [
     { id: 1, title: "《数据结构》作业三：链表与栈", due: "今天 23:59", course: "课程作业", done: false },
@@ -32,13 +31,9 @@ export const useAppStore = defineStore("app", () => {
   function updateTask(id, updates) { const task = tasks.value.find((item) => item.id === id); if (task) Object.assign(task, updates); persist(); }
   function deleteTask(id) { tasks.value = tasks.value.filter((x) => x.id !== id); persist(); }
   async function login(username, password, expectedRole) {
-    backendOnline.value = mockMode.value ? false : await probeBackend();
-    let user;
-    if (backendOnline.value && !mockMode.value) user = await realLogin(username, password);
-    else {
-      if (!demos[username] || password !== "Demo123456") throw new Error("账号或密码不正确");
-      user = demos[username];
-    }
+    backendOnline.value = await probeBackend();
+    if (!backendOnline.value) throw new Error("无法连接后端服务，请确认 FastAPI 已启动");
+    const user = await realLogin(username, password);
     const normalized = {
       ...user,
       name: user.name || user.display_name || user.username,
@@ -53,7 +48,12 @@ export const useAppStore = defineStore("app", () => {
     localStorage.setItem("campus_session", JSON.stringify(normalized));
     return normalized;
   }
-  function logout() { localStorage.removeItem("campus_session"); localStorage.removeItem("campus_access_token"); session.value = null; }
+  function logout() {
+    localStorage.removeItem("campus_session");
+    localStorage.removeItem("campus_access_token");
+    localStorage.removeItem("campus_refresh_token");
+    session.value = null;
+  }
   function setReduceMotion(v) { reduceMotion.value = v; localStorage.setItem("campus_reduce_motion", String(v)); }
-  return { session, backendOnline, mockMode, reduceMotion, tasks, notices, pendingCount, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
+  return { session, backendOnline, reduceMotion, tasks, notices, pendingCount, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
 });
