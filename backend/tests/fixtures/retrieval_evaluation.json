@@ -1,0 +1,105 @@
+{
+  "description": "检索评测 fixtures — 基于 demo 知识库(5 份仿真校园制度文档)的评测样例",
+  "fixtures": [
+    {
+      "id": "eval-001",
+      "category": "社会实践",
+      "query": "社会实践学分怎么申请",
+      "expected_titles": ["社会实践学分申请指南"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中社会实践申请指南文档"
+    },
+    {
+      "id": "eval-002",
+      "category": "奖学金",
+      "query": "校级奖学金有哪些类型",
+      "expected_titles": ["校级奖学金申请办法"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中奖学金申请办法文档"
+    },
+    {
+      "id": "eval-003",
+      "category": "综合测评",
+      "query": "综合测评材料需要准备什么",
+      "expected_titles": ["综合测评材料说明"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中综合测评材料说明文档"
+    },
+    {
+      "id": "eval-004",
+      "category": "选课",
+      "query": "课程补退选流程是什么",
+      "expected_titles": ["课程补退选流程"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中课程补退选流程文档"
+    },
+    {
+      "id": "eval-005",
+      "category": "活动",
+      "query": "活动报名有哪些渠道",
+      "expected_titles": ["活动报名常见问题"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中活动报名常见问题文档"
+    },
+    {
+      "id": "eval-006",
+      "category": "社会实践",
+      "query": "社会实践需要多少学时",
+      "expected_titles": ["社会实践学分申请指南"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中社会实践申请指南"
+    },
+    {
+      "id": "eval-007",
+      "category": "奖学金",
+      "query": "一等奖学金多少钱",
+      "expected_titles": ["校级奖学金申请办法"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "应命中奖学金申请办法"
+    },
+    {
+      "id": "eval-008",
+      "category": "拒答",
+      "query": "今天天气怎么样",
+      "expected_titles": [],
+      "expected_document_ids": [],
+      "should_answer": false,
+      "expected_mode": "reject",
+      "notes": "与知识库无关的闲聊应拒答"
+    },
+    {
+      "id": "eval-009",
+      "category": "拒答",
+      "query": "推荐一家好吃的餐厅",
+      "expected_titles": [],
+      "expected_document_ids": [],
+      "should_answer": false,
+      "expected_mode": "reject",
+      "notes": "与校园事务无关的闲聊应拒答"
+    },
+    {
+      "id": "eval-010",
+      "category": "奖学金",
+      "query": "奖学金申请条件是什么 截止时间",
+      "expected_titles": ["校级奖学金申请办法"],
+      "expected_document_ids": [],
+      "should_answer": true,
+      "expected_mode": "retrieval_summary",
+      "notes": "多子查询应命中奖学金文档"
+    }
+  ]
+}
