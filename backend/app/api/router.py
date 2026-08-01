@@ -5,6 +5,9 @@ from fastapi import APIRouter
 
 from .routes import (
     activities,
+    admin_dashboard,
+    admin_system,
+    admin_extra,
     announcements,
     assignments,
     auth,
@@ -19,6 +22,7 @@ from .routes import (
     personal_tasks,
     study,
     submissions,
+    student_tools,
     teacher,
 )
 
@@ -31,6 +35,9 @@ api_router.include_router(contributions.router, tags=["contributions"])
 # 多角色协同平台
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])
+api_router.include_router(admin_dashboard.router)
+api_router.include_router(admin_system.router)
+api_router.include_router(admin_extra.router)
 api_router.include_router(courses.router, tags=["courses"])
 api_router.include_router(classes.router, tags=["classes"])
 api_router.include_router(announcements.router, tags=["announcements"])
@@ -42,5 +49,6 @@ api_router.include_router(teacher.router, tags=["teacher"])
 api_router.include_router(study.router)
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
+api_router.include_router(student_tools.router)
 
 __all__ = ["api_router"]

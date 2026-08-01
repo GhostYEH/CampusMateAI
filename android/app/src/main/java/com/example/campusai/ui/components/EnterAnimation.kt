@@ -4,6 +4,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import com.example.campusai.ui.theme.CampusMotion
+import com.example.campusai.ui.theme.LocalReduceMotion
 
 /**
  * 增强版入场动画：淡入 + 上滑 + 轻微放大，营造层次丰富的渐进感。
@@ -16,14 +18,14 @@ fun Modifier.enterAnimation(
     slideDistance: Float = 18f,
     enabled: Boolean = true,
 ): Modifier {
-    if (!enabled) return this
+    if (!enabled || LocalReduceMotion.current) return this
     var hasFinished by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
         targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
-            durationMillis = 700,
+            durationMillis = CampusMotion.enterDuration,
             delayMillis = delayMs,
-            easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f),
+            easing = CampusMotion.enterEasing,
         ),
         label = "enter-progress",
     )
@@ -46,22 +48,24 @@ fun Modifier.slideInAnimation(
     fromLeft: Boolean = true,
     enabled: Boolean = true,
 ): Modifier {
-    if (!enabled) return this
+    if (!enabled || LocalReduceMotion.current) return this
     var hasFinished by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
         targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
-            durationMillis = 500,
+            durationMillis = 440,
             delayMillis = delayMs,
-            easing = CubicBezierEasing(0.18f, 0.8f, 0.24f, 1f),
+            easing = CampusMotion.settleEasing,
         ),
         label = "slide-progress",
     )
     LaunchedEffect(Unit) { hasFinished = true }
-    val offset = 60f * (1f - progress) * if (fromLeft) -1f else 1f
+    val offset = 44f * (1f - progress) * if (fromLeft) -1f else 1f
     return this.graphicsLayer {
         alpha = progress
         translationX = offset
-        translationY = 8f * (1f - progress)
+        translationY = 6f * (1f - progress)
+        scaleX = 0.985f + 0.015f * progress
+        scaleY = 0.985f + 0.015f * progress
     }
 }

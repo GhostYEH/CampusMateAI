@@ -42,7 +42,14 @@ def create_interpreter(model_path: Path):
     try:
         from ai_edge_litert.interpreter import Interpreter
     except ImportError:
-        from tensorflow.lite import Interpreter
+        try:
+            from tensorflow.lite import Interpreter
+        except ImportError:
+            # TensorFlow 2.20 removed the public tensorflow.lite.Interpreter
+            # alias, while retaining the implementation used by the desktop
+            # verifier. Keep this fallback local to export/verification so the
+            # Android runtime contract remains unchanged.
+            from tensorflow.lite.python.interpreter import Interpreter
 
     interpreter = Interpreter(model_path=str(model_path), num_threads=4)
     interpreter.allocate_tensors()
@@ -52,9 +59,20 @@ def create_interpreter(model_path: Path):
 def run_interpreter(interpreter, inputs: np.ndarray) -> np.ndarray:
     input_detail = interpreter.get_input_details()[0]
     output_detail = interpreter.get_output_details()[0]
-    interpreter.set_tensor(input_detail["index"], inputs.astype(input_detail["dtype"], copy=False))
+    input_values = inputs.astype(np.float32, copy=False)
+    if np.issubdtype(input_detail["dtype"], np.integer):
+        scale, zero_point = input_detail["quantization"]
+        input_values = np.round(input_values / scale + zero_point).clip(
+            np.iinfo(input_detail["dtype"]).min,
+            np.iinfo(input_detail["dtype"]).max,
+        )
+    interpreter.set_tensor(input_detail["index"], input_values.astype(input_detail["dtype"], copy=False))
     interpreter.invoke()
-    return interpreter.get_tensor(output_detail["index"]).copy()
+    output = interpreter.get_tensor(output_detail["index"]).copy()
+    if np.issubdtype(output_detail["dtype"], np.integer):
+        scale, zero_point = output_detail["quantization"]
+        output = (output.astype(np.float32) - zero_point) * scale
+    return output
 
 
 def benchmark_litert(model_path: Path, sample: np.ndarray) -> dict:
@@ -354,6 +372,8 @@ def export_with_tensorflow(
     config: dict,
     float_path: Path,
     dynamic_path: Path,
+    float16_path: Path,
+    full_int8_path: Path,
 ) -> dict:
     import tensorflow as tf
 
@@ -382,7 +402,43 @@ def export_with_tensorflow(
     dynamic_converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
     dynamic_converter.optimizations = [tf.lite.Optimize.DEFAULT]
     dynamic_path.write_bytes(dynamic_converter.convert())
-    return source_alignment
+
+    float16_converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+    float16_converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    float16_converter.target_spec.supported_types = [tf.float16]
+    float16_path.write_bytes(float16_converter.convert())
+
+    def representative_dataset():
+        eval_config = dict(config)
+        eval_config["num_workers"] = 0
+        _, loader = create_loader(manifest, "validation", eval_config, training=False, batch_size_override=1)
+        for index, (inputs, _) in enumerate(loader):
+            if index >= 256:
+                break
+            yield [inputs.permute(0, 2, 3, 1).numpy().astype(np.float32)]
+
+    full_int8_converter = tf.lite.TFLiteConverter.from_keras_model(keras_model)
+    full_int8_converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    full_int8_converter.representative_dataset = representative_dataset
+    full_int8_converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    full_int8_converter.inference_input_type = tf.int8
+    full_int8_converter.inference_output_type = tf.int8
+    full_int8_path.write_bytes(full_int8_converter.convert())
+    return {"source_alignment": source_alignment, "representative_sample_limit": 256}
+
+
+def tensor_contract(model_path: Path) -> dict:
+    interpreter = create_interpreter(model_path)
+    input_detail = interpreter.get_input_details()[0]
+    output_detail = interpreter.get_output_details()[0]
+    return {
+        "input_shape": input_detail["shape"].tolist(),
+        "input_dtype": str(np.dtype(input_detail["dtype"])),
+        "input_quantization": [float(value) for value in input_detail["quantization"]],
+        "output_shape": output_detail["shape"].tolist(),
+        "output_dtype": str(np.dtype(output_detail["dtype"])),
+        "output_quantization": [float(value) for value in output_detail["quantization"]],
+    }
 
 
 def choose_variant(results: dict[str, dict]) -> str:
@@ -503,6 +559,8 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     float_path = args.output_dir / "expression_resnet18_float32.tflite"
     dynamic_path = args.output_dir / "expression_resnet18_dynamic_int8.tflite"
+    float16_path = args.output_dir / "expression_resnet18_float16.tflite"
+    full_int8_path = args.output_dir / "expression_resnet18_full_int8.tflite"
 
     export_details = {
         "requested_converter": args.converter,
@@ -518,6 +576,9 @@ def main() -> None:
             edge_model.export(float_path)
             export_dynamic_range_ai_edge(float_path, dynamic_path)
             export_details["selected_converter"] = "ai-edge-torch"
+            export_details["fallback_reason"] = "AI Edge Torch path does not provide the complete TensorFlow representative export set; TensorFlow export is required for float16/full-int8."
+            source_alignment = export_with_tensorflow(model, wrapper, args.manifest, config, float_path, dynamic_path, float16_path, full_int8_path)
+            export_details["source_framework_alignment"] = source_alignment
         except Exception as error:
             if args.converter == "ai-edge-torch":
                 raise
@@ -532,16 +593,19 @@ def main() -> None:
             config,
             float_path,
             dynamic_path,
+            float16_path,
+            full_int8_path,
         )
         export_details["selected_converter"] = "tensorflow-lite-converter"
         export_details["source_framework_alignment"] = source_alignment
 
     results = {}
-    for variant, path in (("float32", float_path), ("dynamic_int8", dynamic_path)):
+    for variant, path in (("float32", float_path), ("dynamic_int8", dynamic_path), ("float16", float16_path), ("full_int8", full_int8_path)):
         results[variant] = {
             "path": str(path.resolve()),
             "size_bytes": path.stat().st_size,
             "sha256": sha256(path),
+            "tensor_contract": tensor_contract(path),
             "alignment": alignment_check(wrapper, path, args.manifest, config),
             "validation_metrics": evaluate_litert(
                 path,
@@ -552,7 +616,7 @@ def main() -> None:
             "benchmark": benchmark_litert(path, sample.numpy()),
         }
     chosen_variant = choose_variant(results)
-    for variant in ("float32", "dynamic_int8"):
+    for variant in ("float32", "dynamic_int8", "float16", "full_int8"):
         results[variant]["test_metrics"] = evaluate_litert(
             Path(results[variant]["path"]),
             args.manifest,
@@ -561,7 +625,7 @@ def main() -> None:
         )
     results["selected_variant"] = chosen_variant
     results["selection_rule"] = (
-        "dynamic int8 selected if validation macro-F1 loss is <= 0.01; "
+        "dynamic int8 selected if validation macro-F1 loss is <= 0.01; full int8 is compared but is not Android-compatible with the current float32 input contract; "
         "test metrics for both exports are regression evidence only and do not alter selection"
     )
     results["export"] = export_details

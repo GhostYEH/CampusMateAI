@@ -1,129 +1,127 @@
 <view class="page tab-page home-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
-  <button
-    class="profile-entry enter"
-    style="padding-top: {{statusBarHeight + 18}}px;"
-    bindtap="openProfile"
-    aria-label="进入个人中心"
-  >
-    <image class="profile-avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image>
-    <view class="profile-copy">
-      <view class="profile-name">{{user ? user.name : '林知夏'}}</view>
-      <view class="profile-hint">点击头像进入个人中心</view>
-    </view>
-  </button>
+  <view class="home-top" style="padding-top: {{statusBarHeight + 16}}px;">
+    <button class="profile-entry enter" bindtap="openProfile" aria-label="进入个人中心">
+      <image class="profile-avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image>
+      <view class="profile-copy">
+        <view class="profile-greeting">早上好，{{user ? user.name : '同学'}}</view>
+        <view class="profile-meta">{{todayLabel}} · 把今天过得更有把握</view>
+      </view>
+      <view class="profile-chevron">我的 <text>›</text></view>
+    </button>
+    <button class="notice-entry enter enter-delay-1" bindtap="openNotice" aria-label="查看校园通知">
+      <image src="/assets/icons/quick-notice.svg" mode="aspectFit"></image>
+    </button>
+  </view>
 
-  <view class="home-content">
-    <view class="hero enter enter-delay-1">
-      <image class="hero-image" src="/assets/home-hero.jpg" mode="scaleToFill"></image>
-      <view class="hero-content">
-        <view class="hero-title">期末考试周进行中</view>
-        <view class="hero-copy">合理规划时间，稳住节奏，我们能赢。</view>
-        <button class="hero-button" hover-class="hero-button-pressed" bindtap="openTasks">
-          <text>查看复习计划</text>
-          <image class="hero-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image>
+  <view class="page-body home-body">
+    <view class="home-hero enter enter-delay-1">
+      <image class="home-hero-image" src="/assets/home-hero.jpg" mode="aspectFill"></image>
+      <view class="home-hero-shade"></view>
+      <view class="home-hero-content">
+        <view class="home-hero-kicker">今日聚焦</view>
+        <view class="home-hero-title">期末考试周进行中</view>
+        <view class="home-hero-copy">课程、截止事项和校园消息，都在一个清晰的节奏里。</view>
+        <view class="home-hero-summary">
+          <view>
+            <text>待处理事项</text>
+            <text class="summary-value">{{pendingCount}}</text>
+            <text>件</text>
+          </view>
+          <view>
+            <text>本地完成度</text>
+            <text class="summary-value">{{weekProgress}}%</text>
+          </view>
+        </view>
+        <view class="home-hero-actions">
+          <button class="hero-primary" hover-class="button-pressed" bindtap="openTasks">打开待办 <text>→</text></button>
+          <button class="hero-secondary" hover-class="button-pressed" bindtap="openAction" data-route="/pages/study/study" data-tab="false">开始专注</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="home-panel deadline-panel enter enter-delay-2">
+      <view class="home-panel-head">
+        <view>
+          <view class="home-kicker warm">优先处理</view>
+          <view class="home-panel-title">截止提醒 <text wx:if="{{pendingCount > 0}}">{{pendingCount}}</text></view>
+        </view>
+        <button class="home-panel-link" bindtap="openTasks">全部待办 <text>›</text></button>
+      </view>
+      <view wx:if="{{deadlineTasks.length > 0}}" class="deadline-list">
+        <view wx:for="{{deadlineTasks}}" wx:key="id" class="deadline-row">
+          <view class="deadline-icon {{item.tone}}">
+            <image src="/assets/icons/{{item.icon}}.svg" mode="aspectFit"></image>
+          </view>
+          <view class="deadline-copy">
+            <view class="deadline-title">{{item.title}}</view>
+            <view class="deadline-meta"><text class="deadline-time">{{item.due}}</text><text> · {{item.course}}</text></view>
+          </view>
+          <view class="row-chevron">›</view>
+        </view>
+      </view>
+      <view wx:else class="home-empty">
+        <view class="empty-mark">✓</view>
+        <view><text class="empty-title">今天暂时没有临近事项</text><text>新的课程作业会出现在这里</text></view>
+      </view>
+    </view>
+
+    <view class="home-dual-grid enter enter-delay-3">
+      <view class="home-panel schedule-panel">
+        <view class="home-panel-head">
+          <view>
+            <view class="home-kicker blue">我的学习空间</view>
+            <view class="home-panel-title">今日课程</view>
+          </view>
+          <button class="home-panel-link" bindtap="openCourses">查看全部 <text>›</text></button>
+        </view>
+        <view wx:if="{{courses.length > 0}}" class="course-list">
+          <view wx:for="{{courses}}" wx:key="code" class="course-row">
+            <view class="course-dot {{index === 0 ? 'active' : ''}}"></view>
+            <view class="course-copy">
+              <view class="course-name">{{item.name}}</view>
+              <view class="course-meta">{{item.weekday}} {{item.time}} · {{item.location}}</view>
+            </view>
+            <view class="course-status {{index === 0 ? 'next' : 'later'}}">{{index === 0 ? '下一节' : '之后'}}</view>
+          </view>
+        </view>
+        <view wx:else class="home-empty compact"><text class="empty-title">还没有课程信息</text><text>同步后会显示本周安排</text></view>
+      </view>
+
+      <view class="home-panel rhythm-panel">
+        <view class="home-panel-head">
+          <view>
+            <view class="home-kicker green">保持节奏</view>
+            <view class="home-panel-title">本周概览</view>
+          </view>
+        </view>
+        <view class="rhythm-value"><text class="rhythm-number">{{weekProgress}}%</text><text class="rhythm-caption">已完成 {{completedCount}} 项</text></view>
+        <view class="rhythm-track"><view class="rhythm-fill" style="width: {{weekProgress}}%;"></view></view>
+        <view class="rhythm-footer"><text>待办完成度</text><text>{{pendingCount}} 项待处理</text></view>
+      </view>
+    </view>
+
+    <view class="quick-section enter enter-delay-3">
+      <view class="quick-section-head">
+        <view>
+          <view class="home-kicker">随时可用</view>
+          <view class="home-panel-title">常用入口</view>
+        </view>
+        <text>把常用服务放在手边</text>
+      </view>
+      <view class="quick-grid">
+        <button
+          wx:for="{{quickActions}}"
+          wx:key="label"
+          class="quick-row"
+          data-route="{{item.route}}"
+          data-tab="{{item.tab}}"
+          hover-class="quick-row-pressed"
+          bindtap="openAction"
+        >
+          <view class="quick-icon {{item.tone}}"><image src="/assets/icons/{{item.icon}}.svg" mode="aspectFit"></image></view>
+          <view class="quick-copy"><text class="quick-title">{{item.label}}</text><text>{{item.detail}}</text></view>
+          <text class="row-chevron">›</text>
         </button>
-      </view>
-      <view class="hero-dots">
-        <view class="hero-dot active"></view>
-        <view class="hero-dot"></view>
-        <view class="hero-dot"></view>
-        <view class="hero-dot"></view>
-      </view>
-    </view>
-
-    <view class="quick-panel enter enter-delay-2">
-      <button
-        wx:for="{{quickActions}}"
-        wx:key="label"
-        class="quick-action"
-        data-route="{{item.route}}"
-        data-tab="{{item.tab}}"
-        hover-class="quick-pressed"
-        bindtap="openAction"
-      >
-        <view class="quick-icon-wrap {{item.tone}}">
-          <image class="quick-icon" src="/assets/icons/{{item.icon}}.svg" mode="aspectFit"></image>
-          <view wx:if="{{item.label === '待办任务' && pendingCount > 0}}" class="quick-badge">{{pendingCount}}</view>
-        </view>
-        <view class="quick-label">{{item.label}}</view>
-      </button>
-    </view>
-
-    <view class="today-panel section-surface enter enter-delay-2">
-      <view class="section-head">
-        <view class="section-heading">今日课程</view>
-        <button class="section-link" bindtap="openCourses">查看全部 ›</button>
-      </view>
-      <view class="today-grid">
-        <view class="next-course">
-          <view class="next-pill">下一节</view>
-          <view class="next-name">数据结构</view>
-          <view class="next-detail">
-            <image src="/assets/icons/clock-white.svg" mode="aspectFit"></image>
-            <text>10:00 · 进行中</text>
-          </view>
-          <view class="next-detail">
-            <image src="/assets/icons/pin-white.svg" mode="aspectFit"></image>
-            <text>C-202 · 李老师</text>
-          </view>
-        </view>
-
-        <view class="course-stack">
-          <view class="course-row">
-            <view class="course-state-dot outline"></view>
-            <view class="course-copy">
-              <view class="course-name">高等数学</view>
-              <view class="course-meta">08:00 · B-301</view>
-            </view>
-            <view class="course-status ended">已结束</view>
-          </view>
-          <view class="course-divider"></view>
-          <view class="course-row">
-            <view class="course-state-dot"></view>
-            <view class="course-copy">
-              <view class="course-name">计算机网络</view>
-              <view class="course-meta">14:00 · A-105</view>
-            </view>
-            <view class="course-status upcoming">未开始</view>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <view class="summary-grid enter enter-delay-3">
-      <view class="overview-panel section-surface">
-        <view class="section-head compact">
-          <view class="section-heading">学习总览</view>
-          <image class="eye-icon" src="/assets/icons/eye-{{darkMode ? 'dark' : 'light'}}.svg" mode="aspectFit"></image>
-        </view>
-        <view class="overview-inner">
-          <view class="overview-copy">
-            <view class="overview-label">本周进度</view>
-            <view class="overview-value">{{weekProgress}}%</view>
-            <view class="overview-up">较上周</view>
-            <view class="overview-up">↑12%</view>
-          </view>
-          <canvas type="2d" id="progressCanvas" class="progress-canvas"></canvas>
-        </view>
-      </view>
-
-      <view class="deadline-panel section-surface">
-        <view class="section-head compact">
-          <view class="section-heading">近期截止</view>
-          <button class="section-link" bindtap="openTasks">更多 ›</button>
-        </view>
-        <view class="deadline-list">
-          <view wx:for="{{deadlineTasks}}" wx:key="id" class="deadline-row">
-            <view class="deadline-icon-wrap {{item.tone}}">
-              <image src="/assets/icons/{{item.icon}}.svg" mode="aspectFit"></image>
-            </view>
-            <view class="deadline-copy">
-              <view class="deadline-title">{{item.title}}</view>
-              <view wx:if="{{index === 0}}" class="deadline-time">{{item.due}}</view>
-            </view>
-          </view>
-          <view wx:if="{{deadlineTasks.length === 0}}" class="deadline-empty">近期没有待截止事项</view>
-        </view>
       </view>
     </view>
   </view>

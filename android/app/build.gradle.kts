@@ -39,13 +39,25 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "DEFAULT_USE_MOCK", "false")
+        }
         release {
+            buildConfigField("boolean", "DEFAULT_USE_MOCK", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        create("demo") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            buildConfigField("boolean", "DEFAULT_USE_MOCK", "false")
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {

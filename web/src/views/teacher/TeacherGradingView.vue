@@ -149,8 +149,8 @@ function validateGrade() {
     if (!Number.isFinite(s)) gradeErrors.score = "成绩须为数字";
     else if (s < 0) gradeErrors.score = "成绩不能为负";
     else if (s > 1000) gradeErrors.score = "成绩不能超过 1000";
-    else if (current.value?.max_score && s > current.value.max_score) {
-      gradeErrors.score = `成绩不能超过满分 ${current.value.max_score}`;
+    else if (current.value?.assignment_max_score && s > current.value.assignment_max_score) {
+      gradeErrors.score = `成绩不能超过满分 ${current.value.assignment_max_score}`;
     }
   }
   if (gradeForm.teacher_comment.length > 5000) gradeErrors.teacher_comment = "评语不能超过 5000 字";
@@ -223,10 +223,10 @@ function exportCsv() {
     return;
   }
   const rows = items.value.map((s) => ({
-    学号: s.student_number || s.username || "",
-    姓名: s.display_name || s.username || "",
+    学号: s.student_number || "",
+    姓名: s.student_name || "",
     班级: s.class_name || "",
-    提交状态: s.submission_status || s.status || "",
+    提交状态: s.status || "",
     提交时间: s.submitted_at ? formatDateTime(s.submitted_at) : "",
     是否迟交: s.is_late ? "是" : "否",
     成绩: s.score ?? "",
@@ -271,11 +271,11 @@ watch(() => route.query, load);
             </thead>
             <tbody>
               <tr v-for="s in items" :key="s.id">
-                <td>{{ s.student_number || s.username || '—' }}</td>
-                <td>{{ s.display_name || s.username || '—' }}</td>
-                <td><small>{{ s.assignment_title || s.title || '—' }}</small></td>
+                <td>{{ s.student_number || '—' }}</td>
+                <td>{{ s.student_name || '—' }}</td>
+                <td><small>{{ s.assignment_title || '—' }}</small></td>
                 <td><small>{{ s.class_name || '—' }}</small></td>
-                <td><StatusTag :status="s.submission_status || s.status || 'submitted'" type="submission" /></td>
+                <td><StatusTag :status="s.status || 'submitted'" type="submission" /></td>
                 <td><small>{{ s.submitted_at ? formatDateTime(s.submitted_at) : '—' }}</small></td>
                 <td>
                   <strong v-if="s.score !== null && s.score !== undefined">{{ s.score }}</strong>
@@ -289,12 +289,12 @@ watch(() => route.query, load);
       </div>
     </section>
 
-    <Drawer :open="showGrade" :title="current ? `批改：${current.assignment_title || current.title || ''}` : '批改'" width="wide" @update:open="showGrade = $event">
+    <Drawer :open="showGrade" :title="current ? `批改：${current.assignment_title || ''}` : '批改'" width="wide" @update:open="showGrade = $event">
       <template v-if="current">
         <div class="tch-grade-meta">
-          <span><UiIcon name="PhUser" :size="14" />{{ current.display_name || current.username }} <small>{{ current.student_number }}</small></span>
+          <span><UiIcon name="PhUser" :size="14" />{{ current.student_name || '—' }} <small>{{ current.student_number }}</small></span>
           <span><UiIcon name="PhUsers" :size="14" />{{ current.class_name || '—' }}</span>
-          <StatusTag :status="current.submission_status || current.status || 'submitted'" type="submission" />
+          <StatusTag :status="current.status || 'submitted'" type="submission" />
           <span v-if="current.submitted_at"><UiIcon name="PhClock" :size="14" />{{ formatDateTime(current.submitted_at) }}</span>
           <span v-if="current.is_late" class="tch-tag-late">迟交</span>
         </div>
@@ -309,7 +309,7 @@ watch(() => route.query, load);
           <h3>学生提交内容</h3>
           <div v-if="gradeLoading" class="tch-detail-loading"><UiIcon name="PhCircleNotch" :size="20" /> 加载中…</div>
           <template v-else>
-            <article v-if="current.content || current.body" class="tch-detail-content">{{ current.content || current.body }}</article>
+            <article v-if="current.text_content" class="tch-detail-content">{{ current.text_content }}</article>
             <EmptyState v-else icon="PhFileText" title="无文字内容" compact />
             <div v-if="current.attachments?.length" class="tch-grade-attachments">
               <h4>提交附件</h4>
@@ -317,8 +317,8 @@ watch(() => route.query, load);
                 <li v-for="att in current.attachments" :key="att.id">
                   <UiIcon name="PhFile" :size="18" />
                   <div class="tch-attach-info">
-                    <strong>{{ att.filename || att.name }}</strong>
-                    <small>{{ formatFileSize(att.size || att.file_size) }}</small>
+                    <strong>{{ att.original_filename || att.filename || att.name }}</strong>
+                    <small>{{ formatFileSize(att.size_bytes ?? att.size ?? att.file_size) }}</small>
                   </div>
                   <a class="tch-link" :href="buildSubmissionAttachmentDownloadUrl(current.id, att.id)" target="_blank" rel="noopener">
                     <UiIcon name="PhDownloadSimple" :size="14" />下载
@@ -335,9 +335,9 @@ watch(() => route.query, load);
             <div class="tch-form-row">
               <label class="tch-field">
                 <span>成绩 <em>*</em></span>
-                <input v-model="gradeForm.score" type="number" min="0" :max="current.max_score || 1000" step="0.5" />
+                <input v-model="gradeForm.score" type="number" min="0" :max="current.assignment_max_score || 1000" step="0.5" />
                 <small v-if="gradeErrors.score" class="tch-field-error">{{ gradeErrors.score }}</small>
-                <small v-else-if="current.max_score" class="muted">满分 {{ current.max_score }}</small>
+                <small v-else-if="current.assignment_max_score" class="muted">满分 {{ current.assignment_max_score }}</small>
               </label>
             </div>
             <label class="tch-field">

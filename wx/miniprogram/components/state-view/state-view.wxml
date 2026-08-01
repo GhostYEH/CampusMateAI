@@ -1,6 +1,11 @@
-<view class="state">
-  <view wx:if="{{state === 'loading'}}" class="loader"></view>
-  <view wx:else class="mark {{state}}">{{state === 'error' ? '出错了' : '空状态'}}</view>
+<view class="state {{state}}">
+  <view wx:if="{{state === 'loading'}}" class="state-skeleton" aria-label="正在加载">
+    <view class="skeleton-line skeleton-icon"></view>
+    <view class="skeleton-line skeleton-title"></view>
+    <view class="skeleton-line skeleton-copy"></view>
+  </view>
+  <view wx:elif="{{state === 'error'}}" class="mark error">需要重试</view>
+  <view wx:else class="mark">暂无内容</view>
   <view class="title">{{title}}</view>
   <view class="description">{{description}}</view>
   <button wx:if="{{actionText}}" class="action" bindtap="onAction">{{actionText}}</button>

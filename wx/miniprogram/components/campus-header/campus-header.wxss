@@ -4,11 +4,11 @@
 }
 
 .header-row {
-  min-height: 116rpx;
-  padding: 22rpx 28rpx 14rpx;
+  min-height: 112rpx;
+  padding: 20rpx 28rpx 12rpx;
   display: flex;
   align-items: center;
-  gap: 18rpx;
+  gap: 14rpx;
   box-sizing: border-box;
 }
 
@@ -19,54 +19,57 @@
 
 .title {
   color: var(--text, #1b2730);
-  font-size: 42rpx;
+  font-size: 36rpx;
   line-height: 1.2;
-  font-weight: 760;
-  letter-spacing: -1rpx;
+  font-weight: 740;
+  letter-spacing: -0.5rpx;
 }
 
 .subtitle {
-  margin-top: 6rpx;
+  margin-top: 7rpx;
   color: var(--muted, #667784);
-  font-size: 23rpx;
+  font-size: 21rpx;
   line-height: 1.4;
 }
 
 .mode-badge {
   flex: none;
-  padding: 10rpx 16rpx;
+  padding: 9rpx 13rpx;
   display: flex;
   align-items: center;
-  gap: 9rpx;
-  border-radius: 999rpx;
+  gap: 7rpx;
+  border: 1rpx solid var(--line, #e2e7ec);
+  border-radius: 10rpx;
   color: var(--primary, #2f6486);
-  background: var(--primary-soft, #e8f1f7);
-  font-size: 20rpx;
+  background: var(--surface, #ffffff);
+  font-size: 18rpx;
   font-weight: 600;
 }
 
 .mode-dot {
-  width: 12rpx;
-  height: 12rpx;
+  width: 10rpx;
+  height: 10rpx;
   border-radius: 50%;
-  background: #e08a4e;
+  background: var(--accent, #e08a4e);
 }
 
 .back-button {
   flex: none;
-  min-width: 92rpx;
-  height: 64rpx;
-  padding: 0 18rpx;
+  min-width: 86rpx;
+  height: 60rpx;
+  padding: 0 12rpx 0 8rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999rpx;
+  border: 1rpx solid var(--line, #e2e7ec);
+  border-radius: 12rpx;
   color: var(--primary, #2f6486);
-  background: var(--primary-soft, #e8f1f7);
-  font-size: 23rpx;
+  background: var(--surface, #ffffff);
+  font-size: 21rpx;
   line-height: 1;
 }
 
 .back-pressed {
+  transform: scale(0.97);
   opacity: 0.72;
 }

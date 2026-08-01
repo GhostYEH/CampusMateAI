@@ -1,26 +1,34 @@
 page {
-  --primary: #5669ee;
-  --primary-deep: #4054d7;
-  --primary-soft: #edf0ff;
-  --accent: #ff9f39;
-  --danger: #f05f46;
-  --success: #4f9d72;
-  --text: #17262f;
-  --muted: #687c89;
-  --line: #dfe6eb;
+  --primary: #2f6486;
+  --primary-hover: #275472;
+  --primary-soft: #e8f1f7;
+  --primary-ghost: #f2f7fa;
+  --accent: #e08a4e;
+  --accent-soft: #fff1e5;
+  --danger: #c25450;
+  --danger-soft: #f9eceb;
+  --success: #4e8c6a;
+  --success-soft: #eaf5ee;
+  --text: #1b2730;
+  --muted: #667784;
+  --muted-light: #8a9aa4;
+  --line: #e2e7ec;
   --surface: #ffffff;
-  --surface-subtle: #f4f7fa;
-  --background: #f4f7fa;
-  --tab-active: #2d6c92;
-  --tab-active-bg: #e7f2f8;
+  --surface-subtle: #f4f7f9;
+  --background: #f6f8fa;
+  --tab-active: #2f6486;
+  --tab-active-bg: #e8f1f7;
   min-height: 100%;
   background: var(--background);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 28rpx;
+  -webkit-font-smoothing: antialiased;
 }
 
-button {
+button,
+input,
+textarea {
   font: inherit;
 }
 
@@ -28,58 +36,63 @@ button::after {
   border: 0;
 }
 
+button {
+  box-sizing: border-box;
+}
+
 .page {
   min-height: 100dvh;
   box-sizing: border-box;
   overflow-x: hidden;
   background: var(--background);
+  color: var(--text);
 }
 
 .page-body {
   box-sizing: border-box;
-  padding: 24rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));
+  padding: 18rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));
 }
 
 .tab-page .page-body {
-  padding-bottom: calc(220rpx + env(safe-area-inset-bottom));
-}
-
-.section-title {
-  font-size: 34rpx;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: -0.5rpx;
-}
-
-.section-subtitle {
-  margin-top: 8rpx;
-  color: var(--muted);
-  font-size: 24rpx;
-  line-height: 1.6;
+  padding-bottom: calc(206rpx + env(safe-area-inset-bottom));
 }
 
 .surface {
   background: var(--surface);
   border: 1rpx solid var(--line);
-  border-radius: 32rpx;
+  border-radius: 20rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  line-height: 1.3;
+  font-weight: 720;
+  letter-spacing: -0.5rpx;
+}
+
+.section-subtitle {
+  margin-top: 7rpx;
+  color: var(--muted);
+  font-size: 22rpx;
+  line-height: 1.55;
 }
 
 .primary-button,
 .secondary-button,
 .danger-button {
-  min-height: 88rpx;
-  padding: 0 32rpx;
-  border-radius: 24rpx;
+  min-height: 84rpx;
+  padding: 0 28rpx;
+  border-radius: 14rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 650;
+  font-weight: 680;
   line-height: 1;
   transition: opacity 160ms ease, transform 160ms ease, background 160ms ease;
 }
 
 .primary-button {
-  color: #fff;
+  color: #ffffff;
   background: var(--primary);
 }
 
@@ -90,7 +103,7 @@ button::after {
 
 .danger-button {
   color: var(--danger);
-  background: #f9eceb;
+  background: var(--danger-soft);
 }
 
 .primary-button[disabled],
@@ -101,21 +114,22 @@ button::after {
 
 .button-pressed {
   transform: scale(0.98);
-  opacity: 0.86;
+  opacity: 0.82;
 }
 
 .field {
   width: 100%;
-  min-height: 88rpx;
-  padding: 22rpx 26rpx;
+  min-height: 84rpx;
+  padding: 20rpx 22rpx;
   box-sizing: border-box;
   border: 1rpx solid #cad5dd;
-  border-radius: 22rpx;
-  background: #fff;
+  border-radius: 12rpx;
+  background: var(--surface);
   color: var(--text);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
+.field:focus,
 .field-focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 6rpx rgba(47, 100, 134, 0.1);
@@ -123,37 +137,39 @@ button::after {
 
 .mock-note {
   color: var(--muted);
-  font-size: 21rpx;
+  font-size: 20rpx;
   line-height: 1.55;
 }
 
 .enter {
-  animation: enter-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: enter-up 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .enter-delay-1 {
-  animation-delay: 70ms;
+  animation-delay: 60ms;
 }
 
 .enter-delay-2 {
-  animation-delay: 140ms;
+  animation-delay: 120ms;
 }
 
 .enter-delay-3 {
-  animation-delay: 210ms;
+  animation-delay: 180ms;
 }
 
 .reduce-motion .enter,
 .reduce-motion .enter-delay-1,
 .reduce-motion .enter-delay-2,
-.reduce-motion .enter-delay-3 {
+.reduce-motion .enter-delay-3,
+.reduce-motion .skeleton-line,
+.reduce-motion .loader {
   animation: none;
 }
 
 @keyframes enter-up {
   from {
     opacity: 0;
-    transform: translateY(18rpx);
+    transform: translateY(14rpx);
   }
   to {
     opacity: 1;
@@ -162,18 +178,23 @@ button::after {
 }
 
 .dark {
-  --primary: #7382ff;
-  --primary-deep: #8e9aff;
-  --primary-soft: #1b3543;
-  --accent: #ffa94a;
-  --danger: #ff8c7d;
-  --success: #73bc91;
-  --text: #edf5f8;
-  --muted: #a8bac4;
-  --line: #2a414d;
-  --surface: #132630;
-  --surface-subtle: #091a23;
-  --background: #081820;
+  --primary: #8ac1df;
+  --primary-hover: #a7d5eb;
+  --primary-soft: #173d52;
+  --primary-ghost: #102b38;
+  --accent: #f0a56e;
+  --accent-soft: #432e24;
+  --danger: #f09a8f;
+  --danger-soft: #482a2a;
+  --success: #83c09d;
+  --success-soft: #1d3a2b;
+  --text: #e8f0f4;
+  --muted: #a6b5be;
+  --muted-light: #7f939e;
+  --line: #2b3c46;
+  --surface: #14232c;
+  --surface-subtle: #0e1d25;
+  --background: #0c171e;
   --tab-active: #8ac1df;
   --tab-active-bg: #173d52;
   background: var(--background);
@@ -181,11 +202,39 @@ button::after {
 }
 
 .dark .field {
-  background: #132630;
+  background: var(--surface);
   color: var(--text);
   border-color: #40535e;
 }
 
 .dark .surface {
   background: var(--surface);
+}
+
+.dark .primary-button {
+  color: #102d3d;
+}
+
+.dark .secondary-button {
+  color: var(--primary);
+}
+
+.skeleton-block {
+  overflow: hidden;
+  border-radius: 10rpx;
+  background: var(--surface-subtle);
+}
+
+.skeleton-line {
+  height: 18rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, var(--surface-subtle), rgba(255, 255, 255, 0.65), var(--surface-subtle));
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1200ms ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

@@ -1,19 +1,20 @@
 <script setup>
 import {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
   PhChatCircleText, PhChatTeardropText, PhCheck, PhCheckCircle, PhCheckSquare,
-  PhChevronDown, PhChevronLeft, PhChevronRight, PhCircle, PhCircleNotch,
+  PhCircle, PhCircleNotch,
   PhClipboardText, PhClock, PhClockCounterClockwise, PhCloudSlash, PhCopy,
   PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
+  PhMapPin, PhBuildings, PhDoorOpen, PhWrench, PhPlug, PhMonitorPlay, PhWifiHigh,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
-  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, ThumbsUp, PhThumbsUp,
+  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, PhThumbsUp,
   PhUpload, PhUser, PhUsers, PhUsersThree, PhWarningCircle, PhEye, PhEyeSlash, PhEraser, PhX,
 } from "@phosphor-icons/vue";
 
@@ -24,20 +25,21 @@ const props = defineProps({
 });
 
 const icons = {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
   PhChatCircleText, PhChatTeardropText, PhCheck, PhCheckCircle, PhCheckSquare,
-  PhChevronDown, PhChevronLeft, PhChevronRight, PhCircle, PhCircleNotch,
+  PhCircle, PhCircleNotch,
   PhClipboardText, PhClock, PhClockCounterClockwise, PhCloudSlash, PhCopy,
   PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
+  PhMapPin, PhBuildings, PhDoorOpen, PhWrench, PhPlug, PhMonitorPlay, PhWifiHigh,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
-  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, ThumbsUp, PhThumbsUp,
+  PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, PhThumbsUp,
   PhUpload, PhUser, PhUsers, PhUsersThree, PhWarningCircle, PhEye, PhEyeSlash, PhEraser, PhX,
 };
 

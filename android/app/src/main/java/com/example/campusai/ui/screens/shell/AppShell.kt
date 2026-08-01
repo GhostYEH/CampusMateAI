@@ -69,6 +69,7 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.theme.Background
+import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
@@ -255,6 +256,8 @@ private fun CampusDock(
 ) {
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
     val primaryColor = Primary
+    val dockSurface = Surface
+    val dockLine = Line
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -266,17 +269,17 @@ private fun CampusDock(
                 .fillMaxWidth()
                 .height(76.dp)
                 .clip(RoundedCornerShape(38.dp))
-                .background(Color.White.copy(alpha = .68f))
+                .background(dockSurface.copy(alpha = .92f))
                 .drawBehind {
-                    // Two soft highlights create the depth of frosted glass without
-                    // requiring an API-level-specific blur implementation.
+                    // Keep the dock layered and calm in both themes; no hard-coded
+                    // white wash means night mode retains its surface hierarchy.
                     drawRoundRect(
-                        color = Color.White.copy(alpha = .34f),
+                        color = dockSurface.copy(alpha = .32f),
                         cornerRadius = CornerRadius(size.height / 2f),
                     )
                     drawCircle(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color.White.copy(alpha = .56f), Color.Transparent),
+                            colors = listOf(dockSurface.copy(alpha = .54f), Color.Transparent),
                             center = Offset(0f, 0f),
                             radius = size.width * .62f,
                         ),
@@ -293,7 +296,7 @@ private fun CampusDock(
                         center = Offset(size.width, size.height),
                     )
                 }
-                .border(1.dp, Color.White.copy(alpha = .86f), RoundedCornerShape(38.dp))
+                .border(1.dp, dockLine.copy(alpha = .82f), RoundedCornerShape(38.dp))
                 .padding(horizontal = 7.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -327,6 +330,7 @@ private fun RowScope.LiquidGlassNavItem(
     val primaryColor = Primary
     val color by animateColorAsState(
         targetValue = if (isSelected) primaryColor else Muted,
+        animationSpec = tween(260, easing = FastOutSlowInEasing),
         label = "dock-color-${item.route}",
     )
     val iconScale by animateFloatAsState(
@@ -377,7 +381,7 @@ private fun RowScope.LiquidGlassNavItem(
                 .height(54.dp)
                 .clip(itemShape)
                 .background(
-                    if (isSelected) Color.White.copy(alpha = .66f) else Color.Transparent,
+                    if (isSelected) PrimarySoft.copy(alpha = .72f) else Color.Transparent,
                 )
                 .drawBehind {
                     val activeGlow = if (isSelected) .9f else 0f
@@ -399,7 +403,7 @@ private fun RowScope.LiquidGlassNavItem(
                 }
                 .border(
                     width = if (isSelected) 1.dp else 0.dp,
-                    color = Color.White.copy(alpha = if (isSelected) .78f else 0f),
+                    color = Primary.copy(alpha = if (isSelected) .3f else 0f),
                     shape = itemShape,
                 ),
             contentAlignment = Alignment.Center,

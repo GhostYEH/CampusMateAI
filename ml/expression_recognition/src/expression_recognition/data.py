@@ -9,7 +9,7 @@ from typing import Any
 
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler, WeightedRandomSampler
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
@@ -58,6 +58,38 @@ class ManifestDataset(Dataset):
     @property
     def targets(self) -> list[int]:
         return [int(row["label_index"]) for row in self.rows]
+
+
+class BalancedBatchSampler(BatchSampler):
+    """Draw equal class counts per batch without changing the validation/test protocol."""
+
+    def __init__(self, targets: list[int], batch_size: int, seed: int = 20260731):
+        self.targets = targets
+        self.batch_size = batch_size
+        self.seed = seed
+        self.class_indices = {label: [i for i, target in enumerate(targets) if target == label] for label in range(len(CLASS_NAMES))}
+        self.classes = [label for label, values in self.class_indices.items() if values]
+        self.batches = len(targets) // batch_size
+
+    def __iter__(self):
+        generator = torch.Generator().manual_seed(self.seed)
+        per_class = max(1, self.batch_size // len(self.classes))
+        for _ in range(self.batches):
+            batch = []
+            for label in self.classes:
+                indices = self.class_indices[label]
+                choices = torch.randint(len(indices), (per_class,), generator=generator).tolist()
+                batch.extend(indices[index] for index in choices)
+            if len(batch) > self.batch_size:
+                batch = batch[: self.batch_size]
+            while len(batch) < self.batch_size:
+                label = self.classes[len(batch) % len(self.classes)]
+                indices = self.class_indices[label]
+                batch.append(indices[int(torch.randint(len(indices), (1,), generator=generator))])
+            yield batch
+
+    def __len__(self) -> int:
+        return self.batches
 
 
 def build_transforms(config: dict, training: bool):
@@ -164,7 +196,9 @@ def create_loader(
     )
     workers = int(config.get("num_workers", 0))
     sampler = None
-    if training and config.get("sampling", "shuffle") == "weighted":
+    batch_sampler = None
+    sampling = config.get("sampling", "shuffle")
+    if training and sampling == "weighted":
         weights = class_weights(dataset.targets)
         sample_weights = torch.tensor(
             [float(weights[target]) for target in dataset.targets],
@@ -175,14 +209,22 @@ def create_loader(
             num_samples=len(sample_weights),
             replacement=True,
         )
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size_override or int(config["batch_size"]),
-        shuffle=training and sampler is None,
-        sampler=sampler,
-        num_workers=workers,
-        pin_memory=torch.cuda.is_available(),
-        persistent_workers=workers > 0,
-        drop_last=training,
-    )
+    elif training and sampling == "balanced_batch":
+        batch_sampler = BalancedBatchSampler(dataset.targets, int(config["batch_size"]), int(config.get("seed", 20260731)))
+    loader_common = {
+        "num_workers": workers,
+        "pin_memory": torch.cuda.is_available(),
+        "persistent_workers": workers > 0,
+    }
+    if batch_sampler is not None:
+        loader = DataLoader(dataset, batch_sampler=batch_sampler, **loader_common)
+    else:
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size_override or int(config["batch_size"]),
+            shuffle=training and sampler is None,
+            sampler=sampler,
+            drop_last=training,
+            **loader_common,
+        )
     return dataset, loader

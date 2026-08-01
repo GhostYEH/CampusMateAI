@@ -19,4 +19,11 @@ data class ExpressionResult(
     val timestamp: Long,
     val isStable: Boolean,
     val modelVersion: String,
+    /** ML Kit 本机人脸检测信号，仅用于学习状态辅助，不保存画面。 */
+    val facePresent: Boolean = false,
+    val headEulerAngleX: Double? = null,
+    val headEulerAngleY: Double? = null,
+    val headEulerAngleZ: Double? = null,
+    val leftEyeOpenProbability: Double? = null,
+    val rightEyeOpenProbability: Double? = null,
 )

@@ -6,6 +6,7 @@ import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusSnapshot
 import com.example.campusai.data.model.FocusStats
 import com.example.campusai.data.model.FocusTimerState
+import com.example.campusai.data.model.FocusSessionSummary
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,12 @@ interface FocusRepository {
 
     suspend fun saveTimer(state: FocusTimerState?)
     suspend fun setGoal(minutes: Int)
-    suspend fun addRecord(mode: FocusMode, actualMinutes: Int, finished: Boolean)
+    suspend fun addRecord(
+        mode: FocusMode,
+        actualMinutes: Int,
+        finished: Boolean,
+        observationSummary: FocusSessionSummary? = null,
+    )
 }
 
 class LocalFocusRepository(
@@ -95,7 +101,12 @@ class LocalFocusRepository(
         }
     }
 
-    override suspend fun addRecord(mode: FocusMode, actualMinutes: Int, finished: Boolean) {
+    override suspend fun addRecord(
+        mode: FocusMode,
+        actualMinutes: Int,
+        finished: Boolean,
+        observationSummary: FocusSessionSummary?,
+    ) {
         initJob.join()
         mutex.withLock {
             val endedAt = now()
@@ -108,6 +119,7 @@ class LocalFocusRepository(
                 finished = finished,
                 endedAt = Instant.ofEpochMilli(endedAt).atZone(ZoneId.systemDefault())
                     .format(DateTimeFormatter.ofPattern("HH:mm")),
+                observationSummary = observationSummary,
             )
             _records.value = listOf(record) + _records.value.take(99)
             recomputeStats()

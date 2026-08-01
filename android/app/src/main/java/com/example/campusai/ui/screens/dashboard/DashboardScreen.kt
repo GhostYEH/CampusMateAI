@@ -441,13 +441,13 @@ private fun DeadlineRow(task: Task, urgent: Boolean, onToggle: () -> Unit) {
     ) {
         Box(
             Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
-                .background(if (urgent) Color(0xFFE8F0FF) else Color(0xFFFFF0D7)),
+                .background(if (urgent) PrimarySoft else Accent.copy(alpha = .16f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Default.AutoStories,
                 null,
-                tint = if (urgent) Color(0xFF3D7DF0) else WarmOrange,
+                tint = if (urgent) Primary else WarmOrange,
                 modifier = Modifier.size(17.dp),
             )
         }

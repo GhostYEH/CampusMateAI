@@ -102,6 +102,7 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
         "activities_added": 0,
         "assignments_added": 0,
         "submissions_added": 0,
+        "personal_tasks_added": 0,
     }
 
     user_repo = container.user_repository
@@ -112,6 +113,7 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     asg_repo = container.assignment_repository
     sub_repo = container.submission_repository
     activity_repo = container.campus_activity_repository
+    personal_task_repo = container.personal_task_repository
 
     # === 用户 ===
     created_users: dict[str, UserRow] = {}
@@ -315,6 +317,23 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
         )
         created_assignments[(class_code, title)] = asg.id
         stats["assignments_added"] += 1
+
+    # === 学生个人待办 ===
+    # 用一条无截止时间的真实学习计划补齐首页的个人安排区域；无 deadline
+    # 的任务会在“即将截止”列表数量不足时作为最近待办展示。
+    demo_personal_task_title = "整理本周学习任务"
+    existing_personal_tasks, _ = personal_task_repo.list_tasks(
+        student_demo.id, include_deleted=True, page=1, page_size=200
+    )
+    if not any(task.title == demo_personal_task_title for task in existing_personal_tasks):
+        personal_task_repo.create_task(
+            user_id=student_demo.id,
+            title=demo_personal_task_title,
+            description="完成高等数学第一章习题复习，并按优先级整理本周课程与作业。",
+            source_name="个人安排",
+            priority="high",
+        )
+        stats["personal_tasks_added"] += 1
 
     # === 提交 + 评分 ===
     asg1_id = created_assignments.get(("DEMO-MATH101-CLS1", "第一章习题"))

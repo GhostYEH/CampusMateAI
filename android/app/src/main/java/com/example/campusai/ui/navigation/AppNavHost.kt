@@ -1,8 +1,12 @@
 package com.example.campusai.ui.navigation
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -38,7 +42,6 @@ import com.example.campusai.ui.screens.services.MyRequestsScreen
 import com.example.campusai.ui.screens.services.RepairRequestScreen
 import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
 import com.example.campusai.ui.screens.services.ServicesScreen
-import com.example.campusai.ui.screens.study.StudyScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.users.UsersScreen
@@ -51,10 +54,70 @@ fun AppNavHost(
     modules: ModuleRepositories,
 ) {
     fun go(route: String) = navController.navigate(route) { launchSingleTop = true }
+    val reduceMotion by repository.reduceMotion.collectAsState()
 
     NavHost(
         navController = navController,
-        startDestination = "home"
+        startDestination = "home",
+        enterTransition = {
+            if (reduceMotion) {
+                EnterTransition.None
+            } else {
+                fadeIn(tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                    slideInHorizontally(
+                        animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialOffsetX = { it / 10 },
+                    ) +
+                    scaleIn(
+                        animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialScale = .985f,
+                        transformOrigin = TransformOrigin(.5f, .08f),
+                    )
+            }
+        },
+        exitTransition = {
+            if (reduceMotion) {
+                ExitTransition.None
+            } else {
+                fadeOut(tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                    slideOutHorizontally(
+                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        targetOffsetX = { -it / 16 },
+                    ) +
+                    scaleOut(
+                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        targetScale = .995f,
+                        transformOrigin = TransformOrigin(.5f, .08f),
+                    )
+            }
+        },
+        popEnterTransition = {
+            if (reduceMotion) {
+                EnterTransition.None
+            } else {
+                fadeIn(tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                    slideInHorizontally(
+                        animationSpec = tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialOffsetX = { -it / 12 },
+                    ) +
+                    scaleIn(
+                        animationSpec = tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialScale = .99f,
+                        transformOrigin = TransformOrigin(.5f, .08f),
+                    )
+            }
+        },
+        popExitTransition = {
+            if (reduceMotion) {
+                ExitTransition.None
+            } else {
+                fadeOut(tween(230, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                    slideOutHorizontally(
+                        animationSpec = tween(230, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        targetOffsetX = { it / 14 },
+                    )
+            }
+        },
     ) {
         composable("home") {
             DashboardScreen(repository) { route ->
@@ -90,7 +153,15 @@ fun AppNavHost(
                 initialPrompt = backStackEntry.arguments?.getString("prompt"),
             )
         }
-        composable("study") { StudyScreen(repository) }
+        // Historical study links now enter the one official Focus timer; no second timer exists.
+        composable("study") {
+            LaunchedEffect(Unit) {
+                navController.navigate("focus") {
+                    popUpTo("study") { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        }
         composable("courses") { CoursesScreen(repository) }
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }
@@ -263,6 +334,7 @@ fun AppNavHost(
             val reduceMotion by repository.reduceMotion.collectAsState()
             FocusScreen(
                 repository = modules.focus,
+                appRepository = repository,
                 reduceMotion = reduceMotion,
                 onBack = { navController.popBackStack() },
                 onOpenCounselorPlan = { prompt ->

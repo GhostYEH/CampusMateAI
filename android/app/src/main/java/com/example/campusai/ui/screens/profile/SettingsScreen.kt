@@ -3,7 +3,10 @@ package com.example.campusai.ui.screens.profile
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,13 +24,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.BuildConfig
+import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
-import com.example.campusai.ui.theme.PrimaryHover
 import kotlinx.coroutines.launch
 
 @Composable
@@ -39,8 +44,16 @@ fun SettingsScreen(
     val darkMode by repository.darkMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val reminders by repository.remindersEnabled.collectAsState()
+    val mockMode by repository.mockMode.collectAsState()
+    val modelStatus by repository.expressionSessionManager.status.collectAsState()
+    val modelResult by repository.expressionSessionManager.result.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    var backendLabel by remember { mutableStateOf("正在检查") }
+    LaunchedEffect(mockMode) {
+        val status = repository.refreshBackendStatus()
+        backendLabel = if (status.online) "已连接（${status.mode}）" else "未连接（${status.mode}）"
+    }
     ReferenceSystemBars(darkMode)
 
     Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
@@ -74,6 +87,27 @@ fun SettingsScreen(
                         subtitle = "减少页面进入与状态切换动画",
                         checked = reduceMotion,
                     ) { scope.launch { repository.setReduceMotion(it) } }
+                }
+            }
+            if (BuildConfig.DEBUG) {
+                item {
+                    SettingsGroup(
+                        title = "调试演示",
+                        modifier = Modifier.enterAnimation(delayMs = 175, enabled = !reduceMotion),
+                    ) {
+                        SettingsSwitchRow(
+                            icon = Icons.Default.BugReport,
+                            title = "使用 Mock 表情模型",
+                            subtitle = if (mockMode) "当前为 Mock；关闭后将使用本机 LiteRT" else "当前为本机 LiteRT；可切换 Mock 演示",
+                            checked = mockMode,
+                        ) { enabled -> scope.launch { repository.setMockMode(enabled) } }
+                        SettingsDivider()
+                        SettingsInfoRow(Icons.Default.Memory, "模型版本", modelResult.modelVersion)
+                        SettingsDivider()
+                        SettingsInfoRow(Icons.Default.Downloading, "模型加载结果", modelStatus.toString())
+                        SettingsDivider()
+                        SettingsInfoRow(Icons.Default.Cloud, "后端连接", backendLabel)
+                    }
                 }
             }
             item {
@@ -120,7 +154,10 @@ fun SettingsScreen(
             item {
                 AnimatedContent(
                     targetState = darkMode,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 5 }) togetherWith
+                            (fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 8 })
+                    },
                     label = "theme-tip",
                     modifier = Modifier.padding(horizontal = 20.dp),
                 ) { isDark ->
@@ -143,12 +180,19 @@ internal fun ReferenceSubpageHeader(
     subtitle: String,
     onBack: () -> Unit,
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < .5f
+    val headerTextColor = if (isDark) ReferenceText else Color.White
+    val headerColors = if (isDark) {
+        listOf(ReferencePrimarySoft, ReferenceSurface, ReferencePrimarySoft.copy(alpha = .88f))
+    } else {
+        listOf(ReferencePrimary.copy(alpha = .96f), ReferencePrimary, ReferencePrimary.copy(alpha = .86f))
+    }
     Box(
         Modifier.fillMaxWidth().height(174.dp)
             .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(PrimaryHover, ReferencePrimary, ReferencePrimary.copy(alpha = .86f)),
+                    colors = headerColors,
                     start = Offset.Zero,
                     end = Offset(1000f, 600f),
 )
@@ -168,12 +212,12 @@ internal fun ReferenceSubpageHeader(
                 modifier = Modifier.size(44.dp).clip(CircleShape)
                     .background(Color.White.copy(alpha = .14f)),
             ) {
-                Icon(Icons.Default.ArrowBack, "返回", tint = Color.White)
+                Icon(Icons.Default.ArrowBack, "返回", tint = headerTextColor)
             }
             Column(Modifier.padding(start = 14.dp)) {
-                Text(title, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                Text(title, color = headerTextColor, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(5.dp))
-                Text(subtitle, color = Color.White.copy(alpha = .84f), fontSize = 13.sp)
+                Text(subtitle, color = headerTextColor.copy(alpha = .84f), fontSize = 13.sp)
             }
         }
     }
@@ -198,8 +242,8 @@ private fun SettingsGroup(
                 .shadow(
                     elevation = 12.dp,
                     shape = RoundedCornerShape(22.dp),
-                    ambientColor = Color(0x12666AF6),
-                    spotColor = Color(0x18666AF6),
+                    ambientColor = ReferencePrimary.copy(alpha = .07f),
+                    spotColor = ReferencePrimary.copy(alpha = .1f),
                 )
                 .clip(RoundedCornerShape(22.dp))
                 .background(ReferenceSurface)
@@ -217,6 +261,7 @@ private fun SettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < .5f
     Row(
         Modifier.fillMaxWidth().padding(vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -231,10 +276,10 @@ private fun SettingsSwitchRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = if (isDark) ReferenceText else Color.White,
                 checkedTrackColor = ReferencePrimary,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = Color(0xFFE4E6F0),
+                uncheckedThumbColor = if (isDark) ReferenceText else Color.White,
+                uncheckedTrackColor = if (isDark) ReferenceDivider else Color(0xFFE4E6F0),
                 uncheckedBorderColor = Color.Transparent,
             ),
         )
@@ -268,7 +313,7 @@ private fun SettingsActionRow(
 ) {
     Row(
         Modifier.fillMaxWidth()
-            .clickable(onClick = onClick)
+            .campusClickable(onClick = onClick)
             .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

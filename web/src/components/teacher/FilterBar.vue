@@ -4,6 +4,7 @@ const props = defineProps({
   modelValue: { type: [String, Number], default: "" },
   searchPlaceholder: { type: String, default: "搜索" },
   filters: { type: Array, default: () => [] },
+  searchable: { type: Boolean, default: true },
 });
 const emit = defineEmits(["update:modelValue", "update:filters", "search"]);
 function onSearch(e) {
@@ -17,7 +18,7 @@ function onFilterChange(idx, value) {
 </script>
 <template>
   <div class="tch-filter-bar">
-    <div class="tch-filter-search">
+    <div v-if="searchable" class="tch-filter-search">
       <UiIcon name="PhMagnifyingGlass" :size="16" />
       <input
         :value="modelValue"

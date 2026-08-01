@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val darkMode by repository.darkMode.collectAsState()
+            val reduceMotion by repository.reduceMotion.collectAsState()
             val view = LocalView.current
             SideEffect {
                 WindowCompat.getInsetsController(window, view).apply {
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !darkMode
                 }
             }
-            CampusAITheme(darkTheme = darkMode) {
+            CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
                 CampusAIApp(repository, moduleRepositories)
             }
         }

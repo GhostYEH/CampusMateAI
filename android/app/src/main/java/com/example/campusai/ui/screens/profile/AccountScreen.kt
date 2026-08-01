@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.theme.DangerText
 import kotlinx.coroutines.launch
 
 @Composable
@@ -171,7 +172,7 @@ fun AccountScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = ReferencePrimary),
             ) {
                 if (saving) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(9.dp))
                     Text("正在保存…")
                 } else {
@@ -193,11 +194,11 @@ private fun AccountCard(
 ) {
     Column(
         modifier.padding(horizontal = 18.dp).fillMaxWidth()
-            .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(22.dp),
-                ambientColor = Color(0x12666AF6),
-                spotColor = Color(0x18666AF6),
+                .shadow(
+                    elevation = 12.dp,
+                    shape = RoundedCornerShape(22.dp),
+                    ambientColor = ReferencePrimary.copy(alpha = .07f),
+                    spotColor = ReferencePrimary.copy(alpha = .1f),
             )
             .clip(RoundedCornerShape(22.dp)).background(ReferenceSurface).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp),
@@ -229,7 +230,7 @@ private fun AccountField(
         supportingText = {
             val message = error ?: supporting
             if (message != null) {
-                Text(message, color = if (error != null) Color(0xFFE45E69) else ReferenceMuted)
+                Text(message, color = if (error != null) DangerText else ReferenceMuted)
             }
         },
         singleLine = true,
@@ -238,9 +239,9 @@ private fun AccountField(
         keyboardActions = KeyboardActions(onNext = { onIme() }, onDone = { onIme() }),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ReferencePrimary,
-            unfocusedBorderColor = Color(0xFFE8EAF2),
-            focusedContainerColor = Color(0xFFFAFAFE),
-            unfocusedContainerColor = Color(0xFFFAFAFE),
+            unfocusedBorderColor = ReferenceDivider,
+            focusedContainerColor = ReferenceSurface,
+            unfocusedContainerColor = ReferenceSurface,
             focusedTextColor = ReferenceText,
             unfocusedTextColor = ReferenceText,
             focusedLabelColor = ReferencePrimary,

@@ -4,7 +4,8 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 from ..core.config import Settings, get_settings
@@ -57,6 +58,7 @@ class ServiceContainer:
     # 学习陪伴
     study_session_repository: StudySessionRepository
     task_breakdown_service: TaskBreakdownService
+    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def ensure_index(self) -> int:
         """确保索引就绪(若 stale 则重建)。返回 chunk 数。"""
