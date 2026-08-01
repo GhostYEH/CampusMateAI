@@ -266,6 +266,7 @@ fun AppNavHost(
         composable("services") {
             val reduceMotion by repository.reduceMotion.collectAsState()
             ServicesScreen(
+                repository = modules.services,
                 reduceMotion = reduceMotion,
                 onBack = { navController.popBackStack() },
                 onNavigate = { route -> go(route) },

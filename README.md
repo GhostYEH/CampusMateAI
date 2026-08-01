@@ -2,7 +2,7 @@
 
 一款面向大学生的智能助手,解决校园通知分散、事务流程不清、学习状态难追踪、缺乏有温度的陪伴体验等问题。
 
-> 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + Vue 3 Web 前端 + FastAPI 真实后端(Mock 与 Real 双模式可切换)
+> 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + Vue 3 Web 前端 + 微信小程序 + FastAPI 真实后端(Mock 与 Real 双模式可切换) + 表情识别训练与 LiteRT 部署
 
 ## 核心功能
 
@@ -30,7 +30,9 @@ CNN 识别的是**可观察到的面部表情**,不进行心理诊断。界面�
 |------|------|------|
 | 移动端 | `android/` | Kotlin + Jetpack Compose(Material 3) |
 | Web 前端 | `web/` | Vue 3 + Vite + Pinia + vue-router + axios |
+| 微信小程序 | `wx/` | TypeScript + 原生小程序框架 |
 | 后端 | `backend/` | Python / FastAPI / SQLite / RAG / JWT / BM25 |
+| 机器学习 | `ml/` | PyTorch / FER2013 / LiteRT 部署 |
 
 ## 技术栈
 
@@ -58,6 +60,18 @@ CNN 识别的是**可观察到的面部表情**,不进行心理诊断。界面�
 - **pytest** 后端测试
 - **uvicorn** ASGI 服务器
 
+**微信小程序**(位于 [`wx/`](wx/))
+
+- TypeScript + 原生小程序框架
+- 复用 FastAPI 接口
+
+**机器学习**(位于 [`ml/`](ml/))
+
+- **PyTorch** + **torchvision**(FER2013 表情识别训练)
+- **ResNet18 / MobileNetV3-Small / EfficientNet-B0** 多模型对比
+- **LiteRT** 模型导出与 Android 部署(`expression_model.tflite`)
+- 训练审计、评估指标复现、数据清单管理
+
 ## 项目结构
 
 ```
@@ -73,6 +87,7 @@ campus_mate_ai/
 │       ├── ui/theme/                     # Color / Theme / Type(Material 3 主题)
 │       └── ui/components/                # 通用组件与动效
 ├── web/                                  # Vue 3 前端
+├── wx/                                   # 微信小程序(TypeScript)
 ├── backend/                              # Python FastAPI 后端
 │   ├── app/
 │   │   ├── api/routes/                   # health / notices / knowledge / counselor 路由
@@ -92,6 +107,8 @@ campus_mate_ai/
 │   ├── pytest.ini
 │   ├── requirements.txt
 │   └── README.md                         # 后端专属文档
+├── ml/                                   # 表情识别训练/评估/部署
+│   └── expression_recognition/           # 模型训练、审计、评估与 LiteRT 导出
 ├── .github/workflows/                    # GitHub Actions CI(Backend CI)
 ├── AGENTS.md                             # 项目长期规范
 └── README.md                             # 本文件
@@ -141,7 +158,7 @@ campus_mate_ai/
 - 按钮按下/禁用/加载多状态
 - 列表筛选/排序/搜索实时反馈
 
-## CNN 接口设计(预留)
+## CNN 接口设计(Kotlin 契约)
 
 ```kotlin
 enum class ExpressionLabel {
@@ -167,7 +184,7 @@ interface ExpressionRecognitionService {
 }
 ```
 
-预留实现要求: 多帧概率平滑、置信度阈值过滤、状态持续时间判断、建议冷却时间。低置信度显示"暂时无法稳定判断当前表情",且**不**触发情绪安慰。后续可接入 LiteRT / 原生 CameraX。
+实现要求: 多帧概率平滑、置信度阈值过滤、状态持续时间判断、建议冷却时间。低置信度显示"暂时无法稳定判断当前表情",且**不**触发情绪安慰。已通过 CameraX + ML Kit 人脸检测 + LiteRT 实现,详见下文"CNN 面部表情识别"章节。
 
 ## 运行
 
@@ -383,7 +400,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 | `MAX_EXPRESSION_CONTRIBUTION_MB` | `3` | 单张 CNN 共建图片最大体积 |
 | `MAX_UPLOAD_MB` | `10` | 单文件最大体积 |
 | `ALLOWED_EXTENSIONS` | `md,txt,pdf,docx` | 允许上传的扩展名 |
-| `AUTO_IMPORT_DEMO` | `true` | 启动时自动导入演示资料 |
+| `AUTO_IMPORT_DEMO` | `false` | 启动时自动导入演示资料(仅 dev/test 需显式设为 `true`) |
 | `LLM_PROVIDER` | `none` | LLM Provider(`none` / `openai_compatible`) |
 | `LLM_BASE_URL` | (空) | LLM API 端点 |
 | `LLM_API_KEY` | (空) | LLM API Key(禁止提交到 Git) |
@@ -392,6 +409,8 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 | `ENABLE_FALLBACK_MODE` | `true` | LLM 不可用时是否启用降级 |
 | `CORS_ORIGINS` | `http://localhost:*,http://127.0.0.1:*` | CORS 允许源 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
+| `LOG_REQUESTS` | `true` | 是否记录 HTTP 请求日志 |
+| `AUTO_SEED_DEMO_USERS` | `false` | 启动时是否 seed 多角色验收账号(仅 dev/test) |
 
 > 移动端通过 `BuildConfig.API_BASE_URL` 配置后端地址(Web 端使用 Vite proxy + axios)，默认指向 `http://localhost:8000`(Web)或 `http://10.0.2.2:8000`(Android 模拟器)。
 

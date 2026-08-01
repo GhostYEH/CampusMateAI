@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -105,10 +106,15 @@ fun CampusPageHeader(
         if (onBack != null) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
+                    .shadow(
+                        elevation = 9.dp,
+                        shape = CircleShape,
+                        ambientColor = Color(0x1F24365A),
+                        spotColor = Color(0x1F24365A),
+                    )
                     .clip(CircleShape)
                     .background(Surface)
-                    .border(1.dp, Line, CircleShape)
                     .campusClickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
@@ -116,10 +122,10 @@ fun CampusPageHeader(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = CampusStrings.Common.BACK,
                     tint = TextPrimary,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(25.dp),
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(
