@@ -30,6 +30,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private val KEY_REDUCE_MOTION = booleanPreferencesKey("campus_reduce_motion")
     private val KEY_DARK_MODE = booleanPreferencesKey("campus_dark_mode")
     private val KEY_REMINDERS = booleanPreferencesKey("campus_reminders")
+    private val KEY_LEARNING_ASSISTANCE = booleanPreferencesKey("campus_learning_assistance")
 
     val session: Flow<User?> = context.dataStore.data.map { prefs ->
         prefs[KEY_SESSION]?.let { json: String ->
@@ -53,7 +54,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     }
 
     val mockMode: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
-        prefs[KEY_MOCK_MODE] ?: BuildConfig.DEBUG
+        prefs[KEY_MOCK_MODE] ?: BuildConfig.DEFAULT_USE_MOCK
     }
 
     val reduceMotion: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
@@ -62,6 +63,9 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
 
     val darkMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DARK_MODE] ?: false }
     val remindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_REMINDERS] ?: true }
+    val learningAssistanceEnabled: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_LEARNING_ASSISTANCE] ?: false
+    }
 
     suspend fun saveSession(user: User) {
         context.dataStore.edit { prefs ->
@@ -110,6 +114,10 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_REMINDERS] = enabled }
+    }
+
+    suspend fun setLearningAssistanceEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_LEARNING_ASSISTANCE] = enabled }
     }
 
     // ── 模块通用键值存储（KeyValueStorage） ──

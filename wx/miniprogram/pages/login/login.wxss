@@ -5,7 +5,7 @@
 
 .visual {
   position: relative;
-  height: 570rpx;
+  height: 540rpx;
   overflow: hidden;
 }
 
@@ -21,7 +21,7 @@
 }
 
 .visual-shade {
-  background: linear-gradient(180deg, rgba(7, 20, 36, 0.14), rgba(7, 20, 36, 0.92));
+  background: linear-gradient(180deg, rgba(7, 20, 36, 0.12), rgba(7, 20, 36, 0.9));
 }
 
 .visual-content {
@@ -47,10 +47,10 @@
 }
 
 .visual-title {
-  margin-top: 18rpx;
-  font-size: 50rpx;
+  margin-top: 16rpx;
+  font-size: 46rpx;
   line-height: 1.3;
-  font-weight: 760;
+  font-weight: 740;
   letter-spacing: -1rpx;
 }
 
@@ -63,11 +63,11 @@
 .panel {
   position: relative;
   z-index: 2;
-  min-height: calc(100vh - 520rpx);
-  margin-top: -50rpx;
-  padding: 42rpx 36rpx calc(38rpx + env(safe-area-inset-bottom));
+  min-height: calc(100vh - 500rpx);
+  margin-top: -40rpx;
+  padding: 34rpx 30rpx calc(34rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
-  border-radius: 46rpx 46rpx 0 0;
+  border-radius: 24rpx 24rpx 0 0;
   background: #f8fbfd;
 }
 
@@ -75,13 +75,13 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18rpx;
+  gap: 14rpx;
 }
 
 .title {
   color: #1b2730;
-  font-size: 43rpx;
-  font-weight: 760;
+  font-size: 36rpx;
+  font-weight: 740;
 }
 
 .subtitle {
@@ -111,13 +111,13 @@
 }
 
 .form {
-  margin-top: 34rpx;
+  margin-top: 28rpx;
 }
 
 .label {
-  margin: 22rpx 0 11rpx;
+  margin: 20rpx 0 9rpx;
   color: #1b2730;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 650;
 }
 
@@ -137,7 +137,7 @@
 }
 
 .submit {
-  margin-top: 28rpx;
+  margin-top: 24rpx;
 }
 
 .error-banner {
@@ -150,7 +150,7 @@
 }
 
 .demo-title {
-  margin-top: 34rpx;
+  margin-top: 28rpx;
   color: #667784;
   font-size: 22rpx;
   font-weight: 600;

@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
 from ...core.exceptions import AppException, DocumentNotFound, FileNameUnsafe
@@ -21,6 +21,8 @@ from ...schemas.knowledge import (
     RebuildResponse,
 )
 from ...services.container import get_container
+from ..deps import require_role
+from ...models.multi_role import UserRow
 
 router = APIRouter()
 
@@ -52,7 +54,6 @@ def _determine_qa_mode(
 @router.get("/knowledge/status", response_model=KnowledgeStatus)
 async def knowledge_status() -> KnowledgeStatus:
     container = get_container()
-    container.retrieval.rebuild()
     last_imported = container.document_repository.latest_imported_at()
     chunk_count = container.retrieval.chunk_count
     doc_count = container.document_repository.count_documents()
@@ -134,6 +135,7 @@ async def upload_document(
     version: Optional[str] = Form(None),
     applicable_students: Optional[str] = Form(None),
     is_official: bool = Form(False),
+    _: UserRow = Depends(require_role("admin")),
 ) -> DocumentSummary:
     """上传文档到知识库。
 
@@ -233,7 +235,7 @@ async def upload_document(
 
 
 @router.delete("/knowledge/documents/{document_id}", response_model=DeleteResponse)
-async def delete_document(document_id: str) -> DeleteResponse:
+async def delete_document(document_id: str, _: UserRow = Depends(require_role("admin"))) -> DeleteResponse:
     container = get_container()
     deleted = container.knowledge_ingestion.delete_document(document_id)
     if not deleted:
@@ -243,7 +245,7 @@ async def delete_document(document_id: str) -> DeleteResponse:
 
 
 @router.post("/knowledge/rebuild", response_model=RebuildResponse)
-async def rebuild_index() -> RebuildResponse:
+async def rebuild_index(_: UserRow = Depends(require_role("admin"))) -> RebuildResponse:
     container = get_container()
     n = container.knowledge_ingestion.rebuild_index()
     return RebuildResponse(

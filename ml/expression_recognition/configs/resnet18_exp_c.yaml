@@ -1,0 +1,36 @@
+model: resnet18
+seed: 20260731
+input_size: 96
+input_channels: 3
+normalization:
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+pretrained: true
+pretrained_weights: IMAGENET1K_V1
+batch_size: 192
+num_workers: 4
+max_epochs: 15
+early_stopping_patience: 4
+learning_rate: 0.0003
+weight_decay: 0.0001
+label_smoothing: 0.05
+loss: class_balanced_focal
+class_balanced_beta: 0.9999
+focal_gamma: 2.0
+gradient_clip_norm: 1.0
+amp: true
+augmentation:
+  horizontal_flip_probability: 0.5
+  rotation_degrees: 8
+  translate_fraction: 0.08
+  scale: [0.9, 1.1]
+  brightness: 0.15
+  contrast: 0.15
+  blur_probability: 0.18
+  blur_kernel_size: 3
+  blur_sigma: [0.1, 1.8]
+  jpeg_probability: 0.25
+  jpeg_quality: [45, 90]
+  occlusion_probability: 0.20
+  occlusion_scale: [0.02, 0.18]
+  occlusion_ratio: [0.3, 3.3]

@@ -17,19 +17,19 @@
         </view>
       </view>
       <view class="course-hero-side">
-        <view class="course-hero-icon">课</view>
+        <image class="course-hero-icon" src="/assets/icons/quick-calendar.svg" mode="aspectFit"></image>
         <view class="course-hero-count">{{courses.length}} 门</view>
       </view>
     </view>
 
     <view class="course-metrics enter enter-delay-1">
-      <view class="course-metric"><view class="metric-value primary">{{courses.length}}</view><view class="metric-label">门课程</view></view>
+      <view class="course-metric"><view class="metric-value primary">{{courses.length}}</view><view class="metric-label">已加入课程</view></view>
       <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value green">18</view><view class="metric-label">本周学时</view></view>
+      <view class="course-metric"><view class="metric-value green">{{courseTypeCount}}</view><view class="metric-label">课程分类</view></view>
       <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value orange">26.5</view><view class="metric-label">已修学分</view></view>
+      <view class="course-metric"><view class="metric-value orange">{{filtered.length}}</view><view class="metric-label">当前显示</view></view>
       <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value purple">96%</view><view class="metric-label">出勤率</view></view>
+      <view class="course-metric"><view class="metric-value navy">{{filter}}</view><view class="metric-label">筛选范围</view></view>
     </view>
 
     <view class="course-section-head enter enter-delay-2">
@@ -83,11 +83,6 @@
             <text>{{item.weekday}} {{item.time}}</text>
             <text>{{item.code}}</text>
           </view>
-        </view>
-        <view class="course-attendance">
-          <view class="attendance-bar"><view class="attendance-fill" style="width: {{index === 0 ? 96 : index === 1 ? 92 : 94}}%;"></view></view>
-          <view class="attendance-value">{{index === 0 ? '96%' : index === 1 ? '92%' : '94%'}}</view>
-          <view class="attendance-label">出勤率</view>
         </view>
         <view class="course-chevron">›</view>
       </view>

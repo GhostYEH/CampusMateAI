@@ -13,7 +13,40 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+_TEXT_FIELDS = (
+    "title",
+    "description",
+    "target_students",
+    "submission_method",
+    "location",
+    "source_name",
+    "source_text",
+)
+
+
+def _validate_text_integrity(value: Optional[str]) -> Optional[str]:
+    """拒绝明显由字符编码丢失产生的问号文本。
+
+    正常文案中可以包含少量 ASCII 问号，因此只拦截连续丢失字符常见的
+    形态：至少 3 个 ``?``，且占去除空白后文本的一半以上。
+    """
+    if value is None:
+        return value
+    compact = "".join(value.split())
+    question_marks = compact.count("?")
+    if question_marks >= 3 and question_marks / len(compact) >= 0.5:
+        raise ValueError("文本疑似在传输过程中丢失字符，请确认编码后重新输入")
+    return value
+
+
+def _validate_materials_integrity(value: Optional[List[str]]) -> Optional[List[str]]:
+    if value is not None:
+        for item in value:
+            _validate_text_integrity(item)
+    return value
 
 
 # ===== 创建 =====
@@ -53,6 +86,16 @@ class PersonalTaskCreate(BaseModel):
         None, ge=0, le=60 * 24 * 30, description="提前提醒分钟数(0 表示按 deadline 精确触发)"
     )
 
+    @field_validator(*_TEXT_FIELDS)
+    @classmethod
+    def validate_text_integrity(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_text_integrity(value)
+
+    @field_validator("materials")
+    @classmethod
+    def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        return _validate_materials_integrity(value)
+
 
 # ===== 更新 =====
 
@@ -76,6 +119,16 @@ class PersonalTaskUpdate(BaseModel):
     source_notice_id: Optional[str] = Field(None, max_length=128)
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reminder_minutes: Optional[int] = Field(None, ge=0, le=60 * 24 * 30)
+
+    @field_validator(*_TEXT_FIELDS)
+    @classmethod
+    def validate_text_integrity(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_text_integrity(value)
+
+    @field_validator("materials")
+    @classmethod
+    def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        return _validate_materials_integrity(value)
 
 
 # ===== 响应 =====

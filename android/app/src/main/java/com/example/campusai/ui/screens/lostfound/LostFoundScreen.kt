@@ -1,5 +1,6 @@
 package com.example.campusai.ui.screens.lostfound
 
+import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -35,8 +36,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -307,18 +308,20 @@ fun LostFoundCard(item: LostFoundItem, onClick: () -> Unit) {
 }
 
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 fun ItemThumbnail(imageUri: String?, size: androidx.compose.ui.unit.Dp = 74.dp) {
     val context = LocalContext.current
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, imageUri) {
-        value = imageUri?.let { raw ->
+    var bitmap by remember(imageUri) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(imageUri) {
+        bitmap = if (imageUri != null) {
             withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(raw))?.use { input ->
+                    context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { input ->
                         BitmapFactory.decodeStream(input)?.asImageBitmap()
                     }
                 }.getOrNull()
             }
-        }
+        } else null
     }
     Box(
         modifier = Modifier

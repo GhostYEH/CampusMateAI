@@ -3,8 +3,10 @@ from __future__ import annotations
 import torch
 from torch import nn
 from torchvision.models import (
+    EfficientNet_B0_Weights,
     MobileNet_V3_Small_Weights,
     ResNet18_Weights,
+    efficientnet_b0,
     mobilenet_v3_small,
     resnet18,
 )
@@ -59,6 +61,12 @@ def build_model(config: dict, allow_download: bool = True) -> nn.Module:
     if name == "mobilenet_v3_small":
         weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1 if pretrained else None
         model = mobilenet_v3_small(weights=weights)
+        last = model.classifier[-1]
+        model.classifier[-1] = nn.Linear(last.in_features, NUM_CLASSES)
+        return model
+    if name == "efficientnet_b0":
+        weights = EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained else None
+        model = efficientnet_b0(weights=weights)
         last = model.classifier[-1]
         model.classifier[-1] = nn.Linear(last.in_features, NUM_CLASSES)
         return model

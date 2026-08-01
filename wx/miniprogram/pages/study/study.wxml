@@ -1,7 +1,7 @@
 <view class="page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
   <campus-header
     title="学习陪伴"
-    subtitle="集中处理与当前模块相关的校园事务"
+    subtitle="用一段专注时间完成今天的任务"
     mode="{{mockMode ? 'Mock 识别' : '本地识别'}}"
     back
   />

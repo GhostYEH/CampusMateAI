@@ -1,14 +1,5 @@
 package com.example.campusai.ui.screens.counselor
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.view.PreviewView
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -29,19 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.campusai.data.expression.CameraExpressionRecognitionService
-import com.example.campusai.data.expression.ExpressionServiceStatus
-import com.example.campusai.data.expression.ObservableExpressionRecognitionService
 import com.example.campusai.data.model.ChatMessage
-import com.example.campusai.data.model.ExpressionLabel
-import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.TypingIndicator
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.components.slideInAnimation
 import com.example.campusai.ui.theme.*
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -50,70 +35,12 @@ fun CounselorScreen(
     initialPrompt: String? = null,
 ) {
     val mockMode by repository.mockMode.collectAsState()
-    val backendOnline by repository.backendOnline.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val expressionService = remember(mockMode) {
-        repository.createExpressionRecognitionService(mockMode)
-    }
-    val observableService = expressionService as ObservableExpressionRecognitionService
-    val expressionStatus by observableService.status.collectAsState()
-    val expressionResult by expressionService.results().collectAsState(
-        initial = ExpressionResult(
-            ExpressionLabel.UNKNOWN,
-            0.0,
-            emptyMap(),
-            System.currentTimeMillis(),
-            false,
-            "not-loaded",
-        ),
-    )
-    var expressionEnabled by remember(expressionService) { mutableStateOf(false) }
-    var permissionDenied by remember(expressionService) { mutableStateOf(false) }
-    val cameraPermissionGranted = mockMode || ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.CAMERA,
-    ) == PackageManager.PERMISSION_GRANTED
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionDenied = !granted
-        if (granted) expressionEnabled = true
-    }
-    val disposalScope = remember(expressionService) {
-        kotlinx.coroutines.CoroutineScope(
-            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate,
-        )
-    }
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(expressionEnabled, expressionService) {
-        if (expressionEnabled) {
-            try {
-                expressionService.initialize()
-                expressionService.start()
-            } catch (_: Exception) {
-                // 服务会把可展示的错误写入 status；页面保持可操作。
-            }
-        } else if (expressionStatus !is ExpressionServiceStatus.Off) {
-            expressionService.stop()
-        }
-    }
-
-    DisposableEffect(expressionService) {
-        onDispose {
-            (expressionService as? CameraExpressionRecognitionService)?.unbindCamera()
-            disposalScope.launch {
-                expressionService.dispose()
-                disposalScope.cancel()
-            }
-        }
-    }
 
     var messages by remember(mockMode) {
         mutableStateOf(
@@ -133,24 +60,15 @@ fun CounselorScreen(
     fun sendMessage(text: String) {
         val question = text.trim()
         if (question.isEmpty() || sending) return
-        val expressionAtSend = expressionResult.takeIf {
-            !mockMode &&
-                backendOnline &&
-                expressionEnabled &&
-                it.isStable &&
-                it.confidence >= 0.60 &&
-                it.label != ExpressionLabel.UNKNOWN &&
-                it.label != ExpressionLabel.NO_FACE
-        }
         scope.launch {
-            messages = messages + ChatMessage("user", question, expressionAtSend?.label)
+            messages = messages + ChatMessage("user", question)
             input = ""
             sending = true
             error = null
             try {
                 messages = messages + ChatMessage(
                     "assistant",
-                    repository.chat(question, expressionAtSend),
+                    repository.chat(question),
                 )
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
@@ -180,29 +98,6 @@ fun CounselorScreen(
         ) {
             item { CounselorHeader(mockMode) }
             item { CounselorHero(reduceMotion, mockMode) }
-            item {
-                CounselorExpressionPanel(
-                    enabled = expressionEnabled,
-                    mockMode = mockMode,
-                    permissionDenied = permissionDenied,
-                    cameraPermissionGranted = cameraPermissionGranted,
-                    status = expressionStatus,
-                    result = expressionResult,
-                    reduceMotion = reduceMotion,
-                    expressionService = expressionService,
-                    lifecycleOwner = lifecycleOwner,
-                    onToggle = {
-                        if (expressionEnabled) {
-                            expressionEnabled = false
-                        } else if (cameraPermissionGranted) {
-                            permissionDenied = false
-                            expressionEnabled = true
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    },
-                )
-            }
             item {
                 Text("你可以这样问", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(9.dp))
@@ -266,158 +161,6 @@ fun CounselorScreen(
             listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1)
         }
     }
-}
-
-@Composable
-private fun CounselorExpressionPanel(
-    enabled: Boolean,
-    mockMode: Boolean,
-    permissionDenied: Boolean,
-    cameraPermissionGranted: Boolean,
-    status: ExpressionServiceStatus,
-    result: ExpressionResult,
-    reduceMotion: Boolean,
-    expressionService: com.example.campusai.data.expression.ExpressionRecognitionService,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
-    onToggle: () -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(20.dp))
-            .padding(14.dp)
-            .enterAnimation(enabled = !reduceMotion),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text("表情辅助", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(
-                    "只发送稳定的表情标签，不上传摄像头画面",
-                    color = Muted,
-                    fontSize = 11.sp,
-                )
-            }
-            Surface(color = PrimarySoft, shape = RoundedCornerShape(999.dp)) {
-                Text(
-                    if (mockMode) "Mock CNN" else "本机 LiteRT",
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                    color = Primary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-        if (enabled && !mockMode && cameraPermissionGranted &&
-            expressionService is CameraExpressionRecognitionService
-        ) {
-            AndroidView(
-                factory = { previewContext ->
-                    PreviewView(previewContext).apply {
-                        scaleType = PreviewView.ScaleType.FILL_CENTER
-                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                        expressionService.bindCamera(lifecycleOwner, this)
-                    }
-                },
-                update = { expressionService.bindCamera(lifecycleOwner, it) },
-                onRelease = { expressionService.unbindCamera() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .clip(RoundedCornerShape(12.dp)),
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                when (status) {
-                    ExpressionServiceStatus.NoFace -> Icons.Default.FaceRetouchingOff
-                    ExpressionServiceStatus.LowConfidence -> Icons.Default.HelpOutline
-                    is ExpressionServiceStatus.Error -> Icons.Default.ErrorOutline
-                    ExpressionServiceStatus.Initializing -> Icons.Default.Downloading
-                    ExpressionServiceStatus.Off -> Icons.Default.VisibilityOff
-                    else -> Icons.Default.EmojiEmotions
-                },
-                contentDescription = null,
-                tint = Primary,
-                modifier = Modifier.size(23.dp),
-            )
-            Spacer(Modifier.width(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    expressionTitle(enabled, status, result),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                )
-                Text(
-                    when {
-                        permissionDenied -> "未获得摄像头权限，可再次点击开启"
-                        !enabled -> "关闭后不分析表情，消息也不会附带表情信号"
-                        status is ExpressionServiceStatus.Error -> status.message
-                        result.isStable -> "置信度 ${(result.confidence * 100).toInt()}%，仅供辅助参考"
-                        else -> "正在观察连续画面，未达到稳定条件"
-                    },
-                    color = if (status is ExpressionServiceStatus.Error) Danger else Muted,
-                    fontSize = 10.sp,
-                )
-            }
-        }
-        Button(
-            onClick = onToggle,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (enabled) PrimarySoft else Primary,
-                contentColor = if (enabled) Primary else Color.White,
-            ),
-        ) {
-            Icon(
-                if (enabled) Icons.Default.VideocamOff else Icons.Default.Videocam,
-                contentDescription = null,
-                modifier = Modifier.size(17.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(if (enabled) "关闭表情辅助" else "开启表情辅助")
-        }
-        Text(
-            "CNN 识别的是可观察到的面部表情，不代表心理状态或医学判断。",
-            color = Muted,
-            fontSize = 10.sp,
-        )
-    }
-}
-
-private fun expressionTitle(
-    enabled: Boolean,
-    status: ExpressionServiceStatus,
-    result: ExpressionResult,
-): String = when {
-    !enabled -> "表情辅助已关闭"
-    status is ExpressionServiceStatus.Error -> "本机识别暂不可用"
-    status == ExpressionServiceStatus.Initializing -> "正在加载本机模型"
-    status == ExpressionServiceStatus.NoFace || result.label == ExpressionLabel.NO_FACE ->
-        "画面中暂未检测到人脸"
-    status == ExpressionServiceStatus.LowConfidence || result.label == ExpressionLabel.UNKNOWN ->
-        "暂时无法稳定判断当前表情"
-    !result.isStable -> "正在观察连续画面"
-    else -> "当前表情可能偏${result.label.displayName()}"
-}
-
-private fun ExpressionLabel.displayName(): String = when (this) {
-    ExpressionLabel.HAPPY -> "愉快"
-    ExpressionLabel.NEUTRAL -> "中性"
-    ExpressionLabel.SAD -> "低落"
-    ExpressionLabel.ANGRY -> "生气"
-    ExpressionLabel.FEAR -> "紧张"
-    ExpressionLabel.SURPRISE -> "惊讶"
-    ExpressionLabel.DISGUST -> "厌恶"
-    ExpressionLabel.UNKNOWN -> "不确定"
-    ExpressionLabel.NO_FACE -> "无脸"
 }
 
 @Composable
@@ -511,7 +254,7 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "已附带表情观察：${message.expressionLabel.displayName()}",
+                        "已附带历史表情观察：${message.expressionLabel.name}",
                         color = Color.White.copy(alpha = 0.82f),
                         fontSize = 9.sp,
                     )
@@ -579,8 +322,8 @@ private fun ChatComposer(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Primary,
                     unfocusedBorderColor = InputBorder,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
+                    focusedContainerColor = Surface,
+                    unfocusedContainerColor = Surface,
                     cursorColor = Primary,
                 ),
             )

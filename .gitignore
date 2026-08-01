@@ -139,6 +139,11 @@ web/AGENTS.md
 # SDK / 工具下载(非项目代码)
 jdk17.zip
 *.zip
+android/.tools/
+android/.gradle-user-home/
+ml/expression_recognition/.torch-cache/
+ml/expression_recognition/.uv-cache/
+ml/expression_recognition/.tmp/
 
 # 构建产物
 artifacts/
@@ -154,3 +159,6 @@ android/app/src/test/
 
 # Android 构建损坏时的临时备份目录(构建产物,不纳入版本控制)
 android/app/build-corrupt-backup-20260731/
+
+# Temporary local browser profiles used for screenshot QA
+.qa-*/

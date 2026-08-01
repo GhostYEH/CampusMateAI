@@ -1,5 +1,6 @@
 package com.example.campusai.ui.components
 
+import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,13 +29,14 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -210,6 +212,7 @@ fun FormSwitchRow(
 
 /** 图片选择与预览入口（仅本地选择，不上传）。 */
 @Composable
+@SuppressLint("ProduceStateDoesNotAssignValue")
 fun ImagePickField(
     imageUri: String?,
     onPick: (String?) -> Unit,
@@ -220,16 +223,17 @@ fun ImagePickField(
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         onPick(uri?.toString())
     }
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, imageUri) {
-        value = imageUri?.let { raw ->
+    var bitmap by remember(imageUri) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(imageUri) {
+        bitmap = if (imageUri != null) {
             withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(raw))?.use { input ->
+                    context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { input ->
                         BitmapFactory.decodeStream(input)?.asImageBitmap()
                     }
                 }.getOrNull()
             }
-        }
+        } else null
     }
     Column(modifier = modifier.fillMaxWidth()) {
         if (bitmap != null) {
@@ -319,11 +323,16 @@ fun CampusPrimaryButton(
             .fillMaxWidth()
             .height(46.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Primary)
+            .background(if (enabled) Primary else PrimarySoft)
             .campusClickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = androidx.compose.ui.graphics.Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            text,
+            color = if (enabled) MaterialTheme.colorScheme.onPrimary else Muted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

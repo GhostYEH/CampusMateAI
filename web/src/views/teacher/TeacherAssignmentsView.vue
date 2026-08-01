@@ -8,6 +8,7 @@ import ErrorState from "../../components/teacher/ErrorState.vue";
 import EmptyState from "../../components/teacher/EmptyState.vue";
 import StatusTag from "../../components/teacher/StatusTag.vue";
 import Modal from "../../components/teacher/Modal.vue";
+import Drawer from "../../components/teacher/Drawer.vue";
 import UiIcon from "../../components/UiIcon.vue";
 import { useTeacherStore } from "../../stores/teacher";
 import { useToast, extractErrorMessage } from "../../composables/useToast";
@@ -121,8 +122,8 @@ async function openEdit(item) {
     description: item.description || "",
     class_group_id: item.class_group_id,
     deadlineLocal: toLocalDatetimeInput(item.deadline),
-    full_score: item.full_score ?? 100,
-    allow_late: item.allow_late ?? true,
+    full_score: item.max_score ?? 100,
+    allow_late: item.allow_resubmit ?? true,
   });
   Object.keys(formErrors).forEach((k) => delete formErrors[k]);
   showForm.value = true;
@@ -151,8 +152,8 @@ async function submit(publishNow = false) {
       title: form.title.trim(),
       description: form.description.trim(),
       deadline: fromLocalDatetimeInput(form.deadlineLocal),
-      full_score: Number(form.full_score),
-      allow_late: form.allow_late,
+      max_score: Number(form.full_score),
+      allow_resubmit: form.allow_late,
     };
     if (editing.value) {
       await updateAssignment(editing.value.id, payload);
@@ -265,7 +266,7 @@ async function onFileChange(event) {
 }
 
 const submitRate = (item) => {
-  const totalStudents = item.total_students ?? item.student_count ?? 0;
+  const totalStudents = item.student_count ?? 0;
   if (!totalStudents) return null;
   const submitted = item.submitted_count ?? 0;
   return Math.round((submitted / totalStudents) * 100);
@@ -326,7 +327,7 @@ onMounted(load);
                 </td>
                 <td>
                   <template v-if="item.status !== 'draft'">
-                    {{ item.submitted_count ?? 0 }}/{{ item.total_students ?? item.student_count ?? 0 }}
+                    {{ item.submitted_count ?? 0 }}/{{ item.student_count ?? 0 }}
                     <small v-if="submitRate(item) !== null">（{{ submitRate(item) }}%）</small>
                   </template>
                   <span v-else>—</span>
@@ -414,8 +415,8 @@ onMounted(load);
           <li v-for="att in attachments" :key="att.id">
             <UiIcon name="PhFile" :size="18" />
             <div class="tch-attach-info">
-              <strong>{{ att.filename || att.name }}</strong>
-              <small>{{ formatFileSize(att.size || att.file_size) }} · {{ formatDateTime(att.created_at) }}</small>
+              <strong>{{ att.original_filename || att.filename || att.name }}</strong>
+              <small>{{ formatFileSize(att.size_bytes ?? att.size ?? att.file_size) }} · {{ formatDateTime(att.created_at) }}</small>
             </div>
             <a class="tch-link" :href="buildAttachmentDownloadUrl(attachmentItem.id, att.id)" target="_blank" rel="noopener">
               <UiIcon name="PhDownloadSimple" :size="14" />下载

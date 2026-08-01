@@ -3,6 +3,7 @@ package com.example.campusai.data.repository
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
 import com.example.campusai.data.expression.ExpressionRecognitionService
+import com.example.campusai.data.expression.ExpressionSessionManager
 import com.example.campusai.data.expression.MockExpressionRecognitionService
 import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
@@ -45,7 +46,7 @@ class AppRepository(application: Application) {
     private val _backendOnline = MutableStateFlow(false)
     val backendOnline: StateFlow<Boolean> = _backendOnline.asStateFlow()
 
-    private val _mockMode = MutableStateFlow(BuildConfig.DEBUG)
+    private val _mockMode = MutableStateFlow(BuildConfig.DEFAULT_USE_MOCK)
     val mockMode: StateFlow<Boolean> = _mockMode.asStateFlow()
 
     private val _reduceMotion = MutableStateFlow(false)
@@ -56,6 +57,14 @@ class AppRepository(application: Application) {
 
     private val _remindersEnabled = MutableStateFlow(true)
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
+    private val _learningAssistanceEnabled = MutableStateFlow(false)
+    val learningAssistanceEnabled: StateFlow<Boolean> = _learningAssistanceEnabled.asStateFlow()
+
+    /** The only owner of the expression model and camera session in the app. */
+    val expressionSessionManager = ExpressionSessionManager(
+        createService = { useMock -> createExpressionRecognitionService(useMock) },
+        initialUseMock = BuildConfig.DEFAULT_USE_MOCK,
+    )
 
 
     private val taskMutex = Mutex()
@@ -123,10 +132,14 @@ class AppRepository(application: Application) {
                 bindTasks(hydrated)
             }
         }
-        scope.launch { dataStore.mockMode.collect { _mockMode.value = it } }
+        scope.launch { dataStore.mockMode.collect {
+            _mockMode.value = it
+            expressionSessionManager.setUseMock(it)
+        } }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
+        scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
     }
 
     suspend fun login(username: String, password: String): User {
@@ -221,7 +234,13 @@ class AppRepository(application: Application) {
 
     suspend fun setMockMode(enabled: Boolean) {
         _mockMode.value = enabled
+        expressionSessionManager.setUseMock(enabled)
         dataStore.setMockMode(enabled)
+    }
+
+    suspend fun setLearningAssistanceEnabled(enabled: Boolean) {
+        _learningAssistanceEnabled.value = enabled
+        dataStore.setLearningAssistanceEnabled(enabled)
     }
 
     suspend fun setReduceMotion(enabled: Boolean) {

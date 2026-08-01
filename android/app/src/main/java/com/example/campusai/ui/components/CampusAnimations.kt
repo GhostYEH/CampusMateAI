@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campusai.ui.theme.Line
+import com.example.campusai.ui.theme.LocalReduceMotion
+import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
-import kotlinx.coroutines.delay
 
 // ──────────────────────────────────────────────
 // 1. 脉冲动画（用于通知红点 / 徽标吸引注意）
@@ -39,7 +41,8 @@ fun PulseEffect(
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    if (!enabled) {
+    val reduceMotion = LocalReduceMotion.current
+    if (!enabled || reduceMotion) {
         Box(
             modifier = modifier.size(pulseSize).clip(CircleShape).background(color.copy(alpha = .25f)),
         )
@@ -96,9 +99,10 @@ fun AnimatedCounter(
     fontWeight: FontWeight = FontWeight.Bold,
     color: Color = Primary,
 ) {
+    val reduceMotion = LocalReduceMotion.current
     val displayValue by animateIntAsState(
         targetValue = target,
-        animationSpec = spring(
+        animationSpec = if (reduceMotion) snap() else spring(
             dampingRatio = 0.6f,
             stiffness = 120f,
         ),
@@ -124,9 +128,10 @@ fun AnimatedPercent(
     fontWeight: FontWeight = FontWeight.Bold,
     color: Color = Primary,
 ) {
+    val reduceMotion = LocalReduceMotion.current
     val displayValue by animateIntAsState(
         targetValue = target,
-        animationSpec = tween(800, easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f)),
+        animationSpec = if (reduceMotion) snap() else tween(800, easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f)),
         label = "percent",
     )
     androidx.compose.material3.Text(
@@ -153,10 +158,11 @@ fun AnimatedBar(
     modifier: Modifier = Modifier,
     color: Color = Primary.copy(alpha = 0.6f),
 ) {
+    val reduceMotion = LocalReduceMotion.current
     var animated by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val heightFraction by animateFloatAsState(
-        targetValue = if (animated) fraction else 0f,
-        animationSpec = tween(
+        targetValue = if (animated || reduceMotion) fraction else 0f,
+        animationSpec = if (reduceMotion) snap() else tween(
             durationMillis = 600,
             delayMillis = delayMs,
             easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f),
@@ -164,7 +170,6 @@ fun AnimatedBar(
         label = "bar-height",
     )
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        delay(delayMs.toLong())
         animated = true
     }
     Box(
@@ -184,17 +189,19 @@ fun AnimatedBar(
 @Composable
 fun TypingIndicator(
     modifier: Modifier = Modifier,
-    dotColor: Color = Color(0xFF8896B8),
+    dotColor: Color? = null,
     dotSize: Dp = 6.dp,
     enabled: Boolean = true,
 ) {
-    if (!enabled) {
+    val resolvedDotColor = dotColor ?: Muted
+    val reduceMotion = LocalReduceMotion.current
+    if (!enabled || reduceMotion) {
         androidx.compose.foundation.layout.Row(
             modifier = modifier,
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
         ) {
             repeat(3) {
-                Box(Modifier.size(dotSize).clip(CircleShape).background(dotColor))
+                Box(Modifier.size(dotSize).clip(CircleShape).background(resolvedDotColor))
             }
         }
         return
@@ -224,7 +231,7 @@ fun TypingIndicator(
                         .size(dotSize)
                         .scale(scale)
                         .clip(CircleShape)
-                        .background(dotColor),
+                        .background(resolvedDotColor),
                 )
             }
         }
@@ -244,7 +251,7 @@ fun Modifier.breathingFloat(
     amplitude: Float = 4f,
     periodMs: Int = 3000,
 ): Modifier {
-    if (!enabled) return this
+    if (!enabled || LocalReduceMotion.current) return this
     val infiniteTransition = rememberInfiniteTransition(label = "float")
     val offset by infiniteTransition.animateFloat(
         initialValue = -amplitude,
@@ -271,23 +278,24 @@ fun AnimatedCircularProgress(
     modifier: Modifier = Modifier,
     delayMs: Int = 0,
     color: Color = Primary,
-    trackColor: Color = Color(0xFFE8ECF4),
+    trackColor: Color? = null,
     strokeWidth: Dp = 7.dp,
 ) {
+    val reduceMotion = LocalReduceMotion.current
+    val resolvedTrackColor = trackColor ?: Line.copy(alpha = if (reduceMotion) .55f else .62f)
     var animated by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val progress by animateFloatAsState(
-        targetValue = if (animated) targetProgress else 0f,
-        animationSpec = tween(1000, delayMillis = delayMs, easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f)),
+        targetValue = if (animated || reduceMotion) targetProgress else 0f,
+        animationSpec = if (reduceMotion) snap() else tween(1000, delayMillis = delayMs, easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f)),
         label = "progress-ring",
     )
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        delay(delayMs.toLong())
         animated = true
     }
     Box(modifier = modifier) {
         androidx.compose.material3.CircularProgressIndicator(
             progress = { 1f },
-            color = trackColor,
+            color = resolvedTrackColor,
             strokeWidth = strokeWidth,
             modifier = Modifier.fillMaxSize(),
         )

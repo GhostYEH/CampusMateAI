@@ -6,9 +6,9 @@
   --tab-selected-bg: #e7f2f8;
   position: fixed;
   z-index: 999;
-  right: 24rpx;
-  bottom: calc(16rpx + env(safe-area-inset-bottom));
-  left: 24rpx;
+  right: 20rpx;
+  bottom: calc(14rpx + env(safe-area-inset-bottom));
+  left: 20rpx;
 }
 
 .tab-shell.dark-tab {
@@ -20,16 +20,16 @@
 }
 
 .tab-bar {
-  height: 124rpx;
-  padding: 8rpx 12rpx;
+  height: 112rpx;
+  padding: 7rpx 9rpx;
   display: flex;
   gap: 0;
   border: 2rpx solid var(--tab-line);
-  border-radius: 38rpx;
+  border-radius: 26rpx;
   background: var(--tab-bg);
   box-sizing: border-box;
   overflow: hidden;
-  box-shadow: 0 10rpx 34rpx rgba(17, 40, 53, 0.08);
+  box-shadow: 0 12rpx 28rpx rgba(17, 40, 53, 0.1);
 }
 
 .dark-tab .tab-bar {
@@ -40,14 +40,14 @@
   min-width: 0;
   width: 0;
   flex: 1;
-  height: 104rpx;
+  height: 96rpx;
   margin: 0;
-  padding: 7rpx 2rpx 5rpx;
+  padding: 5rpx 2rpx 4rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  border-radius: 28rpx;
+  border-radius: 18rpx;
   color: var(--tab-text);
   background: transparent;
   line-height: 1;
@@ -55,12 +55,12 @@
 
 .icon-wrap {
   position: relative;
-  width: 76rpx;
-  height: 54rpx;
+  width: 70rpx;
+  height: 48rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24rpx;
+  border-radius: 16rpx;
 }
 
 .selected .icon-wrap {
@@ -68,13 +68,13 @@
 }
 
 .tab-icon {
-  width: 44rpx;
-  height: 44rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .tab-label {
   overflow: hidden;
-  font-size: 21rpx;
+  font-size: 20rpx;
   font-weight: 560;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -89,16 +89,16 @@
   position: absolute;
   top: -5rpx;
   right: 2rpx;
-  min-width: 30rpx;
-  height: 30rpx;
+  min-width: 28rpx;
+  height: 28rpx;
   padding: 0 7rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3rpx solid var(--tab-bg);
+  border: 2rpx solid var(--tab-bg);
   border-radius: 999rpx;
   color: #ffffff;
-  background: #f26c50;
+  background: #e35f42;
   font-size: 16rpx;
   font-weight: 750;
   box-sizing: border-box;

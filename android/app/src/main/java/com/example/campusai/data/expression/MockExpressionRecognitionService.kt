@@ -60,6 +60,12 @@ class MockExpressionRecognitionService : ObservableExpressionRecognitionService 
                     timestamp = System.currentTimeMillis(),
                     isStable = frames >= 4,
                     modelVersion = MODEL_VERSION,
+                    facePresent = true,
+                    headEulerAngleX = 0.0,
+                    headEulerAngleY = 0.0,
+                    headEulerAngleZ = 0.0,
+                    leftEyeOpenProbability = 0.85,
+                    rightEyeOpenProbability = 0.86,
                 )
             }
         }

@@ -108,17 +108,17 @@ const breadcrumbs = computed(() => [
 
 const submitRate = computed(() => {
   if (!stats.value || !stats.value.total_students) return null;
-  return Math.round((stats.value.submitted_count / stats.value.total_students) * 100);
+  return Math.round((stats.value.submitted / stats.value.total_students) * 100);
 });
 
 const gradedRate = computed(() => {
-  if (!stats.value || !stats.value.submitted_count) return null;
-  return Math.round((stats.value.graded_count / stats.value.submitted_count) * 100);
+  if (!stats.value || !stats.value.submitted) return null;
+  return Math.round((stats.value.graded / stats.value.submitted) * 100);
 });
 
 const avgScore = computed(() => {
-  if (!stats.value || !stats.value.graded_count) return null;
-  return Math.round((stats.value.total_score / stats.value.graded_count) * 10) / 10;
+  if (!stats.value || !stats.value.graded) return null;
+  return stats.value.avg_score ?? null;
 });
 
 const deadlineHint = computed(() => {
@@ -169,10 +169,10 @@ watch(assignmentId, load);
       <section v-show="tab === 'overview'" class="tch-tab-panel">
         <section v-if="stats" class="tch-stat-strip">
           <StatCard label="应交人数" :value="stats.total_students" icon="PhUsers" />
-          <StatCard label="已提交" :value="stats.submitted_count" :hint="submitRate !== null ? `${submitRate}%` : ''" icon="PhCheckCircle" tone="info" />
-          <StatCard label="已批改" :value="stats.graded_count" :hint="gradedRate !== null ? `${gradedRate}%` : ''" icon="PhPencilSimpleLine" tone="primary" />
-          <StatCard label="平均分" :value="avgScore ?? '—'" :hint="assignment.full_score ? `满分 ${assignment.full_score}` : ''" icon="PhChartLine" tone="primary" />
-          <StatCard label="未提交" :value="stats.total_students - stats.submitted_count" icon="PhClock" tone="warning" />
+          <StatCard label="已提交" :value="stats.submitted" :hint="submitRate !== null ? `${submitRate}%` : ''" icon="PhCheckCircle" tone="info" />
+          <StatCard label="已批改" :value="stats.graded" :hint="gradedRate !== null ? `${gradedRate}%` : ''" icon="PhPencilSimpleLine" tone="primary" />
+          <StatCard label="平均分" :value="avgScore ?? '—'" :hint="assignment.max_score ? `满分 ${assignment.max_score}` : ''" icon="PhChartLine" tone="primary" />
+          <StatCard label="未提交" :value="stats.total_students - stats.submitted" icon="PhClock" tone="warning" />
         </section>
 
         <div class="tch-overview-grid">
@@ -181,8 +181,8 @@ watch(assignmentId, load);
             <dl class="tch-info-list">
               <div><dt>状态</dt><dd><StatusTag :status="assignment.status" type="assignment" /></dd></div>
               <div><dt>截止时间</dt><dd>{{ formatDateTime(assignment.deadline) }} <em class="tch-deadline-hint">{{ deadlineHint }}</em></dd></div>
-              <div><dt>满分分值</dt><dd>{{ assignment.full_score ?? '—' }}</dd></div>
-              <div><dt>允许迟交</dt><dd>{{ assignment.allow_late ? '是' : '否' }}</dd></div>
+              <div><dt>满分分值</dt><dd>{{ assignment.max_score ?? '—' }}</dd></div>
+              <div><dt>允许重交</dt><dd>{{ assignment.allow_resubmit ? '是' : '否' }}</dd></div>
               <div><dt>创建时间</dt><dd>{{ formatDateTime(assignment.created_at) }}</dd></div>
             </dl>
           </div>
@@ -198,7 +198,7 @@ watch(assignmentId, load);
             <h2>提交情况</h2>
             <button class="primary-button" @click="router.push('/teacher/grading')"><UiIcon name="PhPencilSimpleLine" :size="16" />前往批改</button>
           </div>
-          <p class="tch-hint">已提交 {{ stats?.submitted_count ?? 0 }} / 应交 {{ stats?.total_students ?? 0 }}，已批改 {{ stats?.graded_count ?? 0 }} 份。</p>
+          <p class="tch-hint">已提交 {{ stats?.submitted ?? 0 }} / 应交 {{ stats?.total_students ?? 0 }}，已批改 {{ stats?.graded ?? 0 }} 份。</p>
         </section>
       </section>
 
@@ -216,12 +216,12 @@ watch(assignmentId, load);
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="s in students" :key="s.user_id || s.student_id">
-                    <td>{{ s.student_number || s.username || '—' }}</td>
-                    <td>{{ s.display_name || s.username || '—' }}</td>
-                    <td><StatusTag :status="s.submission_status || s.status || 'unread'" type="submission" /></td>
+                  <tr v-for="s in students" :key="s.student_id">
+                    <td>{{ s.student_number || '—' }}</td>
+                    <td>{{ s.student_name || '—' }}</td>
+                    <td><StatusTag :status="s.submission_status || 'unread'" type="submission" /></td>
                     <td><small>{{ s.submitted_at ? formatDateTime(s.submitted_at) : '—' }}</small></td>
-                    <td>{{ s.score ?? '—' }}<small v-if="s.score !== null && s.score !== undefined && assignment.full_score"> / {{ assignment.full_score }}</small></td>
+                    <td>{{ s.score ?? '—' }}<small v-if="s.score !== null && s.score !== undefined && assignment.max_score"> / {{ assignment.max_score }}</small></td>
                     <td>
                       <div class="tch-row-actions">
                         <button v-if="s.submission_id" class="tch-link" @click="router.push(`/teacher/grading?assignment_id=${assignment.id}&submission_id=${s.submission_id}`)">批改</button>
@@ -245,8 +245,8 @@ watch(assignmentId, load);
             <li v-for="att in attachments" :key="att.id">
               <UiIcon name="PhFile" :size="18" />
               <div class="tch-attach-info">
-                <strong>{{ att.filename || att.name }}</strong>
-                <small>{{ formatFileSize(att.size || att.file_size) }} · {{ formatDateTime(att.created_at) }}</small>
+                <strong>{{ att.original_filename || att.filename || att.name }}</strong>
+                <small>{{ formatFileSize(att.size_bytes ?? att.size ?? att.file_size) }} · {{ formatDateTime(att.created_at) }}</small>
               </div>
               <a class="tch-link" :href="buildAttachmentDownloadUrl(assignment.id, att.id)" target="_blank" rel="noopener">
                 <UiIcon name="PhDownloadSimple" :size="14" />下载

@@ -58,6 +58,22 @@ def build_criterion(config: dict, targets: list[int], device: torch.device) -> n
             gamma=float(config.get("focal_gamma", 2.0)),
             class_weights_tensor=softened.to(device),
         )
+    if loss_name == "class_balanced_focal":
+        counts = torch.bincount(torch.tensor(targets), minlength=len(class_weights(targets)))
+        beta = float(config.get("class_balanced_beta", 0.9999))
+        effective = (1.0 - beta) / (1.0 - torch.pow(torch.tensor(beta), counts.float()).clamp_min(1e-8))
+        effective = effective / effective.mean()
+        return FocalLoss(
+            gamma=float(config.get("focal_gamma", 2.0)),
+            class_weights_tensor=effective.to(device),
+        )
+    if loss_name == "light_weighted_cross_entropy":
+        weights = class_weights(targets).pow(float(config.get("class_weight_power", 0.5)))
+        weights = weights / weights.mean()
+        return nn.CrossEntropyLoss(
+            weight=weights.to(device),
+            label_smoothing=float(config.get("label_smoothing", 0.0)),
+        )
     if loss_name == "cross_entropy":
         return nn.CrossEntropyLoss(
             label_smoothing=float(config.get("label_smoothing", 0.0)),

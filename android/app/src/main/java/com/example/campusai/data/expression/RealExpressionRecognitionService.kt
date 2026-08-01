@@ -51,7 +51,7 @@ class RealExpressionRecognitionService(
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
             .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
             .setMinFaceSize(0.18f)
             .enableTracking()
             .build(),
@@ -251,7 +251,14 @@ class RealExpressionRecognitionService(
             } finally {
                 faceBitmap.recycle()
             }
-            _results.value = result
+            _results.value = result.copy(
+                facePresent = true,
+                headEulerAngleX = face.headEulerAngleX.toDouble(),
+                headEulerAngleY = face.headEulerAngleY.toDouble(),
+                headEulerAngleZ = face.headEulerAngleZ.toDouble(),
+                leftEyeOpenProbability = face.leftEyeOpenProbability?.toDouble(),
+                rightEyeOpenProbability = face.rightEyeOpenProbability?.toDouble(),
+            )
             _status.value = when (result.label) {
                 ExpressionLabel.UNKNOWN -> ExpressionServiceStatus.LowConfidence
                 else -> ExpressionServiceStatus.Running
@@ -269,7 +276,7 @@ class RealExpressionRecognitionService(
             System.currentTimeMillis(),
             hasFace = false,
         ) ?: return
-        _results.value = result
+        _results.value = result.copy(facePresent = false)
         _status.value = ExpressionServiceStatus.NoFace
     }
 

@@ -22,6 +22,7 @@ data class FocusRecord(
     val actualMinutes: Int,
     val finished: Boolean,
     val endedAt: String,
+    val observationSummary: FocusSessionSummary? = null,
 )
 
 /** 番茄钟持久化状态，用于页面退出 / 应用重启后恢复。 */
@@ -52,4 +53,14 @@ data class FocusSnapshot(
     val records: List<FocusRecord> = emptyList(),
     val timer: FocusTimerState? = null,
     val goalMinutes: Int = 60,
+)
+
+/** 单次本机辅助观察的结构化摘要；不含照片、视频或逐帧结果。 */
+data class FocusSessionSummary(
+    val actualFocusMinutes: Int,
+    val noFaceEventCount: Int,
+    val possibleDistractionDurationSeconds: Long,
+    val breakSuggestionCount: Int,
+    val stableExpressionDistribution: Map<String, Int>,
+    val modelVersion: String,
 )

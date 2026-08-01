@@ -5,6 +5,7 @@ Page({
   data: {
     courses: [] as Course[],
     filtered: [] as Course[],
+    courseTypeCount: 0,
     filter: '全部',
     filters: ['全部', '专业必修', '专业核心', '学科基础', '公共基础'],
     loading: true,
@@ -32,7 +33,12 @@ Page({
     setTimeout(() => {
       try {
         const courses = repository.getCourses()
-        this.setData({ courses, filtered: courses, loading: false })
+        this.setData({
+          courses,
+          filtered: courses,
+          courseTypeCount: new Set(courses.map((course) => course.type)).size,
+          loading: false,
+        })
       } catch {
         this.setData({ loading: false, error: '课程暂时加载失败' })
       }
