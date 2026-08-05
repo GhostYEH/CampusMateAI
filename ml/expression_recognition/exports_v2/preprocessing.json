@@ -1,0 +1,36 @@
+{
+  "input_size": 96,
+  "input_channels": 3,
+  "input_layout": "NHWC",
+  "input_color_mode": "grayscale_replicated",
+  "channel_order": "grayscale replicated to RGB channels",
+  "source_camera_conversion": "YUV_420_888 -> upright mirrored RGB bitmap",
+  "resize": "bilinear",
+  "value_scale": "[0,255] -> [0,1]",
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "confidence_threshold": 0.7,
+  "class_thresholds": {
+    "angry": 0.78,
+    "disgust": 0.91,
+    "fear": 0.93,
+    "happy": 0.3,
+    "neutral": 0.58,
+    "sad": 0.68,
+    "surprise": 0.75
+  },
+  "threshold_basis": "per-class validation abstention calibration targeting 0.80 precision",
+  "face_crop": {
+    "padding_x_fraction": 0.16,
+    "padding_y_fraction": 0.2
+  },
+  "model_version": "expression-resnet18-multiv2-v1"
+}

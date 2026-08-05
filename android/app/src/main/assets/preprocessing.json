@@ -18,6 +18,19 @@
     0.225
   ],
   "confidence_threshold": 0.7,
-  "threshold_basis": "validation coverage/accuracy table; 0.70 chosen conservatively",
-  "model_version": "expression-resnet18-clean-v1"
+  "class_thresholds": {
+    "angry": 0.78,
+    "disgust": 0.91,
+    "fear": 0.93,
+    "happy": 0.3,
+    "neutral": 0.58,
+    "sad": 0.68,
+    "surprise": 0.75
+  },
+  "threshold_basis": "per-class validation abstention calibration targeting 0.80 precision",
+  "face_crop": {
+    "padding_x_fraction": 0.16,
+    "padding_y_fraction": 0.2
+  },
+  "model_version": "expression-resnet18-multiv2-v1"
 }

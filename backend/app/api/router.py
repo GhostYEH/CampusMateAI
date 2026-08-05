@@ -19,6 +19,7 @@ from .routes import (
     health,
     knowledge,
     notices,
+    personal_hub,
     personal_tasks,
     study,
     submissions,
@@ -49,6 +50,8 @@ api_router.include_router(teacher.router, tags=["teacher"])
 api_router.include_router(study.router)
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
+# 个人中心(我的文件 / 收藏夹)
+api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
 
 __all__ = ["api_router"]

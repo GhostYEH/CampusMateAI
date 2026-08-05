@@ -1,0 +1,236 @@
+{
+  "dataset_root": "K:\\人脸数据集",
+  "seed": 20260731,
+  "validation_fraction": 0.15,
+  "class_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "total_files": 81852,
+  "included_files": 76137,
+  "excluded_files": 5447,
+  "quarantined_files": 268,
+  "sources": [
+    {
+      "name": "2013",
+      "image_count": 35887,
+      "labels": {
+        "angry": 4953,
+        "disgust": 547,
+        "fear": 5121,
+        "happy": 8989,
+        "neutral": 6198,
+        "sad": 6077,
+        "surprise": 4002
+      },
+      "raw_labels": {
+        "angry": 4953,
+        "disgust": 547,
+        "fear": 5121,
+        "happy": 8989,
+        "neutral": 6198,
+        "sad": 6077,
+        "surprise": 4002
+      },
+      "splits": {
+        "test": 7178,
+        "train": 28709
+      },
+      "formats": {
+        "JPEG": 35887
+      },
+      "dimensions": {
+        "48x48": 35887
+      },
+      "channels": {
+        "1": 35887
+      },
+      "included": 33977,
+      "excluded": 1750,
+      "quarantined": 160
+    },
+    {
+      "name": "DATASET",
+      "image_count": 15339,
+      "labels": {
+        "surprise": 1619,
+        "fear": 355,
+        "disgust": 877,
+        "happy": 5957,
+        "sad": 2460,
+        "angry": 867,
+        "neutral": 3204
+      },
+      "raw_labels": {
+        "1": 1619,
+        "2": 355,
+        "3": 877,
+        "4": 5957,
+        "5": 2460,
+        "6": 867,
+        "7": 3204
+      },
+      "splits": {
+        "test": 3068,
+        "train": 12271
+      },
+      "formats": {
+        "JPEG": 15339
+      },
+      "dimensions": {
+        "100x100": 15339
+      },
+      "channels": {
+        "3": 15339
+      },
+      "included": 15336,
+      "excluded": 3,
+      "quarantined": 0
+    },
+    {
+      "name": "archive (3)",
+      "image_count": 30626,
+      "labels": {
+        "angry": 3352,
+        "fear": 3204,
+        "surprise": 4211,
+        "neutral": 5369,
+        "disgust": 2572,
+        "happy": 5266,
+        "sad": 4724
+      },
+      "raw_labels": {
+        "Anger": 1718,
+        "fear": 3204,
+        "surprise": 4211,
+        "anger": 1634,
+        "neutral": 5369,
+        "contempt": 1876,
+        "disgust": 2572,
+        "happy": 5266,
+        "Contempt": 52,
+        "sad": 4724
+      },
+      "splits": {
+        "test": 14518,
+        "train": 16108
+      },
+      "formats": {
+        "JPEG": 19916,
+        "PNG": 10710
+      },
+      "dimensions": {
+        "96x96": 30626
+      },
+      "channels": {
+        "3": 30626
+      },
+      "included": 26824,
+      "excluded": 3694,
+      "quarantined": 108
+    }
+  ],
+  "pre_clean_counts": {
+    "test": {
+      "angry": 2895,
+      "disgust": 1563,
+      "fear": 2781,
+      "happy": 5767,
+      "neutral": 4401,
+      "sad": 3324,
+      "surprise": 3197
+    },
+    "train": {
+      "angry": 6277,
+      "disgust": 2433,
+      "fear": 5899,
+      "happy": 14445,
+      "neutral": 10370,
+      "sad": 9937,
+      "surprise": 6635
+    }
+  },
+  "post_clean_counts": {
+    "test": {
+      "angry": 2867,
+      "disgust": 1547,
+      "fear": 2716,
+      "happy": 5757,
+      "neutral": 4391,
+      "sad": 3295,
+      "surprise": 3143
+    },
+    "train": {
+      "angry": 5125,
+      "disgust": 1959,
+      "fear": 4709,
+      "happy": 12118,
+      "neutral": 8692,
+      "sad": 6942,
+      "surprise": 5012
+    },
+    "validation": {
+      "angry": 904,
+      "disgust": 346,
+      "fear": 831,
+      "happy": 2139,
+      "neutral": 1534,
+      "sad": 1225,
+      "surprise": 885
+    }
+  },
+  "duplicate_statistics": {
+    "exact_duplicate_groups": 3261,
+    "cross_split_duplicate_groups": 2132,
+    "cross_label_conflict_groups": 101
+  },
+  "label_mapping": {
+    "canonical_class_order": [
+      "angry",
+      "disgust",
+      "fear",
+      "happy",
+      "neutral",
+      "sad",
+      "surprise"
+    ],
+    "2013": {
+      "angry": "angry",
+      "disgust": "disgust",
+      "fear": "fear",
+      "happy": "happy",
+      "neutral": "neutral",
+      "sad": "sad",
+      "surprise": "surprise"
+    },
+    "archive (3)": {
+      "anger": "angry",
+      "disgust": "disgust",
+      "fear": "fear",
+      "happy": "happy",
+      "neutral": "neutral",
+      "sad": "sad",
+      "surprise": "surprise",
+      "contempt": null,
+      "note": "CSV relabel preferred when present; contempt dropped (not in Android contract)."
+    },
+    "DATASET": {
+      "mapping": {
+        "1": "surprise",
+        "2": "fear",
+        "3": "disgust",
+        "4": "happy",
+        "5": "sad",
+        "6": "angry",
+        "7": "neutral"
+      },
+      "dataset": "RAF-DB aligned (verified by 12,271-image train count)"
+    },
+    "unmapped_policy": "Drop unmapped labels; never coerce contempt/other/unknown into a canonical class."
+  }
+}

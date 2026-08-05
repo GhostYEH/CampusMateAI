@@ -96,6 +96,9 @@ fun CoursesScreen(repository: AppRepository) {
     var selectedType by remember { mutableStateOf("全部") }
     var selectedDay by remember { mutableIntStateOf(3) }
     var selectedCourse by remember { mutableStateOf<Course?>(null) }
+
+    // 进入页面时尝试从后端拉取最新课程
+    androidx.compose.runtime.LaunchedEffect(Unit) { repository.refreshCourses() }
     val types = listOf("全部", "今日课程", "专业课", "公共课", "实验课")
     val visibleCourses = courses.filter { course ->
         when (selectedType) {

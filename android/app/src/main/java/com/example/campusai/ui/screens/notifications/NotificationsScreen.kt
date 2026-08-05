@@ -36,6 +36,9 @@ fun NotificationsScreen(repository: AppRepository) {
     val reduceMotion by repository.reduceMotion.collectAsState()
     val scope = rememberCoroutineScope()
 
+    // 进入页面时尝试从后端拉取最新通知
+    LaunchedEffect(Unit) { repository.refreshNotices() }
+
     var noticeText by remember {
         mutableStateOf("【教务处通知】请各班同学于本周五17:00前完成2026年秋季学期选课确认，登录教务系统核对课程信息。如有冲突请联系学院教务办公室。")
     }

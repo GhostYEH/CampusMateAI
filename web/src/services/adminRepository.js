@@ -56,3 +56,8 @@ export async function updateAdminActivityStatus(id, status) {
   const { data } = await client.post(`/admin/activities/${id}/${action}`);
   return data;
 }
+
+export async function updateAdminActivity(id, payload) {
+  const { data } = await client.patch(`/admin/activities/${id}`, payload);
+  return data;
+}

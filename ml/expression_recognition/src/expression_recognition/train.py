@@ -136,6 +136,47 @@ def run_epoch(
     }
 
 
+def run_epoch_with_oom_recovery(
+    model,
+    build_loaders,
+    criterion,
+    device,
+    optimizer,
+    scaler,
+    gradient_clip_norm: float,
+    max_batches: int | None,
+    local: dict,
+) -> dict:
+    """Run one epoch, halving the batch size on CUDA out-of-memory and retrying.
+
+    The training/optimizer state from the last successful step is preserved; only
+    the not-yet-processed part of the epoch is re-iterated with a smaller batch.
+    """
+    is_validation = local.get("is_validation", False)
+    while True:
+        try:
+            loader = local["train_loader"]
+            metrics = run_epoch(
+                model, loader, criterion, device, optimizer, scaler,
+                gradient_clip_norm, max_batches,
+            )
+            metrics["batch_size"] = local["batch_size"]
+            metrics["loader"] = loader
+            return metrics
+        except torch.cuda.OutOfMemoryError:
+            if not torch.cuda.is_available() or local["batch_size"] <= 1:
+                raise
+            torch.cuda.empty_cache()
+            previous = local["batch_size"]
+            local["batch_size"] = max(1, previous // 2)
+            print(
+                f"CUDA out-of-memory during {'validation' if is_validation else 'training'}; "
+                f"reducing batch_size {previous} -> {local['batch_size']} and retrying the epoch."
+            )
+            train_dataset, train_loader, validation_loader = build_loaders(local["batch_size"])
+            local["train_loader"] = validation_loader if is_validation else train_loader
+
+
 def save_checkpoint(
     path: Path,
     model: nn.Module,
@@ -174,18 +215,30 @@ def train(args: argparse.Namespace) -> Path:
         Path(args.output_root) / f"{'smoke_' if smoke else ''}{config['model']}_{timestamp}"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
+    effective_batch_size = int(args.batch_size or config["batch_size"])
+    config["batch_size"] = effective_batch_size
     resolved_config = dict(config)
     resolved_config.update({
         "manifest": str(Path(args.manifest).resolve()),
         "device": str(device),
         "smoke": smoke,
+        "batch_size": effective_batch_size,
         "started_at": datetime.now().isoformat(),
         "command_arguments": vars(args),
     })
     save_json(run_dir / "resolved_config.json", resolved_config)
 
-    train_dataset, train_loader = create_loader(args.manifest, "train", config, True)
-    _, validation_loader = create_loader(args.manifest, "validation", config, False)
+    def build_loaders(batch_size: int):
+        config["batch_size"] = batch_size
+        train_dataset, train_loader = create_loader(
+            args.manifest, "train", config, True, batch_size_override=batch_size,
+        )
+        _, validation_loader = create_loader(
+            args.manifest, "validation", config, False, batch_size_override=batch_size,
+        )
+        return train_dataset, train_loader, validation_loader
+
+    train_dataset, train_loader, validation_loader = build_loaders(effective_batch_size)
     model = build_model(config).to(device)
     criterion = build_criterion(config, train_dataset.targets, device)
     optimizer = AdamW(
@@ -232,13 +285,19 @@ def train(args: argparse.Namespace) -> Path:
 
     for epoch in range(start_epoch, max_epochs):
         epoch_started = time.perf_counter()
-        train_metrics = run_epoch(
-            model, train_loader, criterion, device, optimizer, scaler,
+        train_metrics = run_epoch_with_oom_recovery(
+            model, build_loaders, criterion, device, optimizer, scaler,
             float(config["gradient_clip_norm"]), max_batches,
+            local={"batch_size": effective_batch_size, "train_loader": train_loader},
         )
-        validation_metrics = run_epoch(
-            model, validation_loader, criterion, device, max_batches=max_batches,
+        effective_batch_size = train_metrics["batch_size"]
+        train_loader = train_metrics["loader"]
+        validation_metrics = run_epoch_with_oom_recovery(
+            model, build_loaders, criterion, device, None, None,
+            0.0, max_batches,
+            local={"batch_size": effective_batch_size, "train_loader": validation_loader, "is_validation": True},
         )
+        validation_loader = validation_metrics["loader"]
         scheduler.step()
         row = {
             "epoch": epoch,
@@ -300,6 +359,8 @@ def main() -> None:
     parser.add_argument("--max-epochs", type=int)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--max-batches", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Override config batch size; auto-reduced on CUDA OOM.")
     parser.add_argument("--allow-cpu", action="store_true")
     args = parser.parse_args()
     train(args)

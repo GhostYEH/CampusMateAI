@@ -33,7 +33,7 @@ private val TaskOrange = Color(0xFFE08A4E)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskDetailScreen(
-    taskId: Long,
+    taskId: String,
     repository: AppRepository,
     onBack: () -> Unit,
     onTaskDeleted: () -> Unit,

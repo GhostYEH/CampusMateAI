@@ -1,6 +1,6 @@
 <script setup>
 import {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
@@ -11,7 +11,6 @@ import {
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
-  PhMapPin, PhBuildings, PhDoorOpen, PhWrench, PhPlug, PhMonitorPlay, PhWifiHigh,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
   PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, PhThumbsUp,
@@ -25,7 +24,7 @@ const props = defineProps({
 });
 
 const icons = {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
@@ -36,7 +35,6 @@ const icons = {
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
-  PhMapPin, PhBuildings, PhDoorOpen, PhWrench, PhPlug, PhMonitorPlay, PhWifiHigh,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
   PhSparkle, PhSquaresFour, PhStop, PhStopCircle, PhStudent, PhTag, PhTrash, PhThumbsUp,

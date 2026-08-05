@@ -130,8 +130,11 @@ fun AppNavHost(
         composable("tasks") {
             TasksScreen(repository) { route -> go(route) }
         }
-        composable("task_detail/{taskId}") { backStackEntry ->
-            val taskId = backStackEntry.arguments?.getString("taskId")?.toLongOrNull() ?: 0L
+        composable(
+            route = "task_detail/{taskId}",
+            arguments = listOf(navArgument("taskId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val taskId = backStackEntry.arguments?.getString("taskId").orEmpty()
             TaskDetailScreen(
                 taskId = taskId,
                 repository = repository,

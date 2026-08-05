@@ -10,6 +10,7 @@ from expression_recognition.models import build_model
         ("baseline_cnn", 1, 48),
         ("resnet18", 3, 96),
         ("mobilenet_v3_small", 3, 96),
+        ("efficientnet_b0", 3, 96),
     ],
 )
 def test_model_output_shape(name, channels, size):

@@ -12,6 +12,11 @@ import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.ChatRequest
 import com.example.campusai.data.remote.ExpressionSignalRequest
 import com.example.campusai.data.remote.ExtractRequest
+import com.example.campusai.data.remote.PersonalTaskCreateRequest
+import com.example.campusai.data.remote.PersonalTaskUpdateRequest
+import com.example.campusai.data.remote.PersonalFileCreateRequest
+import com.example.campusai.data.remote.FileFavoriteToggleRequest
+import com.example.campusai.data.remote.FavoriteCreateRequest
 import com.example.campusai.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -198,31 +203,272 @@ class AppRepository(application: Application) {
         }
     }
 
-    suspend fun toggleTask(id: Long) = taskMutex.withLock {
+    // ===== 后端数据拉取（离线/Mock 时回退本地） =====
+
+    /** 拉取校园通知（聚合学生可见班级的已发布通知）。 */
+    suspend fun refreshNotices() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val resp = ApiClient.api.listNotices(page = 1, pageSize = 50)
+            if (resp.isSuccessful) {
+                val items = resp.body()?.items.orEmpty()
+                if (items.isNotEmpty()) {
+                    _notices.value = items.map { dto ->
+                        Notice(
+                            id = dto.id,
+                            title = dto.title,
+                            source = dto.source.orEmpty(),
+                            time = dto.time.orEmpty(),
+                            unread = dto.unread,
+                            category = dto.category.orEmpty(),
+                            content = dto.content.orEmpty(),
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    /** 拉取校园动态（来自全校活动）。 */
+    suspend fun refreshCampusNews() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val resp = ApiClient.api.listActivities(page = 1, pageSize = 50)
+            if (resp.isSuccessful) {
+                val items = resp.body()?.items.orEmpty()
+                if (items.isNotEmpty()) {
+                    _campusNews.value = items.map { dto ->
+                        CampusNews(
+                            id = dto.id,
+                            title = dto.title,
+                            summary = dto.summary ?: "",
+                            content = dto.content ?: "",
+                            source = dto.author_name ?: "校园活动",
+                            time = dto.published_at ?: dto.created_at ?: "",
+                            category = dto.category ?: "校园活动",
+                            tags = emptyList(),
+                            relatedTasks = emptyList(),
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    /** 拉取课程列表。 */
+    suspend fun refreshCourses() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val resp = ApiClient.api.listCourses(page = 1, pageSize = 100)
+            if (resp.isSuccessful) {
+                val items = resp.body()?.items.orEmpty()
+                if (items.isNotEmpty()) {
+                    _courses.value = items.map { dto ->
+                        Course(
+                            id = dto.id,
+                            name = dto.name,
+                            code = dto.code ?: "",
+                            type = dto.semester ?: "本学期",
+                            teacher = dto.teacher_name ?: "待定",
+                            location = dto.description ?: "",
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    /** 拉取云端任务并合并到本地缓存。 */
+    suspend fun refreshTasks() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val resp = ApiClient.api.listTasks(page = 1, pageSize = 200)
+            if (resp.isSuccessful) {
+                val items = resp.body()?.items.orEmpty()
+                if (items.isNotEmpty()) {
+                    _tasks.value = items.map { dto ->
+                        Task(
+                            id = dto.id,
+                            title = dto.title,
+                            due = dto.deadline ?: "待设置",
+                            course = dto.source_name ?: "个人待办",
+                            done = dto.status == "completed",
+                            description = dto.description ?: dto.source_text ?: "",
+                        )
+                    }
+                    persistTasks()
+                }
+            }
+        } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    /** 拉取个人中心数据（文件 / 收藏 / 活动）。 */
+    suspend fun refreshPersonalHub() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val filesResp = ApiClient.api.listFiles()
+            if (filesResp.isSuccessful) {
+                val dtos = filesResp.body().orEmpty()
+                _files.value = dtos.map { dto ->
+                    CampusFile(
+                        id = dto.id,
+                        name = dto.name,
+                        category = dto.category ?: "",
+                        sizeLabel = dto.size_label ?: "",
+                        updatedAt = dto.updated_at ?: "",
+                        source = dto.source ?: "",
+                        isFavorite = dto.is_favorite,
+                    )
+                }
+            }
+            val favResp = ApiClient.api.listFavorites()
+            if (favResp.isSuccessful) {
+                val dtos = favResp.body().orEmpty()
+                _favorites.value = dtos.map { dto ->
+                    FavoriteItem(
+                        id = dto.id,
+                        title = dto.title,
+                        type = dto.type ?: "收藏",
+                        subtitle = dto.subtitle ?: "",
+                        savedAt = dto.saved_at ?: "",
+                        sourceRoute = dto.source_route ?: "",
+                    )
+                }
+            }
+            // 「我的活动」复用 /activities
+            val actResp = ApiClient.api.listActivities(page = 1, pageSize = 50)
+            if (actResp.isSuccessful) {
+                val items = actResp.body()?.items.orEmpty()
+                val favIds = _favorites.value.map { it.id }.toSet()
+                _activities.value = items.map { dto ->
+                    val isFav = "activity:${dto.id}" in favIds
+                    CampusActivity(
+                        id = dto.id,
+                        title = dto.title,
+                        organizer = dto.author_name ?: "校园活动",
+                        date = dto.starts_at ?: dto.published_at ?: "",
+                        location = dto.location ?: "",
+                        status = if (dto.status == "closed") "已结束" else "可报名",
+                        isFavorite = isFav,
+                    )
+                }
+            }
+            persistPersonalHub()
+        } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    suspend fun toggleTask(id: String) = taskMutex.withLock {
         val list = _tasks.value.toMutableList()
         val idx = list.indexOfFirst { it.id == id }
         if (idx >= 0) {
-            list[idx] = list[idx].copy(done = !list[idx].done)
+            val current = list[idx]
+            val newDone = !current.done
+            // 后端在线时同步状态机
+            if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+                try {
+                    val resp = if (newDone) ApiClient.api.completeTask(id)
+                    else ApiClient.api.restoreTask(id)
+                    if (resp.isSuccessful) {
+                        val dto = resp.body()
+                        list[idx] = list[idx].copy(
+                            done = dto?.status == "completed",
+                            title = dto?.title ?: current.title,
+                            due = dto?.deadline ?: current.due,
+                            course = dto?.source_name ?: current.course,
+                            description = dto?.description ?: current.description,
+                        )
+                        _tasks.value = list
+                        persistTasks()
+                        return@withLock
+                    }
+                } catch (_: Exception) { /* 落入本地回退 */ }
+            }
+            list[idx] = current.copy(done = newDone)
             _tasks.value = list
             persistTasks()
         }
     }
 
     suspend fun addTask(title: String, due: String = "待设置", course: String = "个人待办", description: String = "") = taskMutex.withLock {
+        if (_backendOnline.value && !_mockMode.value) {
+            try {
+                val resp = ApiClient.api.createTask(
+                    PersonalTaskCreateRequest(
+                        title = title,
+                        description = description.ifBlank { null },
+                        deadline = due.takeIf { it.isNotBlank() && it != "待设置" },
+                        source_name = course.takeIf { it != "个人待办" },
+                    )
+                )
+                if (resp.isSuccessful) {
+                    val dto = resp.body() ?: return@withLock
+                    val newTask = Task(
+                        id = dto.id,
+                        title = dto.title,
+                        due = dto.deadline ?: "待设置",
+                        course = dto.source_name ?: "个人待办",
+                        done = dto.status == "completed",
+                        description = dto.description ?: "",
+                    )
+                    _tasks.value = listOf(newTask) + _tasks.value
+                    persistTasks()
+                    return@withLock
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         val list = _tasks.value.toMutableList()
-        list.add(0, Task(id = System.currentTimeMillis(), title = title, due = due, course = course, done = false, description = description))
+        list.add(0, Task(id = "local_${System.currentTimeMillis()}", title = title, due = due, course = course, done = false, description = description))
         _tasks.value = list
         persistTasks()
     }
 
-    suspend fun deleteTask(id: Long) = taskMutex.withLock {
+    suspend fun deleteTask(id: String) = taskMutex.withLock {
+        if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+            try {
+                val resp = ApiClient.api.deleteTask(id)
+                if (resp.isSuccessful) {
+                    _tasks.value = _tasks.value.filter { it.id != id }
+                    persistTasks()
+                    return@withLock
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         _tasks.value = _tasks.value.filter { it.id != id }
         persistTasks()
     }
 
-    fun getTaskById(id: Long): Task? = _tasks.value.find { it.id == id }
+    fun getTaskById(id: String): Task? = _tasks.value.find { it.id == id }
 
-    suspend fun updateTask(id: Long, title: String, due: String, course: String, description: String) = taskMutex.withLock {
+    suspend fun updateTask(id: String, title: String, due: String, course: String, description: String) = taskMutex.withLock {
+        if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+            try {
+                val resp = ApiClient.api.updateTask(
+                    id,
+                    PersonalTaskUpdateRequest(
+                        title = title,
+                        description = description.ifBlank { null },
+                        deadline = due.takeIf { it.isNotBlank() && it != "待设置" },
+                        source_name = course.takeIf { it != "个人待办" },
+                    )
+                )
+                if (resp.isSuccessful) {
+                    val dto = resp.body()
+                    val list = _tasks.value.toMutableList()
+                    val idx = list.indexOfFirst { it.id == id }
+                    if (idx >= 0) {
+                        list[idx] = list[idx].copy(
+                            title = dto?.title ?: title,
+                            due = dto?.deadline ?: due,
+                            course = dto?.source_name ?: course,
+                            description = dto?.description ?: description,
+                        )
+                        _tasks.value = list
+                        persistTasks()
+                        return@withLock
+                    }
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         val list = _tasks.value.toMutableList()
         val idx = list.indexOfFirst { it.id == id }
         if (idx >= 0) {
@@ -261,9 +507,36 @@ class AppRepository(application: Application) {
     suspend fun addFile(name: String, category: String) = personalHubMutex.withLock {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return@withLock
+        if (_backendOnline.value && !_mockMode.value) {
+            try {
+                val resp = ApiClient.api.createFile(
+                    PersonalFileCreateRequest(
+                        name = cleanName,
+                        category = category,
+                        source = "手动添加",
+                        size_label = "本地记录",
+                    )
+                )
+                if (resp.isSuccessful) {
+                    val dto = resp.body() ?: return@withLock
+                    val newFile = CampusFile(
+                        id = dto.id,
+                        name = dto.name,
+                        category = dto.category ?: category,
+                        sizeLabel = dto.size_label ?: "本地记录",
+                        updatedAt = dto.updated_at ?: "刚刚",
+                        source = dto.source ?: "手动添加",
+                        isFavorite = dto.is_favorite,
+                    )
+                    _files.value = listOf(newFile) + _files.value
+                    persistPersonalHub()
+                    return@withLock
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         _files.value = listOf(
             CampusFile(
-                id = System.currentTimeMillis(),
+                id = "local_${System.currentTimeMillis()}",
                 name = cleanName,
                 category = category,
                 sizeLabel = "本地记录",
@@ -274,15 +547,76 @@ class AppRepository(application: Application) {
         persistPersonalHub()
     }
 
-    suspend fun deleteFile(id: Long) = personalHubMutex.withLock {
+    suspend fun deleteFile(id: String) = personalHubMutex.withLock {
+        if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+            try {
+                val resp = ApiClient.api.deleteFile(id)
+                if (resp.isSuccessful) {
+                    _files.value = _files.value.filterNot { it.id == id }
+                    _favorites.value = _favorites.value.filterNot { it.id == "file:$id" }
+                    persistPersonalHub()
+                    return@withLock
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         _files.value = _files.value.filterNot { it.id == id }
         _favorites.value = _favorites.value.filterNot { it.id == "file:$id" }
         persistPersonalHub()
     }
 
-    suspend fun toggleFileFavorite(id: Long) = personalHubMutex.withLock {
+    suspend fun toggleFileFavorite(id: String) = personalHubMutex.withLock {
         val target = _files.value.firstOrNull { it.id == id } ?: return@withLock
         val willFavorite = !target.isFavorite
+        if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+            try {
+                val resp = ApiClient.api.toggleFileFavorite(
+                    id,
+                    FileFavoriteToggleRequest(favorite = willFavorite),
+                )
+                if (resp.isSuccessful) {
+                    val dto = resp.body()
+                    _files.value = _files.value.map {
+                        if (it.id == id) it.copy(isFavorite = dto?.is_favorite ?: willFavorite) else it
+                    }
+                    _favorites.value = if (willFavorite) {
+                        val favId = "file:$id"
+                        // 同步到收藏夹
+                        if (_backendOnline.value && !_mockMode.value) {
+                            try {
+                                ApiClient.api.addFavorite(
+                                    FavoriteCreateRequest(
+                                        id = favId,
+                                        title = target.name,
+                                        type = "文件",
+                                        subtitle = "${target.category} · ${target.source}",
+                                        saved_at = "刚刚",
+                                        source_route = "files",
+                                    )
+                                )
+                            } catch (_: Exception) { /* 本地仍保留 */ }
+                        }
+                        listOf(
+                            FavoriteItem(
+                                id = favId,
+                                title = target.name,
+                                type = "文件",
+                                subtitle = "${target.category} · ${target.source}",
+                                savedAt = "刚刚",
+                                sourceRoute = "files",
+                            ),
+                        ) + _favorites.value.filterNot { it.id == favId }
+                    } else {
+                        val favId = "file:$id"
+                        if (_backendOnline.value && !_mockMode.value) {
+                            try { ApiClient.api.removeFavorite(favId) } catch (_: Exception) {}
+                        }
+                        _favorites.value.filterNot { it.id == favId }
+                    }
+                    persistPersonalHub()
+                    return@withLock
+                }
+            } catch (_: Exception) { /* 落入本地回退 */ }
+        }
         _files.value = _files.value.map {
             if (it.id == id) it.copy(isFavorite = willFavorite) else it
         }
@@ -303,7 +637,7 @@ class AppRepository(application: Application) {
         persistPersonalHub()
     }
 
-    suspend fun toggleActivityJoined(id: Long) = personalHubMutex.withLock {
+    suspend fun toggleActivityJoined(id: String) = personalHubMutex.withLock {
         _activities.value = _activities.value.map { activity ->
             if (activity.id != id) activity
             else activity.copy(status = if (activity.status == "已报名") "可报名" else "已报名")
@@ -311,40 +645,61 @@ class AppRepository(application: Application) {
         persistPersonalHub()
     }
 
-    suspend fun toggleActivityFavorite(id: Long) = personalHubMutex.withLock {
+    suspend fun toggleActivityFavorite(id: String) = personalHubMutex.withLock {
         val target = _activities.value.firstOrNull { it.id == id } ?: return@withLock
         val willFavorite = !target.isFavorite
         _activities.value = _activities.value.map {
             if (it.id == id) it.copy(isFavorite = willFavorite) else it
         }
+        val favId = "activity:$id"
         _favorites.value = if (willFavorite) {
+            if (_backendOnline.value && !_mockMode.value) {
+                try {
+                    ApiClient.api.addFavorite(
+                        FavoriteCreateRequest(
+                            id = favId,
+                            title = target.title,
+                            type = "活动",
+                            subtitle = "${target.date} · ${target.organizer}",
+                            saved_at = "刚刚",
+                            source_route = "activities",
+                        )
+                    )
+                } catch (_: Exception) { /* 本地仍保留 */ }
+            }
             listOf(
                 FavoriteItem(
-                    id = "activity:$id",
+                    id = favId,
                     title = target.title,
                     type = "活动",
                     subtitle = "${target.date} · ${target.organizer}",
                     savedAt = "刚刚",
                     sourceRoute = "activities",
                 ),
-            ) + _favorites.value.filterNot { it.id == "activity:$id" }
+            ) + _favorites.value.filterNot { it.id == favId }
         } else {
-            _favorites.value.filterNot { it.id == "activity:$id" }
+            if (_backendOnline.value && !_mockMode.value) {
+                try { ApiClient.api.removeFavorite(favId) } catch (_: Exception) {}
+            }
+            _favorites.value.filterNot { it.id == favId }
         }
         persistPersonalHub()
     }
 
     suspend fun removeFavorite(id: String) = personalHubMutex.withLock {
+        if (_backendOnline.value && !_mockMode.value) {
+            try { ApiClient.api.removeFavorite(id) } catch (_: Exception) {}
+        }
         _favorites.value = _favorites.value.filterNot { it.id == id }
         when {
             id.startsWith("file:") -> {
-                val sourceId = id.substringAfter(':').toLongOrNull()
+                val sourceId = id.substringAfter(':')
                 _files.value = _files.value.map {
                     if (it.id == sourceId) it.copy(isFavorite = false) else it
                 }
             }
             id.startsWith("activity:") -> {
-                val sourceId = id.substringAfter(':').toLongOrNull()
+                val sourceId = id.substringAfter(':')
                 _activities.value = _activities.value.map {
                     if (it.id == sourceId) it.copy(isFavorite = false) else it
                 }
@@ -431,26 +786,26 @@ class AppRepository(application: Application) {
     }
 
     private fun defaultTasks() = listOf(
-        Task(1, "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),
-        Task(2, "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
-        Task(3, "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false, "第八届中国国际\"互联网+\"大学生创新创业大赛校内选拔赛。\n\n报名材料：\n- 项目计划书（PDF）\n- 团队信息表\n- 指导教师推荐意见\n\n报名网站：校创新创业中心官网"),
-        Task(4, "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
+        Task("demo-1", "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),
+        Task("demo-2", "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
+        Task("demo-3", "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false, "第八届中国国际\"互联网+\"大学生创新创业大赛校内选拔赛。\n\n报名材料：\n- 项目计划书（PDF）\n- 团队信息表\n- 指导教师推荐意见\n\n报名网站：校创新创业中心官网"),
+        Task("demo-4", "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
     )
 
     private fun defaultCourses() = listOf(
-        Course("数据结构", "CS2103", "专业必修", "张明远", "教学楼 2-305"),
-        Course("计算机组成原理", "CS2201", "专业必修", "刘文青", "实验楼 A-204"),
-        Course("高等数学（下）", "MA1202", "学科基础", "王建国", "博学楼 1-401"),
-        Course("大学英语 IV", "EN1404", "公共基础", "陈思雨", "明德楼 3-208"),
-        Course("操作系统原理", "CS2304", "专业核心", "赵启航", "教学楼 4-302"),
-        Course("计算机网络", "CS2402", "专业核心", "周立新", "实验楼 B-310"),
+        Course(name = "数据结构", code = "CS2103", type = "专业必修", teacher = "张明远", location = "教学楼 2-305"),
+        Course(name = "计算机组成原理", code = "CS2201", type = "专业必修", teacher = "刘文青", location = "实验楼 A-204"),
+        Course(name = "高等数学（下）", code = "MA1202", type = "学科基础", teacher = "王建国", location = "博学楼 1-401"),
+        Course(name = "大学英语 IV", code = "EN1404", type = "公共基础", teacher = "陈思雨", location = "明德楼 3-208"),
+        Course(name = "操作系统原理", code = "CS2304", type = "专业核心", teacher = "赵启航", location = "教学楼 4-302"),
+        Course(name = "计算机网络", code = "CS2402", type = "专业核心", teacher = "周立新", location = "实验楼 B-310"),
     )
 
     private fun defaultNotices() = listOf(
-        Notice(1, "关于开展暑期社会实践活动的通知", "学生事务", "10:15", true),
-        Notice(2, "第十六届程序设计竞赛报名通知", "创新实践中心", "昨天", true),
-        Notice(3, "期末考试安排及相关事项说明", "教务处", "5月17日", false),
-        Notice(4, "图书馆数据库试用资源更新通知", "图书馆", "5月16日", false),
+        Notice("demo-n-1", "关于开展暑期社会实践活动的通知", "学生事务", "10:15", true),
+        Notice("demo-n-2", "第十六届程序设计竞赛报名通知", "创新实践中心", "昨天", true),
+        Notice("demo-n-3", "期末考试安排及相关事项说明", "教务处", "5月17日", false),
+        Notice("demo-n-4", "图书馆数据库试用资源更新通知", "图书馆", "5月16日", false),
     )
 
     private fun defaultCampusNews() = listOf(
@@ -690,7 +1045,8 @@ class AppRepository(application: Application) {
         List(json.length()) { index ->
             json.getJSONObject(index).let { item ->
                 Task(
-                    id = item.optLong("id"),
+                    // 兼容历史 Long id 与新 String id
+                    id = item.optString("id").ifBlank { item.optLong("id").toString() },
                     title = item.optString("title"),
                     due = item.optString("due"),
                     course = item.optString("course"),
@@ -727,21 +1083,21 @@ class AppRepository(application: Application) {
 
     private fun defaultPersonalHub(): PersonalHubSnapshot {
         val files = listOf(
-            CampusFile(101, "数据结构实验三说明.pdf", "课程资料", "2.4 MB", "今天 10:24", "数据结构", true),
-            CampusFile(102, "奖学金申请材料清单.docx", "校园事务", "860 KB", "昨天 18:40", "学生工作处"),
-            CampusFile(103, "创新创业训练计划书.pdf", "竞赛资料", "1.7 MB", "7月28日", "创新实践中心"),
+            CampusFile(id = "demo-f-1", name = "数据结构实验三说明.pdf", category = "课程资料", sizeLabel = "2.4 MB", updatedAt = "今天 10:24", source = "数据结构", isFavorite = true),
+            CampusFile(id = "demo-f-2", name = "奖学金申请材料清单.docx", category = "校园事务", sizeLabel = "860 KB", updatedAt = "昨天 18:40", source = "学生工作处"),
+            CampusFile(id = "demo-f-3", name = "创新创业训练计划书.pdf", category = "竞赛资料", sizeLabel = "1.7 MB", updatedAt = "7月28日", source = "创新实践中心"),
         )
         val activities = listOf(
-            CampusActivity(201, "第十六届程序设计竞赛", "创新实践中心", "8月16日 09:00", "信息楼报告厅", "已报名", true),
-            CampusActivity(202, "图书馆新生志愿讲解员招募", "校图书馆", "8月20日 14:30", "图书馆一层", "可报名"),
-            CampusActivity(203, "暑期社会实践成果分享会", "校团委", "9月03日 19:00", "大学生活动中心", "可报名"),
+            CampusActivity(id = "demo-a-1", title = "第十六届程序设计竞赛", organizer = "创新实践中心", date = "8月16日 09:00", location = "信息楼报告厅", status = "已报名", isFavorite = true),
+            CampusActivity(id = "demo-a-2", title = "图书馆新生志愿讲解员招募", organizer = "校图书馆", date = "8月20日 14:30", location = "图书馆一层", status = "可报名"),
+            CampusActivity(id = "demo-a-3", title = "暑期社会实践成果分享会", organizer = "校团委", date = "9月03日 19:00", location = "大学生活动中心", status = "可报名"),
         )
         return PersonalHubSnapshot(
             files = files,
             activities = activities,
             favorites = listOf(
-                FavoriteItem("activity:201", activities.first().title, "活动", "8月16日 · 创新实践中心", "7月30日", "activities"),
-                FavoriteItem("file:101", files.first().name, "文件", "课程资料 · 数据结构", "7月29日", "files"),
+                FavoriteItem("activity:demo-a-1", activities.first().title, "活动", "8月16日 · 创新实践中心", "7月30日", "activities"),
+                FavoriteItem("file:demo-f-1", files.first().name, "文件", "课程资料 · 数据结构", "7月29日", "files"),
                 FavoriteItem("notice:scholarship", "2026 学年奖学金评审通知", "通知", "学生工作处 · 申请流程", "7月26日", "notifications"),
             ),
         )

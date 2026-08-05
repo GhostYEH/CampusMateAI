@@ -568,6 +568,10 @@ def main() -> None:
         "fallback_reason": None,
         "source_framework_alignment": None,
     }
+    # The verified TensorFlow weight-transfer path is only implemented for
+    # ResNet18. Other architectures must go through AI Edge Torch, which on
+    # Windows currently lacks the required torch_xla wheel.
+    supports_tf_transfer = config["model"] == "resnet18"
     if args.converter in ("auto", "ai-edge-torch"):
         try:
             import ai_edge_torch
@@ -577,8 +581,14 @@ def main() -> None:
             export_dynamic_range_ai_edge(float_path, dynamic_path)
             export_details["selected_converter"] = "ai-edge-torch"
             export_details["fallback_reason"] = "AI Edge Torch path does not provide the complete TensorFlow representative export set; TensorFlow export is required for float16/full-int8."
-            source_alignment = export_with_tensorflow(model, wrapper, args.manifest, config, float_path, dynamic_path, float16_path, full_int8_path)
-            export_details["source_framework_alignment"] = source_alignment
+            if supports_tf_transfer:
+                source_alignment = export_with_tensorflow(model, wrapper, args.manifest, config, float_path, dynamic_path, float16_path, full_int8_path)
+                export_details["source_framework_alignment"] = source_alignment
+            else:
+                export_details["fallback_reason"] = (
+                    "AI Edge Torch produced float32/dynamic exports; float16/full-int8 and the "
+                    "PyTorch<->TensorFlow alignment check are ResNet18-only and were skipped."
+                )
         except Exception as error:
             if args.converter == "ai-edge-torch":
                 raise
@@ -586,6 +596,12 @@ def main() -> None:
                 f"{type(error).__name__}: {error}"
             )
     if export_details["selected_converter"] is None:
+        if not supports_tf_transfer:
+            raise RuntimeError(
+                f"Cannot export {config['model']} on this platform: AI Edge Torch is unavailable "
+                "and the verified TensorFlow weight-transfer path is ResNet18-only. "
+                "Use ResNet18 for Android deployment, or run export on a host with torch_xla."
+            )
         source_alignment = export_with_tensorflow(
             model,
             wrapper,
@@ -601,6 +617,8 @@ def main() -> None:
 
     results = {}
     for variant, path in (("float32", float_path), ("dynamic_int8", dynamic_path), ("float16", float16_path), ("full_int8", full_int8_path)):
+        if not path.exists():
+            continue
         results[variant] = {
             "path": str(path.resolve()),
             "size_bytes": path.stat().st_size,
@@ -617,6 +635,8 @@ def main() -> None:
         }
     chosen_variant = choose_variant(results)
     for variant in ("float32", "dynamic_int8", "float16", "full_int8"):
+        if variant not in results:
+            continue
         results[variant]["test_metrics"] = evaluate_litert(
             Path(results[variant]["path"]),
             args.manifest,

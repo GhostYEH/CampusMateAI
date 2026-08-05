@@ -1,18 +1,117 @@
 """通知结构化抽取路由。"""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import List, Optional, Tuple
 
+from fastapi import APIRouter, Depends, Query
+
+from ...models.multi_role import UserRow
+from ...schemas.multi_role import Page
 from ...schemas.notice import (
     DuplicateNoticeCheckRequest,
     DuplicateNoticeCheckResponse,
     MultiNoticeExtractResponse,
     NoticeExtractRequest,
     NoticeExtractResponse,
+    NoticeOut,
 )
-from ...services.container import get_container
+from ...services.container import ServiceContainer, get_container
+from ..deps import current_user
 
 router = APIRouter()
+
+
+def _container() -> ServiceContainer:
+    return get_container()
+
+
+def _user_visible_classes(
+    user: UserRow, container: ServiceContainer
+) -> List[Tuple[str, str, Optional[str]]]:
+    """返回当前用户可见班级 (class_id, class_name, course_name) 列表。
+
+    - student: 已加入的班级
+    - teacher: 其负责课程下的班级
+    - admin: 全部班级
+    """
+    enrollment_repo = container.enrollment_repository
+    class_repo = container.class_group_repository
+    course_repo = container.course_repository
+
+    if user.role == "student":
+        rows = enrollment_repo.list_user_classes(user.id)
+        return [
+            (r["class_id"], r.get("class_name") or "", r.get("course_name"))
+            for r in rows
+        ]
+    if user.role == "teacher":
+        classes, _ = class_repo.list_classes(
+            teacher_id=user.id, page=1, page_size=200
+        )
+        result: List[Tuple[str, str, Optional[str]]] = []
+        for c in classes:
+            course = course_repo.get_course(c.course_id)
+            result.append((c.id, c.name or "", course.name if course else None))
+        return result
+    # admin
+    classes, _ = class_repo.list_classes(page=1, page_size=200)
+    result = []
+    for c in classes:
+        course = course_repo.get_course(c.course_id)
+        result.append((c.id, c.name or "", course.name if course else None))
+    return result
+
+
+@router.get("/notices", response_model=Page)
+def list_notices(
+    unread_only: bool = Query(False, description="仅返回未读"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> Page:
+    """校园通知列表 —— 聚合当前用户可见班级的已发布通知。
+
+    - 学生: 看自己已加入班级的通知,`unread` 由已读记录计算
+    - 教师: 看其负责课程下班级的通知
+    - 管理员: 看全部通知
+    - 按 `published_at` 倒序(无发布时间者排后)
+    """
+    ann_repo = container.announcement_repository
+    items: List[NoticeOut] = []
+    for class_id, class_name, course_name in _user_visible_classes(user, container):
+        rows, _ = ann_repo.list_announcements(
+            class_id, status="published", page=1, page_size=100
+        )
+        for ann in rows:
+            unread = False
+            if user.role == "student":
+                unread = not ann_repo.is_read(ann.id, user.id)
+            items.append(
+                NoticeOut(
+                    id=ann.id,
+                    title=ann.title,
+                    source=class_name or course_name or ann.author_id,
+                    time=ann.published_at or ann.created_at,
+                    unread=unread,
+                    category=course_name,
+                    content=ann.content,
+                )
+            )
+    # 排序: 有时间者按时间倒序,无时间者排后
+    items.sort(key=lambda n: n.time or "", reverse=True)
+    if unread_only:
+        items = [n for n in items if n.unread]
+    total = len(items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return Page(
+        items=items[start:end],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=end < total,
+    )
 
 
 @router.post("/notices/extract", response_model=NoticeExtractResponse)

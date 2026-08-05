@@ -16,6 +16,18 @@ class MaterialItem(BaseModel):
     required: bool = True
 
 
+class NoticeOut(BaseModel):
+    """校园通知列表项 —— 聚合自当前用户可见班级的已发布通知。"""
+
+    id: str
+    title: str
+    source: Optional[str] = Field(None, description="来源(班级名 / 课程名 / 作者)")
+    time: Optional[str] = Field(None, description="发布时间(ISO 8601)")
+    unread: bool = Field(False, description="当前学生视角是否未读")
+    category: Optional[str] = Field(None, description="分类(课程名等)")
+    content: Optional[str] = Field(None, description="通知正文")
+
+
 class NoticeExtractRequest(BaseModel):
     content: str = Field(..., description="校园通知原文")
     published_at: Optional[datetime] = Field(
@@ -184,6 +196,7 @@ class NoticeExtractResponse(BaseModel):
 
 __all__ = [
     "MaterialItem",
+    "NoticeOut",
     "NoticeExtractRequest",
     "NoticeExtractResponse",
     "RecentNoticeItem",
