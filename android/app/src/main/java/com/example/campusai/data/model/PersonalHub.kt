@@ -7,7 +7,7 @@ package com.example.campusai.data.model
  * data source 映射到同一组 UI 模型。
  */
 data class CampusFile(
-    val id: Long,
+    val id: String,
     val name: String,
     val category: String,
     val sizeLabel: String,
@@ -17,7 +17,7 @@ data class CampusFile(
 )
 
 data class CampusActivity(
-    val id: Long,
+    val id: String,
     val title: String,
     val organizer: String,
     val date: String,

@@ -203,7 +203,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             files = List(filesJson.length()) { index ->
                 filesJson.getJSONObject(index).let { obj ->
                     CampusFile(
-                        id = obj.optLong("id"),
+                        // 兼容历史 Long id 与新 String id
+                        id = obj.optString("id").ifBlank { obj.optLong("id").toString() },
                         name = obj.optString("name"),
                         category = obj.optString("category"),
                         sizeLabel = obj.optString("sizeLabel"),
@@ -216,7 +217,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             activities = List(activitiesJson.length()) { index ->
                 activitiesJson.getJSONObject(index).let { obj ->
                     CampusActivity(
-                        id = obj.optLong("id"),
+                        id = obj.optString("id").ifBlank { obj.optLong("id").toString() },
                         title = obj.optString("title"),
                         organizer = obj.optString("organizer"),
                         date = obj.optString("date"),

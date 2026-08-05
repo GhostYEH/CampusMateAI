@@ -98,6 +98,14 @@ fun DashboardScreen(
     val campusNews by repository.campusNews.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val role = session?.role ?: "student"
+
+    // 首页加载时尝试从后端拉取最新数据（通知 / 动态 / 课程 / 任务）
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        repository.refreshNotices()
+        repository.refreshCampusNews()
+        repository.refreshCourses()
+        repository.refreshTasks()
+    }
     val floatingDockScrollPadding =
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
 

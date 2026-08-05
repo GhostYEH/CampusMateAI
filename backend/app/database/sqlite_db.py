@@ -371,6 +371,40 @@ CREATE INDEX IF NOT EXISTS idx_study_breaks_session_id ON study_breaks(session_i
 """
 
 
+# 个人中心 schema —— 用户私有文件与跨模块收藏。
+# - user_id 绑定 JWT 用户,禁止跨用户读取
+# - favorites 使用 (user_id, id) 复合主键,允许不同用户收藏同一个对象
+PERSONAL_HUB_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS personal_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT,
+    size_label TEXT,
+    updated_at TEXT,
+    source TEXT,
+    is_favorite INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_personal_files_user_id ON personal_files(user_id);
+
+CREATE TABLE IF NOT EXISTS favorites (
+    user_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    type TEXT,
+    subtitle TEXT,
+    saved_at TEXT,
+    source_route TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -419,6 +453,7 @@ class Database:
                 conn.executescript(MULTI_ROLE_SCHEMA_SQL)
                 conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
                 conn.executescript(STUDY_SCHEMA_SQL)
+                conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

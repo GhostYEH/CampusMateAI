@@ -23,6 +23,10 @@ from ..repositories.multi_role_repository import (
     UserRepository,
 )
 from ..repositories.personal_task_repository import PersonalTaskRepository
+from ..repositories.personal_hub_repository import (
+    FavoriteRepository,
+    PersonalFileRepository,
+)
 from ..repositories.study_session_repository import StudySessionRepository
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
@@ -55,6 +59,9 @@ class ServiceContainer:
     submission_repository: SubmissionRepository
     # 个人待办仓库(学生从通知抽取生成的任务)
     personal_task_repository: PersonalTaskRepository
+    # 个人中心仓库(用户私有文件 / 跨模块收藏)
+    personal_file_repository: PersonalFileRepository
+    favorite_repository: FavoriteRepository
     # 学习陪伴
     study_session_repository: StudySessionRepository
     task_breakdown_service: TaskBreakdownService
@@ -77,6 +84,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
     personal_task_repo = PersonalTaskRepository(db)
+    personal_file_repo = PersonalFileRepository(db)
+    favorite_repo = FavoriteRepository(db)
     # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
     study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
     # TaskBreakdownService 只解析 PersonalTask(不再接受 Assignment ID)
@@ -105,6 +114,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         assignment_repository=assignment_repo,
         submission_repository=SubmissionRepository(db),
         personal_task_repository=personal_task_repo,
+        personal_file_repository=personal_file_repo,
+        favorite_repository=favorite_repo,
         study_session_repository=study_session_repo,
         task_breakdown_service=task_breakdown,
     )

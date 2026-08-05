@@ -66,6 +66,9 @@ fun PersonalHubScreen(
         else -> PersonalSection.Files
     }
 
+    // 进入页面时尝试从后端拉取最新个人中心数据
+    LaunchedEffect(Unit) { repository.refreshPersonalHub() }
+
     Scaffold(
         containerColor = Background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -289,8 +292,8 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit, placehol
 private fun FileList(
     files: List<CampusFile>,
     reduceMotion: Boolean,
-    onFavorite: (Long) -> Unit,
-    onDelete: (Long) -> Unit,
+    onFavorite: (String) -> Unit,
+    onDelete: (String) -> Unit,
 ) {
     ContentList(
         empty = files.isEmpty(),
@@ -345,8 +348,8 @@ private fun FileList(
 private fun ActivityList(
     activities: List<CampusActivity>,
     reduceMotion: Boolean,
-    onJoin: (Long) -> Unit,
-    onFavorite: (Long) -> Unit,
+    onJoin: (String) -> Unit,
+    onFavorite: (String) -> Unit,
 ) {
     ContentList(
         empty = activities.isEmpty(),

@@ -46,6 +46,9 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     var filter by remember { mutableStateOf("待完成") }
     var showAddSheet by remember { mutableStateOf(false) }
     var deletingTask by remember { mutableStateOf<Task?>(null) }
+
+    // 进入页面时尝试从后端拉取最新任务
+    LaunchedEffect(Unit) { repository.refreshTasks() }
     val filtered = tasks.filter {
         when (filter) {
             "已完成" -> it.done
