@@ -161,13 +161,15 @@ onBeforeUnmount(() => aborter.value?.abort());
 
 <template>
   <main class="student-page counselor-page page-enter">
-    <section class="counselor-hero surface">
-      <div>
-        <span class="eyebrow">AI 导员</span>
-        <h1>你好，我是 CampusMate 的 AI 导员 <span>👋</span></h1>
-        <p>多轮对话、深系引用和行动建议都集中在这里，AI 不替代学校正式答复。</p>
+    <section class="counselor-hero counselor-hero-bg">
+      <div class="counselor-hero-content">
+        <span class="hero-eyebrow">AI COUNSELOR / 校园智能向导</span>
+        <div class="student-title-line hero-title">
+          <h1>AI 导员</h1>
+          <UiIcon name="PhSparkle" class="heading-sparkle" :size="26" />
+        </div>
+        <p class="hero-desc">多轮对话、深系引用和行动建议都集中在这里，AI 不替代学校正式答复。</p>
       </div>
-      <img src="/assets/campusmate-counselor-hero.png" alt="AI 导员校园陪伴插画" />
     </section>
 
     <div v-if="error" class="student-alert info"><UiIcon name="PhInfo" />{{ error }}</div>

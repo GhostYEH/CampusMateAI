@@ -136,7 +136,7 @@ onMounted(() => { load(); });
 <template>
   <main class="student-page tasks-redesign page-enter">
     <!-- Hero Section -->
-    <section class="tasks-hero">
+    <section class="tasks-hero tasks-hero-bg">
       <div class="tasks-hero-content">
         <span class="hero-eyebrow">TASKS / 任务节奏</span>
         <div class="student-title-line hero-title">
@@ -174,12 +174,6 @@ onMounted(() => { load(); });
               <small>个人待办</small>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="tasks-hero-art">
-        <div class="hero-illustration tasks-illustration">
-          <img src="/assets/campusmate-tasks-hero.jpg" alt="待办与作业插图" class="hero-illust-img" />
         </div>
       </div>
     </section>

@@ -1,6 +1,6 @@
 <script setup>
 import {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
@@ -10,6 +10,7 @@ import {
   PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
+  PhMapPin,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
@@ -24,7 +25,7 @@ const props = defineProps({
 });
 
 const icons = {
-  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight,
+  PhArrowClockwise, PhArrowCounterClockwise, PhArrowLeft, PhArrowRight, PhArrowUpRight,
   PhArrowsDownUp, PhArrowsLeftRight, PhArchive, PhBell, PhBellSlash, PhBookOpen,
   PhBookmark, PhBookmarkSimple, PhCalendarBlank, PhCalendarStar, PhChalkboardTeacher,
   PhCaretDown, PhCaretLeft, PhCaretRight, PhChartBar, PhChartLineUp, PhChartLine, PhChartPie,
@@ -34,6 +35,7 @@ const icons = {
   PhDownload, PhDownloadSimple, PhDotsThree, PhExam, PhFile, PhFileImage, PhFilePdf, PhFileText, PhFiles,
   PhFlag, PhFlagCheckered, PhFolderOpen, PhFunnel, PhGear, PhGraduationCap,
   PhHourglass, PhHouse, PhInfo, PhLightbulb, PhList, PhListChecks, PhLock, PhMagnifyingGlass,
+  PhMapPin,
   PhMegaphone, PhNotePencil, PhPaperclip, PhPaperPlaneTilt, PhPause, PhPencil,
   PhPencilSimpleLine, PhPlay, PhPlus, PhPulse, PhQuestion, PhQuotes, PhRobot, PhScales, PhSealCheck,
   PhShieldCheck, PhSidebarSimple, PhSignOut, PhSlidersHorizontal, PhSmiley,
