@@ -55,10 +55,10 @@ onMounted(load);
     <div class="student-heading page-heading-wide">
       <div>
         <span class="eyebrow">CAMPUS / 校园生活</span>
-        <h1>校园活动 <UiIcon name="PhSparkle" class="heading-sparkle" /></h1>
+        <h1>校园活动</h1>
         <p>发现学校发布的精彩活动，参与丰富多彩的校园生活，拓展视野，结识更多伙伴。</p>
       </div>
-      <button class="secondary-button" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" />刷新</button>
+      <div class="hero-side"><div class="hero-decoration"><UiIcon name="PhSparkle" /></div><button class="secondary-button" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" />刷新</button></div>
     </div>
 
     <section class="activity-filter surface">

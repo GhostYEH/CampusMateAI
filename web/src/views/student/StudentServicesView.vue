@@ -23,7 +23,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page page-enter student-tool-page">
+  <main class="student-page services-page page-enter student-tool-page">
     <div class="student-heading"><div><button class="back-link" @click="router.push('/home')"><UiIcon name="PhArrowLeft" />返回首页</button><span class="eyebrow">CAMPUS SERVICE / 校园事务</span><h1>办事大厅</h1><p>把需要学校处理的事情写清楚、交出去，再从申请记录里跟进处理状态。</p></div><div class="heading-actions"><button class="secondary-button" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" />刷新</button><button class="primary-button" @click="openForm()"><UiIcon name="PhPlus" />新建申请</button></div></div>
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load">重试</button></div>
     <section class="service-summary-grid"><article><span class="service-summary-label">我的申请</span><strong>{{ serviceStats.total }}</strong><small>所有已提交记录</small></article><article><span class="service-summary-label">处理中</span><strong class="warm-number">{{ serviceStats.active }}</strong><small>等待学校更新状态</small></article><article><span class="service-summary-label">已办结</span><strong class="green-number">{{ serviceStats.done }}</strong><small>可以回看处理结果</small></article></section>

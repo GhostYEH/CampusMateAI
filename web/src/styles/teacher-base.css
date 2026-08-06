@@ -1,0 +1,115 @@
+/* ==========================================================================
+   teacher-base.css — 教师端共享样式补充
+   --------------------------------------------------------------------------
+   origin/master 的 styles.css 已经定义了完整的 tch-* 设计体系
+   (tch-page / tch-page-header / tch-panel / tch-table / tch-empty /
+    tch-status-tag / tch-modal / tch-drawer / tch-filter-bar 等)。
+
+   本文件只做两件事：
+   1. 补齐 styles.css 中没有覆盖到的共享边界情况（表格横向溢出、
+      页面最小宽度、表单控件统一高度等），保证教师端各页面布局稳定。
+   2. 不重复定义 styles.css 中已有的 tch-* 规则，避免冲突。
+
+   不含页面专属样式（那些放在 teacher-pages.css）。
+   ========================================================================== */
+
+/* ---------- 页面容器：防止内部内容撑爆视口 ---------- */
+.tch-page {
+  min-width: 0;
+}
+.tch-page .tch-panel,
+.tch-page .tch-stat-strip,
+.tch-page .tch-filter-bar,
+.tch-page .tch-tabs {
+  min-width: 0;
+}
+
+/* ---------- 表格横向滚动安全网 ----------
+   origin/master 把表格包成 .tch-table-wrap > .tch-table-scroll > table.tch-table
+   .tch-table-scroll 只有 overflow-x:auto，没有限制宽度。
+   若内联 style 把 min-width 加在 .tch-table-scroll 上，会把外层面板撑爆，
+   导致整个页面横向溢出。这里强制滚动容器收束到父级宽度，
+   并把 min-width 交给 table 自己承担（见各页面的 style）。
+*/
+.tch-table-wrap {
+  min-width: 0;
+  overflow: hidden; /* 配合圆角裁剪 */
+}
+.tch-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tch-table {
+  min-width: 100%;
+}
+/* 当表格列较多时，允许在 table 上设置 min-width 触发横向滚动，
+   而不会把页面撑宽 */
+.tch-table-scroll .tch-table {
+  width: 100%;
+}
+
+/* ---------- 共享表单控件高度对齐 ----------
+   styles.css 里 .tch-field input/select/textarea 高度 42px，
+   但 FilterBar 里的 select、tch-filter-search 也是 40px，保持一致。
+   这里统一 select 的外观，避免浏览器默认下拉箭头。 */
+.tch-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256'><path fill='%23748694' d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80A8 8 0 0 1 53.66 90.34L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32Z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 34px;
+  cursor: pointer;
+}
+.tch-filter-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256'><path fill='%23748694' d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80A8 8 0 0 1 53.66 90.34L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32Z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
+/* ---------- 共享按钮在教师页面的对齐 ---------- */
+.tch-page .primary-button,
+.tch-page .secondary-button {
+  min-height: 40px;
+}
+.tch-row-actions .tch-link {
+  white-space: nowrap;
+}
+
+/* ---------- 共享响应式：窄屏下筛选栏可换行 ---------- */
+@media (max-width: 760px) {
+  .tch-filter-bar {
+    align-items: stretch;
+  }
+  .tch-filter-search {
+    max-width: none;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .tch-filter-selects {
+    width: 100%;
+  }
+  .tch-filter-select {
+    flex: 1 1 calc(50% - 5px);
+  }
+  .tch-filter-select select {
+    width: 100%;
+    min-width: 0;
+  }
+  .tch-filter-extra {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* ---------- 窄屏下表格滚动条不撑出页面 ---------- */
+@media (max-width: 760px) {
+  .tch-table-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}

@@ -8,6 +8,65 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// ===== access token 过期后自动用 refresh token 换发并重试 =====
+// access token 有效期仅 30 分钟;遇到 401 时用 localStorage 中的 refresh token
+// 调用 /auth/refresh 换取新 token,然后重放原请求。refresh token 失效则回到登录页。
+let _refreshingPromise = null;
+
+function _clearSessionAndRedirect() {
+  localStorage.removeItem("campus_access_token");
+  localStorage.removeItem("campus_refresh_token");
+  localStorage.removeItem("campus_session");
+  if (location.pathname !== "/login") location.href = "/login";
+}
+
+async function _refreshAccessToken() {
+  const refreshToken = localStorage.getItem("campus_refresh_token");
+  if (!refreshToken) {
+    _clearSessionAndRedirect();
+    throw new Error("登录已过期，请重新登录");
+  }
+  try {
+    // 用独立的 axios 调用，避免再走上面的请求拦截器附加已过期的 access token
+    const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
+    localStorage.setItem("campus_access_token", data.access_token);
+    localStorage.setItem("campus_refresh_token", data.refresh_token);
+    return data.access_token;
+  } catch (e) {
+    _clearSessionAndRedirect();
+    throw new Error("登录已过期，请重新登录");
+  }
+}
+
+client.interceptors.response.use(
+  (resp) => resp,
+  async (error) => {
+    const original = error.config;
+    // 仅对 401 且未重试过、且不是登录/刷新接口本身的请求做刷新重试
+    if (
+      error.response?.status === 401 &&
+      original &&
+      !original._retried &&
+      !original.url?.includes("/auth/login") &&
+      !original.url?.includes("/auth/refresh")
+    ) {
+      original._retried = true;
+      try {
+        // 多个请求同时 401 时，共享同一次刷新，避免并发重复刷新导致 refresh token 被撤销
+        if (!_refreshingPromise) _refreshingPromise = _refreshAccessToken();
+        const newToken = await _refreshingPromise;
+        _refreshingPromise = null;
+        original.headers.Authorization = `Bearer ${newToken}`;
+        return client(original);
+      } catch (e) {
+        _refreshingPromise = null;
+        return Promise.reject(e);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export async function probeBackend() { try { await client.get("/health"); return true; } catch { return false; } }
 
 export async function realLogin(username, password) {

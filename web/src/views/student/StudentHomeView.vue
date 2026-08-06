@@ -75,8 +75,6 @@ const quickLinks = [
   { label: "失物招领", detail: "看看有没有线索", icon: "PhMagnifyingGlass", path: "/lostfound", tone: "teal" },
   { label: "通知整理", detail: "把长通知变清楚", icon: "PhSparkle", path: "/notifications", tone: "indigo" },
   { label: "AI 导员", detail: "问问校园里的事", icon: "PhRobot", path: "/counselor", tone: "rose" },
-  { label: "学习陪伴", detail: "开始一段专注时间", icon: "PhChartLineUp", path: "/study", tone: "amber" },
-  { label: "个人资料", detail: "管理我的信息", icon: "PhUser", path: "/profile", tone: "slate" },
 ];
 
 function dateText(value) {
