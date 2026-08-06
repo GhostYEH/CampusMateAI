@@ -12,7 +12,6 @@ const loginRole = ref("student");
 const loading = ref(false);
 const error = ref("");
 const showPassword = ref(false);
-const videoFailed = ref(false);
 async function submit() {
   error.value = "";
   loading.value = true;
@@ -31,12 +30,7 @@ function toggleAdmin() { selectRole(loginRole.value === "admin" ? "student" : "a
 
 <template>
   <main class="login-page">
-    <div class="login-media">
-      <video v-if="!videoFailed" autoplay muted loop playsinline preload="auto" poster="/assets/campus-night.jpg" @error="videoFailed = true">
-        <source src="/assets/login-campus.mp4" type="video/mp4" />
-      </video>
-      <img v-else src="/assets/campus-night.jpg" alt="夜色中的校园教学楼" />
-    </div>
+    <div class="login-media"></div>
     <div class="login-shade"></div>
     <section class="login-story enter">
       <div class="brand brand-light"><span class="brand-mark"><UiIcon name="PhGraduationCap" :size="24" weight="fill" /></span><div><strong>CampusMate AI</strong><small>校园信息中枢</small></div></div>

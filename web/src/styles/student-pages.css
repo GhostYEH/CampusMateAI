@@ -179,7 +179,6 @@
 
 /* ===== 通知整理页（StudentNotificationsView） ===== */
 .notifications-page .notice-heading{position:relative;align-items:center}
-.notice-heading-art{position:absolute;right:135px;top:-8px;color:#a9b3ff;opacity:.72}
 .notifications-page .notice-heading>.secondary-button{position:relative;z-index:1}
 .notice-layout{grid-template-columns:minmax(0,1.15fr) minmax(390px,.85fr);gap:18px}
 .notice-toolbar{display:grid;grid-template-columns:minmax(0,1fr) 175px 140px;gap:10px;padding:14px;margin-bottom:14px}
@@ -244,10 +243,10 @@
 .student-layout .notifications-page .example-check{width:18px;height:18px;border:1px solid #bcc8dc;border-radius:4px}
 .student-layout .notifications-page .extract-example-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:12px 13px;border-radius:12px;background:#f1f3ff;color:#8793ad;font-size:10px}
 .student-layout .notifications-page .extract-example-footer .primary-button{height:38px;flex:0 0 auto;font-size:11px}
-.student-layout .notifications-page .notice-heading-art{right:333px;top:-20px;width:205px;height:135px;opacity:1;overflow:hidden}
-.student-layout .notifications-page .notice-heading-art img{display:block;width:205px;height:155px;object-fit:cover;object-position:center 48%;mix-blend-mode:multiply;opacity:.83}
-.student-layout .notifications-page .hero-side .notice-heading-art{position:static;right:auto;top:auto;width:64px;height:64px;overflow:hidden;border-radius:14px}
-.student-layout .notifications-page .hero-side .notice-heading-art img{width:64px;height:64px;object-fit:cover;object-position:center 48%}
+.student-layout .notifications-page .notice-heading{position:relative;overflow:hidden;border-radius:20px;padding-top:20px;padding-bottom:20px;background:linear-gradient(115deg,#eef1ff 0%,#f6f4ff 52%,#f3efff 100%)}
+.student-layout .notifications-page .notice-heading>div:not(.notice-heading-bg){position:relative;z-index:1}
+.student-layout .notifications-page .notice-heading-bg{position:absolute;right:230px;top:0;bottom:0;width:100%;max-width:430px;z-index:0;pointer-events:none}
+.student-layout .notifications-page .notice-heading-bg img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 48%;mix-blend-mode:multiply;opacity:.85}
 .student-layout .notifications-page .student-heading{padding-left:24px;padding-right:26px}
 .student-layout .notifications-page .notice-extract-panel .student-panel-head{margin-bottom:1px}
 /* 通知动态色调类（模板 :class="notice-tone-${id%4}" 引用） */
@@ -475,7 +474,7 @@
   .activity-card{grid-template-columns:120px 1fr}
   .activity-card h2{font-size:14px}
   .activity-art{min-height:220px}
-  .notice-heading-art{display:none}
+  .notice-heading-bg{display:none}
   .notice-tabs{align-items:flex-start;flex-direction:column}
   .notice-count-tabs{width:100%;justify-content:space-between;gap:7px}
   .notice-detail>button{grid-template-columns:32px minmax(0,1fr) 14px}
@@ -1332,3 +1331,767 @@
     margin-top: 2px;
   }
 }
+
+/* ============================================================
+   失物招领页新设计 (lostfound-redesign)
+   ============================================================ */
+.lostfound-redesign .lf-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+  align-items: center;
+  gap: 20px;
+  padding: 28px 30px;
+  margin-bottom: 18px;
+  border-radius: 22px;
+  background: linear-gradient(115deg, #fdf1e6 0%, #f8f4ff 50%, #f2f0ff 100%);
+  overflow: hidden;
+}
+.lostfound-redesign .lf-hero::before {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -60px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(238, 160, 90, .16), transparent 70%);
+  pointer-events: none;
+}
+.lf-hero-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.lf-hero-art {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+
+/* 三列统计（失物招领 / 办事大厅共用 hero-stats） */
+.hero-stats.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* 工具栏 */
+.lostfound-redesign .lf-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 16px;
+}
+.lostfound-redesign .lf-toolbar .toolbar-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5e6d8c;
+  font-weight: 700;
+}
+
+/* 信息卡片 */
+.lf-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.lf-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 15px;
+  border-radius: 20px;
+  min-height: 232px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+.lf-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px rgba(60, 78, 160, .1);
+}
+.lf-card.tone-lost:hover { border-color: #f0d9b8; }
+.lf-card.tone-found:hover { border-color: #c4ead9; }
+
+.lf-card-top { display: flex; align-items: center; justify-content: space-between; }
+.lf-kind-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 5px 10px;
+  border-radius: 8px;
+}
+.badge-lost { background: #fff3e2; color: #b87a31; }
+.badge-found { background: #e7f5ee; color: #38876d; }
+.lf-delete-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #a8abc7;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+.lf-delete-btn:hover { background: #ffecec; color: #cf5b55; }
+
+.lf-card-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.lf-card-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+}
+.icon-lost { background: #fff3e2; color: #d68a3c; }
+.icon-found { background: #e7f5ee; color: #3aa779; }
+.lf-card-title h2 {
+  margin: 0;
+  min-width: 0;
+  font-size: 16px;
+  letter-spacing: -.02em;
+  color: #1b2f50;
+  line-height: 1.3;
+  font-weight: 750;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lf-card-desc {
+  margin: 0;
+  color: #7485a3;
+  font-size: 12px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lf-card-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #eef0f8;
+  color: #687a99;
+  font-size: 11px;
+}
+.lf-card-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #5264df;
+  font-size: 11px;
+  font-weight: 750;
+  margin-top: 2px;
+}
+.tone-lost .lf-card-foot { color: #b37a33; }
+.tone-found .lf-card-foot { color: #2f9c70; }
+.lf-card-foot svg { color: #8a96c9; }
+.tone-lost .lf-card-foot svg { color: #c99a56; }
+.tone-found .lf-card-foot svg { color: #63b48d; }
+
+/* ============================================================
+   办事大厅页新设计 (services-redesign)
+   ============================================================ */
+.services-redesign .sv-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+  align-items: center;
+  gap: 20px;
+  padding: 28px 30px;
+  margin-bottom: 18px;
+  border-radius: 22px;
+  background: linear-gradient(115deg, #eef1ff 0%, #f3f4ff 48%, #eaefff 100%);
+  overflow: hidden;
+}
+.services-redesign .sv-hero::before {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -60px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(120, 135, 255, .16), transparent 70%);
+  pointer-events: none;
+}
+.sv-hero-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.sv-hero-art {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+}
+
+/* 工具栏 */
+.services-redesign .sv-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 16px;
+}
+.services-redesign .sv-toolbar .toolbar-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5e6d8c;
+  font-weight: 700;
+}
+
+/* 服务入口卡片 */
+.sv-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.sv-entry-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 118px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+.sv-entry-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px rgba(60, 78, 160, .1);
+}
+.sv-entry-card.sv-tone-blue:hover { border-color: #c6d3ff; }
+.sv-entry-card.sv-tone-warm:hover { border-color: #f0d9b8; }
+.sv-entry-card.sv-tone-green:hover { border-color: #c4ead9; }
+.sv-entry-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+}
+.sv-entry-icon.blue { background: #e8efff; color: #5577e8; }
+.sv-entry-icon.warm { background: #fff1dd; color: #e79a3e; }
+.sv-entry-icon.green { background: #e1f7ed; color: #3ba877; }
+.sv-entry-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.sv-entry-main strong {
+  font-size: 16px;
+  letter-spacing: -.02em;
+  color: #1b2f50;
+  font-weight: 750;
+}
+.sv-entry-main small {
+  font-size: 11px;
+  color: #7485a3;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sv-entry-main em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a17754;
+}
+.sv-entry-arrow { color: #9aaac0; }
+.sv-tone-blue .sv-entry-arrow { color: #8296e8; }
+.sv-tone-warm .sv-entry-arrow { color: #d9a05c; }
+.sv-tone-green .sv-entry-arrow { color: #6fbd95; }
+
+/* 工作区：申请进度 + 右侧指引 */
+.sv-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+.sv-workspace > * { min-width: 0; }
+.sv-board { padding: 20px 21px; }
+.sv-board-list { display: grid; gap: 0; }
+.sv-request-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid #eef0f7;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+.sv-request-row:last-child { border-bottom: 0; }
+.sv-request-row:hover { background: #fafaff; border-radius: 12px; padding-left: 6px; padding-right: 6px; }
+.sv-request-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+}
+.sv-request-icon.blue { background: #e8efff; color: #5577e8; }
+.sv-request-icon.warm { background: #fff1dd; color: #e79a3e; }
+.sv-request-icon.green { background: #e1f7ed; color: #3ba877; }
+.sv-request-main { min-width: 0; }
+.sv-request-main > span { display: grid; gap: 4px; min-width: 0; }
+.sv-request-main strong {
+  font-size: 13px;
+  color: #2e4365;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sv-request-main small {
+  font-size: 11px;
+  color: #8693b0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sv-request-row .status-pill {
+  justify-self: end;
+  min-width: 56px;
+  justify-content: center;
+}
+.sv-request-arrow { color: #9aaac0; }
+
+.sv-side-stack {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+.sv-guide-card,
+.sv-tip-card { padding: 20px; }
+.sv-guide-mark {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #f0f1ff;
+  color: #777ff0;
+  margin-bottom: 14px;
+}
+.sv-guide-card h2 {
+  margin: 7px 0 16px;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -.025em;
+  color: #172b49;
+}
+.sv-step-list { display: grid; gap: 12px; }
+.sv-step-list > div {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+.sv-step-list b {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #f1f2ff;
+  color: #7581df;
+  font-size: 10px;
+}
+.sv-step-list span { display: grid; gap: 3px; min-width: 0; }
+.sv-step-list strong { color: #5b6d88; font-size: 11px; }
+.sv-step-list small { color: #99a6ba; font-size: 10px; line-height: 1.55; }
+.sv-tip-card {
+  background: linear-gradient(115deg, #fffbe9, #fffef8);
+  border-color: #f3ecd7;
+}
+.sv-tip-card h3 {
+  margin: 8px 0 6px;
+  color: #4a439a;
+  font-size: 14px;
+  font-weight: 750;
+}
+.sv-tip-card p {
+  margin: 0;
+  color: #6b66a8;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+/* 失物招领 / 办事大厅响应式 */
+@media(max-width:1180px) {
+  .lostfound-redesign .lf-hero,
+  .services-redesign .sv-hero {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .lf-hero-art, .sv-hero-art { min-height: 140px; }
+  .hero-illustration { max-width: 260px; }
+  .hero-stats.cols-3 { grid-template-columns: repeat(3, 1fr); max-width: none; }
+
+  .lostfound-redesign .lf-toolbar,
+  .services-redesign .sv-toolbar {
+    grid-template-columns: 1fr auto auto;
+  }
+  .services-redesign .sv-toolbar .toolbar-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .lostfound-redesign .lf-toolbar .toolbar-actions { grid-column: 1 / -1; justify-content: flex-end; }
+
+  .lf-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sv-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sv-workspace { grid-template-columns: 1fr; }
+  .sv-side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
+
+@media(max-width:820px) {
+  .lostfound-redesign .lf-hero,
+  .services-redesign .sv-hero {
+    padding: 22px 20px;
+  }
+  .hero-title h1 { font-size: 27px; }
+  .hero-stat { padding: 8px 10px; }
+  .stat-info strong { font-size: 17px; }
+
+  .lostfound-redesign .lf-toolbar,
+  .services-redesign .sv-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .lostfound-redesign .lf-toolbar .segmented,
+  .services-redesign .sv-toolbar .segmented { width: 100%; justify-content: stretch; }
+  .lostfound-redesign .lf-toolbar .segmented button,
+  .services-redesign .sv-toolbar .segmented button { flex: 1; }
+  .lostfound-redesign .lf-toolbar .toolbar-actions,
+  .services-redesign .sv-toolbar .toolbar-actions { justify-content: stretch; }
+  .lostfound-redesign .lf-toolbar .toolbar-actions button,
+  .services-redesign .sv-toolbar .toolbar-actions button { flex: 1; justify-content: center; }
+
+  .lf-card-grid { grid-template-columns: 1fr; }
+  .sv-entry-grid { grid-template-columns: 1fr; }
+  .sv-side-stack { grid-template-columns: 1fr; }
+  .sv-request-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .sv-request-arrow { display: none; }
+}
+
+@media(max-width:520px) {
+  .hero-stats.cols-3 { grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 6px; }
+  .stat-icon { width: 32px; height: 32px; }
+  .lf-hero-art, .sv-hero-art { display: none; }
+  .lf-card { min-height: 0; }
+}
+
+/* ============================================================
+   失物招领详情页新设计 (lostfound-detail-redesign)
+   复用 cd-* / td-* 全局组件，仅补充暖色调变体与联系卡片
+   ============================================================ */
+.lostfound-detail-redesign { padding-top: 16px; }
+.lostfound-detail-redesign .ld-hero-warm {
+  background: linear-gradient(112deg, #fdf1e6 0%, #faf4ff 48%, #f4f0ff 100%);
+}
+.lostfound-detail-redesign .td-kind.warm { background: #fff1dd; color: #cf8430; }
+.lostfound-detail-redesign .td-kind.green { background: #dff7eb; color: #2d966c; }
+.lostfound-detail-redesign .td-focus-icon.warm { background: #fff1dd; color: #e79a3e; }
+.lostfound-detail-redesign .td-focus-icon.green { background: #e1f7ed; color: #3ba877; }
+.lostfound-detail-redesign .td-focus-state.amber { background: #fff1dd; color: #cf8430; }
+
+.ld-contact {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #eceffa;
+  border-radius: 14px;
+  background: #fafbff;
+}
+.ld-contact-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  margin-bottom: 4px;
+}
+.ld-contact-icon.warm { background: #fff1dd; color: #e79a3e; }
+.ld-contact-icon.green { background: #e1f7ed; color: #3ba877; }
+.ld-contact strong {
+  color: #304362;
+  font-size: 15px;
+  font-weight: 750;
+  word-break: break-word;
+}
+.ld-contact p {
+  margin: 0;
+  color: #8b99b3;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   办事申请详情页新设计 (services-detail-redesign)
+   复用 cd-* / td-* 全局组件，补充时间线 / 信息表 / 状态变体
+   ============================================================ */
+.services-detail-redesign { padding-top: 16px; }
+.services-detail-redesign .td-focus.amber { border-color: #f2dfb8; }
+.services-detail-redesign .td-focus.amber .td-focus-state { background: #fff1dd; color: #cf8430; }
+.services-detail-redesign .td-focus-icon.amber { background: #fff1dd; color: #e79a3e; }
+.services-detail-redesign .td-focus-icon.green { background: #e1f7ed; color: #3ba877; }
+
+/* 处理进度时间线 */
+.sd-timeline { display: grid; gap: 10px; }
+.sd-timeline-step {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 1px solid #eceffa;
+  border-radius: 13px;
+  background: #fafbff;
+  transition: border-color .18s ease, background .18s ease;
+}
+.sd-timeline-step.active { border-color: #dfe3ff; background: #f5f6ff; }
+.sd-timeline-step.current { border-color: #c7d0ff; background: #f0f1ff; }
+.sd-timeline-node {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #eef0f7;
+  color: #8d99b3;
+}
+.sd-timeline-step.active .sd-timeline-node { background: #eef0ff; color: #5665f4; }
+.sd-timeline-step.current .sd-timeline-node {
+  background: #5665f4;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(86, 101, 244, .28);
+}
+.sd-timeline-main { display: grid; gap: 3px; min-width: 0; }
+.sd-timeline-main strong { color: #304362; font-size: 13px; font-weight: 700; }
+.sd-timeline-step:not(.active) .sd-timeline-main strong { color: #8a97ae; }
+.sd-timeline-main small { color: #8b99b3; font-size: 10px; line-height: 1.5; }
+.sd-timeline-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e2f7ed;
+  color: #2f9c70;
+}
+
+/* 申请信息表 */
+.sd-facts { display: grid; margin: 0; border-top: 1px solid #edf0f8; }
+.sd-facts > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 48px;
+  align-items: center;
+  border-bottom: 1px solid #edf0f8;
+}
+.sd-facts dt { color: #99a6b9; font-size: 11px; }
+.sd-facts dd {
+  margin: 0;
+  color: #566983;
+  font-size: 11px;
+  font-weight: 650;
+  word-break: break-word;
+}
+
+/* ============================================================
+   待办与作业：横向通铺底图 Hero（复用 campusmate-activity-hero.png）
+   ============================================================ */
+.tasks-redesign .tasks-hero.tasks-hero-bg {
+  grid-template-columns: 1fr;
+  background-image: url("/assets/campusmate-activity-hero.png");
+  background-size: cover;
+  background-position: center;
+  min-height: 300px;
+}
+.tasks-redesign .tasks-hero.tasks-hero-bg::before {
+  right: auto;
+  top: auto;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .94) 0%, rgba(255, 255, 255, .82) 46%, rgba(255, 255, 255, .4) 100%);
+}
+.tasks-redesign .tasks-hero.tasks-hero-bg .tasks-hero-content {
+  max-width: 780px;
+}
+@media(max-width:820px) {
+  .tasks-redesign .tasks-hero.tasks-hero-bg {
+    min-height: 0;
+    background-position: center right;
+  }
+  .tasks-redesign .tasks-hero.tasks-hero-bg::before {
+    background: linear-gradient(90deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .88) 70%, rgba(255, 255, 255, .78) 100%);
+  }
+}
+
+/* ============================================================
+   我的课程：横向通铺底图 Hero（复用 campusmate-courses-hero.jpg）
+   与待办与作业的 tasks-hero-bg 同款效果
+   ============================================================ */
+.courses-redesign .courses-hero.courses-hero-bg {
+  grid-template-columns: 1fr;
+  background-color: #eef1ff;
+  background-image: url("/assets/campusmate-courses-hero.jpg");
+  background-size: cover;
+  background-position: 68% center;
+  min-height: 300px;
+  position: relative;
+  overflow: hidden;
+}
+.courses-redesign .courses-hero.courses-hero-bg::before {
+  right: auto;
+  top: auto;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .94) 0%, rgba(255, 255, 255, .76) 42%, rgba(255, 255, 255, .22) 100%);
+}
+.courses-redesign .courses-hero.courses-hero-bg .courses-hero-content {
+  max-width: 780px;
+}
+@media(max-width:820px) {
+  .courses-redesign .courses-hero.courses-hero-bg {
+    min-height: 0;
+    background-position: 82% center;
+  }
+  .courses-redesign .courses-hero.courses-hero-bg::before {
+    background: linear-gradient(90deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .85) 62%, rgba(255, 255, 255, .55) 100%);
+  }
+}
+
+/* ============================================================
+   AI 导员：横向通铺底图 Hero（复用 campusmate-counselor-hero.png）
+   与待办与作业的 tasks-hero-bg 同款效果
+   ============================================================ */
+.counselor-page .counselor-hero.counselor-hero-bg {
+  display: block;
+  min-height: 300px;
+  height: auto;
+  padding: 36px 32px 32px;
+  background-image: url("/assets/campusmate-counselor-hero.png");
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 17px;
+}
+.counselor-page .counselor-hero.counselor-hero-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .96) 0%, rgba(255, 255, 255, .85) 40%, rgba(255, 255, 255, .38) 100%);
+}
+.counselor-page .counselor-hero.counselor-hero-bg .counselor-hero-content {
+  position: relative;
+  z-index: 1;
+  max-width: 780px;
+}
+.counselor-page .counselor-hero.counselor-hero-bg img {
+  display: none !important;
+}
+
+/* Desktop wide (>=1261px)：hero 跨两栏 */
+@media(min-width:1261px) {
+  .student-layout .counselor-page .counselor-hero.counselor-hero-bg {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    height: auto;
+    min-height: 260px;
+    margin: 0 0 0 0;
+  }
+}
+
+/* <=1260px */
+@media(max-width:1260px) {
+  .counselor-page .counselor-hero.counselor-hero-bg {
+    height: auto;
+    min-height: 280px;
+  }
+}
+
+/* <=900px */
+@media(max-width:900px) {
+  .counselor-page .counselor-hero.counselor-hero-bg {
+    height: auto;
+    min-height: 240px;
+    padding: 28px 26px 26px;
+  }
+}
+
+/* <=820px */
+@media(max-width:820px) {
+  .counselor-page .counselor-hero.counselor-hero-bg {
+    min-height: 0;
+    background-position: 72% center;
+  }
+  .counselor-page .counselor-hero.counselor-hero-bg::before {
+    background: linear-gradient(90deg, rgba(255, 255, 255, .96) 0%, rgba(255, 255, 255, .9) 60%, rgba(255, 255, 255, .78) 100%);
+  }
+}
+
+/* <=620px */
+@media(max-width:620px) {
+  .counselor-page .counselor-hero.counselor-hero-bg {
+    padding: 22px !important;
+    min-height: 0;
+  }
+}
+
+/* <=560px：取消三栏布局中 counselor-hero 的特殊约束 */
+@media(max-width:560px) {
+  .student-layout .counselor-page .counselor-hero.counselor-hero-bg {
+    grid-column: auto;
+    grid-row: auto;
+    margin: 0 0 17px;
+  }
+}
+
+
+

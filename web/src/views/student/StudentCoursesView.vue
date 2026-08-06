@@ -63,7 +63,7 @@ onMounted(load);
 <template>
   <main class="student-page courses-redesign page-enter">
     <!-- Hero Section -->
-    <section class="courses-hero">
+    <section class="courses-hero courses-hero-bg">
       <div class="courses-hero-content">
         <span class="hero-eyebrow">COURSES / 我的学习空间</span>
         <div class="student-title-line hero-title">
@@ -101,12 +101,6 @@ onMounted(load);
               <small>当前学期</small>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div class="courses-hero-art">
-        <div class="hero-illustration">
-          <img src="/assets/campusmate-courses-hero.jpg" alt="我的课程插图" class="hero-illust-img" />
         </div>
       </div>
     </section>
