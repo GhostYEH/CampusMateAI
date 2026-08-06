@@ -238,8 +238,8 @@ onMounted(load);
     </EmptyState>
     <section v-else class="tch-panel">
       <div class="tch-table-wrap">
-        <div class="tch-table-scroll" style="min-width: 880px">
-          <table class="tch-table">
+        <div class="tch-table-scroll">
+          <table class="tch-table" style="min-width: 880px">
             <thead>
               <tr>
                 <th>标题</th><th>课程 / 班级</th><th>状态</th><th>已读</th><th>发布时间</th><th>操作</th>

@@ -1,0 +1,318 @@
+/* ==========================================================================
+   teacher-pages.css — 教师端页面专属样式
+   --------------------------------------------------------------------------
+   放各教师页面专属的视觉规则，复用 styles.css 里的 tch-* 设计语言
+   (紫蓝主色 / 浅灰蓝背景 / 白色圆角卡片 / 柔和边框阴影 / 8px 间距体系)。
+
+   覆盖页面：
+   - 课程与班级 (tch-course-*)
+   - 个人中心 (tch-profile-*)
+   - AI 教学助理 (tch-ai-* 微调)
+   - 学情分析 (tch-* 间距微调)
+   ========================================================================== */
+
+/* ====================================================================
+   1. 课程与班级 —— tch-course-*
+   参考 origin/master 的 course-board / teacher-course 视觉语言：
+   响应式课程卡片，课程代码徽标 + 学期 + 状态 + 班级/学生数 + 操作按钮
+   ==================================================================== */
+.tch-course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.tch-course-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 22px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+  text-align: left;
+  min-height: 230px;
+}
+.tch-course-card:hover {
+  border-color: #c7cdf0;
+  box-shadow: 0 12px 26px rgba(82, 96, 190, .08);
+  transform: translateY(-2px);
+}
+.tch-course-card:active {
+  transform: scale(.99);
+}
+/* 代码徽标：对应 origin/master 的 course-monogram */
+.tch-course-monogram {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: .02em;
+  font-size: 15px;
+}
+.tch-course-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tch-course-semester {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.tch-course-card h2 {
+  margin: 2px 0 0;
+  font-size: 19px;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.tch-course-card > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 40px;
+}
+.tch-course-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0 0;
+  border-top: 1px solid #eef1f5;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tch-course-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.tch-course-stats svg {
+  color: var(--primary);
+}
+.tch-course-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #eef1f5;
+}
+.tch-course-actions .icon-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--primary);
+  background: #fff;
+}
+.tch-course-actions .icon-button:hover {
+  background: var(--primary-soft);
+  border-color: #c7cdf0;
+}
+@media (max-width: 620px) {
+  .tch-course-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ====================================================================
+   2. 个人中心 —— tch-profile-*
+   用 tch-* 设计语言替代旧的 portal-* + 620px 窄表单。
+   双栏卡片布局，保留原有资料保存逻辑。
+   ==================================================================== */
+.tch-profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 18px;
+  align-items: start;
+}
+.tch-profile-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px 24px;
+}
+.tch-profile-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+.tch-profile-avatar {
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 28px;
+  font-weight: 800;
+  border: 3px solid #fff;
+  box-shadow: 0 8px 20px rgba(82, 96, 190, .12);
+}
+.tch-profile-identity h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  letter-spacing: -.02em;
+}
+.tch-profile-identity .tch-profile-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 650;
+}
+.tch-profile-meta {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+}
+.tch-profile-meta li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.tch-profile-meta li span {
+  color: var(--muted);
+}
+.tch-profile-meta li b {
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  word-break: break-all;
+}
+.tch-profile-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.tch-profile-form-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.tch-profile-form-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tch-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.tch-profile-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .tch-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 520px) {
+  .tch-profile-card {
+    padding: 20px 18px;
+  }
+  .tch-profile-actions {
+    flex-direction: column-reverse;
+  }
+  .tch-profile-actions .primary-button,
+  .tch-profile-actions .secondary-button {
+    width: 100%;
+  }
+}
+
+/* ====================================================================
+   3. AI 教学助理 —— 微调
+   避免 min-height 过大造成无意义空白；输入框固定在聊天卡片底部。
+   ==================================================================== */
+.tch-ai-layout {
+  align-items: stretch;
+}
+.tch-ai-chat {
+  min-height: 520px;
+}
+.tch-ai-chat-body {
+  min-height: 320px;
+}
+/* 让聊天卡片在宽屏下也保持合理高度，不出现大块留白 */
+.tch-ai-side .tch-panel + .tch-panel {
+  margin-top: 0;
+}
+.tch-ai-input {
+  flex: 0 0 auto;
+}
+@media (max-width: 1024px) {
+  .tch-ai-chat {
+    min-height: 460px;
+  }
+  .tch-ai-chat-body {
+    min-height: 280px;
+    max-height: 520px;
+  }
+}
+
+/* ====================================================================
+   4. 学情分析 —— 间距与图表容器微调
+   不改变统计逻辑，仅优化层级、间距、图表容器与空状态。
+   ==================================================================== */
+.tch-tab-panel {
+  margin-top: 4px;
+}
+.tch-panel-head-row {
+  margin-bottom: 12px;
+}
+.tch-bar-chart {
+  min-height: 220px;
+  padding: 14px 4px 4px;
+}
+.tch-bar-track {
+  min-height: 160px;
+}
+.tch-mini-bar {
+  min-width: 80px;
+}
+/* 分数分布等图表空状态更紧凑 */
+.tch-panel .tch-empty.compact {
+  min-height: 160px;
+}
+@media (max-width: 760px) {
+  .tch-bar-chart {
+    gap: 8px;
+  }
+}

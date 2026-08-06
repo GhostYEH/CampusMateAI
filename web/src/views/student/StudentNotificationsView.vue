@@ -112,11 +112,10 @@ onMounted(() => load());
     <div class="student-heading page-heading-wide notice-heading">
       <div>
         <span class="eyebrow">NOTICES / 校园信息</span>
-        <h1>通知整理 <UiIcon name="PhSparkle" class="heading-sparkle" /></h1>
+        <h1>通知整理</h1>
         <p>先浏览课程通知，也可以粘贴一段原文，让系统提取截止时间并确认后保存为待办。</p>
       </div>
-      <div class="notice-heading-art"><img src="/assets/campusmate-notice-illustration.png" alt="通知整理插画" /></div>
-      <button class="secondary-button" :disabled="refreshing" @click="load(true)"><UiIcon name="PhArrowClockwise" />刷新</button>
+      <div class="hero-side"><div class="hero-decoration"><UiIcon name="PhSparkle" /></div><div class="notice-heading-art"><img src="/assets/campusmate-notice-illustration.png" alt="通知整理插画" /></div><button class="secondary-button" :disabled="refreshing" @click="load(true)"><UiIcon name="PhArrowClockwise" />刷新</button></div>
     </div>
 
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load">重试</button></div>
