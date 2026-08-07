@@ -1,5 +1,7 @@
 package com.example.campusai
 
+import android.app.Application
+import com.example.campusai.data.camera.CameraFrame
 import com.example.campusai.data.expression.ExpressionRecognitionService
 import com.example.campusai.data.expression.ExpressionSessionManager
 import com.example.campusai.data.model.ExpressionLabel
@@ -9,11 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.mockito.Mockito
 
 class ExpressionSessionManagerTest {
     @Test fun pauseOnTimerStopAndDisposeOnRelease() = runBlocking {
         val fake = FakeService()
-        val manager = ExpressionSessionManager(createService = { fake }, initialUseMock = false)
+        val application = Mockito.mock(Application::class.java)
+        val manager = ExpressionSessionManager(application = application, createService = { fake }, initialUseMock = false)
         manager.updateEligibility(enabled = true, permissionGranted = true, running = true, visible = true, foreground = true)
         assertEquals(1, fake.starts)
         manager.updateEligibility(running = false)
@@ -27,6 +31,7 @@ class ExpressionSessionManagerTest {
         var starts = 0
         var pauses = 0
         var disposals = 0
+        override fun analyze(frame: CameraFrame) {}
         override fun results(): Flow<ExpressionResult> = stream
         override suspend fun initialize() = Unit
         override suspend fun start() { starts++ }

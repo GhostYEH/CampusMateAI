@@ -62,6 +62,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.campusai.data.behavior.BehaviorPrediction
+import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.expression.ExpressionSessionManager
 import com.example.campusai.data.focus.FocusState
@@ -110,6 +112,7 @@ fun FocusScreen(
     val manager = appRepository.expressionSessionManager
     val expressionStatus by manager.status.collectAsState()
     val expression by manager.result.collectAsState()
+    val behaviorPrediction by manager.behaviorPrediction.collectAsState()
     val focusState by manager.focusState.collectAsState()
     val gentleReminder by manager.gentleReminder.collectAsState()
     val scope = rememberCoroutineScope()
@@ -318,6 +321,7 @@ fun FocusScreen(
                 status = expressionStatus,
                 focusState = focusState,
                 expression = expression.label,
+                behaviorPrediction = behaviorPrediction,
                 modelVersion = expression.modelVersion,
                 reminder = gentleReminder,
                 onToggle = { enabled ->
@@ -404,6 +408,7 @@ private fun LearningAssistanceCard(
     status: ExpressionServiceStatus,
     focusState: FocusState,
     expression: ExpressionLabel,
+    behaviorPrediction: BehaviorPrediction?,
     modelVersion: String,
     reminder: String?,
     onToggle: (Boolean) -> Unit,
@@ -432,7 +437,17 @@ private fun LearningAssistanceCard(
         }
         Spacer(Modifier.height(10.dp))
         Text("${if (mockMode) "Mock" else "本机 LiteRT"} · ${statusLabel(status)} · $modelVersion", color = Muted, fontSize = 11.sp)
-        Text("当前辅助观察：${focusStateLabel(focusState)} · 稳定表情：${expressionLabel(expression)}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text("当前辅助观察：${focusStateLabel(focusState)}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        if (behaviorPrediction != null) {
+            val behaviorText = if (behaviorPrediction.modelState == "MODEL_NOT_AVAILABLE") {
+                "行为识别模型尚未安装"
+            } else {
+                formatBehavior(behaviorPrediction)
+            }
+            Text("学习行为：$behaviorText", color = TextPrimary, fontSize = 12.sp)
+        } else {
+            Text("稳定表情：${expressionLabel(expression)}", color = TextPrimary, fontSize = 12.sp)
+        }
         Text("本次专注持续：$activeMinutes 分钟${if (running) "（分析中）" else ""}", color = Muted, fontSize = 11.sp)
         if (permissionDenied) Text("未授予相机权限，学习状态辅助未启动。", color = Muted, fontSize = 11.sp)
         if (reminder != null) Text(reminder, color = Primary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
@@ -468,6 +483,31 @@ private fun expressionLabel(label: ExpressionLabel) = when (label) {
     ExpressionLabel.DISGUST -> "厌恶"
     ExpressionLabel.UNKNOWN -> "暂不稳定"
     ExpressionLabel.NO_FACE -> "无画面"
+}
+
+private fun formatBehavior(prediction: BehaviorPrediction): String {
+    val topBehaviors = prediction.probabilities.entries
+        .filter { it.value > 0.5f }
+        .sortedByDescending { it.value }
+        .map { entry ->
+            when (entry.key) {
+                StudyBehavior.READING -> "正在阅读"
+                StudyBehavior.WRITING -> "正在写字"
+                StudyBehavior.TYPING -> "正在打字"
+                StudyBehavior.PAGE_TURNING -> "正在翻书"
+                StudyBehavior.PEN_SPINNING -> "轻微转笔"
+                StudyBehavior.PEN_FIDGETING -> "玩笔"
+                StudyBehavior.PHONE_USE -> "使用手机"
+                StudyBehavior.HEAD_DOWN -> "低头"
+                StudyBehavior.DROWSY -> "疲劳"
+                StudyBehavior.LOOKING_AWAY -> "看向别处"
+                StudyBehavior.ABSENT -> "离开"
+                else -> ""
+            }
+        }
+        .filter { it.isNotEmpty() }
+        
+    return if (topBehaviors.isEmpty()) "正在观察" else topBehaviors.joinToString(" · ")
 }
 
 internal fun FocusSessionSummary.toCounselorPrompt(): String = buildString {

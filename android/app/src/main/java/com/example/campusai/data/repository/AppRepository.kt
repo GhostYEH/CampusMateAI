@@ -67,6 +67,7 @@ class AppRepository(application: Application) {
 
     /** The only owner of the expression model and camera session in the app. */
     val expressionSessionManager = ExpressionSessionManager(
+        application = application,
         createService = { useMock -> createExpressionRecognitionService(useMock) },
         initialUseMock = BuildConfig.DEFAULT_USE_MOCK,
     )
@@ -170,6 +171,62 @@ class AppRepository(application: Application) {
         _session.value = user
         dataStore.saveSession(user)
         return user
+    }
+
+    suspend fun loginChaoxing(username: String, password: String): Pair<Boolean, String> {
+        return try {
+            val req = com.example.campusai.data.remote.ChaoxingLoginRequest(username, password)
+            val resp = ApiClient.api.loginChaoxing(req)
+            if (resp.isSuccessful) {
+                Pair(true, "")
+            } else {
+                val errorStr = resp.errorBody()?.string() ?: ""
+                val msg = if (resp.code() == 403 || errorStr.contains("verification_required")) "verification_required" else "登录失败: ${resp.code()}"
+                Pair(false, msg)
+            }
+        } catch (e: Exception) {
+            Pair(false, "网络错误: ${e.message}")
+        }
+    }
+
+    suspend fun syncChaoxing(): Pair<Boolean, String> {
+        return try {
+            val resp = ApiClient.api.syncChaoxing()
+            if (resp.isSuccessful) {
+                Pair(true, "")
+            } else {
+                val errorStr = resp.errorBody()?.string() ?: ""
+                if (resp.code() == 401 || errorStr.contains("reauth_required")) {
+                    Pair(false, "reauth_required")
+                } else {
+                    Pair(false, "同步失败: ${resp.code()}")
+                }
+            }
+        } catch (e: Exception) {
+            Pair(false, "网络错误: ${e.message}")
+        }
+    }
+
+    suspend fun getChaoxingStatus(): com.example.campusai.data.remote.ChaoxingSyncStatusResponse? {
+        return try {
+            val resp = ApiClient.api.getChaoxingStatus()
+            if (resp.isSuccessful) {
+                resp.body()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun disconnectChaoxing(): Boolean {
+        return try {
+            val resp = ApiClient.api.disconnectChaoxing()
+            resp.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
     }
 
     suspend fun logout() {
@@ -870,26 +927,7 @@ class AppRepository(application: Application) {
         // Obsolete, use enqueueNoticeIngestion instead
     }
 
-    suspend fun loginChaoxing(username: String, password: String): Boolean {
-        if (!_backendOnline.value || _mockMode.value) return false
-        return try {
-            val response = ApiClient.api.loginChaoxing(
-                com.example.campusai.data.remote.ChaoxingLoginRequest(username, password)
-            )
-            response.isSuccessful
-        } catch (e: Exception) {
-            false
-        }
-    }
 
-    suspend fun syncChaoxing() {
-        if (!_backendOnline.value || _mockMode.value) return
-        try {
-            ApiClient.api.syncChaoxing()
-        } catch (e: Exception) {
-            println("Failed to sync chaoxing: ${e.message}")
-        }
-    }
 
     private fun defaultTasks() = listOf(
         Task("demo-1", "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),

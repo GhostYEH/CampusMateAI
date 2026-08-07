@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.chaoxing.ChaoxingClient import ChaoxingClient
 from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.multi_role_repository import CourseRepository
+from app.repositories.notice_repository import NoticeRepository
 from app.database.sqlite_db import Database
 from app.api.routes.chaoxing import get_chaoxing_status, sync_chaoxing
 from app.schemas.chaoxing import ChaoxingSyncStatus
@@ -184,9 +185,15 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
             </li>
         </html>
     """
+    
+    mock_notices_response_empty = MagicMock()
+    mock_notices_response_empty.status_code = 200
+    mock_notices_response_empty.text = "<html></html>"
+    mock_notices_response_empty.raise_for_status = MagicMock()
+    mock_notices_response_empty.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, mock_notices_response_empty
     ]
 
     await sync_chaoxing(user=user, container=container)
@@ -222,9 +229,15 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
             </li>
         </html>
     """
+    
+    mock_notices_response_empty2 = MagicMock()
+    mock_notices_response_empty2.status_code = 200
+    mock_notices_response_empty2.text = "<html></html>"
+    mock_notices_response_empty2.raise_for_status = MagicMock()
+    mock_notices_response_empty2.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response2
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response2, mock_notices_response_empty2
     ]
 
     await sync_chaoxing(user=user, container=container)
@@ -296,10 +309,16 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
             <a href="/mycourse/stu?courseid=111&clazzid=222">链接</a>
         </li>
     '''
+    
+    mock_notices_response_empty = MagicMock()
+    mock_notices_response_empty.status_code = 200
+    mock_notices_response_empty.text = "<html></html>"
+    mock_notices_response_empty.raise_for_status = MagicMock()
+    mock_notices_response_empty.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2,
-        mock_json_response, mock_courses_response2, mock_assignments_response, mock_assignments_response2
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty,
+        mock_json_response, mock_courses_response2, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty
     ]
 
     await sync_chaoxing(user=user, container=container)
@@ -361,9 +380,15 @@ async def test_chaoxing_sync_courses_isolation(db, mock_httpx_client):
     mock_assignments_response2.status_code = 200
     mock_assignments_response2.text = "<html></html>"
     
+    mock_notices_response_empty = MagicMock()
+    mock_notices_response_empty.status_code = 200
+    mock_notices_response_empty.text = "<html></html>"
+    mock_notices_response_empty.raise_for_status = MagicMock()
+    mock_notices_response_empty.json.side_effect = Exception("Not JSON")
+    
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2,
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty,
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty
     ]
     
     container = MockContainer()
@@ -446,3 +471,232 @@ async def test_chaoxing_sync_abnormal_response(db, mock_httpx_client):
     # 没有假课程生成
     courses, _ = course_repo.list_courses(teacher_id="user1")
     assert len(courses) == 0
+
+@pytest.mark.asyncio
+async def test_chaoxing_assignment_status_parsing(mock_httpx_client):
+    client = ChaoxingClient()
+
+    html_course_page = """
+    <html>
+        <input name="courseid" value="111" />
+        <input name="clazzid" value="222" />
+        <a title="作业" data-url="/work">作业</a>
+        <input name="workEnc" value="enc" />
+    </html>
+    """
+
+    html_template = """
+    <html>
+        <li class="work-item" data-workid="{id}">
+            <div class="work-title">作业{id}</div>
+            <div class="work-deadline">2026-08-10</div>
+            <span class="status">{status}</span>
+        </li>
+    </html>
+    """
+    
+    statuses = [
+        ("未交", "pending"),
+        ("未完成", "pending"),
+        ("未提交", "pending"),
+        ("已完成", "completed"),
+        ("已提交", "completed"),
+        ("已批阅", "completed")
+    ]
+
+    for idx, (text_status, expected_status) in enumerate(statuses):
+        mock_course_resp = MagicMock()
+        mock_course_resp.status_code = 200
+        mock_course_resp.text = html_course_page
+        mock_course_resp.raise_for_status = MagicMock()
+
+        mock_assignments_resp = MagicMock()
+        mock_assignments_resp.status_code = 200
+        mock_assignments_resp.text = html_template.format(id=idx, status=text_status)
+        mock_assignments_resp.raise_for_status = MagicMock()
+        
+        mock_httpx_client.side_effect = [mock_course_resp, mock_assignments_resp]
+        
+        result = await client.get_assignments_and_notices("dummy_url")
+        assignments = result.get("assignments", [])
+        assert len(assignments) == 1, f"Failed for {text_status}"
+        assert assignments[0]["status"] == expected_status, f"Expected {expected_status} for '{text_status}', got {assignments[0]['status']}"
+
+@pytest.mark.asyncio
+async def test_chaoxing_sync_notices(db, mock_httpx_client):
+    repo = ChaoxingRepository(db)
+    course_repo = CourseRepository(db)
+    task_repo = PersonalTaskRepository(db)
+    notice_repo = NoticeRepository(db)
+    repo.save_credentials("user1", {"cookie": "A"})
+    repo.save_credentials("user2", {"cookie": "B"})
+
+    class MockContainer:
+        def __init__(self):
+            self.chaoxing_repository = repo
+            self.course_repository = course_repo
+            self.personal_task_repository = task_repo
+            self.notice_repository = notice_repo
+            self.db = db
+
+    container = MockContainer()
+    user1 = UserRow(id="user1", username="test1", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
+    user2 = UserRow(id="user2", username="test2", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
+
+    # 模拟 JSON 失败
+    mock_json_response = MagicMock()
+    mock_json_response.status_code = 404
+
+    # 模拟课程列表
+    mock_courses_response = MagicMock()
+    mock_courses_response.status_code = 200
+    mock_courses_response.text = '''
+        <li class="course">
+            <span class="course-name">高等数学</span>
+            <a href="/mycourse/stu?courseid=111&clazzid=222">链接</a>
+        </li>
+    '''
+    mock_courses_response.raise_for_status = MagicMock()
+
+    # 模拟课程页面
+    mock_course_page_response = MagicMock()
+    mock_course_page_response.status_code = 200
+    mock_course_page_response.text = """
+        <html>
+            <input name="courseid" value="111" />
+            <input name="clazzid" value="222" />
+            <a title="作业" data-url="/work">作业</a>
+            <input name="workEnc" value="enc" />
+        </html>
+    """
+
+    # 模拟作业为空
+    mock_assignments_response = MagicMock()
+    mock_assignments_response.status_code = 200
+    mock_assignments_response.text = "<html></html>"
+    mock_assignments_response.raise_for_status = MagicMock()
+
+    # 模拟通知页面 JSON
+    mock_notices_response = MagicMock()
+    mock_notices_response.status_code = 200
+    mock_notices_response.json.return_value = {
+        "list": [
+            {
+                "id": 1001,
+                "title": "关于期中考试的通知",
+                "content": "请大家准备期中考试",
+                "insertTime": "2026-08-01 10:00:00"
+            }
+        ]
+    }
+    mock_notices_response.raise_for_status = MagicMock()
+
+    # First sync for user1
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, 
+        mock_course_page_response, mock_notices_response
+    ]
+    await sync_chaoxing(user=user1, container=container)
+
+    notices = notice_repo.list_notices("user1")
+    assert len(notices) == 1
+    assert notices[0].title == "关于期中考试的通知"
+    assert notices[0].external_id == "1001"
+    assert notices[0].source == "chaoxing"
+    
+    # User2 sync with same data (isolation)
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, 
+        mock_course_page_response, mock_notices_response
+    ]
+    await sync_chaoxing(user=user2, container=container)
+    
+    notices_user2 = notice_repo.list_notices("user2")
+    assert len(notices_user2) == 1
+    assert notices_user2[0].id != notices[0].id
+
+    # Sync again for user1 with updated title
+    mock_notices_response_update = MagicMock()
+    mock_notices_response_update.status_code = 200
+    mock_notices_response_update.json.return_value = {
+        "list": [
+            {
+                "id": 1001,
+                "title": "【更新】关于期中考试的通知",
+                "content": "请大家准备期中考试",
+                "insertTime": "2026-08-01 10:00:00"
+            }
+        ]
+    }
+    mock_notices_response_update.raise_for_status = MagicMock()
+    
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, 
+        mock_course_page_response, mock_notices_response_update
+    ]
+    await sync_chaoxing(user=user1, container=container)
+
+    notices_updated = notice_repo.list_notices("user1")
+    assert len(notices_updated) == 1
+    assert notices_updated[0].title == "【更新】关于期中考试的通知"
+
+    # Test Session invalid preserves old notices
+    mock_json_response_err = MagicMock()
+    mock_json_response_err.status_code = 302 # Session invalid
+    mock_httpx_client.side_effect = [mock_json_response_err]
+    
+    with pytest.raises(fastapi.HTTPException):
+        await sync_chaoxing(user=user1, container=container)
+        
+    notices_after_err = notice_repo.list_notices("user1")
+    assert len(notices_after_err) == 1
+
+    # Test HTML fallback
+    mock_notices_response_html = MagicMock()
+    mock_notices_response_html.status_code = 200
+    mock_notices_response_html.json.side_effect = Exception("Not JSON")
+    mock_notices_response_html.text = """
+    <html>
+        <li class="notice-item" data-noticeid="2002">
+            <h3 class="title">HTML通知</h3>
+            <p class="content">内容内容</p>
+            <span class="time">2026-08-05</span>
+        </li>
+    </html>
+    """
+    mock_notices_response_html.raise_for_status = MagicMock()
+    
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, 
+        mock_course_page_response, mock_notices_response_html
+    ]
+    await sync_chaoxing(user=user1, container=container)
+    
+    notices_final = notice_repo.list_notices("user1")
+    assert len(notices_final) == 2
+    assert any(n.external_id == "2002" and n.title == "HTML通知" for n in notices_final)
+    
+    # 模拟 API 接口 listNotices 调用测试
+    from app.api.routes.notices import list_notices
+    from app.schemas.multi_role import Page
+    import unittest.mock
+
+    # 创建一个模拟的用户和容器依赖项，这里简化调用 _user_visible_classes 的依赖
+    class MockAnnRepo:
+        def list_announcements(self, class_id, status, page, page_size):
+            return [], 0
+            
+    container.announcement_repository = MockAnnRepo()
+    container.enrollment_repository = unittest.mock.MagicMock()
+    container.enrollment_repository.list_user_classes.return_value = []
+    container.class_group_repository = unittest.mock.MagicMock()
+    container.course_repository = unittest.mock.MagicMock()
+    
+    page_result = list_notices(unread_only=False, page=1, page_size=50, user=user1, container=container)
+    assert isinstance(page_result, Page)
+    # 应该查到刚刚同步的 2 条学习通通知
+    assert page_result.total == 2
+    assert any(item.title == "【更新】关于期中考试的通知" for item in page_result.items)
+    assert any(item.title == "HTML通知" for item in page_result.items)
+
+

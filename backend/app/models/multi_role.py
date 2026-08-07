@@ -361,6 +361,39 @@ class StudentAssignmentStatus:
     score: Optional[float]
 
 
+@dataclass
+class NoticeRow:
+    id: str
+    user_id: str
+    source: str
+    external_id: str
+    course_id: Optional[str] = None
+    title: str = ""
+    content: Optional[str] = None
+    published_at: Optional[str] = None
+    source_url: Optional[str] = None
+    last_synced_at: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+
+    @classmethod
+    def from_row(cls, row) -> "NoticeRow":
+        return cls(
+            id=row["id"],
+            user_id=row["user_id"],
+            source=row["source"],
+            external_id=row["external_id"],
+            course_id=row["course_id"],
+            title=row["title"],
+            content=row["content"],
+            published_at=row["published_at"],
+            source_url=row["source_url"],
+            last_synced_at=row["last_synced_at"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+
 __all__ = [
     "UserRow",
     "RefreshTokenRow",
@@ -374,4 +407,5 @@ __all__ = [
     "SubmissionAttachmentRow",
     "AssignmentAttachmentRow",
     "StudentAssignmentStatus",
+    "NoticeRow",
 ]

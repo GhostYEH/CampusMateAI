@@ -70,15 +70,31 @@ def list_notices(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
-    """校园通知列表 —— 聚合当前用户可见班级的已发布通知。
-
-    - 学生: 看自己已加入班级的通知,`unread` 由已读记录计算
-    - 教师: 看其负责课程下班级的通知
-    - 管理员: 看全部通知
-    - 按 `published_at` 倒序(无发布时间者排后)
-    """
-    ann_repo = container.announcement_repository
+    """校园通知列表 —— 聚合 notices 表和 announcements 表的通知。"""
+    
     items: List[NoticeOut] = []
+    
+    # 1. 加载统一 notices 表中的通知（微信、学习通等）
+    notice_repo = container.notice_repository
+    unified_notices = notice_repo.list_notices(user.id)
+    for n in unified_notices:
+        # Notice 表数据暂时不维护 unread 状态（或统一默认已读）
+        if unread_only:
+            continue
+        items.append(
+            NoticeOut(
+                id=n.id,
+                title=n.title,
+                source=n.source,
+                time=n.published_at or n.created_at,
+                unread=False,
+                category=n.source,
+                content=n.content,
+            )
+        )
+
+    # 2. 加载旧 announcements 表中的通知（向后兼容）
+    ann_repo = container.announcement_repository
     for class_id, class_name, course_name in _user_visible_classes(user, container):
         rows, _ = ann_repo.list_announcements(
             class_id, status="published", page=1, page_size=100
@@ -98,6 +114,7 @@ def list_notices(
                     content=ann.content,
                 )
             )
+    
     # 排序: 有时间者按时间倒序,无时间者排后
     items.sort(key=lambda n: n.time or "", reverse=True)
     if unread_only:
@@ -263,6 +280,16 @@ async def ingest_notice(
     dedup_key = f"wechat_{extracted_notice.source_name}_{dup_check_result.content_hash}"[:100]
     
     try:
+        # 创建统一通知记录
+        container.notice_repository.create_or_update_notice(
+            user_id=user.id,
+            source=extracted_notice.source_name or "wechat",
+            external_id=dedup_key,
+            title=extracted_notice.title or extracted_notice.task,
+            content=req.content,
+            published_at=req.published_at.isoformat() if req.published_at else None,
+        )
+        
         # 创建新的个人任务，依赖底层数据库 UNIQUE(user_id, source_notice_id) 约束处理并发
         task_repo.create_task(
             user_id=user.id,

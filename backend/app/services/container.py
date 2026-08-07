@@ -29,6 +29,7 @@ from ..repositories.personal_hub_repository import (
 )
 from ..repositories.study_session_repository import StudySessionRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
+from ..repositories.notice_repository import NoticeRepository
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
@@ -66,6 +67,7 @@ class ServiceContainer:
     # 学习陪伴
     study_session_repository: StudySessionRepository
     chaoxing_repository: ChaoxingRepository
+    notice_repository: NoticeRepository
     task_breakdown_service: TaskBreakdownService
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -120,6 +122,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         favorite_repository=favorite_repo,
         study_session_repository=study_session_repo,
         chaoxing_repository=ChaoxingRepository(db),
+        notice_repository=NoticeRepository(db),
         task_breakdown_service=task_breakdown,
     )
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)

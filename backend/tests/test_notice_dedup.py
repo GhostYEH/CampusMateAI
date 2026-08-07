@@ -44,6 +44,10 @@ def test_notice_deduplication():
     tasks1 = client.get("/api/v1/tasks", headers=headers).json()["items"]
     initial_count = len(tasks1)
     
+    # Check unified notices count
+    notices1 = client.get("/api/v1/notices", headers=headers).json()["items"]
+    initial_notices_count = len([n for n in notices1 if n["source"] == "WeChat Group"])
+    
     # Second ingestion with same content
     resp2 = client.post("/api/v1/notices/ingest", headers=headers, json=req1)
     assert resp2.status_code == 200
@@ -52,6 +56,9 @@ def test_notice_deduplication():
     # Check tasks count again, should not increase
     tasks2 = client.get("/api/v1/tasks", headers=headers).json()["items"]
     assert len(tasks2) == initial_count
+    
+    notices2 = client.get("/api/v1/notices", headers=headers).json()["items"]
+    assert len([n for n in notices2 if n["source"] == "WeChat Group"]) == initial_notices_count
 
 def test_notice_different_group_same_content():
     client = _client()

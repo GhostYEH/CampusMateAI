@@ -31,6 +31,10 @@ class MockExpressionRecognitionService : ObservableExpressionRecognitionService 
     )
     override val modeLabel = "Mock 表情模型"
 
+    override fun analyze(frame: com.example.campusai.data.camera.CameraFrame) {
+        // Mock doesn't need real frames
+    }
+
     override fun results(): Flow<ExpressionResult> = _results
 
     override suspend fun initialize() {

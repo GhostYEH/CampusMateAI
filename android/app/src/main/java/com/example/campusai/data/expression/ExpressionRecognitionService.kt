@@ -1,12 +1,11 @@
 package com.example.campusai.data.expression
 
-import androidx.camera.view.PreviewView
-import androidx.lifecycle.LifecycleOwner
+import com.example.campusai.data.camera.FrameAnalyzer
 import com.example.campusai.data.model.ExpressionResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-interface ExpressionRecognitionService {
+interface ExpressionRecognitionService : FrameAnalyzer {
     fun results(): Flow<ExpressionResult>
     suspend fun initialize()
     suspend fun start()
@@ -31,7 +30,3 @@ interface ObservableExpressionRecognitionService : ExpressionRecognitionService 
     val modeLabel: String
 }
 
-interface CameraExpressionRecognitionService : ObservableExpressionRecognitionService {
-    fun bindCamera(lifecycleOwner: LifecycleOwner, previewView: PreviewView)
-    fun unbindCamera()
-}
