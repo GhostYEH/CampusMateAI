@@ -52,12 +52,16 @@ fun ChaoxingLoginScreen(viewModel: ChaoxingViewModel = viewModel(), onLoginSucce
                     isLoading = true
                     error = null
                     scope.launch {
-                        val success = viewModel.login(username, password)
+                        val (success, msg) = viewModel.login(username, password)
                         isLoading = false
                         if (success) {
                             onLoginSuccess()
                         } else {
-                            error = "登录失败，请检查账号密码"
+                            if (msg == "verification_required") {
+                                error = "需要验证码（暂时不支持绕过，请在官方APP/网页处理）"
+                            } else {
+                                error = msg
+                            }
                         }
                     }
                 },

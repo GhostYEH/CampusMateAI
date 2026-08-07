@@ -4,17 +4,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
-import android.util.Size
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.view.PreviewView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
+import com.example.campusai.data.camera.CameraFrame
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.google.mlkit.vision.common.InputImage
@@ -33,11 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class RealExpressionRecognitionService(
     private val application: Application,
-) : CameraExpressionRecognitionService {
+) : ObservableExpressionRecognitionService {
     private var analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var lifecycleOwner: LifecycleOwner? = null
-    private var previewView: PreviewView? = null
     private var processor: ExpressionSignalProcessor? = null
     private var runner: ExpressionModelRunner? = null
     private val analyzing = AtomicBoolean(false)
@@ -100,28 +87,23 @@ class RealExpressionRecognitionService(
     override suspend fun start() {
         if (runner == null) initialize()
         running = true
-        bindUseCasesIfReady()
         _status.value = ExpressionServiceStatus.Running
     }
 
     override suspend fun pause() {
         running = false
-        cameraProvider?.unbindAll()
         processor?.reset()
         _status.value = ExpressionServiceStatus.Paused
     }
 
     override suspend fun stop() {
         running = false
-        cameraProvider?.unbindAll()
         processor?.reset()
         _status.value = ExpressionServiceStatus.Ready
     }
 
     override suspend fun dispose() {
         running = false
-        cameraProvider?.unbindAll()
-        cameraProvider = null
         synchronized(inferenceLock) {
             runner?.close()
             runner = null
@@ -132,83 +114,17 @@ class RealExpressionRecognitionService(
         _status.value = ExpressionServiceStatus.Off
     }
 
-    override fun bindCamera(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
-        this.lifecycleOwner = lifecycleOwner
-        this.previewView = previewView
-        bindUseCasesIfReady()
-    }
-
-    override fun unbindCamera() {
-        cameraProvider?.unbindAll()
-        lifecycleOwner = null
-        previewView = null
-    }
-
-    private fun bindUseCasesIfReady() {
-        val owner = lifecycleOwner ?: return
-        val view = previewView ?: return
-        if (!running) return
-        val future = ProcessCameraProvider.getInstance(application)
-        future.addListener({
-            try {
-                val provider = future.get()
-                cameraProvider = provider
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(view.surfaceProvider)
-                }
-                val analysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setResolutionSelector(
-                        ResolutionSelector.Builder()
-                            .setResolutionStrategy(
-                                ResolutionStrategy(
-                                    Size(640, 480),
-                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-                                ),
-                            )
-                            .build(),
-                    )
-                    .build()
-                    .also { useCase ->
-                        useCase.setAnalyzer(analysisExecutor) { image ->
-                            analyze(image)
-                        }
-                    }
-                provider.unbindAll()
-                provider.bindToLifecycle(
-                    owner,
-                    CameraSelector.DEFAULT_FRONT_CAMERA,
-                    preview,
-                    analysis,
-                )
-            } catch (error: Exception) {
-                _status.value = ExpressionServiceStatus.Error(
-                    error.message ?: "摄像头启动失败",
-                )
-            }
-        }, ContextCompat.getMainExecutor(application))
-    }
-
-    private fun analyze(image: ImageProxy) {
+    override fun analyze(frame: CameraFrame) {
         val now = SystemClock.elapsedRealtime()
         if (!running || now - lastAnalyzedAt < ANALYSIS_INTERVAL_MS ||
             !analyzing.compareAndSet(false, true)
         ) {
-            image.close()
             return
         }
         lastAnalyzedAt = now
-        val bitmap = try {
-            ImageProxyBitmapConverter.toUprightMirroredBitmap(image, mirror = true)
-        } catch (error: Exception) {
-            image.close()
-            analyzing.set(false)
-            _status.value = ExpressionServiceStatus.Error(
-                error.message ?: "摄像头画面处理失败",
-            )
-            return
-        }
-        image.close()
+        frame.retain()
+        val bitmap = frame.bitmap
+        
         detector.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener(analysisExecutor) { faces ->
                 if (!running) return@addOnSuccessListener
@@ -224,7 +140,7 @@ class RealExpressionRecognitionService(
                 )
             }
             .addOnCompleteListener(analysisExecutor) {
-                bitmap.recycle()
+                frame.release()
                 analyzing.set(false)
             }
     }

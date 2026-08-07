@@ -31,3 +31,10 @@ class ChaoxingRepository:
             return json.loads(decrypted_cookies)
         except Exception:
             return None
+
+    def delete_credentials(self, user_id: str):
+        with self._db.transaction() as conn:
+            conn.execute(
+                "DELETE FROM chaoxing_credentials WHERE user_id = ?",
+                (user_id,)
+            )

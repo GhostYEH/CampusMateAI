@@ -235,7 +235,9 @@ class ChaoxingClient:
                     status_text = "未交"
                 
                 status = "pending"
-                if any(x in status_text for x in ["已交", "已完成", "已批阅", "待批阅", "已提交", "完成"]):
+                if any(x in status_text for x in ["未交", "未完成", "未提交", "待完成"]):
+                    status = "pending"
+                elif any(x in status_text for x in ["已交", "已完成", "已提交", "已批阅", "待批阅"]):
                     status = "completed"
 
                 if link and link.startswith("/"):
@@ -253,3 +255,98 @@ class ChaoxingClient:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             print(f"Error while fetching assignments and notices: {e}")
             return {"assignments": [], "notices": []}
+
+    async def get_notices(self, course_url: str) -> list[dict]:
+        """获取课程通知。"""
+        try:
+            # 1. 访问课程页提取 courseid 和 classid
+            response = await self.client.get(course_url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "lxml")
+            
+            course_id_elem = soup.find("input", {"name": "courseid"}) or soup.find("input", {"id": "courseId"})
+            class_id_elem = soup.find("input", {"name": "clazzid"}) or soup.find("input", {"id": "classId"})
+            
+            if not course_id_elem or not class_id_elem:
+                return []
+                
+            course_id = course_id_elem["value"]
+            class_id = class_id_elem["value"]
+
+            # 2. 访问通知列表接口 (尝试找 stable API，回退到 HTML 解析)
+            # 根据经验，学习通的通知接口通常是 /notice/getNoticeList?courseId=xxx&classId=xxx 等
+            # 由于题目要求优先稳定接口，这里假设用 HTML 回退的方式处理
+            
+            notice_url = f"https://mooc1.chaoxing.com/notice/getNoticeList?courseId={course_id}&classId={class_id}"
+            notice_resp = await self.client.get(notice_url)
+            notice_resp.raise_for_status()
+            
+            notices = []
+            
+            # 尝试 JSON
+            try:
+                data = notice_resp.json()
+                if "list" in data:
+                    for item in data["list"]:
+                        nid = item.get("id") or item.get("noticeId")
+                        if not nid:
+                            continue
+                        notices.append({
+                            "external_id": str(nid),
+                            "title": item.get("title", "无标题"),
+                            "content": item.get("content", ""),
+                            "published_at": item.get("insertTime") or item.get("publishTime"),
+                            "link": f"https://mooc1.chaoxing.com/notice/noticeDetail?noticeId={nid}&courseId={course_id}&classId={class_id}"
+                        })
+                    return notices
+            except Exception:
+                pass
+                
+            # fallback: HTML 提取
+            notice_soup = BeautifulSoup(notice_resp.text, "lxml")
+            for item in notice_soup.select(".notice-item, .noticeList li, tr"):
+                title_elem = item.select_one(".title, .name, h3, a")
+                if not title_elem:
+                    continue
+                title = title_elem.text.strip()
+                
+                content_elem = item.select_one(".content, .summary, p")
+                content = content_elem.text.strip() if content_elem else ""
+                
+                time_elem = item.select_one(".time, .date")
+                published_at = time_elem.text.strip() if time_elem else ""
+                
+                link_elem = item.select_one("a")
+                link = link_elem["href"] if link_elem and link_elem.has_attr("href") else ""
+                
+                external_id = item.get("data-noticeid") or item.get("data-id") or item.get("id")
+                
+                if not external_id and link:
+                    import re
+                    match = re.search(r'(?:noticeId|id|announcementId)=(\d+)', link, re.IGNORECASE)
+                    if match:
+                        external_id = match.group(1)
+                
+                if not external_id:
+                    input_id = item.select_one("input[name='noticeId'], input[name='id']")
+                    if input_id:
+                        external_id = input_id.get("value")
+                        
+                if not external_id:
+                    continue
+                    
+                if link and link.startswith("/"):
+                    link = "https://mooc1.chaoxing.com" + link
+                    
+                notices.append({
+                    "external_id": str(external_id),
+                    "title": title,
+                    "content": content,
+                    "published_at": published_at,
+                    "link": link
+                })
+                
+            return notices
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            print(f"Error while fetching notices: {e}")
+            return []

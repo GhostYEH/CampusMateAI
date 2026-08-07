@@ -39,6 +39,11 @@ data class ChaoxingLoginRequest(
     val password: String
 )
 
+data class ChaoxingSyncStatusResponse(
+    val status: String, // "online" or "offline"
+    val last_synced_at: String?
+)
+
 data class HealthResponse(val mode: String? = null)
 data class KnowledgeStatusResponse(
     val mode: String? = null,
@@ -206,6 +211,11 @@ interface ApiService {
     @POST("api/v1/chaoxing/sync")
     suspend fun syncChaoxing(): Response<Unit>
 
+    @POST("api/v1/chaoxing/disconnect")
+    suspend fun disconnectChaoxing(): Response<Unit>
+
+    @GET("api/v1/chaoxing/status")
+    suspend fun getChaoxingStatus(): Response<ChaoxingSyncStatusResponse>
 
     // 校园通知列表（聚合学生可见班级的已发布通知）
     @GET("notices")

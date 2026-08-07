@@ -425,6 +425,27 @@ CREATE TABLE IF NOT EXISTS chaoxing_credentials (
 );
 """
 
+NOTICES_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS notices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    course_id TEXT,
+    title TEXT NOT NULL,
+    content TEXT,
+    published_at TEXT,
+    source_url TEXT,
+    last_synced_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, source, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_notices_user_id ON notices(user_id);
+CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -476,6 +497,7 @@ class Database:
                 conn.executescript(STUDY_SCHEMA_SQL)
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
+                conn.executescript(NOTICES_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

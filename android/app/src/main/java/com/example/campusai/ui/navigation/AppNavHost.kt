@@ -175,11 +175,17 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() },
                 onOpenContribution = { navController.navigate("expression-contribution") },
                 onOpenNotificationSettings = { navController.navigate("notification-settings") },
-                onOpenChaoxingLogin = { navController.navigate("chaoxing-login") },
+                onOpenChaoxingLogin = { navController.navigate("chaoxing") },
             )
         }
         composable("notification-settings") {
             NotificationSettingsScreen(repository)
+        }
+        composable("chaoxing") {
+            com.example.campusai.ui.screens.profile.ChaoxingScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToLogin = { navController.navigate("chaoxing-login") }
+            )
         }
         composable("chaoxing-login") {
             ChaoxingLoginScreen(onLoginSuccess = { navController.popBackStack() })

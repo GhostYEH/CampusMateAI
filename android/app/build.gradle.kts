@@ -112,6 +112,7 @@ dependencies {
     implementation(libs.google.ai.edge.litert)
     implementation(libs.google.mlkit.face.detection)
     testImplementation(libs.junit)
+    testImplementation("org.mockito:mockito-core:5.12.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

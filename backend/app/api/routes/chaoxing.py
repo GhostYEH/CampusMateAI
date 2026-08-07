@@ -188,7 +188,35 @@ async def sync_chaoxing(
                 if assignment.get("status") == "completed":
                     task_repo.complete(new_task.id, user_id=user.id)
 
+    # Notice Sync
+    for course in courses:
+        notices = await client.get_notices(course["link"])
+        for notice in notices:
+            external_id = notice.get("external_id")
+            if not external_id:
+                continue
+                
+            container.notice_repository.create_or_update_notice(
+                user_id=user.id,
+                source="chaoxing",
+                external_id=external_id,
+                title=notice["title"],
+                content=notice.get("content"),
+                course_id=course.get("course_id"),
+                published_at=notice.get("published_at"),
+                source_url=notice.get("link"),
+                last_synced_at=now_iso,
+            )
+
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
 
     return {"status": "sync completed"}
+
+@router.post("/chaoxing/disconnect")
+async def disconnect_chaoxing(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+):
+    container.chaoxing_repository.delete_credentials(user.id)
+    return {"status": "disconnected"}
