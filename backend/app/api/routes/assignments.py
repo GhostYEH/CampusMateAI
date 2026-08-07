@@ -162,29 +162,7 @@ def list_student_assignments(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.post("/classes/{class_id}/assignments", response_model=AssignmentOut, status_code=201)
-def create_assignment(
-    class_id: str,
-    req: AssignmentCreate,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentOut:
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    a = container.assignment_repository.create_assignment(
-        class_group_id=class_id,
-        author_id=user.id,
-        title=req.title,
-        description=req.description,
-        deadline=req.deadline,
-        submission_types=req.submission_types,
-        max_score=req.max_score,
-        allow_resubmit=req.allow_resubmit,
-        status=req.status,
-    )
-    return _assignment_to_out(a, author_name=user.display_name or user.username, container=container)
+
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentOut)
@@ -205,123 +183,7 @@ def get_assignment(
     return _assignment_to_out(a, author_name=_author_name(container, a.author_id), container=container)
 
 
-@router.patch("/assignments/{assignment_id}", response_model=AssignmentOut)
-def update_assignment(
-    assignment_id: str,
-    req: AssignmentUpdate,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentOut:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    if a.author_id != user.id and user.role != "admin":
-        raise Forbidden("只能修改自己创建的任务")
-    fields = req.model_dump(exclude_unset=True)
-    updated = container.assignment_repository.update_assignment(assignment_id, fields=fields)
-    if updated is None:
-        raise AssignmentNotFound()
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
 
-
-@router.post("/assignments/{assignment_id}/publish", response_model=AssignmentOut)
-def publish_assignment(
-    assignment_id: str,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentOut:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    if a.author_id != user.id and user.role != "admin":
-        raise Forbidden("只能发布自己创建的任务")
-    updated = container.assignment_repository.publish(assignment_id)
-    if updated is None:
-        raise InvalidTransition("任务当前状态不允许发布")
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
-
-
-@router.post("/assignments/{assignment_id}/close", response_model=AssignmentOut)
-def close_assignment(
-    assignment_id: str,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentOut:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    if a.author_id != user.id and user.role != "admin":
-        raise Forbidden("只能关闭自己创建的任务")
-    updated = container.assignment_repository.close(assignment_id)
-    if updated is None:
-        raise InvalidTransition("任务当前状态不允许关闭")
-    return _assignment_to_out(updated, author_name=_author_name(container, updated.author_id), container=container)
-
-
-@router.get("/assignments/{assignment_id}/stats", response_model=AssignmentStatsOut)
-def assignment_stats(
-    assignment_id: str,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentStatsOut:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    total_students = container.enrollment_repository.count_members(a.class_group_id)
-    stats = container.submission_repository.assignment_stats(
-        assignment_id, total_students=total_students
-    )
-    return AssignmentStatsOut(**stats)
-
-
-@router.get("/assignments/{assignment_id}/student-status", response_model=Page)
-def assignment_student_status(
-    assignment_id: str,
-    submission_status: Optional[str] = Query(
-        None,
-        description="not_submitted|draft|submitted|resubmitted|late",
-    ),
-    read_status: Optional[str] = Query(None, pattern="^(read|unread)$"),
-    query: Optional[str] = Query(None, description="按姓名/学号搜索"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=500),
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> Page:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    rows, total = container.submission_repository.student_status(
-        assignment_id=a.id,
-        class_group_id=a.class_group_id,
-        submission_status=submission_status,
-        read_status=read_status,
-        query=query,
-        page=page,
-        page_size=page_size,
-    )
-    items = [StudentStatusItem(**r) for r in rows]
-    return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
 # ===== 任务附件 =====
@@ -346,74 +208,7 @@ def _guess_mime(ext: str) -> str:
     }.get(ext, "application/octet-stream")
 
 
-@router.post("/assignments/{assignment_id}/attachments", response_model=AssignmentAttachmentOut, status_code=201)
-async def upload_assignment_attachment(
-    assignment_id: str,
-    file: UploadFile = File(...),
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> AssignmentAttachmentOut:
-    """上传任务附件(教师/管理员)。
 
-    权限:
-    - 教师: 只能给自己创建的任务上传附件
-    - 管理员: 可以给任意任务上传附件
-    """
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    if a.author_id != user.id and user.role != "admin":
-        raise Forbidden("只能给自己创建的任务上传附件")
-    # 文件名安全校验
-    try:
-        safe_name = sanitize_filename(file.filename or "")
-    except ValueError as e:
-        raise FileNameUnsafe(str(e)) from e
-    # 扩展名白名单
-    ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
-    if ext not in _ALLOWED_EXT:
-        raise AttachmentTypeNotAllowed(f"不支持的文件类型: .{ext}")
-    # 大小校验
-    content = await file.read()
-    size = len(content)
-    if size > _MAX_SIZE_BYTES:
-        raise AttachmentTooLarge("附件不能超过 10MB")
-    if size == 0:
-        raise FileNameUnsafe("文件为空")
-    # 存储路径
-    settings = get_settings()
-    base_dir = settings.knowledge_base_dir.parent / "assignment_attachments" / assignment_id
-    base_dir.mkdir(parents=True, exist_ok=True)
-    import uuid
-    stored_filename = f"{uuid.uuid4().hex[:16]}_{safe_name}"
-    storage_path = base_dir / stored_filename
-    if is_path_traversal(storage_path, base_dir):
-        raise FileNameUnsafe("存储路径非法")
-    storage_path.write_bytes(content)
-    mime = file.content_type or _guess_mime(ext)
-    att = container.assignment_repository.add_attachment(
-        assignment_id=assignment_id,
-        author_id=user.id,
-        original_filename=safe_name,
-        stored_filename=stored_filename,
-        mime_type=mime,
-        size_bytes=size,
-        storage_path=str(storage_path),
-    )
-    return AssignmentAttachmentOut(
-        id=att.id,
-        assignment_id=att.assignment_id,
-        author_id=att.author_id,
-        original_filename=att.original_filename,
-        stored_filename=att.stored_filename,
-        mime_type=att.mime_type,
-        size_bytes=att.size_bytes,
-        created_at=att.created_at,
-    )
 
 
 @router.get("/assignments/{assignment_id}/attachments")

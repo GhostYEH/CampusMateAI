@@ -128,7 +128,7 @@ class ChatFinalMeta(BaseModel):
     needs_human_confirmation: bool = False
     suggested_actions: List[SuggestedAction] = Field(default_factory=list)
     conversation_id: str
-    mode: str = Field(..., description="llm|retrieval_summary|no_knowledge")
+    mode: str = Field(..., description="llm|retrieval_summary|no_knowledge|chat")
     warnings: List[str] = Field(default_factory=list)
     # 上下文使用情况(对齐用户新要求):
     # 只回传聚合 count 与 self_report_present 标志,

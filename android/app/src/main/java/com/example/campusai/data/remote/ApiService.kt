@@ -29,6 +29,16 @@ data class ExpressionContributionResponse(
     val message: String,
 )
 data class ExtractRequest(val text: String)
+data class NoticeIngestRequest(
+    val content: String,
+    val source_name: String,
+    val published_at: String
+)
+data class ChaoxingLoginRequest(
+    val username: String,
+    val password: String
+)
+
 data class HealthResponse(val mode: String? = null)
 data class KnowledgeStatusResponse(
     val mode: String? = null,
@@ -73,6 +83,10 @@ data class CourseDto(
     val teacher_id: String? = null,
     val teacher_name: String? = null,
     val status: String? = null,
+    val provider: String? = null,
+    val external_id: String? = null,
+    val source_url: String? = null,
+    val last_synced_at: String? = null
 )
 
 // ── 全校活动（同时作为「校园动态」与「我的活动」数据源） ──
@@ -182,6 +196,16 @@ interface ApiService {
 
     @POST("notices/extract-multi")
     suspend fun extractNotice(@Body request: ExtractRequest): Response<ExtractResult>
+
+    @POST("notices/ingest")
+    suspend fun ingestNotice(@Body request: NoticeIngestRequest): Response<Unit> // 假设后端返回200 OK即可
+
+    @POST("api/v1/chaoxing/login")
+    suspend fun loginChaoxing(@Body request: ChaoxingLoginRequest): Response<Unit>
+
+    @POST("api/v1/chaoxing/sync")
+    suspend fun syncChaoxing(): Response<Unit>
+
 
     // 校园通知列表（聚合学生可见班级的已发布通知）
     @GET("notices")

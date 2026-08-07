@@ -285,6 +285,10 @@
 .chat-bubble{max-width:min(78%,650px);padding:11px 14px;border-radius:12px;background:#f6f9fa;color:#4f6670;font-size:13px;line-height:1.75}
 .chat-message.user .chat-bubble{background:#337b93;color:#fff}
 .chat-bubble p{white-space:pre-wrap;margin:0}
+.chat-bubble .markdown-body p{margin:0 0 0.6em}.chat-bubble .markdown-body p:last-child{margin-bottom:0}
+.chat-bubble .markdown-body ul,.chat-bubble .markdown-body ol{margin:0.3em 0;padding-left:1.3em}
+.chat-bubble .markdown-body h2{font-size:14px;font-weight:600;margin:0.5em 0 0.2em}
+.chat-bubble .markdown-body strong{font-weight:700}
 .typing-cursor{animation:student-blink 1s infinite}
 @keyframes student-blink{50%{opacity:0}}
 .chat-actions{display:flex;gap:8px;margin-top:7px}
@@ -2092,6 +2096,5 @@
     margin: 0 0 17px;
   }
 }
-
 
 

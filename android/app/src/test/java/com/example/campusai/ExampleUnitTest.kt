@@ -20,11 +20,9 @@ class ExampleUnitTest {
     fun mockDemoAccounts_areValid() {
         val demos = mapOf(
             "student_demo" to "student",
-            "teacher_demo" to "teacher",
-            "admin_demo" to "admin",
         )
         assertTrue(demos.containsKey("student_demo"))
         assertEquals("student", demos["student_demo"])
-        assertEquals(3, demos.size)
+        assertEquals(1, demos.size)
     }
 }

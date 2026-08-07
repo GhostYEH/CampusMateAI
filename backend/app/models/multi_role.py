@@ -81,13 +81,23 @@ class CourseRow:
     code: Optional[str] = None
     semester: Optional[str] = None
     description: Optional[str] = None
-    teacher_id: str = ""
+    teacher_id: Optional[str] = None
     status: str = "draft"  # draft / active / archived
+    provider: Optional[str] = None
+    external_id: Optional[str] = None
+    source_url: Optional[str] = None
+    last_synced_at: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
 
     @classmethod
     def from_row(cls, row) -> "CourseRow":
+        def get_col(r, col):
+            try:
+                return r[col]
+            except IndexError:
+                return None
+
         return cls(
             id=row["id"],
             name=row["name"],
@@ -96,6 +106,10 @@ class CourseRow:
             description=row["description"],
             teacher_id=row["teacher_id"],
             status=row["status"],
+            provider=get_col(row, "provider"),
+            external_id=get_col(row, "external_id"),
+            source_url=get_col(row, "source_url"),
+            last_synced_at=get_col(row, "last_synced_at"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

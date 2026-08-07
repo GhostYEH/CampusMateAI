@@ -40,6 +40,8 @@ fun SettingsScreen(
     repository: AppRepository,
     onBack: () -> Unit,
     onOpenContribution: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onOpenChaoxingLogin: () -> Unit,
 ) {
     val darkMode by repository.darkMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -108,6 +110,13 @@ fun SettingsScreen(
                         SettingsDivider()
                         SettingsInfoRow(Icons.Default.Cloud, "后端连接", backendLabel)
                     }
+                    SettingsDivider()
+                    SettingsActionRow(
+                        icon = Icons.Default.Chat,
+                        title = "微信通知监听",
+                        subtitle = "监听微信群聊通知，自动创建待办",
+                        onClick = onOpenNotificationSettings,
+                    )
                 }
             }
             item {
@@ -136,6 +145,13 @@ fun SettingsScreen(
                     SettingsInfoRow(Icons.Default.Storage, "本地数据", "账号偏好仅保存在本机")
                     SettingsDivider()
                     SettingsInfoRow(Icons.Default.Security, "隐私说明", "识别结果仅供辅助参考")
+                    SettingsDivider()
+                    SettingsActionRow(
+                        icon = Icons.Default.Sync,
+                        title = "学习通同步",
+                        subtitle = "登录学习通，同步作业和通知",
+                        onClick = onOpenChaoxingLogin,
+                    )
                 }
             }
             item {

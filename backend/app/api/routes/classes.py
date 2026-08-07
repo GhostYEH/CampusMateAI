@@ -99,35 +99,7 @@ def list_classes(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.post("/courses/{course_id}/classes", response_model=ClassOut, status_code=201)
-def create_class_under_course(
-    course_id: str,
-    req: ClassCreate,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> ClassOut:
-    course = container.course_repository.get_course(course_id)
-    if course is None:
-        raise CourseNotFound()
-    if user.role != "admin" and course.teacher_id != user.id:
-        raise Forbidden("无权在此课程下创建班级")
-    cls = container.class_group_repository.create_class(
-        course_id=course_id,
-        name=req.name,
-        class_code=req.class_code,
-        description=req.description,
-        capacity=req.capacity,
-    )
-    # 教师自动成为该班级的 teaching_assistant(便于后续权限校验)
-    try:
-        container.enrollment_repository.enroll(
-            class_group_id=cls.id,
-            user_id=user.id,
-            member_role="teaching_assistant",
-        )
-    except Exception:
-        pass
-    return _class_to_out(cls)
+
 
 
 @router.get("/classes/{class_id}", response_model=ClassOut)
@@ -143,22 +115,7 @@ def get_class(
     return _class_to_out(cls)
 
 
-@router.patch("/classes/{class_id}", response_model=ClassOut)
-def update_class(
-    class_id: str,
-    req: ClassUpdate,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> ClassOut:
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    fields = req.model_dump(exclude_unset=True)
-    updated = container.class_group_repository.update_class(class_id, fields=fields)
-    if updated is None:
-        raise ClassGroupNotFound()
-    return _class_to_out(updated)
+
 
 
 @router.post("/classes/{class_id}/join", response_model=ClassOut)
@@ -197,20 +154,7 @@ def join_class(
     return _class_to_out(cls)
 
 
-@router.post("/classes/{class_id}/reset-invite-code", response_model=ClassOut)
-def reset_invite_code(
-    class_id: str,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> ClassOut:
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    updated = container.class_group_repository.reset_invite_code(class_id)
-    if updated is None:
-        raise ClassGroupNotFound()
-    return _class_to_out(updated)
+
 
 
 @router.get("/classes/{class_id}/members", response_model=Page)
@@ -239,22 +183,7 @@ def list_members(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.delete("/classes/{class_id}/members/{user_id}")
-def remove_member(
-    class_id: str,
-    user_id: str,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> dict:
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        raise ClassGroupNotFound()
-    _assert_can_manage_class(cls, user, container)
-    ok = container.enrollment_repository.remove_member(class_id, user_id)
-    if not ok:
-        # 不暴露具体原因(已移除/不存在)
-        return {"ok": True, "message": "成员已不在班级中"}
-    return {"ok": True, "message": "成员已移除"}
+
 
 
 # ===== 权限辅助 =====

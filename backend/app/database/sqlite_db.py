@@ -137,14 +137,19 @@ CREATE TABLE IF NOT EXISTS courses (
     code TEXT,
     semester TEXT,
     description TEXT,
-    teacher_id TEXT NOT NULL,
+    teacher_id TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
+    provider TEXT,
+    external_id TEXT,
+    source_url TEXT,
+    last_synced_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
+CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id);
 
 CREATE TABLE IF NOT EXISTS class_groups (
     id TEXT PRIMARY KEY,
@@ -321,7 +326,8 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     updated_at TEXT NOT NULL,
     completed_at TEXT,
     deleted_at TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, source_notice_id)
 );
 CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status);
@@ -404,6 +410,15 @@ CREATE TABLE IF NOT EXISTS favorites (
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
 """
 
+CHAOXING_CREDENTIALS_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS chaoxing_credentials (
+    user_id TEXT PRIMARY KEY,
+    encrypted_cookies TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -454,6 +469,7 @@ class Database:
                 conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
                 conn.executescript(STUDY_SCHEMA_SQL)
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
+                conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
@@ -474,6 +490,37 @@ class Database:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_is_demo ON documents(is_demo)"
         )
+        # 个人待办增加 UNIQUE 约束
+        cur = conn.execute("PRAGMA index_list(personal_tasks)")
+        indexes = cur.fetchall()
+        unique_idx_exists = False
+        for idx in indexes:
+            if idx["unique"] == 1:
+                cur_cols = conn.execute(f"PRAGMA index_info({idx['name']})")
+                cols = {c["name"] for c in cur_cols.fetchall()}
+                if cols == {"user_id", "source_notice_id"}:
+                    unique_idx_exists = True
+                    break
+        
+        if not unique_idx_exists:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_notice "
+                "ON personal_tasks(user_id, source_notice_id) WHERE source_notice_id IS NOT NULL"
+            )
+
+        # 检查 courses 表新增列
+        cur = conn.execute("PRAGMA table_info(courses)")
+        course_cols = {row["name"] for row in cur.fetchall()}
+        if "provider" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN provider TEXT")
+        if "external_id" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN external_id TEXT")
+        if "source_url" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN source_url TEXT")
+        if "last_synced_at" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN last_synced_at TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
+
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
 
     @contextmanager

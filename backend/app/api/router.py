@@ -5,9 +5,6 @@ from fastapi import APIRouter
 
 from .routes import (
     activities,
-    admin_dashboard,
-    admin_system,
-    admin_extra,
     announcements,
     assignments,
     auth,
@@ -15,7 +12,6 @@ from .routes import (
     counselor,
     contributions,
     courses,
-    dashboard,
     health,
     knowledge,
     notices,
@@ -24,7 +20,7 @@ from .routes import (
     study,
     submissions,
     student_tools,
-    teacher,
+    chaoxing,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -36,16 +32,13 @@ api_router.include_router(contributions.router, tags=["contributions"])
 # 多角色协同平台
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])
-api_router.include_router(admin_dashboard.router)
-api_router.include_router(admin_system.router)
-api_router.include_router(admin_extra.router)
+
 api_router.include_router(courses.router, tags=["courses"])
 api_router.include_router(classes.router, tags=["classes"])
 api_router.include_router(announcements.router, tags=["announcements"])
 api_router.include_router(assignments.router, tags=["assignments"])
 api_router.include_router(submissions.router, tags=["submissions"])
-api_router.include_router(dashboard.router, tags=["dashboard"])
-api_router.include_router(teacher.router, tags=["teacher"])
+
 # 学习陪伴
 api_router.include_router(study.router)
 # 个人待办(学生从通知抽取)
@@ -53,5 +46,6 @@ api_router.include_router(personal_tasks.router)
 # 个人中心(我的文件 / 收藏夹)
 api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
+api_router.include_router(chaoxing.router, tags=["chaoxing"])
 
 __all__ = ["api_router"]

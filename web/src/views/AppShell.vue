@@ -5,7 +5,7 @@ import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
 import ToastHost from "../components/teacher/ToastHost.vue";
 import ConfirmHost from "../components/teacher/ConfirmHost.vue";
-import { globalAdminSearch } from "../services/adminRepository";
+
 
 const store = useAppStore();
 const route = useRoute();
@@ -19,7 +19,7 @@ const searchLoading = ref(false);
 let searchTimer;
 
 const menus = computed(() => {
-  if (store.session?.role === "student") return [
+  return [
     ["home", "首页", "PhHouse"],
     ["courses", "我的课程", "PhBookOpen"],
     ["tasks", "待办与作业", "PhCheckSquare"],
@@ -29,28 +29,8 @@ const menus = computed(() => {
     ["study", "学习陪伴", "PhChartLineUp"],
     ["profile", "个人中心", "PhUser"],
   ];
-  if (store.session?.role === "teacher") return [
-    ["teacher/dashboard", "教师工作台", "PhSquaresFour"],
-    ["teacher/courses", "课程与班级", "PhBookOpen"],
-    ["teacher/announcements", "通知中心", "PhMegaphone"],
-    ["teacher/assignments", "作业管理", "PhFileText"],
-    ["teacher/grading", "批改中心", "PhPencilSimpleLine"],
-    ["teacher/analytics", "学情分析", "PhChartBar"],
-    ["teacher/ai-assistant", "AI 教学助理", "PhRobot"],
-    ["profile", "个人中心", "PhUser"],
-  ];
-  return [
-    ["admin/dashboard", "管理概览", "PhSquaresFour"],
-    ["admin/users", "账号与角色", "PhUsers"],
-    ["admin/courses", "课程与班级", "PhBookOpen"],
-    ["admin/activities", "校园活动", "PhCalendarStar"],
-    ["admin/knowledge", "内容与知识库", "PhBookOpen"],
-    ["admin/system", "系统状态", "PhPulse"],
-    ["admin/audit", "操作日志", "PhClipboardText"],
-    ["profile", "个人中心", "PhUser"],
-  ];
 });
-const isStudent = computed(() => store.session?.role === "student");
+const isStudent = true;
 const todayLabel = computed(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date()));
 
 function go(path) {
@@ -78,18 +58,7 @@ function closeSearch() {
 }
 
 async function runSearch() {
-  if (store.session?.role !== "admin" || search.value.trim().length < 2) {
-    searchResults.value = [];
-    return;
-  }
-  searchLoading.value = true;
-  try {
-    searchResults.value = await globalAdminSearch(search.value.trim().slice(0, 64));
-  } catch {
-    searchResults.value = [];
-  } finally {
-    searchLoading.value = false;
-  }
+  searchResults.value = [];
 }
 
 function keydown(event) {
@@ -101,7 +70,6 @@ function keydown(event) {
 }
 
 watch(search, () => {
-  if (store.session?.role !== "admin") return;
   searchOpen.value = true;
   clearTimeout(searchTimer);
   searchTimer = setTimeout(runSearch, 220);
@@ -130,7 +98,7 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
         </button>
       </nav>
       <div class="sidebar-bottom">
-        <button v-if="isStudent" title="收藏" aria-label="收藏" @click="go('profile/favorites')"><UiIcon name="PhBookmarkSimple" /><span>收藏</span></button>
+        <button title="收藏" aria-label="收藏" @click="go('profile/favorites')"><UiIcon name="PhBookmarkSimple" /><span>收藏</span></button>
         <button title="设置" aria-label="设置" @click="go('profile/settings')"><UiIcon name="PhGear" /><span>设置</span></button>
         <button :title="collapsed ? '展开导航' : '收起导航'" :aria-label="collapsed ? '展开导航' : '收起导航'" @click="collapsed = !collapsed"><UiIcon :name="collapsed ? 'PhCaretRight' : 'PhCaretLeft'" /><span>{{ collapsed ? "展开" : "收起" }}</span></button>
         <button title="退出登录" aria-label="退出登录" @click="logout"><UiIcon name="PhSignOut" /><span>退出登录</span></button>
@@ -139,12 +107,12 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
     <div class="workspace">
       <header class="topbar">
         <div class="command-search">
-          <UiIcon name="PhMagnifyingGlass" :size="19" /><input v-model="search" name="global-search" :placeholder="isStudent ? '搜索课程、作业、通知或服务' : '搜索平台内容'" /><kbd>⌘ K</kbd>
+          <UiIcon name="PhMagnifyingGlass" :size="19" /><input v-model="search" name="global-search" placeholder="搜索课程、作业、通知或服务" /><kbd>⌘ K</kbd>
         </div>
         <div class="top-date"><span class="study-status">本周学习节奏 <b>· 良好</b></span><em></em><UiIcon name="PhCalendarBlank" />{{ todayLabel }}</div>
-        <button class="icon-button notification-button" aria-label="通知" @click="isStudent && go('notifications')"><UiIcon name="PhBell" :size="20" /><i v-if="isStudent && store.pendingCount"></i></button>
+        <button class="icon-button notification-button" aria-label="通知" @click="go('notifications')"><UiIcon name="PhBell" :size="20" /><i v-if="store.pendingCount"></i></button>
       </header>
-      <div v-if="searchOpen && store.session?.role === 'admin' && search.length >= 2" class="global-search-panel"><div v-if="searchLoading" class="portal-empty">搜索中…</div><div v-else-if="!searchResults.length" class="portal-empty">没有匹配结果</div><button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="router.push(item.path); closeSearch()"><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></button></div>
+      <div v-if="searchOpen && search.length >= 2" class="global-search-panel"><div v-if="searchLoading" class="portal-empty">搜索中…</div><div v-else-if="!searchResults.length" class="portal-empty">没有匹配结果</div><button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="router.push(item.path); closeSearch()"><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></button></div>
       <RouterView :search-query="search" />
     </div>
   </div>

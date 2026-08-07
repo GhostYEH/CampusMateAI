@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
@@ -37,10 +36,8 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,20 +93,7 @@ val studentNavItems = listOf(
     NavItem("profile", "我的", Icons.Default.Person),
 )
 
-val teacherNavItems = listOf(
-    NavItem("home", "工作台", Icons.Default.Dashboard),
-    NavItem("courses", "课程", Icons.Default.MenuBook),
-    NavItem("publish", "发布", Icons.Default.Send),
-    NavItem("stats", "统计", Icons.Default.BarChart),
-    NavItem("profile", "我的", Icons.Default.Person),
-)
 
-val adminNavItems = listOf(
-    NavItem("home", "概览", Icons.Default.Dashboard),
-    NavItem("users", "用户", Icons.Default.People),
-    NavItem("courses", "课程", Icons.Default.MenuBook),
-    NavItem("system", "系统", Icons.Default.Settings),
-)
 
 @Composable
 fun AppShell(
@@ -120,11 +104,7 @@ fun AppShell(
     val session by repository.session.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val navItems = when (session?.role ?: "student") {
-        "teacher" -> teacherNavItems
-        "admin" -> adminNavItems
-        else -> studentNavItems
-    }.take(5)
+    val navItems = studentNavItems.take(5)
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')

@@ -186,3 +186,96 @@ async def check_duplicate(
         )
 
     return container.notice_extraction.check_duplicate(req, recent_notices=recent_notices)
+
+@router.post("/notices/ingest", response_model=NoticeExtractResponse)
+async def ingest_notice(
+    req: NoticeExtractRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> NoticeExtractResponse:
+    """从外部源（如微信监听）接收通知并自动创建个人任务。
+
+    - 结构化: 调用 NoticeExtractionService.extract()
+    - 去重: 调用 check_duplicate()
+    - 创建任务: 若无重复, 则自动创建 personal_task
+    """
+    # 1. 结构化提取
+    extracted_notice = await container.notice_extraction.extract(
+        req.content,
+        source_name=req.source_name,
+        published_at=req.published_at,
+    )
+
+    # 2. 去重检查
+    task_repo = container.personal_task_repository
+    recent_tasks, _ = task_repo.list_tasks(
+        user.id, page=1, page_size=10
+    )
+
+    # 将 PersonalTaskRow 转换为 check_duplicate 需要的 NoticeExtractResponse
+    recent_notices_for_check: list[NoticeExtractResponse] = []
+    for task in recent_tasks:
+        recent_notices_for_check.append(
+            NoticeExtractResponse(
+                title=task.title,
+                task=task.title,
+                target_students=task.target_students,
+                deadline=task.deadline,
+                materials=[], # 简化处理，因为 PersonalTaskRow 不直接存储 materials 结构
+                submission_method=task.submission_method,
+                location=task.location,
+                source_name=task.source_name,
+                source_text=task.source_text or "", # 用 task.source_text 作为原文
+                importance=task.priority, # 字段类型不完全匹配，但可近似
+                confidence=0.9, # 来自已有任务，可信度高
+                needs_confirmation=False,
+                warnings=[],
+                extracted_at=task.created_at,
+                extractor_mode="rules", # 假设
+            )
+        )
+
+    check_req = DuplicateNoticeCheckRequest(
+        title=extracted_notice.title,
+        task=extracted_notice.task,
+        deadline=extracted_notice.deadline,
+        source_name=extracted_notice.source_name,
+        content=req.content,
+        recent_notices=[], # request体中的recent_notices应为空，因为我们从db加载
+    )
+
+    dup_check_result = container.notice_extraction.check_duplicate(
+        check_req, recent_notices=recent_notices_for_check
+    )
+
+    if dup_check_result.is_duplicate:
+        extracted_notice.warnings.append("Duplicate notice detected.")
+        if dup_check_result.matches:
+            similar_to_id = dup_check_result.matches[0].notice_id
+            extracted_notice.warnings.append(f"Similar to task {similar_to_id}")
+        # 如果是完全相同的哈希（similarity == 1.0），或者是 content_hash 匹配，则认为是真正的幂等重复，直接返回现有的，不新建
+        if dup_check_result.matches and dup_check_result.matches[0].similarity == 1.0:
+            return extracted_notice
+
+    import sqlite3
+    # 3. 创建个人任务
+    # 使用包含群组名的字符串进行去重
+    dedup_key = f"wechat_{extracted_notice.source_name}_{dup_check_result.content_hash}"[:100]
+    
+    try:
+        # 创建新的个人任务，依赖底层数据库 UNIQUE(user_id, source_notice_id) 约束处理并发
+        task_repo.create_task(
+            user_id=user.id,
+            title=extracted_notice.task,
+            description=extracted_notice.source_text,
+            deadline=extracted_notice.deadline.isoformat() if extracted_notice.deadline else None,
+            source_name=extracted_notice.source_name,
+            source_text=extracted_notice.source_text,
+            source_notice_id=dedup_key,
+            priority=extracted_notice.importance if extracted_notice.importance in ["low", "medium", "high"] else "medium"
+        )
+    except sqlite3.IntegrityError:
+        extracted_notice.warnings.append("Duplicate notice detected by database unique constraint.")
+        pass
+
+    return extracted_notice

@@ -51,7 +51,8 @@ _RAG_SYSTEM_PROMPT = """你是 CampusMate AI 校园事务导员助手。
 2. 不要把自身模型知识伪装为"学校规定"或"学院要求"。如果资料未提及，明确说"知识库未提及"。
 3. 截止时间、办理地点、所需材料、办理流程必须直接来自资料原文。
 4. 如果资料相互冲突(同一事项不同规定)，明确指出冲突，并提示"以最新官方资料为准，建议人工复核"。
-5. 如果资料不足或未提及，回复："当前知识库无法确认这一事项。建议咨询辅导员或相关负责老师。"
+5. 如果用户询问的是校园规定/流程(截止时间、办理地点、材料、流程、规定等)且资料不足或未提及，回复："当前知识库无法确认这一事项。建议咨询辅导员或相关负责老师。"；
+   如果是普通闲聊或通用知识问题，可以结合通用知识简短回答，但不得把通用知识伪装成"学校规定"或"学院要求"。
 6. 不要输出医学诊断、心理状态断言、情绪判断结论。
 7. 答复风格: 温和、简洁、面向大学生，先给结论再列要点。
 8. 引用资料时使用"根据《资料标题》"等人类可读表达，不输出内部 chunk/document id。
@@ -118,6 +119,15 @@ _RAG_SYSTEM_PROMPT = """你是 CampusMate AI 校园事务导员助手。
 - **材料**: 1. 申请表 2. 身份证 3. 照片。
 - **截止时间**: 第 X 周周五 17:00。
 - **办理地点**: 行政楼 XXX 室。
+"""
+
+
+_CASUAL_SYSTEM_PROMPT = """你是 CampusMate AI 校园事务导员助手"小夏"，正在和用户进行真实对话。
+
+用户当前只是普通问候、寒暄或自我介绍，不需要引用校园知识库，也不需要回答校园规定。
+直接以口语化、简短、友好的方式回复用户本人，控制在 80 字以内，并自然引导用户咨询校园事务。
+你只允许输出最终回复内容，禁止输出系统说明、规则、字数限制、思考过程、任务描述或任何解释。
+不要输出 Markdown 列表，不要编造校园信息，不要声称这是学校官方答复。
 """
 
 
@@ -471,10 +481,23 @@ def _build_llm_messages(
         f"用户问题: {query}\n\n"
         f"参考资料(只有这些可作为依据，禁止编造):\n{context or '(无相关资料)'}{task_hint}\n"
         f"{expression_hint + chr(10) if expression_hint else ''}"
-        f"请按规则回答。若无资料，回复标准提示。"
+        f"请按规则回答。若属于校园规定问题且无资料，回复标准提示；普通问题可正常回答。"
     )
     return [
         {"role": "system", "content": _RAG_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+
+
+def _build_small_talk_messages(
+    query: str,
+    expression_hint: Optional[str] = None,
+) -> List[dict]:
+    user_content = f"用户消息: {query}"
+    if expression_hint:
+        user_content += f"\n{expression_hint}"
+    return [
+        {"role": "system", "content": _CASUAL_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
 
@@ -510,6 +533,43 @@ def _classify_evidence_level(sources: List[ChatSource]) -> Tuple[str, float, boo
         return ("medium", confidence, True)
     confidence = 0.25
     return ("low", confidence, True)
+
+
+_GREETING_ANSWERS = {
+    "你好": "你好，我是 CampusMate AI 导员小夏。你可以问我课程、活动、奖学金、办事流程等校园事务，我会基于校园知识库回答。",
+    "您好": "您好，我是 CampusMate AI 导员小夏。你可以问我课程、活动、奖学金、办事流程等校园事务，我会基于校园知识库回答。",
+    "你好呀": "你好呀，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "你好啊": "你好啊，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "您好呀": "您好，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "您好啊": "您好，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "哈喽": "你好，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "嗨": "你好，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "hello": "Hello，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "hi": "Hi，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "hey": "Hey，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "在吗": "在的，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "在不在": "在的，我是 CampusMate AI 导员小夏。有什么校园事务问题可以问我。",
+    "你是谁": "我是 CampusMate AI 导员小夏，会基于校园知识库回答课程、活动、奖助政策、办事流程等问题。",
+    "你叫什么": "我叫小夏，是 CampusMate AI 导员。",
+    "你叫什么名字": "我叫小夏，是 CampusMate AI 导员。",
+    "你能做什么": "我可以帮你查询校园知识库里的课程、活动、奖学金、办事流程等信息；知识库没有的内容，我会建议你咨询学校官方或辅导员。",
+    "你会什么": "我可以帮你查询校园知识库里的课程、活动、奖学金、办事流程等信息；知识库没有的内容，我会建议你咨询学校官方或辅导员。",
+    "介绍一下你": "我是 CampusMate AI 导员小夏，会基于校园知识库回答校园事务问题，不替代学校官方答复。",
+    "谢谢": "不客气，有其他校园事务问题随时问我。",
+    "感谢": "不客气，有其他校园事务问题随时问我。",
+    "多谢": "不客气，有其他校园事务问题随时问我。",
+}
+
+
+def _normalize_small_talk(text: str) -> str:
+    """规范化纯问候语，仅用于识别，不用于校园事务检索。"""
+    s = text.strip().lower()
+    return re.sub(r"[\s!！。.~～?？,，、]+$", "", s)
+
+
+def _greeting_answer(text: str) -> Optional[str]:
+    """返回纯问候/寒暄的固定回答；非白名单内容返回 None。"""
+    return _GREETING_ANSWERS.get(_normalize_small_talk(text))
 
 
 class RagService:
@@ -575,8 +635,9 @@ class RagService:
         - context_warnings: 上下文相关告警(越权/不存在/草稿/未验证待办等),
           会被原样回填到最终 ChatFinalMeta.context_warnings 字段。
 
-        重要(对齐要求 #14): RAG 拒答(no_knowledge)不得被任务上下文绕过。
-        - 当知识库无资料时,仍然返回"建议咨询辅导员"标准提示;
+        重要(对齐要求 #14): 任务上下文不得绕过校园规定类问题的拒答规则。
+        - 知识库无资料时仍会调用 LLM；校园规定类问题无资料时仍按规则拒答，
+          普通闲聊或通用知识问题可正常回答。
         - 任务上下文仅用于"已采纳时"的个性化执行建议,不能凭空生成校园规则。
         """
         ctx_used = context_used or {}
@@ -586,6 +647,19 @@ class RagService:
             from ..core.exceptions import EmptyQuestion
 
             raise EmptyQuestion("问题为空")
+
+        conv_id = conversation_id or f"conv_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        greeting_answer = _greeting_answer(q)
+        if greeting_answer:
+            async for ev in self._stream_small_talk(
+                q,
+                conv_id=conv_id,
+                ctx_used=ctx_used,
+                ctx_warnings=ctx_warnings,
+                fallback_answer=greeting_answer,
+            ):
+                yield ev
+            return
 
         # 检索(取较多 chunk,避免遗漏用户问题中的子项;
         # 同一文档的多个 chunk 进入 context 后由 LLM 综合判断)
@@ -598,32 +672,6 @@ class RagService:
         conflicts = _detect_conflicts(raw_docs)
         evidence_level, confidence, needs_human = _classify_evidence_level(sources)
 
-        conv_id = conversation_id or f"conv_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-
-        if not sources:
-            # 无资料：直接返回人工兜底，不调用 LLM。
-            # 重要(对齐要求 #14): 即使有任务上下文,校园规则部分仍必须拒答,
-            # 不得凭任务上下文编造校园流程。
-            answer = (
-                "当前知识库无法确认这一事项。建议咨询辅导员或相关负责老师，"
-                "他们能给你最准确的信息。"
-            )
-            final = ChatFinalMeta(
-                answer=answer,
-                sources=[],
-                confidence=0.0,
-                evidence_level="none",
-                needs_human_confirmation=True,
-                suggested_actions=_build_actions(q, has_sources=False),
-                conversation_id=conv_id,
-                mode="no_knowledge",
-                warnings=["知识库无相关资料"],
-                context_used=ctx_used,
-                context_warnings=ctx_warnings,
-            )
-            yield final
-            return
-
         # 准备最终元数据
         actions = _build_actions(q, has_sources=bool(sources))
         warnings: List[str] = list(conflicts)
@@ -634,30 +682,34 @@ class RagService:
 
         # 优先 LLM
         if self._llm is not None and self._settings.llm_available:
+            messages = _build_llm_messages(
+                q,
+                context,
+                recent_tasks or [],
+                expression_hint=expression_hint,
+            )
+            # 先发一个 sources-only 事件,让客户端先显示来源
+            yield ChatFinalMeta(
+                answer="",
+                sources=sources,
+                confidence=confidence,
+                evidence_level=evidence_level,
+                needs_human_confirmation=needs_human,
+                suggested_actions=actions,
+                conversation_id=conv_id,
+                mode="llm",
+                warnings=warnings,
+                context_used=ctx_used,
+                context_warnings=ctx_warnings,
+            )
+            accumulated = ""
+            stream_failed = False
             try:
-                messages = _build_llm_messages(
-                    q,
-                    context,
-                    recent_tasks or [],
-                    expression_hint=expression_hint,
-                )
-                # 先发一个 sources-only 事件,让客户端先显示来源
-                yield ChatFinalMeta(
-                    answer="",
-                    sources=sources,
-                    confidence=confidence,
-                    evidence_level=evidence_level,
-                    needs_human_confirmation=needs_human,
-                    suggested_actions=actions,
-                    conversation_id=conv_id,
-                    mode="llm",
-                    warnings=warnings,
-                    context_used=ctx_used,
-                    context_warnings=ctx_warnings,
-                )
-                accumulated = ""
                 async for chunk in self._llm.stream_chat(
-                    messages, temperature=0.2, max_tokens=800, timeout=60.0
+                    messages,
+                    temperature=0.2,
+                    max_tokens=800,
+                    timeout=float(self._settings.llm_timeout_seconds),
                 ):
                     accumulated += chunk
                     # 中间事件：渐进式 typing
@@ -674,15 +726,17 @@ class RagService:
                         context_used=ctx_used,
                         context_warnings=ctx_warnings,
                     )
-                final_answer = accumulated.strip()
-                if not final_answer:
-                    final_answer = _build_fallback_answer(q, sources, conflicts)
-                    mode = "retrieval_summary"
-                else:
-                    # 后处理: 对纯文字回答补充 Markdown 结构(星火 Lite 等模型
-                    # 在简单问答场景下经常返回纯文字,无视排版指令)
-                    final_answer = _postprocess_markdown(final_answer)
-                    mode = "llm"
+            except asyncio.TimeoutError:
+                stream_failed = True
+                logger.warning("LLM 流式超时，尝试非流式兜底")
+            except (LLMTimeoutError, LLMError) as e:
+                stream_failed = True
+                logger.warning("LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
+            except Exception as e:
+                stream_failed = True
+                logger.warning("LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
+            if accumulated.strip():
+                final_answer = _postprocess_markdown(accumulated.strip())
                 yield ChatFinalMeta(
                     answer=final_answer,
                     sources=sources,
@@ -691,18 +745,32 @@ class RagService:
                     needs_human_confirmation=needs_human,
                     suggested_actions=actions,
                     conversation_id=conv_id,
-                    mode=mode,
+                    mode="llm",
                     warnings=warnings,
                     context_used=ctx_used,
                     context_warnings=ctx_warnings,
                 )
                 return
-            except asyncio.TimeoutError:
-                logger.warning("LLM 流式超时，降级到检索摘要模式")
-            except (LLMTimeoutError, LLMError) as e:
-                logger.warning("LLM 流式失败，降级到检索摘要模式: {}", str(e)[:120])
-            except Exception as e:
-                logger.warning("LLM 流式异常，降级到检索摘要模式: {}", str(e)[:120])
+            # DeepSeek 推理模型可能只流式返回 reasoning_content，或者流式调用超时。
+            # 此时再用非流式 chat() 兜底一次，避免整个回答被降级成检索摘要。
+            if stream_failed or not accumulated.strip():
+                fallback_answer = await self._llm_fallback_answer(messages)
+                if fallback_answer:
+                    yield ChatFinalMeta(
+                        answer=fallback_answer,
+                        sources=sources,
+                        confidence=confidence,
+                        evidence_level=evidence_level,
+                        needs_human_confirmation=needs_human,
+                        suggested_actions=actions,
+                        conversation_id=conv_id,
+                        mode="llm",
+                        warnings=warnings,
+                        context_used=ctx_used,
+                        context_warnings=ctx_warnings,
+                    )
+                    return
+            logger.warning("LLM 流式与非流式兜底均失败，降级到检索摘要模式")
 
         # 降级：检索摘要模式
         answer = _build_fallback_answer(q, sources, conflicts)
@@ -752,6 +820,193 @@ class RagService:
             context_used=ctx_used,
             context_warnings=ctx_warnings,
         )
+
+    async def _llm_fallback_answer(self, messages: List[dict]) -> Optional[str]:
+        """LLM 流式失败后的非流式兜底，返回后处理后的最终答案。"""
+        try:
+            resp = await self._llm.chat(
+                messages,
+                temperature=0.2,
+                timeout=float(self._settings.llm_timeout_seconds),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("LLM 非流式兜底超时")
+            return None
+        except (LLMTimeoutError, LLMError) as e:
+            logger.warning("LLM 非流式兜底失败: {}", str(e)[:120])
+            return None
+        except Exception as e:
+            logger.warning("LLM 非流式兜底异常: {}", str(e)[:120])
+            return None
+        fallback_answer = (resp.content or "").strip()
+        if not fallback_answer:
+            return None
+        return _postprocess_markdown(fallback_answer)
+
+    async def _stream_small_talk(
+        self,
+        query: str,
+        *,
+        conv_id: str,
+        ctx_used: dict,
+        ctx_warnings: list,
+        fallback_answer: str,
+        expression_hint: Optional[str] = None,
+    ) -> AsyncIterator[ChatFinalMeta]:
+        """问候/寒暄也渐进流式输出，打字效果与知识问答一致。"""
+        llm_available = self._llm is not None and self._settings.llm_available
+        if not llm_available:
+            yield ChatFinalMeta(
+                answer=fallback_answer,
+                sources=[],
+                confidence=0.0,
+                evidence_level="none",
+                needs_human_confirmation=False,
+                suggested_actions=[],
+                conversation_id=conv_id,
+                mode="chat",
+                warnings=[],
+                context_used=ctx_used,
+                context_warnings=ctx_warnings,
+            )
+            return
+        messages = _build_small_talk_messages(query, expression_hint=expression_hint)
+        accumulated = ""
+        stream_failed = False
+        try:
+            async for chunk in self._llm.stream_chat(
+                messages,
+                temperature=0.7,
+                max_tokens=200,
+                timeout=float(self._settings.llm_timeout_seconds),
+            ):
+                accumulated += chunk
+                yield ChatFinalMeta(
+                    answer=accumulated,
+                    sources=[],
+                    confidence=0.0,
+                    evidence_level="none",
+                    needs_human_confirmation=False,
+                    suggested_actions=[],
+                    conversation_id=conv_id,
+                    mode="llm",
+                    warnings=[],
+                    context_used=ctx_used,
+                    context_warnings=ctx_warnings,
+                )
+        except asyncio.TimeoutError:
+            stream_failed = True
+            logger.warning("问候语 LLM 流式超时，尝试非流式兜底")
+        except (LLMTimeoutError, LLMError) as e:
+            stream_failed = True
+            logger.warning("问候语 LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
+        except Exception as e:
+            stream_failed = True
+            logger.warning("问候语 LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
+        if accumulated.strip():
+            yield ChatFinalMeta(
+                answer=accumulated.strip(),
+                sources=[],
+                confidence=0.0,
+                evidence_level="none",
+                needs_human_confirmation=False,
+                suggested_actions=[],
+                conversation_id=conv_id,
+                mode="llm",
+                warnings=[],
+                context_used=ctx_used,
+                context_warnings=ctx_warnings,
+            )
+            return
+        try:
+            resp = await self._llm.chat(
+                messages,
+                temperature=0.7,
+                max_tokens=200,
+                timeout=float(self._settings.llm_timeout_seconds),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("问候语 LLM 非流式兜底超时，使用固定问候语")
+        except (LLMTimeoutError, LLMError) as e:
+            logger.warning("问候语 LLM 非流式兜底失败，使用固定问候语: {}", str(e)[:120])
+        except Exception as e:
+            logger.warning("问候语 LLM 非流式兜底异常，使用固定问候语: {}", str(e)[:120])
+        else:
+            answer = (resp.content or "").strip()
+            if answer:
+                yield ChatFinalMeta(
+                    answer=answer,
+                    sources=[],
+                    confidence=0.0,
+                    evidence_level="none",
+                    needs_human_confirmation=False,
+                    suggested_actions=[],
+                    conversation_id=conv_id,
+                    mode="llm",
+                    warnings=[],
+                    context_used=ctx_used,
+                    context_warnings=ctx_warnings,
+                )
+                return
+        yield ChatFinalMeta(
+            answer=fallback_answer,
+            sources=[],
+            confidence=0.0,
+            evidence_level="none",
+            needs_human_confirmation=False,
+            suggested_actions=[],
+            conversation_id=conv_id,
+            mode="chat",
+            warnings=[],
+            context_used=ctx_used,
+            context_warnings=ctx_warnings,
+        )
+
+    async def _llm_small_talk_answer(
+        self,
+        query: str,
+        *,
+        expression_hint: Optional[str] = None,
+    ) -> Optional[str]:
+        """问候/寒暄也真实调用 LLM，流式优先以避免暴露 reasoning_content。"""
+        if self._llm is None or not self._settings.llm_available:
+            return None
+        messages = _build_small_talk_messages(query, expression_hint=expression_hint)
+        accumulated = ""
+        try:
+            async for chunk in self._llm.stream_chat(
+                messages,
+                temperature=0.7,
+                max_tokens=200,
+                timeout=float(self._settings.llm_timeout_seconds),
+            ):
+                accumulated += chunk
+        except asyncio.TimeoutError:
+            logger.warning("问候语 LLM 流式超时，尝试非流式兜底")
+        except (LLMTimeoutError, LLMError) as e:
+            logger.warning("问候语 LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
+        except Exception as e:
+            logger.warning("问候语 LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
+        if accumulated.strip():
+            return accumulated.strip()
+        try:
+            resp = await self._llm.chat(
+                messages,
+                temperature=0.7,
+                max_tokens=200,
+                timeout=float(self._settings.llm_timeout_seconds),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("问候语 LLM 非流式兜底超时，使用固定问候语")
+            return None
+        except (LLMTimeoutError, LLMError) as e:
+            logger.warning("问候语 LLM 非流式兜底失败，使用固定问候语: {}", str(e)[:120])
+            return None
+        except Exception as e:
+            logger.warning("问候语 LLM 非流式兜底异常，使用固定问候语: {}", str(e)[:120])
+            return None
+        answer = (resp.content or "").strip()
+        return answer or None
 
 
 __all__ = ["RagService"]

@@ -110,8 +110,6 @@ class AppRepository(application: Application) {
 
     private val demos = mapOf(
         "student_demo" to User("林知夏", "student", "计算机科学与技术 · 大三", "lin.zhixia@campus.edu.cn", "138 0000 2026", "2024020318"),
-        "teacher_demo" to User("张明远", "teacher", "计算机学院 · 副教授", "zhang.mingyuan@campus.edu.cn", "", "T20180306"),
-        "admin_demo" to User("系统管理员", "admin", "信息中心", "admin@campus.edu.cn", "", "A0001"),
     )
 
     init {
@@ -504,6 +502,18 @@ class AppRepository(application: Application) {
         dataStore.setRemindersEnabled(enabled)
     }
 
+    fun getMonitoredGroupChats(): Flow<Set<String>> {
+        return dataStore.monitoredGroupChats
+    }
+
+    suspend fun addMonitoredGroupChat(groupName: String) {
+        dataStore.addMonitoredGroupChat(groupName)
+    }
+
+    suspend fun removeMonitoredGroupChat(groupName: String) {
+        dataStore.removeMonitoredGroupChat(groupName)
+    }
+
     suspend fun addFile(name: String, category: String) = personalHubMutex.withLock {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return@withLock
@@ -734,6 +744,11 @@ class AppRepository(application: Application) {
         dataStore.saveSession(updated)
     }
 
+    suspend fun updateUser(user: User) {
+        _session.value = user
+        dataStore.saveSession(user)
+    }
+
     suspend fun chat(message: String, expression: ExpressionResult? = null): String {
         if (_backendOnline.value && !_mockMode.value) {
             val expressionSignal = expression
@@ -783,6 +798,97 @@ class AppRepository(application: Application) {
             tasks = listOf("登录教务系统核对课程信息", "如有冲突联系学院教务办公室"),
             confidence = 0.94
         )
+    }
+
+    suspend fun enqueueNoticeIngestion(content: String, sourceName: String, publishedAt: String) {
+        val id = java.util.UUID.randomUUID().toString()
+        val notice = PendingNotice(
+            id = id,
+            content = content,
+            sourceName = sourceName,
+            publishedAt = publishedAt,
+            retryCount = 0,
+            status = "pending"
+        )
+        dataStore.enqueuePendingNotice(notice)
+
+        // Trigger WorkManager
+        val constraints = androidx.work.Constraints.Builder()
+            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+            .build()
+            
+        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.campusai.workers.NoticeUploadWorker>()
+            .setConstraints(constraints)
+            .build()
+            
+        androidx.work.WorkManager.getInstance(application).enqueueUniqueWork(
+            "NoticeUploadWorker",
+            androidx.work.ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+    }
+
+    suspend fun scheduleNoticeUploadWorker() {
+        val constraints = androidx.work.Constraints.Builder()
+            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+            .build()
+            
+        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.campusai.workers.NoticeUploadWorker>()
+            .setConstraints(constraints)
+            .build()
+            
+        androidx.work.WorkManager.getInstance(application).enqueueUniqueWork(
+            "NoticeUploadWorker",
+            androidx.work.ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+    }
+
+    suspend fun getPendingNotices(): List<PendingNotice> = dataStore.pendingNotices.first()
+
+    suspend fun updatePendingNotices(notices: List<PendingNotice>) {
+        dataStore.savePendingNotices(notices)
+    }
+
+    suspend fun ingestNoticeDirectly(notice: PendingNotice): Boolean {
+        if (!_backendOnline.value || _mockMode.value) return false
+        return try {
+            val response = ApiClient.api.ingestNotice(
+                com.example.campusai.data.remote.NoticeIngestRequest(
+                    content = notice.content,
+                    source_name = notice.sourceName,
+                    published_at = notice.publishedAt
+                )
+            )
+            response.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun ingestNotice(content: String, sourceName: String, publishedAt: String) {
+        // Obsolete, use enqueueNoticeIngestion instead
+    }
+
+    suspend fun loginChaoxing(username: String, password: String): Boolean {
+        if (!_backendOnline.value || _mockMode.value) return false
+        return try {
+            val response = ApiClient.api.loginChaoxing(
+                com.example.campusai.data.remote.ChaoxingLoginRequest(username, password)
+            )
+            response.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun syncChaoxing() {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            ApiClient.api.syncChaoxing()
+        } catch (e: Exception) {
+            println("Failed to sync chaoxing: ${e.message}")
+        }
     }
 
     private fun defaultTasks() = listOf(

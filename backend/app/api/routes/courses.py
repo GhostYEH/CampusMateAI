@@ -109,7 +109,9 @@ def _course_matches_query(c: CourseRow, q: str) -> bool:
     return False
 
 
-def _teacher_name(container: ServiceContainer, teacher_id: str) -> Optional[str]:
+def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Optional[str]:
+    if not teacher_id:
+        return None
     u = container.user_repository.get_user_by_id(teacher_id)
     if u is None:
         return None
