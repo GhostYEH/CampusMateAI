@@ -9,7 +9,7 @@ export interface User {
 }
 
 export interface CampusTask {
-  id: number
+  id: number | string
   title: string
   due: string
   course: string

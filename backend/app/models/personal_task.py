@@ -30,6 +30,11 @@ class PersonalTaskRow:
     priority: str = "medium"  # low / medium / high
     status: str = "pending"  # pending / completed / deleted
     reminder_minutes: Optional[int] = None
+    source: Optional[str] = None
+    external_id: Optional[str] = None
+    course_id: Optional[str] = None
+    source_url: Optional[str] = None
+    last_synced_at: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
     completed_at: Optional[str] = None
@@ -37,6 +42,7 @@ class PersonalTaskRow:
 
     @classmethod
     def from_row(cls, row) -> "PersonalTaskRow":
+        keys = row.keys()
         return cls(
             id=row["id"],
             user_id=row["user_id"],
@@ -53,6 +59,11 @@ class PersonalTaskRow:
             priority=row["priority"],
             status=row["status"],
             reminder_minutes=row["reminder_minutes"],
+            source=row["source"] if "source" in keys else None,
+            external_id=row["external_id"] if "external_id" in keys else None,
+            course_id=row["course_id"] if "course_id" in keys else None,
+            source_url=row["source_url"] if "source_url" in keys else None,
+            last_synced_at=row["last_synced_at"] if "last_synced_at" in keys else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             completed_at=row["completed_at"],

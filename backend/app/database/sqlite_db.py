@@ -326,8 +326,14 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     updated_at TEXT NOT NULL,
     completed_at TEXT,
     deleted_at TEXT,
+    source TEXT,
+    external_id TEXT,
+    course_id TEXT,
+    source_url TEXT,
+    last_synced_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(user_id, source_notice_id)
+    UNIQUE(user_id, source_notice_id),
+    UNIQUE(user_id, source, external_id)
 );
 CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status);
@@ -520,6 +526,37 @@ class Database:
         if "last_synced_at" not in course_cols:
             conn.execute("ALTER TABLE courses ADD COLUMN last_synced_at TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
+
+        # 检查 personal_tasks 表新增列
+        cur = conn.execute("PRAGMA table_info(personal_tasks)")
+        task_cols = {row["name"] for row in cur.fetchall()}
+        if "source" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN source TEXT")
+        if "external_id" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN external_id TEXT")
+        if "course_id" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN course_id TEXT")
+        if "source_url" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_url TEXT")
+        if "last_synced_at" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN last_synced_at TEXT")
+
+        cur = conn.execute("PRAGMA index_list(personal_tasks)")
+        indexes = cur.fetchall()
+        unique_idx_source_ext = False
+        for idx in indexes:
+            if idx["unique"] == 1:
+                cur_cols = conn.execute(f"PRAGMA index_info({idx['name']})")
+                cols = {c["name"] for c in cur_cols.fetchall()}
+                if cols == {"user_id", "source", "external_id"}:
+                    unique_idx_source_ext = True
+                    break
+        
+        if not unique_idx_source_ext:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_ext "
+                "ON personal_tasks(user_id, source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL"
+            )
 
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
 

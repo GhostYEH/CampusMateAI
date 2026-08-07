@@ -131,26 +131,62 @@ async def sync_chaoxing(
                 last_synced_at=now_iso,
             )
 
-    # Homework Sync (Keep untouched as requested)
+    # Homework Sync (Keep untouched as requested - wait, I MUST touch this per latest prompt)
     for course in courses:
         data = await client.get_assignments_and_notices(course["link"])
         for assignment in data.get("assignments", []):
             task_repo = container.personal_task_repository
-            # 使用课程名称和作业标题+截止日期作为唯一标识
-            source_item_id = f"chaoxing_{course['name']}_{assignment['title']}_{assignment['deadline']}"
-
-            # 检查任务是否已存在
-            existing_tasks, _ = task_repo.list_tasks(user.id, source_name=course["name"])
-            if any(t.source_text == source_item_id for t in existing_tasks):
+            external_id = assignment.get("external_id")
+            if not external_id:
                 continue
 
-            task_repo.create_task(
-                user_id=user.id,
-                title=assignment["title"],
-                deadline=assignment["deadline"],
-                source_name=course["name"],
-                source_text=source_item_id,
-            )
+            # Check if task already exists by unique constraint (user_id, source="chaoxing", external_id)
+            # Actually we can search by source and external_id
+            with container.db.query() as conn:
+                cur = conn.execute(
+                    "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
+                    (user.id, external_id)
+                )
+                existing_task = cur.fetchone()
+
+            if existing_task:
+                # Update existing task
+                task_id = existing_task["id"]
+                update_fields = {
+                    "title": assignment["title"],
+                    "deadline": assignment["deadline"],
+                    "source_name": course["name"],
+                    "source_url": assignment.get("link"),
+                    "last_synced_at": now_iso,
+                }
+                
+                # Update status
+                current_status = existing_task["status"]
+                new_status = assignment.get("status", "pending")
+                
+                if current_status != new_status:
+                    if new_status == "completed":
+                        task_repo.complete(task_id, user_id=user.id)
+                    elif new_status == "pending":
+                        task_repo.restore(task_id, user_id=user.id)
+                
+                task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
+            else:
+                # Create new task
+                # Ensure status is properly created
+                new_task = task_repo.create_task(
+                    user_id=user.id,
+                    title=assignment["title"],
+                    deadline=assignment["deadline"],
+                    source_name=course["name"],
+                    source="chaoxing",
+                    external_id=external_id,
+                    course_id=course.get("course_id"),
+                    source_url=assignment.get("link"),
+                    last_synced_at=now_iso,
+                )
+                if assignment.get("status") == "completed":
+                    task_repo.complete(new_task.id, user_id=user.id)
 
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at

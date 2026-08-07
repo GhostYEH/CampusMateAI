@@ -10,6 +10,8 @@ from app.models.multi_role import UserRow
 import httpx
 import fastapi
 
+from app.repositories.personal_task_repository import PersonalTaskRepository
+
 @pytest.fixture
 def db():
     database = Database(None)
@@ -122,7 +124,127 @@ async def test_chaoxing_status_invalid_session_returns_offline(mock_httpx_client
     assert status.status == "offline"
 
 @pytest.mark.asyncio
-async def test_chaoxing_sync_courses_idempotent_and_update(db, mock_httpx_client):
+async def test_chaoxing_sync_assignments(db, mock_httpx_client):
+    repo = ChaoxingRepository(db)
+    course_repo = CourseRepository(db)
+    task_repo = PersonalTaskRepository(db)
+    repo.save_credentials("user1", {"cookie": "A"})
+
+    class MockContainer:
+        def __init__(self):
+            self.chaoxing_repository = repo
+            self.course_repository = course_repo
+            self.personal_task_repository = task_repo
+            self.db = db
+
+    container = MockContainer()
+    user = UserRow(id="user1", username="test1", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
+
+    # 模拟第一次获取课程
+    mock_json_response = MagicMock()
+    mock_json_response.status_code = 404
+
+    mock_courses_response = MagicMock()
+    mock_courses_response.status_code = 200
+    mock_courses_response.text = '''
+        <li class="course">
+            <span class="course-name">高等数学</span>
+            <a href="/mycourse/stu?courseid=111&clazzid=222">链接</a>
+        </li>
+    '''
+    mock_courses_response.raise_for_status = MagicMock()
+
+    # 模拟课程页面 (提取参数)
+    mock_course_page_response = MagicMock()
+    mock_course_page_response.status_code = 200
+    mock_course_page_response.text = """
+        <html>
+            <input name="courseid" value="111" />
+            <input name="clazzid" value="222" />
+            <a title="作业" data-url="/work">作业</a>
+            <input name="workEnc" value="enc" />
+        </html>
+    """
+
+    # 模拟第一次作业页面
+    mock_assignments_response = MagicMock()
+    mock_assignments_response.status_code = 200
+    mock_assignments_response.text = """
+        <html>
+            <li class="work-item">
+                <div class="work-title">第一次作业</div>
+                <div class="work-deadline">2026-08-10</div>
+                <a href="/work?workId=99991">去完成</a>
+                <span class="status">未交</span>
+            </li>
+            <li class="work-item" data-workid="99992">
+                <div class="work-title">第二次作业</div>
+                <div class="work-deadline">2026-08-15</div>
+                <span class="status">已完成</span>
+            </li>
+        </html>
+    """
+
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response
+    ]
+
+    await sync_chaoxing(user=user, container=container)
+
+    tasks, _ = task_repo.list_tasks(user_id="user1")
+    assert len(tasks) == 2
+    tasks.sort(key=lambda x: x.title)
+    
+    assert tasks[0].title == "第一次作业"
+    assert tasks[0].external_id == "99991"
+    assert tasks[0].status == "pending"
+    assert tasks[0].source == "chaoxing"
+    
+    assert tasks[1].title == "第二次作业"
+    assert tasks[1].external_id == "99992"
+    assert tasks[1].status == "completed"
+    
+    # 模拟第二次作业页面，更新标题和状态
+    mock_assignments_response2 = MagicMock()
+    mock_assignments_response2.status_code = 200
+    mock_assignments_response2.text = """
+        <html>
+            <li class="work-item">
+                <div class="work-title">第一次作业（修改标题）</div>
+                <div class="work-deadline">2026-08-12</div>
+                <a href="/work?workId=99991">去完成</a>
+                <span class="status">已批阅</span>
+            </li>
+            <li class="work-item" data-workid="99992">
+                <div class="work-title">第二次作业</div>
+                <div class="work-deadline">2026-08-15</div>
+                <span class="status">已完成</span>
+            </li>
+        </html>
+    """
+
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response2
+    ]
+
+    await sync_chaoxing(user=user, container=container)
+
+    tasks2, _ = task_repo.list_tasks(user_id="user1")
+    assert len(tasks2) == 2
+    tasks2.sort(key=lambda x: x.title)
+    
+    # 幂等性：不新增记录，只更新
+    assert tasks2[0].title == "第一次作业（修改标题）"
+    assert tasks2[0].deadline == "2026-08-12"
+    assert tasks2[0].status == "completed" # 已批阅 -> completed
+    
+    # 模拟并发情况：确保不重复创建 (通过 DB 的 UNIQUE 约束)
+    # 此时如果再次尝试 create_task 会触发 IntegrityError，我们在代码中处理了冲突
+    task_repo.create_task(
+        user_id="user1", title="冲突测试", source="chaoxing", external_id="99991"
+    )
+    tasks3, _ = task_repo.list_tasks(user_id="user1")
+    assert len(tasks3) == 2 # 仍是两个
     repo = ChaoxingRepository(db)
     course_repo = CourseRepository(db)
     repo.save_credentials("user1", {"cookie": "A"})

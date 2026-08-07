@@ -73,6 +73,11 @@ class PersonalTaskRepository:
         source_notice_id: Optional[str] = None,
         priority: str = "medium",
         reminder_minutes: Optional[int] = None,
+        source: Optional[str] = None,
+        external_id: Optional[str] = None,
+        course_id: Optional[str] = None,
+        source_url: Optional[str] = None,
+        last_synced_at: Optional[str] = None,
     ) -> PersonalTaskRow:
         tid = _new_id()
         now = _now_iso()
@@ -85,13 +90,15 @@ class PersonalTaskRepository:
                         deadline, materials, submission_method, location,
                         source_name, source_text, source_notice_id,
                         priority, status, reminder_minutes,
+                        source, external_id, course_id, source_url, last_synced_at,
                         created_at, updated_at, completed_at, deleted_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,NULL,NULL)""",
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)""",
                     (
                         tid, user_id, title, description, target_students,
                         deadline, _dump_materials(materials), submission_method, location,
                         source_name, source_text, source_notice_id,
                         priority, "pending", reminder_minutes,
+                        source, external_id, course_id, source_url, last_synced_at,
                         now, now,
                     ),
                 )
@@ -104,6 +111,15 @@ class PersonalTaskRepository:
                     cur = conn.execute(
                         "SELECT * FROM personal_tasks WHERE user_id = ? AND source_notice_id = ?",
                         (user_id, source_notice_id)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return PersonalTaskRow.from_row(row)
+            if source is not None and external_id is not None:
+                with self._db.query() as conn:
+                    cur = conn.execute(
+                        "SELECT * FROM personal_tasks WHERE user_id = ? AND source = ? AND external_id = ?",
+                        (user_id, source, external_id)
                     )
                     row = cur.fetchone()
                     if row:
@@ -236,6 +252,8 @@ class PersonalTaskRepository:
             "title", "description", "target_students", "deadline",
             "materials", "submission_method", "location", "source_name",
             "source_text", "source_notice_id", "priority", "reminder_minutes",
+            "source", "external_id", "course_id", "source_url", "last_synced_at",
+            "status", "completed_at",
         }
         sets: List[str] = []
         values: List[Any] = []
