@@ -282,19 +282,23 @@ class CourseRepository:
         self,
         *,
         name: str,
-        teacher_id: str,
+        teacher_id: Optional[str] = None,
         code: Optional[str] = None,
         semester: Optional[str] = None,
         description: Optional[str] = None,
         status: str = "draft",
+        provider: Optional[str] = None,
+        external_id: Optional[str] = None,
+        source_url: Optional[str] = None,
+        last_synced_at: Optional[str] = None,
     ) -> CourseRow:
         cid = _new_id("crs")
         now = _now_iso()
         with self._db.transaction() as conn:
             conn.execute(
-                """INSERT INTO courses (id, name, code, semester, description, teacher_id, status, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (cid, name, code, semester, description, teacher_id, status, now, now),
+                """INSERT INTO courses (id, name, code, semester, description, teacher_id, status, provider, external_id, source_url, last_synced_at, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (cid, name, code, semester, description, teacher_id, status, provider, external_id, source_url, last_synced_at, now, now),
             )
         return self.get_course(cid)  # type: ignore[return-value]
 
@@ -306,10 +310,18 @@ class CourseRepository:
             row = cur.fetchone()
             return CourseRow.from_row(row) if row else None
 
+    def get_course_by_external_id(self, external_id: str, teacher_id: str) -> Optional[CourseRow]:
+        with self._db.query() as conn:
+            cur = conn.execute(
+                "SELECT * FROM courses WHERE external_id = ? AND teacher_id = ?", (external_id, teacher_id)
+            )
+            row = cur.fetchone()
+            return CourseRow.from_row(row) if row else None
+
     def update_course(self, course_id: str, *, fields: dict) -> Optional[CourseRow]:
         if not fields:
             return self.get_course(course_id)
-        allowed = {"name", "code", "semester", "description", "status"}
+        allowed = {"name", "code", "semester", "description", "status", "provider", "external_id", "source_url", "last_synced_at"}
         sets = []
         values: list = []
         for k, v in fields.items():

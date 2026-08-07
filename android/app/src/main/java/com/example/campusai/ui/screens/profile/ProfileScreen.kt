@@ -79,6 +79,7 @@ fun ProfileScreen(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
+                        ProfileRow(Icons.Default.SupervisorAccount, "我的老师", "管理我的老师联系方式") { onNavigate("teachers") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
                         ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },
                         ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "向 AI 导员描述你的问题") { onNavigate("counselor") },

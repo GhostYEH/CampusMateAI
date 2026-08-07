@@ -1,90 +1,80 @@
-<view class="page tab-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
+<!--
+  Refactored WXML for the courses page.
+  - A cleaner, card-based layout for the course list.
+  - A simplified filtering experience.
+  - Aligned with the Android app's design principles.
+-->
+<view class="page tab-page courses-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
   <campus-header
-    title="课程"
-    subtitle="把这周的学习节奏握在手里"
+    title="我的课程"
+    subtitle="本周共 {{courses.length}} 门课程"
     mode="{{mockMode ? 'Mock 数据' : '真实后端'}}"
   />
 
   <view class="page-body">
-    <view wx:if="{{courses.length > 0}}" class="course-hero enter">
-      <view class="course-hero-main">
-        <view class="course-hero-kicker"><view class="hero-accent-dot"></view><text>下一节课 · {{courses[0].time}}</text></view>
-        <view class="course-hero-name">{{courses[0].name}}</view>
-        <view class="course-hero-meta">{{courses[0].location}} · {{courses[0].teacher}}</view>
-        <view class="course-hero-actions">
-          <button bindtap="scrollToCourses">本周课表</button>
-          <button bindtap="openDetail">课程详情</button>
+    <!-- Filters -->
+    <view class="filters enter">
+      <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="filter-row">
+          <button
+            wx:for="{{filters}}"
+            wx:key="*this"
+            class="filter-chip {{filter === item ? 'selected' : ''}}"
+            data-filter="{{item}}"
+            bindtap="chooseFilter"
+          >{{item}}</button>
         </view>
-      </view>
-      <view class="course-hero-side">
-        <image class="course-hero-icon" src="/assets/icons/quick-calendar.svg" mode="aspectFit"></image>
-        <view class="course-hero-count">{{courses.length}} 门</view>
-      </view>
+      </scroll-view>
     </view>
 
-    <view class="course-metrics enter enter-delay-1">
-      <view class="course-metric"><view class="metric-value primary">{{courses.length}}</view><view class="metric-label">已加入课程</view></view>
-      <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value green">{{courseTypeCount}}</view><view class="metric-label">课程分类</view></view>
-      <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value orange">{{filtered.length}}</view><view class="metric-label">当前显示</view></view>
-      <view class="metric-divider"></view>
-      <view class="course-metric"><view class="metric-value navy">{{filter}}</view><view class="metric-label">筛选范围</view></view>
-    </view>
-
-    <view class="course-section-head enter enter-delay-2">
-      <view class="course-section-title">我的课表</view>
-      <view class="course-section-count">{{filtered.length}} 门课程</view>
-    </view>
-
-    <scroll-view class="filter-scroll enter enter-delay-2" scroll-x enhanced show-scrollbar="{{false}}">
-      <view class="filter-row">
-        <button
-          wx:for="{{filters}}"
-          wx:key="*this"
-          class="filter-chip {{filter === item ? 'selected' : ''}}"
-          data-filter="{{item}}"
-          bindtap="chooseFilter"
-        >{{item}}</button>
-      </view>
-    </scroll-view>
-
+    <!-- Loading/Error/Empty States -->
     <state-view
       wx:if="{{loading}}"
       state="loading"
-      title="正在整理课表"
-      description="课程信息马上就好"
+      title="正在加载课程..."
+      description="请稍候"
     />
     <state-view
       wx:elif="{{error}}"
       state="error"
-      title="课程加载失败"
+      title="加载失败"
       description="{{error}}"
-      actionText="重新加载"
+      actionText="重试"
       bindaction="load"
     />
     <state-view
       wx:elif="{{filtered.length === 0}}"
       state="empty"
-      title="没有匹配课程"
-      description="换一个分类看看"
+      title="暂无课程"
+      description="该分类下没有课程"
     />
 
-    <view wx:else class="course-list">
-      <view wx:for="{{filtered}}" wx:key="code" class="course-card enter" style="animation-delay: {{index * 45}}ms;">
-        <view class="course-code-box">{{item.code}}</view>
-        <view class="course-main">
-          <view class="course-title-row">
-            <view class="course-name">{{item.name}}</view>
-            <view class="course-type">{{item.type}}</view>
+    <!-- Course Cards -->
+    <view wx:else class="course-grid">
+      <view
+        wx:for="{{filtered}}"
+        wx:key="code"
+        class="course-card enter"
+        style="animation-delay: {{index * 50}}ms;"
+      >
+        <view class="card-header">
+          <view class="course-name">{{item.name}}</view>
+          <view class="course-type">{{item.type}}</view>
+        </view>
+        <view class="card-body">
+          <view class="info-row">
+            <image class="info-icon" src="/assets/icons/pin-white.svg" />
+            <text>{{item.location}}</text>
           </view>
-          <view class="course-teacher">{{item.teacher}} · {{item.location}}</view>
-          <view class="course-meta-row">
+          <view class="info-row">
+            <image class="info-icon" src="/assets/icons/clock-white.svg" />
             <text>{{item.weekday}} {{item.time}}</text>
-            <text>{{item.code}}</text>
           </view>
         </view>
-        <view class="course-chevron">›</view>
+        <view class="card-footer">
+          <text>{{item.teacher}}</text>
+          <view class="details-link">详情 ›</view>
+        </view>
       </view>
     </view>
   </view>

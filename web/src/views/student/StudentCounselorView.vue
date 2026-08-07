@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import { chatStream } from "../../services/api";
 import { createPersonalTask } from "../../services/studentApi";
+import { marked } from "marked";
 
 const route = useRoute();
 const router = useRouter();
@@ -32,6 +33,11 @@ const quickServices = [
   { label: "校园卡与消费", hint: "校园卡挂失、充值查询", icon: "PhTag" },
 ];
 
+function renderMarkdown(text) {
+  if (!text) return "";
+  return marked(text, { breaks: true, gfm: true }) || "";
+}
+
 const sampleAnswer = `期末考试周的复习建议如下，结合近期课程安排与常见复习方法，帮你高效备考：
 
 1. 制定复习计划：按科目和权重分配时间，优先复习高难度与高分值内容。
@@ -47,14 +53,7 @@ const sampleSources = [
   { title: "心理中心：考试周期压力调适建议", section: "心理支持" },
 ];
 
-const sessionPreview = [
-  { id: "preview-1", title: "关于期末考试复习安排", displayTime: "10:42", messages: [{ role: "user", text: "期末考试周怎么安排复习？" }, { role: "assistant", text: sampleAnswer }], sources: sampleSources },
-  { id: "preview-2", title: "申请课程重修流程", displayTime: "昨天", messages: [{ role: "user", text: "我想申请课程重修，需要准备什么？" }, { role: "assistant", text: "可以先确认重修申请时间，再准备成绩单、课程信息和申请表。" }] },
-  { id: "preview-3", title: "校园网故障报修怎么操作", displayTime: "8月9日", messages: [{ role: "user", text: "校园网故障应该怎么报修？" }, { role: "assistant", text: "可在校园服务中提交网络报修，填写宿舍楼栋、房间号和故障现象。" }] },
-  { id: "preview-4", title: "奖学金评定标准是什么？", displayTime: "8月7日", messages: [{ role: "user", text: "奖学金评定标准是什么？" }, { role: "assistant", text: "不同奖项的评定条件会有差异，建议先查看学生手册中的评定细则。" }] },
-];
-
-const displaySessions = computed(() => (sessions.value.length ? sessions.value : sessionPreview));
+const displaySessions = computed(() => sessions.value);
 
 function scroll() {
   setTimeout(() => {
@@ -87,6 +86,17 @@ function saveSession() {
   const next = [{ id: conversationId.value, title: first.text.slice(0, 24), updatedAt: new Date().toISOString(), messages: messages.value, sources: sources.value }, ...sessions.value.filter((item) => item.id !== conversationId.value)].slice(0, 12);
   sessions.value = next;
   localStorage.setItem("campus_counselor_sessions", JSON.stringify(next));
+}
+
+function clearSessions() {
+  localStorage.removeItem("campus_counselor_sessions");
+  sessions.value = [];
+  conversationId.value = `web-${Date.now()}`;
+  messages.value = [];
+  sources.value = [];
+  input.value = "";
+  error.value = "对话记录已清空";
+  scroll();
 }
 
 function restoreSession(item) {
@@ -151,6 +161,10 @@ async function copyAnswer(text) {
 }
 
 onMounted(() => {
+  if (!sessionStorage.getItem("campus_counselor_cleared_once")) {
+    localStorage.removeItem("campus_counselor_sessions");
+    sessionStorage.setItem("campus_counselor_cleared_once", "1");
+  }
   loadSessions();
   newSession();
   if (route.query.prompt) send(String(route.query.prompt));
@@ -180,6 +194,7 @@ onBeforeUnmount(() => aborter.value?.abort());
           <div class="student-panel-head">
             <h2>会话记录</h2>
             <button class="new-session-button" @click="newSession"><UiIcon name="PhPlus" />新会话</button>
+            <button class="new-session-button" @click="clearSessions"><UiIcon name="PhTrash" />清空记录</button>
           </div>
           <div class="session-list">
             <button v-for="session in displaySessions" :key="session.id" :class="{ active: session.id === conversationId }" @click="restoreSession(session)">
@@ -203,7 +218,8 @@ onBeforeUnmount(() => aborter.value?.abort());
           <div v-for="(message, index) in messages" :key="`${conversationId}-${index}`" class="chat-message" :class="message.role">
             <div class="chat-avatar"><UiIcon :name="message.role === 'user' ? 'PhUser' : 'PhRobot'" /></div>
             <div class="chat-bubble">
-              <p>{{ message.text }}<span v-if="message.streaming" class="typing-cursor">▌</span></p>
+              <div class="markdown-body" v-html="renderMarkdown(message.text)"></div>
+              <span v-if="message.streaming" class="typing-cursor">▌</span>
               <div v-if="message.role === 'assistant' && index === messages.length - 1 && message.text && sources.length" class="chat-reference-list">
                 <button v-for="source in sources" :key="source.document_id || source.title" type="button" @click="copyAnswer(source.title || source.document_title || '引用来源')">{{ source.title || source.document_title || "知识库资料" }} <UiIcon name="PhArrowUpRight" /></button>
               </div>

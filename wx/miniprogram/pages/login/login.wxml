@@ -1,45 +1,47 @@
+<!--
+  Refactored WXML for the login page, featuring a video background and a layout aligned with the Android app's design.
+-->
 <view class="login-page {{reduceMotion ? 'reduce-motion' : ''}}">
-  <view class="visual">
-    <image class="visual-image" src="/assets/campus-login.jpg" mode="aspectFill"></image>
-    <view class="visual-shade"></view>
-    <view class="visual-content" style="padding-top: {{statusBarHeight + 24}}px;">
-      <image class="brand-icon" src="/assets/app-icon.png" mode="aspectFill"></image>
-      <view class="eyebrow">CAMPUS AI</view>
-      <view class="visual-title">让校园里的每件事，<br/>都更有条理。</view>
-      <view class="visual-copy">通知、待办与学习节奏，由你掌握。</view>
-    </view>
+  <!-- Video Background -->
+  <video
+    class="visual-video"
+    src="http://127.0.0.1:8000/login_campus.mp4"
+    autoplay
+    loop
+    muted
+    show-play-btn="{{false}}"
+    controls="{{false}}"
+    object-fit="cover"
+  ></video>
+
+  <view class="visual-shade"></view>
+
+  <view class="visual-content" style="padding-top: {{statusBarHeight + 48}}px;">
+    <image class="brand-icon" src="/assets/app-icon.png" mode="aspectFill"></image>
+    <view class="visual-title">欢迎使用<br/>Campus AI</view>
+    <view class="visual-copy">登录以继续</view>
   </view>
 
   <view class="panel enter">
     <view class="panel-head">
-      <view>
-        <view class="title">欢迎回来</view>
-        <view class="subtitle">登录你的校园助手</view>
-      </view>
+      <view class="title">登录</view>
       <view class="mode-badge">
-        <view class="mode-dot"></view>
-        <text>{{mockMode ? 'Mock 演示' : '真实后端'}}</text>
+        <text>{{mockMode ? 'Mock 模式' : '真实后端'}}</text>
       </view>
     </view>
 
     <view class="form">
-      <view class="label">校园账号</view>
       <input
         class="field"
         value="{{username}}"
-        placeholder="请输入校园账号"
+        placeholder="校园账号"
         bindinput="onUsername"
       />
-
-      <view class="label password-label">
-        <text>密码</text>
-        <button class="text-button" bindtap="togglePassword">{{showPassword ? '隐藏' : '显示'}}</button>
-      </view>
       <input
         class="field"
         value="{{password}}"
         password="{{!showPassword}}"
-        placeholder="请输入密码"
+        placeholder="密码"
         bindinput="onPassword"
         bindconfirm="submit"
       />
@@ -55,10 +57,6 @@
       >{{loading ? '正在登录…' : '登录'}}</button>
     </view>
 
-    <view class="demo-title">演示账号</view>
-    <view class="demo-accounts">
-      <button class="account {{username === 'student_demo' ? 'selected' : ''}}" data-username="student_demo" bindtap="chooseAccount">学生</button>
-    </view>
-    <view class="mock-note">演示密码统一为 Demo123456。Mock 模式数据仅用于比赛演示。</view>
+    <view class="demo-note">演示账号: student_demo / 密码: Demo123456</view>
   </view>
 </view>

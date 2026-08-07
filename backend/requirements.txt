@@ -14,6 +14,8 @@ rank-bm25==0.2.2
 
 # ===== HTTP 客户端(调用 LLM) =====
 httpx==0.28.1
+beautifulsoup4==4.12.3
+cryptography==42.0.8
 
 # ===== 文档解析(可选,按需启用) =====
 # 仅支持 Markdown/TXT 时可注释掉下面两行

@@ -97,7 +97,6 @@ fun DashboardScreen(
     val tasks by repository.tasks.collectAsState()
     val campusNews by repository.campusNews.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val role = session?.role ?: "student"
 
     // 首页加载时尝试从后端拉取最新数据（通知 / 动态 / 课程 / 任务）
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -122,45 +121,34 @@ fun DashboardScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (role == "student") {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .campusClickable { onNavigate("profile") },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ReferenceAvatar(size = 42.dp)
-                    Column(Modifier.padding(start = 10.dp)) {
-                        Text(
-                            session?.name ?: "林知夏",
-                            color = TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            "点击头像进入个人中心",
-                            color = Muted,
-                            fontSize = 11.sp,
-                        )
-                    }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .campusClickable { onNavigate("profile") },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ReferenceAvatar(size = 42.dp)
+                Column(Modifier.padding(start = 10.dp)) {
+                    Text(
+                        session?.name ?: "林知夏",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "点击头像进入个人中心",
+                        color = Muted,
+                        fontSize = 11.sp,
+                    )
                 }
             }
-            item { ExamHero(onNavigate, reduceMotion) }
-            item { QuickActions(onNavigate, reduceMotion) }
-            item { TodayCourseCard(onNavigate, reduceMotion) }
-            item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
-            item { CampusUpdates(campusNews, onNavigate, reduceMotion) }
-        } else {
-            item {
-                RoleDashboard(
-                    name = session?.name ?: "校园用户",
-                    role = role,
-                    onNavigate = onNavigate,
-                    reduceMotion = reduceMotion,
-                )
-            }
         }
+        item { ExamHero(onNavigate, reduceMotion) }
+        item { QuickActions(onNavigate, reduceMotion) }
+        item { TodayCourseCard(onNavigate, reduceMotion) }
+        item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
+        item { CampusUpdates(campusNews, onNavigate, reduceMotion) }
     }
 }
 
@@ -536,57 +524,6 @@ private fun SectionTitle(title: String, action: String, onAction: () -> Unit) {
         Row(Modifier.campusClickable(onClick = onAction), verticalAlignment = Alignment.CenterVertically) {
             Text(action, color = Muted, fontSize = 10.5.sp)
             Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun RoleDashboard(
-    name: String,
-    role: String,
-    onNavigate: (String) -> Unit,
-    reduceMotion: Boolean,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Surface, RoundedCornerShape(24.dp))
-            .padding(22.dp)
-            .enterAnimation(enabled = !reduceMotion),
-    ) {
-        Text(if (role == "teacher") "教学工作台" else "系统管理概览", color = TextPrimary, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Text("$name，今天也一起把事情理清楚。", color = Muted, fontSize = 13.sp)
-        Spacer(Modifier.height(22.dp))
-        val metrics = if (role == "teacher") {
-            listOf("3" to "进行中课程", "12" to "待批作业", "90" to "学生人数")
-        } else {
-            listOf("1,248" to "活跃用户", "42" to "课程总数", "99.9%" to "服务可用率")
-        }
-        metrics.forEach { (value, label) ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
-                    Icon(if (role == "teacher") Icons.Default.School else Icons.Default.Grade, null, tint = Primary)
-                }
-                Spacer(Modifier.width(12.dp))
-                Text(label, color = TextPrimary, fontSize = 13.sp)
-                Spacer(Modifier.weight(1f))
-                Text(value, color = Primary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(13.dp))
-                .background(Primary)
-                .campusClickable { onNavigate(if (role == "teacher") "courses" else "users") }
-                .padding(vertical = 13.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Text("查看详情", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -20,6 +20,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from cryptography.fernet import Fernet
+from passlib.context import CryptContext
+
+from .config import get_settings
+
+# 从 jwt_secret 生成一个确定性的 32 字节密钥
+settings = get_settings()
+hashed_secret = hashlib.sha256(settings.jwt_secret.encode()).digest()
+fernet_key = base64.urlsafe_b64encode(hashed_secret)
+fernet = Fernet(fernet_key)
+
+def encrypt(data: str) -> str:
+    return fernet.encrypt(data.encode()).decode()
+
+def decrypt(token: str) -> str:
+    return fernet.decrypt(token.encode()).decode()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # ===== 文件名 / 路径穿越校验 =====
 
 # 合法文件名：中文/英文/数字/下划线/连字符/点/常见中文标点(括号、方括号等)，长度 1~200
@@ -96,7 +115,6 @@ def verify_password(password: str, stored_hash: str) -> bool:
         "sha256", password.encode("utf-8"), salt, iterations, dklen=len(expected)
     )
     return hmac.compare_digest(derived, expected)
-
 
 # ===== JWT (HS256) =====
 # 仅使用标准库实现 HS256，避免引入 PyJWT。
@@ -255,4 +273,6 @@ __all__ = [
     "hash_token",
     "TokenPayload",
     "JWTError",
+    "encrypt",
+    "decrypt",
 ]

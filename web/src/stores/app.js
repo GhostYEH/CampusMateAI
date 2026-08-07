@@ -20,7 +20,7 @@ export const useAppStore = defineStore("app", () => {
   function addTask(title, due = "待设置", course = "个人待办", details = {}) { tasks.value.unshift({ id: Date.now(), title, due, course, done: false, ...details }); persist(); }
   function updateTask(id, updates) { const task = tasks.value.find((item) => item.id === id); if (task) Object.assign(task, updates); persist(); }
   function deleteTask(id) { tasks.value = tasks.value.filter((x) => x.id !== id); persist(); }
-  async function login(username, password, expectedRole) {
+  async function login(username, password) {
     backendOnline.value = await probeBackend();
     if (!backendOnline.value) throw new Error("无法连接后端服务，请确认 FastAPI 已启动");
     const user = await realLogin(username, password);
@@ -29,11 +29,6 @@ export const useAppStore = defineStore("app", () => {
       name: user.name || user.display_name || user.username,
       detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", teacher: "教师", admin: "管理员" }[user.role]),
     };
-    if (expectedRole && normalized.role !== expectedRole) {
-      localStorage.removeItem("campus_access_token");
-      localStorage.removeItem("campus_refresh_token");
-      throw new Error(`该账号不是${{ student: "学生", teacher: "教师", admin: "管理员" }[expectedRole]}账号，请切换登录入口`);
-    }
     session.value = normalized;
     localStorage.setItem("campus_session", JSON.stringify(normalized));
     return normalized;

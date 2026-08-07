@@ -39,6 +39,7 @@ class ExpressionSessionManager(
     private var appForeground = true
     private var processor = FocusStateProcessor(observationConfig)
     private var latestResult = initialResult()
+    private var releaseJob: kotlinx.coroutines.Job? = null
 
     private val _status = MutableStateFlow<ExpressionServiceStatus>(ExpressionServiceStatus.Off)
     val status: StateFlow<ExpressionServiceStatus> = _status.asStateFlow()
@@ -50,16 +51,19 @@ class ExpressionSessionManager(
     val gentleReminder: StateFlow<String?> = _gentleReminder.asStateFlow()
     val modeLabel: String get() = (service as? ObservableExpressionRecognitionService)?.modeLabel ?: if (useMock) "Mock 表情模型" else "本机 LiteRT"
 
-    suspend fun setUseMock(enabled: Boolean) = mutex.withLock {
-        if (useMock == enabled) return@withLock
-        service?.dispose()
-        service = null
-        useMock = enabled
-        latestResult = initialResult()
-        _result.value = latestResult
-        _status.value = ExpressionServiceStatus.Off
-        _focusState.value = FocusState.UNAVAILABLE
-        syncLocked()
+    suspend fun setUseMock(enabled: Boolean) {
+        releaseJob?.cancel()
+        mutex.withLock {
+            if (useMock == enabled) return@withLock
+            service?.dispose()
+            service = null
+            useMock = enabled
+            latestResult = initialResult()
+            _result.value = latestResult
+            _status.value = ExpressionServiceStatus.Off
+            _focusState.value = FocusState.UNAVAILABLE
+            syncLocked()
+        }
     }
 
     suspend fun updateEligibility(
@@ -68,13 +72,16 @@ class ExpressionSessionManager(
         running: Boolean = timerRunning,
         visible: Boolean = pageVisible,
         foreground: Boolean = appForeground,
-    ) = mutex.withLock {
-        assistanceEnabled = enabled
-        cameraPermissionGranted = permissionGranted
-        timerRunning = running
-        pageVisible = visible
-        appForeground = foreground
-        syncLocked()
+    ) {
+        releaseJob?.cancel()
+        mutex.withLock {
+            assistanceEnabled = enabled
+            cameraPermissionGranted = permissionGranted
+            timerRunning = running
+            pageVisible = visible
+            appForeground = foreground
+            syncLocked()
+        }
     }
 
     fun attachPreview(owner: LifecycleOwner, view: PreviewView) {
@@ -83,25 +90,39 @@ class ExpressionSessionManager(
         (service as? CameraExpressionRecognitionService)?.bindCamera(owner, view)
     }
 
-    suspend fun detachPreview() = mutex.withLock {
-        (service as? CameraExpressionRecognitionService)?.unbindCamera()
-        previewOwner = null
-        previewView = null
+    suspend fun detachPreview() {
+        releaseJob?.cancel()
+        mutex.withLock {
+            (service as? CameraExpressionRecognitionService)?.unbindCamera()
+            previewOwner = null
+            previewView = null
+        }
     }
 
-    suspend fun beginFocusSession() = mutex.withLock {
-        processor = FocusStateProcessor(observationConfig)
-        _gentleReminder.value = null
+    suspend fun beginFocusSession() {
+        releaseJob?.cancel()
+        mutex.withLock {
+            processor = FocusStateProcessor(observationConfig)
+            _gentleReminder.value = null
+        }
     }
 
-    suspend fun finishFocusSession(actualFocusMinutes: Int): FocusSessionSummary = mutex.withLock {
-        val summary = processor.finish(
-            now = System.currentTimeMillis(),
-            actualFocusMinutes = actualFocusMinutes,
-            modelVersion = latestResult.modelVersion,
-        )
-        _gentleReminder.value = null
-        summary
+    suspend fun finishFocusSession(actualFocusMinutes: Int): FocusSessionSummary {
+        releaseJob?.cancel()
+        return mutex.withLock {
+            val summary = processor.finish(
+                now = System.currentTimeMillis(),
+                actualFocusMinutes = actualFocusMinutes,
+                modelVersion = latestResult.modelVersion,
+            )
+            _gentleReminder.value = null
+            summary
+        }
+    }
+
+    fun releaseAsync() {
+        releaseJob?.cancel()
+        releaseJob = scope.launch { release() }
     }
 
     suspend fun release() = mutex.withLock {

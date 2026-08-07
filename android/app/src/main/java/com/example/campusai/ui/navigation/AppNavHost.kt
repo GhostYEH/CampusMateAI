@@ -22,20 +22,21 @@ import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
 import com.example.campusai.ui.screens.exams.ExamsScreen
 import com.example.campusai.ui.screens.focus.FocusScreen
-import com.example.campusai.ui.screens.admin.AdminSystemScreen
-import com.example.campusai.ui.screens.teacher.TeacherPublishScreen
-import com.example.campusai.ui.screens.teacher.TeacherStatsScreen
+
 import com.example.campusai.ui.screens.lostfound.LostFoundDetailScreen
 import com.example.campusai.ui.screens.lostfound.LostFoundPublishScreen
 import com.example.campusai.ui.screens.lostfound.LostFoundScreen
 import com.example.campusai.ui.screens.lostfound.MyLostFoundScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
-import com.example.campusai.ui.screens.profile.ProfileScreen
 import com.example.campusai.ui.screens.profile.AccountScreen
-import com.example.campusai.ui.screens.profile.SettingsScreen
+import com.example.campusai.ui.screens.profile.ChaoxingLoginScreen
 import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
+import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
+import com.example.campusai.ui.screens.profile.ProfileScreen
+import com.example.campusai.ui.screens.profile.SettingsScreen
+import com.example.campusai.ui.screens.profile.TeachersScreen
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
 import com.example.campusai.ui.screens.services.LeaveRequestScreen
 import com.example.campusai.ui.screens.services.MyRequestsScreen
@@ -44,7 +45,6 @@ import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
 import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
-import com.example.campusai.ui.screens.users.UsersScreen
 import java.net.URLEncoder
 
 @Composable
@@ -174,12 +174,22 @@ fun AppNavHost(
                 repository = repository,
                 onBack = { navController.popBackStack() },
                 onOpenContribution = { navController.navigate("expression-contribution") },
+                onOpenNotificationSettings = { navController.navigate("notification-settings") },
+                onOpenChaoxingLogin = { navController.navigate("chaoxing-login") },
             )
+        }
+        composable("notification-settings") {
+            NotificationSettingsScreen(repository)
+        }
+        composable("chaoxing-login") {
+            ChaoxingLoginScreen(onLoginSuccess = { navController.popBackStack() })
         }
         composable("expression-contribution") {
             ExpressionContributionScreen(repository) { navController.popBackStack() }
         }
         composable("account") { AccountScreen(repository) { navController.popBackStack() } }
+        composable("teachers") { TeachersScreen(repository) { navController.popBackStack() } }
+
         composable("files") {
             PersonalHubScreen(
                 repository = repository,
@@ -204,10 +214,7 @@ fun AppNavHost(
                 onNavigate = { route -> go(route) },
             )
         }
-        composable("users") { UsersScreen(repository) }
-        composable("publish") { TeacherPublishScreen(modules.teacher) }
-        composable("stats") { TeacherStatsScreen(modules.teacher) }
-        composable("system") { AdminSystemScreen(repository) }
+
         composable(
             route = "campus-news-detail/{newsId}",
             arguments = listOf(navArgument("newsId") { type = NavType.StringType }),

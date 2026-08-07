@@ -1026,13 +1026,17 @@ class NoticeExtractionService:
             reasons: List[str] = []
             similarity = 0.0
 
-            # 1. 哈希完全一致
+            # 1. 来源不同，即使文本相似也不算重复
+            if existing.source_name != req.source_name:
+                continue
+
+            # 2. 哈希完全一致
             if existing_hash == content_hash and content_hash:
                 similarity = 1.0
                 reasons.append("content_hash")
                 # hash 一致直接认定,无需其他判定
 
-            # 2. 来源 + 截止 + 任务名 一致
+            # 3. 来源 + 截止 + 任务名 一致
             else:
                 same_source = (
                     req.source_name

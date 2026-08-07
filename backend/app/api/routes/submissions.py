@@ -121,46 +121,7 @@ def _load_attachments(
     ]
 
 
-@router.get("/assignments/{assignment_id}/submissions", response_model=Page)
-def list_submissions(
-    assignment_id: str,
-    status: Optional[str] = Query(None, pattern="^(draft|submitted|resubmitted|late)$"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> Page:
-    a = container.assignment_repository.get_assignment(assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise AssignmentNotFound()
-    _assert_can_manage_class(cls, user, container)
-    rows, total = container.submission_repository.list_submissions(
-        assignment_id, status=status, page=page, page_size=page_size,
-    )
-    items: List[SubmissionOut] = []
-    for r in rows:
-        # r 为 dict(已 join 学生信息)
-        items.append(SubmissionOut(
-            id=r["id"],
-            assignment_id=r["assignment_id"],
-            student_id=r["student_id"],
-            student_name=r["student_name"],
-            student_number=r["student_number"],
-            college=r["college"],
-            major=r["major"],
-            grade=r["grade"],
-            text_content=r["text_content"],
-            status=r["status"],
-            submitted_at=r["submitted_at"],
-            updated_at=r["updated_at"],
-            score=r["score"],
-            teacher_comment=r["teacher_comment"],
-            attachments=[],
-        ))
-    return Page.from_rows(items, total=total, page=page, page_size=page_size)
+
 
 
 @router.get(
@@ -467,33 +428,7 @@ def download_attachment(
     )
 
 
-@router.post("/submissions/{submission_id}/grade", response_model=SubmissionOut)
-def grade_submission(
-    submission_id: str,
-    req: SubmissionGrade,
-    user: UserRow = Depends(current_user),
-    container: ServiceContainer = Depends(_container),
-) -> SubmissionOut:
-    sub = container.submission_repository.get_submission(submission_id)
-    if sub is None:
-        raise SubmissionNotFound()
-    a = container.assignment_repository.get_assignment(sub.assignment_id)
-    if a is None:
-        raise AssignmentNotFound()
-    cls = container.class_group_repository.get_class(a.class_group_id)
-    if cls is None:
-        raise AssignmentNotFound()
-    _assert_can_manage_class(cls, user, container)
-    updated = container.submission_repository.grade(
-        submission_id,
-        score=req.score,
-        teacher_comment=req.teacher_comment,
-    )
-    if updated is None:
-        raise SubmissionNotFound()
-    out = _enrich_with_student_info(container, updated)
-    out.attachments = _load_attachments(container, updated.id)
-    return out
+
 
 
 __all__ = ["router"]

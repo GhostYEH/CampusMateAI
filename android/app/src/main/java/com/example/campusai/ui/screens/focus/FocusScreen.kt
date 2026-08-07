@@ -232,10 +232,7 @@ fun FocusScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            scope.launch {
-                manager.updateEligibility(visible = false, foreground = false)
-                manager.detachPreview()
-            }
+            manager.releaseAsync()
             if (secondsLeft != mode.totalSeconds || running) persistTimer(running, secondsLeft, mode)
         }
     }

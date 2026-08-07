@@ -76,25 +76,39 @@ class PersonalTaskRepository:
     ) -> PersonalTaskRow:
         tid = _new_id()
         now = _now_iso()
-        with self._db.transaction() as conn:
-            conn.execute(
-                """INSERT INTO personal_tasks (
-                    id, user_id, title, description, target_students,
-                    deadline, materials, submission_method, location,
-                    source_name, source_text, source_notice_id,
-                    priority, status, reminder_minutes,
-                    created_at, updated_at, completed_at, deleted_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,NULL,NULL)""",
-                (
-                    tid, user_id, title, description, target_students,
-                    deadline, _dump_materials(materials), submission_method, location,
-                    source_name, source_text, source_notice_id,
-                    priority, "pending", reminder_minutes,
-                    now, now,
-                ),
-            )
-        # 事务已提交,重新打开连接读取
-        return self.get_task(tid, user_id=user_id)  # type: ignore[return-value]
+        import sqlite3
+        try:
+            with self._db.transaction() as conn:
+                conn.execute(
+                    """INSERT INTO personal_tasks (
+                        id, user_id, title, description, target_students,
+                        deadline, materials, submission_method, location,
+                        source_name, source_text, source_notice_id,
+                        priority, status, reminder_minutes,
+                        created_at, updated_at, completed_at, deleted_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,NULL,NULL)""",
+                    (
+                        tid, user_id, title, description, target_students,
+                        deadline, _dump_materials(materials), submission_method, location,
+                        source_name, source_text, source_notice_id,
+                        priority, "pending", reminder_minutes,
+                        now, now,
+                    ),
+                )
+            # 事务已提交,重新打开连接读取
+            return self.get_task(tid, user_id=user_id)  # type: ignore[return-value]
+        except sqlite3.IntegrityError:
+            if source_notice_id is not None:
+                # 冲突时，直接查询已存在的任务
+                with self._db.query() as conn:
+                    cur = conn.execute(
+                        "SELECT * FROM personal_tasks WHERE user_id = ? AND source_notice_id = ?",
+                        (user_id, source_notice_id)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        return PersonalTaskRow.from_row(row)
+            raise
 
     # ===== 查询 =====
 

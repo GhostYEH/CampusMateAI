@@ -76,10 +76,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 14   # refresh token 较长有效期
 
     # ===== 测试环境数据 seeding =====
-    # 启动时是否自动 seed 多角色验收账号(teacher_demo/student_demo/admin_demo)
+    # 启动时是否自动 seed 测试账号
     # 默认关闭;仅 dev/test 显式开启
     # production 环境下强制为 False(见 _normalize 校验)
-    # 验收账号为普通用户,走完整真实业务流程,无特殊权限
     auto_seed_demo_users: bool = False
 
     # ----- 派生属性 -----
@@ -154,3 +153,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """单例 Settings(进程内缓存)。测试时通过 `get_settings.cache_clear()` 重置。"""
     return Settings()
+
+settings = get_settings()
