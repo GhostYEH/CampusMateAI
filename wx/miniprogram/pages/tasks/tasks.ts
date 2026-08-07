@@ -24,7 +24,7 @@ Page({
       if (tabBar) tabBar.sync()
     })
   },
-  load() {
+  async load() {
     const settings = repository.getSettings()
     this.setData({
       loading: true,
@@ -32,10 +32,15 @@ Page({
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
     })
-    setTimeout(() => {
-      this.refresh(repository.getTasks(), this.data.filter)
+    try {
+      const tasks = await repository.getTasksAsync()
+      this.refresh(tasks, this.data.filter)
+    } catch (e) {
+      wx.showToast({ title: '加载失败', icon: 'none' })
+      this.refresh([], this.data.filter)
+    } finally {
       this.setData({ loading: false })
-    }, settings.reduceMotion ? 0 : 160)
+    }
   },
   refresh(tasks: CampusTask[], filter: string) {
     const pendingCount = tasks.filter((task) => !task.done).length
@@ -59,22 +64,34 @@ Page({
   chooseFilter(event: WechatMiniprogram.TouchEvent) {
     this.refresh(this.data.tasks, event.currentTarget.dataset.filter as string)
   },
-  toggleTask(event: WechatMiniprogram.TouchEvent) {
-    const tasks = repository.toggleTask(Number(event.currentTarget.dataset.id))
-    this.refresh(tasks, this.data.filter)
-    wx.showToast({ title: '状态已更新', icon: 'success' })
+  async toggleTask(event: WechatMiniprogram.TouchEvent) {
+    const id = event.currentTarget.dataset.id
+    try {
+      wx.showLoading({ title: '处理中' })
+      const tasks = await repository.toggleTask(id)
+      this.refresh(tasks, this.data.filter)
+      wx.showToast({ title: '状态已更新', icon: 'success' })
+    } catch (e) {
+      wx.showToast({ title: '更新失败', icon: 'none' })
+    }
   },
   deleteTask(event: WechatMiniprogram.TouchEvent) {
-    const id = Number(event.currentTarget.dataset.id)
+    const id = event.currentTarget.dataset.id
     wx.showModal({
       title: '删除这项待办？',
       content: '删除后无法恢复。',
       confirmText: '删除',
       confirmColor: '#C25450',
-      success: (result) => {
+      success: async (result) => {
         if (!result.confirm) return
-        this.refresh(repository.deleteTask(id), this.data.filter)
-        wx.showToast({ title: '已删除', icon: 'success' })
+        try {
+          wx.showLoading({ title: '处理中' })
+          const tasks = await repository.deleteTask(id)
+          this.refresh(tasks, this.data.filter)
+          wx.showToast({ title: '已删除', icon: 'success' })
+        } catch (e) {
+          wx.showToast({ title: '删除失败', icon: 'none' })
+        }
       },
     })
   },
@@ -93,12 +110,17 @@ Page({
   onDueInput(event: WechatMiniprogram.Input) {
     this.setData({ dueInput: event.detail.value })
   },
-  addTask() {
+  async addTask() {
     const title = this.data.titleInput.trim()
     if (!title) return
-    const tasks = repository.addTask(title, this.data.dueInput.trim() || '待设置')
-    this.refresh(tasks, this.data.filter)
-    this.setData({ showAdd: false })
-    wx.showToast({ title: '已添加待办', icon: 'success' })
+    try {
+      wx.showLoading({ title: '处理中' })
+      const tasks = await repository.addTask(title, this.data.dueInput.trim() || '待设置')
+      this.refresh(tasks, this.data.filter)
+      this.setData({ showAdd: false })
+      wx.showToast({ title: '已添加待办', icon: 'success' })
+    } catch (e) {
+      wx.showToast({ title: '添加失败', icon: 'none' })
+    }
   },
 })

@@ -93,31 +93,79 @@ class CampusRepository {
     wx.removeStorageSync(STORAGE.token)
   }
 
+  async getTasksAsync(): Promise<CampusTask[]> {
+    const settings = this.getSettings()
+    if (settings.mockMode) {
+      return this.getTasks()
+    }
+    const response = await this.request<{ items: any[] }>('/personal-tasks/', 'GET')
+    return response.items.map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      due: item.deadline || '无截止时间',
+      course: item.source_name || '个人待办',
+      done: item.status === 'completed',
+    }))
+  }
+
   getTasks(): CampusTask[] {
     return (wx.getStorageSync(STORAGE.tasks) as CampusTask[] | '') || defaultTasks
   }
 
-  addTask(title: string, due = '待设置', course = '个人待办'): CampusTask[] {
-    const tasks = [
-      { id: Date.now(), title, due, course, done: false },
-      ...this.getTasks(),
-    ]
-    wx.setStorageSync(STORAGE.tasks, tasks)
-    return tasks
+  async toggleTask(id: number | string): Promise<CampusTask[]> {
+    const settings = this.getSettings()
+    if (settings.mockMode) {
+      const tasks = this.getTasks().map((task) => (
+        task.id === id ? { ...task, done: !task.done } : task
+      ))
+      wx.setStorageSync(STORAGE.tasks, tasks)
+      return tasks
+    }
+    
+    // Remote
+    const tasks = await this.getTasksAsync()
+    const task = tasks.find(t => t.id === id)
+    if (task) {
+      if (task.done) {
+        await this.request(`/personal-tasks/${id}/restore`, 'POST')
+      } else {
+        await this.request(`/personal-tasks/${id}/complete`, 'POST')
+      }
+    }
+    return this.getTasksAsync()
   }
 
-  toggleTask(id: number): CampusTask[] {
-    const tasks = this.getTasks().map((task) => (
-      task.id === id ? { ...task, done: !task.done } : task
-    ))
-    wx.setStorageSync(STORAGE.tasks, tasks)
-    return tasks
+  async deleteTask(id: number | string): Promise<CampusTask[]> {
+    const settings = this.getSettings()
+    if (settings.mockMode) {
+      const tasks = this.getTasks().filter((task) => task.id !== id)
+      wx.setStorageSync(STORAGE.tasks, tasks)
+      return tasks
+    }
+    
+    // Remote
+    await this.request(`/personal-tasks/${id}`, 'DELETE')
+    return this.getTasksAsync()
   }
 
-  deleteTask(id: number): CampusTask[] {
-    const tasks = this.getTasks().filter((task) => task.id !== id)
-    wx.setStorageSync(STORAGE.tasks, tasks)
-    return tasks
+  async addTask(title: string, due = '待设置', course = '个人待办'): Promise<CampusTask[]> {
+    const settings = this.getSettings()
+    if (settings.mockMode) {
+      const tasks = [
+        { id: Date.now(), title, due, course, done: false },
+        ...this.getTasks(),
+      ]
+      wx.setStorageSync(STORAGE.tasks, tasks)
+      return tasks
+    }
+
+    // Remote
+    await this.request('/personal-tasks/', 'POST', {
+      title,
+      deadline: due === '待设置' ? null : due,
+      source_name: course
+    })
+    return this.getTasksAsync()
   }
 
   getNotices(): Notice[] {

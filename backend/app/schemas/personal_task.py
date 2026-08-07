@@ -156,6 +156,11 @@ class PersonalTaskOut(BaseModel):
     priority: str
     status: str
     reminder_minutes: Optional[int] = None
+    source: Optional[str] = None
+    external_id: Optional[str] = None
+    course_id: Optional[str] = None
+    source_url: Optional[str] = None
+    last_synced_at: Optional[str] = None
     created_at: str
     updated_at: str
     completed_at: Optional[str] = None

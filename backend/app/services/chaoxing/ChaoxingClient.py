@@ -194,10 +194,60 @@ class ChaoxingClient:
             soup = BeautifulSoup(response.text, "lxml")
 
             assignments = []
-            for item in soup.select(".work-item"):
-                title = item.select_one(".work-title").text.strip()
-                deadline = item.select_one(".work-deadline").text.strip()
-                assignments.append({"title": title, "deadline": deadline})
+            for item in soup.select(".work-item, li, tr"):
+                title_elem = item.select_one(".work-title, .title, h3, .name")
+                if not title_elem:
+                    continue
+                title = title_elem.text.strip()
+
+                deadline_elem = item.select_one(".work-deadline, .deadline, .time")
+                deadline = deadline_elem.text.strip() if deadline_elem else ""
+
+                # Extract external_id
+                external_id = item.get("data-workid") or item.get("data-jobid") or item.get("data-id") or item.get("id")
+                
+                link_elem = item.select_one("a")
+                link = link_elem["href"] if link_elem and link_elem.has_attr("href") else ""
+                
+                if not external_id and link:
+                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=(\d+)', link, re.IGNORECASE)
+                    if match:
+                        external_id = match.group(1)
+
+                if not external_id and item.get("onclick"):
+                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=(\d+)', item.get("onclick"), re.IGNORECASE)
+                    if match:
+                        external_id = match.group(1)
+                
+                if not external_id:
+                    input_id = item.select_one("input[name='workId'], input[name='jobId'], input[name='taskId']")
+                    if input_id:
+                        external_id = input_id.get("value")
+
+                if not external_id:
+                    continue # Do not use title+deadline
+
+                status_text = ""
+                status_elem = item.select_one(".status, .state, .work-status, .type, .sub-status")
+                if status_elem:
+                    status_text = status_elem.text.strip()
+                elif item.select_one(".btn-submit, .submit-btn"):
+                    status_text = "未交"
+                
+                status = "pending"
+                if any(x in status_text for x in ["已交", "已完成", "已批阅", "待批阅", "已提交", "完成"]):
+                    status = "completed"
+
+                if link and link.startswith("/"):
+                    link = "https://mooc2-ans.chaoxing.com" + link
+
+                assignments.append({
+                    "title": title,
+                    "deadline": deadline,
+                    "external_id": external_id,
+                    "status": status,
+                    "link": link
+                })
 
             return {"assignments": assignments, "notices": []}
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
