@@ -12,6 +12,9 @@ python-dotenv==1.0.1
 jieba==0.42.1
 rank-bm25==0.2.2
 
+# ===== 鉴权与安全 =====
+passlib[bcrypt]==1.7.4
+
 # ===== HTTP 客户端(调用 LLM) =====
 httpx==0.28.1
 beautifulsoup4==4.12.3
