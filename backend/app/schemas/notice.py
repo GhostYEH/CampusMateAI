@@ -145,6 +145,7 @@ class MultiNoticeExtractResponse(BaseModel):
 class NoticeExtractResponse(BaseModel):
     title: str = Field(..., description="通知标题/任务名(可为空字符串)")
     task: str = Field(..., description="任务名(对齐移动端 taskName)")
+    actionable: bool = Field(False, description="是否是明确需要学生执行的行动型通知(普通公告为 false)")
     target_students: Optional[str] = Field(None, description="面向对象")
     deadline: Optional[datetime] = Field(None, description="截止时间(ISO 8601)")
     materials: List[MaterialItem] = Field(default_factory=list)
