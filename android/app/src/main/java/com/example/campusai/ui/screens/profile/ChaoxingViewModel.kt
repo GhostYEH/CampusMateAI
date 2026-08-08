@@ -85,10 +85,10 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                 appRepository.refreshTasks()
                 appRepository.refreshNotices()
             } else {
-                if (result.second == "reauth_required") {
+                if (result.second == "reauth_required" || result.second == "verification_required") {
                     _uiState.value = _uiState.value.copy(
                         isSyncing = false, 
-                        syncResult = "登录已失效，请重新登录",
+                        syncResult = "登录已失效或需要验证，请重新登录",
                         status = "expired"
                     )
                     stateStore.setReauthRequired(true)

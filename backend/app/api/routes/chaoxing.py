@@ -168,8 +168,8 @@ async def sync_chaoxing(
             break
         
         error_msg = result
-        if error_msg == "reauth_required":
-            break # No retry for auth errors
+        if error_msg in ("reauth_required", "verification_required"):
+            break # No retry for auth/verification errors
         
         # Backoff for network/HTTP errors
         if attempt < max_retries - 1:
@@ -179,6 +179,8 @@ async def sync_chaoxing(
         if error_msg == "reauth_required":
             # Session invalid, clear status if needed or just return 401
             raise HTTPException(status_code=401, detail="reauth_required")
+        elif error_msg == "verification_required":
+            raise HTTPException(status_code=403, detail="verification_required")
         else:
             raise HTTPException(status_code=502, detail=f"Sync failed: {error_msg}")
 

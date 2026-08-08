@@ -196,8 +196,8 @@ class AppRepository(application: Application) {
                 Pair(true, "")
             } else {
                 val errorStr = resp.errorBody()?.string() ?: ""
-                if (resp.code() == 401 || errorStr.contains("reauth_required")) {
-                    Pair(false, "reauth_required")
+                if (resp.code() == 401 || errorStr.contains("reauth_required") || resp.code() == 403 || errorStr.contains("verification_required")) {
+                    Pair(false, if (errorStr.contains("verification_required") || resp.code() == 403) "verification_required" else "reauth_required")
                 } else {
                     Pair(false, "同步失败: ${resp.code()}")
                 }

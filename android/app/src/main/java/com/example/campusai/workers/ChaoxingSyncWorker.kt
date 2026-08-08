@@ -36,10 +36,10 @@ class ChaoxingSyncWorker(
             repository.refreshNotices()
             ListenableWorker.Result.success()
         } else {
-            if (result.second == "reauth_required") {
+            if (result.second == "reauth_required" || result.second == "verification_required") {
                 stateStore.setReauthRequired(true)
                 showReauthNotification()
-                // Do not retry endlessly if reauth is required
+                // Do not retry endlessly if reauth/verification is required
                 ListenableWorker.Result.failure()
             } else {
                 // Network or other error, retry with exponential backoff (handled by WorkManager default backoff)
@@ -64,7 +64,7 @@ class ChaoxingSyncWorker(
         val notification = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_alert) // using default icon for simplicity, could be R.drawable.ic_launcher_foreground
             .setContentTitle("CampusMate")
-            .setContentText("学习通登录已失效，请重新连接")
+            .setContentText("学习通登录已失效或需要验证，请重新连接")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
