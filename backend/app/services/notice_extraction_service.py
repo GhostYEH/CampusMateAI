@@ -133,6 +133,23 @@ _TASK_KEYWORDS = [
     ("注册", None, "完成注册"),
 ]
 
+# 完成/已结束状态关键词: 出现这些则表示任务已完成，不应创建新 Task
+_COMPLETION_PATTERNS = [
+    re.compile(r"作业已提交"),
+    re.compile(r"您已完成提交"),
+    re.compile(r"作业已批阅"),
+    re.compile(r"提交成功"),
+    re.compile(r"已完成登记"),
+    re.compile(r"已完成"),
+    re.compile(r"已提交"),
+    re.compile(r"已批阅"),
+    re.compile(r"已结束"),
+    re.compile(r"已截止"),
+    re.compile(r"批阅完成"),
+    re.compile(r"考核结束"),
+    re.compile(r"考试已结束"),
+]
+
 
 def _to_dt(
     year: int,
@@ -423,7 +440,7 @@ def _looks_like_notice(text: str) -> bool:
     if len(s) < 5:
         return False
     # 至少包含一个常见信号
-    signals = ["请", "通知", "前", "截止", "提交", "报名", "申请", "截至", "同学"]
+    signals = ["请", "通知", "前", "截止", "提交", "报名", "申请", "截至", "同学", "登记", "作业", "成绩", "批阅"]
     return any(sig in s for sig in signals)
 
 
@@ -953,8 +970,13 @@ class NoticeExtractionService:
     ) -> NoticeExtractResponse:
         task = _rule_parse_task(content)
         # 简单规则判断是否 actionable
-        actionable_keywords = ["提交", "申请", "报名", "登记", "选课", "补退选", "填写", "上传"]
-        actionable = any(kw in content for kw in actionable_keywords)
+        # 优先排除完成/已结束状态，避免把"已提交""已批阅"当作行动要求
+        is_completed = any(pat.search(content) for pat in _COMPLETION_PATTERNS)
+        if is_completed:
+            actionable = False
+        else:
+            actionable_keywords = ["提交", "申请", "报名", "登记", "选课", "补退选", "填写", "上传"]
+            actionable = any(kw in content for kw in actionable_keywords)
 
         audience = _rule_parse_audience(content)
         deadline, year_missing, year_reason = _rule_parse_deadline(content, published_at)

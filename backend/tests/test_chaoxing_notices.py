@@ -78,7 +78,7 @@ def test_container():
 
     import sqlite3
 
-    settings = Settings(db_url="sqlite:///:memory:", llm_available=False)
+    settings = Settings(database_url="sqlite:///:memory:", llm_available=False)
 
     # Bypass init schema since it's breaking on connect with original string
     class MemoryDB(Database):
@@ -110,7 +110,7 @@ def test_container():
     class MockSettings(Settings):
         llm_available: bool = False
 
-    settings_mock = MockSettings(db_url="sqlite:///:memory:")
+    settings_mock = MockSettings(database_url="sqlite:///:memory:")
     container = build_container(settings_mock)
     container.db = db
     for repo_name in (
@@ -543,3 +543,198 @@ async def test_chaoxing_concurrent_sync(mock_container: ServiceContainer, user_i
     tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
     assert len(tasks) == 1
     assert tasks[0].title == "Concurrent"
+
+
+@pytest.mark.asyncio
+async def test_notice_submit_before_deadline_actionable(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    """请于8月12日前提交登记表 → actionable=true"""
+    import app.api.routes.chaoxing
+    mock_client = MockChaoxingClient()
+    mock_client.notices = [
+        {
+            "external_id": "n_submit_reg",
+            "title": "登记表提交通知",
+            "content": "请于8月12日前提交登记表",
+            "published_at": "2026-08-01T10:00:00",
+        }
+    ]
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+
+    # Mock LLM returns actionable=True
+    notice_content = "请于8月12日前提交登记表"
+    mock_container.notice_extraction.mock_responses[notice_content] = NoticeExtractResponse(
+        title="提交登记表",
+        task="提交登记表",
+        actionable=True,
+        deadline=datetime(2026, 8, 12, 23, 59, tzinfo=timezone.utc),
+        source_text=notice_content,
+        confidence=1.0,
+        needs_confirmation=False,
+        warnings=[],
+        extracted_at=datetime.now(timezone.utc),
+        extractor_mode="llm",
+    )
+
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    from app.api.routes.chaoxing import sync_chaoxing
+    from app.models.multi_role import UserRow
+    await sync_chaoxing(
+        user=UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student"),
+        container=mock_container,
+    )
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 1
+    assert tasks[0].title == "提交登记表"
+    assert tasks[0].source == "chaoxing_notice"
+
+
+@pytest.mark.asyncio
+async def test_notice_already_submitted_no_task(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    """作业已提交 → 不创建新 Task"""
+    import app.api.routes.chaoxing
+    mock_client = MockChaoxingClient()
+    mock_client.notices = [
+        {
+            "external_id": "n_already_done",
+            "title": "作业状态提醒",
+            "content": "作业已提交",
+            "published_at": "2026-08-01T10:00:00",
+        }
+    ]
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+
+    # Mock LLM returns actionable=False
+    notice_content = "作业已提交"
+    mock_container.notice_extraction.mock_responses[notice_content] = NoticeExtractResponse(
+        title="作业状态提醒",
+        task="作业状态提醒",
+        actionable=False,
+        source_text=notice_content,
+        confidence=1.0,
+        needs_confirmation=False,
+        warnings=[],
+        extracted_at=datetime.now(timezone.utc),
+        extractor_mode="llm",
+    )
+
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    from app.api.routes.chaoxing import sync_chaoxing
+    from app.models.multi_role import UserRow
+    await sync_chaoxing(
+        user=UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student"),
+        container=mock_container,
+    )
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_notice_graded_no_task(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    """您的作业已批阅 → 不创建新 Task"""
+    import app.api.routes.chaoxing
+    mock_client = MockChaoxingClient()
+    mock_client.notices = [
+        {
+            "external_id": "n_graded",
+            "title": "作业批阅通知",
+            "content": "您的作业已批阅，请查看成绩",
+            "published_at": "2026-08-01T10:00:00",
+        }
+    ]
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+
+    # Mock LLM returns actionable=False
+    notice_content = "您的作业已批阅，请查看成绩"
+    mock_container.notice_extraction.mock_responses[notice_content] = NoticeExtractResponse(
+        title="作业批阅通知",
+        task="作业批阅通知",
+        actionable=False,
+        source_text=notice_content,
+        confidence=1.0,
+        needs_confirmation=False,
+        warnings=[],
+        extracted_at=datetime.now(timezone.utc),
+        extractor_mode="llm",
+    )
+
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    from app.api.routes.chaoxing import sync_chaoxing
+    from app.models.multi_role import UserRow
+    await sync_chaoxing(
+        user=UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student"),
+        container=mock_container,
+    )
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_notice_completed_review_no_task(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    """已完成登记 → 不创建新 Task（完成状态黑名单）"""
+    import app.api.routes.chaoxing
+    mock_client = MockChaoxingClient()
+    mock_client.notices = [
+        {
+            "external_id": "n_completed_reg",
+            "title": "登记完成通知",
+            "content": "您已完成登记",
+            "published_at": "2026-08-01T10:00:00",
+        }
+    ]
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+
+    mock_container.notice_extraction.mock_responses["您已完成登记"] = NoticeExtractResponse(
+        title="登记完成通知",
+        task="登记完成通知",
+        actionable=False,
+        source_text="您已完成登记",
+        confidence=1.0,
+        needs_confirmation=False,
+        warnings=[],
+        extracted_at=datetime.now(timezone.utc),
+        extractor_mode="llm",
+    )
+
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    from app.api.routes.chaoxing import sync_chaoxing
+    from app.models.multi_role import UserRow
+    await sync_chaoxing(
+        user=UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student"),
+        container=mock_container,
+    )
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_rule_fallback_completion_no_task(mock_container: ServiceContainer, monkeypatch):
+    """规则降级模式: 完成状态不应识别为 actionable"""
+    from app.services.notice_extraction_service import NoticeExtractionService
+    from app.schemas.notice import NoticeExtractRequest
+
+    # Create a service without LLM to force rules fallback
+    svc = NoticeExtractionService(llm=None, settings=mock_container.settings)
+
+    # "作业已提交" → not actionable under rule fallback
+    result1 = await svc.extract("作业已提交")
+    assert result1.actionable is False, f"Expected non-actionable for '作业已提交', got actionable={result1.actionable}"
+
+    # "您的作业已批阅" → not actionable
+    result2 = await svc.extract("您的作业已批阅，成绩已发布")
+    assert result2.actionable is False, f"Expected non-actionable for '您的作业已批阅', got actionable={result2.actionable}"
+
+    # "请于8月12日前提交登记表" → actionable
+    result3 = await svc.extract("请于8月12日前提交登记表")
+    assert result3.actionable is True, f"Expected actionable for '请于8月12日前提交登记表', got actionable={result3.actionable}"
+
+    # "提交成功" → not actionable
+    result4 = await svc.extract("您的申请提交成功")
+    assert result4.actionable is False, f"Expected non-actionable for '提交成功', got actionable={result4.actionable}"
+
+    # "已完成登记" → not actionable
+    result5 = await svc.extract("本次宿舍已完成登记")
+    assert result5.actionable is False, f"Expected non-actionable for '已完成登记', got actionable={result5.actionable}"
