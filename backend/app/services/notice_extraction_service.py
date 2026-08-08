@@ -438,6 +438,7 @@ _LLM_SYSTEM_PROMPT = """你是校园通知结构化抽取助手。
 5. 不要编造 source_text 中没有的信息。
 6. importance 取值: urgent|important|normal|unknown。
 7. materials 列表只包含通知中明确提到的材料名称。
+8. actionable 表示是否是明确需要学生执行的行动型通知，普通课程公告、情况说明为 false。
 输出严格 JSON，不要 Markdown 代码块。
 """
 
@@ -446,6 +447,7 @@ _LLM_OUTPUT_SCHEMA_HINT = """
 {
   "title": string,
   "task": string,
+  "actionable": bool,
   "target_students": string|null,
   "deadline": ISO8601 string|null (东八区),
   "materials": [{"id": "m_1", "name": string, "required": bool}],
@@ -510,6 +512,7 @@ _LLM_MULTI_SYSTEM_PROMPT = """你是校园通知结构化抽取助手,专注于�
 3. 不要编造通知中未提及的任务、材料、地点。
 4. 不要把同一动作的多个步骤强行拆成多任务(如"填表 + 提交"应为单任务)。
 5. 拆分时,每个任务的 source_text 应保留完整原通知文本(便于人工复核)。
+6. actionable 表示是否是明确需要学生执行的行动型通知，普通公告为 false。
 
 输出严格 JSON,不要 Markdown 代码块:
 {
@@ -517,6 +520,7 @@ _LLM_MULTI_SYSTEM_PROMPT = """你是校园通知结构化抽取助手,专注于�
     {
       "title": string,
       "task": string,
+      "actionable": bool,
       "target_students": string|null,
       "deadline": ISO8601 string|null,
       "materials": [{"id": "m_1", "name": string, "required": bool}],
@@ -754,6 +758,7 @@ def _normalize_llm_output(obj: dict, content: str, source_name: Optional[str]) -
             deadline = None
     title = str(obj.get("title") or obj.get("task") or "").strip() or "校园通知待办"
     task = str(obj.get("task") or title).strip() or title
+    actionable = bool(obj.get("actionable", False))
     try:
         confidence = float(obj.get("confidence") or 0.0)
     except (TypeError, ValueError):
@@ -763,6 +768,7 @@ def _normalize_llm_output(obj: dict, content: str, source_name: Optional[str]) -
     return NoticeExtractResponse(
         title=title,
         task=task,
+        actionable=actionable,
         target_students=obj.get("target_students"),
         deadline=deadline,
         materials=materials,
@@ -946,6 +952,10 @@ class NoticeExtractionService:
         published_at: Optional[datetime] = None,
     ) -> NoticeExtractResponse:
         task = _rule_parse_task(content)
+        # 简单规则判断是否 actionable
+        actionable_keywords = ["提交", "申请", "报名", "登记", "选课", "补退选", "填写", "上传"]
+        actionable = any(kw in content for kw in actionable_keywords)
+
         audience = _rule_parse_audience(content)
         deadline, year_missing, year_reason = _rule_parse_deadline(content, published_at)
         materials = _rule_parse_materials(content)
@@ -977,6 +987,7 @@ class NoticeExtractionService:
         return NoticeExtractResponse(
             title=task,
             task=task,
+            actionable=actionable,
             target_students=audience,
             deadline=deadline,
             materials=materials,
