@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.workers.ChaoxingSyncScheduler
+import com.example.campusai.workers.ChaoxingSyncStateStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,8 @@ data class ChaoxingUiState(
 
 class ChaoxingViewModel(application: Application) : AndroidViewModel(application) {
     private val appRepository = AppRepository(application)
+    private val syncScheduler = ChaoxingSyncScheduler(application)
+    private val stateStore = ChaoxingSyncStateStore(application)
     
     private val _uiState = MutableStateFlow(ChaoxingUiState())
     val uiState: StateFlow<ChaoxingUiState> = _uiState.asStateFlow()
@@ -35,8 +39,18 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                     status = res.status,
                     lastSyncedAt = res.last_synced_at
                 )
+                if (res.status == "online") {
+                    stateStore.setConnected(true)
+                    stateStore.setReauthRequired(false)
+                    syncScheduler.scheduleSyncWork()
+                } else if (res.status == "expired") {
+                    stateStore.setConnected(true)
+                    stateStore.setReauthRequired(true)
+                }
             } else {
                 _uiState.value = _uiState.value.copy(status = "offline")
+                stateStore.setConnected(false)
+                syncScheduler.cancelSyncWork()
             }
         }
     }
@@ -44,6 +58,9 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
     suspend fun login(username: String, password: String): Pair<Boolean, String> {
         val result = appRepository.loginChaoxing(username, password)
         if (result.first) {
+            stateStore.setConnected(true)
+            stateStore.setReauthRequired(false)
+            syncScheduler.scheduleSyncWork()
             checkStatus()
         }
         return result
@@ -59,6 +76,7 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                     isSyncing = false, 
                     syncResult = "同步成功"
                 )
+                stateStore.setReauthRequired(false)
                 // update local state
                 checkStatus()
                 // notify UI to refresh Course, PersonalTask, Notice
@@ -73,6 +91,7 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                         syncResult = "登录已失效，请重新登录",
                         status = "expired"
                     )
+                    stateStore.setReauthRequired(true)
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isSyncing = false, 
@@ -87,6 +106,8 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isDisconnecting = true)
             appRepository.disconnectChaoxing()
+            stateStore.setConnected(false)
+            syncScheduler.cancelSyncWork()
             _uiState.value = _uiState.value.copy(
                 isDisconnecting = false,
                 status = "offline",
