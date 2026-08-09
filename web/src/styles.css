@@ -245,8 +245,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   color:#fff;
   border:0;
   background-color:#4d5fda;
+  background-image:url("/assets/campus-night.jpg");
   background-position:center 48%;
   background-size:cover;
+  background-blend-mode:soft-light;
 }
 .next-action>div{
   align-self:stretch;
@@ -406,7 +408,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   background:#edf0ff;
 }
 .login-media,.login-shade{left:32px;top:32px;bottom:32px;right:calc(38% + 28px);border-radius:30px}
-.login-media{overflow:hidden;background:linear-gradient(135deg,#6473fb 0%,#4855e9 55%,#7b5cf0 100%)}
+.login-media{overflow:hidden}
 .login-shade{
   background:rgba(42,53,145,.72);
 }
