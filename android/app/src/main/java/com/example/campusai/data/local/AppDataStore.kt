@@ -15,6 +15,8 @@ import com.example.campusai.data.model.PersonalHubSnapshot
 import com.example.campusai.data.model.Teacher
 import com.example.campusai.data.model.User
 import com.example.campusai.BuildConfig
+import com.example.campusai.data.notification.NotificationSource
+import com.example.campusai.data.notification.NotificationSourceSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -33,6 +35,10 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private val KEY_DARK_MODE = booleanPreferencesKey("campus_dark_mode")
     private val KEY_REMINDERS = booleanPreferencesKey("campus_reminders")
     private val KEY_LEARNING_ASSISTANCE = booleanPreferencesKey("campus_learning_assistance")
+    private val KEY_NOTIFICATION_WECHAT = booleanPreferencesKey("campus_notification_wechat")
+    private val KEY_NOTIFICATION_XUEXITONG = booleanPreferencesKey("campus_notification_xuexitong")
+    private val KEY_NOTIFICATION_QQ = booleanPreferencesKey("campus_notification_qq")
+    private val KEY_NOTIFICATION_OTHER = booleanPreferencesKey("campus_notification_other")
 
     val session: Flow<User?> = context.dataStore.data.map { prefs ->
         prefs[KEY_SESSION]?.let { json: String ->
@@ -80,6 +86,14 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     val remindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_REMINDERS] ?: true }
     val learningAssistanceEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_LEARNING_ASSISTANCE] ?: false
+    }
+    val notificationSourceSettings: Flow<NotificationSourceSettings> = context.dataStore.data.map { prefs ->
+        NotificationSourceSettings(
+            wechatEnabled = prefs[KEY_NOTIFICATION_WECHAT] ?: true,
+            xuexitongEnabled = prefs[KEY_NOTIFICATION_XUEXITONG] ?: true,
+            qqEnabled = prefs[KEY_NOTIFICATION_QQ] ?: false,
+            otherEnabled = prefs[KEY_NOTIFICATION_OTHER] ?: false,
+        )
     }
 
     val pendingNotices: Flow<List<com.example.campusai.data.model.PendingNotice>> = context.dataStore.data.map { prefs ->
@@ -254,6 +268,17 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
 
     suspend fun setLearningAssistanceEnabled(enabled: Boolean) {
         context.dataStore.edit { it[KEY_LEARNING_ASSISTANCE] = enabled }
+    }
+
+    suspend fun setNotificationSourceEnabled(source: NotificationSource, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            when (source) {
+                NotificationSource.WECHAT -> prefs[KEY_NOTIFICATION_WECHAT] = enabled
+                NotificationSource.XUEXITONG -> prefs[KEY_NOTIFICATION_XUEXITONG] = enabled
+                NotificationSource.QQ -> prefs[KEY_NOTIFICATION_QQ] = enabled
+                NotificationSource.OTHER -> prefs[KEY_NOTIFICATION_OTHER] = enabled
+            }
+        }
     }
 
     // ── 模块通用键值存储（KeyValueStorage） ──

@@ -28,7 +28,7 @@ const router = createRouter({
     { path: "/login", component: LoginView, meta: { public: true } },
     { path: "/", component: AppShell, children: [
       { path: "", redirect: "/home" },
-      { path: "home", component: HomeRouteView, meta: { roles: ["student", "admin"] } },
+      { path: "home", component: StudentHomeView, meta: { roles: ["student", "admin"] } },
       { path: "courses", component: StudentCoursesView, meta: { roles: ["student"] } },
       { path: "courses/:courseId", component: StudentCourseDetailView, meta: { roles: ["student"] } },
       { path: "tasks", component: StudentTasksView, meta: { roles: ["student"] } },

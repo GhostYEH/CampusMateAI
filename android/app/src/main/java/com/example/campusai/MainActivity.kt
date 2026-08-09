@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
         val repository = (application as CampusAIApplication).repository
         val moduleRepositories = (application as CampusAIApplication).moduleRepositories
+        val notificationInboxRepository = (application as CampusAIApplication).notificationInboxRepository
 
         setContent {
             val darkMode by repository.darkMode.collectAsState()
@@ -62,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
-                CampusAIApp(repository, moduleRepositories)
+                CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
             }
         }
     }
@@ -70,7 +71,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CampusAIApp(repository: AppRepository, modules: ModuleRepositories) {
+fun CampusAIApp(
+    repository: AppRepository,
+    modules: ModuleRepositories,
+    notificationInboxRepository: com.example.campusai.data.repository.NotificationInboxRepository,
+) {
     val session by repository.session.collectAsState()
     val navController = rememberNavController()
 
@@ -100,6 +105,7 @@ fun CampusAIApp(repository: AppRepository, modules: ModuleRepositories) {
                 navController = navController,
                 repository = repository,
                 modules = modules,
+                notificationInboxRepository = notificationInboxRepository,
             )
         }
     }

@@ -14,7 +14,10 @@ export const useAppStore = defineStore("app", () => {
   const reduceMotion = ref(localStorage.getItem("campus_reduce_motion") === "true");
   const tasks = ref(JSON.parse(localStorage.getItem("campus_tasks") || "null") || []);
   const notices = ref([]);
-  const pendingCount = computed(() => tasks.value.filter((t) => !t.done).length);
+  const dashboardSummary = ref(null);
+  const pendingCount = computed(() => Number(dashboardSummary.value?.pending_assignment_count || 0) + Number(dashboardSummary.value?.pending_personal_task_count || 0));
+  const unreadCount = computed(() => Number(dashboardSummary.value?.unread_announcement_count || 0));
+  function setDashboardSummary(value) { dashboardSummary.value = value || null; }
   const persist = () => localStorage.setItem("campus_tasks", JSON.stringify(tasks.value));
   function toggleTask(id) { const t = tasks.value.find((x) => x.id === id); if (t) t.done = !t.done; persist(); }
   function addTask(title, due = "待设置", course = "个人待办", details = {}) { tasks.value.unshift({ id: Date.now(), title, due, course, done: false, ...details }); persist(); }
@@ -40,5 +43,5 @@ export const useAppStore = defineStore("app", () => {
     session.value = null;
   }
   function setReduceMotion(v) { reduceMotion.value = v; localStorage.setItem("campus_reduce_motion", String(v)); }
-  return { session, backendOnline, reduceMotion, tasks, notices, pendingCount, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
+  return { session, backendOnline, reduceMotion, tasks, notices, dashboardSummary, pendingCount, unreadCount, setDashboardSummary, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
 });

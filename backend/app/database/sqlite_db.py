@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS courses (
 );
 CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
-CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id);
+-- idx_courses_external_id 在 _migrate() 中创建，兼容尚未包含 external_id 的旧 courses 表。
 
 CREATE TABLE IF NOT EXISTS class_groups (
     id TEXT PRIMARY KEY,

@@ -29,7 +29,7 @@ function selectRole(role) {
 
 <template>
   <main class="login-page">
-    <div class="login-media"></div>
+    <div class="login-media" aria-hidden="true"><video src="/assets/login-campus.mp4" autoplay muted loop playsinline></video></div>
     <div class="login-shade"></div>
     <section class="login-story enter">
       <div class="brand brand-light"><span class="brand-mark"><UiIcon name="PhGraduationCap" :size="24" weight="fill" /></span><div><strong>CampusMate AI</strong><small>校园信息中枢</small></div></div>

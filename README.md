@@ -364,6 +364,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 **移动端 / Web**
 
 - 原生 Android(Kotlin Compose)完整业务页面与导航、DataStore 持久化、深色模式、减少动态效果
+- Android 已支持用户主动授权后的系统通知监听，当前优先接入微信与学习通；捕获内容仅本地保存，不能读取完整聊天历史，AI 自动识别和自动创建待办仍属于后续阶段
 - Vue 3 Web 前端复用 FastAPI 接口
 
 ### 当前阶段尚未完成(真实限制)

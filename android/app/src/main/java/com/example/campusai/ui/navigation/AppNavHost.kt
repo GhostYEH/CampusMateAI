@@ -14,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
+import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.classrooms.ClassroomsScreen
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.CoursesScreen
@@ -52,6 +53,7 @@ fun AppNavHost(
     navController: NavHostController,
     repository: AppRepository,
     modules: ModuleRepositories,
+    notificationInboxRepository: NotificationInboxRepository,
 ) {
     fun go(route: String) = navController.navigate(route) { launchSingleTop = true }
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -142,7 +144,9 @@ fun AppNavHost(
                 onTaskDeleted = { navController.popBackStack() },
             )
         }
-        composable("notifications") { NotificationsScreen(repository) }
+        composable("notifications") {
+            NotificationsScreen(repository, notificationInboxRepository)
+        }
         composable(
             route = "counselor?prompt={prompt}",
             arguments = listOf(navArgument("prompt") {
