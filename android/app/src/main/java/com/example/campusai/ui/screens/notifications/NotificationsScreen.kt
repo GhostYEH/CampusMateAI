@@ -20,24 +20,50 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.ExtractResult
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.NotificationInboxRepository
+import com.example.campusai.data.notification.NotificationSource
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import java.util.concurrent.TimeUnit
 
 @Composable
-fun NotificationsScreen(repository: AppRepository) {
+fun NotificationsScreen(
+    repository: AppRepository,
+    inboxRepository: NotificationInboxRepository,
+) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val inbox by inboxRepository.observeRecentNotifications().collectAsState(initial = emptyList())
+    val sourceSettings by inboxRepository.observeSourceSettings().collectAsState(initial = null)
+    var notificationAccessGranted by remember { mutableStateOf(inboxRepository.isNotificationAccessGranted()) }
+    var showClearConfirmation by remember { mutableStateOf(false) }
 
     // 进入页面时尝试从后端拉取最新通知
     LaunchedEffect(Unit) { repository.refreshNotices() }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationAccessGranted = inboxRepository.isNotificationAccessGranted()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     var noticeText by remember {
         mutableStateOf("【教务处通知】请各班同学于本周五17:00前完成2026年秋季学期选课确认，登录教务系统核对课程信息。如有冲突请联系学院教务办公室。")
@@ -68,6 +94,122 @@ fun NotificationsScreen(repository: AppRepository) {
                 Text("集中处理与当前模块相关的校园事务。", color = Muted, fontSize = 13.sp)
             }
             ModeBadge(mockMode)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Surface)
+                .border(1.dp, Line, RoundedCornerShape(10.dp))
+                .padding(22.dp)
+                .enterAnimation(delayMs = 30, enabled = !reduceMotion),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("自动收集校园通知", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "仅处理 Android 系统实际展示给 CampusMate 的通知，不会读取聊天历史。",
+                color = Muted,
+                fontSize = 12.sp,
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (notificationAccessGranted) Icons.Default.CheckCircle else Icons.Default.Info,
+                    contentDescription = null,
+                    tint = if (notificationAccessGranted) Primary else Muted,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "通知使用权：${if (notificationAccessGranted) "已授权" else "未授权"}",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+            }
+
+            if (!notificationAccessGranted) {
+                Text(
+                    "需要你在系统设置中主动授权。授权后，已开启来源的通知会仅保存在本机。",
+                    color = Muted,
+                    fontSize = 12.sp,
+                )
+                OutlinedButton(
+                    onClick = { context.startActivity(inboxRepository.createNotificationAccessSettingsIntent()) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("去系统设置授权")
+                }
+            }
+
+            HorizontalDivider(color = Line)
+            Text("来源", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            NotificationSource.entries.forEach { source ->
+                val enabled = sourceSettings?.isEnabled(source) ?: false
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(source.displayName, fontSize = 14.sp)
+                        Text(if (enabled) "已开启" else "已关闭", color = Muted, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = { value ->
+                            scope.launch { inboxRepository.setNotificationSourceEnabled(source, value) }
+                        },
+                        enabled = sourceSettings != null,
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("最近自动收集", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                if (inbox.isNotEmpty()) {
+                    TextButton(onClick = { showClearConfirmation = true }) {
+                        Text("清空记录")
+                    }
+                }
+            }
+
+            if (inbox.isEmpty()) {
+                Text("尚未收集到校园通知", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text("收到已开启来源的系统通知后，会在这里显示。", color = Muted, fontSize = 12.sp)
+            } else {
+                inbox.forEach { notification ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                listOfNotNull(notification.source.displayName, notification.conversationTitle ?: notification.title)
+                                    .joinToString(" · "),
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                notification.bigText ?: notification.text ?: "通知内容不可用",
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                            )
+                            Text(relativeCaptureTime(notification.capturedAt), color = Muted, fontSize = 11.sp)
+                        }
+                        IconButton(onClick = { scope.launch { inboxRepository.deleteNotification(notification.id) } }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除自动收集通知", tint = Muted)
+                        }
+                    }
+                    HorizontalDivider(color = Line)
+                }
+            }
         }
 
         Column(
@@ -116,8 +258,24 @@ fun NotificationsScreen(repository: AppRepository) {
                 } else {
                     Text("开始提取", fontWeight = FontWeight.SemiBold)
                     Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
-                }
-            }
+    }
+
+    if (showClearConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            title = { Text("清空自动收集记录？") },
+            text = { Text("此操作只会删除本机的自动收集通知，无法恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { inboxRepository.clearInbox() }
+                    showClearConfirmation = false
+                }) { Text("清空") }
+            },
+            dismissButton = { TextButton(onClick = { showClearConfirmation = false }) { Text("取消") } },
+        )
+    }
+}
+
         }
 
         Column(
@@ -203,5 +361,15 @@ fun NotificationsScreen(repository: AppRepository) {
             }
         }
 }
+}
+
+private fun relativeCaptureTime(capturedAt: Long, now: Long = System.currentTimeMillis()): String {
+    val minutes = TimeUnit.MILLISECONDS.toMinutes((now - capturedAt).coerceAtLeast(0L))
+    return when {
+        minutes == 0L -> "刚刚"
+        minutes < 60L -> "$minutes 分钟前"
+        minutes < 24 * 60 -> "${minutes / 60} 小时前"
+        else -> "${minutes / (24 * 60)} 天前"
+    }
 }
 

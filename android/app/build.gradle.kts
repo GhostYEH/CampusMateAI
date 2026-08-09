@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.jetbrains.kotlin.compose)
+    id("org.jetbrains.kotlin.kapt")
 }
 
 kotlin {
@@ -111,6 +112,9 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.google.ai.edge.litert)
     implementation(libs.google.mlkit.face.detection)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    kapt(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("androidx.test:core-ktx:1.5.0")
@@ -123,4 +127,8 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+kapt {
+    correctErrorTypes = true
 }

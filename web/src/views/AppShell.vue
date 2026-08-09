@@ -5,7 +5,7 @@ import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
 import ToastHost from "../components/teacher/ToastHost.vue";
 import ConfirmHost from "../components/teacher/ConfirmHost.vue";
-
+import { getStudentActivities, getStudentAssignments, getStudentCourses } from "../services/studentApi";
 
 const store = useAppStore();
 const route = useRoute();
@@ -18,20 +18,23 @@ const searchResults = ref([]);
 const searchLoading = ref(false);
 let searchTimer;
 
-const menus = computed(() => {
-  return [
-    ["home", "首页", "PhHouse"],
-    ["courses", "我的课程", "PhBookOpen"],
-    ["tasks", "待办与作业", "PhCheckSquare"],
-    ["campus-activities", "校园活动", "PhCalendarStar"],
-    ["counselor", "AI 导员", "PhRobot"],
-    ["notifications", "通知整理", "PhBell"],
-    ["study", "学习陪伴", "PhChartLineUp"],
-    ["profile", "个人中心", "PhUser"],
-  ];
-});
-const isStudent = true;
-const todayLabel = computed(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date()));
+const menus = [
+  ["home", "首页", "PhHouse"],
+  ["courses", "我的课程", "PhBookOpen"],
+  ["tasks", "待办与作业", "PhCheckSquare"],
+  ["campus-activities", "校园活动", "PhCalendarStar"],
+  ["counselor", "AI 导员", "PhRobot"],
+  ["notifications", "通知整理", "PhBell"],
+  ["study", "学习陪伴", "PhChartLineUp"],
+  ["profile", "个人中心", "PhUser"],
+];
+
+const todayLabel = computed(() => new Intl.DateTimeFormat("zh-CN", {
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+}).format(new Date()));
+const profileDetail = computed(() => store.session?.detail || [store.session?.college, store.session?.major].filter(Boolean).join(" · ") || "学生");
 
 function go(path) {
   router.push(`/${path}`);
@@ -50,7 +53,7 @@ function logout() {
 
 function openSearch() {
   searchOpen.value = true;
-  document.querySelector('[name="global-search"]')?.focus();
+  requestAnimationFrame(() => document.querySelector('[name="global-search"]')?.focus());
 }
 
 function closeSearch() {
@@ -58,7 +61,42 @@ function closeSearch() {
 }
 
 async function runSearch() {
-  searchResults.value = [];
+  const query = search.value.trim().toLocaleLowerCase();
+  if (query.length < 2) {
+    searchResults.value = [];
+    searchLoading.value = false;
+    return;
+  }
+  searchLoading.value = true;
+  try {
+    const [courseData, assignmentData, activityData] = await Promise.all([
+      getStudentCourses(),
+      getStudentAssignments(),
+      getStudentActivities(),
+    ]);
+    const includes = (...values) => values.some((value) => String(value || "").toLocaleLowerCase().includes(query));
+    searchResults.value = [
+      ...(courseData.items || []).filter((item) => includes(item.name, item.code, item.semester)).map((item) => ({
+        type: "课程", id: item.id, title: item.name, subtitle: item.code || item.semester || "课程详情", path: `/courses/${item.id}`,
+      })),
+      ...(assignmentData.items || []).filter((item) => includes(item.title, item.course_name, item.class_name)).map((item) => ({
+        type: "作业", id: item.id, title: item.title, subtitle: item.course_name || item.class_name || "课程作业", path: `/tasks/assignment/${item.id}`,
+      })),
+      ...(activityData.items || []).filter((item) => includes(item.title, item.category, item.location)).map((item) => ({
+        type: "活动", id: item.id, title: item.title, subtitle: item.category || item.location || "校园活动", path: `/campus-activities/${item.id}`,
+      })),
+    ].slice(0, 8);
+  } catch {
+    searchResults.value = [];
+  } finally {
+    searchLoading.value = false;
+  }
+}
+
+function chooseSearchResult(item) {
+  router.push(item.path);
+  search.value = "";
+  closeSearch();
 }
 
 function keydown(event) {
@@ -75,7 +113,10 @@ watch(search, () => {
   searchTimer = setTimeout(runSearch, 220);
 });
 onMounted(() => window.addEventListener("keydown", keydown));
-onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout(searchTimer); });
+onUnmounted(() => {
+  window.removeEventListener("keydown", keydown);
+  clearTimeout(searchTimer);
+});
 </script>
 
 <template>
@@ -86,15 +127,16 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
     <aside class="sidebar" :class="{ open: mobileOpen }">
       <div class="brand">
         <span class="brand-mark"><UiIcon name="PhGraduationCap" :size="23" weight="fill" /></span>
-        <div><strong>CampusMate AI</strong><small>校园智能陪伴助手</small></div>
+        <div><strong>CampusMate AI</strong><small>校园智能伴随助手</small></div>
       </div>
-      <div class="profile-mini">
-        <div class="avatar">{{ store.session?.name?.slice(0, 1) || "同" }}</div>
-        <div><strong>{{ store.session?.name || "陈同学（演示）" }}</strong><small>{{ store.session?.detail || "信息工程学院 · 计算机科学与技术" }}</small></div>
-      </div>
+      <button class="profile-mini" @click="go('profile')">
+        <span class="avatar">{{ store.session?.name?.slice(0, 1) || "同" }}</span>
+        <span class="profile-mini-copy"><strong>{{ store.session?.name || "同学" }}</strong><small>{{ profileDetail }}</small></span>
+        <UiIcon name="PhCaretRight" :size="16" />
+      </button>
       <nav aria-label="主导航">
         <button v-for="[key, label, icon] in menus" :key="key" :class="{ active: isActive(key) }" :title="collapsed ? label : undefined" :aria-label="label" @click="go(key)">
-          <UiIcon :name="icon" :size="19" /><span>{{ label }}</span><b v-if="key === 'tasks' && store.pendingCount">{{ store.pendingCount }}</b><i v-if="key === 'notifications' && store.pendingCount" class="nav-dot"></i>
+          <UiIcon :name="icon" :size="20" /><span>{{ label }}</span><b v-if="key === 'tasks' && store.pendingCount">{{ store.pendingCount > 99 ? '99+' : store.pendingCount }}</b><i v-if="key === 'notifications' && store.unreadCount" class="nav-dot"></i>
         </button>
       </nav>
       <div class="sidebar-bottom">
@@ -107,12 +149,17 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
     <div class="workspace">
       <header class="topbar">
         <div class="command-search">
-          <UiIcon name="PhMagnifyingGlass" :size="19" /><input v-model="search" name="global-search" placeholder="搜索课程、作业、通知或服务" /><kbd>⌘ K</kbd>
+          <UiIcon name="PhMagnifyingGlass" :size="20" /><input v-model="search" name="global-search" placeholder="搜索课程、作业、通知或服务" autocomplete="off" @focus="searchOpen = true" /><kbd>⌘ K</kbd>
         </div>
-        <div class="top-date"><span class="study-status">本周学习节奏 <b>· 良好</b></span><em></em><UiIcon name="PhCalendarBlank" />{{ todayLabel }}</div>
-        <button class="icon-button notification-button" aria-label="通知" @click="go('notifications')"><UiIcon name="PhBell" :size="20" /><i v-if="store.pendingCount"></i></button>
+        <div class="top-date"><UiIcon name="PhCalendarBlank" :size="18" />{{ todayLabel }}</div>
+        <div class="sync-pill" :class="{ offline: !store.backendOnline }"><UiIcon :name="store.backendOnline ? 'PhCheckCircle' : 'PhCloudSlash'" :size="18" />{{ store.backendOnline ? "已同步 · 刚刚" : "后端未连接" }}</div>
+        <button class="icon-button notification-button" aria-label="通知" @click="go('notifications')"><UiIcon name="PhBell" :size="20" /><i v-if="store.unreadCount"></i></button>
       </header>
-      <div v-if="searchOpen && search.length >= 2" class="global-search-panel"><div v-if="searchLoading" class="portal-empty">搜索中…</div><div v-else-if="!searchResults.length" class="portal-empty">没有匹配结果</div><button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="router.push(item.path); closeSearch()"><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></button></div>
+      <div v-if="searchOpen && search.length >= 2" class="global-search-panel">
+        <div v-if="searchLoading" class="portal-empty">正在搜索真实数据…</div>
+        <div v-else-if="!searchResults.length" class="portal-empty">没有匹配结果</div>
+        <button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="chooseSearchResult(item)"><span><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></span><UiIcon name="PhArrowRight" :size="15" /></button>
+      </div>
       <RouterView :search-query="search" />
     </div>
   </div>
