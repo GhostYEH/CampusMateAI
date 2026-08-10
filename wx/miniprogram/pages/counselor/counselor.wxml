@@ -1,6 +1,6 @@
 <view class="page tab-page chat-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
   <campus-header
-    title="AI 导员"
+    title="AI 校园助手"
     subtitle="校园问题，随时来聊一聊"
     mode="{{mockMode ? 'Mock 知识库' : '真实后端'}}"
   />

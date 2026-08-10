@@ -53,7 +53,7 @@ Page({
         icon: 'quick-study',
       },
       {
-        label: 'AI 导员',
+        label: 'AI 校园助手',
         detail: '问问校园里的事',
         route: '/pages/counselor/counselor',
         tab: true,

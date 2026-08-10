@@ -45,6 +45,14 @@ _DEADLINE_PATTERNS = [
     (re.compile(r"第(\d{1,2})周(?:周([一二三四五六日天]))(?:\s*(\d{1,2}):(\d{2}))?"), "week_n"),
     (re.compile(r"本周五"), "this_friday"),
     (re.compile(r"下周一"), "next_monday"),
+    (re.compile(r"本周([一二三四五六日天])"), "this_weekday"),
+    (re.compile(r"下周([一二三四五六日天])"), "next_weekday"),
+    (re.compile(r"周(?:末|六)"), "this_saturday"),
+    (re.compile(r"今晚(?:\s*(\d{1,2})(?::(\d{2}))?)?(?:点)?"), "tonight"),
+    (re.compile(r"明晚(?:\s*(\d{1,2})(?::(\d{2}))?)?(?:点)?"), "tomorrow_night"),
+    (re.compile(r"(?:今天|今日)(晚上|晚|上午|下午)?(?:\s*(\d{1,2})(?::(\d{2}))?)?(?:点)?"), "today"),
+    (re.compile(r"(?:明天|明日)(晚上|晚|上午|下午)?(?:\s*(\d{1,2})(?::(\d{2}))?)?(?:点)?"), "tomorrow"),
+    (re.compile(r"(?:后天)(上午|下午|晚上|晚)?(?:\s*(\d{1,2})(?::(\d{2}))?)?(?:点)?"), "day_after_tomorrow"),
     # 2026年7月30日前 / 7月30日前 — 普通日期,需结合上下文判断
     (
         re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?(?:前|之前)?"),
@@ -175,12 +183,13 @@ def _next_weekday(
     *,
     hour: Optional[int] = None,
     minute: Optional[int] = None,
+    offset_week: int = 0,
 ) -> datetime:
     from datetime import timezone, timedelta
 
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone(timedelta(hours=8)))
-    date = now
+    date = now + timedelta(weeks=offset_week)
     # 最多往后推 7 天一定能找到目标星期
     for _ in range(8):
         if date.weekday() == target:
@@ -208,13 +217,13 @@ def _rule_parse_audience(text: str) -> Optional[str]:
     return None
 
 
-def _rule_parse_deadline(text: str, published_at: Optional[datetime]) -> tuple[Optional[datetime], bool, str]:
+def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_override: Optional[datetime] = None) -> tuple[Optional[datetime], bool, str]:
     """返回 (deadline, year_missing, reason)。
 
     优先匹配明确"截止"关键词的日期;若仅普通日期,需排除"开始时间"/"公示日"等上下文。
     相对时间(本周五/下周一/第X周)统一标记 year_missing=True 以触发人工确认。
     """
-    now = datetime.now(timezone.utc).astimezone()
+    now = now_override or datetime.now(timezone.utc).astimezone()
     text_norm = text.replace(" ", "")
 
     def _has_non_deadline_context(match_start: int) -> bool:
@@ -261,7 +270,65 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime]) -> tuple[O
             if kind == "this_friday":
                 return _next_weekday(now, 4), True, "通知使用'本周五'相对表达，已推断为最近的星期五，请确认具体日期"
             if kind == "next_monday":
-                return _next_weekday(now, 0), True, "通知使用'下周一'相对表达，已推断为最近的星期一，请确认具体日期"
+                return _next_weekday(now, 0, offset_week=1), True, "通知使用'下周一'相对表达，已推断为下周星期一，请确认具体日期"
+            if kind == "this_weekday":
+                wd = _WEEKDAY_CN.get(m.group(1), 4)
+                return _next_weekday(now, wd), True, "通知使用'本周X'相对表达，已推断为最近的对应星期，请确认具体日期"
+            if kind == "next_weekday":
+                wd = _WEEKDAY_CN.get(m.group(1), 0)
+                return _next_weekday(now, wd, offset_week=1), True, "通知使用'下周X'相对表达，已推断为下周对应星期，请确认具体日期"
+            if kind == "this_saturday":
+                return _next_weekday(now, 5), True, "通知使用'周末'相对表达，已推断为最近的星期六，请确认具体日期"
+            if kind == "today":
+                tod = m.group(1) or ""
+                h, mi = _extract_time(m, 2, 3)
+                if tod in ("晚上", "晚"):
+                    h = (h + 12) if h and h <= 12 else (h or 20)
+                elif tod == "下午":
+                    h = (h + 12) if h and h <= 12 else (h or 15)
+                elif tod == "上午":
+                    h = h or 9
+                else:
+                    h = h or 23
+                    mi = mi or 59
+                return _to_dt(now.year, now.month, now.day, hour=h, minute=mi or 0), True, "通知使用'今天'相对表达，请确认具体日期"
+            if kind == "tomorrow":
+                tod = m.group(1) or ""
+                h, mi = _extract_time(m, 2, 3)
+                if tod in ("晚上", "晚"):
+                    h = (h + 12) if h and h <= 12 else (h or 20)
+                elif tod == "下午":
+                    h = (h + 12) if h and h <= 12 else (h or 15)
+                elif tod == "上午":
+                    h = h or 9
+                else:
+                    h = h or 23
+                    mi = mi or 59
+                t = now + _timedelta(days=1)
+                return _to_dt(t.year, t.month, t.day, hour=h, minute=mi or 0), True, "通知使用'明天'相对表达，请确认具体日期"
+            if kind == "day_after_tomorrow":
+                tod = m.group(1) or ""
+                h, mi = _extract_time(m, 2, 3)
+                if tod in ("晚上", "晚"):
+                    h = (h + 12) if h and h <= 12 else (h or 20)
+                elif tod == "下午":
+                    h = (h + 12) if h and h <= 12 else (h or 15)
+                elif tod == "上午":
+                    h = h or 9
+                else:
+                    h = h or 23
+                    mi = mi or 59
+                t = now + _timedelta(days=2)
+                return _to_dt(t.year, t.month, t.day, hour=h, minute=mi or 0), True, "通知使用'后天'相对表达，请确认具体日期"
+            if kind == "tonight":
+                h, mi = _extract_time(m, 1, 2)
+                h = (h + 12) if h and h <= 12 else (h or 20)
+                return _to_dt(now.year, now.month, now.day, hour=h, minute=mi or 0), True, "通知使用'今晚'相对表达，请确认具体日期"
+            if kind == "tomorrow_night":
+                h, mi = _extract_time(m, 1, 2)
+                h = (h + 12) if h and h <= 12 else (h or 20)
+                t = now + _timedelta(days=1)
+                return _to_dt(t.year, t.month, t.day, hour=h, minute=mi or 0), True, "通知使用'明晚'相对表达，请确认具体日期"
         except (ValueError, IndexError):
             continue
 

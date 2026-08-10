@@ -15,7 +15,7 @@ Component({
       { pagePath: '/pages/index/index', text: '首页', icon: 'home' },
       { pagePath: '/pages/courses/courses', text: '课程', icon: 'courses' },
       { pagePath: '/pages/tasks/tasks', text: '待办', icon: 'tasks' },
-      { pagePath: '/pages/counselor/counselor', text: 'AI 导员', icon: 'counselor' },
+      { pagePath: '/pages/counselor/counselor', text: 'AI 校园助手', icon: 'counselor' },
       { pagePath: '/pages/profile/profile', text: '我的', icon: 'profile' },
     ] as TabItem[],
   },
