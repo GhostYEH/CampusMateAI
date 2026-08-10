@@ -10,6 +10,7 @@ import StudentTaskDetailView from "./views/student/StudentTaskDetailView.vue";
 import StudentActivityDetailView from "./views/student/StudentActivityDetailView.vue";
 import StudentCounselorView from "./views/student/StudentCounselorView.vue";
 import StudentNotificationsView from "./views/student/StudentNotificationsView.vue";
+import StudentAnnouncementDetailView from "./views/student/StudentAnnouncementDetailView.vue";
 import StudentStudyView from "./views/student/StudentStudyView.vue";
 import StudentProfileView from "./views/student/StudentProfileView.vue";
 import StudentProfileHubView from "./views/student/StudentProfileHubView.vue";
@@ -37,6 +38,7 @@ const router = createRouter({
       { path: "campus-activities/:activityId", component: StudentActivityDetailView, meta: { roles: ["student"] } },
       { path: "counselor", component: StudentCounselorView, meta: { roles: ["student"] } },
       { path: "notifications", component: StudentNotificationsView, meta: { roles: ["student"] } },
+      { path: "announcements/:announcementId", component: StudentAnnouncementDetailView, meta: { roles: ["student"] } },
       { path: "study", component: StudentStudyView, meta: { roles: ["student"] } },
       { path: "exams", component: StudentExamsView, meta: { roles: ["student"] } },
       { path: "services", component: StudentServicesView, meta: { roles: ["student"] } },

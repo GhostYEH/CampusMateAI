@@ -1,8 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import client, { extractNotice } from "../../services/api";
 import { createPersonalTask, getStudentClasses, markAnnouncementRead } from "../../services/studentApi";
+
+const router = useRouter();
 
 const loading = ref(true);
 const refreshing = ref(false);
@@ -67,6 +70,14 @@ async function toggleNotice(item) {
   } catch {
     error.value = "通知已打开，但已读状态同步失败。";
   }
+}
+
+function openNoticeDetail(item) {
+  if (!item?.id) return;
+  if (!item.has_read) {
+    markAnnouncementRead(item.id).then(() => { item.has_read = true; }).catch(() => {});
+  }
+  router.push({ path: `/announcements/${item.id}`, query: { source: item.source || "" } });
 }
 
 async function extract() {
@@ -144,7 +155,10 @@ onMounted(() => load());
                 <time>{{ displayNoticeTime(notice, index) }}</time>
                 <UiIcon name="PhCaretDown" />
               </button>
-              <p>{{ notice.content }}</p>
+              <div class="notice-expand-body">
+                <p>{{ notice.content }}</p>
+                <button class="notice-detail-link" @click.stop="openNoticeDetail(notice)"><UiIcon name="PhArrowSquareOut" :size="14" />查看完整详情</button>
+              </div>
             </article>
           </div>
           <div v-else class="student-empty large"><UiIcon name="PhBell" :size="40" /><strong>暂时没有课程通知</strong><span>加入课程并等待教师发布通知，内容会出现在这里。</span></div>

@@ -30,7 +30,7 @@ const filteredDueItems = computed(() => dueItems.value.filter((item) => matches(
 const filteredCourses = computed(() => courses.value.filter((item) => matches(item, ["name", "code", "semester"])));
 
 const campusItems = computed(() => [
-  ...(dashboard.value?.recent_announcements || []).map((item) => ({ ...item, label: item.course_name || item.class_name || "课程通知", date: item.published_at || item.created_at, icon: "PhMegaphone", tone: "green", path: "/notifications" })),
+  ...(dashboard.value?.recent_announcements || []).map((item) => ({ ...item, label: item.course_name || item.class_name || "课程通知", date: item.published_at || item.created_at, icon: "PhMegaphone", tone: "green", path: `/announcements/${item.id}`, query: { source: item.course_name || item.class_name || "" } })),
   ...activities.value.map((item) => ({ ...item, label: item.category || "校园活动", date: item.start_at || item.start_time || item.date, icon: "PhCalendarStar", tone: "blue", path: `/campus-activities/${item.id}` })),
 ].filter((item) => matches(item, ["title", "label", "category", "location"])).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 4));
 
@@ -174,18 +174,32 @@ onUnmounted(() => window.clearInterval(clockTimer));
           <button class="panel-footer red" @click="router.push('/tasks')">查看全部待办与作业<UiIcon name="PhArrowRight" :size="15" /></button>
         </article>
 
-        <article class="student-home-panel course-panel">
-          <div class="home-panel-head"><h2><UiIcon name="PhSparkle" :size="19" />学习空间</h2><button @click="router.push('/courses')">全部课程<UiIcon name="PhArrowRight" :size="15" /></button></div>
-          <div class="learning-intro"><span><strong>快速进入学习状态</strong><small>专注当下，收获成长</small></span><img src="/assets/mycours-icon.png" alt="书本与学位帽学习插画" /></div>
-          <div class="learning-actions"><button @click="router.push('/courses')"><span class="mini-icon violet"><UiIcon name="PhBookOpen" :size="19" /></span><span><strong>我的课程</strong><small>查看课程与资料</small></span></button><button @click="router.push('/study')"><span class="mini-icon blue"><UiIcon name="PhPlay" :size="19" weight="fill" /></span><span><strong>开始专注</strong><small>沉浸式专注计时</small></span></button></div>
-          <div v-if="recentCourses.length" class="recent-courses"><span>最近访问：</span><button v-for="course in recentCourses" :key="course.id" @click="router.push(`/courses/${course.id}`)">{{ course.name }}</button></div>
+        <article class="student-home-panel background-panel">
+          <div class="home-panel-head"><h2><UiIcon name="PhIdentificationCard" :size="19" />我的背景</h2><button @click="router.push('/profile')">完整资料<UiIcon name="PhArrowRight" :size="15" /></button></div>
+          <div class="background-id-card">
+            <span class="background-avatar">{{ store.session?.name?.slice(0, 1) || "同" }}</span>
+            <span class="background-id-copy"><strong>{{ store.session?.name || "同学" }}</strong><small>{{ store.session?.detail || "学生" }}</small></span>
+            <button class="background-edit" @click="router.push('/profile')" title="查看 / 编辑资料"><UiIcon name="PhPencilSimple" :size="14" /></button>
+          </div>
+          <dl class="background-info-list">
+            <div><dt>学院</dt><dd>{{ store.session?.college || "未填写" }}</dd></div>
+            <div><dt>专业</dt><dd>{{ store.session?.major || "未填写" }}</dd></div>
+            <div><dt>年级</dt><dd>{{ store.session?.grade || "未填写" }}</dd></div>
+            <div><dt>学号</dt><dd>{{ store.session?.student_number || "未填写" }}</dd></div>
+          </dl>
+          <div class="background-stats">
+            <button @click="router.push('/courses')"><strong>{{ dashboard?.enrolled_course_count ?? 0 }}</strong><small>在修课程</small></button>
+            <button @click="router.push('/tasks')"><strong>{{ totalPending }}</strong><small>待办事项</small></button>
+            <button @click="router.push('/study')"><strong>{{ focusHours }}h</strong><small>今日专注</small></button>
+          </div>
+          <div v-if="recentCourses.length" class="recent-courses"><span>最近学习：</span><button v-for="course in recentCourses" :key="course.id" @click="router.push(`/courses/${course.id}`)">{{ course.name }}</button></div>
           <div v-else class="recent-courses"><span>暂无已加入课程</span></div>
         </article>
 
         <article class="student-home-panel campus-panel">
           <div class="home-panel-head"><h2><UiIcon name="PhMegaphone" :size="19" />校园动态</h2><button @click="router.push('/campus-activities')">查看更多<UiIcon name="PhArrowRight" :size="15" /></button></div>
           <div v-if="campusItems.length" class="campus-list">
-            <button v-for="item in campusItems.slice(0, 3)" :key="`${item.path}-${item.id}`" @click="router.push(item.path)"><span class="home-row-icon" :class="item.tone"><UiIcon :name="item.icon" :size="18" /></span><span><strong>{{ item.title }}</strong><small>{{ item.label }}</small></span><time>{{ relativeTime(item.date) }}</time></button>
+            <button v-for="item in campusItems.slice(0, 3)" :key="`${item.path}-${item.id}`" @click="router.push({ path: item.path, query: item.query || {} })"><span class="home-row-icon" :class="item.tone"><UiIcon :name="item.icon" :size="18" /></span><span><strong>{{ item.title }}</strong><small>{{ item.label }}</small></span><time>{{ relativeTime(item.date) }}</time></button>
           </div>
           <div v-else class="compact-empty"><UiIcon name="PhBell" :size="26" /><strong>暂无新的校园消息</strong><span>活动和课程通知会从后端同步到这里。</span></div>
           <button class="panel-footer green" @click="router.push('/campus-activities')">查看全部活动与通知<UiIcon name="PhArrowRight" :size="15" /></button>

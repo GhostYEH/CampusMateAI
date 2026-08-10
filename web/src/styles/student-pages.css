@@ -2097,4 +2097,53 @@
   }
 }
 
+/* ============================================================
+   通知列表项：展开区与"查看完整详情"按钮
+   ============================================================ */
+.notice-expand-body{display:none;padding:0 15px 15px;margin:0}
+.notice-detail.expanded>.notice-expand-body{display:block}
+.notice-expand-body>p{margin:0;color:#6d7e86;font-size:12px;line-height:1.75;white-space:pre-wrap}
+.notice-detail-link{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:7px 13px;border:1px solid #dfe3f7;border-radius:9px;background:#fff;color:var(--primary);font-size:11px;font-weight:650;cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.notice-detail-link:hover{border-color:#c7d2ff;background:#f3f6ff;transform:translateY(-1px)}
+.notice-detail-link svg{color:var(--primary)}
+.student-layout .notifications-page .notice-expand-body{padding:0 20px 16px 44px}
+.student-layout .notifications-page .notice-expand-body>p{color:#7c8ca5;font-size:11px;line-height:1.7}
+.student-layout .notifications-page .notice-detail.expanded>.notice-expand-body{display:block}
+
+/* ============================================================
+   通知详情二级界面（StudentAnnouncementDetailView）
+   三 panel 层次化：主信息(标准) → 通知内容(核心突出) → 通知属性(辅助弱化)
+   ============================================================ */
+.announcement-detail-layout{display:grid;gap:16px}
+.announcement-detail-layout>.student-panel{padding:28px}
+.announcement-source{color:#6c7d9b;font-size:12px;margin-left:auto}
+.announcement-subtitle{margin:6px 0 0;color:#71848c;font-size:13px}
+.announcement-info-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.announcement-detail-actions{margin-top:20px;padding-top:18px;border-top:1px solid #f0f3f7}
+.announcement-content-panel h2{margin:8px 0 14px;font-size:18px;color:#294754}
+.announcement-content{padding:18px 20px;border:1px solid #e0e6f5;border-radius:12px;background:#fff;color:#4d626c;font-size:13px;line-height:1.85;white-space:pre-wrap;word-break:break-word}
+.announcement-meta-panel{background:#fbfcfe;padding:22px 26px}
+.announcement-meta-panel .eyebrow{color:#9aa6b8}
+.announcement-meta-panel h2{margin:6px 0 12px;font-size:15px;color:#4d626c}
+.announcement-meta-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
+.announcement-meta-list>div{display:grid;gap:3px;padding:10px 12px;border:1px solid #eef2f8;border-radius:10px;background:#fff}
+.announcement-meta-list dt{color:#8794a6;font-size:10px;font-weight:600}
+.announcement-meta-list dd{margin:0;color:#45616c;font-size:12px;font-weight:650;word-break:break-all}
+.student-layout .announcement-detail-layout>.student-panel{padding:25px 27px}
+.student-layout .announcement-meta-panel{padding:20px 24px}
+.student-layout .announcement-info-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:17px 0;margin:20px 0}
+.student-layout .announcement-info-grid>div{padding:0 14px;border-right:1px solid #e9eff0}
+.student-layout .announcement-info-grid>div:first-child{padding-left:0}
+.student-layout .announcement-info-grid>div:last-child{border-right:0}
+@media(max-width:820px){
+  .announcement-info-grid{grid-template-columns:1fr 1fr}
+  .announcement-meta-list{grid-template-columns:1fr}
+  .announcement-detail-actions{flex-wrap:wrap;justify-content:flex-start}
+}
+@media(max-width:520px){
+  .announcement-info-grid{grid-template-columns:1fr}
+  .student-layout .announcement-info-grid>div{border-right:0;border-bottom:1px solid #e9eff0;padding:10px 0}
+  .student-layout .announcement-info-grid>div:last-child{border-bottom:0}
+}
+
 
