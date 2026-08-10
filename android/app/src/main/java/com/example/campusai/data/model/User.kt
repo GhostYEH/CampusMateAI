@@ -8,5 +8,5 @@ data class User(
     val phone: String = "",
     val studentId: String = "",
     val accountId: String = "",
-    val teachers: List<Teacher> = emptyList(),
+
 )

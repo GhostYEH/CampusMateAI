@@ -30,7 +30,7 @@ export const useAppStore = defineStore("app", () => {
     const normalized = {
       ...user,
       name: user.name || user.display_name || user.username,
-      detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", teacher: "教师", admin: "管理员" }[user.role]),
+      detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", admin: "管理员" }[user.role]),
     };
     session.value = normalized;
     localStorage.setItem("campus_session", JSON.stringify(normalized));

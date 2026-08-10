@@ -79,10 +79,9 @@ fun ProfileScreen(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
-                        ProfileRow(Icons.Default.SupervisorAccount, "我的老师", "管理我的老师联系方式") { onNavigate("teachers") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
                         ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },
-                        ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "向 AI 导员描述你的问题") { onNavigate("counselor") },
+                        ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "向 AI 校园助手描述你的问题") { onNavigate("counselor") },
                         ProfileRow(Icons.Default.Info, "关于 CampusMate", "版本与能力边界") { showAbout = true },
                     ),
                 )
@@ -100,7 +99,7 @@ fun ProfileScreen(
             icon = { Icon(Icons.Default.AutoAwesome, null) },
             title = { Text("关于 CampusMate") },
             text = {
-                Text("面向大学生的校园事务智能陪伴助手。AI 导员与知识库能力会明确标注 Mock 模式，回答仅作校园事务辅助。")
+                Text("面向大学生的校园事务智能陪伴助手。AI 校园助手与知识库能力会明确标注 Mock 模式，回答仅作校园事务辅助。")
             },
             confirmButton = {
                 TextButton(onClick = { showAbout = false }) {

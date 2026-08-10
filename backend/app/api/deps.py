@@ -49,7 +49,11 @@ def _decode_access_token(
     token: str,
     settings: Settings,
 ) -> UserRow:
-    """解析 access token 并返回 UserRow。失败抛 Unauthorized。"""
+    """解析 access token 并返回 UserRow。失败抛 Unauthorized。
+
+    兼容旧 teacher 账号: 若数据库中用户 role 为 teacher,运行时降级为 student,
+    不修改数据库。CampusMate AI 只存在 student / admin 两类系统角色。
+    """
     try:
         payload = decode_jwt(token, settings.jwt_secret)
     except JWTError as e:
@@ -60,6 +64,9 @@ def _decode_access_token(
     user = container.user_repository.get_user_by_id(payload.sub)
     if user is None or not user.is_active:
         raise Unauthorized("用户不存在或已停用")
+    # 运行时降级旧 teacher 账号
+    if user.role == "teacher":
+        user.role = "student"
     return user
 
 
@@ -106,7 +113,7 @@ def current_user_optional(
 def require_role(*roles: str):
     """依赖工厂: 限定当前用户必须为指定角色之一,否则抛 Forbidden。
 
-    用法: `user: UserRow = Depends(require_role("teacher","admin"))`
+    用法: `user: UserRow = Depends(require_role("admin"))`
     """
     expected = set(roles)
 
@@ -119,31 +126,6 @@ def require_role(*roles: str):
 
 
 # ===== 业务权限辅助 =====
-
-
-def assert_teacher_of_course(course_id: str, user: UserRow) -> None:
-    """断言 user 是该课程的负责教师(或管理员)。"""
-    if user.role == "admin":
-        return
-    container = get_container()
-    course = container.course_repository.get_course(course_id)
-    if course is None:
-        # 抛 NotFound 而不是 Forbidden,避免泄露存在性
-        from ..core.exceptions import CourseNotFound
-        raise CourseNotFound()
-    if course.teacher_id != user.id:
-        raise Forbidden("无权管理此课程")
-
-
-def assert_teacher_of_class(class_id: str, user: UserRow) -> None:
-    if user.role == "admin":
-        return
-    container = get_container()
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        from ..core.exceptions import ClassGroupNotFound
-        raise ClassGroupNotFound()
-    assert_teacher_of_course(cls.course_id, user)
 
 
 def assert_student_in_class(class_id: str, user: UserRow) -> None:
@@ -165,7 +147,5 @@ __all__ = [
     "current_user",
     "current_user_optional",
     "require_role",
-    "assert_teacher_of_course",
-    "assert_teacher_of_class",
     "assert_student_in_class",
 ]

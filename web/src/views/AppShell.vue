@@ -23,7 +23,7 @@ const menus = [
   ["courses", "我的课程", "PhBookOpen"],
   ["tasks", "待办与作业", "PhCheckSquare"],
   ["campus-activities", "校园活动", "PhCalendarStar"],
-  ["counselor", "AI 导员", "PhRobot"],
+  ["counselor", "AI 校园助手", "PhRobot"],
   ["notifications", "通知整理", "PhBell"],
   ["study", "学习陪伴", "PhChartLineUp"],
   ["profile", "个人中心", "PhUser"],

@@ -28,9 +28,11 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(notices.router, tags=["notices"])
 api_router.include_router(knowledge.router, tags=["knowledge"])
+# AI 校园助手:保留 /counselor 兼容旧客户端,新增 /assistant 别名
 api_router.include_router(counselor.router, tags=["counselor"])
+api_router.include_router(counselor.router, prefix="/assistant", tags=["assistant"])
 api_router.include_router(contributions.router, tags=["contributions"])
-# 多角色协同平台
+# 认证与用户管理
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])
 api_router.include_router(dashboards.router)

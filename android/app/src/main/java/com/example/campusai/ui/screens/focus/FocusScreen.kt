@@ -360,7 +360,7 @@ fun FocusScreen(
                     Icon(Icons.Default.AutoAwesome, null, tint = Primary, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("让 AI 导员分析本次专注", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("让 AI 校园助手分析本次专注", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text("仅在你点击后发送结构化本机摘要，不含画面或逐帧结果", color = Muted, fontSize = 11.sp)
                     }
                     Button(

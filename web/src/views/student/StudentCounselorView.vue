@@ -143,7 +143,7 @@ async function turnToTask() {
   const last = [...messages.value].reverse().find((item) => item.role === "assistant" && item.text);
   if (!last) return;
   try {
-    await createPersonalTask({ title: last.text.slice(0, 80), description: last.text, source_name: "AI 导员对话", source_text: last.text });
+    await createPersonalTask({ title: last.text.slice(0, 80), description: last.text, source_name: "AI 校园助手对话", source_text: last.text });
     error.value = "已保存为个人待办，可在待办与作业页面继续编辑。";
   } catch (e) {
     error.value = e.response?.data?.detail || "保存待办失败，请稍后重试。";
@@ -177,9 +177,9 @@ onBeforeUnmount(() => aborter.value?.abort());
   <main class="student-page counselor-page page-enter">
     <section class="counselor-hero counselor-hero-bg">
       <div class="counselor-hero-content">
-        <span class="hero-eyebrow">AI COUNSELOR / 校园智能向导</span>
+        <span class="hero-eyebrow">AI ASSISTANT / 校园智能向导</span>
         <div class="student-title-line hero-title">
-          <h1>AI 导员</h1>
+          <h1>AI 校园助手</h1>
           <UiIcon name="PhSparkle" class="heading-sparkle" :size="26" />
         </div>
         <p class="hero-desc">多轮对话、深系引用和行动建议都集中在这里，AI 不替代学校正式答复。</p>

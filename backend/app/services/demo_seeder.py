@@ -26,10 +26,12 @@ logger = logging.getLogger(__name__)
 
 DEMO_PASSWORD = "Demo123456"
 
-# (username, role, display_name, student/teacher_number, college, major, grade)
+# (username, role, display_name, student_number, teacher_number, college, major, grade)
+# CampusMate AI 只存在 student / admin 两类系统角色。
+# 历史演示中的 teacher 账号已改为 admin(管理员负责系统内容维护)。
 DEMO_USERS = [
-    ("teacher_demo", "teacher", "李老师(演示)", None, "T2024001", "信息工程学院", "计算机系", None),
-    ("teacher_demo2", "teacher", "王老师(演示)", None, "T2024002", "外国语学院", "英语系", None),
+    ("admin_demo2", "admin", "李管理员(演示)", None, None, "信息工程学院", "计算机系", None),
+    ("admin_demo3", "admin", "王管理员(演示)", None, None, "外国语学院", "英语系", None),
     ("student_demo", "student", "陈同学(演示)", "S202401001", None, "信息工程学院", "计算机科学与技术", "2024"),
     ("admin_demo", "admin", "管理员(演示)", None, None, None, None, None),
 ]
@@ -134,8 +136,8 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
             user = existing
         created_users[username] = user
 
-    teacher1 = created_users["teacher_demo"]
-    teacher2 = created_users["teacher_demo2"]
+    teacher1 = created_users["admin_demo2"]
+    teacher2 = created_users["admin_demo3"]
     admin = created_users["admin_demo"]
     student_demo = created_users["student_demo"]
 

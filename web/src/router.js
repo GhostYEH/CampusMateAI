@@ -1,6 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 import LoginView from "./views/LoginView.vue";
 import AppShell from "./views/AppShell.vue";
+import AdminShell from "./views/admin/AdminShell.vue";
+import AdminDashboardView from "./views/admin/AdminDashboardView.vue";
+import AdminKnowledgeView from "./views/admin/AdminKnowledgeView.vue";
+import AdminUsersView from "./views/admin/AdminUsersView.vue";
 import StudentActivitiesView from "./views/StudentActivitiesView.vue";
 import StudentHomeView from "./views/student/StudentHomeView.vue";
 import StudentCoursesView from "./views/student/StudentCoursesView.vue";
@@ -21,12 +25,19 @@ import StudentClassroomsView from "./views/student/StudentClassroomsView.vue";
 import StudentLostFoundView from "./views/student/StudentLostFoundView.vue";
 import StudentLostFoundDetailView from "./views/student/StudentLostFoundDetailView.vue";
 
-
-
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/login", component: LoginView, meta: { public: true } },
+    // 管理员控制台
+    { path: "/admin", component: AdminShell, meta: { roles: ["admin"] }, children: [
+      { path: "", redirect: "/admin" },
+      { path: "", name: "admin-home", component: AdminDashboardView },
+      { path: "knowledge", component: AdminKnowledgeView },
+      { path: "documents", component: AdminKnowledgeView },
+      { path: "users", component: AdminUsersView },
+    ]},
+    // 学生端
     { path: "/", component: AppShell, children: [
       { path: "", redirect: "/home" },
       { path: "home", component: StudentHomeView, meta: { roles: ["student", "admin"] } },
@@ -58,8 +69,14 @@ router.beforeEach((to) => {
   try { session = saved ? JSON.parse(saved) : null; } catch { localStorage.removeItem("campus_session"); }
   if (!hasToken) session = null;
   if (!to.meta.public && !session) return "/login";
-  if (to.path === "/login" && session) return "/home";
+  if (to.path === "/login" && session) {
+    // 按角色跳转到对应入口
+    return session.role === "admin" ? "/admin" : "/home";
+  }
   const roles = to.matched.flatMap((record) => record.meta.roles || []);
-  if (session && roles.length && !roles.includes(session.role)) return "/home";
+  if (session && roles.length && !roles.includes(session.role)) {
+    // 角色不匹配:admin → /admin,其他 → /home
+    return session.role === "admin" ? "/admin" : "/home";
+  }
 });
 export default router;

@@ -1,10 +1,10 @@
 """课程路由 — 列表/创建/详情/更新。
 
 权限:
-- GET /courses: 教师只看到自己负责的课程;学生看到自己已加入班级所属的课程;管理员看到全部。
-- POST /courses: 仅教师与管理员。
-- GET /courses/{id}: 教师只看自己的;学生只看自己班级所属课程;管理员任意。
-- PATCH /courses/{id}: 仅课程负责教师或管理员。
+- GET /courses: 学生看到自己已加入班级所属的课程;管理员看到全部。
+- POST /courses: 仅管理员(CampusMate AI 不存在教师角色,课程由管理员维护)。
+- GET /courses/{id}: 学生只看自己班级所属课程;管理员任意。
+- PATCH /courses/{id}: 仅管理员。
 """
 from __future__ import annotations
 
@@ -52,10 +52,7 @@ def list_courses(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
-    teacher_id: Optional[str] = None
-    if user.role == "teacher":
-        teacher_id = user.id
-    elif user.role == "student":
+    if user.role == "student":
         # 学生只看自己已加入班级所属的课程
         course_ids = set()
         enrolls = container.enrollment_repository.list_user_classes(user.id)
@@ -63,7 +60,6 @@ def list_courses(
             course_ids.add(e["course_id"])
         if not course_ids:
             return Page(items=[], total=0, page=page, page_size=page_size, has_more=False)
-        # 用 list_courses 不可(不支持 course_id IN),手动查询
         items: List[CourseOut] = []
         for cid in course_ids:
             c = container.course_repository.get_course(cid)
@@ -87,8 +83,9 @@ def list_courses(
             has_more=end < total,
         )
 
+    # admin: 全部课程
     rows, total = container.course_repository.list_courses(
-        teacher_id=teacher_id,
+        teacher_id=None,
         status=status,
         query=query,
         page=page,
@@ -110,6 +107,7 @@ def _course_matches_query(c: CourseRow, q: str) -> bool:
 
 
 def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Optional[str]:
+    """查询课程负责人姓名(兼容旧 teacher_id 字段,可能指向已降级用户)。"""
     if not teacher_id:
         return None
     u = container.user_repository.get_user_by_id(teacher_id)
@@ -121,7 +119,7 @@ def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Opt
 @router.post("", response_model=CourseOut, status_code=201)
 def create_course(
     req: CourseCreate,
-    user: UserRow = Depends(require_role("teacher", "admin")),
+    user: UserRow = Depends(require_role("admin")),
     container: ServiceContainer = Depends(_container),
 ) -> CourseOut:
     course = container.course_repository.create_course(
@@ -152,14 +150,12 @@ def get_course(
 def update_course(
     course_id: str,
     req: CourseUpdate,
-    user: UserRow = Depends(current_user),
+    user: UserRow = Depends(require_role("admin")),
     container: ServiceContainer = Depends(_container),
 ) -> CourseOut:
     course = container.course_repository.get_course(course_id)
     if course is None:
         raise CourseNotFound()
-    if user.role != "admin" and course.teacher_id != user.id:
-        raise Forbidden("无权管理此课程")
     fields = req.model_dump(exclude_unset=True)
     updated = container.course_repository.update_course(course_id, fields=fields)
     if updated is None:
@@ -171,10 +167,6 @@ def _assert_can_view_course(
     course: CourseRow, user: UserRow, container: ServiceContainer
 ) -> None:
     if user.role == "admin":
-        return
-    if user.role == "teacher":
-        if course.teacher_id != user.id:
-            raise Forbidden("无权查看此课程")
         return
     # 学生: 必须已加入该课程下的任一班级
     enrolls = container.enrollment_repository.list_user_classes(user.id)

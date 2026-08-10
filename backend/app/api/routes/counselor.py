@@ -1,40 +1,38 @@
-"""AI 导员聊天路由 — 支持 SSE 流式与非流式。
+"""AI 校园助手聊天路由 — 支持 SSE 流式与非流式。
 
-权限与上下文融合(对齐用户新要求):
+接口路径保留 /counselor/chat 以兼容旧客户端;新客户端可使用 /assistant/chat(见 router.py)。
+UI 文案统一为"AI 校园助手",不再使用"AI 导员"。
+
+权限与上下文融合:
 - 匿名访问允许(向后兼容旧前端 Mock): 但当请求携带 course_id/class_id/assignment_id/
   announcement_id 上下文时,必须携带有效 access token,且后端会真实校验访问权限。
 - 已登录用户: 上下文中的 recent_tasks 与多角色上下文均会注入到 RAG 检索源中。
-- 对不存在、越权或已删除的上下文对象**忽略并生成 warning**,不抛异常(对齐要求 #8)。
+- 对不存在、越权或已删除的上下文对象**忽略并生成 warning**,不抛异常。
 
-recent_tasks 校验(对齐用户新要求,删除"未验证本地待办"逻辑):
+角色模型:
+- CampusMate AI 只存在 student / admin 两类系统角色。
+- 历史 teacher 账号在 deps.py 中已降级为 student,因此本文件中 _is_teacher() 分支
+  为兼容旧代码保留的死代码,永远不会执行。
+
+recent_tasks 校验:
 - recent_tasks 现在只表示 PersonalTask,不表示 Assignment。
-- 教师作业只能通过 assignment_id 传递。
 - 未登录用户: recent_tasks 全部忽略 + warning。
 - 已登录用户: 对每个 recent_task.id 调用 PersonalTaskRepository 查询,
   查询必须同时限定 user_id;只允许当前用户自己的任务;
   deleted_at 不为空的任务不得进入上下文;不存在的任务不得进入上下文;
   其他用户任务不得进入上下文。
 - 权威字段(id/title/deadline/priority/status)全部来自数据库,
-  客户端传入的 title/deadline/priority/status 一律不得作为事实使用。
+  客户端传入的 title/deadline/p* 一律不得作为事实使用。
 
-self_report(对齐用户新要求):
-- 只能作为用户自报状态;
-- 不能作为校园规则事实;
-- 不能绕过 RAG 拒答;
-- 不得完整写入普通日志;
-- 不得出现在错误日志或调试日志中;
-- context_used 只记录 self_report_present=true/false。
+self_report:
+- 只能作为用户自报状态;不能作为校园规则事实;不能绕过 RAG 拒答;
+- 不得完整写入普通日志;context_used 只记录 self_report_present=true/false。
 
-expression_signal(对齐用户新要求,安全边界):
+expression_signal(安全边界):
 - 只接收稳定的 CNN 表情标签与置信度，不接收原始图像;
 - 经过白名单与置信度校验后，以辅助提示传给 LLM;
 - 不触发危机判断，不保存，不在日志输出;
 - 不得把可观察表情表述为心理或医学结论。
-
-学生询问"这个任务要交什么"时:
-- 优先使用教师发布的任务原文(通过 assignment_id 传递)。
-- 其次使用课程资料和学校知识库。
-- 草稿任务(未发布)不得被学生检索。
 """
 from __future__ import annotations
 

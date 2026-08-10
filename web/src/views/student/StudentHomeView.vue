@@ -63,7 +63,7 @@ const quickLinks = [
   { label: "空教室查询", detail: "找一间安静的教室", icon: "PhSquaresFour", path: "/classrooms", tone: "green" },
   { label: "失物招领", detail: "查看待招领物品", icon: "PhMagnifyingGlass", path: "/lostfound", tone: "teal" },
   { label: "通知整理", detail: "智能归类与摘要", icon: "PhBell", path: "/notifications", tone: "amber" },
-  { label: "AI 导员", detail: "问问校园里的事", icon: "PhRobot", path: "/counselor", tone: "rose" },
+  { label: "AI 校园助手", detail: "问问校园里的事", icon: "PhRobot", path: "/counselor", tone: "rose" },
 ];
 
 function dateText(value) {

@@ -37,7 +37,7 @@ import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
 import com.example.campusai.ui.screens.profile.SettingsScreen
-import com.example.campusai.ui.screens.profile.TeachersScreen
+
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
 import com.example.campusai.ui.screens.services.LeaveRequestScreen
 import com.example.campusai.ui.screens.services.MyRequestsScreen
@@ -198,7 +198,7 @@ fun AppNavHost(
             ExpressionContributionScreen(repository) { navController.popBackStack() }
         }
         composable("account") { AccountScreen(repository) { navController.popBackStack() } }
-        composable("teachers") { TeachersScreen(repository) { navController.popBackStack() } }
+
 
         composable("files") {
             PersonalHubScreen(
