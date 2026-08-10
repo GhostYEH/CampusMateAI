@@ -11,8 +11,7 @@ UI 文案统一为"AI 校园助手",不再使用"AI 导员"。
 
 角色模型:
 - CampusMate AI 只存在 student / admin 两类系统角色。
-- 历史 teacher 账号在 deps.py 中已降级为 student,因此本文件中 _is_teacher() 分支
-  为兼容旧代码保留的死代码,永远不会执行。
+- 历史 teacher 账号在 deps.py 中已降级为 student,本文件不再保留 teacher 分支。
 
 recent_tasks 校验:
 - recent_tasks 现在只表示 PersonalTask,不表示 Assignment。
@@ -74,7 +73,7 @@ def _collect_teaching_context(
     权限:
     - user 为 None 时,只允许使用通用知识库,忽略所有教学上下文 + warning。
     - user 为学生: 必须已加入对应班级;只能看已发布的任务/通知;草稿一律忽略。
-    - user 为教师: 必须为对应课程的负责教师。
+
     - user 为管理员: 任意。
     - 不存在/越权/已删除的对象: 忽略 + warning,不抛异常。
     """
@@ -107,11 +106,6 @@ def _collect_teaching_context(
     def _is_student() -> bool:
         return user.role == "student"
 
-    def _is_teacher() -> bool:
-        return user.role == "teacher"
-
-    def _is_admin() -> bool:
-        return user.role == "admin"
 
     # 课程
     if req.course_id:
@@ -129,8 +123,7 @@ def _collect_teaching_context(
                 )
                 context_used["course_id"] = c.id
                 context_used["course_name"] = c.name
-        elif _is_teacher() and c.teacher_id != user.id and not _is_admin():
-            warnings.append(f"无权访问课程 {c.name},已忽略")
+
         else:
             parts.append(
                 f"[课程上下文] {c.name} ({c.code or '无代码'}) 学期:{c.semester or '未指定'}\n"
@@ -152,14 +145,7 @@ def _collect_teaching_context(
                 parts.append(f"[班级上下文] {cls.name} (邀请码:{cls.invite_code})")
                 context_used["class_id"] = cls.id
                 context_used["class_name"] = cls.name
-        elif _is_teacher():
-            c = course_repo.get_course(cls.course_id)
-            if c is None or (c.teacher_id != user.id and not _is_admin()):
-                warnings.append(f"无权访问班级 {cls.name},已忽略")
-            else:
-                parts.append(f"[班级上下文] {cls.name} (邀请码:{cls.invite_code})")
-                context_used["class_id"] = cls.id
-                context_used["class_name"] = cls.name
+
         else:
             parts.append(f"[班级上下文] {cls.name} (邀请码:{cls.invite_code})")
             context_used["class_id"] = cls.id
@@ -195,24 +181,7 @@ def _collect_teaching_context(
                     )
                     context_used["assignment_id"] = a.id
                     context_used["assignment_title"] = a.title
-            elif _is_teacher():
-                c = course_repo.get_course(cls.course_id)
-                if c is None or (c.teacher_id != user.id and not _is_admin()):
-                    warnings.append(f"无权访问任务 {a.title},已忽略")
-                else:
-                    author = user_repo.get_user_by_id(a.author_id)
-                    author_name = (author.display_name if author else None) or (
-                        author.username if author else "未知"
-                    )
-                    parts.append(
-                        f"[任务上下文] {a.title} (作者:{author_name}, 状态:{a.status})\n"
-                        f"  截止时间: {a.deadline or '(无)'}\n"
-                        f"  满分: {a.max_score if a.max_score is not None else '(未设置)'}\n"
-                        f"  允许重新提交: {'是' if a.allow_resubmit else '否'}\n"
-                        f"  任务说明: {a.description or '(无)'}"
-                    )
-                    context_used["assignment_id"] = a.id
-                    context_used["assignment_title"] = a.title
+
             else:
                 author = user_repo.get_user_by_id(a.author_id)
                 author_name = (author.display_name if author else None) or (
@@ -256,22 +225,7 @@ def _collect_teaching_context(
                     )
                     context_used["announcement_id"] = ann.id
                     context_used["announcement_title"] = ann.title
-            elif _is_teacher():
-                c = course_repo.get_course(cls.course_id)
-                if c is None or (c.teacher_id != user.id and not _is_admin()):
-                    warnings.append(f"无权访问通知 {ann.title},已忽略")
-                else:
-                    author = user_repo.get_user_by_id(ann.author_id)
-                    author_name = (author.display_name if author else None) or (
-                        author.username if author else "未知"
-                    )
-                    parts.append(
-                        f"[通知上下文] {ann.title} (作者:{author_name}, 状态:{ann.status})\n"
-                        f"  发布时间: {ann.published_at or '(未发布)'}\n"
-                        f"  通知内容: {ann.content}"
-                    )
-                    context_used["announcement_id"] = ann.id
-                    context_used["announcement_title"] = ann.title
+
             else:
                 author = user_repo.get_user_by_id(ann.author_id)
                 author_name = (author.display_name if author else None) or (

@@ -257,7 +257,7 @@ async def rebuild_index(_: UserRow = Depends(require_role("admin"))) -> RebuildR
 
 
 @router.post("/knowledge/manage/{action}", response_model=DataManagementResponse)
-async def data_management(action: str) -> DataManagementResponse:
+async def data_management(action: str, _: UserRow = Depends(require_role("admin"))) -> DataManagementResponse:
     """数据管理操作。
 
     支持的 action:
