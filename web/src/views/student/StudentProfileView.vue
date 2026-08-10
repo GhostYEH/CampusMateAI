@@ -52,7 +52,7 @@ const quickTools = [
   { label: "待办事项", detail: "管理待完成任务", icon: "PhCheckSquare", path: "/tasks", tone: "green" },
   { label: "通知整理", detail: "查看重要校园信息", icon: "PhBell", path: "/notifications", tone: "indigo" },
   { label: "校园活动", detail: "发现感兴趣的活动", icon: "PhCalendarStar", path: "/campus-activities", tone: "amber" },
-  { label: "AI 导员", detail: "获取校园问题建议", icon: "PhRobot", path: "/counselor", tone: "teal" },
+  { label: "AI 校园助手", detail: "获取校园问题建议", icon: "PhRobot", path: "/counselor", tone: "teal" },
 ];
 const tabs = [
   { key: "overview", label: "资料编辑" },
@@ -250,7 +250,7 @@ onMounted(load);
           <div class="preference-row"><span class="preference-icon blue"><UiIcon name="PhSparkle" /></span><span><strong>减少动态效果</strong><small>关闭页面进入动画和不必要的过渡，适合需要更稳定界面的场景。</small></span><button class="preference-toggle" :class="{ on: settings.reduceMotion }" :aria-pressed="settings.reduceMotion" @click="setSetting('reduceMotion', !settings.reduceMotion)"><i></i></button></div>
           <div class="preference-row"><span class="preference-icon green"><UiIcon name="PhBell" /></span><span><strong>截止提醒</strong><small>控制待办与作业的提醒展示，具体通知能力以学校数据源为准。</small></span><button class="preference-toggle" :class="{ on: settings.noticeReminder }" :aria-pressed="settings.noticeReminder" @click="setSetting('noticeReminder', !settings.noticeReminder)"><i></i></button></div>
         </div>
-        <div class="settings-links"><button @click="router.push('/study')"><UiIcon name="PhChartLineUp" />查看学习统计</button><button @click="router.push('/counselor')"><UiIcon name="PhRobot" />打开 AI 导员</button></div>
+        <div class="settings-links"><button @click="router.push('/study')"><UiIcon name="PhChartLineUp" />查看学习统计</button><button @click="router.push('/counselor')"><UiIcon name="PhRobot" />打开 AI 校园助手</button></div>
       </section>
     </template>
   </main>

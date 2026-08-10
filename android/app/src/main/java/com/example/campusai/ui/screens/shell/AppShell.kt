@@ -89,7 +89,7 @@ val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
     NavItem("tasks", "待办", Icons.Default.CheckCircle),
-    NavItem("counselor", "AI 导员", Icons.Default.SmartToy),
+    NavItem("counselor", "AI 校园助手", Icons.Default.SmartToy),
     NavItem("profile", "我的", Icons.Default.Person),
 )
 
@@ -172,8 +172,8 @@ private fun CampusTopBar(
                 .campusClickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                if (role == "student") "知" else if (role == "teacher") "师" else "管",
+                Text(
+                if (role == "student") "知" else "管",
                 color = Primary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,

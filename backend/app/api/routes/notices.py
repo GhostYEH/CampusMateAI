@@ -31,7 +31,6 @@ def _user_visible_classes(
     """返回当前用户可见班级 (class_id, class_name, course_name) 列表。
 
     - student: 已加入的班级
-    - teacher: 其负责课程下的班级
     - admin: 全部班级
     """
     enrollment_repo = container.enrollment_repository
@@ -44,18 +43,9 @@ def _user_visible_classes(
             (r["class_id"], r.get("class_name") or "", r.get("course_name"))
             for r in rows
         ]
-    if user.role == "teacher":
-        classes, _ = class_repo.list_classes(
-            teacher_id=user.id, page=1, page_size=200
-        )
-        result: List[Tuple[str, str, Optional[str]]] = []
-        for c in classes:
-            course = course_repo.get_course(c.course_id)
-            result.append((c.id, c.name or "", course.name if course else None))
-        return result
     # admin
     classes, _ = class_repo.list_classes(page=1, page_size=200)
-    result = []
+    result: List[Tuple[str, str, Optional[str]]] = []
     for c in classes:
         course = course_repo.get_course(c.course_id)
         result.append((c.id, c.name or "", course.name if course else None))

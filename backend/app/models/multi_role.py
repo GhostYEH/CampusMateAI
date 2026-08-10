@@ -14,10 +14,10 @@ class UserRow:
     id: str
     username: str
     password_hash: str
-    role: str = "student"  # student / teacher / admin
+    role: str = "student"  # student / admin (历史 teacher 在运行时降级为 student)
     display_name: Optional[str] = None
     student_number: Optional[str] = None
-    teacher_number: Optional[str] = None
+    teacher_number: Optional[str] = None  # 已废弃,仅为兼容旧数据保留
     college: Optional[str] = None
     major: Optional[str] = None
     grade: Optional[str] = None

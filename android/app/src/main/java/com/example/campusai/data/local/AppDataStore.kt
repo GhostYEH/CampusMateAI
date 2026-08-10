@@ -12,7 +12,7 @@ import com.example.campusai.data.model.CampusActivity
 import com.example.campusai.data.model.CampusFile
 import com.example.campusai.data.model.FavoriteItem
 import com.example.campusai.data.model.PersonalHubSnapshot
-import com.example.campusai.data.model.Teacher
+
 import com.example.campusai.data.model.User
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.notification.NotificationSource
@@ -52,19 +52,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                     phone = obj.optString("phone", ""),
                     studentId = obj.optString("studentId", ""),
                     accountId = obj.optString("accountId", ""),
-                    teachers = obj.optJSONArray("teachers")?.let { jsonArray ->
-                        (0 until jsonArray.length()).map {
-                            val teacherObj = jsonArray.getJSONObject(it)
-                            Teacher(
-                                id = teacherObj.optString("id"),
-                                name = teacherObj.optString("name"),
-                                email = teacherObj.optString("email"),
-                                phone = teacherObj.optString("phone"),
-                                subject = teacherObj.optString("subject"),
-                                notes = teacherObj.optString("notes")
-                            )
-                        }
-                    } ?: emptyList()
+
                 )
             } catch (_: Exception) { null }
         }
@@ -215,18 +203,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             json.put("phone", user.phone)
             json.put("studentId", user.studentId)
             json.put("accountId", user.accountId)
-            json.put("teachers", JSONArray().apply {
-                user.teachers.forEach {
-                    put(JSONObject().apply {
-                        put("id", it.id)
-                        put("name", it.name)
-                        put("email", it.email)
-                        put("phone", it.phone)
-                        put("subject", it.subject)
-                        put("notes", it.notes)
-                    })
-                }
-            })
+
             prefs[KEY_SESSION] = json.toString()
         }
     }

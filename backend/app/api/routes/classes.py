@@ -1,14 +1,11 @@
 """班级路由 — 列表/创建/详情/更新/加入/重置邀请码/成员管理。
 
 权限:
-- GET /classes: 教师只看自己课程下的班级;学生只看自己已加入的;管理员全部。
-- POST /courses/{course_id}/classes: 仅课程教师或管理员。
-- GET /classes/{id}: 教师必须为本课程教师;学生必须已加入;管理员任意。
-- PATCH /classes/{id}: 仅教师或管理员。
+- GET /classes: 学生只看自己已加入的;管理员全部。
+- GET /classes/{id}: 学生必须已加入;管理员任意。
 - POST /classes/{id}/join: 学生凭邀请码加入。
-- POST /classes/{id}/reset-invite-code: 教师/管理员。
-- GET /classes/{id}/members: 教师/管理员可看全部,学生看同班同学。
-- DELETE /classes/{id}/members/{user_id}: 教师/管理员。
+- GET /classes/{id}/members: 管理员可看全部,学生看同班同学。
+- 班级创建/管理由管理员负责(CampusMate AI 不存在教师角色)。
 """
 from __future__ import annotations
 
@@ -20,7 +17,6 @@ from ...core.exceptions import (
     AlreadyEnrolled,
     ClassGroupFull,
     ClassGroupNotFound,
-    CourseNotFound,
     Forbidden,
     InvalidInviteCode,
 )
@@ -65,10 +61,7 @@ def list_classes(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
-    teacher_id: Optional[str] = None
-    if user.role == "teacher":
-        teacher_id = user.id
-    elif user.role == "student":
+    if user.role == "student":
         # 学生只看自己已加入的班级
         enrolls = container.enrollment_repository.list_user_classes(user.id)
         items: List[ClassOut] = []
@@ -89,17 +82,15 @@ def list_classes(
             page_size=page_size,
             has_more=end < total,
         )
+    # admin: 全部班级
     rows, total = container.class_group_repository.list_classes(
         course_id=course_id,
-        teacher_id=teacher_id,
+        teacher_id=None,
         page=page,
         page_size=page_size,
     )
     items = [_class_to_out(r) for r in rows]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
-
-
-
 
 
 @router.get("/classes/{class_id}", response_model=ClassOut)
@@ -113,9 +104,6 @@ def get_class(
         raise ClassGroupNotFound()
     _assert_can_view_class(cls, user, container)
     return _class_to_out(cls)
-
-
-
 
 
 @router.post("/classes/{class_id}/join", response_model=ClassOut)
@@ -154,9 +142,6 @@ def join_class(
     return _class_to_out(cls)
 
 
-
-
-
 @router.get("/classes/{class_id}/members", response_model=Page)
 def list_members(
     class_id: str,
@@ -183,9 +168,6 @@ def list_members(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-
-
-
 # ===== 权限辅助 =====
 
 
@@ -193,11 +175,6 @@ def _assert_can_view_class(
     cls: ClassGroupRow, user: UserRow, container: ServiceContainer
 ) -> None:
     if user.role == "admin":
-        return
-    if user.role == "teacher":
-        course = container.course_repository.get_course(cls.course_id)
-        if course is None or course.teacher_id != user.id:
-            raise Forbidden("无权查看此班级")
         return
     # 学生: 必须已加入
     enr = container.enrollment_repository.get_enrollment(cls.id, user.id)
@@ -210,12 +187,7 @@ def _assert_can_manage_class(
 ) -> None:
     if user.role == "admin":
         return
-    if user.role == "teacher":
-        course = container.course_repository.get_course(cls.course_id)
-        if course is None or course.teacher_id != user.id:
-            raise Forbidden("无权管理此班级")
-        return
-    raise Forbidden("学生无权管理班级")
+    raise Forbidden("仅管理员可管理班级")
 
 
 __all__ = ["router"]

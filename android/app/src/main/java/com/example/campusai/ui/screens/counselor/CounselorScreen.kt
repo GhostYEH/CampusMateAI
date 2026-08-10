@@ -48,9 +48,9 @@ fun CounselorScreen(
                 ChatMessage(
                     "assistant",
                     if (mockMode) {
-                        "你好，我是 AI 导员小夏。课程流程、奖助政策、校园服务，都可以来问我。当前为 Mock 知识库演示模式。"
+                        "你好，我是 AI 校园助手小夏。课程流程、奖助政策、校园服务，都可以来问我。当前为 Mock 知识库演示模式。"
                     } else {
-                        "你好，我是 AI 导员小夏。课程流程、奖助政策、校园服务，都可以来问我。回答会结合校园知识库与后端配置的模型。"
+                        "你好，我是 AI 校园助手小夏。课程流程、奖助政策、校园服务，都可以来问我。回答会结合校园知识库与后端配置的模型。"
                     },
                 ),
             ),
@@ -167,7 +167,7 @@ fun CounselorScreen(
 private fun CounselorHeader(mockMode: Boolean) {
     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("AI 导员", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+            Text("AI 校园助手", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
             Text("校园问题，随时来聊一聊", color = Muted, fontSize = 13.sp)
         }
         ModeBadge(mockMode)

@@ -6,10 +6,15 @@
 - refresh token 仅以哈希存入数据库,不可逆。
 - logout 撤销 refresh token(可选撤销 access token: 当前实现不维护 access token 状态,
   因为其有效期短,泄露风险有限;若需要强制下线,可扩展 jti 黑名单)。
-- POST /auth/register: 公开注册接口,仅允许 student/teacher 角色。
+- POST /auth/register: 公开注册接口,仅允许 student 角色。
   admin 必须由管理员通过 /auth/admin/users 创建。
-- POST /auth/admin/users: 仅 admin 可创建教师/学生/管理员账号,执行完整真实业务流程,
+- POST /auth/admin/users: 仅 admin 可创建学生/管理员账号,执行完整真实业务流程,
   无任何"演示专用通道"。所有验收账号均通过此接口创建。
+
+角色模型:
+- CampusMate AI 只存在 student 与 admin 两类系统角色。
+- 历史数据库中可能存在 role='teacher' 的旧记录,登录时按兼容处理(见 _issue_tokens),
+  但不再允许新建 teacher 账号。
 """
 from __future__ import annotations
 
@@ -82,19 +87,17 @@ def register(
     """公开注册接口(无需鉴权)。
 
     限制:
-    - 仅允许注册 student / teacher 角色;admin 必须由管理员通过 /auth/admin/users 创建。
+    - 仅允许注册 student 角色;admin 必须由管理员通过 /auth/admin/users 创建。
     - 注册成功后用户仍需走 /auth/login 登录获取 token(注册不自动登录)。
-    - 用户名/学号/工号唯一性校验、角色一致性校验同 admin_create_user。
+    - 用户名/学号唯一性校验同 admin_create_user。
 
     安全:
     - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希。
     - 返回 UserPublic(不含 password_hash)。
     """
-    # 角色一致性校验
+    # 角色一致性校验(student 不应携带 teacher_number)
     if req.role == "student" and req.teacher_number:
         raise ValidationFailed("学生角色不应携带 teacher_number")
-    if req.role == "teacher" and req.student_number:
-        raise ValidationFailed("教师角色不应携带 student_number")
 
     user_repo = container.user_repository
     # 唯一性校验
@@ -177,23 +180,21 @@ def admin_create_user(
 ) -> UserPublic:
     """管理员创建用户接口(仅 admin 角色)。
 
-    用于在真实数据库中创建教师/学生/管理员验收账号,执行完整真实业务流程,
+    用于在真实数据库中创建学生/管理员验收账号,执行完整真实业务流程,
     无任何"演示专用通道"或绕过认证的特殊账号。
 
     权限校验:
     - 仅 admin 角色可调用(require_role("admin"))
-    - 用户名/学号/工号唯一性校验
-    - role 与 student_number / teacher_number 一致性校验
+    - 用户名/学号唯一性校验
+    - role 与 student_number 一致性校验
 
     安全:
     - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希
     - 返回 UserPublic(不含 password_hash)
     """
-    # 一致性校验: 角色与学号/工号匹配
+    # 一致性校验: 角色与学号匹配
     if req.role == "student" and req.teacher_number:
         raise ValidationFailed("学生角色不应携带 teacher_number")
-    if req.role == "teacher" and req.student_number:
-        raise ValidationFailed("教师角色不应携带 student_number")
     if req.role == "admin" and (req.student_number or req.teacher_number):
         raise ValidationFailed("管理员角色不应携带学号或工号")
 
@@ -223,7 +224,7 @@ def admin_create_user(
 
 @router.get("/admin/users", response_model=Page)
 def admin_list_users(
-    role: str | None = Query(None, pattern="^(student|teacher|admin)$"),
+    role: str | None = Query(None, pattern="^(student|admin)$"),
     is_active: bool | None = Query(None),
     query: str | None = Query(None, max_length=128),
     page: int = Query(1, ge=1),
@@ -269,12 +270,18 @@ def _issue_tokens(
     settings: Settings,
     container: ServiceContainer,
 ) -> TokenPair:
+    # 兼容旧 teacher 账号: CampusMate AI 只存在 student / admin 两类系统角色。
+    # 历史数据库中可能存在 role='teacher' 的记录,登录时将其降级为 student,
+    # 不修改数据库,仅在 JWT 中降级,避免旧数据导致登录失败。
+    effective_role = user.role
+    if effective_role == "teacher":
+        effective_role = "student"
     access_token, access_payload = create_access_token(
-        user.id, user.role, settings.jwt_secret,
+        user.id, effective_role, settings.jwt_secret,
         expires_in_minutes=settings.access_token_expire_minutes,
     )
     refresh_token, refresh_payload = create_refresh_token(
-        user.id, user.role, settings.jwt_secret,
+        user.id, effective_role, settings.jwt_secret,
         expires_in_days=settings.refresh_token_expire_days,
     )
     # 持久化 refresh token 的哈希(不存原 token)
@@ -284,6 +291,9 @@ def _issue_tokens(
         token_hash=hash_token(refresh_token),
         expires_at=expires_at,
     )
+    # 响应中返回降级后的角色,避免前端误判为 teacher
+    public_user = UserPublic(**user.to_public_dict())
+    public_user.role = effective_role
     return TokenPair(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -293,7 +303,7 @@ def _issue_tokens(
             access_payload.exp,
             tz=timezone.utc,
         ).isoformat(),
-        user=UserPublic(**user.to_public_dict()),
+        user=public_user,
     )
 
 
