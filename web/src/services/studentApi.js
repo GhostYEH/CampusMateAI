@@ -123,6 +123,11 @@ export async function cancelActivityRegistration(id) {
   return data;
 }
 
+export async function getAnnouncement(id) {
+  const { data } = await client.get(`/announcements/${id}`);
+  return data;
+}
+
 export async function markAnnouncementRead(id) {
   const { data } = await client.post(`/announcements/${id}/read`);
   return data;

@@ -144,3 +144,26 @@
 @media(max-width:700px){.student-layout .topbar{height:72px}.student-layout .top-date{display:none}.student-layout .student-page.student-home{padding:0 12px 24px}.student-focus-card{min-height:490px}.focus-card-copy{padding:24px 22px}.focus-card-copy h1{font-size:30px}.focus-card-copy>p{font-size:13px}.focus-hero-image{right:50%;top:148px;width:180px;height:180px;transform:translateX(25%)}.focus-progress{right:20px;top:170px;width:135px;height:135px}.focus-progress strong{font-size:25px}.focus-summary{left:16px;right:16px;bottom:16px;width:auto;grid-template-columns:38px minmax(0,1fr);min-height:138px;padding:14px}.focus-card-actions{position:static;grid-column:1/-1;margin-top:7px}.focus-card-actions button{height:40px;flex:1;padding:0 10px;font-size:12px}.overview-stats{height:auto}.overview-stats button{grid-template-columns:44px minmax(0,1fr)}.overview-icon{width:44px;height:44px}.learning-actions,.student-quick-grid{grid-template-columns:1fr 1fr}.student-home-skeleton{grid-template-columns:1fr}.student-home-skeleton .home-skeleton-panel:last-child{grid-column:auto}}
 @media(max-width:440px){.focus-hero-image{left:10px;right:auto;transform:none;width:160px;height:160px}.focus-progress{width:125px;height:125px}.learning-actions,.student-quick-grid{grid-template-columns:1fr}.overview-stats{grid-template-columns:1fr}.overview-stats button{border-right:0!important;border-bottom:1px solid #e9edf4}.overview-stats button:last-child{border-bottom:0}.student-quick-grid>button{min-height:68px}}
 @media(prefers-reduced-motion:reduce){.student-home-skeleton>div{animation:none}.student-home button{transition:none}}
+
+/* 我的背景面板（替换原学习空间栏，避免与导航栏重复） */
+.background-panel{border-color:#d6e4ff;background:linear-gradient(145deg,#f6f9ff,#fff)}
+.background-panel .home-panel-head h2,.background-panel .home-panel-head h2 svg{color:#2d5eea}
+.background-id-card{display:flex;align-items:center;gap:12px;padding:14px 12px;margin:2px 0 14px;border:1px solid #e4ecfb;border-radius:16px;background:linear-gradient(135deg,#eef3ff,#f6f9ff)}
+.background-avatar{width:46px;height:46px;flex:0 0 auto;display:grid;place-items:center;border-radius:14px;background:linear-gradient(145deg,#c7d8ff,#9fb8f7);color:#284fbe;font-size:18px;font-weight:800}
+.background-id-copy{display:grid;gap:4px;min-width:0;flex:1}
+.background-id-copy strong{color:#172b4d;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.background-id-copy small{color:#6c7d9b;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.background-edit{width:32px;height:32px;flex:0 0 auto;display:grid;place-items:center;border:1px solid #dde6f5;border-radius:10px;background:#fff;color:#6276a3;cursor:pointer;transition:transform .18s ease,border-color .18s ease,color .18s ease,background .18s ease}
+.background-edit:hover{border-color:#b9c8ee;color:#2d5eea;background:#f3f6ff}
+.background-info-list{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0;padding:0}
+.background-info-list>div{display:grid;gap:3px;padding:9px 11px;border:1px solid #eef2f8;border-radius:11px;background:#fbfcfe}
+.background-info-list dt{color:#8794a6;font-size:10px;font-weight:600}
+.background-info-list dd{margin:0;color:#263b5b;font-size:12px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.background-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 0;padding:14px 0 0;border-top:1px solid #edf0f5}
+.background-stats>button{display:grid;gap:4px;justify-items:center;padding:11px 6px;border:1px solid #e9edf6;border-radius:12px;background:#fff;color:inherit;cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.background-stats>button:hover{border-color:#cfd8f5;background:#f7f9ff;transform:translateY(-1px)}
+.background-stats strong{color:#142a49;font-size:18px;line-height:1}
+.background-stats small{color:#8794a6;font-size:10px}
+.background-panel .recent-courses{margin-top:auto;padding-top:12px;border-top:1px solid #edf0f5}
+@media(max-width:700px){.background-info-list{grid-template-columns:1fr 1fr}.background-stats{grid-template-columns:1fr 1fr 1fr}}
+@media(max-width:440px){.background-info-list{grid-template-columns:1fr}.background-stats{grid-template-columns:1fr}}
