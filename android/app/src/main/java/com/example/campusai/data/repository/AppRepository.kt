@@ -2,6 +2,7 @@ package com.example.campusai.data.repository
 
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
+import com.example.campusai.data.news.CampusNewsPreferences
 import com.example.campusai.data.expression.ExpressionRecognitionService
 import com.example.campusai.data.expression.ExpressionSessionManager
 import com.example.campusai.data.expression.MockExpressionRecognitionService
@@ -31,7 +32,10 @@ import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 
-class AppRepository(application: Application) {
+class AppRepository(
+    application: Application,
+    campusNewsPreferences: CampusNewsPreferences? = null,
+) {
 
     data class BackendStatus(
         val online: Boolean,
@@ -43,7 +47,11 @@ class AppRepository(application: Application) {
 
     private val application = application
     private val dataStore = AppDataStore(application)
+    private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val campusNewsPreferencesMutex = Mutex()
+    private val newsReadIdsReady = CompletableDeferred<Unit>()
+    private val newsFavoriteIdsReady = CompletableDeferred<Unit>()
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
@@ -89,6 +97,11 @@ class AppRepository(application: Application) {
 
     private val _campusNews = MutableStateFlow(defaultCampusNews())
     val campusNews: StateFlow<List<CampusNews>> = _campusNews.asStateFlow()
+
+    private val _newsReadIds = MutableStateFlow<Set<String>>(emptySet())
+    val newsReadIds: StateFlow<Set<String>> = _newsReadIds.asStateFlow()
+    private val _newsFavoriteIds = MutableStateFlow<Set<String>>(emptySet())
+    val newsFavoriteIds: StateFlow<Set<String>> = _newsFavoriteIds.asStateFlow()
 
     fun getCampusNewsById(id: String): CampusNews? = _campusNews.value.find { it.id == id }
 
@@ -146,6 +159,37 @@ class AppRepository(application: Application) {
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
+        scope.launch {
+            newsPreferences.campusNewsReadIds.collect {
+                _newsReadIds.value = it
+                newsReadIdsReady.complete(Unit)
+            }
+        }
+        scope.launch {
+            newsPreferences.campusNewsFavoriteIds.collect {
+                _newsFavoriteIds.value = it
+                newsFavoriteIdsReady.complete(Unit)
+            }
+        }
+    }
+
+    suspend fun markCampusNewsRead(newsId: String) = campusNewsPreferencesMutex.withLock {
+        newsReadIdsReady.await()
+        val ids = _newsReadIds.value
+        if (newsId !in ids) {
+            val updatedIds = ids + newsId
+            newsPreferences.setCampusNewsReadIds(updatedIds)
+            _newsReadIds.value = updatedIds
+        }
+    }
+
+    suspend fun toggleCampusNewsFavorite(newsId: String) = campusNewsPreferencesMutex.withLock {
+        newsFavoriteIdsReady.await()
+        val ids = _newsFavoriteIds.value
+        val updatedIds =
+            if (newsId in ids) ids - newsId else ids + newsId
+        newsPreferences.setCampusNewsFavoriteIds(updatedIds)
+        _newsFavoriteIds.value = updatedIds
     }
 
     suspend fun login(username: String, password: String): User {
@@ -287,29 +331,32 @@ class AppRepository(application: Application) {
     }
 
     /** 拉取校园动态（来自全校活动）。 */
-    suspend fun refreshCampusNews() {
-        if (!_backendOnline.value || _mockMode.value) return
-        try {
+    suspend fun refreshCampusNews(): Boolean {
+        if (!_backendOnline.value || _mockMode.value) return true
+        return try {
             val resp = ApiClient.api.listActivities(page = 1, pageSize = 50)
-            if (resp.isSuccessful) {
+            if (!resp.isSuccessful) {
+                false
+            } else {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _campusNews.value = items.map { dto ->
-                        CampusNews(
-                            id = dto.id,
-                            title = dto.title,
-                            summary = dto.summary ?: "",
-                            content = dto.content ?: "",
-                            source = dto.author_name ?: "校园活动",
-                            time = dto.published_at ?: dto.created_at ?: "",
-                            category = dto.category ?: "校园活动",
-                            tags = emptyList(),
-                            relatedTasks = emptyList(),
-                        )
-                    }
+                _campusNews.value = items.map { dto ->
+                    CampusNews(
+                        id = dto.id,
+                        title = dto.title,
+                        summary = dto.summary ?: "",
+                        content = dto.content ?: "",
+                        source = dto.author_name ?: "校园活动",
+                        time = dto.published_at ?: dto.created_at ?: "",
+                        category = dto.category ?: "校园活动",
+                        tags = emptyList(),
+                        relatedTasks = emptyList(),
+                    )
                 }
+                true
             }
-        } catch (_: Exception) { /* 保留现有数据 */ }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** 拉取课程列表。 */
