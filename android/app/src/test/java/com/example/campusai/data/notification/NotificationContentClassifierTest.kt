@@ -79,8 +79,29 @@ class NotificationContentClassifierTest {
     }
 
     @Test
-    fun `default unknown content is accepted as candidate`() {
+    fun `campus affairs notices are accepted as candidates`() {
         assertTrue(accept("关于2024级学生选课安排的通知"))
         assertTrue(accept("请各位同学注意查看教务系统"))
+        assertTrue(accept("班委通知：明天下午召开奖学金评议会"))
+    }
+
+    @Test
+    fun `completed campus actions are ignored`() {
+        assertFalse(accept("作业已提交"))
+        assertFalse(accept("您的申请提交成功"))
+        assertFalse(accept("课程作业已批阅，请查看成绩"))
+    }
+
+    @Test
+    fun `campus task containing a link is still accepted`() {
+        assertTrue(accept("请点击链接提交实验报告"))
+    }
+
+    @Test
+    fun `ordinary unknown chat is ignored instead of becoming a candidate`() {
+        assertFalse(accept("今天天气不错，晚点一起去操场吧"))
+        assertFalse(accept("照片我已经发到群文件了"))
+        assertFalse(accept("今天课程讲得不错，晚上一起吃饭吧"))
+        assertFalse(accept("宿舍同学周末一起聚餐"))
     }
 }

@@ -90,16 +90,6 @@ fun FocusScreen(
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = BottomDockReservedHeight + 26.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(onClick = onBack, shape = CircleShape, color = Surface, shadowElevation = 2.dp) { Icon(Icons.Default.ArrowBack, "返回", Modifier.padding(13.dp), tint = TextPrimary) }
-                Spacer(Modifier.width(18.dp))
-                Column {
-                    Text("专注自习", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("番茄钟计时，状态本地保存，退出不丢失", color = Muted, fontSize = 14.sp)
-                }
-            }
-        }
         remoteError?.let { message ->
             item { Surface(color = Color(0xFFFFECE7), shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = FocusOrange); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = TextPrimary, fontSize = 12.sp); TextButton(onClick = { scope.launch { repository.refresh() } }) { Text("重试") } } } }
         }

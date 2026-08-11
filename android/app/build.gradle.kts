@@ -45,6 +45,7 @@ android {
         }
         release {
             buildConfigField("boolean", "DEFAULT_USE_MOCK", "false")
+            buildConfigField("String", "API_BASE_URL", "\"https://api.campusmate.example.com/api/v1/\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

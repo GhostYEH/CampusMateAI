@@ -4,14 +4,28 @@ class NotificationFilter(private val campusMatePackage: String) {
     fun shouldStore(
         notification: CapturedNotification,
         settings: NotificationSourceSettings,
+        wechatWhitelist: Set<String> = emptySet(),
     ): Boolean {
         if (notification.packageName == campusMatePackage || notification.isGroupSummary) return false
         if (!settings.isEnabled(notification.source)) return false
 
+        if (notification.source == NotificationSource.WECHAT) {
+            if (wechatWhitelist.isEmpty()) return false
+            val candidateGroup = notification.conversationTitle ?: notification.title
+            if (candidateGroup == null || candidateGroup !in wechatWhitelist) return false
+        }
+
         val primaryText = NotificationTextSanitizer.primaryText(notification.bigText, notification.text)
         if (NotificationTextSanitizer.clean(primaryText) == null) return false
+        if (NotificationContentClassifier.isHardExcluded(primaryText)) return false
 
-        return !NotificationContentClassifier.isLikelyNonTask(primaryText)
+        if (!NotificationContentClassifier.isLikelyNonTask(primaryText)) return true
+
+        val heading = listOfNotNull(notification.conversationTitle, notification.title)
+            .distinct()
+            .joinToString("\n")
+        return !NotificationContentClassifier.isLikelyNonTask(heading) &&
+            NotificationContentClassifier.hasActionSignal(primaryText)
     }
 
     fun classifyReason(notification: CapturedNotification): String {

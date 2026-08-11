@@ -39,12 +39,12 @@ const stats = computed(() => [
   { label: "成长积分", value: "—", hint: "暂未接入积分服务", icon: "PhSparkle", tone: "amber" },
 ]);
 const details = computed(() => [
-  ["姓名", displayName.value],
-  ["学号", profile.value.student_number || "暂未填写"],
-  ["学院", profile.value.college || "暂未填写"],
-  ["专业", profile.value.major || "暂未填写"],
-  ["年级", profile.value.grade || "暂未填写"],
-  ["邮箱", profile.value.email || "暂未填写"],
+  { label: "姓名", value: displayName.value, icon: "PhUser" },
+  { label: "专业", value: profile.value.major || "暂未填写", icon: "PhNotebook" },
+  { label: "学号", value: profile.value.student_number || "暂未填写", icon: "PhIdentificationCard" },
+  { label: "年级", value: profile.value.grade || "暂未填写", icon: "PhGraduationCap" },
+  { label: "学院", value: profile.value.college || "暂未填写", icon: "PhBuildings" },
+  { label: "邮箱", value: profile.value.email || "暂未填写", icon: "PhEnvelopeSimple" },
 ]);
 const quickTools = [
   { label: "学习陪伴", detail: "开始一段专注时光", icon: "PhChartLineUp", path: "/study", tone: "violet" },
@@ -133,7 +133,7 @@ onMounted(load);
   <main class="student-page campus-redesign profile-redesign page-enter">
     <div class="redesign-heading">
       <div>
-        <span class="redesign-kicker">PROFILE / 个人空间</span>
+        <span class="redesign-kicker">PROFILE / 个人中心</span>
         <h1>个人中心</h1>
         <p>管理你的资料、学习工具入口和陪伴偏好设置。</p>
       </div>
@@ -165,13 +165,15 @@ onMounted(load);
               <h2>{{ displayName }}</h2>
               <span class="profile-tag">本科生</span>
             </div>
-            <p class="profile-number">学号 <strong>{{ profile.student_number || "暂未填写" }}</strong><button aria-label="复制学号" @click="copyStudentNumber"><UiIcon name="PhCopy" :size="14" /></button></p>
-            <div class="profile-meta-row">
+            <div class="profile-meta-row profile-primary-meta">
+              <span><UiIcon name="PhUser" />{{ profile.student_number || "学号待完善" }}<button aria-label="复制学号" @click="copyStudentNumber"><UiIcon name="PhCopy" :size="13" /></button></span>
               <span><UiIcon name="PhBuildings" />{{ profile.college || "学院待完善" }}</span>
               <span><UiIcon name="PhBookOpen" />{{ profile.major || "专业待完善" }}</span>
-              <span><UiIcon name="PhStudent" />{{ profile.grade || "年级待完善" }}</span>
             </div>
-            <span class="profile-status"><i></i>账号状态：正常</span>
+            <div class="profile-secondary-meta">
+              <span><UiIcon name="PhGraduationCap" />{{ profile.grade || "年级待完善" }}</span>
+              <span class="profile-status">账号状态：正常</span>
+            </div>
           </div>
         </div>
         <div class="profile-stat-grid">
@@ -180,7 +182,7 @@ onMounted(load);
             <span><small>{{ item.label }}</small><strong>{{ item.value }}</strong><em>{{ item.hint }}</em></span>
           </article>
         </div>
-        <img class="profile-banner-art" src="/assets/campusmate-hero-illustration.png" alt="" aria-hidden="true" />
+        <img class="profile-banner-art" src="/assets/campusmate-profile-banner-v2.png" alt="" aria-hidden="true" />
       </header>
 
       <nav class="redesign-tabs" aria-label="个人中心分区">
@@ -188,55 +190,63 @@ onMounted(load);
       </nav>
 
       <section v-if="tab === 'overview'" class="profile-overview-grid">
-        <article class="redesign-panel profile-info-panel">
-          <div class="redesign-panel-head">
-            <div><span class="redesign-label">ACCOUNT</span><h2>基本资料</h2></div>
-            <div class="panel-head-actions">
-              <span v-if="saved" class="redesign-status success"><UiIcon name="PhCheckCircle" />{{ saved }}</span>
-              <button v-if="!editing" class="text-action" @click="editing = true"><UiIcon name="PhPencil" />编辑资料</button>
+        <div class="profile-main-column">
+          <article class="redesign-panel profile-info-panel">
+            <div class="redesign-panel-head">
+              <h2>基本资料</h2>
+              <div class="panel-head-actions">
+                <span v-if="saved" class="redesign-status success"><UiIcon name="PhCheckCircle" />{{ saved }}</span>
+                <button v-if="!editing" class="text-action" @click="editing = true"><UiIcon name="PhPencil" />编辑资料</button>
+              </div>
             </div>
-          </div>
-          <dl v-if="!editing" class="profile-detail-list">
-            <div v-for="[label, value] in details" :key="label"><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
-          </dl>
-          <form v-else class="profile-edit-form" @submit.prevent="save">
-            <label>姓名<input v-model="form.display_name" autocomplete="name" /></label>
-            <label>学号<input :value="profile.student_number || '暂未填写'" disabled /></label>
-            <label>学院<input v-model="form.college" autocomplete="organization" /></label>
-            <label>专业<input v-model="form.major" /></label>
-            <label>年级<input v-model="form.grade" /></label>
-            <label>邮箱<input v-model="form.email" type="email" autocomplete="email" /></label>
-            <div class="profile-edit-actions"><button type="button" class="redesign-button secondary" @click="editing = false">取消</button><button class="redesign-button primary" :disabled="saving">{{ saving ? "保存中…" : "保存资料" }}</button></div>
-          </form>
-        </article>
+            <dl v-if="!editing" class="profile-detail-list">
+              <div v-for="item in details" :key="item.label">
+                <UiIcon :name="item.icon" :size="18" />
+                <dt>{{ item.label }}</dt>
+                <dd>{{ item.value }}</dd>
+              </div>
+            </dl>
+            <form v-else class="profile-edit-form" @submit.prevent="save">
+              <label>姓名<input v-model="form.display_name" autocomplete="name" /></label>
+              <label>学号<input :value="profile.student_number || '暂未填写'" disabled /></label>
+              <label>学院<input v-model="form.college" autocomplete="organization" /></label>
+              <label>专业<input v-model="form.major" /></label>
+              <label>年级<input v-model="form.grade" /></label>
+              <label>邮箱<input v-model="form.email" type="email" autocomplete="email" /></label>
+              <div class="profile-edit-actions"><button type="button" class="redesign-button secondary" @click="editing = false">取消</button><button class="redesign-button primary" :disabled="saving">{{ saving ? "保存中…" : "保存资料" }}</button></div>
+            </form>
+          </article>
+
+          <article class="redesign-panel profile-tools-panel">
+            <div class="redesign-panel-head"><h2>快捷入口</h2></div>
+            <div class="profile-quick-grid">
+              <button v-for="item in quickTools" :key="item.path" class="profile-quick-card" @click="router.push(item.path)">
+                <span class="profile-quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="27" /></span>
+                <span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span>
+              </button>
+            </div>
+          </article>
+        </div>
 
         <aside class="profile-side-column">
           <article class="redesign-panel campus-card">
-            <div class="redesign-panel-head"><div><span class="redesign-label">CAMPUS ID</span><h2>校园身份卡</h2></div><span class="campus-card-mark">2024</span></div>
+            <div class="redesign-panel-head"><h2>校园身份卡</h2></div>
             <div class="campus-card-body">
-              <div class="campus-card-seal"><UiIcon name="PhGraduationCap" :size="25" weight="fill" /></div>
-              <div><strong>{{ displayName }}</strong><span>{{ profile.student_number || "学号待完善" }}</span><span>{{ identityLine }}</span></div>
-              <UiIcon name="PhSealCheck" class="campus-card-check" :size="34" weight="duotone" />
+              <div class="campus-card-seal">{{ initial }}</div>
+              <div><strong>{{ displayName }} <em>本科生</em></strong><span>{{ profile.student_number || "学号待完善" }}</span><span>{{ identityLine }}</span></div>
+              <UiIcon name="PhQrCode" class="campus-card-check" :size="24" weight="bold" />
+              <UiIcon name="PhSealCheck" class="campus-card-watermark" :size="120" weight="duotone" />
             </div>
           </article>
 
           <article class="redesign-panel activity-panel">
-            <div class="redesign-panel-head"><div><span class="redesign-label">RECENT ACTIVITY</span><h2>最近活动</h2></div><button class="link-action" @click="router.push('/study')">查看学习记录 <UiIcon name="PhArrowRight" :size="14" /></button></div>
+            <div class="redesign-panel-head"><h2>最近活动</h2><button class="link-action" @click="router.push('/study')">查看学习记录 <UiIcon name="PhArrowRight" :size="14" /></button></div>
             <div v-if="sessions.length" class="profile-activity-list">
-              <div v-for="session in sessions.slice(0, 3)" :key="session.id"><span class="activity-dot"></span><span><strong>{{ session.goal || "完成了一次学习陪伴" }}</strong><small>{{ formatSessionDate(session.started_at) }} · {{ session.status === "completed" ? `${Math.round((session.duration_seconds || 0) / 60)} 分钟` : "进行中" }}</small></span></div>
+              <div v-for="session in sessions.slice(0, 4)" :key="session.id"><span class="activity-dot"></span><span><strong>{{ session.goal || "完成了一次学习陪伴" }}</strong><small>{{ formatSessionDate(session.started_at) }} · {{ session.status === "completed" ? `${Math.round((session.duration_seconds || 0) / 60)} 分钟` : "进行中" }}</small></span></div>
             </div>
             <div v-else class="profile-mini-empty"><UiIcon name="PhClockCounterClockwise" :size="19" /><span>还没有学习活动记录，开始一次专注后会显示在这里。</span></div>
           </article>
         </aside>
-
-        <article class="redesign-panel profile-tools-panel">
-          <div class="redesign-panel-head"><div><span class="redesign-label">QUICK ACCESS</span><h2>快捷入口</h2></div><span class="panel-hint">把常用功能放在手边</span></div>
-          <div class="profile-quick-grid">
-            <button v-for="item in quickTools" :key="item.path" class="profile-quick-card" @click="router.push(item.path)">
-              <span class="profile-quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="21" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhArrowUpRight" :size="15" />
-            </button>
-          </div>
-        </article>
       </section>
 
       <section v-else-if="tab === 'tools'" class="profile-tools-view">

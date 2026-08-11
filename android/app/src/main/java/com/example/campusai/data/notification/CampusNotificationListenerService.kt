@@ -1,7 +1,9 @@
 package com.example.campusai.data.notification
 
+import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import com.example.campusai.CampusAIApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,15 +26,21 @@ class CampusNotificationListenerService : NotificationListenerService() {
 
         serviceScope.launch {
             runCatching { inboxRepository.capture(captured) }
+                .onFailure { Log.w(TAG, "Notification capture failed", it) }
         }
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        requestRebind(ComponentName(this, CampusNotificationListenerService::class.java))
     }
 
     override fun onDestroy() {
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private companion object {
+        const val TAG = "CampusNotification"
     }
 }

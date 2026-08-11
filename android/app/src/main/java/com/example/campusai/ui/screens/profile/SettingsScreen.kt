@@ -33,15 +33,14 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.BuildConfig
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     repository: AppRepository,
-    onBack: () -> Unit,
     onOpenContribution: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onOpenChaoxingLogin: () -> Unit,
+
 ) {
     val darkMode by repository.darkMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -61,16 +60,9 @@ fun SettingsScreen(
     Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(bottom = BottomDockReservedHeight + 20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            item {
-                ReferenceSubpageHeader(
-                    title = "系统设置",
-                    subtitle = "个性化你的校园助手",
-                    onBack = onBack,
-                )
-            }
             item {
                 SettingsGroup(
                     title = "显示与动效",
@@ -109,14 +101,8 @@ fun SettingsScreen(
                         SettingsInfoRow(Icons.Default.Downloading, "模型加载结果", modelStatus.toString())
                         SettingsDivider()
                         SettingsInfoRow(Icons.Default.Cloud, "后端连接", backendLabel)
+
                     }
-                    SettingsDivider()
-                    SettingsActionRow(
-                        icon = Icons.Default.Chat,
-                        title = "微信通知监听",
-                        subtitle = "监听微信群聊通知，自动创建待办",
-                        onClick = onOpenNotificationSettings,
-                    )
                 }
             }
             item {
@@ -145,13 +131,7 @@ fun SettingsScreen(
                     SettingsInfoRow(Icons.Default.Storage, "本地数据", "账号偏好仅保存在本机")
                     SettingsDivider()
                     SettingsInfoRow(Icons.Default.Security, "隐私说明", "识别结果仅供辅助参考")
-                    SettingsDivider()
-                    SettingsActionRow(
-                        icon = Icons.Default.Sync,
-                        title = "学习通同步",
-                        subtitle = "登录学习通，同步作业和通知",
-                        onClick = onOpenChaoxingLogin,
-                    )
+
                 }
             }
             item {
@@ -187,55 +167,6 @@ fun SettingsScreen(
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
-    }
-}
-
-@Composable
-internal fun ReferenceSubpageHeader(
-    title: String,
-    subtitle: String,
-    onBack: () -> Unit,
-) {
-    val isDark = MaterialTheme.colorScheme.background.luminance() < .5f
-    val headerTextColor = if (isDark) ReferenceText else Color.White
-    val headerColors = if (isDark) {
-        listOf(ReferencePrimarySoft, ReferenceSurface, ReferencePrimarySoft.copy(alpha = .88f))
-    } else {
-        listOf(ReferencePrimary.copy(alpha = .96f), ReferencePrimary, ReferencePrimary.copy(alpha = .86f))
-    }
-    Box(
-        Modifier.fillMaxWidth().height(174.dp)
-            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = headerColors,
-                    start = Offset.Zero,
-                    end = Offset(1000f, 600f),
-)
-            ),
-    ) {
-        Box(
-            Modifier.size(150.dp).align(Alignment.TopEnd).offset(x = 48.dp, y = (-52).dp)
-                .clip(CircleShape).background(Color.White.copy(alpha = .07f))
-        )
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding()
-                .padding(start = 14.dp, top = 22.dp, end = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.size(44.dp).clip(CircleShape)
-                    .background(Color.White.copy(alpha = .14f)),
-            ) {
-                Icon(Icons.Default.ArrowBack, "返回", tint = headerTextColor)
-            }
-            Column(Modifier.padding(start = 14.dp)) {
-                Text(title, color = headerTextColor, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(5.dp))
-                Text(subtitle, color = headerTextColor.copy(alpha = .84f), fontSize = 13.sp)
-            }
-        }
     }
 }
 
