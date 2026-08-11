@@ -6,12 +6,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import com.example.campusai.ui.components.StickySecondaryNavigation
+import com.example.campusai.ui.components.StickySecondaryNavigationContentHeight
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.data.repository.NotificationInboxRepository
@@ -57,11 +70,43 @@ fun AppNavHost(
     notificationInboxRepository: NotificationInboxRepository,
 ) {
     fun go(route: String) = navController.navigate(route) { launchSingleTop = true }
+    fun switchPersonalSection(fromRoute: String, toRoute: String) {
+        navController.navigate(toRoute) {
+            launchSingleTop = true
+            popUpTo(fromRoute) { inclusive = true }
+        }
+    }
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val secondaryDestination = secondaryDestinationSpec(backStackEntry?.destination?.route)
+    val secondaryTitle = when (backStackEntry?.destination?.route?.substringBefore('?')) {
+        "exam_edit/{examId}" -> {
+            if (backStackEntry?.arguments?.getLong("examId") == 0L) "新增考试" else "编辑考试"
+        }
+        "service_form/{kind}" -> when (backStackEntry?.arguments?.getString("kind")) {
+            "certificate" -> "证明申请"
+            "venue" -> "场地申请"
+            "feedback" -> "意见反馈"
+            else -> secondaryDestination?.title
+        }
+        else -> secondaryDestination?.title
+    }
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
+    Box(Modifier.fillMaxSize()) {
     NavHost(
         navController = navController,
         startDestination = "home",
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                top = if (secondaryDestination != null) {
+                    statusBarHeight + StickySecondaryNavigationContentHeight
+                } else {
+                    0.dp
+                },
+            ),
         enterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
@@ -153,7 +198,12 @@ fun AppNavHost(
             )
         }
         composable("notifications") {
-            NotificationsScreen(repository, notificationInboxRepository)
+            NotificationsScreen(
+                repository = repository,
+                inboxRepository = notificationInboxRepository,
+                onNavigateToWechat = { navController.navigate("notification-settings") },
+                onNavigateToChaoxing = { navController.navigate("chaoxing") },
+            )
         }
         composable(
             route = "counselor?prompt={prompt}",
@@ -184,14 +234,14 @@ fun AppNavHost(
         composable("settings") {
             SettingsScreen(
                 repository = repository,
-                onBack = { navController.popBackStack() },
                 onOpenContribution = { navController.navigate("expression-contribution") },
-                onOpenNotificationSettings = { navController.navigate("notification-settings") },
-                onOpenChaoxingLogin = { navController.navigate("chaoxing") },
+
             )
         }
         composable("notification-settings") {
-            NotificationSettingsScreen(repository)
+            NotificationSettingsScreen(
+                repository = repository,
+            )
         }
         composable("chaoxing") {
             com.example.campusai.ui.screens.profile.ChaoxingScreen(
@@ -213,6 +263,7 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "files",
                 onBack = { navController.popBackStack() },
+                onSectionNavigate = { route -> switchPersonalSection("files", route) },
                 onNavigate = { route -> go(route) },
             )
         }
@@ -221,6 +272,7 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "activities",
                 onBack = { navController.popBackStack() },
+                onSectionNavigate = { route -> switchPersonalSection("activities", route) },
                 onNavigate = { route -> go(route) },
             )
         }
@@ -229,6 +281,7 @@ fun AppNavHost(
                 repository = repository,
                 initialSection = "favorites",
                 onBack = { navController.popBackStack() },
+                onSectionNavigate = { route -> switchPersonalSection("favorites", route) },
                 onNavigate = { route -> go(route) },
             )
         }
@@ -419,6 +472,16 @@ fun AppNavHost(
                 repository = modules.lostFound,
                 onBack = { navController.popBackStack() },
                 onOpenDetail = { id -> go("lostfound_detail/$id") },
+            )
+        }
+    }
+        secondaryDestination?.let { destination ->
+            StickySecondaryNavigation(
+                title = secondaryTitle ?: destination.title,
+                onBack = {
+                    backDispatcher?.onBackPressed() ?: navController.popBackStack()
+                },
+                modifier = Modifier.align(Alignment.TopStart),
             )
         }
     }

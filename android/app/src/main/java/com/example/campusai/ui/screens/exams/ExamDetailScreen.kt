@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.ExamStatus
 import com.example.campusai.data.repository.ExamRepository
 import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.CampusPrimaryButton
 import com.example.campusai.ui.components.ConfirmDialog
 import com.example.campusai.ui.components.EmptyState
@@ -74,8 +73,6 @@ fun ExamDetailScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(title = CampusStrings.Exams.DETAIL_TITLE, onBack = onBack)
         Spacer(Modifier.height(14.dp))
 
         if (exam == null) {

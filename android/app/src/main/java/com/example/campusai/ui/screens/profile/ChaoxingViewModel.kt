@@ -46,11 +46,15 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                 } else if (res.status == "expired") {
                     stateStore.setConnected(true)
                     stateStore.setReauthRequired(true)
+                } else if (res.status == "unavailable") {
+                    _uiState.value = _uiState.value.copy(syncResult = "学习通暂时不可用，请稍后重试")
+                } else {
+                    stateStore.setConnected(false)
+                    stateStore.setReauthRequired(false)
+                    syncScheduler.cancelSyncWork()
                 }
             } else {
-                _uiState.value = _uiState.value.copy(status = "offline")
-                stateStore.setConnected(false)
-                syncScheduler.cancelSyncWork()
+                _uiState.value = _uiState.value.copy(syncResult = "状态检查失败，请检查网络后重试")
             }
         }
     }

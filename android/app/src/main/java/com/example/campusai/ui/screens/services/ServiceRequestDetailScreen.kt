@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.ServiceRepository
 import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.EmptyState
 import com.example.campusai.ui.components.StatusTag
 import com.example.campusai.ui.strings.CampusStrings
@@ -55,8 +54,6 @@ fun ServiceRequestDetailScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(title = CampusStrings.Services.DETAIL_TITLE, onBack = onBack)
         Spacer(Modifier.height(14.dp))
 
         if (request == null) {

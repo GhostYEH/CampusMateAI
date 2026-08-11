@@ -369,6 +369,21 @@ async def test_chaoxing_ai_fail_notice_saved(mock_container: ServiceContainer, u
     tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
     assert len(tasks) == 0
 
+    # A transient extraction failure must be retried even when notice content is unchanged.
+    mock_container.notice_extraction.should_fail = False
+    mock_container.notice_extraction.mock_responses["AI fail"] = NoticeExtractResponse(
+        title="AI fail", task="处理 AI fail 通知", actionable=True,
+        source_text="AI fail", confidence=1.0, needs_confirmation=False,
+        warnings=[], extracted_at=datetime.now(timezone.utc), extractor_mode="llm",
+    )
+    await sync_chaoxing(
+        user=UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student"),
+        container=mock_container,
+    )
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 1
+    assert tasks[0].title == "处理 AI fail 通知"
+
 @pytest.mark.asyncio
 async def test_chaoxing_user_isolation(mock_container: ServiceContainer, user_id: str, user2_id: str, monkeypatch):
     import app.api.routes.chaoxing
@@ -543,6 +558,109 @@ async def test_chaoxing_concurrent_sync(mock_container: ServiceContainer, user_i
     tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
     assert len(tasks) == 1
     assert tasks[0].title == "Concurrent"
+
+
+@pytest.mark.asyncio
+async def test_completed_assignment_does_not_create_a_new_todo(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    import app.api.routes.chaoxing
+
+    mock_client = MockChaoxingClient()
+    mock_client.assignments = [{
+        "external_id": "already_done_1",
+        "title": "已完成作业",
+        "deadline": "2026-08-12 23:59",
+        "status": "completed",
+        "link": "https://mooc2-ans.chaoxing.com/work?workId=already_done_1",
+    }]
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+
+    await app.api.routes.chaoxing.sync_chaoxing(
+        user=app.api.routes.chaoxing.UserRow(
+            id=user_id,
+            username="chaoxing_user",
+            password_hash="123",
+            role="student",
+        ),
+        container=mock_container,
+    )
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert tasks == []
+
+
+@pytest.mark.asyncio
+async def test_notice_content_update_can_complete_existing_todo(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    import app.api.routes.chaoxing
+
+    mock_client = MockChaoxingClient()
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    user = app.api.routes.chaoxing.UserRow(
+        id=user_id, username="chaoxing_user", password_hash="123", role="student"
+    )
+
+    pending_content = "请于8月12日前提交登记表"
+    mock_client.notices = [{
+        "external_id": "notice_update_1", "title": "登记表通知",
+        "content": pending_content, "published_at": "2026-08-01 10:00:00",
+    }]
+    mock_container.notice_extraction.mock_responses[pending_content] = NoticeExtractResponse(
+        title="登记表通知", task="提交登记表", actionable=True,
+        source_text=pending_content, confidence=1.0, needs_confirmation=False,
+        warnings=[], extracted_at=datetime.now(timezone.utc), extractor_mode="llm",
+    )
+    await app.api.routes.chaoxing.sync_chaoxing(user=user, container=mock_container)
+
+    completed_content = "登记表已完成提交"
+    mock_client.notices[0] = {
+        **mock_client.notices[0], "content": completed_content,
+    }
+    mock_container.notice_extraction.mock_responses[completed_content] = NoticeExtractResponse(
+        title="登记表通知", task="提交登记表", actionable=False,
+        source_text=completed_content, confidence=1.0, needs_confirmation=False,
+        warnings=[], extracted_at=datetime.now(timezone.utc), extractor_mode="llm",
+    )
+    await app.api.routes.chaoxing.sync_chaoxing(user=user, container=mock_container)
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert len(tasks) == 1
+    assert tasks[0].status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_notice_content_update_preserves_user_completed_todo(mock_container: ServiceContainer, user_id: str, monkeypatch):
+    import app.api.routes.chaoxing
+
+    mock_client = MockChaoxingClient()
+    monkeypatch.setattr(app.api.routes.chaoxing, "ChaoxingClient", lambda cookies=None: mock_client)
+    mock_container.chaoxing_repository.save_credentials(user_id, {"cookie": "1"})
+    user = app.api.routes.chaoxing.UserRow(
+        id=user_id, username="chaoxing_user", password_hash="123", role="student"
+    )
+
+    initial = "请于8月12日前提交登记表"
+    updated = "提交地点更新：请于8月12日前提交登记表"
+    mock_client.notices = [{
+        "external_id": "notice_user_done_1", "title": "登记表通知",
+        "content": initial, "published_at": "2026-08-01 10:00:00",
+    }]
+    for content in (initial, updated):
+        mock_container.notice_extraction.mock_responses[content] = NoticeExtractResponse(
+            title="登记表通知", task="提交登记表", actionable=True,
+            source_text=content, confidence=1.0, needs_confirmation=False,
+            warnings=[], extracted_at=datetime.now(timezone.utc), extractor_mode="llm",
+        )
+
+    await app.api.routes.chaoxing.sync_chaoxing(user=user, container=mock_container)
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    mock_container.personal_task_repository.complete(tasks[0].id, user_id=user_id)
+
+    mock_client.notices[0] = {**mock_client.notices[0], "content": updated}
+    await app.api.routes.chaoxing.sync_chaoxing(user=user, container=mock_container)
+
+    tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
+    assert tasks[0].status == "completed"
 
 
 @pytest.mark.asyncio

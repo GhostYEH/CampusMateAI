@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.chaoxing.ChaoxingClient import ChaoxingClient
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
@@ -76,7 +76,22 @@ async def test_chaoxing_login_success_but_invalid_session(mock_httpx_client):
     success, msg = await client.login("test_user", "password")
 
     assert success is False
-    assert msg == "Session verification failed after login"
+    assert msg == "reauth_required"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_login_403_verification_page_requires_verification(mock_httpx_client):
+    login_response = MagicMock()
+    login_response.status_code = 200
+    login_response.json.return_value = {"result": True, "status": True}
+    login_response.raise_for_status = MagicMock()
+    verify_response = MagicMock(status_code=403, text="<title>安全验证码</title>")
+    mock_httpx_client.side_effect = [login_response, verify_response]
+
+    success, msg = await ChaoxingClient().login("test_user", "password")
+
+    assert success is False
+    assert msg == "verification_required"
 
 @pytest.mark.asyncio
 async def test_chaoxing_login_success(mock_httpx_client):
@@ -97,6 +112,78 @@ async def test_chaoxing_login_success(mock_httpx_client):
 
     assert success is True
     assert msg == "success"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_login_200_login_page_requires_reauthentication(mock_httpx_client):
+    login_response = MagicMock()
+    login_response.json.return_value = {"result": True}
+    login_response.raise_for_status = MagicMock()
+    verify_response = MagicMock(status_code=200, text="<title>用户登录</title>")
+    mock_httpx_client.side_effect = [login_response, verify_response]
+
+    success, message = await ChaoxingClient().login("test_user", "password")
+
+    assert success is False
+    assert message == "reauth_required"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_json_courses_preserve_course_and_class_ids(mock_httpx_client):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "channelList": [
+            {
+                "content": {
+                    "id": 222,
+                    "course": {"data": [{"id": 111, "name": "高等数学"}]},
+                }
+            }
+        ]
+    }
+    mock_httpx_client.return_value = response
+
+    success, courses = await ChaoxingClient().get_courses()
+
+    assert success is True
+    assert courses == [{
+        "name": "高等数学",
+        "link": "https://mooc2-ans.chaoxing.com/mycourse/stu?courseid=111&clazzid=222",
+        "course_id": "111",
+        "clazz_id": "222",
+        "external_id": "111_222",
+    }]
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_assignment_endpoint_is_absolute(mock_httpx_client):
+    course_page = MagicMock(status_code=200, text="""
+        <input name="courseid" value="111" />
+        <input name="clazzid" value="222" />
+        <a title="作业" data-url="/work/list">作业</a>
+        <input name="workEnc" value="enc" />
+    """)
+    course_page.raise_for_status = MagicMock()
+    assignment_page = MagicMock(status_code=200, text="<html></html>")
+    assignment_page.raise_for_status = MagicMock()
+    mock_httpx_client.side_effect = [course_page, assignment_page]
+
+    await ChaoxingClient().get_assignments_and_notices(
+        "https://mooc2-ans.chaoxing.com/mycourse/stu?courseid=111&clazzid=222"
+    )
+
+    assert mock_httpx_client.await_args_list[1].args[0].startswith(
+        "https://mooc2-ans.chaoxing.com/work/list?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_assignment_network_failure_is_not_silent(mock_httpx_client):
+    request = httpx.Request("GET", "https://mooc2-ans.chaoxing.com/course")
+    mock_httpx_client.side_effect = httpx.ConnectError("offline", request=request)
+
+    with pytest.raises(ChaoxingFetchError, match="network_error"):
+        await ChaoxingClient().get_assignments_and_notices(str(request.url))
 
 @pytest.mark.asyncio
 async def test_chaoxing_status_invalid_session_returns_offline(mock_httpx_client):
@@ -123,6 +210,27 @@ async def test_chaoxing_status_invalid_session_returns_offline(mock_httpx_client
     
     status = await get_chaoxing_status(user=user, container=container)
     assert status.status == "offline"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_status_network_failure_is_unavailable(mock_httpx_client):
+    db = Database(None)
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("user1", "test1", "hash", "now", "now"),
+        )
+    repo = ChaoxingRepository(db)
+    repo.save_credentials("user1", {"jrose": "dummy"})
+    request = httpx.Request("GET", "https://mooc2-ans.chaoxing.com/visit/courses/list")
+    mock_httpx_client.side_effect = httpx.ConnectError("offline", request=request)
+
+    container = type("Container", (), {"chaoxing_repository": repo, "db": db})()
+    user = UserRow(id="user1", username="test", password_hash="test", role="student")
+
+    status = await get_chaoxing_status(user=user, container=container)
+
+    assert status.status == "unavailable"
 
 @pytest.mark.asyncio
 async def test_chaoxing_sync_assignments(db, mock_httpx_client):
@@ -193,23 +301,20 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     mock_notices_response_empty.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response, mock_notices_response_empty
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response,
+        mock_course_page_response, mock_notices_response_empty
     ]
 
     await sync_chaoxing(user=user, container=container)
 
     tasks, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks) == 2
+    assert len(tasks) == 1
     tasks.sort(key=lambda x: x.title)
     
     assert tasks[0].title == "第一次作业"
     assert tasks[0].external_id == "99991"
     assert tasks[0].status == "pending"
     assert tasks[0].source == "chaoxing"
-    
-    assert tasks[1].title == "第二次作业"
-    assert tasks[1].external_id == "99992"
-    assert tasks[1].status == "completed"
     
     # 模拟第二次作业页面，更新标题和状态
     mock_assignments_response2 = MagicMock()
@@ -237,13 +342,14 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     mock_notices_response_empty2.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response2, mock_notices_response_empty2
+        mock_json_response, mock_courses_response, mock_course_page_response, mock_assignments_response2,
+        mock_course_page_response, mock_notices_response_empty2
     ]
 
     await sync_chaoxing(user=user, container=container)
 
     tasks2, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks2) == 2
+    assert len(tasks2) == 1
     tasks2.sort(key=lambda x: x.title)
     
     # 幂等性：不新增记录，只更新
@@ -257,7 +363,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
         user_id="user1", title="冲突测试", source="chaoxing", external_id="99991"
     )
     tasks3, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks3) == 2 # 仍是两个
+    assert len(tasks3) == 1 # 已完成作业不会首次生成待办
     repo = ChaoxingRepository(db)
     course_repo = CourseRepository(db)
     repo.save_credentials("user1", {"cookie": "A"})
@@ -317,8 +423,10 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     mock_notices_response_empty.json.side_effect = Exception("Not JSON")
 
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty,
-        mock_json_response, mock_courses_response2, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2,
+        mock_assignments_response, mock_notices_response_empty,
+        mock_json_response, mock_courses_response2, mock_assignments_response, mock_assignments_response2,
+        mock_assignments_response, mock_notices_response_empty
     ]
 
     await sync_chaoxing(user=user, container=container)
@@ -387,8 +495,10 @@ async def test_chaoxing_sync_courses_isolation(db, mock_httpx_client):
     mock_notices_response_empty.json.side_effect = Exception("Not JSON")
     
     mock_httpx_client.side_effect = [
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty,
-        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2, mock_notices_response_empty
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2,
+        mock_assignments_response, mock_notices_response_empty,
+        mock_json_response, mock_courses_response, mock_assignments_response, mock_assignments_response2,
+        mock_assignments_response, mock_notices_response_empty
     ]
     
     container = MockContainer()

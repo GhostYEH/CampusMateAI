@@ -34,6 +34,7 @@ const todayLabel = computed(() => new Intl.DateTimeFormat("zh-CN", {
   day: "numeric",
   weekday: "short",
 }).format(new Date()));
+const profileRoute = computed(() => route.path === "/profile" || route.path.startsWith("/profile/"));
 const profileDetail = computed(() => store.session?.detail || [store.session?.college, store.session?.major].filter(Boolean).join(" · ") || "学生");
 
 function go(path) {
@@ -129,9 +130,9 @@ onUnmounted(() => {
         <span class="brand-mark"><UiIcon name="PhGraduationCap" :size="23" weight="fill" /></span>
         <div><strong>CampusMate AI</strong><small>校园智能伴随助手</small></div>
       </div>
-      <button class="profile-mini" @click="go('profile')">
+      <button class="profile-mini" :class="{ active: profileRoute }" @click="go('profile')">
         <span class="avatar">{{ store.session?.name?.slice(0, 1) || "同" }}</span>
-        <span class="profile-mini-copy"><strong>{{ store.session?.name || "同学" }}</strong><small>{{ profileDetail }}</small></span>
+        <span class="profile-mini-copy"><strong>{{ profileRoute ? "个人中心" : (store.session?.name || "同学") }}</strong><small v-if="!profileRoute">{{ profileDetail }}</small></span>
         <UiIcon name="PhCaretRight" :size="16" />
       </button>
       <nav aria-label="主导航">

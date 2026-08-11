@@ -200,19 +200,6 @@ fun ExpressionContributionScreen(
 
     Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 14.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = ReferenceText)
-                }
-                Column(Modifier.padding(start = 6.dp)) {
-                    Text("CNN 模型共建", color = ReferenceText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("用你的主动标注，帮助改进表情识别", color = ReferenceMuted, fontSize = 11.sp)
-                }
-            }
-
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),

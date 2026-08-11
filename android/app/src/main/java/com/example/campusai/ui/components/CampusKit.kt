@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -49,6 +50,68 @@ import com.example.campusai.ui.theme.Success
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import com.example.campusai.ui.theme.Accent
+
+val StickySecondaryNavigationContentHeight = 60.dp
+
+/** Shared secondary-page navigation rendered outside a destination's scroll container. */
+@Composable
+fun StickySecondaryNavigation(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val glassSurface = colors.surface.copy(alpha = .78f)
+    val glassBorder = colors.onSurface.copy(alpha = .18f)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(StickySecondaryNavigationContentHeight)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = CircleShape,
+                        ambientColor = colors.onSurface.copy(alpha = .08f),
+                        spotColor = colors.onSurface.copy(alpha = .10f),
+                    )
+                    .clip(CircleShape)
+                    .background(glassSurface)
+                    .border(1.dp, glassBorder, CircleShape)
+                    .campusClickable(
+                        role = androidx.compose.ui.semantics.Role.Button,
+                        onClick = onBack,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = CampusStrings.Common.BACK,
+                    tint = colors.onSurface,
+                    modifier = Modifier.size(25.dp),
+                )
+            }
+            Text(
+                text = title,
+                color = colors.onSurface,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+    }
+}
 
 /** 统一的状态标签色调，全部取自现有设计 Token，不新增颜色。 */
 enum class StatusTone { INFO, SUCCESS, WARNING, DANGER, NEUTRAL }
@@ -89,57 +152,6 @@ fun CampusCard(
             .border(1.dp, Line, RoundedCornerShape(18.dp))
             .padding(padding),
     ) { content() }
-}
-
-/** 二级页面统一标题栏：返回按钮 + 标题 + 副标题 + 右侧操作位。 */
-@Composable
-fun CampusPageHeader(
-    title: String,
-    subtitle: String? = null,
-    onBack: (() -> Unit)? = null,
-    actions: @Composable (() -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (onBack != null) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .shadow(
-                        elevation = 9.dp,
-                        shape = CircleShape,
-                        ambientColor = Color(0x1F24365A),
-                        spotColor = Color(0x1F24365A),
-                    )
-                    .clip(CircleShape)
-                    .background(Surface)
-                    .campusClickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = CampusStrings.Common.BACK,
-                    tint = TextPrimary,
-                    modifier = Modifier.size(25.dp),
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-            if (subtitle != null) {
-                Text(subtitle, color = Muted, fontSize = 12.sp)
-            }
-        }
-        actions?.invoke()
-    }
 }
 
 /** 筛选 Chip 行（单选）。 */
