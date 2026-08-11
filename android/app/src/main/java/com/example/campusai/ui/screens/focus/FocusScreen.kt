@@ -1,548 +1,206 @@
 package com.example.campusai.ui.screens.focus
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.view.PreviewView
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.SelfImprovement
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import com.example.campusai.data.behavior.BehaviorPrediction
-import com.example.campusai.data.behavior.StudyBehavior
-import com.example.campusai.data.expression.ExpressionServiceStatus
-import com.example.campusai.data.expression.ExpressionSessionManager
-import com.example.campusai.data.focus.FocusState
-import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.R
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusSessionSummary
-import com.example.campusai.data.model.FocusTimerState
-import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ApiFocusRepository
-import com.example.campusai.ui.components.AnimatedCircularProgress
-import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
-import com.example.campusai.ui.components.ConfirmDialog
-import com.example.campusai.ui.components.EmptyState
-import com.example.campusai.ui.components.FilterChipRow
-import com.example.campusai.ui.components.StatusTag
-import com.example.campusai.ui.components.StatusTone
-import com.example.campusai.ui.components.campusClickable
-import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
-import com.example.campusai.ui.strings.CampusStrings
-import com.example.campusai.ui.theme.Background
-import com.example.campusai.ui.theme.Muted
-import com.example.campusai.ui.theme.Primary
-import com.example.campusai.ui.theme.PrimarySoft
-import com.example.campusai.ui.theme.Surface
-import com.example.campusai.ui.theme.TextPrimary
+import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** The sole timer and camera entry point for focused learning. */
+private val FocusBlue = Color(0xFF5264F5)
+private val FocusViolet = Color(0xFF8959F5)
+private val FocusOrange = Color(0xFFFF7959)
+private val FocusGreen = Color(0xFF24B16A)
+private val FocusBg = Color(0xFFF5F6FF)
+
+/** A backend-session-first focus timer. The device never creates a local focus record. */
 @Composable
 fun FocusScreen(
     repository: ApiFocusRepository,
     appRepository: AppRepository,
     reduceMotion: Boolean,
     onBack: () -> Unit,
+    relatedTaskId: String? = null,
     onOpenCounselorPlan: (String) -> Unit,
 ) {
-    val records by repository.records.collectAsState()
     val stats by repository.stats.collectAsState()
-    val persistedTimer by repository.timer.collectAsState()
-    val loading by repository.loading.collectAsState()
+    val records by repository.records.collectAsState()
     val activeSession by repository.activeSession.collectAsState()
     val remoteError by repository.error.collectAsState()
-    val mockMode by appRepository.mockMode.collectAsState()
     val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
-    val manager = appRepository.expressionSessionManager
-    val expressionStatus by manager.status.collectAsState()
-    val expression by manager.result.collectAsState()
-    val behaviorPrediction by manager.behaviorPrediction.collectAsState()
-    val focusState by manager.focusState.collectAsState()
-    val gentleReminder by manager.gentleReminder.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    LaunchedEffect(Unit) { repository.refresh() }
-
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var secondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
-    var running by remember { mutableStateOf(false) }
-    var restored by remember { mutableStateOf(false) }
-    var sessionStarted by remember { mutableStateOf(false) }
-    var showEndConfirm by remember { mutableStateOf(false) }
-    var showCompleted by remember { mutableStateOf(false) }
-    var permissionDenied by remember { mutableStateOf(false) }
-    var lastSummary by remember { mutableStateOf<FocusSessionSummary?>(null) }
-    var appForeground by remember { mutableStateOf(true) }
+    var showFinishDialog by remember { mutableStateOf(false) }
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var showCompletedDialog by remember { mutableStateOf(false) }
+    var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
 
-    LaunchedEffect(activeSession) {
+    LaunchedEffect(Unit) { repository.refresh() }
+    LaunchedEffect(activeSession?.id, activeSession?.status) {
         activeSession?.let { session ->
             mode = session.mode
-            running = session.status == "active"
-            sessionStarted = running && session.mode == FocusMode.FOCUS
+            if (secondsLeft == FocusMode.FOCUS.totalSeconds || secondsLeft > mode.totalSeconds) secondsLeft = mode.totalSeconds
         }
     }
-    val cameraPermissionGranted = mockMode || ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.CAMERA,
-    ) == PackageManager.PERMISSION_GRANTED
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionDenied = !granted
-        scope.launch {
-            manager.updateEligibility(
-                enabled = granted,
-                permissionGranted = granted,
-                running = running,
-                visible = true,
-                foreground = appForeground,
-            )
-        }
-    }
-
-    LaunchedEffect(loading) {
-        if (!loading && !restored) {
-            restored = true
-            val saved = persistedTimer ?: return@LaunchedEffect
-            val savedMode = FocusMode.byName(saved.mode)
-            val remaining = saved.currentRemaining(System.currentTimeMillis())
-            if (saved.running && remaining <= 0) {
-                repository.addRecord(savedMode, savedMode.minutes, finished = true)
-                repository.saveTimer(null)
-                showCompleted = true
-            } else {
-                mode = savedMode
-                secondsLeft = remaining
-                running = saved.running
-                if (saved.running && savedMode == FocusMode.FOCUS) {
-                    sessionStarted = true
-                    manager.beginFocusSession()
-                }
-            }
-        }
-    }
-
-    fun persistTimer(isRunning: Boolean, remaining: Int, currentMode: FocusMode) {
-        scope.launch {
-            repository.saveTimer(
-                FocusTimerState(currentMode.name, remaining, isRunning, System.currentTimeMillis()),
-            )
-        }
-    }
-
-    fun finishSession(completed: Boolean) {
-        val elapsedSeconds = mode.totalSeconds - secondsLeft
-        val actualMinutes = if (completed) mode.minutes else elapsedSeconds / 60
-        val shouldRecord = completed || actualMinutes > 0
-        running = false
-        scope.launch {
-            manager.updateEligibility(
-                enabled = assistanceEnabled,
-                permissionGranted = cameraPermissionGranted,
-                running = false,
-                visible = true,
-                foreground = appForeground,
-            )
-            val summary = if (mode == FocusMode.FOCUS && sessionStarted) {
-                manager.finishFocusSession(actualMinutes)
-            } else {
-                null
-            }
-            if (shouldRecord) {
-                repository.finish().onSuccess {
-                    lastSummary = summary
-                    sessionStarted = false
-                    repository.refresh()
-                    if (completed) showCompleted = true
-                }
-            }
-        }
-        secondsLeft = mode.totalSeconds
-        if (completed) showCompleted = true
-    }
-
-    LaunchedEffect(assistanceEnabled, cameraPermissionGranted, running, appForeground) {
-        manager.updateEligibility(
-            enabled = assistanceEnabled,
-            permissionGranted = cameraPermissionGranted,
-            running = running && mode == FocusMode.FOCUS,
-            visible = true,
-            foreground = appForeground,
-        )
-    }
-
-    LaunchedEffect(running) {
+    val running = activeSession?.status == "active"
+    val paused = activeSession?.status == "paused"
+    LaunchedEffect(running, activeSession?.id) {
         while (running && secondsLeft > 0) {
-            delay(1_000)
+            delay(1000)
             secondsLeft--
-            if (secondsLeft % 10 == 0) persistTimer(true, secondsLeft, mode)
-            if (secondsLeft <= 0) finishSession(completed = true)
-        }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> appForeground = true
-                Lifecycle.Event.ON_STOP -> appForeground = false
-                else -> Unit
+            if (secondsLeft == 0) {
+                repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            manager.releaseAsync()
-            if (secondsLeft != mode.totalSeconds || running) persistTimer(running, secondsLeft, mode)
-        }
     }
-
     val minutes = (secondsLeft / 60).toString().padStart(2, '0')
-    val secs = (secondsLeft % 60).toString().padStart(2, '0')
-    val progress = secondsLeft.toFloat() / mode.totalSeconds.toFloat()
-    val activeMinutes = ((mode.totalSeconds - secondsLeft) / 60).coerceAtLeast(0)
+    val seconds = (secondsLeft % 60).toString().padStart(2, '0')
+    val ringProgress = secondsLeft.toFloat() / mode.totalSeconds
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Background).padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(
-            top = 12.dp,
-            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + BottomDockReservedHeight + 16.dp,
-        ),
+        modifier = Modifier.fillMaxSize().background(FocusBg),
+        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = BottomDockReservedHeight + 26.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        remoteError?.let { message ->
-            item {
-                CampusCard {
-                    Text(message, color = Muted, fontSize = 12.sp)
-                    TextButton(onClick = { scope.launch { repository.refresh() } }) {
-                        Text("重试", color = Primary)
-                    }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = onBack, shape = CircleShape, color = Surface, shadowElevation = 2.dp) { Icon(Icons.Default.ArrowBack, "返回", Modifier.padding(13.dp), tint = TextPrimary) }
+                Spacer(Modifier.width(18.dp))
+                Column {
+                    Text("专注自习", color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("番茄钟计时，状态本地保存，退出不丢失", color = Muted, fontSize = 14.sp)
                 }
             }
         }
-        item { CampusPageHeader(CampusStrings.Focus.TITLE, CampusStrings.Focus.SUBTITLE, onBack) }
+        remoteError?.let { message ->
+            item { Surface(color = Color(0xFFFFECE7), shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = FocusOrange); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = TextPrimary, fontSize = 12.sp); TextButton(onClick = { scope.launch { repository.refresh() } }) { Text("重试") } } } }
+        }
         item {
-            CampusCard(modifier = Modifier.enterAnimation(enabled = !reduceMotion), padding = PaddingValues(20.dp)) {
-                FilterChipRow(
-                    options = listOf(CampusStrings.Focus.MODE_FOCUS, CampusStrings.Focus.MODE_SHORT, CampusStrings.Focus.MODE_LONG),
-                    selected = when (mode) {
-                        FocusMode.FOCUS -> CampusStrings.Focus.MODE_FOCUS
-                        FocusMode.SHORT_BREAK -> CampusStrings.Focus.MODE_SHORT
-                        FocusMode.LONG_BREAK -> CampusStrings.Focus.MODE_LONG
-                    },
-                    onSelect = { label -> if (!running) {
-                        mode = when (label) {
-                            CampusStrings.Focus.MODE_SHORT -> FocusMode.SHORT_BREAK
-                            CampusStrings.Focus.MODE_LONG -> FocusMode.LONG_BREAK
-                            else -> FocusMode.FOCUS
-                        }
-                        secondsLeft = mode.totalSeconds
-                        Unit
-                    } },
-                )
-                Spacer(Modifier.height(18.dp))
+            Column(Modifier.clip(RoundedCornerShape(28.dp)).background(Surface).padding(14.dp)) {
+                FocusModeTabs(selected = mode, enabled = activeSession == null, onSelect = { chosen -> mode = chosen; secondsLeft = chosen.totalSeconds })
+                Spacer(Modifier.height(22.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(190.dp)) {
-                        AnimatedCircularProgress(
-                            targetProgress = progress,
-                            modifier = Modifier.fillMaxSize(),
-                            color = if (running) Primary else Primary.copy(alpha = .55f),
-                            trackColor = PrimarySoft,
-                            strokeWidth = 10.dp,
-                        )
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(258.dp)) {
+                        CircularProgressIndicator(progress = { ringProgress }, modifier = Modifier.fillMaxSize(), color = FocusBlue, trackColor = PrimarySoft, strokeWidth = 12.dp)
+                        CircularProgressIndicator(progress = { .82f }, modifier = Modifier.size(224.dp), color = Color(0xFFDEE2FF), trackColor = Color.Transparent, strokeWidth = 2.dp)
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$minutes:$secs", fontSize = 46.sp, fontWeight = FontWeight.Bold, color = Primary, letterSpacing = 2.sp)
-                            Text(if (running) "专注进行中" else if (secondsLeft != mode.totalSeconds) "已暂停" else "准备开始", color = Muted, fontSize = 11.sp)
+                            Text("$minutes:$seconds", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 55.sp)
+                            Spacer(Modifier.height(9.dp))
+                            Text(if (running) "正在专注" else if (paused) "已暂停" else "✦ 准备开始 ✦", color = Muted, fontSize = 16.sp)
                         }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Primary).campusClickable {
+                Spacer(Modifier.height(22.dp))
+                Button(
+                    onClick = {
                         scope.launch {
                             when (activeSession?.status) {
-                                null -> repository.start(mode, null, null).onSuccess {
-                                    running = true
-                                    if (mode == FocusMode.FOCUS) {
-                                        sessionStarted = true
-                                        manager.beginFocusSession()
-                                    }
-                                }
-                                "active" -> repository.pause().onSuccess { running = false }
-                                "paused" -> repository.resume().onSuccess { running = true }
+                                null -> repository.start(mode, null, relatedTaskId).onSuccess { secondsLeft = mode.totalSeconds }
+                                "active" -> repository.pause()
+                                "paused" -> repository.resume()
                             }
                         }
-                    }.padding(horizontal = 26.dp, vertical = 12.dp)) {
-                        Text(if (running) CampusStrings.Focus.PAUSE else if (secondsLeft != mode.totalSeconds) CampusStrings.Focus.RESUME else CampusStrings.Focus.START, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    },
+                    modifier = Modifier.align(Alignment.CenterHorizontally).height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = FocusBlue),
+                ) { Icon(if (running) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (running) "暂停" else if (paused) "继续" else "开始", fontWeight = FontWeight.Bold, fontSize = 19.sp) }
+                if (activeSession != null) TextButton(onClick = { showFinishDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("结束本次${mode.label}", color = Muted) }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(25.dp), color = Surface) {
+                Column(Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = FocusBlue) }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) { Text("学习状态辅助", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp); Text("画面仅在本机处理，不保存，不上传", color = Muted, fontSize = 12.sp) }
+                        Switch(checked = assistanceEnabled, onCheckedChange = { enabled -> scope.launch { appRepository.setLearningAssistanceEnabled(enabled) } })
                     }
-                    if (secondsLeft != mode.totalSeconds) {
-                        Box(Modifier.clip(RoundedCornerShape(12.dp)).background(PrimarySoft).campusClickable { showEndConfirm = true }.padding(horizontal = 26.dp, vertical = 12.dp)) {
-                            Text(CampusStrings.Focus.END, color = Primary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Surface(shape = RoundedCornerShape(17.dp), color = Color(0xFFFAFBFF), border = BorderStroke(1.dp, Line)) {
+                        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            AssistLine(Icons.Default.Memory, "本机 LiteRT：状态由设备能力决定")
+                            AssistLine(Icons.Default.Visibility, "当前辅助观察：${if (assistanceEnabled) "已开启" else "暂不可用"}")
+                            AssistLine(Icons.Default.SentimentSatisfied, "稳定表情：仅作本地提示")
+                            AssistLine(Icons.Default.Schedule, "本次专注时长：${mode.minutes - secondsLeft / 60} 分钟")
                         }
                     }
                 }
             }
         }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Color(0xFFEFF7FF)); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Color(0xFFFFF3EC)) } }
         item {
-            LearningAssistanceCard(
-                manager = manager,
-                enabled = assistanceEnabled,
-                mockMode = mockMode,
-                cameraPermissionGranted = cameraPermissionGranted,
-                permissionDenied = permissionDenied,
-                running = running && mode == FocusMode.FOCUS,
-                activeMinutes = activeMinutes,
-                status = expressionStatus,
-                focusState = focusState,
-                expression = expression.label,
-                behaviorPrediction = behaviorPrediction,
-                modelVersion = expression.modelVersion,
-                reminder = gentleReminder,
-                onToggle = { enabled ->
-                    scope.launch { appRepository.setLearningAssistanceEnabled(enabled) }
-                    if (enabled && !mockMode && !cameraPermissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
-                },
-            )
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard(Modifier.weight(1f), Icons.Default.Timer, "${stats.todayMinutes}", CampusStrings.Focus.MINUTES_UNIT, CampusStrings.Focus.STATS_TODAY)
-                StatCard(Modifier.weight(1f), Icons.Default.SelfImprovement, "${stats.todayCount}", CampusStrings.Focus.TIMES_UNIT, CampusStrings.Focus.STATS_COUNT)
-                StatCard(Modifier.weight(1f), Icons.Default.LocalFireDepartment, "${stats.streakDays}", CampusStrings.Focus.DAYS_UNIT, CampusStrings.Focus.STATS_STREAK)
-            }
-        }
-        item {
-            CampusCard {
-                Text(CampusStrings.Focus.GOAL_TITLE, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text(CampusStrings.Focus.GOAL_FORMAT.format(stats.goalMinutes), color = Muted, fontSize = 11.5.sp)
-                Spacer(Modifier.height(10.dp))
-                FilterChipRow(
-                    options = listOf("30", "60", "90", "120"),
-                    selected = stats.goalMinutes.toString(),
-                    onSelect = { scope.launch { repository.updateGoal(it.toInt()) } },
-                )
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(PrimarySoft)) {
-                    Box(Modifier.fillMaxWidth((stats.todayMinutes.toFloat() / stats.goalMinutes).coerceIn(0f, 1f)).height(8.dp).clip(CircleShape).background(Primary))
-                }
-            }
-        }
-        item {
-            CampusCard(padding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = Primary, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(10.dp))
+            Surface(shape = RoundedCornerShape(26.dp), color = Surface) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 164.dp).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("让 AI 校园助手分析本次专注", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("仅在你点击后发送结构化本机摘要，不含画面或逐帧结果", color = Muted, fontSize = 11.sp)
+                        Text("自习目标", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("每日 ${stats.goalMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                        Text("设定目标，保持专注，见证成长", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(13.dp))
+                        OutlinedButton(onClick = { selectedGoal = stats.goalMinutes; showGoalDialog = true }, shape = RoundedCornerShape(14.dp)) { Text("设定目标", color = FocusBlue, fontWeight = FontWeight.Bold) }
                     }
-                    Button(
-                        onClick = { lastSummary?.let { onOpenCounselorPlan(it.toCounselorPrompt()) } },
-                        enabled = lastSummary != null,
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    ) { Text("分析", fontSize = 12.sp) }
+                    androidx.compose.foundation.Image(painter = painterResource(R.drawable.focus_goal_illustration), contentDescription = "学习目标插画", modifier = Modifier.size(142.dp), contentScale = ContentScale.Fit)
                 }
             }
         }
-        item { Text(CampusStrings.Focus.RECORDS_TITLE, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-        if (records.isEmpty()) item { EmptyState(Icons.Default.Timer, CampusStrings.Focus.RECORDS_EMPTY) }
-        else items(records.take(10), key = { it.id }) { record ->
-            CampusCard(padding = PaddingValues(13.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(FocusMode.byName(record.mode).label + " · " + record.date, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(3.dp))
-                        Text("${record.actualMinutes}/${record.plannedMinutes} ${CampusStrings.Focus.MINUTES_UNIT} · ${record.endedAt}", color = Muted, fontSize = 11.sp)
-                    }
-                    StatusTag(if (record.finished) CampusStrings.Focus.FINISHED_TAG else CampusStrings.Focus.UNFINISHED_TAG, if (record.finished) StatusTone.SUCCESS else StatusTone.NEUTRAL)
-                }
-            }
+        item { Text("最近记录", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp) }
+        if (records.isEmpty()) item { Text("完成一次专注后，记录会从后端同步到这里。", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp)) }
+        else items(records.take(8), key = { it.id }) { record ->
+            Surface(shape = RoundedCornerShape(18.dp), color = Surface) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CheckCircle, null, tint = FocusBlue); Spacer(Modifier.width(11.dp)); Column(Modifier.weight(1f)) { Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.SemiBold); Text(record.endedAt, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; Text("已完成", color = FocusGreen, fontSize = 12.sp) } }
         }
     }
-    if (showEndConfirm) ConfirmDialog(CampusStrings.Focus.END_TITLE, CampusStrings.Focus.END_MESSAGE, CampusStrings.Focus.END, true, { showEndConfirm = false; finishSession(false) }, { showEndConfirm = false })
-    if (showCompleted) AlertDialog(
-        onDismissRequest = { showCompleted = false },
-        title = { Text(CampusStrings.Focus.COMPLETED_TITLE, fontWeight = FontWeight.Bold) },
-        text = { Text(CampusStrings.Focus.COMPLETED_MESSAGE, color = Muted) },
-        confirmButton = { TextButton({ showCompleted = false }) { Text(CampusStrings.Common.CONFIRM, color = Primary) } },
-        containerColor = Surface,
-    )
+    if (showFinishDialog) AlertDialog(onDismissRequest = { showFinishDialog = false }, title = { Text("结束本次专注？") }, text = { Text("结束时间和时长由后端服务记录。", color = Muted) }, confirmButton = { TextButton(onClick = { scope.launch { repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }; showFinishDialog = false } }) { Text("结束", color = FocusOrange) } }, dismissButton = { TextButton(onClick = { showFinishDialog = false }) { Text("继续专注") } })
+    if (showGoalDialog) AlertDialog(onDismissRequest = { showGoalDialog = false }, title = { Text("设置每日自习目标") }, text = { Column { Text("目标将保存到后端数据库，并在不同设备间同步。", color = Muted, fontSize = 12.sp); Spacer(Modifier.height(12.dp)); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(30, 60, 90, 120).forEach { goal -> FilterChip(selected = selectedGoal == goal, onClick = { selectedGoal = goal }, label = { Text("$goal 分钟") }) } } } }, confirmButton = { TextButton(onClick = { scope.launch { repository.updateGoal(selectedGoal).onSuccess { showGoalDialog = false } } }) { Text("保存", color = FocusBlue) } }, dismissButton = { TextButton(onClick = { showGoalDialog = false }) { Text("取消") } })
+    if (showCompletedDialog) AlertDialog(onDismissRequest = { showCompletedDialog = false }, icon = { Icon(Icons.Default.Celebration, null, tint = FocusOrange) }, title = { Text("本次专注已完成！") }, text = { Text("记录已保存到后端数据库。", color = Muted) }, confirmButton = { TextButton(onClick = { showCompletedDialog = false }) { Text("知道了", color = FocusBlue) } })
 }
 
 @Composable
-private fun LearningAssistanceCard(
-    manager: ExpressionSessionManager,
-    enabled: Boolean,
-    mockMode: Boolean,
-    cameraPermissionGranted: Boolean,
-    permissionDenied: Boolean,
-    running: Boolean,
-    activeMinutes: Int,
-    status: ExpressionServiceStatus,
-    focusState: FocusState,
-    expression: ExpressionLabel,
-    behaviorPrediction: BehaviorPrediction?,
-    modelVersion: String,
-    reminder: String?,
-    onToggle: (Boolean) -> Unit,
-) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    CampusCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Face, null, tint = Primary)
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text("学习状态辅助", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text("画面仅在本机处理，不保存、不上传", color = Muted, fontSize = 11.sp)
-            }
-            Switch(enabled, onCheckedChange = onToggle)
+private fun FocusModeTabs(selected: FocusMode, enabled: Boolean, onSelect: (FocusMode) -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color(0xFFF5F6FF)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(FocusMode.FOCUS, FocusMode.SHORT_BREAK, FocusMode.LONG_BREAK).forEach { item ->
+            val active = item == selected
+            Surface(onClick = { if (enabled) onSelect(item) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp), color = if (active) FocusBlue else Color.Transparent, enabled = enabled) { Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Icon(if (item == FocusMode.FOCUS) Icons.Default.Timer else Icons.Default.NightlightRound, null, modifier = Modifier.size(16.dp), tint = if (active) Color.White else Muted); Spacer(Modifier.width(4.dp)); Text("${item.label} ${item.minutes} 分钟", color = if (active) Color.White else TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) } }
         }
-        if (enabled && !mockMode && cameraPermissionGranted) {
-            Spacer(Modifier.height(12.dp))
-            AndroidView(
-                factory = { viewContext -> PreviewView(viewContext).also { manager.attachPreview(lifecycleOwner, it) } },
-                update = { manager.attachPreview(lifecycleOwner, it) },
-                onRelease = { scopeView ->
-                    // The screen-level lifecycle effect performs the suspending unbind immediately.
-                },
-                modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)),
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Text("${if (mockMode) "Mock" else "本机 LiteRT"} · ${statusLabel(status)} · $modelVersion", color = Muted, fontSize = 11.sp)
-        Text("当前辅助观察：${focusStateLabel(focusState)}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        if (behaviorPrediction != null) {
-            val behaviorText = if (behaviorPrediction.modelState == "MODEL_NOT_AVAILABLE") {
-                "行为识别模型尚未安装"
-            } else {
-                formatBehavior(behaviorPrediction)
-            }
-            Text("学习行为：$behaviorText", color = TextPrimary, fontSize = 12.sp)
-        } else {
-            Text("稳定表情：${expressionLabel(expression)}", color = TextPrimary, fontSize = 12.sp)
-        }
-        Text("本次专注持续：$activeMinutes 分钟${if (running) "（分析中）" else ""}", color = Muted, fontSize = 11.sp)
-        if (permissionDenied) Text("未授予相机权限，学习状态辅助未启动。", color = Muted, fontSize = 11.sp)
-        if (reminder != null) Text(reminder, color = Primary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
-private fun statusLabel(status: ExpressionServiceStatus) = when (status) {
-    ExpressionServiceStatus.Off -> "未加载"
-    ExpressionServiceStatus.Initializing -> "模型加载中"
-    ExpressionServiceStatus.Ready -> "模型已就绪"
-    ExpressionServiceStatus.Running -> "本机分析中"
-    ExpressionServiceStatus.Paused -> "已暂停并释放相机"
-    ExpressionServiceStatus.NoFace -> "等待画面"
-    ExpressionServiceStatus.LowConfidence -> "结果暂不稳定"
-    is ExpressionServiceStatus.Error -> "不可用：${status.message}"
-}
+@Composable
+private fun AssistLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = Muted, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(10.dp)); Text(text, color = Muted, fontSize = 12.sp) } }
 
-private fun focusStateLabel(state: FocusState) = when (state) {
-    FocusState.FOCUSED -> "正在辅助观察"
-    FocusState.POSSIBLY_DISTRACTED -> "可能注意力偏离"
-    FocusState.BREAK_SUGGESTED -> "建议休息"
-    FocusState.NO_FACE -> "可能暂时离开"
-    FocusState.UNAVAILABLE -> "暂不可用"
-}
+@Composable
+private fun FocusStat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, label: String, background: Color) { Column(modifier.clip(RoundedCornerShape(20.dp)).background(background).padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (icon == Icons.Default.LocalFireDepartment) FocusOrange else FocusBlue, modifier = Modifier.size(25.dp)); Spacer(Modifier.height(6.dp)); Row(verticalAlignment = Alignment.Bottom) { Text(value, color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.width(2.dp)); Text(unit, color = Muted, fontSize = 10.sp) }; Text(label, color = Muted, fontSize = 11.sp) } }
 
-private fun expressionLabel(label: ExpressionLabel) = when (label) {
-    ExpressionLabel.HAPPY -> "愉快"
-    ExpressionLabel.NEUTRAL -> "中性"
-    ExpressionLabel.SAD -> "低落"
-    ExpressionLabel.ANGRY -> "生气"
-    ExpressionLabel.FEAR -> "紧张"
-    ExpressionLabel.SURPRISE -> "惊讶"
-    ExpressionLabel.DISGUST -> "厌恶"
-    ExpressionLabel.UNKNOWN -> "暂不稳定"
-    ExpressionLabel.NO_FACE -> "无画面"
-}
-
-private fun formatBehavior(prediction: BehaviorPrediction): String {
-    val topBehaviors = prediction.probabilities.entries
-        .filter { it.value > 0.5f }
-        .sortedByDescending { it.value }
-        .map { entry ->
-            when (entry.key) {
-                StudyBehavior.READING -> "正在阅读"
-                StudyBehavior.WRITING -> "正在写字"
-                StudyBehavior.TYPING -> "正在打字"
-                StudyBehavior.PAGE_TURNING -> "正在翻书"
-                StudyBehavior.PEN_SPINNING -> "轻微转笔"
-                StudyBehavior.PEN_FIDGETING -> "玩笔"
-                StudyBehavior.PHONE_USE -> "使用手机"
-                StudyBehavior.HEAD_DOWN -> "低头"
-                StudyBehavior.DROWSY -> "疲劳"
-                StudyBehavior.LOOKING_AWAY -> "看向别处"
-                StudyBehavior.ABSENT -> "离开"
-                else -> ""
-            }
-        }
-        .filter { it.isNotEmpty() }
-        
-    return if (topBehaviors.isEmpty()) "正在观察" else topBehaviors.joinToString(" · ")
-}
-
+/** Serializes only user-approved, structured local-assistance summaries for the counselor flow. */
 internal fun FocusSessionSummary.toCounselorPrompt(): String = buildString {
     append("请仅根据以下由用户主动发送的本次专注辅助观察摘要，给出温和、可执行的学习安排建议。")
     append("这不是心理诊断依据；不要推断焦虑、疲劳、疾病或确定的走神，也不要把辅助观察描述为事实。\n")
@@ -553,14 +211,4 @@ internal fun FocusSessionSummary.toCounselorPrompt(): String = buildString {
     append("稳定表情分布：${stableExpressionDistribution.ifEmpty { mapOf("无稳定结果" to 0) }}\n")
     append("模型版本：$modelVersion\n")
     append("请明确说明：以上仅为本机辅助观察摘要，不包含、也未发送任何照片、视频或逐帧结果。")
-}
-
-@Composable
-private fun StatCard(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, label: String) {
-    Column(modifier.clip(RoundedCornerShape(16.dp)).background(Surface).padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, null, tint = Primary, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(7.dp))
-        Row(verticalAlignment = Alignment.Bottom) { Text(value, color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(2.dp)); Text(unit, color = Muted, fontSize = 10.sp) }
-        Text(label, color = Muted, fontSize = 10.5.sp)
-    }
 }

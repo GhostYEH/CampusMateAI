@@ -46,6 +46,7 @@ import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
 import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
+import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
 import java.net.URLEncoder
 
 @Composable
@@ -131,6 +132,13 @@ fun AppNavHost(
         }
         composable("tasks") {
             TasksScreen(repository) { route -> go(route) }
+        }
+        composable("task_calendar") {
+            TaskCalendarScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenTask = { taskId -> go("task_detail/$taskId") },
+            )
         }
         composable(
             route = "task_detail/{taskId}",
@@ -351,13 +359,21 @@ fun AppNavHost(
         }
 
         // ── 专注自习 ──
-        composable("focus") {
+        composable(
+            route = "focus?taskId={taskId}",
+            arguments = listOf(navArgument("taskId") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            }),
+        ) { backStackEntry ->
             val reduceMotion by repository.reduceMotion.collectAsState()
             FocusScreen(
                 repository = modules.focus,
                 appRepository = repository,
                 reduceMotion = reduceMotion,
                 onBack = { navController.popBackStack() },
+                relatedTaskId = backStackEntry.arguments?.getString("taskId"),
                 onOpenCounselorPlan = { prompt ->
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")
