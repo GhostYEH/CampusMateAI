@@ -8,9 +8,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -56,6 +58,21 @@ class CampusNewsPreferencesTest {
         assertEquals(emptySet<String>(), repository.newsFavoriteIds.value)
     }
 
+    @Test
+    fun mutationWaitsForPersistedIdsBeforeWriting() = runBlocking {
+        val storage = DelayedCampusNewsPreferences()
+        val repository = AppRepository(application(), storage)
+
+        val mutation = async(Dispatchers.Default) { repository.markCampusNewsRead("new") }
+        delay(50)
+        assertTrue(storage.savedReadIds.isEmpty())
+
+        storage.emitReadIds(setOf("persisted"))
+        mutation.await()
+
+        assertEquals(listOf(setOf("persisted", "new")), storage.savedReadIds)
+    }
+
     private fun application(): Application = ApplicationProvider.getApplicationContext()
 
     private suspend fun waitUntil(predicate: () -> Boolean) {
@@ -86,6 +103,28 @@ class CampusNewsPreferencesTest {
         override suspend fun setCampusNewsFavoriteIds(ids: Set<String>) {
             synchronized(this) { savedFavoriteIds += ids }
             if (delayFavoriteUpdate) delay(100)
+            favoriteIds.value = ids
+        }
+    }
+
+    private class DelayedCampusNewsPreferences : CampusNewsPreferences {
+        private val readIds = MutableSharedFlow<Set<String>>(replay = 1)
+        private val favoriteIds = MutableStateFlow<Set<String>>(emptySet())
+        val savedReadIds = mutableListOf<Set<String>>()
+
+        override val campusNewsReadIds: Flow<Set<String>> = readIds
+        override val campusNewsFavoriteIds: Flow<Set<String>> = favoriteIds
+
+        suspend fun emitReadIds(ids: Set<String>) {
+            readIds.emit(ids)
+        }
+
+        override suspend fun setCampusNewsReadIds(ids: Set<String>) {
+            savedReadIds += ids
+            readIds.emit(ids)
+        }
+
+        override suspend fun setCampusNewsFavoriteIds(ids: Set<String>) {
             favoriteIds.value = ids
         }
     }
