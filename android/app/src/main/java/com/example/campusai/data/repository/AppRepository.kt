@@ -159,11 +159,19 @@ class AppRepository(application: Application) {
             dataStore.saveTokens(body.access_token, body.refresh_token)
             val meResp = ApiClient.api.me()
             val meUser = meResp.body()?.user
+
+            val detail = listOfNotNull(
+                meUser?.college,
+                meUser?.major,
+                meUser?.grade,
+            ).filter { it.isNotBlank() }
+                .joinToString(" · ")
+
             user = User(
-                name = meUser?.name ?: username,
+                name = meUser?.display_name ?: username,
                 role = meUser?.role ?: "student",
-                detail = meUser?.detail ?: "",
-                accountId = meUser?.account_id.orEmpty(),
+                detail = detail,
+                accountId = meUser?.id.orEmpty(),
             )
         } else {
             val demo = demos[username]

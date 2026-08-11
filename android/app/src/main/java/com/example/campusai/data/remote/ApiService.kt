@@ -52,10 +52,15 @@ data class KnowledgeStatusResponse(
 )
 data class MeResponse(val user: UserResponse? = null)
 data class UserResponse(
-    val name: String,
-    val role: String,
-    val detail: String = "",
-    val account_id: String? = null,
+    val id: String? = null,
+    val username: String? = null,
+    val role: String = "student",
+    val display_name: String? = null,
+    val student_number: String? = null,
+    val teacher_number: String? = null,
+    val college: String? = null,
+    val major: String? = null,
+    val grade: String? = null,
 )
 
 /** 通用分页响应，对应后端 Page。 */

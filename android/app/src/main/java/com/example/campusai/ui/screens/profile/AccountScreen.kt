@@ -1,5 +1,6 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +47,8 @@ fun AccountScreen(
     var saving by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var loggingOut by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -179,8 +182,62 @@ fun AccountScreen(
                     Text("保存账号资料", fontWeight = FontWeight.Bold)
                 }
             }
+
+            OutlinedButton(
+                onClick = { showLogoutDialog = true },
+                enabled = !loggingOut,
+                modifier = Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerText),
+                border = BorderStroke(1.dp, DangerText.copy(alpha = 0.5f)),
+            ) {
+                if (loggingOut) {
+                    CircularProgressIndicator(color = DangerText, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Text("正在退出…")
+                } else {
+                    Icon(Icons.Default.ExitToApp, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("退出登录", fontWeight = FontWeight.Bold)
+                }
+            }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!loggingOut) showLogoutDialog = false
+            },
+            title = { Text("退出登录？") },
+            text = { Text("确定退出当前账号吗？", color = ReferenceMuted) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        loggingOut = true
+                        scope.launch {
+                            repository.logout()
+                            loggingOut = false
+                            showLogoutDialog = false
+                        }
+                    },
+                    enabled = !loggingOut,
+                ) {
+                    Text("退出登录", color = DangerText, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false },
+                    enabled = !loggingOut,
+                ) {
+                    Text("取消", color = ReferenceMuted)
+                }
+            },
+            containerColor = ReferenceSurface,
+            shape = RoundedCornerShape(20.dp),
+        )
     }
 }
 

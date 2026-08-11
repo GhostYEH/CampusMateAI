@@ -23,6 +23,10 @@ interface FrameAnalyzer {
     fun analyze(frame: CameraFrame)
 }
 
+fun interface CameraErrorListener {
+    fun onCameraError(message: String)
+}
+
 class FocusCameraPipeline(
     private val application: Application
 ) {
@@ -35,6 +39,7 @@ class FocusCameraPipeline(
     private var lastAnalyzedAt = 0L
 
     private val analyzers = CopyOnWriteArrayList<FrameAnalyzer>()
+    var errorListener: CameraErrorListener? = null
 
     fun addAnalyzer(analyzer: FrameAnalyzer) {
         if (!analyzers.contains(analyzer)) {
@@ -45,6 +50,32 @@ class FocusCameraPipeline(
     fun removeAnalyzer(analyzer: FrameAnalyzer) {
         analyzers.remove(analyzer)
     }
+
+    // ── Lifecycle (required for ImageAnalysis) ──
+
+    fun attachLifecycle(owner: LifecycleOwner) {
+        lifecycleOwner = owner
+        bindUseCasesIfReady()
+    }
+
+    fun detachLifecycle() {
+        cameraProvider?.unbindAll()
+        lifecycleOwner = null
+    }
+
+    // ── Preview (optional — analysis works without it) ──
+
+    fun attachPreview(view: PreviewView) {
+        previewView = view
+        bindUseCasesIfReady()
+    }
+
+    fun detachPreview() {
+        previewView = null
+        bindUseCasesIfReady()
+    }
+
+    // ── Control ──
 
     fun start() {
         running = true
@@ -65,34 +96,41 @@ class FocusCameraPipeline(
         running = false
         cameraProvider?.unbindAll()
         cameraProvider = null
+        lifecycleOwner = null
+        previewView = null
+        errorListener = null
         analysisExecutor.shutdownNow()
         analyzers.clear()
     }
 
-    fun bindCamera(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
-        this.lifecycleOwner = lifecycleOwner
-        this.previewView = previewView
-        bindUseCasesIfReady()
-    }
-
-    fun unbindCamera() {
-        cameraProvider?.unbindAll()
-        lifecycleOwner = null
-        previewView = null
-    }
+    // ── Internal ──
 
     private fun bindUseCasesIfReady() {
-        val owner = lifecycleOwner ?: return
-        val view = previewView ?: return
-        if (!running) return
+        val owner = lifecycleOwner
+        // ImageAnalysis only needs lifecycle + running; preview is optional
+        if (owner == null || !running) {
+            // If lifecycle removed or paused but a preview was attached,
+            // there's nothing safe to show — a dangling Preview would leak.
+            return
+        }
         val future = ProcessCameraProvider.getInstance(application)
         future.addListener({
             try {
                 val provider = future.get()
                 cameraProvider = provider
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(view.surfaceProvider)
+
+                val useCases = mutableListOf<androidx.camera.core.UseCase>()
+
+                // Preview: only when previewView is attached
+                val view = previewView
+                if (view != null) {
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(view.surfaceProvider)
+                    }
+                    useCases.add(preview)
                 }
+
+                // ImageAnalysis: always when running + lifecycle
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setResolutionSelector(
@@ -111,15 +149,17 @@ class FocusCameraPipeline(
                             processImage(image)
                         }
                     }
+                useCases.add(analysis)
+
                 provider.unbindAll()
                 provider.bindToLifecycle(
                     owner,
                     CameraSelector.DEFAULT_FRONT_CAMERA,
-                    preview,
-                    analysis,
+                    *useCases.toTypedArray(),
                 )
             } catch (error: Exception) {
-                // Ignore for now, could notify an error listener
+                val message = error.message ?: "Camera binding failed"
+                errorListener?.onCameraError(message)
             }
         }, ContextCompat.getMainExecutor(application))
     }
@@ -138,12 +178,13 @@ class FocusCameraPipeline(
         } catch (error: Exception) {
             image.close()
             analyzing.set(false)
+            errorListener?.onCameraError(error.message ?: "Frame conversion failed")
             return
         }
         image.close()
 
         val frame = CameraFrame(bitmap, System.currentTimeMillis())
-        
+
         try {
             analyzers.forEach { analyzer ->
                 try {

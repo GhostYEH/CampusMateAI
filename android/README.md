@@ -17,6 +17,8 @@
 ```
 app/src/main/java/com/example/campusai/
 ├── data/
+│   ├── behavior/            # 行为识别引擎与分析器(NoOp 短路 / 时间窗口缓冲)
+│   ├── camera/              # CameraX 管线(生命周期 / 预览独立绑定)
 │   ├── expression/          # 表情识别模块(CameraX + ML Kit + LiteRT, Mock/Real 双实现)
 │   ├── focus/               # 专注状态处理
 │   ├── local/               # DataStore 本地持久化
