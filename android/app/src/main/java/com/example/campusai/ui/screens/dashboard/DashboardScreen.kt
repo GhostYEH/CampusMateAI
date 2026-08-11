@@ -468,7 +468,7 @@ private fun CampusUpdates(
             .padding(16.dp)
             .enterAnimation(delayMs = 220, enabled = !reduceMotion),
     ) {
-        SectionTitle("校园动态", "查看更多") { onNavigate("notifications") }
+        SectionTitle("校园动态", "查看更多") { onNavigate("campus-news") }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(items, key = { it.id }) { item ->
