@@ -2,6 +2,7 @@ package com.example.campusai.data.repository
 
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
+import com.example.campusai.data.news.CampusNewsPreferences
 import com.example.campusai.data.expression.ExpressionRecognitionService
 import com.example.campusai.data.expression.ExpressionSessionManager
 import com.example.campusai.data.expression.MockExpressionRecognitionService
@@ -31,7 +32,10 @@ import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 
-class AppRepository(application: Application) {
+class AppRepository(
+    application: Application,
+    campusNewsPreferences: CampusNewsPreferences? = null,
+) {
 
     data class BackendStatus(
         val online: Boolean,
@@ -43,6 +47,7 @@ class AppRepository(application: Application) {
 
     private val application = application
     private val dataStore = AppDataStore(application)
+    private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _session = MutableStateFlow<User?>(null)
@@ -87,6 +92,11 @@ class AppRepository(application: Application) {
 
     private val _campusNews = MutableStateFlow(defaultCampusNews())
     val campusNews: StateFlow<List<CampusNews>> = _campusNews.asStateFlow()
+
+    private val _newsReadIds = MutableStateFlow<Set<String>>(emptySet())
+    val newsReadIds: StateFlow<Set<String>> = _newsReadIds.asStateFlow()
+    private val _newsFavoriteIds = MutableStateFlow<Set<String>>(emptySet())
+    val newsFavoriteIds: StateFlow<Set<String>> = _newsFavoriteIds.asStateFlow()
 
     fun getCampusNewsById(id: String): CampusNews? = _campusNews.value.find { it.id == id }
 
@@ -144,6 +154,21 @@ class AppRepository(application: Application) {
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
+        scope.launch { newsPreferences.campusNewsReadIds.collect { _newsReadIds.value = it } }
+        scope.launch { newsPreferences.campusNewsFavoriteIds.collect { _newsFavoriteIds.value = it } }
+    }
+
+    suspend fun markCampusNewsRead(newsId: String) {
+        if (newsId !in _newsReadIds.value) {
+            newsPreferences.setCampusNewsReadIds(_newsReadIds.value + newsId)
+        }
+    }
+
+    suspend fun toggleCampusNewsFavorite(newsId: String) {
+        val ids = _newsFavoriteIds.value
+        newsPreferences.setCampusNewsFavoriteIds(
+            if (newsId in ids) ids - newsId else ids + newsId,
+        )
     }
 
     suspend fun login(username: String, password: String): User {
