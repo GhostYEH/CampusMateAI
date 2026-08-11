@@ -21,7 +21,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.campusai.data.repository.LostFoundRepository
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.EmptyState
 import com.example.campusai.ui.components.LoadingState
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
@@ -44,8 +43,6 @@ fun MyLostFoundScreen(
             .background(Background)
             .padding(horizontal = 16.dp),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(title = CampusStrings.LostFound.MINE_TITLE, onBack = onBack)
         Spacer(Modifier.height(14.dp))
         when {
             loading -> LoadingState()

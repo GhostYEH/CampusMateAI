@@ -15,9 +15,13 @@ class NotificationNormalizer(private val context: Context) {
             notificationId = statusBarNotification.id,
             tag = NotificationTextSanitizer.clean(statusBarNotification.tag),
             appName = appNameFor(statusBarNotification.packageName),
-            title = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_TITLE)),
+            title = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_TITLE))
+                ?: NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_TITLE_BIG)),
             text = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_TEXT)),
-            bigText = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_BIG_TEXT)),
+            bigText = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
+                ?: NotificationTextSanitizer.joinedLines(
+                    extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES),
+                ),
             subText = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_SUB_TEXT)),
             summaryText = NotificationTextSanitizer.clean(extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)),
             conversationTitle = NotificationTextSanitizer.clean(

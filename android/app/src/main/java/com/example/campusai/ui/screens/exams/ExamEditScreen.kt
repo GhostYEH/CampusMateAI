@@ -24,7 +24,6 @@ import com.example.campusai.data.model.Exam
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ExamRepository
 import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.CampusPrimaryButton
 import com.example.campusai.ui.components.CampusTextField
 import com.example.campusai.ui.components.DateTimeOptions
@@ -74,11 +73,6 @@ fun ExamEditScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(
-            title = if (editing == null) CampusStrings.Exams.ADD else CampusStrings.Exams.EDIT,
-            onBack = onBack,
-        )
         Spacer(Modifier.height(14.dp))
         CampusCard {
             FormField(label = CampusStrings.Exams.FIELD_COURSE) {

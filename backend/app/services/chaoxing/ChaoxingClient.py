@@ -5,7 +5,65 @@ import re
 import urllib.parse
 from bs4 import BeautifulSoup
 
+
+class ChaoxingFetchError(RuntimeError):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def _identifier(*values) -> str:
+    for value in values:
+        if value is not None and str(value).strip() not in ("", "None"):
+            return str(value).strip()
+    return ""
+
+
+def _response_text(response) -> str:
+    text = getattr(response, "text", "")
+    return text if isinstance(text, str) else ""
+
+
+def _auth_error(response) -> str | None:
+    text = _response_text(response)
+    if any(keyword in text for keyword in ("验证码", "安全验证", "异常访问")):
+        return "verification_required"
+    if any(keyword in text for keyword in ("用户登录", "请登录", "登录后查看")):
+        return "reauth_required"
+    if response.status_code in (301, 302, 303, 307, 308, 401, 403):
+        return "reauth_required"
+    return None
+
 class ChaoxingParser:
+    @staticmethod
+    def parse_courses_json(data: dict) -> list[dict]:
+        courses = []
+        for channel in data.get("channelList") or []:
+            content = channel.get("content") or {}
+            course_info = content.get("course") or {}
+            for item in course_info.get("data") or []:
+                course_id = _identifier(item.get("id"), item.get("courseId"), content.get("courseId"))
+                clazz_id = _identifier(
+                    item.get("clazzId"), item.get("classId"),
+                    content.get("clazzId"), content.get("classId"), content.get("id"),
+                    channel.get("clazzId"), channel.get("classId"), channel.get("id"), channel.get("key"),
+                )
+                course_name = str(item.get("name") or "").strip()
+                if not course_name or not course_id:
+                    continue
+                external_id = f"{course_id}_{clazz_id}" if clazz_id else course_id
+                courses.append({
+                    "name": course_name,
+                    "link": (
+                        "https://mooc2-ans.chaoxing.com/mycourse/stu"
+                        f"?courseid={course_id}&clazzid={clazz_id}"
+                    ),
+                    "course_id": course_id,
+                    "clazz_id": clazz_id,
+                    "external_id": external_id,
+                })
+        return courses
+
     @staticmethod
     def parse_courses_html(html: str) -> list[dict]:
         soup = BeautifulSoup(html, "lxml")
@@ -36,7 +94,7 @@ class ChaoxingParser:
                 
             if not clazz_id:
                 match = re.search(r'class[iI]d=(\d+)|clazz[iI]d=(\d+)', course_link)
-                clazz_id = match.group(1) if match else (match.group(2) if match and match.group(2) else "")
+                clazz_id = _identifier(*(match.groups() if match else ()))
 
             # If still not found, try to extract from the item's attributes
             if not course_id:
@@ -92,10 +150,13 @@ class ChaoxingClient:
                 return False, error_msg
 
             # 登录后必须访问一个需要认证的学习通页面，确认 Session 真正有效
-            verify_url = "http://mooc2-ans.chaoxing.com/visit/courses/list"
+            verify_url = "https://mooc2-ans.chaoxing.com/visit/courses/list"
             verify_res = await self.client.get(verify_url, follow_redirects=False)
-            if verify_res.status_code == 302 or verify_res.status_code == 403:
-                return False, "Session verification failed after login"
+            auth_error = _auth_error(verify_res)
+            if auth_error:
+                return False, auth_error
+            if verify_res.status_code >= 400:
+                return False, f"http_error_{verify_res.status_code}"
             
             return True, "success"
             
@@ -105,6 +166,8 @@ class ChaoxingClient:
         except httpx.HTTPStatusError as e: 
             print(f"Error response {e.response.status_code} while requesting {e.request.url!r}.")
             return False, f"http_error_{e.response.status_code}"
+        except (ValueError, TypeError):
+            return False, "structure_changed"
 
 
     async def get_courses(self) -> tuple[bool, list | str]:
@@ -115,34 +178,19 @@ class ChaoxingClient:
         api_url = "https://mooc1-api.chaoxing.com/mycourse/backclazzdata"
         try:
             res = await self.client.get(api_url, follow_redirects=False)
+            auth_error = _auth_error(res)
+            if auth_error:
+                return False, auth_error
             if res.status_code == 200:
                 try:
                     data = res.json()
                     if isinstance(data, dict):
-                        if data.get("result") == 0 and "登录" in str(data.get("msg", "")):
+                        message = str(data.get("msg") or data.get("errorMsg") or "")
+                        if data.get("result") == 0 and "登录" in message:
                             return False, "reauth_required"
-                        # Try to extract courses from JSON
-                        courses = []
-                        channel_list = data.get("channelList", [])
-                        for channel in channel_list:
-                            content = channel.get("content", {})
-                            course_info = content.get("course", {})
-                            data_info = course_info.get("data", [])
-                            for item in data_info:
-                                course_id = str(item.get("id", ""))
-                                course_name = item.get("name", "")
-                                # Check if clazzid is available somewhere, or use course_id as fallback external_id
-                                clazz_id = str(item.get("clazzId", "")) # Need actual key if available
-                                external_id = f"{course_id}_{clazz_id}" if course_id and clazz_id else course_id or clazz_id
-                                if course_name and external_id:
-                                    link = f"https://mooc2-ans.chaoxing.com/mycourse/stu?courseid={course_id}&clazzid={clazz_id}"
-                                    courses.append({
-                                        "name": course_name,
-                                        "link": link,
-                                        "course_id": course_id,
-                                        "clazz_id": clazz_id,
-                                        "external_id": external_id
-                                    })
+                        if any(keyword in message for keyword in ("验证码", "安全验证", "异常")):
+                            return False, "verification_required"
+                        courses = ChaoxingParser.parse_courses_json(data)
                         if courses:
                             return True, courses
                 except Exception:
@@ -153,20 +201,19 @@ class ChaoxingClient:
             pass
             
         # Fallback to HTML parsing if JSON API fails or returns no data
-        courses_url = "http://mooc2-ans.chaoxing.com/visit/courses/list"
+        courses_url = "https://mooc2-ans.chaoxing.com/visit/courses/list"
         try:
             # First verify session validity
             response = await self.client.get(courses_url, follow_redirects=False)
-            if response.status_code in (302, 403):
-                return False, "reauth_required"
+            auth_error = _auth_error(response)
+            if auth_error:
+                return False, auth_error
             response.raise_for_status()
-            
-            # If the response contains login keywords, session might be invalid even with 200 OK
-            if "用户登录" in response.text or "请登录" in response.text:
-                return False, "reauth_required"
-                
+
             courses = ChaoxingParser.parse_courses_html(response.text)
-            return True, courses
+            if courses or any(marker in response.text for marker in ("暂无课程", "还没有课程", "course-list")):
+                return True, courses
+            return False, "structure_changed"
         except httpx.RequestError as e:
             print(f"Network error while fetching courses: {e}")
             return False, "network_error"
@@ -178,18 +225,36 @@ class ChaoxingClient:
         """获取单个课程的作业和通知。"""
         try:
             response = await self.client.get(course_url)
+            auth_error = _auth_error(response)
+            if auth_error:
+                raise ChaoxingFetchError(auth_error)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "lxml")
 
-            course_id = soup.find("input", {"name": "courseid"})["value"]
-            class_id = soup.find("input", {"name": "clazzid"})["value"]
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(course_url).query)
+            course_elem = soup.find("input", {"name": "courseid"}) or soup.find("input", {"id": "courseId"})
+            class_elem = soup.find("input", {"name": "clazzid"}) or soup.find("input", {"id": "classId"})
+            course_id = _identifier(course_elem.get("value") if course_elem else None, *(query.get("courseid") or query.get("courseId") or []))
+            class_id = _identifier(class_elem.get("value") if class_elem else None, *(query.get("clazzid") or query.get("classId") or []))
 
-            work_url_base = soup.find("a", {"title": "作业"})["data-url"]
-            work_enc = soup.find("input", {"name": "workEnc"})["value"]
+            work_link = soup.find("a", {"title": "作业"})
+            work_enc_elem = soup.find("input", {"name": "workEnc"})
+            if not course_id or not class_id or not work_link or not work_link.get("data-url"):
+                raise ChaoxingFetchError("structure_changed")
+            work_url_base = urllib.parse.urljoin(course_url, work_link["data-url"])
+            work_enc = _identifier(work_enc_elem.get("value") if work_enc_elem else None)
 
-            assignments_url = f"{work_url_base}?courseId={course_id}&classId={class_id}&enc={work_enc}"
+            parsed_work_url = urllib.parse.urlparse(work_url_base)
+            work_query = urllib.parse.parse_qs(parsed_work_url.query)
+            work_query.update({"courseId": [course_id], "classId": [class_id]})
+            if work_enc:
+                work_query["enc"] = [work_enc]
+            assignments_url = urllib.parse.urlunparse(parsed_work_url._replace(query=urllib.parse.urlencode(work_query, doseq=True)))
 
             response = await self.client.get(assignments_url)
+            auth_error = _auth_error(response)
+            if auth_error:
+                raise ChaoxingFetchError(auth_error)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "lxml")
 
@@ -210,12 +275,12 @@ class ChaoxingClient:
                 link = link_elem["href"] if link_elem and link_elem.has_attr("href") else ""
                 
                 if not external_id and link:
-                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=(\d+)', link, re.IGNORECASE)
+                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=([A-Za-z0-9_-]+)', link, re.IGNORECASE)
                     if match:
                         external_id = match.group(1)
 
                 if not external_id and item.get("onclick"):
-                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=(\d+)', item.get("onclick"), re.IGNORECASE)
+                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=([A-Za-z0-9_-]+)', item.get("onclick"), re.IGNORECASE)
                     if match:
                         external_id = match.group(1)
                 
@@ -252,26 +317,32 @@ class ChaoxingClient:
                 })
 
             return {"assignments": assignments, "notices": []}
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            print(f"Error while fetching assignments and notices: {e}")
-            return {"assignments": [], "notices": []}
+        except ChaoxingFetchError:
+            raise
+        except httpx.RequestError as e:
+            raise ChaoxingFetchError("network_error") from e
+        except httpx.HTTPStatusError as e:
+            raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
 
     async def get_notices(self, course_url: str) -> list[dict]:
         """获取课程通知。"""
         try:
             # 1. 访问课程页提取 courseid 和 classid
             response = await self.client.get(course_url)
+            auth_error = _auth_error(response)
+            if auth_error:
+                raise ChaoxingFetchError(auth_error)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "lxml")
             
             course_id_elem = soup.find("input", {"name": "courseid"}) or soup.find("input", {"id": "courseId"})
             class_id_elem = soup.find("input", {"name": "clazzid"}) or soup.find("input", {"id": "classId"})
             
-            if not course_id_elem or not class_id_elem:
-                return []
-                
-            course_id = course_id_elem["value"]
-            class_id = class_id_elem["value"]
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(course_url).query)
+            course_id = _identifier(course_id_elem.get("value") if course_id_elem else None, *(query.get("courseid") or query.get("courseId") or []))
+            class_id = _identifier(class_id_elem.get("value") if class_id_elem else None, *(query.get("clazzid") or query.get("classId") or []))
+            if not course_id or not class_id:
+                raise ChaoxingFetchError("structure_changed")
 
             # 2. 访问通知列表接口 (尝试找 stable API，回退到 HTML 解析)
             # 根据经验，学习通的通知接口通常是 /notice/getNoticeList?courseId=xxx&classId=xxx 等
@@ -279,6 +350,9 @@ class ChaoxingClient:
             
             notice_url = f"https://mooc1.chaoxing.com/notice/getNoticeList?courseId={course_id}&classId={class_id}"
             notice_resp = await self.client.get(notice_url)
+            auth_error = _auth_error(notice_resp)
+            if auth_error:
+                raise ChaoxingFetchError(auth_error)
             notice_resp.raise_for_status()
             
             notices = []
@@ -286,8 +360,9 @@ class ChaoxingClient:
             # 尝试 JSON
             try:
                 data = notice_resp.json()
-                if "list" in data:
-                    for item in data["list"]:
+                notice_list = data.get("list") or (data.get("data") or {}).get("list")
+                if notice_list is not None:
+                    for item in notice_list:
                         nid = item.get("id") or item.get("noticeId")
                         if not nid:
                             continue
@@ -347,6 +422,9 @@ class ChaoxingClient:
                 })
                 
             return notices
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            print(f"Error while fetching notices: {e}")
-            return []
+        except ChaoxingFetchError:
+            raise
+        except httpx.RequestError as e:
+            raise ChaoxingFetchError("network_error") from e
+        except httpx.HTTPStatusError as e:
+            raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e

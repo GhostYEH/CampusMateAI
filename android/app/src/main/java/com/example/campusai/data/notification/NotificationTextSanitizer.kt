@@ -9,4 +9,10 @@ object NotificationTextSanitizer {
 
     fun primaryText(bigText: CharSequence?, text: CharSequence?): String? =
         clean(bigText) ?: clean(text)
+
+    fun joinedLines(lines: Array<CharSequence>?): String? = lines
+        ?.mapNotNull(::clean)
+        ?.distinct()
+        ?.joinToString("\n")
+        ?.takeIf(String::isNotEmpty)
 }

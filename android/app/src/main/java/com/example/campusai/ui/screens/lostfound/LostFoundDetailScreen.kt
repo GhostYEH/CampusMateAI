@@ -35,7 +35,6 @@ import com.example.campusai.data.model.LostFoundKind
 import com.example.campusai.data.model.LostFoundStatus
 import com.example.campusai.data.repository.LostFoundRepository
 import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.CampusPrimaryButton
 import com.example.campusai.ui.components.ConfirmDialog
 import com.example.campusai.ui.components.EmptyState
@@ -68,8 +67,6 @@ fun LostFoundDetailScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(title = "信息详情", onBack = onBack)
         Spacer(Modifier.height(14.dp))
 
         if (item == null) {

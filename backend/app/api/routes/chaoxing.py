@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
-from ...services.chaoxing.ChaoxingClient import ChaoxingClient
+from ...services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError, _auth_error
 from ..deps import current_user
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
@@ -29,6 +29,33 @@ def _parse_optional_datetime(value):
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _parse_chaoxing_datetime(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        timestamp = value / 1000 if value > 10_000_000_000 else value
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    text = str(value).strip()
+    if text.isdigit():
+        return _parse_chaoxing_datetime(int(text))
+    for candidate in (text, text.replace("年", "-").replace("月", "-").replace("日", "")):
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+    return None
+
+
+def _fetch_http_exception(error: ChaoxingFetchError) -> HTTPException:
+    if error.code == "reauth_required":
+        return HTTPException(status_code=401, detail="reauth_required")
+    if error.code == "verification_required":
+        return HTTPException(status_code=403, detail="verification_required")
+    return HTTPException(status_code=502, detail=f"Chaoxing fetch failed: {error.code}")
 
 
 def _extract_assignment_external_id(notice):
@@ -127,13 +154,15 @@ async def get_chaoxing_status(
 
     # 检查 cookie 是否仍然有效
     client = ChaoxingClient(cookies=credentials)
-    verify_url = "http://mooc2-ans.chaoxing.com/visit/courses/list"
+    verify_url = "https://mooc2-ans.chaoxing.com/visit/courses/list"
     try:
         verify_res = await client.client.get(verify_url, follow_redirects=False)
-        if verify_res.status_code == 302 or verify_res.status_code == 403:
+        if _auth_error(verify_res):
             return ChaoxingSyncStatus(status="offline")
+        if verify_res.status_code >= 400:
+            return ChaoxingSyncStatus(status="unavailable")
     except Exception:
-        return ChaoxingSyncStatus(status="offline")
+        return ChaoxingSyncStatus(status="unavailable")
 
     with container.db.query() as conn:
         row = conn.execute(
@@ -216,9 +245,12 @@ async def sync_chaoxing(
                 last_synced_at=now_iso,
             )
 
-    # Homework Sync (Keep untouched as requested - wait, I MUST touch this per latest prompt)
+    # Homework sync
     for course in courses:
-        data = await client.get_assignments_and_notices(course["link"])
+        try:
+            data = await client.get_assignments_and_notices(course["link"])
+        except ChaoxingFetchError as error:
+            raise _fetch_http_exception(error) from error
         for assignment in data.get("assignments", []):
             task_repo = container.personal_task_repository
             external_id = assignment.get("external_id")
@@ -252,14 +284,16 @@ async def sync_chaoxing(
                 if current_status != new_status:
                     if new_status == "completed":
                         task_repo.complete(task_id, user_id=user.id)
-                    elif new_status == "pending":
+                    elif new_status == "pending" and current_status == "completed":
                         task_repo.restore(task_id, user_id=user.id)
                 
                 task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
             else:
+                if assignment.get("status") == "completed":
+                    continue
                 # Create new task
                 # Ensure status is properly created
-                new_task = task_repo.create_task(
+                task_repo.create_task(
                     user_id=user.id,
                     title=assignment["title"],
                     deadline=assignment["deadline"],
@@ -270,12 +304,13 @@ async def sync_chaoxing(
                     source_url=assignment.get("link"),
                     last_synced_at=now_iso,
                 )
-                if assignment.get("status") == "completed":
-                    task_repo.complete(new_task.id, user_id=user.id)
 
     # Notice Sync
     for course in courses:
-        notices = await client.get_notices(course["link"])
+        try:
+            notices = await client.get_notices(course["link"])
+        except ChaoxingFetchError as error:
+            raise _fetch_http_exception(error) from error
         for notice in notices:
             external_id = notice.get("external_id")
             if not external_id:
@@ -290,13 +325,18 @@ async def sync_chaoxing(
                     "SELECT content FROM notices WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
                     (user.id, external_id)
                 ).fetchone()
+                existing_notice_task = conn.execute(
+                    "SELECT id, status FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing_notice' AND source_notice_id = ?",
+                    (user.id, external_id),
+                ).fetchone()
             # 这里如果不跳过，由于幂等更新也没问题。但是题目要求“新增或内容发生变化”才提取。
             # 这里我们简单比较下
             if existing_notice:
                 # dict access row
                 existing_content = dict(existing_notice).get("content")
-                # 如果正文和之前完全一样，且 notice 存在，就跳过 AI 提取
-                if existing_content == notice.get("content"):
+                # A task proves actionable extraction already succeeded. Without one,
+                # retry unchanged notices so a transient AI failure cannot lose work.
+                if existing_content == notice.get("content") and existing_notice_task:
                     container.notice_repository.create_or_update_notice(
                         user_id=user.id,
                         source="chaoxing",
@@ -325,65 +365,65 @@ async def sync_chaoxing(
                 extracted = await container.notice_extraction.extract(
                     notice.get("content") or notice["title"],
                     source_name=course["name"],
-                    published_at=datetime.fromisoformat(notice["published_at"]) if notice.get("published_at") else None,
+                    published_at=_parse_chaoxing_datetime(notice.get("published_at")),
                 )
-                if extracted.actionable:
-                    with container.db.query() as conn:
-                        cur = conn.execute(
-                            "SELECT id FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing_notice' AND source_notice_id = ?",
-                            (user.id, external_id)
-                        )
-                        existing_notice_task = cur.fetchone()
-
-                    fields = {
-                        "title": extracted.task,
-                        "description": extracted.source_text,
-                        "source_text": extracted.source_text,
-                        "deadline": extracted.deadline.isoformat() if extracted.deadline else None,
-                        "source_name": course["name"],
-                        "course_id": course.get("course_id"),
-                        "source_url": notice.get("link"),
-                        "priority": extracted.importance if extracted.importance in ["low", "medium", "high"] else "medium",
-                        "last_synced_at": now_iso,
-                        "external_id": external_id,
-                    }
-
-                    if existing_notice_task:
-                        container.personal_task_repository.update_task(
-                            existing_notice_task["id"],
-                            user_id=user.id,
-                            fields=fields,
-                        )
-                        continue
-
-                    if _is_chaoxing_assignment_duplicate(
-                        container,
-                        user_id=user.id,
-                        course_name=course["name"],
-                        course_id=course.get("course_id"),
-                        notice=notice,
-                        extracted=extracted,
-                    ):
-                        continue
-
-                    container.personal_task_repository.create_task(
-                        user_id=user.id,
-                        title=extracted.task,
-                        description=extracted.source_text,
-                        source_text=extracted.source_text,
-                        deadline=extracted.deadline.isoformat() if extracted.deadline else None,
-                        source_name=course["name"],
-                        source="chaoxing_notice",
-                        source_notice_id=external_id,
-                        external_id=external_id,
-                        course_id=course.get("course_id"),
-                        source_url=notice.get("link"),
-                        priority=fields["priority"],
-                        last_synced_at=now_iso,
-                    )
             except Exception as e:
                 # AI 抽取失败：Notice 仍然正常保存，不抛异常
                 logger.warning("Failed to extract notice %s: %s", external_id, e)
+                continue
+
+            if extracted.actionable:
+                fields = {
+                    "title": extracted.task,
+                    "description": extracted.source_text,
+                    "source_text": extracted.source_text,
+                    "deadline": extracted.deadline.isoformat() if extracted.deadline else None,
+                    "source_name": course["name"],
+                    "course_id": course.get("course_id"),
+                    "source_url": notice.get("link"),
+                    "priority": extracted.importance if extracted.importance in ["low", "medium", "high"] else "medium",
+                    "last_synced_at": now_iso,
+                    "external_id": external_id,
+                }
+
+                if existing_notice_task:
+                    container.personal_task_repository.update_task(
+                        existing_notice_task["id"],
+                        user_id=user.id,
+                        fields=fields,
+                    )
+                    continue
+
+                if _is_chaoxing_assignment_duplicate(
+                    container,
+                    user_id=user.id,
+                    course_name=course["name"],
+                    course_id=course.get("course_id"),
+                    notice=notice,
+                    extracted=extracted,
+                ):
+                    continue
+
+                container.personal_task_repository.create_task(
+                    user_id=user.id,
+                    title=extracted.task,
+                    description=extracted.source_text,
+                    source_text=extracted.source_text,
+                    deadline=extracted.deadline.isoformat() if extracted.deadline else None,
+                    source_name=course["name"],
+                    source="chaoxing_notice",
+                    source_notice_id=external_id,
+                    external_id=external_id,
+                    course_id=course.get("course_id"),
+                    source_url=notice.get("link"),
+                    priority=fields["priority"],
+                    last_synced_at=now_iso,
+                )
+            elif existing_notice_task and existing_notice_task["status"] == "pending":
+                container.personal_task_repository.complete(
+                    existing_notice_task["id"],
+                    user_id=user.id,
+                )
 
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at

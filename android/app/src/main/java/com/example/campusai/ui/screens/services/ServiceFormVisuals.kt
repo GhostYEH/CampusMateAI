@@ -83,22 +83,7 @@ internal fun ServiceHeroHeader(
                 .align(Alignment.CenterStart)
                 .padding(top = 12.dp),
         ) {
-            if (showBack) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .shadow(12.dp, CircleShape, ambientColor = Color(0x1B3A5586), spotColor = Color(0x1B3A5586))
-                        .clip(CircleShape)
-                        .background(Surface)
-                        .campusClickable(onClick = onBack),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = TextPrimary, modifier = Modifier.size(27.dp))
-                }
-                Spacer(Modifier.height(18.dp))
-            } else {
-                Spacer(Modifier.height(42.dp))
-            }
+            Spacer(Modifier.height(42.dp))
             Text(title, color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-.5).sp)
             Spacer(Modifier.height(7.dp))
             Text(subtitle, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)

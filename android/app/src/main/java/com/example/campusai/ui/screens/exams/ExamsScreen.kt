@@ -65,7 +65,6 @@ import com.example.campusai.R
 import com.example.campusai.data.model.Exam
 import com.example.campusai.data.model.ExamStatus
 import com.example.campusai.data.repository.ExamRepository
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.EmptyState
 import com.example.campusai.ui.components.ErrorState
 import com.example.campusai.ui.components.LoadingState
@@ -112,24 +111,19 @@ fun ExamsScreen(
             .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(16.dp))
-        CampusPageHeader(
-            title = CampusStrings.Exams.TITLE,
-            subtitle = CampusStrings.Exams.SUBTITLE,
-            onBack = onBack,
-            actions = {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .shadow(10.dp, CircleShape, ambientColor = Primary.copy(alpha = .28f), spotColor = Primary.copy(alpha = .36f))
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFF6679FF), Color(0xFF4054EF))))
-                        .campusClickable { onOpenEdit(null) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Add, CampusStrings.Exams.ADD, tint = Color.White, modifier = Modifier.size(28.dp))
-                }
-            },
-        )
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .shadow(10.dp, CircleShape, ambientColor = Primary.copy(alpha = .28f), spotColor = Primary.copy(alpha = .36f))
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(Color(0xFF6679FF), Color(0xFF4054EF))))
+                    .campusClickable { onOpenEdit(null) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Add, CampusStrings.Exams.ADD, tint = Color.White, modifier = Modifier.size(28.dp))
+            }
+        }
         Spacer(Modifier.height(18.dp))
 
         when {

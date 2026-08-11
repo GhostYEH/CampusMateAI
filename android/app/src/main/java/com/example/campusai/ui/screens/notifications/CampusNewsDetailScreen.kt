@@ -109,22 +109,6 @@ fun CampusNewsDetailScreen(
                     .background(Color.White.copy(alpha = 0.05f)),
             )
 
-            // 返回按钮
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .statusBarsPadding(),
-            ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "返回",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-
             // 来源标签
             Row(
                 modifier = Modifier

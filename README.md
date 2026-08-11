@@ -445,6 +445,24 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 
 > 移动端通过 `BuildConfig.API_BASE_URL` 配置后端地址(Web 端使用 Vite proxy + axios)，默认指向 `http://localhost:8000`(Web)或 `http://10.0.2.2:8000`(Android 模拟器)。
 
+## 本地后端开发（Local backend development）
+
+后端必须监听所有网卡：`uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`（仓库 `start_backend.bat` 已是此配置）。
+
+| 客户端 | Debug 地址 | 说明 |
+|--------|------------|------|
+| Windows 浏览器 / Web | `http://localhost:8000` / `http://127.0.0.1:8000` | 同机直连 |
+| Android Studio Emulator | `http://10.0.2.2:8000/api/v1/` | `10.0.2.2` 是 Android Emulator 专属宿主机映射 |
+| HarmonyOS DevEco Previewer | `http://127.0.0.1:8000/api/v1` | Previewer 与后端同机 |
+| HarmonyOS DevEco Emulator | `http://<PC_IPV4>:8000/api/v1` | Emulator 无 `10.0.2.2` 映射，需 Windows 局域网 IPv4 |
+| 真机（Android / HarmonyOS） | `http://<PC_IPV4>:8000/api/v1` | 手机与电脑同网 |
+
+- `<PC_IPV4>` 通过 PowerShell `ipconfig` 查询（无线网卡 IPv4 地址）。不要把具体 `192.168.x.x` 写死到仓库。
+- Windows 防火墙需允许 Private 网络 TCP 8000 入站。
+- Release 必须使用正式 `https://...` API，禁止 HTTP 明文，禁止保留开发 IP。
+  - Android Release：`app/build.gradle.kts` 中 release buildType 已覆盖 `API_BASE_URL` 为 HTTPS 占位符；`main/res/xml/network_security_config.xml` 保持 `cleartextTrafficPermitted="false"`。
+  - HarmonyOS Release：`entry/src/main/ets/core/ApiConfig.ets` 中 `RELEASE_API_BASE_URL` 为 HTTPS 占位符。
+
 ## 常见错误排查
 
 ### Q1: 后端连接失败(未连接)
@@ -455,9 +473,12 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 1. 确认后端已启动: 浏览器访问 `http://localhost:8000/api/v1/health`
 2. 确认客户端后端地址正确:
    - Android 模拟器: `http://10.0.2.2:8000`(不是 `localhost`)
+   - HarmonyOS Emulator: `http://<PC_IPV4>:8000`（不是 `127.0.0.1` 或 `10.0.2.2`）
    - Web: `http://localhost:8000`(同源)
    - 真机: `http://<电脑局域网 IP>:8000`
-3. 确认后端 CORS 配置(`CORS_ORIGINS`)允许当前源
+3. 确认后端监听 `0.0.0.0:8000`（不是 `127.0.0.1:8000`）
+4. 确认 Windows 防火墙放行 TCP 8000 入站
+5. 确认后端 CORS 配置(`CORS_ORIGINS`)允许当前源（仅浏览器场景需要，原生 App 不受 CORS 限制）
 
 ### Q2: AI 校园助手回答"建议咨询辅导员"
 

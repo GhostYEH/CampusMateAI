@@ -65,6 +65,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
+import com.example.campusai.ui.navigation.secondaryDestinationSpec
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
@@ -108,6 +109,7 @@ fun AppShell(
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
+    val hasSharedSecondaryNavigation = secondaryDestinationSpec(backStack?.destination?.route) != null
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
     val isProfileFlow = route in profileRoutes
 
@@ -131,7 +133,11 @@ fun AppShell(
         }
         Box(
             Modifier.fillMaxSize().then(
-                if (route == "home" || isProfileFlow) Modifier else Modifier.statusBarsPadding(),
+                if (route == "home" || isProfileFlow || hasSharedSecondaryNavigation) {
+                    Modifier
+                } else {
+                    Modifier.statusBarsPadding()
+                },
             ),
         ) { content() }
         CampusDock(

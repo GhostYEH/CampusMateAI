@@ -24,7 +24,6 @@ import com.example.campusai.data.model.LostFoundKind
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.LostFoundRepository
 import com.example.campusai.ui.components.CampusCard
-import com.example.campusai.ui.components.CampusPageHeader
 import com.example.campusai.ui.components.CampusPrimaryButton
 import com.example.campusai.ui.components.CampusTextField
 import com.example.campusai.ui.components.DateTimeOptions
@@ -70,8 +69,6 @@ fun LostFoundPublishScreen(
             .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(12.dp))
-        CampusPageHeader(title = CampusStrings.LostFound.PUBLISH_TITLE, onBack = onBack)
         Spacer(Modifier.height(14.dp))
         CampusCard {
             FormField(label = "信息类型") {

@@ -15,4 +15,14 @@ class NotificationTextSanitizerTest {
         assertEquals("普通 文本", NotificationTextSanitizer.primaryText(" ", "  普通  文本 "))
         assertNull(NotificationTextSanitizer.clean(" \n\t "))
     }
+
+    @Test
+    fun `joins distinct expanded notification lines`() {
+        assertEquals(
+            "辅导员：请今晚提交登记表\n班长：截止时间延长到明天",
+            NotificationTextSanitizer.joinedLines(
+                arrayOf(" 辅导员：请今晚提交登记表 ", "", "辅导员：请今晚提交登记表", "班长：截止时间延长到明天"),
+            ),
+        )
+    }
 }

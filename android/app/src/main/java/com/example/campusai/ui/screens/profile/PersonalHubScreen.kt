@@ -48,6 +48,7 @@ fun PersonalHubScreen(
     repository: AppRepository,
     initialSection: String,
     onBack: () -> Unit,
+    onSectionNavigate: (String) -> Unit,
     onNavigate: (String) -> Unit,
 ) {
     val files by repository.files.collectAsState()
@@ -76,16 +77,17 @@ fun PersonalHubScreen(
     ) { inner ->
         Box(Modifier.fillMaxSize().padding(inner).background(Background)) {
             Column(Modifier.fillMaxSize()) {
-                PersonalHubHeader(section.label, onBack)
             PersonalSectionTabs(
                 selected = section,
                 onSelected = {
-                    sectionName = when (it) {
+                    val targetSection = when (it) {
                         PersonalSection.Files -> "files"
                         PersonalSection.Activities -> "activities"
                         PersonalSection.Favorites -> "favorites"
                     }
-                    query = ""
+                    if (targetSection != sectionName) {
+                        onSectionNavigate(targetSection)
+                    }
                 },
             )
             SearchField(
@@ -209,22 +211,6 @@ private fun PersonalHubLoading() {
         CircularProgressIndicator(color = Primary, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
         Spacer(Modifier.height(12.dp))
         Text("正在读取当前账号内容", color = Muted, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun PersonalHubHeader(title: String, onBack: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, "返回", tint = TextPrimary)
-        }
-        Column(Modifier.padding(start = 4.dp)) {
-            Text("我的$title", color = TextPrimary, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-            Text("内容仅保存在当前登录账号下", color = Muted, fontSize = 11.sp)
-        }
     }
 }
 
