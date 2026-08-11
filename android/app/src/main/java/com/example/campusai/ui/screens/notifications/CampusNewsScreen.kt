@@ -103,7 +103,9 @@ fun CampusNewsScreen(
             isRefreshing = true
             refreshError = null
             try {
-                repository.refreshCampusNews()
+                if (!repository.refreshCampusNews()) {
+                    refreshError = "刷新失败，请稍后重试"
+                }
             } catch (_: Exception) {
                 refreshError = "刷新失败，请稍后重试"
             } finally {

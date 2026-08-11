@@ -50,6 +50,8 @@ class AppRepository(
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val campusNewsPreferencesMutex = Mutex()
+    private val newsReadIdsReady = CompletableDeferred<Unit>()
+    private val newsFavoriteIdsReady = CompletableDeferred<Unit>()
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
@@ -155,11 +157,22 @@ class AppRepository(
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
-        scope.launch { newsPreferences.campusNewsReadIds.collect { _newsReadIds.value = it } }
-        scope.launch { newsPreferences.campusNewsFavoriteIds.collect { _newsFavoriteIds.value = it } }
+        scope.launch {
+            newsPreferences.campusNewsReadIds.collect {
+                _newsReadIds.value = it
+                newsReadIdsReady.complete(Unit)
+            }
+        }
+        scope.launch {
+            newsPreferences.campusNewsFavoriteIds.collect {
+                _newsFavoriteIds.value = it
+                newsFavoriteIdsReady.complete(Unit)
+            }
+        }
     }
 
     suspend fun markCampusNewsRead(newsId: String) = campusNewsPreferencesMutex.withLock {
+        newsReadIdsReady.await()
         val ids = _newsReadIds.value
         if (newsId !in ids) {
             val updatedIds = ids + newsId
@@ -169,6 +182,7 @@ class AppRepository(
     }
 
     suspend fun toggleCampusNewsFavorite(newsId: String) = campusNewsPreferencesMutex.withLock {
+        newsFavoriteIdsReady.await()
         val ids = _newsFavoriteIds.value
         val updatedIds =
             if (newsId in ids) ids - newsId else ids + newsId
@@ -315,29 +329,32 @@ class AppRepository(
     }
 
     /** 拉取校园动态（来自全校活动）。 */
-    suspend fun refreshCampusNews() {
-        if (!_backendOnline.value || _mockMode.value) return
-        try {
+    suspend fun refreshCampusNews(): Boolean {
+        if (!_backendOnline.value || _mockMode.value) return true
+        return try {
             val resp = ApiClient.api.listActivities(page = 1, pageSize = 50)
-            if (resp.isSuccessful) {
+            if (!resp.isSuccessful) {
+                false
+            } else {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _campusNews.value = items.map { dto ->
-                        CampusNews(
-                            id = dto.id,
-                            title = dto.title,
-                            summary = dto.summary ?: "",
-                            content = dto.content ?: "",
-                            source = dto.author_name ?: "校园活动",
-                            time = dto.published_at ?: dto.created_at ?: "",
-                            category = dto.category ?: "校园活动",
-                            tags = emptyList(),
-                            relatedTasks = emptyList(),
-                        )
-                    }
+                _campusNews.value = items.map { dto ->
+                    CampusNews(
+                        id = dto.id,
+                        title = dto.title,
+                        summary = dto.summary ?: "",
+                        content = dto.content ?: "",
+                        source = dto.author_name ?: "校园活动",
+                        time = dto.published_at ?: dto.created_at ?: "",
+                        category = dto.category ?: "校园活动",
+                        tags = emptyList(),
+                        relatedTasks = emptyList(),
+                    )
                 }
+                true
             }
-        } catch (_: Exception) { /* 保留现有数据 */ }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** 拉取课程列表。 */
