@@ -30,13 +30,15 @@ $env:DEVECO_SDK_HOME='D:\DevEco Studio\sdk'
 
 ## 后端地址
 
-默认地址在 `entry/src/main/ets/pages/Index.ets` 的 `API_BASE_URL`：
+API Base URL 集中在 `entry/src/main/ets/core/ApiConfig.ets`，业务页面不直接写地址。
 
-```text
-http://127.0.0.1:8000/api/v1
-```
+- Debug（DevEco Previewer 同机）：`http://127.0.0.1:8000/api/v1`
+- Debug（独立 DevEco Emulator）：需把 `ApiConfig.ets` 中的 `DEV_HOST` 改为 Windows 宿主机当前局域网 IPv4（PowerShell `ipconfig` 查看），例如 `192.168.1.100`，再重新构建。**不要把具体局域网 IP 提交到仓库。**
+- Release：`https://api.campusmate.example.com/api/v1`（正式 HTTPS 占位，禁止 HTTP）
 
-DevEco Previewer 与后端同机时可直接使用。真机或独立模拟器需要将该值改为手机可访问的电脑局域网地址，并确保后端监听对应网卡、防火墙放行端口。
+HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` 在独立模拟器中指向模拟器自身而非 Windows，因此 Emulator 调试必须使用 Windows 局域网 IPv4。
+
+后端必须 `uvicorn app.main:app --host 0.0.0.0 --port 8000`，且 Windows 防火墙允许 Private 网络 TCP 8000 入站。
 
 ## 原样迁移的视觉资源
 

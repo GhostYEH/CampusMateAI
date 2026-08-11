@@ -167,3 +167,11 @@ qa/
 
 # Isolated local Git worktrees
 .worktrees/
+
+# HarmonyOS 构建产物 / 缓存 / 本地配置(不纳入版本控制)
+harmony/.hvigor/
+harmony/build/
+harmony/entry/build/
+harmony/.appanalyzer/
+harmony/local.properties
+harmony/.cxx/

@@ -188,7 +188,7 @@ private fun LostHero(
             ),
     ) {
         Image(
-                painter = painterResource(R.drawable.hero_lost_found_reference),
+                painter = painterResource(R.drawable.hero_lost_found),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

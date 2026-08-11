@@ -233,16 +233,16 @@ interface ApiService {
     @POST("notices/ingest")
     suspend fun ingestNotice(@Body request: NoticeIngestRequest): Response<Unit> // 假设后端返回200 OK即可
 
-    @POST("api/v1/chaoxing/login")
+    @POST("chaoxing/login")
     suspend fun loginChaoxing(@Body request: ChaoxingLoginRequest): Response<Unit>
 
-    @POST("api/v1/chaoxing/sync")
+    @POST("chaoxing/sync")
     suspend fun syncChaoxing(): Response<Unit>
 
-    @POST("api/v1/chaoxing/disconnect")
+    @POST("chaoxing/disconnect")
     suspend fun disconnectChaoxing(): Response<Unit>
 
-    @GET("api/v1/chaoxing/status")
+    @GET("chaoxing/status")
     suspend fun getChaoxingStatus(): Response<ChaoxingSyncStatusResponse>
 
     // 校园通知列表（聚合学生可见班级的已发布通知）
