@@ -76,8 +76,6 @@ fun AccountScreen(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            ReferenceSubpageHeader("账号设置", "修改校园身份与联系方式", onBack)
-
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp)
                     .enterAnimation(enabled = !reduceMotion),

@@ -84,7 +84,7 @@ fun ServicesScreen(repository: ServiceRepository, reduceMotion: Boolean, onBack:
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = BottomDockReservedHeight + 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { ServiceHero(onBack) }
+        item { ServiceHero() }
         item { ServiceSummary(processing, completed, onNavigate) }
         item { SectionTitle("常用服务", "校园事务，轻松办理", "全部服务") }
         item {
@@ -103,12 +103,10 @@ fun ServicesScreen(repository: ServiceRepository, reduceMotion: Boolean, onBack:
     }
 }
 
-@Composable private fun ServiceHero(onBack: () -> Unit) {
+@Composable private fun ServiceHero() {
     androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(218.dp)) {
         Image(painterResource(R.drawable.hero_services), null, Modifier.fillMaxWidth().height(218.dp), contentScale = ContentScale.Crop, alpha = .82f)
         Row(Modifier.padding(top = 34.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircleIcon(Icons.Default.ChevronRight, "返回", onBack, rotation = 180f)
-            Spacer(Modifier.width(16.dp))
             Column {
                 Text("办事大厅", color = TextPrimary, fontSize = 31.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))

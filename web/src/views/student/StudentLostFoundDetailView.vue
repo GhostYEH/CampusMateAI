@@ -4,9 +4,21 @@ import { useRoute, useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import { deleteLostFound, getLostFoundItem } from "../../services/studentApi";
 
-const route = useRoute(); const router = useRouter(); const loading = ref(true); const error = ref(""); const item = ref(null); const removing = ref(false);
+const route = useRoute(); const router = useRouter(); const loading = ref(true); const error = ref(""); const item = ref(null); const removing = ref(false); const toast = ref("");
+const previewItems = {
+  "demo-cup": { id: "demo-cup", kind: "lost", title: "米色保温杯", content: "奶茶色保温杯，带提绳，杯身有小猫贴纸。遗失时间约为今天上午，如有拾到请与我联系。", location: "图书馆三楼 自习区", contact: "李同学 138****2456", status: "open", created_at: "2026-08-11T09:30:00" },
+  "demo-headphones": { id: "demo-headphones", kind: "found", title: "黑色降噪耳机", content: "折叠式蓝牙耳机，疑似索尼 WH-1000XM4，在教学楼 A203 教室发现。请说明耳机壳细节后认领。", location: "教学楼 A203 教室", contact: "校园服务中心", status: "open", created_at: "2026-08-11T09:45:00" },
+  "demo-card": { id: "demo-card", kind: "lost", title: "学生证（张同学）", content: "蓝色学生证，姓名张同学，信息学院。请拾到的同学通过站内联系归还。", location: "第一食堂一楼", contact: "张同学 150****6732", status: "open", created_at: "2026-08-10T18:30:00" },
+  "demo-wallet": { id: "demo-wallet", kind: "found", title: "黑色钱包", content: "超软黑色钱包，内有交通卡与部分现金。为保护隐私，请联系时说明钱包特征。", location: "操场看台区", contact: "校园服务中心", status: "open", created_at: "2026-08-10T16:10:00" },
+  "demo-bag": { id: "demo-bag", kind: "lost", title: "绿色双肩包", content: "一只军绿色书包，内有书本与笔记本。", location: "体育馆健身区", contact: "王同学 176****8891", status: "open", created_at: "2026-08-10T14:22:00" },
+  "demo-laptop": { id: "demo-laptop", kind: "found", title: "银色笔记本电脑", content: "MacBook Air 13 寸，带保护壳。", location: "图书馆一楼入口处", contact: "校园服务中心", status: "open", created_at: "2026-08-09T21:05:00" },
+  "demo-key": { id: "demo-key", kind: "found", title: "钥匙串（含门禁卡）", content: "一串钥匙，含蓝色门禁卡。", location: "宿舍区 6 栋楼下", contact: "校园服务中心", status: "open", created_at: "2026-08-09T19:40:00" },
+  "demo-airpods": { id: "demo-airpods", kind: "found", title: "白色蓝牙耳机", content: "该物品已经由失主认领，感谢大家的帮助。", location: "教学楼 B101", contact: "失主：赵同学", status: "claimed", created_at: "2026-08-08T15:30:00" },
+};
 function dateText(value) { if (!value) return "时间待补充"; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("zh-CN"); }
-async function load() { loading.value = true; error.value = ""; try { item.value = await getLostFoundItem(route.params.itemId); } catch (e) { error.value = e.response?.data?.detail || "信息详情加载失败。"; } finally { loading.value = false; } }
+function notify(text) { toast.value = text; window.setTimeout(() => { if (toast.value === text) toast.value = ""; }, 2200); }
+async function load() { loading.value = true; error.value = ""; try { item.value = await getLostFoundItem(route.params.itemId); } catch (e) { item.value = previewItems[route.params.itemId] || null; if (!item.value) error.value = e.response?.data?.detail || "信息详情加载失败。"; } finally { loading.value = false; } }
+async function copyContact() { if (!item.value?.contact) return; try { await navigator.clipboard?.writeText(item.value.contact); } finally { notify("联系方式已复制"); } }
 async function remove() { if (!item.value || !window.confirm("确认删除这条发布吗？")) return; removing.value = true; try { await deleteLostFound(item.value.id); router.replace("/lostfound"); } catch (e) { error.value = e.response?.data?.detail || "删除失败，请重试。"; } finally { removing.value = false; } }
 onMounted(load);
 </script>
@@ -83,6 +95,7 @@ onMounted(load);
               <span class="ld-contact-icon" :class="item.kind === 'lost' ? 'warm' : 'green'"><UiIcon name="PhChatCircleText" :size="20" /></span>
               <strong>{{ item.contact || '未留联系方式' }}</strong>
               <p>核对物品特征后再联系，线下交接选择公共区域。</p>
+              <button class="redesign-button secondary" @click="copyContact"><UiIcon name="PhCopy" :size="14" />复制联系方式</button>
             </div>
           </section>
 
@@ -93,5 +106,6 @@ onMounted(load);
         </aside>
       </section>
     </template>
+    <Transition name="toast"><div v-if="toast" class="redesign-toast"><UiIcon name="PhCheckCircle" />{{ toast }}</div></Transition>
   </main>
 </template>

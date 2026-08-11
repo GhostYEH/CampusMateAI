@@ -835,13 +835,7 @@ class AppRepository(application: Application) {
             val resp = ApiClient.api.extractNotice(ExtractRequest(text))
             if (resp.isSuccessful) return resp.body() ?: ExtractResult(error = "提取失败")
         }
-        return ExtractResult(
-            title = "2026年秋季学期选课确认",
-            source = "教务处",
-            deadline = "本周五 17:00",
-            tasks = listOf("登录教务系统核对课程信息", "如有冲突联系学院教务办公室"),
-            confidence = 0.94
-        )
+        return ExtractResult(error = "提取服务暂时不可用，请稍后重试。")
     }
 
     suspend fun enqueueNoticeIngestion(content: String, sourceName: String, publishedAt: String) {

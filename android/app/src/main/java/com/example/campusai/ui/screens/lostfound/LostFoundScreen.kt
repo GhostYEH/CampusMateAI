@@ -114,7 +114,6 @@ fun LostFoundScreen(
     ) {
         item {
             LostHero(
-                onBack = onBack,
                 onMine = onOpenMine,
                 onPublish = onOpenPublish,
             )
@@ -169,7 +168,6 @@ fun LostFoundScreen(
 
 @Composable
 private fun LostHero(
-    onBack: () -> Unit,
     onMine: () -> Unit,
     onPublish: () -> Unit,
 ) {
@@ -190,7 +188,7 @@ private fun LostHero(
             ),
     ) {
         Image(
-            painter = painterResource(R.drawable.hero_lost_found),
+                painter = painterResource(R.drawable.hero_lost_found_reference),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -199,23 +197,6 @@ private fun LostHero(
                 .width(272.dp)
                 .height(252.dp),
         )
-        Box(
-            modifier = Modifier
-                .padding(start = 20.dp, top = 18.dp)
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(Surface.copy(alpha = .78f))
-                .border(1.dp, Color.White.copy(alpha = .72f), CircleShape)
-                .campusClickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBackIosNew,
-                contentDescription = "返回",
-                tint = TextPrimary,
-                modifier = Modifier.size(20.dp),
-            )
-        }
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -391,14 +372,14 @@ private fun CategoryRow(
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         categories.forEach { category ->
             val active = category == selected
             Text(
                 text = category,
                 color = if (active) Color.White else TextPrimary,
-                fontSize = 14.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 modifier = Modifier
@@ -410,7 +391,7 @@ private fun CategoryRow(
                         CircleShape,
                     )
                     .campusClickable { onSelect(category) }
-                    .padding(horizontal = 17.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
             )
         }
     }

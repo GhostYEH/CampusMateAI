@@ -7,5 +7,6 @@ import "./styles/student-base.css";
 import "./styles/student-pages.css";
 import "./styles/student-redesign.css";
 import "./styles/student-home.css";
+import "./styles/student-profile-reference.css";
 
 createApp(App).use(createPinia()).use(router).mount("#app");

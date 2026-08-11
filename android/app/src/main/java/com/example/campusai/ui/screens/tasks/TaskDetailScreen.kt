@@ -2,6 +2,7 @@ package com.example.campusai.ui.screens.tasks
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -71,25 +72,25 @@ fun TaskDetailScreen(
         }
     }
 
+    fun handleBack() {
+        if (isEditing && hasChanges) {
+            scope.launch {
+                repository.updateTask(task.id, editTitle, editDue, editCourse, editDescription)
+            }
+        }
+        onBack()
+    }
+    BackHandler(onBack = ::handleBack)
+
     Box(Modifier.fillMaxSize().background(Background)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // ── Top bar ──
+            // Editing actions stay in content; navigation is owned by AppNavHost.
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(start = 4.dp, top = 8.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = {
-                    if (isEditing && hasChanges) {
-                        scope.launch {
-                            repository.updateTask(task.id, editTitle, editDue, editCourse, editDescription)
-                        }
-                    }
-                    onBack()
-                }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = TextPrimary)
-                }
                 Spacer(Modifier.weight(1f))
                 if (isEditing) {
                     TextButton(onClick = {

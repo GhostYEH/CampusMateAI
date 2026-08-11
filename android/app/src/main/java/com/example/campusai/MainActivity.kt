@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.WindowCompat
@@ -23,6 +24,7 @@ import com.example.campusai.ui.theme.CampusAITheme
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.campusai.workers.ChaoxingSyncWorker
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
@@ -78,6 +80,7 @@ fun CampusAIApp(
 ) {
     val session by repository.session.collectAsState()
     val navController = rememberNavController()
+    val context = LocalContext.current
 
     if (session == null) {
         LoginScreen(
@@ -87,8 +90,17 @@ fun CampusAIApp(
     } else {
         // 应用启动时，自动同步一次学习通任务
         LaunchedEffect(session) {
-            repository.syncChaoxing()
-            repository.refreshTasks()
+            val syncStateStore = com.example.campusai.workers.ChaoxingSyncStateStore(context)
+            if (syncStateStore.isConnected.first()) {
+                val syncResult = repository.syncChaoxing()
+                if (syncResult.first) {
+                    repository.refreshCourses()
+                    repository.refreshTasks()
+                    repository.refreshNotices()
+                } else if (syncResult.second == "reauth_required" || syncResult.second == "verification_required") {
+                    syncStateStore.setReauthRequired(true)
+                }
+            }
             
             // 检查是否有未上传的通知，如果有则重新调度 Worker
             val pendingNotices = repository.getPendingNotices().filter { it.status == "pending" }
