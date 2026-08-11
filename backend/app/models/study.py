@@ -39,6 +39,7 @@ class StudyBreakRow:
 class StudySessionRow:
     id: str
     user_id: str
+    mode: str
     goal: Optional[str]
     related_task_id: Optional[str]
     started_at: str
@@ -75,6 +76,7 @@ class StudySessionRow:
         return cls(
             id=row["id"],
             user_id=row["user_id"],
+            mode=row["mode"],
             goal=row["goal"],
             related_task_id=row["related_task_id"],
             started_at=row["started_at"],

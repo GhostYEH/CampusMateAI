@@ -92,6 +92,7 @@ def _session_to_out(
     return StudySessionOut(
         id=s.id,
         user_id=s.user_id,
+        mode=s.mode,
         goal=s.goal,
         related_task_id=s.related_task_id,
         started_at=s.started_at,
@@ -146,6 +147,7 @@ def create_session(
         raise ValidationFailed("goal 不能为空白字符串")
     session = repo.create_session(
         user_id=user.id,
+        mode=req.mode,
         goal=req.goal.strip() if req.goal else None,
         related_task_id=req.related_task_id,
     )
