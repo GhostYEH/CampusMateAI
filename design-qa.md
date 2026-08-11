@@ -25,6 +25,38 @@ No actionable P0, P1, or P2 findings remain. Chinese typography is readable at b
 
 Final result: passed
 
+# Collapsed Student Sidebar Top Alignment Design QA
+
+- Source visual truth: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-01e90251-e5fa-41f6-b49d-301c76c3d388.png`
+- Implementation screenshot: `F:\demo1\artifacts\sidebar-qa\sidebar-after-profile.png`
+- Viewport: 1440 x 944 desktop (DPR 1), authenticated student mock session at `/profile`, collapsed desktop sidebar.
+- Comparison evidence: `F:\demo1\artifacts\sidebar-qa\sidebar-comparison.png` and `sidebar-top-comparison.png`.
+
+## Findings
+
+No actionable P0, P1, or P2 mismatches remain in the requested brand-and-avatar alignment scope.
+
+- The visual rail center is `40.6px`; the 46px brand mark, 44px avatar, eight primary navigation icons, and four bottom action icons have the same `centerX`, with a maximum measured offset of `0px`.
+- Existing tokens, Phosphor cap icon, text avatar, labels, tooltips, profile routes, click handlers, and expanded desktop behavior are unchanged.
+- At 820 x 944, the mobile drawer remains 270px wide, retains its expanded labels and 47/49px top visuals, and has `0px` horizontal document overflow.
+
+## Implementation Checklist
+
+- [x] Add desktop-only collapsed rules at the winning student stylesheet specificity and replace the regression test with coverage for those final rules.
+- [x] Verify focused test behavior, rendered element bounds at 1440 x 944, expanded desktop and mobile drawer behavior, and source/implementation comparison images.
+
+## Patches Made Since Previous QA Pass
+
+- Reset the collapsed brand horizontal padding and centered its 46px square.
+- Replaced the collapsed profile's retained three-column grid with one centered track.
+- Reset collapsed profile horizontal padding, fixed the avatar to a 44px square, and scoped profile-copy/caret hiding to desktop student collapsed mode.
+
+## Follow-up Polish
+
+- No top-rail P3 items remain.
+
+Final result: passed
+
 # Tasks and Focus visual QA
 
 - Source visual truth: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-4e19b777-b07f-4bba-b974-5208d8205c79.png` and `C:\Users\32883\AppData\Local\Temp\codex-clipboard-807bbdcc-c992-456c-9d79-5f6c2c99df56.png`
