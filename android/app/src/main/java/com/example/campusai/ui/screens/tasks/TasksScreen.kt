@@ -1,10 +1,8 @@
 package com.example.campusai.ui.screens.tasks
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -18,100 +16,160 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.ModeBadge
-import com.example.campusai.ui.components.campusClickable
-import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
-private val TaskOrange = Color(0xFFE08A4E)
+private val ScreenLavender = Color(0xFFF4F5FF)
+private val TaskOrange = Color(0xFFFF8A4C)
+private val TaskGreen = Color(0xFF24B16A)
+private val TaskBlue = Color(0xFF5364F4)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     val tasks by repository.tasks.collectAsState()
-    val pendingCount by repository.pendingCount.collectAsState()
-    val mockMode by repository.mockMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val backendOnline by repository.backendOnline.collectAsState()
+    val taskError by repository.taskError.collectAsState()
     val scope = rememberCoroutineScope()
-    var filter by remember { mutableStateOf("待完成") }
+    var filter by remember { mutableStateOf("全部") }
+    var search by remember { mutableStateOf("") }
     var showAddSheet by remember { mutableStateOf(false) }
     var deletingTask by remember { mutableStateOf<Task?>(null) }
 
-    // 进入页面时尝试从后端拉取最新任务
     LaunchedEffect(Unit) { repository.refreshTasks() }
-    val filtered = tasks.filter {
-        when (filter) {
-            "已完成" -> it.done
-            "全部" -> true
-            else -> !it.done
+    val pending = remember(tasks) { tasks.filterNot(Task::done) }
+    val today = remember(pending) { pending.filter { it.due.contains("今天") || it.due.contains(LocalDate.now().toString()) } }
+    val nearDeadline = remember(pending) { pending.filter { task ->
+        task.due.contains("今天") || task.due.contains("明天") || task.due.contains("截止")
+    } }
+    val courses = remember(tasks) { tasks.map(Task::course).filter { it.isNotBlank() }.distinct() }
+    val visibleTasks = remember(tasks, filter, search) {
+        tasks.filter { task ->
+            val matchesFilter = when (filter) {
+                "今日" -> task in today
+                "课程" -> task.course.isNotBlank()
+                "个人事务" -> task.course.contains("个人")
+                "已完成" -> task.done
+                else -> true
+            }
+            matchesFilter && (search.isBlank() || task.title.contains(search, true) || task.course.contains(search, true))
         }
     }
+    val progress = if (tasks.isEmpty()) 0f else tasks.count(Task::done).toFloat() / tasks.size
 
-    Box(Modifier.fillMaxSize().background(Background)) {
+    Box(Modifier.fillMaxSize().background(ScreenLavender)) {
         LazyColumn(
-            Modifier.fillMaxSize().background(Background),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                top = 12.dp,
-                end = 16.dp,
-                bottom = BottomDockReservedHeight + 76.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, top = 22.dp, end = 16.dp, bottom = BottomDockReservedHeight + 86.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { TaskHeader(mockMode) }
-            item { TaskHero(tasks, pendingCount, reduceMotion) }
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(listOf("待完成", "已完成", "全部")) { item ->
-                        FilterChip(
-                            selected = filter == item,
-                            onClick = { filter = item },
-                            label = { Text(item) },
-                            leadingIcon = if (filter == item) {
-                                { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }
-                            } else null,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimarySoft,
-                                selectedLabelColor = Primary,
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = filter == item,
-                                borderColor = Line,
-                                selectedBorderColor = Primary.copy(alpha = .24f),
-                            ),
-                        )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Column {
+                        Text("待办", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("把重要事情安排得更清楚", color = Muted, fontSize = 15.sp)
+                    }
+                    Surface(shape = RoundedCornerShape(12.dp), color = Surface, shadowElevation = 2.dp) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(9.dp).clip(CircleShape).background(if (backendOnline) TaskGreen else TaskOrange))
+                            Spacer(Modifier.width(7.dp))
+                            Text(if (backendOnline) "真实后端" else "等待后端", fontSize = 12.sp, color = TextPrimary)
+                        }
+                    }
+                }
+            }
+            taskError?.let { message ->
+                item {
+                    Surface(shape = RoundedCornerShape(15.dp), color = Color(0xFFFFEEE9)) {
+                        Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudOff, null, tint = TaskOrange, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text(message, Modifier.weight(1f), color = TextPrimary, fontSize = 12.sp)
+                            TextButton(onClick = { scope.launch { repository.refreshTasks() } }) { Text("重试", color = TaskBlue) }
+                        }
+                    }
+                }
+            }
+            item { TaskOverview(today.size, nearDeadline.size, tasks.count(Task::done), tasks.size, progress) }
+            item { TaskDateStrip(onCalendar = { onNavigate("task_calendar") }) }
+            item {
+                Column(
+                    Modifier.clip(RoundedCornerShape(24.dp)).background(Surface).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("搜索任务 / 课程 / 关键词", color = Muted) },
+                        leadingIcon = { Icon(Icons.Default.Search, null, tint = Muted) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Primary),
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        items(listOf("全部", "今日", "课程", "个人事务", "已完成")) { label ->
+                            FilterChip(
+                                selected = filter == label,
+                                onClick = { filter = label },
+                                label = { Text(label, fontSize = 13.sp) },
+                                shape = RoundedCornerShape(18.dp),
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TaskBlue, selectedLabelColor = Color.White),
+                                border = FilterChipDefaults.filterChipBorder(borderColor = Line, selectedBorderColor = TaskBlue, enabled = true, selected = filter == label),
+                            )
+                        }
                     }
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Text(filter, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("${filtered.size} 项", color = Muted, fontSize = 12.sp)
+                SmartFocusCard(
+                    task = visibleTasks.firstOrNull { !it.done },
+                    onFocus = { task -> onNavigate("focus?taskId=${task.id}") },
+                )
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (filter == "全部") "今日重点" else filter, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, color = TextPrimary)
+                    Text("${visibleTasks.size} 项", color = Muted, fontSize = 13.sp)
                 }
             }
-            if (filtered.isEmpty()) {
-                item { TaskEmpty(filter) }
+            if (visibleTasks.isEmpty()) {
+                item { EmptyTasks(backendOnline, onRetry = { scope.launch { repository.refreshTasks() } }) }
             } else {
-                items(filtered, key = { it.id }) { task ->
-                    TaskCard(
+                items(visibleTasks, key = Task::id) { task ->
+                    DashboardTaskRow(
                         task = task,
-                        reduceMotion = reduceMotion,
-                        onClick = { onNavigate("task_detail/${task.id}") },
+                        onOpen = { onNavigate("task_detail/${task.id}") },
                         onToggle = { scope.launch { repository.toggleTask(task.id) } },
                         onDelete = { deletingTask = task },
                     )
+                }
+            }
+            if (courses.isNotEmpty()) {
+                item {
+                    Column(Modifier.clip(RoundedCornerShape(24.dp)).background(Surface).padding(16.dp)) {
+                        Text("任务来源课程", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
+                        Spacer(Modifier.height(12.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(courses) { course ->
+                                Surface(color = PrimarySoft, shape = RoundedCornerShape(14.dp)) {
+                                    Text(course, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -120,167 +178,117 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             onClick = { showAddSheet = true },
             icon = { Icon(Icons.Default.Add, null) },
             text = { Text("新建待办", fontWeight = FontWeight.Bold) },
-            containerColor = Primary,
+            containerColor = TaskBlue,
             contentColor = Color.White,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = BottomDockReservedHeight + 12.dp),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = BottomDockReservedHeight + 14.dp),
         )
     }
 
-    if (showAddSheet) {
-        AddTaskSheet(
-            onDismiss = { showAddSheet = false },
-            onAdd = { title, due ->
-                scope.launch {
-                    repository.addTask(title, due)
-                    showAddSheet = false
-                }
-            },
-        )
-    }
+    if (showAddSheet) AddTaskSheet(
+        onDismiss = { showAddSheet = false },
+        onAdd = { title, due -> scope.launch { repository.addTask(title, due); showAddSheet = false } },
+    )
     deletingTask?.let { task ->
         AlertDialog(
             onDismissRequest = { deletingTask = null },
-            icon = { Icon(Icons.Default.DeleteOutline, null, tint = Danger) },
-            title = { Text("删除这项待办？") },
-            text = { Text(task.title, color = Muted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { repository.deleteTask(task.id) }
-                    deletingTask = null
-                }) { Text("删除", color = Danger) }
-            },
+            title = { Text("删除这项待办？", fontWeight = FontWeight.Bold) },
+            text = { Text("删除后会同步写入后端数据库。", color = Muted) },
+            confirmButton = { TextButton(onClick = { scope.launch { repository.deleteTask(task.id) }; deletingTask = null }) { Text("删除", color = Danger) } },
             dismissButton = { TextButton(onClick = { deletingTask = null }) { Text("取消") } },
-            containerColor = Surface,
         )
     }
 }
 
 @Composable
-private fun TaskHeader(mockMode: Boolean) {
-    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("待办", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-            Text("今天先完成最重要的一小步", color = Muted, fontSize = 13.sp)
-        }
-        ModeBadge(mockMode)
-    }
-}
-
-@Composable
-private fun TaskHero(tasks: List<Task>, pending: Int, reduceMotion: Boolean) {
-    val progress = if (tasks.isEmpty()) 0f else tasks.count { it.done }.toFloat() / tasks.size
-    Box(
-        Modifier.fillMaxWidth().height(164.dp).clip(RoundedCornerShape(24.dp))
-            .background(Surface).border(1.dp, Line, RoundedCornerShape(24.dp))
-            .enterAnimation(enabled = !reduceMotion),
-    ) {
-        Row(
-            Modifier.fillMaxSize().padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("今日进度", color = Muted, fontSize = 12.sp)
-                AnimatedContent(targetState = pending, label = "pending-count") { count ->
-                    Text(
-                        if (count == 0) "都完成啦" else "还有 $count 项",
-                        color = TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                    )
-                }
-                Text("专注当下，不必一次做完所有事", color = Muted, fontSize = 11.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bolt, null, tint = TaskOrange, modifier = Modifier.size(16.dp))
-                    Text("优先处理临近截止任务", color = TextPrimary, fontSize = 11.sp)
-                }
-            }
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.size(72.dp),
-                    color = Primary,
-                    trackColor = Line,
-                    strokeWidth = 7.dp,
-                )
-                Text("${(progress * 100).toInt()}%", color = TextPrimary, fontWeight = FontWeight.Bold)
-            }
-        }
-        Box(
-            Modifier.align(Alignment.BottomStart).padding(start = 20.dp)
-                .width(56.dp).height(3.dp).clip(CircleShape).background(Accent),
-        )
-    }
-}
-
-@Composable
-private fun TaskCard(
-    task: Task,
-    reduceMotion: Boolean,
-    onClick: () -> Unit,
-    onToggle: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val container by animateColorAsState(
-        if (task.done) Success.copy(alpha = .06f) else Surface,
-        tween(if (reduceMotion) 0 else 240),
-        label = "task-color",
-    )
+private fun TaskOverview(today: Int, near: Int, done: Int, all: Int, progress: Float) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(container)
-            .border(1.dp, if (task.done) Success.copy(alpha = .18f) else Line, RoundedCornerShape(20.dp))
-            .enterAnimation(enabled = !reduceMotion),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Surface).padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Checkbox(
-            checked = task.done,
-            onCheckedChange = { onToggle() },
-            colors = CheckboxDefaults.colors(checkedColor = Success, uncheckedColor = Primary),
-            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
-        )
-        Column(
-            Modifier
-                .weight(1f)
-                .campusClickable(onClick = onClick)
-                .padding(top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(
-                task.title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = if (task.done) Muted else TextPrimary,
-                textDecoration = if (task.done) TextDecoration.LineThrough else null,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Schedule, null, tint = if (task.done) Muted else TaskOrange, modifier = Modifier.size(14.dp))
-                Text(task.due, color = Muted, fontSize = 11.sp)
-                Text("·", color = Muted)
-                Text(task.course, color = Muted, fontSize = 11.sp)
+        listOf("今日待办" to today, "临近截止" to near, "已完成" to done, "全部任务" to all).forEachIndexed { index, (label, value) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(label, color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(7.dp))
+                Text(value.toString(), color = when (index) { 1 -> TaskOrange; 2 -> TaskGreen; else -> TextPrimary }, fontWeight = FontWeight.ExtraBold, fontSize = 27.sp)
+                Box(Modifier.padding(top = 5.dp).width(16.dp).height(3.dp).clip(CircleShape).background(if (index == 1) TaskOrange else TaskBlue))
             }
         }
-        IconButton(onClick = onDelete, modifier = Modifier.padding(end = 6.dp)) {
-            Icon(Icons.Default.DeleteOutline, "删除待办", tint = Muted, modifier = Modifier.size(20.dp))
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(62.dp), color = TaskBlue, trackColor = PrimarySoft, strokeWidth = 6.dp)
+            Text("${(progress * 100).toInt()}%", color = TaskBlue, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun TaskEmpty(filter: String) {
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Default.CheckCircle, null, tint = Success, modifier = Modifier.size(38.dp))
-        Text(if (filter == "待完成") "待办已清空，做得不错" else "这里暂时没有内容", fontWeight = FontWeight.Bold)
-        Text("给自己留一点休息时间吧", color = Muted, fontSize = 12.sp)
+private fun TaskDateStrip(onCalendar: () -> Unit) {
+    val now = LocalDate.now()
+    val formatter = DateTimeFormatter.ofPattern("d")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Surface).padding(horizontal = 12.dp, vertical = 11.dp), horizontalArrangement = Arrangement.SpaceAround) {
+            (-3..3).forEach { offset ->
+                val date = now.plusDays(offset.toLong())
+                val selected = offset == 0
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(listOf("一", "二", "三", "四", "五", "六", "日")[date.dayOfWeek.value - 1], color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Box(Modifier.size(35.dp).clip(CircleShape).background(if (selected) TaskBlue else Color.Transparent), contentAlignment = Alignment.Center) {
+                        Text(date.format(formatter), color = if (selected) Color.White else TextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                    Box(Modifier.padding(top = 5.dp).size(6.dp).clip(CircleShape).background(if (selected) TaskOrange else Primary.copy(alpha = .55f)))
+                }
+            }
+        }
+        Surface(onClick = onCalendar, shape = RoundedCornerShape(22.dp), color = Surface) {
+            Column(Modifier.padding(horizontal = 14.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.CalendarMonth, null, tint = Primary)
+                Text("日历视图", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartFocusCard(task: Task?, onFocus: (Task) -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(Modifier.fillMaxWidth().clip(shape).background(Brush.linearGradient(listOf(Color(0xFFF1F0FF), Color(0xFFFBFBFF)))).border(1.dp, Primary.copy(alpha = .22f), shape).padding(18.dp)) {
+        Column(Modifier.padding(end = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.AutoAwesome, null, tint = Primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("智能聚焦", color = Primary, fontWeight = FontWeight.Bold) }
+            Text(task?.title ?: "暂时没有需要聚焦的待办", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(task?.let { "${it.due} · ${it.course}" } ?: "完成新建待办后，可以从这里直接开始专注。", color = Muted, fontSize = 12.sp)
+        }
+        if (task != null) Button(onClick = { onFocus(task) }, modifier = Modifier.align(Alignment.CenterEnd), shape = RoundedCornerShape(22.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Primary)) {
+            Text("去专注", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Surface).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = task.done, onCheckedChange = { onToggle() }, colors = CheckboxDefaults.colors(checkedColor = TaskGreen, uncheckedColor = TaskBlue))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(task.title, color = if (task.done) Muted else TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Schedule, null, tint = Muted, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp)); Text(task.due, color = Muted, fontSize = 12.sp)
+                if (task.course.isNotBlank()) { Spacer(Modifier.width(8.dp)); Surface(color = PrimarySoft, shape = RoundedCornerShape(6.dp)) { Text(task.course, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = Primary, fontSize = 10.sp) } }
+            }
+        }
+        IconButton(onClick = onDelete) { Icon(Icons.Default.MoreVert, null, tint = Muted) }
+    }
+}
+
+@Composable
+private fun EmptyTasks(online: Boolean, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Surface).padding(vertical = 38.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(if (online) Icons.Default.TaskAlt else Icons.Default.CloudOff, null, tint = Primary, modifier = Modifier.size(36.dp))
+        Text(if (online) "还没有待办" else "暂时无法获取后端数据", color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text(if (online) "点击右下角新建第一项待办" else "请检查网络或稍后重试", color = Muted, fontSize = 12.sp)
+        if (!online) TextButton(onClick = onRetry) { Text("重新获取", color = Primary) }
     }
 }
 
@@ -289,44 +297,13 @@ private fun TaskEmpty(filter: String) {
 private fun AddTaskSheet(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
     var title by remember { mutableStateOf("") }
     var due by remember { mutableStateOf("") }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Surface,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text("新建待办", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-            Text("把任务写清楚，开始会更轻松", color = Muted, fontSize = 12.sp)
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("任务名称") },
-                placeholder = { Text("例如：完成数据结构实验报告") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                leadingIcon = { Icon(Icons.Default.EditNote, null) },
-            )
-            OutlinedTextField(
-                value = due,
-                onValueChange = { due = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("截止时间") },
-                placeholder = { Text("例如：今天 23:59") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                leadingIcon = { Icon(Icons.Default.CalendarMonth, null) },
-            )
-            Button(
-                onClick = { onAdd(title.trim(), due.ifBlank { "待设置" }) },
-                enabled = title.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-            ) { Text("添加任务", fontWeight = FontWeight.Bold) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 34.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("新建待办", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+            Text("保存后会直接写入你的后端任务库。", color = Muted, fontSize = 13.sp)
+            OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("任务名称") }, leadingIcon = { Icon(Icons.Default.EditNote, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(value = due, onValueChange = { due = it }, modifier = Modifier.fillMaxWidth(), label = { Text("截止时间") }, placeholder = { Text("例如：今天 23:59") }, leadingIcon = { Icon(Icons.Default.CalendarMonth, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
+            Button(onClick = { onAdd(title.trim(), due.ifBlank { "待设置" }) }, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = TaskBlue)) { Text("保存到待办", fontWeight = FontWeight.Bold) }
         }
     }
 }

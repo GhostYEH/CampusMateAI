@@ -163,6 +163,7 @@ android/app/build-corrupt-backup-20260731/
 
 # Temporary local browser profiles used for screenshot QA
 .qa-*/
+qa/
 
 # Isolated local Git worktrees
 .worktrees/
