@@ -236,4 +236,3 @@ Expected: no feature whitespace errors and no unrelated user-owned file is stage
 - The plan covers navigation, full list controls, local persistence, empty/failure states, unit tests, compilation, and APK build.
 - It relies only on types defined above and has no deferred implementation steps.
 - CampusNews.time is display text, so latest correctly preserves repository/API order instead of inventing a fragile parser.
-
