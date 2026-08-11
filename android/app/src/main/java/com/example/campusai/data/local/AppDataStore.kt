@@ -14,6 +14,7 @@ import com.example.campusai.data.model.FavoriteItem
 import com.example.campusai.data.model.PersonalHubSnapshot
 
 import com.example.campusai.data.model.User
+import com.example.campusai.data.news.CampusNewsPreferences
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.notification.NotificationSource
 import com.example.campusai.data.notification.NotificationSourceSettings
@@ -25,7 +26,7 @@ import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "campus_prefs")
 
-class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyValueStorage {
+class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyValueStorage, CampusNewsPreferences {
 
     private val KEY_SESSION = stringPreferencesKey("campus_session")
     private val KEY_ACCESS_TOKEN = stringPreferencesKey("campus_access_token")
@@ -39,6 +40,23 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private val KEY_NOTIFICATION_XUEXITONG = booleanPreferencesKey("campus_notification_xuexitong")
     private val KEY_NOTIFICATION_QQ = booleanPreferencesKey("campus_notification_qq")
     private val KEY_NOTIFICATION_OTHER = booleanPreferencesKey("campus_notification_other")
+    private val KEY_CAMPUS_NEWS_READ_IDS = stringSetPreferencesKey("campus_news_read_ids")
+    private val KEY_CAMPUS_NEWS_FAVORITE_IDS = stringSetPreferencesKey("campus_news_favorite_ids")
+
+    override val campusNewsReadIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CAMPUS_NEWS_READ_IDS] ?: emptySet()
+    }
+    override val campusNewsFavoriteIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CAMPUS_NEWS_FAVORITE_IDS] ?: emptySet()
+    }
+
+    override suspend fun setCampusNewsReadIds(ids: Set<String>) {
+        context.dataStore.edit { it[KEY_CAMPUS_NEWS_READ_IDS] = ids }
+    }
+
+    override suspend fun setCampusNewsFavoriteIds(ids: Set<String>) {
+        context.dataStore.edit { it[KEY_CAMPUS_NEWS_FAVORITE_IDS] = ids }
+    }
 
     val session: Flow<User?> = context.dataStore.data.map { prefs ->
         prefs[KEY_SESSION]?.let { json: String ->
