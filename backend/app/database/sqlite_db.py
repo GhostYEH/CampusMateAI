@@ -380,6 +380,13 @@ CREATE TABLE IF NOT EXISTS study_breaks (
     FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_study_breaks_session_id ON study_breaks(session_id);
+
+CREATE TABLE IF NOT EXISTS study_goals (
+    user_id TEXT PRIMARY KEY,
+    target_minutes INTEGER NOT NULL CHECK(target_minutes BETWEEN 15 AND 480),
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 
