@@ -150,7 +150,7 @@ onUnmounted(() => {
     <div class="workspace">
       <header class="topbar">
         <div class="command-search">
-          <UiIcon name="PhMagnifyingGlass" :size="20" /><input v-model="search" name="global-search" placeholder="搜索课程、作业、通知或服务" autocomplete="off" @focus="searchOpen = true" /><kbd>⌘ K</kbd>
+          <UiIcon name="PhMagnifyingGlass" :size="20" /><input v-model="search" name="global-search" placeholder="搜索课程、作业或活动" autocomplete="off" @focus="searchOpen = true" /><kbd>⌘ K</kbd>
         </div>
         <div class="top-date"><UiIcon name="PhCalendarBlank" :size="18" />{{ todayLabel }}</div>
         <div class="sync-pill" :class="{ offline: !store.backendOnline }"><UiIcon :name="store.backendOnline ? 'PhCheckCircle' : 'PhCloudSlash'" :size="18" />{{ store.backendOnline ? "已同步 · 刚刚" : "后端未连接" }}</div>

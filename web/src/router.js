@@ -4,7 +4,12 @@ import AppShell from "./views/AppShell.vue";
 import AdminShell from "./views/admin/AdminShell.vue";
 import AdminDashboardView from "./views/admin/AdminDashboardView.vue";
 import AdminKnowledgeView from "./views/admin/AdminKnowledgeView.vue";
+import AdminRagIndexView from "./views/admin/AdminRagIndexView.vue";
+import AdminSystemView from "./views/admin/AdminSystemView.vue";
 import AdminUsersView from "./views/admin/AdminUsersView.vue";
+import StudentSettingsView from "./views/student/StudentSettingsView.vue";
+import StudentExamDetailView from "./views/student/StudentExamDetailView.vue";
+import StudentExamEditView from "./views/student/StudentExamEditView.vue";
 import StudentActivitiesView from "./views/StudentActivitiesView.vue";
 import StudentHomeView from "./views/student/StudentHomeView.vue";
 import StudentCoursesView from "./views/student/StudentCoursesView.vue";
@@ -31,10 +36,11 @@ const router = createRouter({
     { path: "/login", component: LoginView, meta: { public: true } },
     // 管理员控制台
     { path: "/admin", component: AdminShell, meta: { roles: ["admin"] }, children: [
-      { path: "", redirect: "/admin" },
       { path: "", name: "admin-home", component: AdminDashboardView },
       { path: "knowledge", component: AdminKnowledgeView },
       { path: "documents", component: AdminKnowledgeView },
+      { path: "rag-index", component: AdminRagIndexView },
+      { path: "system", component: AdminSystemView },
       { path: "users", component: AdminUsersView },
     ]},
     // 学生端
@@ -52,12 +58,15 @@ const router = createRouter({
       { path: "announcements/:announcementId", component: StudentAnnouncementDetailView, meta: { roles: ["student"] } },
       { path: "study", component: StudentStudyView, meta: { roles: ["student"] } },
       { path: "exams", component: StudentExamsView, meta: { roles: ["student"] } },
+      { path: "exams/:examId", component: StudentExamDetailView, meta: { roles: ["student"] } },
+      { path: "exams/:examId/edit", component: StudentExamEditView, meta: { roles: ["student"] } },
       { path: "services", component: StudentServicesView, meta: { roles: ["student"] } },
       { path: "services/:requestId", component: StudentServiceDetailView, meta: { roles: ["student"] } },
       { path: "classrooms", component: StudentClassroomsView, meta: { roles: ["student"] } },
       { path: "lostfound", component: StudentLostFoundView, meta: { roles: ["student"] } },
       { path: "lostfound/:itemId", component: StudentLostFoundDetailView, meta: { roles: ["student"] } },
       { path: "profile", component: StudentProfileView, meta: { roles: ["student"] } },
+      { path: "profile/settings", component: StudentSettingsView, meta: { roles: ["student"] } },
       { path: "profile/:section", component: StudentProfileHubView, meta: { roles: ["student"] } },
     ]},
   ],

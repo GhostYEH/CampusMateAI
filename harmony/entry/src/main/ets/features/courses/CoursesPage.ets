@@ -1,5 +1,6 @@
 import { CourseItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
+import { SecondaryHeader } from '../../ui/SecondaryHeader';
 
 @Component
 export struct CoursesPage {
@@ -8,9 +9,12 @@ export struct CoursesPage {
   @Prop darkMode: boolean = false;
   @State selectedDay: number = 0;
   @State selectedType: string = '全部';
+  @State selectedId: string = '';
   onRefresh: () => void = () => {};
+  onBack: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  selectedCourse(): CourseItem | undefined { return this.courses.find((item: CourseItem) => item.id === this.selectedId); }
 
   @Builder Header() {
     Row() {
@@ -136,36 +140,76 @@ export struct CoursesPage {
     }.width('100%').padding({ left: 11, right: 11, top: 10, bottom: 10 })
       .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(14)
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-      .gesture(
-        TapGesture({ count: 1 })
-          .onAction(() => {
-            animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-            })
-          })
-      )
+      .onClick(() => this.selectedId = course.id)
+  }
+
+  @Builder CourseDetail(course: CourseItem) {
+    Scroll() {
+      Column({ space: 13 }) {
+        Stack({ alignContent: Alignment.BottomStart }) {
+          Column().width('100%').height(180).linearGradient({ angle: 135, colors: [['#FF5368E8', 0.0], ['#FF7586F5', 1.0]] })
+          Column({ space: 6 }) {
+            Text(course.name).fontColor('#FFFFFFFF').fontSize(24).fontWeight(FontWeight.Bold).maxLines(2)
+            Text(course.code ?? '课程').fontColor('#DFFFFFFF').fontSize(12)
+          }.width('100%').padding({ left: 18, right: 18, bottom: 18 }).alignItems(HorizontalAlign.Start)
+        }.width('100%').height(180).borderRadius(20).clip(true)
+        Column() {
+          this.DetailRow($r('sys.symbol.book'), '课程名称', course.name)
+          Divider().color(this.palette().line)
+          this.DetailRow($r('sys.symbol.person'), '授课教师', course.teacher_name ?? '教师待定')
+          Divider().color(this.palette().line)
+          this.DetailRow($r('sys.symbol.calendar'), '开课学期', course.semester ?? '本学期')
+          Divider().color(this.palette().line)
+          this.DetailRow($r('sys.symbol.info_circle'), '课程代码', course.code ?? '—')
+          Divider().color(this.palette().line)
+          this.DetailRow($r('sys.symbol.info_circle'), '课程状态', course.status ?? '在修')
+        }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(18)
+        if ((course.description ?? '').length > 0) {
+          Column({ space: 6 }) {
+            Text('课程介绍').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
+            Text(course.description ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(20)
+          }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+        }
+      }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
+    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+  }
+
+  @Builder DetailRow(symbol: Resource, label: string, value: string) {
+    Row({ space: 11 }) {
+      SymbolGlyph(symbol).fontSize(19).fontColor([this.palette().primary])
+      Text(label).fontColor(this.palette().muted).fontSize(11).width(74)
+      Text(value).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Medium).layoutWeight(1)
+    }.width('100%').padding({ top: 14, bottom: 14 })
   }
 
   build() {
-    Scroll() {
-      Column({ space: 10 }) {
-        this.Header(); this.Hero(); this.WeekStrip(); this.Metrics(); this.Filters()
-        Row() {
-          Column({ space: 1 }) {
-            Text('本学期课程').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold)
-            Text('按课程卡片查看上课地点与资料').fontColor(this.palette().muted).fontSize(10)
-          }.alignItems(HorizontalAlign.Start)
-          Blank(); Text(`${this.courses.length} 门`).fontColor(this.palette().muted).fontSize(11)
-        }.width('100%').alignItems(VerticalAlign.Center)
-        if (this.loading && this.courses.length === 0) {
-          LoadingProgress().width(36).height(36).color(this.palette().primary).margin({ top: 40 })
-        } else if (this.courses.length === 0) {
-          Text('暂时没有课程，点击刷新重试').fontColor(this.palette().muted).fontSize(13)
-            .padding(32).onClick(() => this.onRefresh())
-        } else {
-          ForEach(this.courses, (course: CourseItem, index: number) => { this.CourseCard(course, index) }, (course: CourseItem) => course.id)
-        }
-        Blank().height(98)
-      }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 10 })
-    }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
+    Column() {
+      if (this.selectedCourse() !== undefined) {
+        SecondaryHeader({ title: '课程详情', subtitle: '查看课程基本信息', darkMode: this.darkMode, onBack: () => this.selectedId = '' })
+        this.CourseDetail(this.selectedCourse()!)
+      } else {
+      Scroll() {
+        Column({ space: 10 }) {
+          this.Header(); this.Hero(); this.WeekStrip(); this.Metrics(); this.Filters()
+          Row() {
+            Column({ space: 1 }) {
+              Text('本学期课程').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold)
+              Text('按课程卡片查看上课地点与资料').fontColor(this.palette().muted).fontSize(10)
+            }.alignItems(HorizontalAlign.Start)
+            Blank(); Text(`${this.courses.length} 门`).fontColor(this.palette().muted).fontSize(11)
+          }.width('100%').alignItems(VerticalAlign.Center)
+          if (this.loading && this.courses.length === 0) {
+            LoadingProgress().width(36).height(36).color(this.palette().primary).margin({ top: 40 })
+          } else if (this.courses.length === 0) {
+            Text('暂时没有课程，点击刷新重试').fontColor(this.palette().muted).fontSize(13)
+              .padding(32).onClick(() => this.onRefresh())
+          } else {
+            ForEach(this.courses, (course: CourseItem, index: number) => { this.CourseCard(course, index) }, (course: CourseItem) => course.id)
+          }
+          Blank().height(98)
+        }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 10 })
+      }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
+      }
+    }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

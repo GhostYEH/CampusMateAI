@@ -90,7 +90,7 @@ onMounted(load);
           <p>{{ current.summary }}</p>
           <small><UiIcon name="PhUsersThree" :size="15" /> 主办单位：{{ current.author_name }}</small>
         </div>
-        <img src="/assets/campusmate-ai-activity-hero.png" alt="人工智能活动插画" />
+        <img src="/assets/campusmate-activity-lecture.png" alt="人工智能活动插画" />
       </section>
 
       <section class="ad-meta redesign-panel">

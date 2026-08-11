@@ -1,7 +1,10 @@
 package com.example.campusai.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -13,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.ui.theme.Muted
+import com.example.campusai.ui.theme.Primary
+import com.example.campusai.ui.theme.TextPrimary
 
 @Composable
 fun EmptyState(
@@ -71,5 +76,30 @@ fun SectionHead(
             }
             trailing?.invoke()
         }
+    }
+}
+
+@Composable
+fun CampusPageHeader(
+    title: String,
+    subtitle: String? = null,
+    onBack: () -> Unit,
+    actions: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Primary)
+        }
+        Spacer(Modifier.width(4.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            if (subtitle != null) {
+                Text(subtitle, color = Muted, fontSize = 12.sp)
+            }
+        }
+        actions?.invoke()
     }
 }

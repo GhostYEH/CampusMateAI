@@ -182,7 +182,7 @@ onMounted(load);
             <span><small>{{ item.label }}</small><strong>{{ item.value }}</strong><em>{{ item.hint }}</em></span>
           </article>
         </div>
-        <img class="profile-banner-art" src="/assets/campusmate-profile-banner-v2.png" alt="" aria-hidden="true" />
+        <img class="profile-banner-art" src="/assets/campusmate-hero-illustration.png" alt="" aria-hidden="true" />
       </header>
 
       <nav class="redesign-tabs" aria-label="个人中心分区">
