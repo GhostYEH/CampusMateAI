@@ -35,7 +35,15 @@ def _redact_filter(record: Any) -> None:
 
 
 def configure_logging(settings: Settings) -> None:
-    """根据 Settings 配置全局 loguru 与标准 logging 桥接。"""
+    """根据 Settings 配置全局 loguru 与标准 logging 桥接。
+
+    注意：不要在运行时 force=True 覆盖 uvicorn 已安装的 logging handlers，
+    否则 uvicorn 在 lifespan yield 后输出 "Application startup complete"
+    会走 _InterceptHandler → loguru → stdout，在事件循环里阻塞，
+    导致端口虽 LISTEN 但不响应任何 HTTP 请求。
+    这里仅配置 loguru，并把标准 logging 桥接到 loguru，但不强制移除
+    uvicorn/fastapi 自己的 handler，避免干扰其事件循环。
+    """
     logger.remove()
     logger.add(
         sys.stdout,
@@ -51,11 +59,11 @@ def configure_logging(settings: Settings) -> None:
         ),
     )
 
-    # 桥接标准 logging
-    logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
-        logging.getLogger(name).handlers = [_InterceptHandler()]
-        logging.getLogger(name).propagate = False
+    # 桥接标准 logging(不 force,不覆盖 uvicorn 已有 handler)
+    root = logging.getLogger()
+    if not any(isinstance(h, _InterceptHandler) for h in root.handlers):
+        root.addHandler(_InterceptHandler())
+    root.setLevel(settings.log_level.upper())
 
     # 降低 uvicorn access 噪音
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

@@ -8,10 +8,12 @@ export struct NotificationsPage {
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
   @State unreadOnly: boolean = false;
+  @State selectedId: string = '';
   onBack: () => void = () => {};
   onRefresh: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   visible(): NoticeItem[] { return this.unreadOnly ? this.notices.filter((item: NoticeItem) => item.unread === true) : this.notices; }
+  selectedNotice(): NoticeItem | undefined { return this.notices.find((item: NoticeItem) => item.id === this.selectedId); }
 
   @Builder SourceRow(symbol: Resource, title: string, subtitle: string, status: string) {
     Row({ space: 11 }) {
@@ -38,18 +40,35 @@ export struct NotificationsPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 12, bottom: 12 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
+    .onClick(() => this.selectedId = item.id)
+  }
+
+  @Builder NoticeDetail(item: NoticeItem) {
+    Scroll() {
+      Column({ space: 13 }) {
+        Column({ space: 8 }) {
+          Text(item.title).fontColor(this.palette().text).fontSize(20).fontWeight(FontWeight.Bold).width('100%')
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.clock')).fontSize(13).fontColor([this.palette().muted])
+            Text(item.time ?? '时间待记录').fontColor(this.palette().muted).fontSize(11)
+            Text('·').fontColor(this.palette().muted)
+            Text(item.source ?? '校园通知').fontColor(this.palette().muted).fontSize(11)
+          }
+        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        Column({ space: 6 }) {
+          Text('通知正文').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
+          Text(item.content ?? '暂无详细内容').fontColor(this.palette().muted).fontSize(13).lineHeight(22)
+        }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+      }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
+    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: '通知整理', subtitle: '集中接收并整理校园通知', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: this.selectedId.length > 0 ? '通知详情' : '通知整理', subtitle: this.selectedId.length > 0 ? '查看通知完整内容' : '集中接收并整理校园通知', darkMode: this.darkMode, onBack: () => { if (this.selectedId.length > 0) { this.selectedId = ''; } else { this.onBack(); } } })
+      if (this.selectedNotice() !== undefined) {
+        this.NoticeDetail(this.selectedNotice()!)
+      } else {
       Scroll() {
         Column({ space: 13 }) {
           Text('通知来源').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold).width('100%')
@@ -75,6 +94,7 @@ export struct NotificationsPage {
           }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

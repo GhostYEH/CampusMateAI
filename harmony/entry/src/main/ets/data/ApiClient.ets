@@ -36,4 +36,15 @@ export class ApiClient {
       return JSON.parse(response.result.toString()) as T;
     } finally { client.destroy(); }
   }
+
+  async patch<T>(path: string, body: object): Promise<T> {
+    const client = http.createHttp();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.tokenProvider()) headers.Authorization = `Bearer ${this.tokenProvider()}`;
+    try {
+      const response = await client.request(this.normalizedUrl(path), { method: 'PATCH' as http.RequestMethod, header: headers, extraData: JSON.stringify(body), connectTimeout: 10000, readTimeout: 15000 });
+      if (response.responseCode < 200 || response.responseCode >= 300) throw new Error(`请求失败 (${response.responseCode})`);
+      return JSON.parse(response.result.toString()) as T;
+    } finally { client.destroy(); }
+  }
 }

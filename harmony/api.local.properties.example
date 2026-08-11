@@ -1,0 +1,21 @@
+# HarmonyOS 本地 API 配置模板。
+# 复制本文件为 api.local.properties 后填写; api.local.properties 已被 .gitignore 忽略, 不会提交。
+#   cp api.local.properties.example api.local.properties
+# hvigorfile.ts 会在每次编译前读取 api.local.properties 并生成 GeneratedApiEnv.ets。
+#
+# 注意: 不要使用 harmony/local.properties 放 API 配置, 该文件由 DevEco Studio 自动生成
+#       (存放 SDK 路径), 修改会被 DevEco 擦除。本文件名 api.local.properties 不会被 DevEco 触碰。
+#
+# 开发环境 DEV_HOST:
+#   - DevEco Previewer / 后端运行在同一台电脑: 127.0.0.1
+#   - 真机 / 独立 Emulator 调试: 填 Windows 宿主机局域网 IPv4 (PowerShell: ipconfig 查看 IPv4 地址)
+#     例: DEV_HOST=192.168.1.100
+#   - HarmonyOS 真机的 127.0.0.1 指向手机自身, 无法访问电脑后端; Emulator 也没有 10.0.2.2 映射。
+#   - 留空或删除本文件将回退到 127.0.0.1 (新 clone 默认行为, 保证可直接编译)。
+#
+# 生产环境 PROD_API_BASE_URL:
+#   - 留空表示尚未部署正式服务器, 将使用 DEV_HOST 的开发配置 (便于打包调试)。
+#   - 部署时填正式 HTTPS API, 例: PROD_API_BASE_URL=https://api.campusmate.example.com/api/v1
+#   - 禁止 HTTP 明文, 禁止保留开发局域网 IP。
+DEV_HOST=127.0.0.1
+PROD_API_BASE_URL=

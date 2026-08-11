@@ -14,7 +14,9 @@ const menus = [
   ["admin", "控制台", "PhGauge"],
   ["admin/knowledge", "知识库管理", "PhBooks"],
   ["admin/documents", "文档维护", "PhFileText"],
+  ["admin/rag-index", "RAG 索引", "PhStack"],
   ["admin/users", "账号管理", "PhUsers"],
+  ["admin/system", "系统状态", "PhActivity"],
 ];
 
 function go(path) {

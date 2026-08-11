@@ -83,6 +83,7 @@ tmp/
 # Build artifacts (APK / Web / etc.) — 产物不纳入版本控制
 artifacts/
 *.apk
+web/dist/
 
 # Python cache
 __pycache__/
@@ -175,3 +176,8 @@ harmony/entry/build/
 harmony/.appanalyzer/
 harmony/local.properties
 harmony/.cxx/
+# 开发者本地 API 配置(含局域网 IP, 不提交); 模板 api.local.properties.example 会提交
+harmony/api.local.properties
+# hvigorfile.ts 在编译前从 api.local.properties 生成的本地 API 配置(不提交)
+harmony/entry/src/main/ets/core/GeneratedApiEnv.ets
+

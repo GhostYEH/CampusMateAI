@@ -20,8 +20,13 @@ import { SettingsPage } from '../features/profile/SettingsPage';
 import { AccountPage } from '../features/profile/AccountPage';
 import { ActivityItem, ChatMessage, ChatRequest, ChatResponse, ClassroomAvailability, ClassroomResponse, CourseItem, ExamItem, FavoriteItem, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, ServiceRequestItem, ServiceRequestPayload, StudySession, StudySessionCreate, StudySessionFinish, TaskItem } from '../data/Models';
 import { http } from '@kit.NetworkKit';
+import { promptAction } from '@kit.ArkUI';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
+
+function toastError(message: string): void {
+  try { promptAction.showToast({ message: message, duration: 2200 }); } catch { /* ignore toast failure */ }
+}
 
 @Entry
 @Component
@@ -143,6 +148,7 @@ struct Index {
       );
       await this.refreshPrimaryData();
     } catch (error) {
+      toastError('更新待办状态失败，请重试');
     }
   }
 
@@ -248,7 +254,9 @@ struct Index {
       const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
       await client.request<ServiceRequestItem>(http.RequestMethod.POST, 'student/service-requests', payload);
       await this.refreshSecondaryData('services');
+      toastError('申请已提交');
     } catch (error) {
+      toastError('提交申请失败，请稍后重试');
     } finally { this.secondarySubmitting = false; }
   }
 
@@ -259,7 +267,9 @@ struct Index {
       const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
       await client.request<LostFoundItem>(http.RequestMethod.POST, 'student/lost-found', payload);
       await this.refreshSecondaryData('lostfound');
+      toastError('发布成功');
     } catch (error) {
+      toastError('发布失败，请稍后重试');
     } finally { this.secondarySubmitting = false; }
   }
 
@@ -270,6 +280,7 @@ struct Index {
       const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
       this.activeStudySession = await client.request<StudySession>(http.RequestMethod.POST, 'study/sessions', payload);
     } catch (error) {
+      toastError('无法开始专注，请检查网络');
     }
   }
 
@@ -286,6 +297,34 @@ struct Index {
       }
       await this.refreshSecondaryData('focus');
     } catch (error) {
+      toastError('操作失败，请重试');
+    }
+  }
+
+  async saveExam(payload: ExamItem, id?: string): Promise<void> {
+    this.secondarySubmitting = true;
+    try {
+      const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
+      if (id !== undefined && id.length > 0) {
+        await client.patch<ExamItem>(`student/exams/${id}`, payload);
+      } else {
+        await client.request<ExamItem>(http.RequestMethod.POST, 'student/exams', payload);
+      }
+      await this.refreshSecondaryData('exams');
+      toastError(id !== undefined && id.length > 0 ? '考试已更新' : '考试已添加');
+    } catch (error) {
+      toastError('保存考试失败，请重试');
+    } finally { this.secondarySubmitting = false; }
+  }
+
+  async deleteExam(id: string): Promise<void> {
+    try {
+      const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
+      await client.request<object>(http.RequestMethod.DELETE, `student/exams/${id}`);
+      await this.refreshSecondaryData('exams');
+      toastError('考试已删除');
+    } catch (error) {
+      toastError('删除失败，请重试');
     }
   }
 
@@ -382,7 +421,7 @@ struct Index {
   @Builder SecondaryPage() {
     if (this.route === 'exams') {
       Navigation() {
-        ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('exams') })
+        ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('exams'), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id), onDelete: (id: string) => this.deleteExam(id) })
       }
       .title('考试安排')
       .titleMode(NavigationTitleMode.Mini)
