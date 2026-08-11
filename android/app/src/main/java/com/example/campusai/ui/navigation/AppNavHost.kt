@@ -29,6 +29,7 @@ import com.example.campusai.ui.screens.lostfound.LostFoundPublishScreen
 import com.example.campusai.ui.screens.lostfound.LostFoundScreen
 import com.example.campusai.ui.screens.lostfound.MyLostFoundScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
+import com.example.campusai.ui.screens.notifications.CampusNewsScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.AccountScreen
 import com.example.campusai.ui.screens.profile.ChaoxingLoginScreen
@@ -146,6 +147,13 @@ fun AppNavHost(
         }
         composable("notifications") {
             NotificationsScreen(repository, notificationInboxRepository)
+        }
+        composable("campus-news") {
+            CampusNewsScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onOpenNews = { id -> go("campus-news-detail/$id") },
+            )
         }
         composable(
             route = "counselor?prompt={prompt}",
