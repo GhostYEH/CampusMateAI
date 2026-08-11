@@ -28,6 +28,7 @@ from ..repositories.personal_hub_repository import (
     PersonalFileRepository,
 )
 from ..repositories.study_session_repository import StudySessionRepository
+from ..repositories.study_goal_repository import StudyGoalRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
@@ -66,6 +67,7 @@ class ServiceContainer:
     favorite_repository: FavoriteRepository
     # 学习陪伴
     study_session_repository: StudySessionRepository
+    study_goal_repository: StudyGoalRepository
     chaoxing_repository: ChaoxingRepository
     notice_repository: NoticeRepository
     task_breakdown_service: TaskBreakdownService
@@ -92,6 +94,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     favorite_repo = FavoriteRepository(db)
     # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
     study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
+    study_goal_repo = StudyGoalRepository(db)
     # TaskBreakdownService 只解析 PersonalTask(不再接受 Assignment ID)
     task_breakdown = TaskBreakdownService(
         personal_task_repo=personal_task_repo,
@@ -121,6 +124,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         personal_file_repository=personal_file_repo,
         favorite_repository=favorite_repo,
         study_session_repository=study_session_repo,
+        study_goal_repository=study_goal_repo,
         chaoxing_repository=ChaoxingRepository(db),
         notice_repository=NoticeRepository(db),
         task_breakdown_service=task_breakdown,

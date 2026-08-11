@@ -2,6 +2,7 @@ package com.example.campusai.data.repository
 
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
+import com.example.campusai.data.remote.ApiClient
 
 /**
  * 五个新模块（考试 / 空教室 / 办事大厅 / 专注 / 失物招领）的仓库集合。
@@ -11,7 +12,7 @@ class ModuleRepositories(
     val exams: ExamRepository,
     val classrooms: ClassroomRepository,
     val services: ServiceRepository,
-    val focus: FocusRepository,
+    val focus: ApiFocusRepository,
     val lostFound: LostFoundRepository,
 ) {
     companion object {
@@ -24,7 +25,7 @@ class ModuleRepositories(
                 ),
                 classrooms = LocalClassroomRepository(),
                 services = LocalServiceRepository(storage),
-                focus = LocalFocusRepository(storage),
+                focus = ApiFocusRepository(ApiClient.api),
                 lostFound = LocalLostFoundRepository(storage),
             )
         }

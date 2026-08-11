@@ -350,6 +350,7 @@ STUDY_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS study_sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'focus',
     goal TEXT,
     related_task_id TEXT,
     started_at TEXT NOT NULL,
@@ -380,6 +381,13 @@ CREATE TABLE IF NOT EXISTS study_breaks (
     FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_study_breaks_session_id ON study_breaks(session_id);
+
+CREATE TABLE IF NOT EXISTS study_goals (
+    user_id TEXT PRIMARY KEY,
+    target_minutes INTEGER NOT NULL CHECK(target_minutes BETWEEN 15 AND 480),
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 
@@ -578,6 +586,13 @@ class Database:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_ext "
                 "ON personal_tasks(user_id, source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL"
+            )
+
+        cur = conn.execute("PRAGMA table_info(study_sessions)")
+        study_cols = {row["name"] for row in cur.fetchall()}
+        if "mode" not in study_cols:
+            conn.execute(
+                "ALTER TABLE study_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'focus'"
             )
 
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。

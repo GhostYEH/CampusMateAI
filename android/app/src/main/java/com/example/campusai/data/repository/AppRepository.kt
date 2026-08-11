@@ -75,8 +75,10 @@ class AppRepository(application: Application) {
 
     private val taskMutex = Mutex()
     private var taskJob: Job? = null
-    private val _tasks = MutableStateFlow<List<Task>>(defaultTasks())
+    private val _tasks = MutableStateFlow<List<Task>>(emptyList())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
+    private val _taskError = MutableStateFlow<String?>(null)
+    val taskError: StateFlow<String?> = _taskError.asStateFlow()
 
     val pendingCount: StateFlow<Int> = _tasks
         .map { list -> list.count { !it.done } }
@@ -335,13 +337,16 @@ class AppRepository(application: Application) {
 
     /** 拉取云端任务并合并到本地缓存。 */
     suspend fun refreshTasks() {
-        if (!_backendOnline.value || _mockMode.value) return
+        if (!_backendOnline.value || _mockMode.value) {
+            _tasks.value = emptyList()
+            _taskError.value = "待办需要连接真实后端后才能使用"
+            return
+        }
         try {
             val resp = ApiClient.api.listTasks(page = 1, pageSize = 200)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _tasks.value = items.map { dto ->
+                _tasks.value = TaskRemotePolicy.replaceAfterSuccessfulRead(_tasks.value, items.map { dto ->
                         Task(
                             id = dto.id,
                             title = dto.title,
@@ -350,9 +355,7 @@ class AppRepository(application: Application) {
                             done = dto.status == "completed",
                             description = dto.description ?: dto.source_text ?: "",
                         )
-                    }
-                    persistTasks()
-                }
+                    })
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
     }
@@ -433,14 +436,11 @@ class AppRepository(application: Application) {
                             description = dto?.description ?: current.description,
                         )
                         _tasks.value = list
-                        persistTasks()
                         return@withLock
                     }
                 } catch (_: Exception) { /* 落入本地回退 */ }
             }
-            list[idx] = current.copy(done = newDone)
-            _tasks.value = list
-            persistTasks()
+            return@withLock
         }
     }
 
@@ -466,15 +466,11 @@ class AppRepository(application: Application) {
                         description = dto.description ?: "",
                     )
                     _tasks.value = listOf(newTask) + _tasks.value
-                    persistTasks()
                     return@withLock
                 }
             } catch (_: Exception) { /* 落入本地回退 */ }
         }
-        val list = _tasks.value.toMutableList()
-        list.add(0, Task(id = "local_${System.currentTimeMillis()}", title = title, due = due, course = course, done = false, description = description))
-        _tasks.value = list
-        persistTasks()
+        return@withLock
     }
 
     suspend fun deleteTask(id: String) = taskMutex.withLock {
@@ -483,13 +479,11 @@ class AppRepository(application: Application) {
                 val resp = ApiClient.api.deleteTask(id)
                 if (resp.isSuccessful) {
                     _tasks.value = _tasks.value.filter { it.id != id }
-                    persistTasks()
                     return@withLock
                 }
             } catch (_: Exception) { /* 落入本地回退 */ }
         }
-        _tasks.value = _tasks.value.filter { it.id != id }
-        persistTasks()
+        return@withLock
     }
 
     fun getTaskById(id: String): Task? = _tasks.value.find { it.id == id }
@@ -518,19 +512,12 @@ class AppRepository(application: Application) {
                             description = dto?.description ?: description,
                         )
                         _tasks.value = list
-                        persistTasks()
                         return@withLock
                     }
                 }
             } catch (_: Exception) { /* 落入本地回退 */ }
         }
-        val list = _tasks.value.toMutableList()
-        val idx = list.indexOfFirst { it.id == id }
-        if (idx >= 0) {
-            list[idx] = list[idx].copy(title = title, due = due, course = course, description = description)
-            _tasks.value = list
-            persistTasks()
-        }
+        return@withLock
     }
 
     suspend fun setMockMode(enabled: Boolean) {
@@ -1147,22 +1134,12 @@ class AppRepository(application: Application) {
 
     private fun bindTasks(user: User?) {
         taskJob?.cancel()
+        _tasks.value = emptyList()
         if (user == null) {
-            _tasks.value = defaultTasks()
             return
         }
-        val key = "tasks_${accountStorageKey(user)}"
         taskJob = scope.launch {
-            dataStore.observeRaw(key).collect { raw ->
-                val stored = raw?.let(::decodeTasks)
-                if (stored == null) {
-                    val defaults = defaultTasks()
-                    _tasks.value = defaults
-                    dataStore.saveRaw(key, encodeTasks(defaults))
-                } else {
-                    _tasks.value = stored
-                }
-            }
+            refreshTasks()
         }
     }
 
