@@ -72,7 +72,7 @@ import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.model.FocusTimerState
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.data.repository.FocusRepository
+import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.ui.components.AnimatedCircularProgress
 import com.example.campusai.ui.components.CampusCard
 import com.example.campusai.ui.components.CampusPageHeader
@@ -97,7 +97,7 @@ import kotlinx.coroutines.launch
 /** The sole timer and camera entry point for focused learning. */
 @Composable
 fun FocusScreen(
-    repository: FocusRepository,
+    repository: ApiFocusRepository,
     appRepository: AppRepository,
     reduceMotion: Boolean,
     onBack: () -> Unit,
@@ -107,6 +107,8 @@ fun FocusScreen(
     val stats by repository.stats.collectAsState()
     val persistedTimer by repository.timer.collectAsState()
     val loading by repository.loading.collectAsState()
+    val activeSession by repository.activeSession.collectAsState()
+    val remoteError by repository.error.collectAsState()
     val mockMode by appRepository.mockMode.collectAsState()
     val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
     val manager = appRepository.expressionSessionManager
@@ -119,6 +121,8 @@ fun FocusScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    LaunchedEffect(Unit) { repository.refresh() }
+
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var secondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
     var running by remember { mutableStateOf(false) }
@@ -129,6 +133,14 @@ fun FocusScreen(
     var permissionDenied by remember { mutableStateOf(false) }
     var lastSummary by remember { mutableStateOf<FocusSessionSummary?>(null) }
     var appForeground by remember { mutableStateOf(true) }
+
+    LaunchedEffect(activeSession) {
+        activeSession?.let { session ->
+            mode = session.mode
+            running = session.status == "active"
+            sessionStarted = running && session.mode == FocusMode.FOCUS
+        }
+    }
     val cameraPermissionGranted = mockMode || ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.CAMERA,
@@ -196,10 +208,14 @@ fun FocusScreen(
             } else {
                 null
             }
-            if (shouldRecord) repository.addRecord(mode, actualMinutes, completed, summary)
-            repository.saveTimer(null)
-            lastSummary = summary
-            sessionStarted = false
+            if (shouldRecord) {
+                repository.finish().onSuccess {
+                    lastSummary = summary
+                    sessionStarted = false
+                    repository.refresh()
+                    if (completed) showCompleted = true
+                }
+            }
         }
         secondsLeft = mode.totalSeconds
         if (completed) showCompleted = true
@@ -253,6 +269,16 @@ fun FocusScreen(
             bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + BottomDockReservedHeight + 16.dp,
         ),
     ) {
+        remoteError?.let { message ->
+            item {
+                CampusCard {
+                    Text(message, color = Muted, fontSize = 12.sp)
+                    TextButton(onClick = { scope.launch { repository.refresh() } }) {
+                        Text("重试", color = Primary)
+                    }
+                }
+            }
+        }
         item { CampusPageHeader(CampusStrings.Focus.TITLE, CampusStrings.Focus.SUBTITLE, onBack) }
         item {
             CampusCard(modifier = Modifier.enterAnimation(enabled = !reduceMotion), padding = PaddingValues(20.dp)) {
@@ -270,7 +296,7 @@ fun FocusScreen(
                             else -> FocusMode.FOCUS
                         }
                         secondsLeft = mode.totalSeconds
-                        scope.launch { repository.saveTimer(null) }
+                        Unit
                     } },
                 )
                 Spacer(Modifier.height(18.dp))
@@ -292,12 +318,19 @@ fun FocusScreen(
                 Spacer(Modifier.height(18.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
                     Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Primary).campusClickable {
-                        if (!running && mode == FocusMode.FOCUS && !sessionStarted) {
-                            sessionStarted = true
-                            scope.launch { manager.beginFocusSession() }
+                        scope.launch {
+                            when (activeSession?.status) {
+                                null -> repository.start(mode, null, null).onSuccess {
+                                    running = true
+                                    if (mode == FocusMode.FOCUS) {
+                                        sessionStarted = true
+                                        manager.beginFocusSession()
+                                    }
+                                }
+                                "active" -> repository.pause().onSuccess { running = false }
+                                "paused" -> repository.resume().onSuccess { running = true }
+                            }
                         }
-                        running = !running
-                        persistTimer(running, secondsLeft, mode)
                     }.padding(horizontal = 26.dp, vertical = 12.dp)) {
                         Text(if (running) CampusStrings.Focus.PAUSE else if (secondsLeft != mode.totalSeconds) CampusStrings.Focus.RESUME else CampusStrings.Focus.START, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
@@ -346,7 +379,7 @@ fun FocusScreen(
                 FilterChipRow(
                     options = listOf("30", "60", "90", "120"),
                     selected = stats.goalMinutes.toString(),
-                    onSelect = { scope.launch { repository.setGoal(it.toInt()) } },
+                    onSelect = { scope.launch { repository.updateGoal(it.toInt()) } },
                 )
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(PrimarySoft)) {
