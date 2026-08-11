@@ -1,4 +1,5 @@
 import { AppState } from '../core/AppState';
+import { ApiConfig } from '../core/ApiConfig';
 import { darkPalette, lightPalette } from '../ui/Theme';
 import { ApiClient } from '../data/ApiClient';
 import { LoginScreen } from '../features/login/LoginScreen';
@@ -20,7 +21,7 @@ import { AccountPage } from '../features/profile/AccountPage';
 import { ActivityItem, ChatMessage, ChatRequest, ChatResponse, ClassroomAvailability, ClassroomResponse, CourseItem, ExamItem, FavoriteItem, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, ServiceRequestItem, ServiceRequestPayload, StudySession, StudySessionCreate, StudySessionFinish, TaskItem } from '../data/Models';
 import { http } from '@kit.NetworkKit';
 
-const API_BASE_URL: string = 'http://127.0.0.1:8000/api/v1';
+const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
 @Entry
 @Component
@@ -385,21 +386,21 @@ struct Index {
       }
       .title('考试安排')
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_refresh'), '刷新', () => this.refreshSecondaryData('exams'))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('exams'))])
     } else if (this.route === 'classrooms') {
       Navigation() {
         ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onQuery: () => this.refreshSecondaryData('classrooms') })
       }
       .title('空教室查询')
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_search'), '查询', () => this.refreshSecondaryData('classrooms'))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '查询', () => this.refreshSecondaryData('classrooms'))])
     } else if (this.route === 'services') {
       Navigation() {
         ServicesPage({ requests: this.serviceRequests, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('services'), onSubmit: (kind: string, title: string, content: string) => this.createServiceRequest(kind, title, content) })
       }
       .title('办事大厅')
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_refresh'), '刷新', () => this.refreshSecondaryData('services'))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('services'))])
     } else if (this.route === 'focus') {
       Navigation() {
         FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onStart: () => this.startFocusSession(), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
@@ -412,21 +413,21 @@ struct Index {
       }
       .title('失物招领')
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_refresh'), '刷新', () => this.refreshSecondaryData('lostfound'))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('lostfound'))])
     } else if (this.route === 'notifications') {
       Navigation() {
         NotificationsPage({ notices: this.notices, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('notifications') })
       }
       .title('通知整理')
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_refresh'), '刷新', () => this.refreshSecondaryData('notifications'))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('notifications'))])
     } else if (this.route === 'files' || this.route === 'activities' || this.route === 'favorites') {
       Navigation() {
         PersonalHubPage({ section: this.route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route) })
       }
       .title(`我的${this.route === 'files' ? '文件' : this.route === 'activities' ? '活动' : '收藏'}`)
       .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.ToolbarItem($r('app.media.ic_public_refresh'), '刷新', () => this.refreshSecondaryData(this.route))])
+      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData(this.route))])
     } else if (this.route === 'settings') {
       Navigation() {
         SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: (value: boolean) => { this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target) })
@@ -452,14 +453,12 @@ struct Index {
     }
   }
 
-  @Builder ToolbarItem(icon: Resource, text: string, action: () => void) {
-    ToolbarItem() {
-      Image(icon).width(24).height(24)
-    }
-    .activeIcon(icon)
-    .actionButton(() => {
-      action()
-    })
+  private createToolbarItem(icon: Resource, text: string, action: () => void): ToolbarItem {
+    return {
+      value: text,
+      icon: icon,
+      action: action
+    };
   }
 
   @Builder EmptyTabBar() {
@@ -510,7 +509,7 @@ struct Index {
   build() {
     if (this.signedIn) {
       Stack({ alignContent: Alignment.Bottom }) {
-        Tabs({ barPosition: BarPosition.Bottom, index: this.activeTab }) {
+        Tabs({ barPosition: BarPosition.Start, index: this.activeTab }) {
           TabContent() {
             this.HomePage()
           }.tabBar(this.EmptyTabBar)
