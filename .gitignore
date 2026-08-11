@@ -67,6 +67,7 @@ test/**/failures/
 
 # Claude AI local settings
 .claude/
+.worktrees/
 
 # Local storage / environment
 *.local
@@ -162,3 +163,6 @@ android/app/build-corrupt-backup-20260731/
 
 # Temporary local browser profiles used for screenshot QA
 .qa-*/
+
+# Isolated local Git worktrees
+.worktrees/
