@@ -49,6 +49,7 @@ class AppRepository(
     private val dataStore = AppDataStore(application)
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val campusNewsPreferencesMutex = Mutex()
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
@@ -158,17 +159,21 @@ class AppRepository(
         scope.launch { newsPreferences.campusNewsFavoriteIds.collect { _newsFavoriteIds.value = it } }
     }
 
-    suspend fun markCampusNewsRead(newsId: String) {
-        if (newsId !in _newsReadIds.value) {
-            newsPreferences.setCampusNewsReadIds(_newsReadIds.value + newsId)
+    suspend fun markCampusNewsRead(newsId: String) = campusNewsPreferencesMutex.withLock {
+        val ids = _newsReadIds.value
+        if (newsId !in ids) {
+            val updatedIds = ids + newsId
+            newsPreferences.setCampusNewsReadIds(updatedIds)
+            _newsReadIds.value = updatedIds
         }
     }
 
-    suspend fun toggleCampusNewsFavorite(newsId: String) {
+    suspend fun toggleCampusNewsFavorite(newsId: String) = campusNewsPreferencesMutex.withLock {
         val ids = _newsFavoriteIds.value
-        newsPreferences.setCampusNewsFavoriteIds(
-            if (newsId in ids) ids - newsId else ids + newsId,
-        )
+        val updatedIds =
+            if (newsId in ids) ids - newsId else ids + newsId
+        newsPreferences.setCampusNewsFavoriteIds(updatedIds)
+        _newsFavoriteIds.value = updatedIds
     }
 
     suspend fun login(username: String, password: String): User {
