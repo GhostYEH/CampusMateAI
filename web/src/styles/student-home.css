@@ -22,6 +22,13 @@
 .student-layout .sidebar nav b{background:#f34855}
 .student-layout .nav-dot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#f34855}
 .student-layout .sidebar-bottom{gap:1px}
+@media(min-width:901px){
+  .student-layout.collapsed .sidebar .brand{padding-inline:0;justify-content:center}
+  .student-layout.collapsed .brand-mark{width:46px;height:46px;flex:0 0 46px}
+  .student-layout.collapsed .profile-mini{grid-template-columns:minmax(0,1fr);gap:0;padding-inline:0;justify-items:center}
+  .student-layout.collapsed .profile-mini .avatar{width:44px;height:44px;flex:0 0 44px}
+  .student-layout.collapsed .profile-mini-copy,.student-layout.collapsed .profile-mini>svg{display:none}
+}
 .student-layout .workspace{background:radial-gradient(circle at 45% -15%,rgba(224,231,255,.72),transparent 34%),#f8faff}
 .student-layout .topbar{height:88px;padding:0 29px 0 32px;background:rgba(248,250,255,.86);backdrop-filter:blur(20px)}
 .student-layout .command-search{width:min(646px,47vw);height:52px;border-radius:17px;padding:0 17px;box-shadow:0 7px 22px rgba(50,69,116,.08);color:#6680a9}
