@@ -5,15 +5,25 @@
 """
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+class StudyGoalUpdate(BaseModel):
+    target_minutes: int = Field(..., ge=15, le=480)
+
+
+class StudyGoalOut(BaseModel):
+    target_minutes: int
+    updated_at: str
 
 
 # ===== 学习会话 =====
 
 
 class StudySessionCreate(BaseModel):
+    mode: Literal["focus", "short_break", "long_break"] = "focus"
     goal: Optional[str] = Field(None, max_length=500, description="本次学习目标(自由文本)")
     related_task_id: Optional[str] = Field(
         None, max_length=128,
@@ -61,6 +71,7 @@ class StudyBreakOut(BaseModel):
 class StudySessionOut(BaseModel):
     id: str
     user_id: str
+    mode: str
     goal: Optional[str] = None
     related_task_id: Optional[str] = None
     started_at: str

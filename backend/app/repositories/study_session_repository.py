@@ -103,6 +103,7 @@ class StudySessionRepository:
         self,
         *,
         user_id: str,
+        mode: str = "focus",
         goal: Optional[str] = None,
         related_task_id: Optional[str] = None,
     ) -> StudySessionRow:
@@ -113,11 +114,11 @@ class StudySessionRepository:
             self._validate_related_task_id(conn, related_task_id or "", user_id)
             conn.execute(
                 """INSERT INTO study_sessions
-                   (id, user_id, goal, related_task_id, started_at, paused_at, ended_at,
+                   (id, user_id, mode, goal, related_task_id, started_at, paused_at, ended_at,
                     duration_seconds, pause_seconds, status, self_report, self_report_tags,
                     expression_signal, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,0,0,'active',NULL,NULL,NULL,?,?)""",
-                (sid, user_id, goal, related_task_id, now, None, None, now, now),
+                   VALUES (?,?,?,?,?,?,?,?,0,0,'active',NULL,NULL,NULL,?,?)""",
+                (sid, user_id, mode, goal, related_task_id, now, None, None, now, now),
             )
         # 重新读取(transaction 已关闭,需用 get_session 自带 query 连接)
         result = self.get_session(sid, user_id=user_id)

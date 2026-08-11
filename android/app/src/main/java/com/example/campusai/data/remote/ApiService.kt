@@ -145,6 +145,34 @@ data class PersonalTaskUpdateRequest(
     val source_name: String? = null,
 )
 
+data class StudySessionDto(
+    val id: String,
+    val user_id: String,
+    val mode: String,
+    val goal: String? = null,
+    val related_task_id: String? = null,
+    val started_at: String,
+    val paused_at: String? = null,
+    val ended_at: String? = null,
+    val duration_seconds: Int = 0,
+    val pause_seconds: Int = 0,
+    val status: String,
+)
+
+data class StudySessionCreateRequest(
+    val mode: String,
+    val goal: String? = null,
+    val related_task_id: String? = null,
+)
+
+data class StudySessionFinishRequest(
+    val self_report: String? = null,
+    val self_report_tags: List<String>? = null,
+)
+
+data class StudyGoalDto(val target_minutes: Int, val updated_at: String)
+data class StudyGoalUpdateRequest(val target_minutes: Int)
+
 // ── 个人中心：文件 / 收藏 ──
 data class PersonalFileDto(
     val id: String,
@@ -262,6 +290,37 @@ interface ApiService {
 
     @DELETE("tasks/{taskId}")
     suspend fun deleteTask(@Path("taskId") taskId: String): Response<PersonalTaskDto>
+
+    @GET("study/sessions")
+    suspend fun listStudySessions(
+        @Query("status") status: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 100,
+    ): Response<List<StudySessionDto>>
+
+    @GET("study/sessions/active")
+    suspend fun activeStudySession(): Response<StudySessionDto?>
+
+    @POST("study/sessions")
+    suspend fun createStudySession(@Body request: StudySessionCreateRequest): Response<StudySessionDto>
+
+    @POST("study/sessions/{sessionId}/pause")
+    suspend fun pauseStudySession(@Path("sessionId") sessionId: String): Response<StudySessionDto>
+
+    @POST("study/sessions/{sessionId}/resume")
+    suspend fun resumeStudySession(@Path("sessionId") sessionId: String): Response<StudySessionDto>
+
+    @POST("study/sessions/{sessionId}/finish")
+    suspend fun finishStudySession(
+        @Path("sessionId") sessionId: String,
+        @Body request: StudySessionFinishRequest = StudySessionFinishRequest(),
+    ): Response<StudySessionDto>
+
+    @GET("study/goals/daily")
+    suspend fun getDailyStudyGoal(): Response<StudyGoalDto>
+
+    @PUT("study/goals/daily")
+    suspend fun updateDailyStudyGoal(@Body request: StudyGoalUpdateRequest): Response<StudyGoalDto>
 
     // 个人中心：文件
     @GET("personal-hub/files")
