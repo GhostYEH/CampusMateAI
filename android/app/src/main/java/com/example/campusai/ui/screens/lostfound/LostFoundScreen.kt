@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -83,7 +83,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val LostCategories = listOf("全部", "证件卡片", "电子产品", "书籍资料", "生活用品", "其他")
-private val LostLocations = listOf("全部地点", "图书馆三楼", "教学楼 A 栋", "第二食堂", "体育馆看台")
 
 @Composable
 fun LostFoundScreen(
@@ -424,18 +423,38 @@ private fun FilterControls(
     onLocationChange: (String) -> Unit,
     onSortToggle: () -> Unit,
 ) {
-    Row(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        LocationDropdown(
-            selected = location,
-            onSelect = onLocationChange,
-        )
-        SortButton(newestFirst = newestFirst, onClick = onSortToggle)
+        if (maxWidth < 360.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LocationDropdown(
+                    selected = location,
+                    onSelect = onLocationChange,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SortButton(
+                    newestFirst = newestFirst,
+                    onClick = onSortToggle,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                LocationDropdown(
+                    selected = location,
+                    onSelect = onLocationChange,
+                    modifier = Modifier.width(166.dp),
+                )
+                SortButton(newestFirst = newestFirst, onClick = onSortToggle)
+            }
+        }
     }
 }
 
@@ -443,12 +462,12 @@ private fun FilterControls(
 private fun LocationDropdown(
     selected: String,
     onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         Row(
-            modifier = Modifier
-                .widthIn(min = 156.dp)
+            modifier = modifier
                 .height(58.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Surface)
@@ -469,7 +488,7 @@ private fun LocationDropdown(
             Icon(Icons.Default.KeyboardArrowDown, null, tint = Muted, modifier = Modifier.size(20.dp))
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            LostLocations.forEach { location ->
+            LostFoundBrowseOptions.locations.forEach { location ->
                 DropdownMenuItem(
                     text = { Text(location) },
                     onClick = {
@@ -486,9 +505,10 @@ private fun LocationDropdown(
 private fun SortButton(
     newestFirst: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .height(58.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Surface)
