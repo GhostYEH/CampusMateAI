@@ -34,6 +34,8 @@ from ...models.multi_role import UserRow
 from ...models.study import StudyBreakRow, StudySessionRow
 from ...repositories.study_session_repository import StudySessionRepository
 from ...schemas.study import (
+    StudyGoalOut,
+    StudyGoalUpdate,
     StudyBreakOut,
     StudySessionCreate,
     StudySessionFinish,
@@ -42,6 +44,7 @@ from ...schemas.study import (
     TaskBreakdownRequest,
     TaskBreakdownResponse,
 )
+from ...repositories.study_goal_repository import StudyGoalRepository
 from ...services.container import ServiceContainer, get_container
 from ...services.task_breakdown_service import TaskBreakdownService
 from ..deps import current_user
@@ -55,6 +58,10 @@ def _container() -> ServiceContainer:
 
 def _repo(c: ServiceContainer = Depends(_container)) -> StudySessionRepository:
     return c.study_session_repository
+
+
+def _goal_repo(c: ServiceContainer = Depends(_container)) -> StudyGoalRepository:
+    return c.study_goal_repository
 
 
 def _breakdown_service(
@@ -100,6 +107,25 @@ def _session_to_out(
         updated_at=s.updated_at,
         breaks=[_break_to_out(b) for b in (breaks or [])],
     )
+
+
+@router.get("/goals/daily", response_model=StudyGoalOut)
+def get_daily_goal(
+    user: UserRow = Depends(current_user),
+    repo: StudyGoalRepository = Depends(_goal_repo),
+) -> StudyGoalOut:
+    goal = repo.get_or_create(user.id)
+    return StudyGoalOut(target_minutes=goal.target_minutes, updated_at=goal.updated_at)
+
+
+@router.put("/goals/daily", response_model=StudyGoalOut)
+def update_daily_goal(
+    req: StudyGoalUpdate,
+    user: UserRow = Depends(current_user),
+    repo: StudyGoalRepository = Depends(_goal_repo),
+) -> StudyGoalOut:
+    goal = repo.set_target(user.id, req.target_minutes)
+    return StudyGoalOut(target_minutes=goal.target_minutes, updated_at=goal.updated_at)
 
 
 # ===== 会话 CRUD =====

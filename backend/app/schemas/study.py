@@ -10,6 +10,15 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 
+class StudyGoalUpdate(BaseModel):
+    target_minutes: int = Field(..., ge=15, le=480)
+
+
+class StudyGoalOut(BaseModel):
+    target_minutes: int
+    updated_at: str
+
+
 # ===== 学习会话 =====
 
 
