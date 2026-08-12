@@ -39,6 +39,7 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private val KEY_NOTIFICATION_WECHAT = booleanPreferencesKey("campus_notification_wechat")
     private val KEY_NOTIFICATION_XUEXITONG = booleanPreferencesKey("campus_notification_xuexitong")
     private val KEY_NOTIFICATION_QQ = booleanPreferencesKey("campus_notification_qq")
+    private val KEY_NOTIFICATION_WECOM = booleanPreferencesKey("campus_notification_wecom")
     private val KEY_NOTIFICATION_OTHER = booleanPreferencesKey("campus_notification_other")
     private val KEY_CAMPUS_NEWS_READ_IDS = stringSetPreferencesKey("campus_news_read_ids")
     private val KEY_CAMPUS_NEWS_FAVORITE_IDS = stringSetPreferencesKey("campus_news_favorite_ids")
@@ -84,6 +85,10 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
         .map { prefs: Preferences -> prefs[KEY_ACCESS_TOKEN] }
         .first()
 
+    suspend fun readRefreshToken(): String? = context.dataStore.data
+        .map { prefs: Preferences -> prefs[KEY_REFRESH_TOKEN] }
+        .first()
+
     val mockMode: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(false)
 
     val reduceMotion: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
@@ -98,8 +103,9 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     val notificationSourceSettings: Flow<NotificationSourceSettings> = context.dataStore.data.map { prefs ->
         NotificationSourceSettings(
             wechatEnabled = prefs[KEY_NOTIFICATION_WECHAT] ?: true,
+            wecomEnabled = prefs[KEY_NOTIFICATION_WECOM] ?: true,
             xuexitongEnabled = prefs[KEY_NOTIFICATION_XUEXITONG] ?: true,
-            qqEnabled = prefs[KEY_NOTIFICATION_QQ] ?: false,
+            qqEnabled = prefs[KEY_NOTIFICATION_QQ] ?: true,
             otherEnabled = prefs[KEY_NOTIFICATION_OTHER] ?: false,
         )
     }
@@ -213,6 +219,42 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
         }
     }
 
+    val wecomGroupChats: Flow<Set<String>> = context.dataStore.data.map {
+        it[stringSetPreferencesKey("wecom_group_chats")] ?: emptySet()
+    }
+
+    suspend fun addWecomGroupChat(groupName: String) {
+        context.dataStore.edit {
+            val current = it[stringSetPreferencesKey("wecom_group_chats")] ?: emptySet()
+            it[stringSetPreferencesKey("wecom_group_chats")] = current + groupName
+        }
+    }
+
+    suspend fun removeWecomGroupChat(groupName: String) {
+        context.dataStore.edit {
+            val current = it[stringSetPreferencesKey("wecom_group_chats")] ?: emptySet()
+            it[stringSetPreferencesKey("wecom_group_chats")] = current - groupName
+        }
+    }
+
+    val qqGroupChats: Flow<Set<String>> = context.dataStore.data.map {
+        it[stringSetPreferencesKey("qq_group_chats")] ?: emptySet()
+    }
+
+    suspend fun addQqGroupChat(groupName: String) {
+        context.dataStore.edit {
+            val current = it[stringSetPreferencesKey("qq_group_chats")] ?: emptySet()
+            it[stringSetPreferencesKey("qq_group_chats")] = current + groupName
+        }
+    }
+
+    suspend fun removeQqGroupChat(groupName: String) {
+        context.dataStore.edit {
+            val current = it[stringSetPreferencesKey("qq_group_chats")] ?: emptySet()
+            it[stringSetPreferencesKey("qq_group_chats")] = current - groupName
+        }
+    }
+
     suspend fun saveSession(user: User) {
         context.dataStore.edit { prefs ->
             val json = JSONObject()
@@ -270,8 +312,9 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     suspend fun setNotificationSourceEnabled(source: NotificationSource, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             when (source) {
-                NotificationSource.WECHAT -> prefs[KEY_NOTIFICATION_WECHAT] = enabled
-                NotificationSource.XUEXITONG -> prefs[KEY_NOTIFICATION_XUEXITONG] = enabled
+            NotificationSource.WECHAT -> prefs[KEY_NOTIFICATION_WECHAT] = enabled
+            NotificationSource.WECOM -> prefs[KEY_NOTIFICATION_WECOM] = enabled
+            NotificationSource.XUEXITONG -> prefs[KEY_NOTIFICATION_XUEXITONG] = enabled
                 NotificationSource.QQ -> prefs[KEY_NOTIFICATION_QQ] = enabled
                 NotificationSource.OTHER -> prefs[KEY_NOTIFICATION_OTHER] = enabled
             }

@@ -5,6 +5,8 @@ class NotificationFilter(private val campusMatePackage: String) {
         notification: CapturedNotification,
         settings: NotificationSourceSettings,
         wechatWhitelist: Set<String> = emptySet(),
+        wecomWhitelist: Set<String> = emptySet(),
+        qqWhitelist: Set<String> = emptySet(),
     ): Boolean {
         if (notification.packageName == campusMatePackage || notification.isGroupSummary) return false
         if (!settings.isEnabled(notification.source)) return false
@@ -13,6 +15,18 @@ class NotificationFilter(private val campusMatePackage: String) {
             if (wechatWhitelist.isEmpty()) return false
             val candidateGroup = notification.conversationTitle ?: notification.title
             if (candidateGroup == null || candidateGroup !in wechatWhitelist) return false
+        }
+
+        if (notification.source == NotificationSource.WECOM) {
+            if (wecomWhitelist.isEmpty()) return false
+            val candidateGroup = notification.conversationTitle ?: notification.title
+            if (candidateGroup == null || candidateGroup !in wecomWhitelist) return false
+        }
+
+        if (notification.source == NotificationSource.QQ) {
+            if (qqWhitelist.isEmpty()) return false
+            val candidateGroup = notification.conversationTitle ?: notification.title
+            if (candidateGroup == null || candidateGroup !in qqWhitelist) return false
         }
 
         val primaryText = NotificationTextSanitizer.primaryText(notification.bigText, notification.text)

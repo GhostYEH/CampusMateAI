@@ -46,7 +46,11 @@ fun NotificationSettingsScreen(
     val scope = rememberCoroutineScope()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val monitoredGroups by repository.getMonitoredGroupChats().collectAsState(initial = emptySet())
+    val wecomGroups by repository.getWecomGroupChats().collectAsState(initial = emptySet())
+    val qqGroups by repository.getQqGroupChats().collectAsState(initial = emptySet())
     var newGroup by remember { mutableStateOf("") }
+    var newWecomGroup by remember { mutableStateOf("") }
+    var newQqGroup by remember { mutableStateOf("") }
     var isNotificationListenerEnabled by remember { mutableStateOf(false) }
 
     fun checkNotificationListener() {
@@ -90,6 +94,7 @@ fun NotificationSettingsScreen(
         }
         item {
             WhitelistSection(
+                title = "微信群聊",
                 groups = monitoredGroups.toList(),
                 onRemove = { group ->
                     scope.launch { repository.removeMonitoredGroupChat(group) }
@@ -109,6 +114,57 @@ fun NotificationSettingsScreen(
                         }
                     }
                 },
+                label = "新增微信群名称",
+            )
+        }
+        item {
+            WhitelistSection(
+                title = "企业微信群聊",
+                groups = wecomGroups.toList(),
+                onRemove = { group ->
+                    scope.launch { repository.removeWecomGroupChat(group) }
+                },
+                modifier = Modifier.enterAnimation(delayMs = 100, enabled = !reduceMotion),
+            )
+        }
+        item {
+            AddGroupBar(
+                value = newWecomGroup,
+                onValueChange = { newWecomGroup = it },
+                onAdd = {
+                    if (newWecomGroup.isNotBlank()) {
+                        scope.launch {
+                            repository.addWecomGroupChat(newWecomGroup.trim())
+                            newWecomGroup = ""
+                        }
+                    }
+                },
+                label = "新增企业微信群名称",
+            )
+        }
+        item {
+            WhitelistSection(
+                title = "QQ 群聊",
+                groups = qqGroups.toList(),
+                onRemove = { group ->
+                    scope.launch { repository.removeQqGroupChat(group) }
+                },
+                modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
+            )
+        }
+        item {
+            AddGroupBar(
+                value = newQqGroup,
+                onValueChange = { newQqGroup = it },
+                onAdd = {
+                    if (newQqGroup.isNotBlank()) {
+                        scope.launch {
+                            repository.addQqGroupChat(newQqGroup.trim())
+                            newQqGroup = ""
+                        }
+                    }
+                },
+                label = "新增 QQ 群名称",
             )
         }
     }
@@ -149,7 +205,7 @@ private fun NotificationStatusRow(
                 color = TextPrimary,
             )
             Text(
-                if (granted) "已授权" else "未开启，开启后才能捕获微信通知",
+                if (granted) "已授权" else "未开启，开启后才能捕获微信/企业微信通知",
                 color = Muted,
                 fontSize = 11.sp,
             )
@@ -169,6 +225,7 @@ private fun NotificationStatusRow(
 
 @Composable
 private fun WhitelistSection(
+    title: String,
     groups: List<String>,
     onRemove: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -179,7 +236,7 @@ private fun WhitelistSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "监听的群聊",
+                title,
                 color = TextPrimary,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -251,6 +308,7 @@ private fun AddGroupBar(
     value: String,
     onValueChange: (String) -> Unit,
     onAdd: () -> Unit,
+    label: String = "新增群聊名称",
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -260,7 +318,7 @@ private fun AddGroupBar(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            label = { Text("新增群聊名称") },
+            label = { Text(label) },
             modifier = Modifier.weight(1f),
             singleLine = true,
             shape = RoundedCornerShape(10.dp),

@@ -131,6 +131,58 @@ fun NotificationsScreen(
                 onClick = onNavigateToWechat,
             )
             SectionDivider()
+            val wecomEnabled = sourceSettings?.isEnabled(NotificationSource.WECOM) ?: false
+            val wecomStatusText: String
+            val wecomStatusColor: androidx.compose.ui.graphics.Color
+            when {
+                !notificationAccessGranted -> {
+                    wecomStatusText = "需授权"
+                    wecomStatusColor = DangerText
+                }
+                wecomEnabled -> {
+                    wecomStatusText = "已开启"
+                    wecomStatusColor = Primary
+                }
+                else -> {
+                    wecomStatusText = "未开启"
+                    wecomStatusColor = Muted
+                }
+            }
+            SourceRow(
+                icon = Icons.Default.Business,
+                title = "企业微信",
+                subtitle = "监听工作/学习群通知",
+                statusText = wecomStatusText,
+                statusColor = wecomStatusColor,
+                onClick = onNavigateToWechat,
+            )
+            SectionDivider()
+            val qqEnabled = sourceSettings?.isEnabled(NotificationSource.QQ) ?: false
+            val qqStatusText: String
+            val qqStatusColor: androidx.compose.ui.graphics.Color
+            when {
+                !notificationAccessGranted -> {
+                    qqStatusText = "需授权"
+                    qqStatusColor = DangerText
+                }
+                qqEnabled -> {
+                    qqStatusText = "已开启"
+                    qqStatusColor = Primary
+                }
+                else -> {
+                    qqStatusText = "未开启"
+                    qqStatusColor = Muted
+                }
+            }
+            SourceRow(
+                icon = Icons.Default.Forum,
+                title = "QQ",
+                subtitle = "监听 QQ 群通知",
+                statusText = qqStatusText,
+                statusColor = qqStatusColor,
+                onClick = onNavigateToWechat,
+            )
+            SectionDivider()
             val chaoxingStatusText: String
             val chaoxingStatusColor: androidx.compose.ui.graphics.Color
             when (chaoxingStatus) {
@@ -202,16 +254,7 @@ fun NotificationsScreen(
             }
             SectionDivider()
             SourceSwitchRow(
-                icon = Icons.Default.Forum,
-                title = "QQ",
-                subtitle = "监听 QQ 系统通知",
-                checked = sourceSettings?.isEnabled(NotificationSource.QQ) ?: false,
-                enabled = sourceSettings != null,
-            ) { value ->
-                scope.launch { inboxRepository.setNotificationSourceEnabled(NotificationSource.QQ, value) }
-            }
-            SectionDivider()
-            SourceSwitchRow(
+
                 icon = Icons.Default.Apps,
                 title = "其他应用",
                 subtitle = "未识别来源的系统通知",

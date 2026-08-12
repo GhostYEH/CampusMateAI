@@ -2,6 +2,7 @@ package com.example.campusai.data.repository
 
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
+import com.example.campusai.data.local.CredentialStore
 import com.example.campusai.data.news.CampusNewsPreferences
 import com.example.campusai.data.expression.ExpressionRecognitionService
 import com.example.campusai.data.expression.ExpressionSessionManager
@@ -10,6 +11,7 @@ import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
 import com.example.campusai.data.remote.ApiClient
 import com.example.campusai.data.remote.LoginRequest
+import com.example.campusai.data.remote.RefreshRequest
 import com.example.campusai.data.remote.ChatRequest
 import com.example.campusai.data.remote.ExpressionSignalRequest
 import com.example.campusai.data.remote.ExtractRequest
@@ -47,8 +49,11 @@ class AppRepository(
 
     private val application = application
     private val dataStore = AppDataStore(application)
+    private val credentialStore = CredentialStore(application)
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile
+    private var autoLoginAttempted = false
     private val campusNewsPreferencesMutex = Mutex()
     private val newsReadIdsReady = CompletableDeferred<Unit>()
     private val newsFavoriteIdsReady = CompletableDeferred<Unit>()
@@ -129,23 +134,47 @@ class AppRepository(
     )
 
     init {
+        // 注入 token 刷新回调：OkHttp Authenticator 在 401 时调用，自动用 refresh_token 换新 access_token，
+        // 避免用户在 access_token 过期（后端默认 30 分钟）时看到「登录已失效」。
+        ApiClient.setTokenRefresher {
+            runBlocking { refreshAccessToken() }
+        }
         scope.launch { dataStore.session.collect { stored ->
                 // Session and token are persisted separately. Do not expose a
                 // restored user until the bearer token has been restored too;
                 // otherwise protected screens can race ahead and issue 401s.
                 val token = dataStore.readAccessToken()
                 ApiClient.setToken(token)
-                if (stored != null && token.isNullOrBlank()) {
-                    dataStore.clearSession()
-                    _session.value = null
-                    bindPersonalHub(null)
-                    bindTasks(null)
+                if (stored == null) {
+                    // 无持久化会话：尝试用「记住的账号密码」自动登录（仅尝试一次）
+                    if (!autoLoginAttempted) {
+                        autoLoginAttempted = true
+                        tryAutoLoginWithSavedCredentials()
+                    }
                     return@collect
                 }
-                val defaults = stored?.let { user ->
+                // 有会话但 token 缺失或已过期：先尝试 refresh，再退回自动登录兜底
+                if (token.isNullOrBlank() || isTokenExpired(token)) {
+                    val refreshed = refreshAccessToken()
+                    if (refreshed == null) {
+                        if (!autoLoginAttempted) {
+                            autoLoginAttempted = true
+                            tryAutoLoginWithSavedCredentials()
+                        }
+                        if (_session.value == null) {
+                            dataStore.clearSession()
+                            _session.value = null
+                            bindPersonalHub(null)
+                            bindTasks(null)
+                        }
+                        return@collect
+                    }
+                    // refresh 成功，access_token 已更新到 ApiClient 与 DataStore
+                }
+                val defaults = stored.let { user ->
                     demos.values.firstOrNull { it.name == user.name && it.role == user.role }
                 }
-                val hydrated = if (stored != null && defaults != null) {
+                val hydrated = if (defaults != null) {
                     stored.copy(
                         detail = if (
                             stored.name == "林知夏" &&
@@ -209,7 +238,7 @@ class AppRepository(
         _newsFavoriteIds.value = updatedIds
     }
 
-    suspend fun login(username: String, password: String): User {
+    suspend fun login(username: String, password: String, rememberCredentials: Boolean = false): User {
         _backendOnline.value = ApiClient.probeBackend()
         val user: User
         if (_backendOnline.value) {
@@ -239,13 +268,16 @@ class AppRepository(
         }
         _session.value = user
         dataStore.saveSession(user)
+        if (rememberCredentials) {
+            credentialStore.save(username.trim(), password)
+        }
         return user
     }
 
     suspend fun loginChaoxing(username: String, password: String): Pair<Boolean, String> {
         return try {
             val req = com.example.campusai.data.remote.ChaoxingLoginRequest(username, password)
-            val resp = ApiClient.api.loginChaoxing(req)
+            val resp = ApiClient.chaoxingApi.loginChaoxing(req)
             if (resp.isSuccessful) {
                 Pair(true, "")
             } else {
@@ -260,7 +292,7 @@ class AppRepository(
 
     suspend fun syncChaoxing(): Pair<Boolean, String> {
         return try {
-            val resp = ApiClient.api.syncChaoxing()
+            val resp = ApiClient.chaoxingApi.syncChaoxing()
             if (resp.isSuccessful) {
                 Pair(true, "")
             } else {
@@ -278,7 +310,7 @@ class AppRepository(
 
     suspend fun getChaoxingStatus(): com.example.campusai.data.remote.ChaoxingSyncStatusResponse? {
         return try {
-            val resp = ApiClient.api.getChaoxingStatus()
+            val resp = ApiClient.chaoxingApi.getChaoxingStatus()
             if (resp.isSuccessful) {
                 resp.body()
             } else {
@@ -302,7 +334,57 @@ class AppRepository(
         _session.value = null
         ApiClient.setToken(null)
         dataStore.clearSession()
+        // 主动退出登录：清除记住的账号密码，避免下次打开又自动登录
+        credentialStore.clear()
+        autoLoginAttempted = false
     }
+
+    /**
+     * 用 refresh_token 换取新的 access_token。成功返回新 access_token 并更新内存与持久化，
+     * 失败返回 null（由调用方决定是否退回自动登录或登出）。
+     */
+    suspend fun refreshAccessToken(): String? {
+        val refreshToken = dataStore.readRefreshToken()
+        if (refreshToken.isNullOrBlank()) return null
+        return try {
+            val resp = ApiClient.authApi.refresh(RefreshRequest(refreshToken))
+            if (!resp.isSuccessful) return null
+            val body = resp.body() ?: return null
+            ApiClient.setToken(body.access_token)
+            dataStore.saveTokens(body.access_token, body.refresh_token)
+            body.access_token
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 解析 JWT 的 exp 判断是否已过期（提前 30 秒判定，避免边界 401）。无法解析时不判定过期。 */
+    private fun isTokenExpired(token: String?): Boolean {
+        if (token.isNullOrBlank()) return true
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return false
+            val payload = java.util.Base64.getUrlDecoder().decode(parts[1])
+            val exp = JSONObject(String(payload)).optLong("exp", 0L)
+            if (exp <= 0L) return false
+            System.currentTimeMillis() / 1000 >= exp - 30
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 用「记住的账号密码」自动登录。失败（后端未启动/密码已改等）则静默保持未登录态。 */
+    private suspend fun tryAutoLoginWithSavedCredentials() {
+        val cred = credentialStore.load() ?: return
+        try {
+            login(cred.username, cred.password, rememberCredentials = true)
+        } catch (_: Exception) {
+            // 自动登录失败，保持未登录，等用户手动登录
+        }
+    }
+
+    /** 读取「记住的账号密码」中的用户名，供登录页预填。 */
+    suspend fun savedUsername(): String? = credentialStore.savedUsername()
 
     suspend fun refreshBackendStatus(): BackendStatus {
         return try {
@@ -637,6 +719,30 @@ class AppRepository(
         dataStore.removeMonitoredGroupChat(groupName)
     }
 
+    fun getWecomGroupChats(): Flow<Set<String>> {
+        return dataStore.wecomGroupChats
+    }
+
+    suspend fun addWecomGroupChat(groupName: String) {
+        dataStore.addWecomGroupChat(groupName)
+    }
+
+    suspend fun removeWecomGroupChat(groupName: String) {
+        dataStore.removeWecomGroupChat(groupName)
+    }
+
+    fun getQqGroupChats(): Flow<Set<String>> {
+        return dataStore.qqGroupChats
+    }
+
+    suspend fun addQqGroupChat(groupName: String) {
+        dataStore.addQqGroupChat(groupName)
+    }
+
+    suspend fun removeQqGroupChat(groupName: String) {
+        dataStore.removeQqGroupChat(groupName)
+    }
+
     suspend fun addFile(name: String, category: String) = personalHubMutex.withLock {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return@withLock
@@ -907,6 +1013,41 @@ class AppRepository(
         } else {
             "我已经记录你的问题。当前为 Mock 知识库模式，建议以学校教务处或学院最新通知为准。需要的话，我可以帮你把相关步骤整理成待办。"
         }
+    }
+
+    suspend fun streamChat(
+        message: String,
+        expression: ExpressionResult? = null,
+        onChunk: suspend (String) -> Unit,
+    ) {
+        if (_mockMode.value) {
+            onChunk("**Mock 模式**未连接后端数据库与 DS，无法生成正式的校园事务答复。")
+            return
+        }
+        val expressionSignal = expression
+            ?.takeIf {
+                it.isStable &&
+                    it.confidence >= 0.60 &&
+                    it.label != ExpressionLabel.UNKNOWN &&
+                    it.label != ExpressionLabel.NO_FACE
+            }
+            ?.let {
+                ExpressionSignalRequest(
+                    label = it.label.name,
+                    confidence = it.confidence.coerceIn(0.0, 1.0),
+                    is_stable = true,
+                    timestamp = it.timestamp,
+                    model_version = it.modelVersion.take(80),
+                )
+            }
+        ApiClient.streamCounselor(
+            request = ChatRequest(
+                message = message,
+                stream = true,
+                expression_signal = expressionSignal,
+            ),
+            onChunk = onChunk,
+        )
     }
 
     suspend fun extractNotice(text: String): ExtractResult {

@@ -1,12 +1,17 @@
 package com.example.campusai.data.remote
 
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.example.campusai.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
@@ -16,6 +21,46 @@ object ApiClient {
 
     fun setToken(token: String?) {
         accessToken = token
+    }
+
+    /**
+     * 由 AppRepository 注入的 token 刷新回调：同步返回新的 access token，失败返回 null。
+     * OkHttp Authenticator 在收到 401 时调用它自动续期，避免用户看到「登录已失效」。
+     */
+    private var tokenRefresher: (() -> String?)? = null
+
+    fun setTokenRefresher(refresher: (() -> String?)?) {
+        tokenRefresher = refresher
+    }
+
+    @Volatile
+    private var lastRefreshedToken: String? = null
+
+    private fun responseCount(response: okhttp3.Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) { count++; prior = prior.priorResponse }
+        return count
+    }
+
+    private val authenticator = okhttp3.Authenticator { _, response ->
+        if (responseCount(response) >= 2) return@Authenticator null
+        val refresher = tokenRefresher ?: return@Authenticator null
+        val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
+        synchronized(ApiClient) {
+            val current = accessToken
+            if (current != null && current != requestToken && current == lastRefreshedToken) {
+                return@Authenticator response.request.newBuilder()
+                    .header("Authorization", "Bearer $current")
+                    .build()
+            }
+            val newToken = refresher()
+            if (newToken == null) return@Authenticator null
+            lastRefreshedToken = newToken
+            response.request.newBuilder()
+                .header("Authorization", "Bearer $newToken")
+                .build()
+        }
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -36,6 +81,16 @@ object ApiClient {
             chain.proceed(builder.build())
         }
         .addInterceptor(loggingInterceptor)
+        .authenticator(authenticator)
+        .build()
+
+    private val chaoxingHttpClient = okHttpClient.newBuilder()
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .build()
+
+    private val counselorStreamClient = okHttpClient.newBuilder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
     private val moshi = Moshi.Builder()
@@ -49,6 +104,63 @@ object ApiClient {
         .build()
 
     val api: ApiService = retrofit.create(ApiService::class.java)
+
+    // 不附加 Authorization、不挂 Authenticator 的客户端，专供 auth/refresh 接口使用，
+    // 避免 refresh 请求自身 401 时触发 Authenticator 形成递归。
+    private val noAuthClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .addInterceptor(loggingInterceptor)
+        .build()
+
+    val authApi: ApiService = Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(noAuthClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+        .build()
+        .create(ApiService::class.java)
+
+    private val chaoxingRetrofit = Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(chaoxingHttpClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+        .build()
+    val chaoxingApi: ApiService = chaoxingRetrofit.create(ApiService::class.java)
+
+    suspend fun streamCounselor(request: ChatRequest, onChunk: suspend (String) -> Unit) = withContext(Dispatchers.IO) {
+        val payload = moshi.adapter(ChatRequest::class.java).toJson(request.copy(stream = true))
+        val httpRequest = Request.Builder()
+            .url("${BASE_URL}counselor/chat")
+            .header("Accept", "text/event-stream")
+            .apply { accessToken?.let { header("Authorization", "Bearer $it") } }
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        counselorStreamClient.newCall(httpRequest).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("AI 服务请求失败 (${response.code})")
+            val source = response.body?.source() ?: throw java.io.IOException("AI 服务没有返回内容")
+            var event = ""
+            val data = StringBuilder()
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                when {
+                    line.startsWith("event:") -> event = line.removePrefix("event:").trim()
+                    line.startsWith("data:") -> data.append(line.removePrefix("data:").trim())
+                    line.isEmpty() -> {
+                        if (event == "chunk" && data.isNotEmpty()) {
+                            val text = org.json.JSONObject(data.toString()).optString("text")
+                            if (text.isNotEmpty()) {
+                                withContext(Dispatchers.Main.immediate) { onChunk(text) }
+                            }
+                        } else if (event == "error") {
+                            throw java.io.IOException(org.json.JSONObject(data.toString()).optString("message", "AI 服务生成失败"))
+                        }
+                        event = ""
+                        data.clear()
+                    }
+                }
+            }
+        }
+    }
 
     suspend fun probeBackend(): Boolean {
         return try {

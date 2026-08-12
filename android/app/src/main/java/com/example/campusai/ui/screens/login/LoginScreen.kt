@@ -34,10 +34,13 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +88,10 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
     var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var rememberMe by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        repository.savedUsername()?.takeIf { it.isNotBlank() }?.let { username = it }
+    }
 
     fun submit() {
         if (loading) return
@@ -97,7 +104,7 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
             loading = true
             error = ""
             try {
-                repository.login(username.trim(), password)
+                repository.login(username.trim(), password, rememberCredentials = rememberMe)
                 onLoginSuccess()
             } catch (e: Exception) {
                 error = e.message ?: "暂时无法登录，请检查网络后重试。"
@@ -217,6 +224,27 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
                                 .padding(horizontal = 12.dp, vertical = 9.dp),
                         )
                     }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().campusClickable { rememberMe = !rememberMe },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = rememberMe,
+                        onCheckedChange = { rememberMe = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = LoginBlue,
+                            uncheckedColor = FormMuted,
+                            checkmarkColor = Color.White,
+                        ),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "记住账号密码（下次自动登录）",
+                        color = FormMuted,
+                        fontSize = 12.sp,
+                    )
                 }
 
                 Row(
