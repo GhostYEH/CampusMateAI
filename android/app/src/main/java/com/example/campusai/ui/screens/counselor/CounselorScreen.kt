@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.ChatMessage
@@ -66,10 +69,13 @@ fun CounselorScreen(
             sending = true
             error = null
             try {
-                messages = messages + ChatMessage(
-                    "assistant",
-                    repository.chat(question),
-                )
+                messages = messages + ChatMessage("assistant", "")
+                repository.streamChat(question) { chunk ->
+                    val last = messages.lastOrNull()
+                    if (last?.role == "assistant") {
+                        messages = messages.dropLast(1) + last.copy(text = last.text + chunk)
+                    }
+                }
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
             } finally {
@@ -237,12 +243,11 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
                 .then(if (isUser) Modifier else Modifier.border(1.dp, Line, RoundedCornerShape(19.dp)))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            Text(
-                message.text,
-                color = if (isUser) Color.White else TextPrimary,
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-            )
+            if (isUser) {
+                Text(message.text, color = Color.White, fontSize = 13.sp, lineHeight = 20.sp)
+            } else {
+                MarkdownMessage(message.text)
+            }
             if (isUser && message.expressionLabel != null) {
                 Spacer(Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -264,11 +269,57 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
                 Spacer(Modifier.height(7.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(Icons.Default.MenuBook, null, tint = Muted, modifier = Modifier.size(12.dp))
-                    Text("Mock 校园知识库", color = Muted, fontSize = 9.sp)
+                    Text("校园知识库 · 流式回答", color = Muted, fontSize = 9.sp)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun MarkdownMessage(markdown: String) {
+    val blocks = remember(markdown) { markdown.replace("\r\n", "\n").split("\n") }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        blocks.forEach { raw ->
+            val line = raw.trimEnd()
+            when {
+                line.isBlank() -> Spacer(Modifier.height(3.dp))
+                line.startsWith("### ") -> MarkdownInline(line.removePrefix("### "), 15.sp, FontWeight.Bold)
+                line.startsWith("## ") -> MarkdownInline(line.removePrefix("## "), 17.sp, FontWeight.ExtraBold)
+                line.startsWith("# ") -> MarkdownInline(line.removePrefix("# "), 19.sp, FontWeight.ExtraBold)
+                line.matches(Regex("^[-*+]\\s+.*")) -> Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("•", color = Primary, fontWeight = FontWeight.Bold)
+                    MarkdownInline(line.replaceFirst(Regex("^[-*+]\\s+"), ""), 13.sp, FontWeight.Normal, Modifier.weight(1f))
+                }
+                line.matches(Regex("^\\d+[.)]\\s+.*")) -> Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(line.split(Regex("\\s+"), limit = 2)[0], color = Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    MarkdownInline(line.replaceFirst(Regex("^\\d+[.)]\\s+"), ""), 13.sp, FontWeight.Normal, Modifier.weight(1f))
+                }
+                else -> MarkdownInline(line, 13.sp, FontWeight.Normal)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownInline(
+    text: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    fontWeight: FontWeight,
+    modifier: Modifier = Modifier,
+) {
+    val rendered = remember(text) {
+        buildAnnotatedString {
+            var cursor = 0
+            Regex("\\*\\*(.+?)\\*\\*").findAll(text).forEach { match ->
+                append(text.substring(cursor, match.range.first))
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(match.groupValues[1]) }
+                cursor = match.range.last + 1
+            }
+            append(text.substring(cursor))
+        }
+    }
+    Text(rendered, modifier = modifier, color = TextPrimary, fontSize = fontSize, fontWeight = fontWeight, lineHeight = 20.sp)
 }
 
 @Composable

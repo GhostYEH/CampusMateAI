@@ -48,7 +48,9 @@ class NotificationInboxRepository(application: Application) {
     suspend fun capture(notification: CapturedNotification): Boolean {
         val settings = dataStore.notificationSourceSettings.first()
         val whitelist = dataStore.monitoredGroupChats.first()
-        if (!filter.shouldStore(notification, settings, whitelist)) return false
+        val wecomWhitelist = dataStore.wecomGroupChats.first()
+        val qqWhitelist = dataStore.qqGroupChats.first()
+        if (!filter.shouldStore(notification, settings, whitelist, wecomWhitelist, qqWhitelist)) return false
 
         val entity = RawNotificationEntity(
             notificationKey = notification.notificationKey,

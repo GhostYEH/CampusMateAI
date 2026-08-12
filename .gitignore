@@ -181,3 +181,9 @@ harmony/api.local.properties
 # hvigorfile.ts 在编译前从 api.local.properties 生成的本地 API 配置(不提交)
 harmony/entry/src/main/ets/core/GeneratedApiEnv.ets
 
+# 本地测试凭据 / 临时产物（勿提交）
+backend/scripts/_test_*.json
+backend/data/*.db.bak_*
+android/build_log*.txt
+codex-harmony-screen.jpeg
+

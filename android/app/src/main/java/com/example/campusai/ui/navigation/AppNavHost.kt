@@ -44,7 +44,6 @@ import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
 import com.example.campusai.ui.screens.profile.AccountScreen
-import com.example.campusai.ui.screens.profile.ChaoxingLoginScreen
 import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
 import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
@@ -252,13 +251,7 @@ fun AppNavHost(
             )
         }
         composable("chaoxing") {
-            com.example.campusai.ui.screens.profile.ChaoxingScreen(
-                onBack = { navController.popBackStack() },
-                onNavigateToLogin = { navController.navigate("chaoxing-login") }
-            )
-        }
-        composable("chaoxing-login") {
-            ChaoxingLoginScreen(onLoginSuccess = { navController.popBackStack() })
+            com.example.campusai.ui.screens.profile.ChaoxingScreen()
         }
         composable("expression-contribution") {
             ExpressionContributionScreen(repository) { navController.popBackStack() }

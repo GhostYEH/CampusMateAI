@@ -8,6 +8,7 @@ import retrofit2.http.*
 
 data class LoginRequest(val username: String, val password: String)
 data class LoginResponse(val access_token: String, val refresh_token: String)
+data class RefreshRequest(val refresh_token: String)
 data class ExpressionSignalRequest(
     val label: String,
     val confidence: Double,
@@ -228,6 +229,9 @@ interface ApiService {
 
     @GET("auth/me")
     suspend fun me(): Response<MeResponse>
+
+    @POST("auth/refresh")
+    suspend fun refresh(@Body request: RefreshRequest): Response<LoginResponse>
 
     @POST("counselor/chat")
     suspend fun chat(@Body request: ChatRequest): Response<ChatResponse>

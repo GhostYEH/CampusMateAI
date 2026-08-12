@@ -158,6 +158,8 @@ async def get_chaoxing_status(
         return ChaoxingSyncStatus(status="offline")
 
     # 检查 cookie 是否仍然有效
+    # Validate the stored remote session. The Android client uses the dedicated
+    # long-timeout client for this operation because it depends on this hop.
     client = ChaoxingClient(cookies=credentials)
     verify_url = "https://mooc2-ans.chaoxing.com/visit/courses/list"
     try:
