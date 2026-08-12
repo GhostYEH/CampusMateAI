@@ -22,22 +22,15 @@ export struct ProfilePage {
       SymbolGlyph(symbol).fontSize(27).fontColor([this.palette().primary])
       Text(label).fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 18 })
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(21).fontColor([this.palette().muted])
-    }.width('100%').height(70).alignItems(VerticalAlign.Center).onClick(() => this.onNavigate(route))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-          })
-        })
-    )
+    }.width('100%').height(58).alignItems(VerticalAlign.Center).onClick(() => this.onNavigate(route))
   }
 
   build() {
     Scroll() {
-      Column({ space: 14 }) {
+      Column() {
         Stack({ alignContent: Alignment.TopStart }) {
           Column() {}
-            .width('100%').height(318)
+            .width('100%').height(250)
             .linearGradient({ angle: 90, colors: this.darkMode ? [['#FF17384A',0],['#FF2F6486',1]] : [['#FF4E5EDB',0],['#FF6E79F5',1]] })
             .borderRadius({ bottomLeft: 30, bottomRight: 30 })
           Column() {
@@ -63,27 +56,29 @@ export struct ProfilePage {
                 }.padding({ left: 9, right: 9, top: 5, bottom: 5 }).backgroundColor('#1FFFFFFF').borderRadius(13)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start).margin({ left: 17 })
               SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(22).fontColor(['#CCFFFFFF'])
-            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 30 }).onClick(() => this.onNavigate('account'))
+            }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 15 }).onClick(() => this.onNavigate('account'))
           }.width('100%').padding({ left: 24, top: 15, right: 20 })
-          Row() {
-            this.QuickAction('文件', $r('sys.symbol.doc_text'), 'files', false)
-            this.QuickAction('活动', $r('sys.symbol.calendar_badge_checkmark'), 'activities', true)
-            this.QuickAction('收藏', $r('sys.symbol.bookmark'), 'favorites', false)
-            this.QuickAction('设置', $r('sys.symbol.gearshape'), 'settings', false)
-          }.width('100%').height(126).padding({ left: 7, right: 7, top: 16, bottom: 16 })
-            .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(24)
-            .position({ x: 16, y: 256 }).constraintSize({ maxWidth: '91%' })
-        }.width('100%').height(382)
-        Text('更多服务').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold).width('100%').padding({ left: 20 })
-        Column() {
-          this.MenuRow('学习与专注', $r('sys.symbol.timer'), 'focus'); Divider().color(this.palette().line).margin({ left: 53 })
-          this.MenuRow('通知与提醒', $r('sys.symbol.bell'), 'notifications'); Divider().color(this.palette().line).margin({ left: 53 })
-          this.MenuRow('账号与隐私', $r('sys.symbol.person_shield'), 'account'); Divider().color(this.palette().line).margin({ left: 53 })
-          this.MenuRow('帮助与反馈', $r('sys.symbol.message'), 'counselor'); Divider().color(this.palette().line).margin({ left: 53 })
-          this.MenuRow('关于 CampusMate', $r('sys.symbol.info_circle'), 'about')
-        }.width('100%').padding({ left: 16, right: 16, top: 3, bottom: 3 })
-          .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
-        Blank().height(102)
+        }.width('100%').height(268)
+        Row() {
+          this.QuickAction('文件', $r('sys.symbol.doc_text'), 'files', false)
+          this.QuickAction('活动', $r('sys.symbol.calendar_badge_checkmark'), 'activities', true)
+          this.QuickAction('收藏', $r('sys.symbol.bookmark'), 'favorites', false)
+          this.QuickAction('设置', $r('sys.symbol.gearshape'), 'settings', false)
+        }.width('91%').height(118).padding({ left: 7, right: 7, top: 14, bottom: 14 })
+          .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(24)
+          .margin({ top: -52, left: 16, right: 16 })
+        Column({ space: 14 }) {
+          Text('更多服务').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold).width('100%').padding({ left: 4 })
+          Column() {
+            this.MenuRow('学习与专注', $r('sys.symbol.timer'), 'focus'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('通知与提醒', $r('sys.symbol.bell'), 'notifications'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('账号与隐私', $r('sys.symbol.person_shield'), 'account'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('帮助与反馈', $r('sys.symbol.message'), 'counselor'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('关于 CampusMate', $r('sys.symbol.info_circle'), 'about')
+          }.width('100%').padding({ left: 16, right: 16, top: 3, bottom: 3 })
+            .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+        }.width('100%').padding({ left: 16, right: 16, top: 18 })
+        Blank().height(112)
       }.width('100%')
     }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
   }

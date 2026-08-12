@@ -78,7 +78,7 @@ export struct CoursesPage {
       ForEach(['一','二','三','四','五','六','日'], (day: string, index: number) => {
         Column({ space: 3 }) {
           Text(day).fontColor(this.selectedDay === index ? this.palette().primary : this.palette().muted).fontSize(9)
-          Text((12 + index).toString())
+          Text(this.weekDateLabel(index))
             .fontColor(this.selectedDay === index ? '#FFFFFFFF' : this.palette().muted)
             .fontSize(10).fontWeight(FontWeight.Bold).textAlign(TextAlign.Center)
             .width(25).height(25).backgroundColor(this.selectedDay === index ? this.palette().primary : Color.Transparent).borderRadius(13)
@@ -87,6 +87,14 @@ export struct CoursesPage {
       })
     }.width('100%').padding({ top: 8, bottom: 8 }).backgroundColor(this.palette().surface)
       .border({ width: 1, color: this.palette().line }).borderRadius(14)
+  }
+
+  weekDateLabel(index: number): string {
+    const now: Date = new Date();
+    const dayOfWeek: number = now.getDay() === 0 ? 7 : now.getDay();
+    const monday: Date = new Date(now);
+    monday.setDate(now.getDate() - (dayOfWeek - 1) + index);
+    return monday.getDate().toString();
   }
 
   @Builder Metrics() {
@@ -206,7 +214,7 @@ export struct CoursesPage {
           } else {
             ForEach(this.courses, (course: CourseItem, index: number) => { this.CourseCard(course, index) }, (course: CourseItem) => course.id)
           }
-          Blank().height(98)
+          Blank().height(112)
         }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 10 })
       }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
       }

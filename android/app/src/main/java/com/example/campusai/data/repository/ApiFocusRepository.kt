@@ -39,9 +39,9 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         val completed = api.listStudySessions(status = "completed")
         val active = api.activeStudySession()
         val goal = api.getDailyStudyGoal()
-        check(completed.isSuccessful) { "无法加载专注记录" }
-        check(active.isSuccessful) { "无法恢复专注会话" }
-        check(goal.isSuccessful) { "无法加载每日目标" }
+        check(completed.isSuccessful) { requestError("加载专注记录", completed.code()) }
+        check(active.isSuccessful) { requestError("恢复专注会话", active.code()) }
+        check(goal.isSuccessful) { requestError("加载每日目标", goal.code()) }
         val snapshots = completed.body().orEmpty().map(::toSnapshot)
         val mapped = RemoteFocusRepository(snapshots, goal.body()!!.target_minutes)
         _records.value = mapped.records
@@ -114,4 +114,7 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         FocusMode.SHORT_BREAK -> "short_break"
         FocusMode.LONG_BREAK -> "long_break"
     }
+
+    private fun requestError(action: String, code: Int): String =
+        if (code == 401) "登录已失效，请重新登录后同步专注记录" else "无法$action ($code)"
 }

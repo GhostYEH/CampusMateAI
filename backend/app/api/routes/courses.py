@@ -58,6 +58,15 @@ def list_courses(
         enrolls = container.enrollment_repository.list_user_classes(user.id)
         for e in enrolls:
             course_ids.add(e["course_id"])
+        # Learning Tong courses are private imports. They do not have a campus
+        # class enrollment, so exposing only enrollment-backed courses made a
+        # successful sync invisible to the Android client.
+        imported, _ = container.course_repository.list_courses(
+            teacher_id=user.id,
+            page=1,
+            page_size=1000,
+        )
+        course_ids.update(course.id for course in imported if course.provider == "chaoxing")
         if not course_ids:
             return Page(items=[], total=0, page=page, page_size=page_size, has_more=False)
         items: List[CourseOut] = []

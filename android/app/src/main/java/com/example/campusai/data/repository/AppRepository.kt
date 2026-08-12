@@ -59,7 +59,7 @@ class AppRepository(
     private val _backendOnline = MutableStateFlow(false)
     val backendOnline: StateFlow<Boolean> = _backendOnline.asStateFlow()
 
-    private val _mockMode = MutableStateFlow(BuildConfig.DEFAULT_USE_MOCK)
+    private val _mockMode = MutableStateFlow(false)
     val mockMode: StateFlow<Boolean> = _mockMode.asStateFlow()
 
     private val _reduceMotion = MutableStateFlow(false)
@@ -129,8 +129,19 @@ class AppRepository(
     )
 
     init {
-        scope.launch {
-            dataStore.session.collect { stored ->
+        scope.launch { dataStore.session.collect { stored ->
+                // Session and token are persisted separately. Do not expose a
+                // restored user until the bearer token has been restored too;
+                // otherwise protected screens can race ahead and issue 401s.
+                val token = dataStore.readAccessToken()
+                ApiClient.setToken(token)
+                if (stored != null && token.isNullOrBlank()) {
+                    dataStore.clearSession()
+                    _session.value = null
+                    bindPersonalHub(null)
+                    bindTasks(null)
+                    return@collect
+                }
                 val defaults = stored?.let { user ->
                     demos.values.firstOrNull { it.name == user.name && it.role == user.role }
                 }
@@ -151,10 +162,16 @@ class AppRepository(
                 bindTasks(hydrated)
             }
         }
-        scope.launch { dataStore.mockMode.collect {
-            _mockMode.value = it
-            expressionSessionManager.setUseMock(it)
-        } }
+        scope.launch {
+            // Mock mode is strictly disabled
+            _mockMode.value = false
+            expressionSessionManager.setUseMock(false)
+        }
+        // A restored session does not pass through login(), so the old app left
+        // backendOnline at its default false value until Settings was opened.
+        // Keep one app-wide source of truth and refresh it as soon as the
+        // repository is created.
+        scope.launch { refreshBackendStatus() }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
@@ -193,9 +210,9 @@ class AppRepository(
     }
 
     suspend fun login(username: String, password: String): User {
-        _backendOnline.value = if (_mockMode.value) false else ApiClient.probeBackend()
+        _backendOnline.value = ApiClient.probeBackend()
         val user: User
-        if (_backendOnline.value && !_mockMode.value) {
+        if (_backendOnline.value) {
             val loginResp = ApiClient.api.login(LoginRequest(username, password))
             if (!loginResp.isSuccessful) throw Exception("账号或密码不正确")
             val body = loginResp.body()!!
@@ -203,16 +220,22 @@ class AppRepository(
             dataStore.saveTokens(body.access_token, body.refresh_token)
             val meResp = ApiClient.api.me()
             val meUser = meResp.body()?.user
+            val displayName = meUser?.display_name?.takeIf { it.isNotBlank() }
+                ?: meUser?.username?.takeIf { it.isNotBlank() }
+                ?: username
+            val detail = listOfNotNull(
+                meUser?.college?.takeIf { it.isNotBlank() },
+                meUser?.major?.takeIf { it.isNotBlank() },
+                meUser?.grade?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
             user = User(
-                name = meUser?.name ?: username,
-                role = meUser?.role ?: "student",
-                detail = meUser?.detail ?: "",
-                accountId = meUser?.account_id.orEmpty(),
+                name = displayName,
+                role = meUser?.role?.takeIf { it.isNotBlank() } ?: "student",
+                detail = detail,
+                accountId = meUser?.id.orEmpty(),
             )
         } else {
-            val demo = demos[username]
-            if (demo == null || password != "Demo123456") throw Exception("账号或密码不正确")
-            user = demo
+            throw Exception("无法连接到后端服务器，请检查网络或后端是否运行")
         }
         _session.value = user
         dataStore.saveSession(user)
@@ -282,25 +305,27 @@ class AppRepository(
     }
 
     suspend fun refreshBackendStatus(): BackendStatus {
-        if (_mockMode.value) {
-            _backendOnline.value = false
-            return BackendStatus(false, "Mock 演示模式", null, null)
-        }
         return try {
             val health = ApiClient.api.health()
             val knowledge = ApiClient.api.knowledgeStatus()
             val online = health.isSuccessful
             _backendOnline.value = online
+            if (online && _session.value != null) {
+                // The task tab may have loaded before this initial health check.
+                // Refresh it now so a stale offline banner cannot survive a
+                // successful connection.
+                refreshTasks()
+            }
             BackendStatus(
                 online = online,
-                mode = health.body()?.mode ?: "Real",
+                mode = health.body()?.mode ?: (if (online) "Real" else "Error ${health.code()}"),
                 knowledgeDocuments = knowledge.body()?.document_count,
                 indexReady = knowledge.body()?.index_ready,
                 error = if (online) null else "健康检查返回 ${health.code()}",
             )
         } catch (error: Exception) {
             _backendOnline.value = false
-            BackendStatus(false, "Real", null, null, error.message ?: "无法连接后端")
+            BackendStatus(false, "连接失败: ${error.message ?: "未知错误"}", null, null, error.message ?: "无法连接后端")
         }
     }
 
@@ -403,6 +428,13 @@ class AppRepository(
                             description = dto.description ?: dto.source_text ?: "",
                         )
                     })
+                _taskError.value = null
+            } else {
+                _taskError.value = if (resp.code() == 401) {
+                    "登录已失效，请重新登录后同步待办"
+                } else {
+                    "待办数据加载失败，请稍后重试"
+                }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
     }

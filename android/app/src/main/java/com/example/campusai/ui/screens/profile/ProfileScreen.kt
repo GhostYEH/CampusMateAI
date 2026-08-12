@@ -81,7 +81,7 @@ fun ProfileScreen(
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
                         ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },
-                        ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "向 AI 校园助手描述你的问题") { onNavigate("counselor") },
+                        ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "常见问题、问题反馈与服务状态") { onNavigate("help-feedback") },
                         ProfileRow(Icons.Default.Info, "关于 CampusMate", "版本与能力边界") { showAbout = true },
                     ),
                 )

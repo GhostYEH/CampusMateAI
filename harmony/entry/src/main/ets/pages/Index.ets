@@ -1,6 +1,7 @@
 import { AppState } from '../core/AppState';
 import { ApiConfig } from '../core/ApiConfig';
 import { darkPalette, lightPalette } from '../ui/Theme';
+import { SecondaryHeader } from '../ui/SecondaryHeader';
 import { ApiClient } from '../data/ApiClient';
 import { LoginScreen } from '../features/login/LoginScreen';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
@@ -18,9 +19,11 @@ import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { PersonalHubPage } from '../features/profile/PersonalHubPage';
 import { SettingsPage } from '../features/profile/SettingsPage';
 import { AccountPage } from '../features/profile/AccountPage';
-import { ActivityItem, ChatMessage, ChatRequest, ChatResponse, ClassroomAvailability, ClassroomResponse, CourseItem, ExamItem, FavoriteItem, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, ServiceRequestItem, ServiceRequestPayload, StudySession, StudySessionCreate, StudySessionFinish, TaskItem } from '../data/Models';
+import { ActivityItem, ChatMessage, ChatRequest, ChatResponse, ClassroomAvailability, ClassroomResponse, CourseItem, ExamItem, FavoriteItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, ServiceRequestItem, ServiceRequestPayload, StudySession, StudySessionCreate, StudySessionFinish, TaskItem, ExtractResult } from '../data/Models';
+import { NotificationIngestService } from '../data/notification/NotificationIngestService';
+import { notificationSubscriberManager } from '../data/notification/NotificationSubscriber';
 import { http } from '@kit.NetworkKit';
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, window } from '@kit.ArkUI';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
@@ -28,10 +31,17 @@ function toastError(message: string): void {
   try { promptAction.showToast({ message: message, duration: 2200 }); } catch { /* ignore toast failure */ }
 }
 
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 @Entry
 @Component
 struct Index {
   private appState: AppState = new AppState();
+  private tabsController: TabsController = new TabsController();
+  private requestedTab: number = -1;
+  private ingestService: NotificationIngestService | null = null;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
   @State reduceMotion: boolean = false;
@@ -58,19 +68,63 @@ struct Index {
   @State studySessions: StudySession[] = [];
   @State activeStudySession?: StudySession = undefined;
   @State notices: NoticeItem[] = [];
+  @State localNotices: LocalCapturedNotice[] = [];
+  @State subscriberActive: boolean = false;
   @State personalFiles: PersonalFileItem[] = [];
   @State activities: ActivityItem[] = [];
   @State favorites: FavoriteItem[] = [];
   @State backendOnline: boolean = true;
+  @State rememberUsername: boolean = false;
+  @State statusBarHeight: number = 0;
 
-  aboutToAppear(): void {
-    this.appState.restore();
+  async aboutToAppear(): Promise<void> {
+    await this.appState.restore();
     this.signedIn = this.appState.sessionToken.length > 0;
     this.darkMode = this.appState.darkMode;
     this.reduceMotion = this.appState.reduceMotion;
+    this.rememberUsername = this.appState.rememberUsername;
+    this.applySystemBarStyle();
+    if (this.rememberUsername && this.appState.savedUsername.length > 0) {
+      this.username = this.appState.savedUsername;
+    }
     if (this.signedIn) {
+      this.initNotificationService();
       this.refreshPrimaryData();
     }
+  }
+
+  initNotificationService(): void {
+    if (this.ingestService === null) {
+      this.ingestService = new NotificationIngestService(API_BASE_URL, () => this.appState.sessionToken);
+      notificationSubscriberManager.init(this.ingestService);
+    }
+    this.loadLocalNotices();
+    notificationSubscriberManager.start().then((active: boolean) => {
+      this.subscriberActive = active;
+    }).catch(() => { this.subscriberActive = false; });
+  }
+
+  async loadLocalNotices(): Promise<void> {
+    if (this.ingestService !== null) {
+      try {
+        this.localNotices = await this.ingestService.loadLocalNotices();
+      } catch { this.localNotices = []; }
+    }
+  }
+
+  applySystemBarStyle(): void {
+    try {
+      window.getLastWindow(getContext(this)).then((win: window.Window) => {
+        win.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          isStatusBarLightIcon: this.darkMode
+        }).catch(() => {});
+        try {
+          const avoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+          this.statusBarHeight = px2vp(avoidArea.topRect.height);
+        } catch { /* ignore */ }
+      }).catch(() => {});
+    } catch { /* ignore */ }
   }
 
   surface(): string { return this.darkMode ? darkPalette.surface : lightPalette.surface; }
@@ -94,12 +148,16 @@ struct Index {
     try {
       const client = new ApiClient(API_BASE_URL, () => '');
       const token = await client.login(this.username.trim(), this.password);
-      this.appState.signIn(token);
+      await this.appState.signIn(token);
+      await this.appState.setRememberUsername(this.rememberUsername);
+      await this.appState.saveUsername(this.username.trim());
       this.signedIn = true;
       this.loginError = '';
+      this.initNotificationService();
       await this.refreshPrimaryData();
     } catch (error) {
-      this.loginError = '暂时无法登录，请检查账号、密码和网络后重试。';
+      const errorMessage = error instanceof Error ? error.message : '暂时无法登录，请检查账号、密码和网络后重试。';
+      this.loginError = errorMessage;
     } finally {
       this.loginLoading = false;
     }
@@ -113,27 +171,32 @@ struct Index {
     const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
     try {
       const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
-      this.displayName = me.user.display_name ?? me.user.name ?? me.user.username ?? '林知夏';
+      const user = me?.user ?? {};
+      this.displayName = user.display_name ?? user.name ?? user.username ?? '林知夏';
       const detailParts: string[] = [];
-      if (me.user.major !== undefined && me.user.major.length > 0) {
-        detailParts.push(me.user.major);
+      if (user.major !== undefined && user.major.length > 0) {
+        detailParts.push(user.major);
       }
-      if (me.user.grade !== undefined && me.user.grade.length > 0) {
-        detailParts.push(`${me.user.grade}级`);
+      if (user.grade !== undefined && user.grade.length > 0) {
+        detailParts.push(`${user.grade}级`);
       }
       if (detailParts.length > 0) {
         this.profileDetail = detailParts.join(' · ');
       }
       const coursePage = await client.request<PagedResponse<CourseItem>>(http.RequestMethod.GET, 'courses?page=1&page_size=100');
-      this.courses = coursePage.items;
+      this.courses = safeArray<CourseItem>(coursePage?.items);
       const taskPage = await client.request<PagedResponse<TaskItem>>(http.RequestMethod.GET, 'tasks?page=1&page_size=200');
-      this.tasks = taskPage.items;
+      this.tasks = safeArray<TaskItem>(taskPage?.items);
       const noticePage = await client.request<PagedResponse<NoticeItem>>(http.RequestMethod.GET, 'notices?page=1&page_size=20');
-      this.notices = noticePage.items;
+      this.notices = safeArray<NoticeItem>(noticePage?.items);
+      await this.loadLocalNotices();
       this.backendOnline = true;
     } catch (error) {
-      // Keep the Android-equivalent local empty state when the backend becomes unavailable.
       this.backendOnline = false;
+      if (error instanceof Error && error.message.includes('登录已过期')) {
+        await this.signOut();
+        toastError('登录已过期，请重新登录');
+      }
     } finally {
       this.primaryLoading = false;
     }
@@ -191,25 +254,59 @@ struct Index {
     }
   }
 
-  signOut(): void {
-    this.appState.signOut();
+  async signOut(): Promise<void> {
+    await notificationSubscriberManager.stop();
+    this.subscriberActive = false;
+    await this.appState.signOut();
     this.signedIn = false;
     this.route = '';
     this.activeTab = 0;
+    this.password = '';
+    this.localNotices = [];
+    if (!this.rememberUsername) {
+      this.username = '';
+    }
   }
 
-  toggleTheme(): void {
-    this.appState.toggleTheme();
+  async toggleSubscriber(): Promise<void> {
+    if (this.subscriberActive) {
+      await notificationSubscriberManager.stop();
+      this.subscriberActive = false;
+      toastError('已关闭通知监听');
+    } else {
+      if (this.ingestService === null) {
+        this.ingestService = new NotificationIngestService(API_BASE_URL, () => this.appState.sessionToken);
+        notificationSubscriberManager.init(this.ingestService);
+      }
+      const ok: boolean = await notificationSubscriberManager.start();
+      this.subscriberActive = ok;
+      if (ok) { toastError('通知监听已开启'); } else { toastError('监听开启失败，需通知控制权限'); }
+    }
+  }
+
+  async toggleTheme(): Promise<void> {
+    await this.appState.toggleTheme();
     this.darkMode = this.appState.darkMode;
+    this.applySystemBarStyle();
   }
 
   navigateTo(target: string): void {
-    if (target === 'courses') { this.route = ''; this.activeTab = 1; return; }
-    if (target === 'tasks') { this.route = ''; this.activeTab = 2; return; }
-    if (target === 'counselor') { this.route = ''; this.activeTab = 3; return; }
-    if (target === 'profile') { this.route = ''; this.activeTab = 4; return; }
+    if (target === 'courses') { this.selectTab(1); return; }
+    if (target === 'tasks') { this.selectTab(2); return; }
+    if (target === 'counselor') { this.selectTab(3); return; }
+    if (target === 'profile') { this.selectTab(4); return; }
     this.route = target;
     this.refreshSecondaryData(target);
+  }
+
+  selectTab(index: number): void {
+    this.route = '';
+    // Tabs.onChange is delivered after controller navigation on this SDK and
+    // can briefly report the previous index. Ignore that stale callback while
+    // the controller completes the requested page transition.
+    this.requestedTab = index;
+    this.activeTab = index;
+    this.tabsController.changeIndex(index);
   }
 
   async refreshSecondaryData(target: string): Promise<void> {
@@ -218,30 +315,35 @@ struct Index {
     const client = new ApiClient(API_BASE_URL, () => this.appState.sessionToken);
     try {
       if (target === 'exams') {
-        this.exams = await client.request<ExamItem[]>(http.RequestMethod.GET, 'student/exams');
+        this.exams = safeArray<ExamItem>(await client.request<ExamItem[]>(http.RequestMethod.GET, 'student/exams'));
       } else if (target === 'classrooms') {
         const response = await client.request<ClassroomResponse>(http.RequestMethod.GET, 'student/classrooms');
-        this.classrooms = response.items;
+        this.classrooms = safeArray<ClassroomAvailability>(response?.items);
       } else if (target === 'services') {
-        this.serviceRequests = await client.request<ServiceRequestItem[]>(http.RequestMethod.GET, 'student/service-requests');
+        this.serviceRequests = safeArray<ServiceRequestItem>(await client.request<ServiceRequestItem[]>(http.RequestMethod.GET, 'student/service-requests'));
       } else if (target === 'lostfound') {
-        this.lostFoundItems = await client.request<LostFoundItem[]>(http.RequestMethod.GET, 'student/lost-found');
+        this.lostFoundItems = safeArray<LostFoundItem>(await client.request<LostFoundItem[]>(http.RequestMethod.GET, 'student/lost-found'));
       } else if (target === 'focus') {
-        this.studySessions = await client.request<StudySession[]>(http.RequestMethod.GET, 'study/sessions?page=1&page_size=20');
+        this.studySessions = safeArray<StudySession>(await client.request<StudySession[]>(http.RequestMethod.GET, 'study/sessions?page=1&page_size=20'));
         this.activeStudySession = await client.request<StudySession | undefined>(http.RequestMethod.GET, 'study/sessions/active');
       } else if (target === 'notifications') {
         const page = await client.request<PagedResponse<NoticeItem>>(http.RequestMethod.GET, 'notices?page=1&page_size=100');
-        this.notices = page.items;
+        this.notices = safeArray<NoticeItem>(page?.items);
+        await this.loadLocalNotices();
       } else if (target === 'files') {
-        this.personalFiles = await client.request<PersonalFileItem[]>(http.RequestMethod.GET, 'personal-hub/files');
+        this.personalFiles = safeArray<PersonalFileItem>(await client.request<PersonalFileItem[]>(http.RequestMethod.GET, 'personal-hub/files'));
       } else if (target === 'activities') {
         const page = await client.request<PagedResponse<ActivityItem>>(http.RequestMethod.GET, 'activities?page=1&page_size=100');
-        this.activities = page.items;
+        this.activities = safeArray<ActivityItem>(page?.items);
       } else if (target === 'favorites') {
-        this.favorites = await client.request<FavoriteItem[]>(http.RequestMethod.GET, 'personal-hub/favorites');
+        this.favorites = safeArray<FavoriteItem>(await client.request<FavoriteItem[]>(http.RequestMethod.GET, 'personal-hub/favorites'));
       }
     } catch (error) {
       this.backendOnline = false;
+      if (error instanceof Error && error.message.includes('登录已过期')) {
+        await this.signOut();
+        toastError('登录已过期，请重新登录');
+      }
     } finally {
       this.secondaryLoading = false;
     }
@@ -361,11 +463,16 @@ struct Index {
       loading: this.loginLoading,
       error: this.loginError,
       reduceMotion: this.reduceMotion,
+      rememberUsername: this.rememberUsername,
       onSubmit: () => {
         this.signInForPreview();
       },
       onInputChanged: () => {
         this.loginError = '';
+      },
+      onRememberChange: (value: boolean) => {
+        this.rememberUsername = value;
+        this.appState.setRememberUsername(value);
       }
     })
   }
@@ -418,78 +525,56 @@ struct Index {
     })
   }
 
-  @Builder SecondaryPage() {
+  @Builder SecondaryContent() {
     if (this.route === 'exams') {
-      Navigation() {
-        ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('exams'), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id), onDelete: (id: string) => this.deleteExam(id) })
-      }
-      .title('考试安排')
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('exams'))])
+      ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('exams'), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id), onDelete: (id: string) => this.deleteExam(id) })
     } else if (this.route === 'classrooms') {
-      Navigation() {
-        ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onQuery: () => this.refreshSecondaryData('classrooms') })
-      }
-      .title('空教室查询')
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '查询', () => this.refreshSecondaryData('classrooms'))])
+      ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onQuery: () => this.refreshSecondaryData('classrooms') })
     } else if (this.route === 'services') {
-      Navigation() {
-        ServicesPage({ requests: this.serviceRequests, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('services'), onSubmit: (kind: string, title: string, content: string) => this.createServiceRequest(kind, title, content) })
-      }
-      .title('办事大厅')
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('services'))])
+      ServicesPage({ requests: this.serviceRequests, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('services'), onSubmit: (kind: string, title: string, content: string) => this.createServiceRequest(kind, title, content) })
     } else if (this.route === 'focus') {
-      Navigation() {
-        FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onStart: () => this.startFocusSession(), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
-      }
-      .title('专注自习')
-      .titleMode(NavigationTitleMode.Mini)
+      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onStart: () => this.startFocusSession(), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
     } else if (this.route === 'lostfound') {
-      Navigation() {
-        LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onFilter: (kind: string) => this.refreshSecondaryData('lostfound'), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact) })
-      }
-      .title('失物招领')
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('lostfound'))])
+      LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onFilter: (kind: string) => this.refreshSecondaryData('lostfound'), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact) })
     } else if (this.route === 'notifications') {
-      Navigation() {
-        NotificationsPage({ notices: this.notices, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('notifications') })
-      }
-      .title('通知整理')
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData('notifications'))])
+      NotificationsPage({ notices: this.notices, loading: this.secondaryLoading, darkMode: this.darkMode, localNotices: this.localNotices, subscriberActive: this.subscriberActive, ingestService: this.ingestService, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('notifications'), onToggleSubscriber: () => this.toggleSubscriber(), onTaskSaved: () => this.refreshPrimaryData(), onLocalNoticesChanged: () => this.loadLocalNotices() })
     } else if (this.route === 'files' || this.route === 'activities' || this.route === 'favorites') {
-      Navigation() {
-        PersonalHubPage({ section: this.route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route) })
-      }
-      .title(`我的${this.route === 'files' ? '文件' : this.route === 'activities' ? '活动' : '收藏'}`)
-      .titleMode(NavigationTitleMode.Mini)
-      .toolbarConfiguration([this.createToolbarItem($r('app.media.app_icon'), '刷新', () => this.refreshSecondaryData(this.route))])
+      PersonalHubPage({ section: this.route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route) })
     } else if (this.route === 'settings') {
-      Navigation() {
-        SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: (value: boolean) => { this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target) })
-      }
-      .title('系统设置')
-      .titleMode(NavigationTitleMode.Mini)
+      SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target) })
     } else if (this.route === 'account') {
-      Navigation() {
-        AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.route = '', onSignOut: () => this.signOut() })
-      }
-      .title('账号与隐私')
-      .titleMode(NavigationTitleMode.Mini)
+      AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.route = '', onSignOut: () => this.signOut() })
+    } else if (this.route === 'about') {
+      Column({ space: 12 }) {
+        SecondaryHeader({ title: '关于 CampusMate', subtitle: '校园事务智能陪伴助手', darkMode: this.darkMode, onBack: () => this.route = '' })
+        Scroll() {
+          Column({ space: 14 }) {
+            SymbolGlyph($r('sys.symbol.school')).fontSize(46).fontColor([this.primaryColor()])
+            Text('CampusMate AI').fontColor(this.textColor()).fontSize(22).fontWeight(FontWeight.Bold)
+            Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(14).textAlign(TextAlign.Center).lineHeight(22)
+            Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
+          }.width('100%').padding(24).alignItems(HorizontalAlign.Center)
+        }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.width('100%').height('100%').backgroundColor(this.pageBackground())
     } else {
-      Navigation() {
+      Column({ space: 12 }) {
+        SecondaryHeader({ title: '校园服务', subtitle: '功能开发中', darkMode: this.darkMode, onBack: () => this.route = '' })
         Column({ space: 12 }) {
           SymbolGlyph($r('sys.symbol.info_circle')).fontSize(38).fontColor([this.primaryColor()])
           Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(15).textAlign(TextAlign.Center)
           Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center)
-        }.width('100%').padding(28)
-      }
-      .title('校园服务')
-      .titleMode(NavigationTitleMode.Mini)
+        }.width('100%').padding(28).alignItems(HorizontalAlign.Center)
+      }.width('100%').height('100%').backgroundColor(this.pageBackground())
     }
+  }
+
+  @Builder SecondaryPage() {
+    Stack() {
+      this.SecondaryContent()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(this.pageBackground())
   }
 
   private createToolbarItem(icon: Resource, text: string, action: () => void): ToolbarItem {
@@ -535,12 +620,11 @@ struct Index {
 
   @Builder BottomNavigation() {
     AppDock({
-      activeTab: this.activeTab,
+      activeTab: $activeTab,
       darkMode: this.darkMode,
       pendingCount: this.tasks.filter((task: TaskItem) => task.status !== 'completed').length,
       onNavigate: (index: number) => {
-        this.route = '';
-        this.activeTab = index;
+        this.selectTab(index);
       }
     })
   }
@@ -548,7 +632,7 @@ struct Index {
   build() {
     if (this.signedIn) {
       Stack({ alignContent: Alignment.Bottom }) {
-        Tabs({ barPosition: BarPosition.Start, index: this.activeTab }) {
+        Tabs({ barPosition: BarPosition.Start, index: this.activeTab, controller: this.tabsController }) {
           TabContent() {
             this.HomePage()
           }.tabBar(this.EmptyTabBar)
@@ -571,12 +655,19 @@ struct Index {
         }
         .barHeight(0)
         .barMode(BarMode.Fixed)
-        .animationDuration(280)
+        .animationDuration(this.reduceMotion ? 0 : 260)
         .scrollable(false)
         .width('100%')
         .height('100%')
         .backgroundColor(this.pageBackground())
         .onChange((index: number) => {
+          if (this.requestedTab >= 0) {
+            if (index !== this.requestedTab) {
+              return;
+            }
+            // Keep the requested tab until the next dock action. This Tabs
+            // implementation can emit a trailing callback for the former tab.
+          }
           this.route = '';
           this.activeTab = index;
         })
@@ -591,8 +682,8 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.statusBarHeight })
       .backgroundColor(this.pageBackground())
-      .transition(TransitionEffect.OPACITY)
     } else {
       this.LoginPage()
     }

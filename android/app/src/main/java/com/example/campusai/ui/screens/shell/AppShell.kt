@@ -110,7 +110,7 @@ fun AppShell(
     // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
     val hasSharedSecondaryNavigation = secondaryDestinationSpec(backStack?.destination?.route) != null
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
+    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
     val isProfileFlow = route in profileRoutes
 
     Box(
@@ -240,7 +240,7 @@ private fun CampusDock(
     reduceMotion: Boolean,
     onNavigate: (String) -> Unit,
 ) {
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites")
+    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
     val primaryColor = Primary
     val dockSurface = Surface
     val dockLine = Line

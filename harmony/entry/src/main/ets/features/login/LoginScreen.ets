@@ -11,17 +11,16 @@ export struct LoginScreen {
   @Prop loading: boolean = false;
   @Prop error: string = '';
   @Prop reduceMotion: boolean = false;
+  @Prop rememberUsername: boolean = false;
   onSubmit: () => void = () => {};
   onInputChanged: () => void = () => {};
+  onRememberChange: (value: boolean) => void = () => {};
 
   @State showPassword: boolean = false;
   @State usernameFocused: boolean = false;
   @State passwordFocused: boolean = false;
   private videoController: VideoController = new VideoController();
 
-  aboutToDisappear(): void {
-    this.videoController.stop();
-  }
 
   @Builder
   LoginBrand() {
@@ -98,9 +97,9 @@ export struct LoginScreen {
           })
           .onChange((value: string) => {
             if (isPassword) {
-              this.password = value;
+              this.password = value.length > 64 ? value.substring(0, 64) : value;
             } else {
-              this.username = value;
+              this.username = value.length > 32 ? value.substring(0, 32) : value;
             }
             this.onInputChanged();
           })
@@ -182,6 +181,42 @@ export struct LoginScreen {
           this.LoginField('账号', '学号 / 工号 / 用户名', $r('sys.symbol.person'), false)
           this.LoginField('密码', '请输入密码', $r('sys.symbol.lock'), true)
 
+          Row() {
+            Row({ space: 8 }) {
+              Stack({ alignContent: Alignment.Center }) {
+                if (this.rememberUsername) {
+                  SymbolGlyph($r('sys.symbol.checkmark'))
+                    .fontSize(12)
+                    .fontColor(['#FFFFFFFF'])
+                }
+              }
+              .width(18)
+              .height(18)
+              .borderRadius(5)
+              .border({ width: 1.2, color: this.rememberUsername ? '#FFFFFFFF' : '#80FFFFFF' })
+              .backgroundColor(this.rememberUsername ? LOGIN_BLUE_DEEP : Color.Transparent)
+              .onClick(() => {
+                this.onRememberChange(!this.rememberUsername);
+              })
+
+              Text('记住账号')
+                .fontColor(FORM_MUTED)
+                .fontSize(11.5)
+            }
+            .onClick(() => {
+              this.onRememberChange(!this.rememberUsername);
+            })
+
+            Blank()
+
+            Text('忘记密码?')
+              .fontColor(FORM_MUTED)
+              .fontSize(11.5)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .margin({ top: 2 })
+
           if (this.error.length > 0) {
             Text(this.error)
               .fontColor('#FFFFC5BF')
@@ -216,20 +251,11 @@ export struct LoginScreen {
           .backgroundColor('#FFFFFFFF')
           .borderRadius(14)
           .opacity(this.loading ? 0.82 : 1.0)
-          .scale({ x: 1, y: 1 })
-          .animation({ duration: 200, curve: Curve.EaseInOut })
           .onClick(() => {
             if (!this.loading) {
               this.onSubmit();
             }
           })
-          .gesture(
-            TapGesture({ count: 1 })
-              .onAction(() => {
-                animateTo({ duration: 100, curve: Curve.EaseInOut }, () => {
-                })
-              })
-          )
 
           Text('登录即表示你已阅读并同意校园数据使用说明')
             .fontColor('#7AFFFFFF')
@@ -250,12 +276,12 @@ export struct LoginScreen {
 
   build() {
     Stack() {
-      Image($r('app.media.campus_login_poster'))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Fill)
-
-      if (!this.reduceMotion) {
+      if (this.reduceMotion) {
+        Image($r('app.media.campus_login_poster'))
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Fill)
+      } else {
         Video({
           src: $r('app.media.login_campus'),
           previewUri: $r('app.media.campus_login_poster'),
@@ -266,8 +292,9 @@ export struct LoginScreen {
           .objectFit(ImageFit.Fill)
           .autoPlay(true)
           .muted(true)
-          .controls(false)
           .loop(true)
+          .controls(false)
+
       }
 
       Column() {}

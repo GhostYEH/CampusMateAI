@@ -1,12 +1,5 @@
 package com.example.campusai.ui.screens.profile
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,8 +25,8 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.BuildConfig
 import com.example.campusai.ui.components.campusClickable
-import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
+import com.example.campusai.ui.theme.Danger
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,7 +44,8 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var backendLabel by remember { mutableStateOf("正在检查") }
-    LaunchedEffect(mockMode) {
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
         val status = repository.refreshBackendStatus()
         backendLabel = if (status.online) "已连接（${status.mode}）" else "未连接（${status.mode}）"
     }
@@ -66,7 +60,7 @@ fun SettingsScreen(
             item {
                 SettingsGroup(
                     title = "显示与动效",
-                    modifier = Modifier.enterAnimation(enabled = !reduceMotion),
+                    modifier = Modifier,
                 ) {
                     SettingsSwitchRow(
                         icon = if (darkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
@@ -87,7 +81,7 @@ fun SettingsScreen(
                 item {
                     SettingsGroup(
                         title = "调试演示",
-                        modifier = Modifier.enterAnimation(delayMs = 175, enabled = !reduceMotion),
+                        modifier = Modifier,
                     ) {
                         SettingsSwitchRow(
                             icon = Icons.Default.BugReport,
@@ -108,7 +102,7 @@ fun SettingsScreen(
             item {
                 SettingsGroup(
                     title = "提醒与陪伴",
-                    modifier = Modifier.enterAnimation(delayMs = 70, enabled = !reduceMotion),
+                    modifier = Modifier,
                 ) {
                     SettingsSwitchRow(
                         icon = Icons.Default.NotificationsActive,
@@ -126,7 +120,7 @@ fun SettingsScreen(
             item {
                 SettingsGroup(
                     title = "数据与服务",
-                    modifier = Modifier.enterAnimation(delayMs = 140, enabled = !reduceMotion),
+                    modifier = Modifier,
                 ) {
                     SettingsInfoRow(Icons.Default.Storage, "本地数据", "账号偏好仅保存在本机")
                     SettingsDivider()
@@ -137,7 +131,7 @@ fun SettingsScreen(
             item {
                 SettingsGroup(
                     title = "AI 与模型共建",
-                    modifier = Modifier.enterAnimation(delayMs = 210, enabled = !reduceMotion),
+                    modifier = Modifier,
                 ) {
                     SettingsActionRow(
                         icon = Icons.Default.Face,
@@ -148,25 +142,44 @@ fun SettingsScreen(
                 }
             }
             item {
-                AnimatedContent(
-                    targetState = darkMode,
-                    transitionSpec = {
-                        (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 5 }) togetherWith
-                            (fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 8 })
-                    },
-                    label = "theme-tip",
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                ) { isDark ->
-                    Text(
-                        if (isDark) "深色模式已应用到校园事务页面。"
-                        else "设置会自动保存在本机。",
-                        color = ReferenceMuted,
-                        fontSize = 11.sp,
+                SettingsGroup(
+                    title = "账号",
+                    modifier = Modifier,
+                ) {
+                    SettingsDangerRow(
+                        icon = Icons.Default.Logout,
+                        title = "退出登录",
+                        subtitle = "清除本机会话与凭证，返回登录页",
+                        onClick = { showLogoutDialog = true },
                     )
                 }
             }
+            item {
+                Text(
+                    if (darkMode) "深色模式已应用到校园事务页面。" else "设置会自动保存在本机。",
+                    color = ReferenceMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+        if (showLogoutDialog) {
+            AlertDialog(
+                onDismissRequest = { showLogoutDialog = false },
+                title = { Text("退出登录") },
+                text = { Text("将清除本机会话与登录凭证，并返回登录页。确定退出吗？") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showLogoutDialog = false
+                        scope.launch { repository.logout() }
+                    }) { Text("退出", color = Danger) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogoutDialog = false }) { Text("取消") }
+                },
+            )
+        }
     }
 }
 
@@ -267,6 +280,34 @@ private fun SettingsActionRow(
         SettingsIcon(icon)
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
             Text(title, color = ReferenceText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(3.dp))
+            Text(subtitle, color = ReferenceMuted, fontSize = 10.5.sp)
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = "打开", tint = ReferenceMuted)
+    }
+}
+
+@Composable
+private fun SettingsDangerRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .campusClickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(Danger.copy(alpha = .12f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = Danger, modifier = Modifier.size(22.dp))
+        }
+        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(title, color = Danger, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(3.dp))
             Text(subtitle, color = ReferenceMuted, fontSize = 10.5.sp)
         }

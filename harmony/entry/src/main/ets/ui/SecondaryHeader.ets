@@ -16,15 +16,7 @@ export struct SecondaryHeader {
       }
       .width(40).height(40).backgroundColor(this.palette().surface).borderRadius(20)
       .border({ width: 1, color: this.palette().line }).onClick(() => this.onBack())
-      .scale({ x: 1, y: 1 })
-      .animation({ duration: 150, curve: Curve.EaseInOut })
-      .gesture(
-        TapGesture({ count: 1 })
-          .onAction(() => {
-            animateTo({ duration: 100, curve: Curve.EaseInOut }, () => {
-            })
-          })
-      )
+
       Column({ space: 3 }) {
         Text(this.title).fontColor(this.palette().text).fontSize(25).fontWeight(FontWeight.Bold)
         if (this.subtitle.length > 0) {

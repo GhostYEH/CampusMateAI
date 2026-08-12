@@ -30,10 +30,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-private val ScreenLavender = Color(0xFFF4F5FF)
-private val TaskOrange = Color(0xFFFF8A4C)
-private val TaskGreen = Color(0xFF24B16A)
-private val TaskBlue = Color(0xFF5364F4)
+private val ScreenLavender: Color @Composable get() = Background
+private val TaskOrange: Color @Composable get() = Accent
+private val TaskGreen: Color @Composable get() = Success
+private val TaskBlue: Color @Composable get() = Primary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,11 +92,11 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             }
             taskError?.let { message ->
                 item {
-                    Surface(shape = RoundedCornerShape(15.dp), color = Color(0xFFFFEEE9)) {
+                    Surface(shape = RoundedCornerShape(15.dp), color = AlertErrorBg) {
                         Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CloudOff, null, tint = TaskOrange, modifier = Modifier.size(17.dp))
                             Spacer(Modifier.width(7.dp))
-                            Text(message, Modifier.weight(1f), color = TextPrimary, fontSize = 12.sp)
+                            Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp)
                             TextButton(onClick = { scope.launch { repository.refreshTasks() } }) { Text("重试", color = TaskBlue) }
                         }
                     }
@@ -253,7 +253,7 @@ private fun TaskDateStrip(onCalendar: () -> Unit) {
 @Composable
 private fun SmartFocusCard(task: Task?, onFocus: (Task) -> Unit) {
     val shape = RoundedCornerShape(24.dp)
-    Box(Modifier.fillMaxWidth().clip(shape).background(Brush.linearGradient(listOf(Color(0xFFF1F0FF), Color(0xFFFBFBFF)))).border(1.dp, Primary.copy(alpha = .22f), shape).padding(18.dp)) {
+    Box(Modifier.fillMaxWidth().clip(shape).background(Brush.linearGradient(listOf(PrimarySoft, Surface))).border(1.dp, Primary.copy(alpha = .22f), shape).padding(18.dp)) {
         Column(Modifier.padding(end = 108.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.AutoAwesome, null, tint = Primary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("智能聚焦", color = Primary, fontWeight = FontWeight.Bold) }
             Text(task?.title ?: "暂时没有需要聚焦的待办", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)

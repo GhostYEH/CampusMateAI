@@ -44,6 +44,151 @@ final result: passed
 
 ---
 
+# Android Exam Calendar Accent and Floating Add QA — 2026-08-12
+
+- source visual truth path: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-06c32b38-7c64-4643-bab2-d05e7ab25c6a.png`
+- implementation screenshot path: `F:\demo1\artifacts\harmony-parity\android-studio\exams-calendar-fab.png`
+- additional interaction evidence: `F:\demo1\artifacts\harmony-parity\android-studio\exams-fab-form.png`
+- viewport: Android Studio Pixel 10 Pro emulator, 1280 × 2856
+- state: authenticated student demo data, all-exams filter, floating action button visible
+
+## Findings
+
+No actionable P0/P1/P2 issues remain.
+
+- Image quality and hierarchy: the original calendar illustration is restored as a 122dp, low-opacity right-side accent. The card reserves a 106dp text gutter so dates, course, time and place remain readable.
+- Spacing and layout rhythm: the floating “新增考试” action sits above the dock with a 20dp gap using the shared dock reservation; it does not cover any navigation item.
+- Interactions: tapping the floating button opened the “新增考试” form in the emulator.
+
+## Patches Made Since Previous QA Pass
+
+- Restored `exam_calendar_hero` in the nearest-exam card as an intentionally subordinate decorative image.
+- Replaced the top action row with a dock-aware, right-bottom floating create button.
+
+## Follow-up Polish
+
+- P3: The action is deliberately over the scroll surface, but all scroll content reserves sufficient bottom space to stay reachable above it and the dock.
+
+final result: passed
+
+---
+
+# Android Exam Schedule Redesign QA — 2026-08-12
+
+- source visual truth path: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-06c32b38-7c64-4643-bab2-d05e7ab25c6a.png` (pre-redesign problem capture)
+- implementation screenshot path: `F:\demo1\artifacts\harmony-parity\android-studio\exams-redesign-final.png`
+- comparison evidence: `F:\demo1\artifacts\harmony-parity\android-studio\exams-redesign-comparison.png`
+- viewport: Android Studio Pixel 10 Pro emulator, 1280 × 2856
+- state: authenticated student demo data, all-exams filter; ended-filter and reminder-off states also captured
+
+## Findings
+
+No actionable P0/P1/P2 issues remain in the redesigned page.
+
+- Fonts and typography: title, course name, date group, metadata and compact type tags now have distinct weights and truncation rules; the course title no longer intersects dates or the supporting visual.
+- Spacing and layout rhythm: the recent-exam overview uses a stable vertical flow; the primary add action is separated from content; grouped timeline cards have fixed safe spacing above the bottom dock.
+- Colors and visual tokens: the existing primary blue, soft panels, surface borders and muted metadata remain consistent with the app palette.
+- Image quality and asset fidelity: the problematic calendar hero image was intentionally removed from this information-dense screen; Material icons are used consistently for standard controls and subject categories.
+- Copy and content: date, time, location, seat, type, countdown and reminder state are visible without collision.
+- Interactions: “已结束” filter reduced the list from four to three records; the reminder button switched from enabled to disabled on the first card in the emulator.
+
+## Patches Made Since Previous QA Pass
+
+- Replaced the oversized illustrated hero with a compact nearest-exam summary containing date, countdown, course, time and place.
+- Rebuilt the list as date-grouped timeline cards.
+- Reserved bottom-dock clearance through `BottomDockReservedHeight`.
+- Moved the add action to its own top-right action row instead of layering it over content.
+
+## Follow-up Polish
+
+- P3: The dock intentionally overlays the lower scroll region while the page content reserves enough bottom padding to scroll every card fully into view.
+
+final result: passed
+
+---
+
+# HarmonyOS Runtime Parity QA — 2026-08-12
+
+- source visual truth: Android Studio Pixel 10 Pro emulator, authenticated student demo session
+- Android captures: `F:\demo1\artifacts\harmony-parity\android-studio\`
+- implementation: DevEco Pura 90 emulator, HarmonyOS 6.1.1, authenticated session
+- Harmony captures: `F:\demo1\artifacts\harmony-parity\harmony-live\`
+- viewport: Android 1280 × 2856; HarmonyOS 1320 × 2856
+- states checked: 首页、课程、待办、AI 校园助手、我的、考试安排
+
+## Findings and fixes
+
+- AI 校园助手：移除首屏与区域变化时的强制滚底；滚动内容改为从视口顶部排列；输入区增加底栏安全间距。
+- 考试安排：短内容滚动区增加最小视口高度，消除顶部大空白；标题栏、圆形新增按钮、考试主卡和筛选顺序改为 Android 实机结构。
+- 我的：收紧个人信息头部和服务菜单密度，使五项服务完整位于底栏上方。
+- 课程、首页、待办：实机复核后保持现有顶部安全区与内容顺序，未发现阻断级错位。
+- 覆盖安装后登录态保持；最终 ArkTS 全量构建成功。
+
+## Remaining differences
+
+- P3：Android 与 HarmonyOS 使用不同系统字体、状态栏和符号字形，存在轻微文字宽度与图标造型差异。
+- P3：考试接口在当前 Harmony 会话返回空列表，因此复核的是空态布局；非空考试卡片使用同一页面组件，仍需有服务端数据时补一张最终实机证据。
+
+final result: passed
+
+---
+
+# Personal Center Secondary Pages — Web
+
+Date: 2026-08-12
+
+## Source of Truth
+
+- Reference visual: `C:\Users\32883\AppData\Local\Temp\codex-clipboard-5c8f5d69-8bd4-4de7-859c-4ee905692339.png`
+- Implementation route family: `http://127.0.0.1:5173/profile/*`
+- Viewports: 1680 × 940 desktop and 390 × 844 mobile, light theme.
+- States: authenticated student shell, profile secondary navigation, empty/error data states where the local backend did not provide records.
+
+## Evidence
+
+- Opened the source reference and the live `/profile/id-card` implementation together at 1680 × 940 for a same-viewport visual comparison.
+- Inspected focused regions: secondary hero and navigation, identity-card information hierarchy, QR/verification panel, record-list empty state, and mobile identity-card wrapping.
+- The mobile capture at 390 × 844 reported `scrollWidth: 390` and `horizontalOverflow: false`.
+
+## Findings
+
+No actionable P0, P1, or P2 mismatches remain.
+
+- Fonts and typography: the existing Noto Sans SC family and dark-blue hierarchy are reused; secondary-page headings, labels, metadata, and empty-state copy preserve the profile reference's compact optical scale.
+- Spacing and layout rhythm: the new pages reuse the profile's 16px-radius panels, periwinkle hero surfaces, compact nav pills, two-column desktop layouts, and one-column mobile collapse.
+- Colors and visual tokens: blue, violet, green, and amber semantic tones map to the existing profile stat and quick-entry palette; settings now uses the same pale blue-purple shell.
+- Image quality and asset fidelity: no new bitmap was required; icons come from the existing Phosphor registry and the secondary pages rely on the established local profile/banner art language.
+- Copy and content: all six destinations have coherent user-facing copy and deliberate empty states. Real service request, published-item, profile, and study-session data remain the source when available.
+- States and interactions: every new destination has visible return navigation, sibling section navigation, refresh, CTA routing, and copy/record actions where applicable. The identity card is keyboard-focusable from the overview card.
+- Accessibility and responsiveness: semantic buttons, focusable controls, labeled navigation, practical mobile tap targets, and no horizontal overflow were verified.
+
+## Intentional P3 Differences
+
+- Favorites and personal files remain honest empty states because the current backend does not expose a unified favorites/file store; the pages route users to the existing activity, classroom, and course flows.
+- When the local backend is offline, the existing auth/profile request surfaces the product's error state; the secondary page shell remains usable and shows the relevant empty-state CTA.
+- The supplied screenshot is the overview visual source; secondary-page art direction is inferred from that established profile system rather than inventing a separate visual language.
+
+## Patches Made
+
+- Replaced the generic `StudentProfileHubView` placeholder with a responsive secondary workspace for favorites, files, requests, published posts, learning history, and campus identity.
+- Added shared secondary navigation and route-aware hero/identity context.
+- Added real-data loading for service requests, published lost-and-found items, profile identity, and study sessions.
+- Added empty, loading, error, record-list, timeline, QR/verification, and copy-feedback states.
+- Added profile-specific responsive styles and aligned `StudentSettingsView` with the profile shell.
+- Added six profile shortcut cards to the existing “我的工具” tab and made the overview campus identity card enter the identity page.
+
+## Verification
+
+- `npm run build`: passed (Vite production build, 1670 modules transformed).
+- Browser route checks: passed for `/profile/favorites`, `/profile/files`, `/profile/requests`, `/profile/published`, `/profile/learning`, `/profile/id-card`, and `/profile/settings`.
+- Desktop visual comparison: passed at 1680 × 940.
+- Mobile responsive check: passed at 390 × 844 with no horizontal overflow.
+- Backend status during capture: local `/api/v1/health` and `/api/v1/auth/me` returned 500, so the expected offline/error states were recorded rather than treated as missing UI.
+
+final result: passed
+
+---
+
 # Personal Center Reference Redesign — Web
 
 Date: 2026-08-11

@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +53,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -81,6 +81,8 @@ import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun ExamsScreen(
@@ -104,35 +106,20 @@ fun ExamsScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Background)
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(16.dp))
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .shadow(10.dp, CircleShape, ambientColor = Primary.copy(alpha = .28f), spotColor = Primary.copy(alpha = .36f))
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Color(0xFF6679FF), Color(0xFF4054EF))))
-                    .campusClickable { onOpenEdit(null) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Default.Add, CampusStrings.Exams.ADD, tint = Color.White, modifier = Modifier.size(28.dp))
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-
         when {
             loading -> LoadingState()
             error != null -> ErrorState(error ?: CampusStrings.Exams.LOAD_ERROR, onRetry = {
                 scope.launch { repository.refresh() }
             })
             else -> {
-                val upcoming = exams.filter { it.statusAt(now) == ExamStatus.UPCOMING }
+                val ordered = exams.sortedBy { it.startDateTime() }
+                val upcoming = ordered.filter { it.statusAt(now) == ExamStatus.UPCOMING }
                 AnimatedContent(
                     targetState = filter,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -140,25 +127,26 @@ fun ExamsScreen(
                 ) { selectedFilter ->
                     val filtered = when (selectedFilter) {
                         CampusStrings.Exams.FILTER_UPCOMING -> upcoming
-                        CampusStrings.Exams.FILTER_ENDED -> exams.filter { it.statusAt(now) == ExamStatus.ENDED }
-                        else -> exams
+                        CampusStrings.Exams.FILTER_ENDED -> ordered.filter { it.statusAt(now) == ExamStatus.ENDED }
+                        else -> ordered
                     }
+                    val grouped = filtered.groupBy { it.date }
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = PaddingValues(
+                            top = 10.dp,
                             bottom = WindowInsets.navigationBars.asPaddingValues()
-                                .calculateBottomPadding() + BottomDockReservedHeight + 20.dp,
+                                .calculateBottomPadding() + BottomDockReservedHeight + 22.dp,
                         ),
                     ) {
-                        if (upcoming.isNotEmpty()) {
-                            item(key = "nearest") {
-                                NearestExamCard(
-                                    exam = upcoming.first(),
-                                    now = now,
-                                    reduceMotion = reduceMotion,
-                                    onClick = { onOpenDetail(upcoming.first().id) },
-                                )
-                            }
+                        item(key = "overview") {
+                            ExamOverview(
+                                upcoming = upcoming.firstOrNull(),
+                                upcomingCount = upcoming.size,
+                                now = now,
+                                reduceMotion = reduceMotion,
+                                onClick = { upcoming.firstOrNull()?.let { onOpenDetail(it.id) } },
+                            )
                         }
                         item(key = "filters") {
                             ExamFilterTabs(selected = selectedFilter, onSelect = { filter = it })
@@ -166,136 +154,194 @@ fun ExamsScreen(
                         if (filtered.isEmpty()) {
                             item { EmptyState(Icons.Default.EventBusy, CampusStrings.Exams.EMPTY) }
                         } else {
-                            items(filtered, key = { it.id }) { exam ->
-                                ExamScheduleCard(
-                                    exam = exam,
-                                    now = now,
-                                    reduceMotion = reduceMotion,
-                                    onClick = { onOpenDetail(exam.id) },
-                                    onToggleReminder = { enabled ->
-                                        scope.launch { repository.setReminder(exam.id, enabled) }
-                                    },
-                                )
+                            item(key = "schedule-label") {
+                                ExamScheduleLabel(count = filtered.size)
+                            }
+                            grouped.forEach { (date, dateExams) ->
+                                item(key = "date-$date") { ExamDateHeader(date) }
+                                items(dateExams, key = { it.id }) { exam ->
+                                    ExamTimelineItem(
+                                        exam = exam,
+                                        now = now,
+                                        reduceMotion = reduceMotion,
+                                        onClick = { onOpenDetail(exam.id) },
+                                        onToggleReminder = { enabled ->
+                                            scope.launch { repository.setReminder(exam.id, enabled) }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 6.dp, bottom = BottomDockReservedHeight + 20.dp),
+        ) {
+            ExamCreateFab(onClick = { onOpenEdit(null) })
+        }
     }
 }
 
 @Composable
-private fun NearestExamCard(
-    exam: Exam,
+private fun ExamOverview(
+    upcoming: Exam?,
+    upcomingCount: Int,
     now: Long,
     reduceMotion: Boolean,
     onClick: () -> Unit,
 ) {
-    val days = exam.daysUntil(now)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(218.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF6877FB), Color(0xFF3547E5))))
-            .campusClickable(onClick = onClick)
-            .enterAnimation(enabled = !reduceMotion),
+            .clip(RoundedCornerShape(24.dp))
+            .background(if (upcoming == null) Surface else Primary)
+            .border(1.dp, if (upcoming == null) Line else Primary, RoundedCornerShape(24.dp))
+            .campusClickable(enabled = upcoming != null, onClick = onClick)
+            .enterAnimation(enabled = !reduceMotion)
+            .padding(18.dp),
     ) {
-        Image(
-            painter = painterResource(R.drawable.exam_calendar_hero),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 4.dp)
-                .size(196.dp)
-                .clip(CircleShape),
-            alpha = .92f,
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 24.dp, top = 22.dp, end = 126.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = .13f))
-                    .padding(horizontal = 11.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(CampusStrings.Exams.NEAREST_TITLE, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = if (days == 0L) "今天" else "${days ?: 0}",
-                    color = Color.White,
-                    fontSize = if (days == 0L) 30.sp else 58.sp,
-                    lineHeight = if (days == 0L) 34.sp else 58.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                )
-                if (days != 0L) {
-                    Spacer(Modifier.width(7.dp))
-                    Text(CampusStrings.Exams.DAYS_LEFT, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 9.dp))
+        if (upcoming == null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(PrimarySoft),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.EventBusy, null, tint = Primary, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.width(13.dp))
+                Column {
+                    Text(CampusStrings.Exams.NO_UPCOMING, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(5.dp))
+                    Text(CampusStrings.Exams.OVERVIEW_EMPTY_HINT, color = Muted, fontSize = 12.sp)
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                exam.courseName,
-                color = Color.White,
-                fontSize = 27.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        } else {
+            val days = upcoming.daysUntil(now)
+            Image(
+                painter = painterResource(R.drawable.exam_calendar_hero),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 10.dp)
+                    .size(122.dp)
+                    .clip(CircleShape),
+                alpha = .46f,
             )
+            Column {
+                Row(
+                    modifier = Modifier.padding(end = 106.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DateTile(upcoming)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, null, tint = Color.White.copy(alpha = .88f), modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text(CampusStrings.Exams.NEAREST_TITLE, color = Color.White.copy(alpha = .88f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text(upcoming.courseName, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(7.dp))
+                        Text("${upcoming.startTime}–${upcoming.endTime} · ${upcoming.location}", color = Color.White.copy(alpha = .88f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Spacer(Modifier.height(15.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = .18f)))
+                Spacer(Modifier.height(11.dp))
+                Text(
+                    text = if (days == 0L) {
+                        "${CampusStrings.Exams.TODAY} · ${CampusStrings.Exams.OVERVIEW_COUNT.format(upcomingCount)}"
+                    } else {
+                        "${days ?: 0}${CampusStrings.Exams.DAYS_LEFT} · ${CampusStrings.Exams.OVERVIEW_COUNT.format(upcomingCount)}"
+                    },
+                    color = Color.White.copy(alpha = .88f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 24.dp, end = 20.dp, bottom = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Schedule, null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(7.dp))
-            Text("${exam.dateLabel()}  ${exam.startTime}-${exam.endTime}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(10.dp))
-            Icon(Icons.Default.LocationOn, null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(exam.location, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+    }
+}
+
+@Composable
+private fun ExamCreateFab(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .shadow(12.dp, CircleShape, ambientColor = Primary.copy(alpha = .28f), spotColor = Primary.copy(alpha = .36f))
+            .clip(CircleShape)
+            .background(Primary)
+            .campusClickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Default.Add, CampusStrings.Exams.ADD, tint = Color.White, modifier = Modifier.size(29.dp))
+    }
+}
+
+@Composable
+private fun DateTile(exam: Exam) {
+    val date = runCatching { LocalDate.parse(exam.date) }.getOrNull()
+    Column(
+        modifier = Modifier
+            .width(54.dp)
+            .height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = .18f)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(date?.monthValue?.toString() ?: "--", color = Color.White.copy(alpha = .8f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(date?.dayOfMonth?.toString() ?: "--", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
     }
 }
 
 @Composable
 private fun ExamFilterTabs(selected: String, onSelect: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        listOf(
-            CampusStrings.Exams.FILTER_ALL,
-            CampusStrings.Exams.FILTER_UPCOMING,
-            CampusStrings.Exams.FILTER_ENDED,
-        ).forEach { option ->
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(CampusStrings.Exams.FILTER_ALL, CampusStrings.Exams.FILTER_UPCOMING, CampusStrings.Exams.FILTER_ENDED).forEach { option ->
             val active = option == selected
             Box(
                 modifier = Modifier
-                    .shadow(if (active) 7.dp else 2.dp, CircleShape, ambientColor = Primary.copy(alpha = .2f), spotColor = Primary.copy(alpha = .2f))
                     .clip(CircleShape)
                     .background(if (active) Primary else Surface)
+                    .border(1.dp, if (active) Primary else Line, CircleShape)
                     .campusClickable { onSelect(option) }
-                    .padding(horizontal = 21.dp, vertical = 11.dp),
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(option, color = if (active) Color.White else Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(option, color = if (active) Color.White else Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
 @Composable
-private fun ExamScheduleCard(
+private fun ExamScheduleLabel(count: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(CampusStrings.Exams.SCHEDULE_TITLE, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.width(8.dp))
+        Text(CampusStrings.Exams.SCHEDULE_COUNT.format(count), color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ExamDateHeader(date: String) {
+    val label = runCatching { LocalDate.parse(date).format(DateTimeFormatter.ofPattern("M月d日 EEEE")) }.getOrDefault(date)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(Primary))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun ExamTimelineItem(
     exam: Exam,
     now: Long,
     reduceMotion: Boolean,
@@ -303,66 +349,46 @@ private fun ExamScheduleCard(
     onToggleReminder: (Boolean) -> Unit,
 ) {
     val upcoming = exam.statusAt(now) == ExamStatus.UPCOMING
-    val accent = if (upcoming) Primary else Color(0xFF718097)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(7.dp, RoundedCornerShape(24.dp), ambientColor = Color(0x160E1A38), spotColor = Color(0x160E1A38))
-            .clip(RoundedCornerShape(24.dp))
-            .background(Surface)
-            .campusClickable(onClick = onClick)
-            .enterAnimation(enabled = !reduceMotion),
-    ) {
+    val accent = if (upcoming) Primary else Color(0xFF8795A8)
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(
+            modifier = Modifier.width(44.dp).padding(top = 17.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(exam.startTime, color = accent, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.size(9.dp).clip(CircleShape).background(accent))
+        }
         Box(
             modifier = Modifier
-                .align(Alignment.CenterStart)
-                .width(6.dp)
-                .height(150.dp)
-                .clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp))
-                .background(accent),
-        )
-        Row(
-            modifier = Modifier.padding(start = 22.dp, top = 18.dp, end = 18.dp, bottom = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .weight(1f)
+                .shadow(5.dp, RoundedCornerShape(20.dp), ambientColor = Color(0x120E1A38), spotColor = Color(0x120E1A38))
+                .clip(RoundedCornerShape(20.dp))
+                .background(Surface)
+                .border(1.dp, Line, RoundedCornerShape(20.dp))
+                .campusClickable(onClick = onClick)
+                .enterAnimation(enabled = !reduceMotion),
         ) {
-            SubjectIcon(exam = exam, tint = accent, upcoming = upcoming)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        exam.courseName,
-                        color = TextPrimary,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    ExamTypeTag(exam.type, upcoming)
+            Row(modifier = Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                SubjectIcon(exam, accent, upcoming)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(exam.courseName, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Spacer(Modifier.width(6.dp))
+                        ExamTypeTag(exam.type, upcoming)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    ExamMeta(Icons.Default.Schedule, "${exam.startTime}–${exam.endTime}")
+                    Spacer(Modifier.height(5.dp))
+                    ExamMeta(Icons.Default.LocationOn, "${exam.location} · ${CampusStrings.Exams.SEAT_PREFIX}${exam.seatNumber}")
                 }
-                Spacer(Modifier.height(11.dp))
-                ExamMeta(Icons.Default.Schedule, "${exam.dateLabel()}  ${exam.startTime}-${exam.endTime}")
-                Spacer(Modifier.height(7.dp))
-                ExamMeta(Icons.Default.LocationOn, "${exam.location} · 座位 ${exam.seatNumber}")
-            }
-            Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = if (upcoming) CampusStrings.Exams.FILTER_UPCOMING else CampusStrings.Exams.FILTER_ENDED,
-                    color = if (upcoming) Primary else Muted,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(if (upcoming) PrimarySoft else Background)
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
-                )
-                Spacer(Modifier.height(13.dp))
+                Spacer(Modifier.width(5.dp))
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
+                        .background(if (exam.reminderEnabled) PrimarySoft else Background)
                         .campusClickable { onToggleReminder(!exam.reminderEnabled) },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -370,7 +396,7 @@ private fun ExamScheduleCard(
                         if (exam.reminderEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
                         contentDescription = if (exam.reminderEnabled) "关闭${CampusStrings.Exams.REMINDER}" else "开启${CampusStrings.Exams.REMINDER}",
                         tint = if (exam.reminderEnabled) Primary else Muted,
-                        modifier = Modifier.size(23.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -387,14 +413,10 @@ private fun SubjectIcon(exam: Exam, tint: Color, upcoming: Boolean) {
         else -> Icons.Default.Functions
     }
     Box(
-        modifier = Modifier
-            .size(58.dp)
-            .shadow(7.dp, CircleShape, ambientColor = tint.copy(alpha = .22f), spotColor = tint.copy(alpha = .22f))
-            .clip(CircleShape)
-            .background(if (upcoming) tint else Color(0xFFE9EDF5)),
+        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(if (upcoming) PrimarySoft else Background),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, tint = if (upcoming) Color.White else Muted, modifier = Modifier.size(29.dp))
+        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -403,20 +425,18 @@ private fun ExamTypeTag(type: String, upcoming: Boolean) {
     Text(
         type,
         color = if (upcoming) Primary else Muted,
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(if (upcoming) PrimarySoft else Background)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+        maxLines = 1,
+        modifier = Modifier.clip(CircleShape).background(if (upcoming) PrimarySoft else Background).padding(horizontal = 7.dp, vertical = 4.dp),
     )
 }
 
 @Composable
 private fun ExamMeta(icon: ImageVector, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = Muted, modifier = Modifier.size(17.dp))
-        Spacer(Modifier.width(7.dp))
-        Text(text, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(icon, null, tint = Muted, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(text, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

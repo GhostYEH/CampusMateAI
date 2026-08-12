@@ -22,3 +22,11 @@ export interface StudySessionFinish { self_report?: string; self_report_tags?: s
 export interface PersonalFileItem { id: string; name: string; category?: string; size_label?: string; updated_at?: string; source?: string; is_favorite?: boolean; }
 export interface PersonalFileCreate { name: string; category: string; source: string; size_label: string; }
 export interface FavoriteItem { id: string; title: string; type?: string; subtitle?: string; saved_at?: string; source_route?: string; }
+
+export interface NoticeIngestRequest { content: string; source_name: string; published_at: string; }
+export interface ExtractRequest { content: string; }
+export interface NoticeExtractTaskItem { title: string; task: string; actionable: boolean; deadline?: string; source_name?: string; confidence: number; importance: string; source_text: string; }
+export interface MultiNoticeExtractResponse { tasks: NoticeExtractTaskItem[]; split_reason: string; needs_user_confirmation: boolean; }
+export interface ExtractResult { title: string; source: string; deadline: string; tasks: string[]; confidence: number; error?: string; saved?: boolean; }
+export interface TaskCreateRequest { title: string; description?: string; deadline?: string; source_name?: string; source_text?: string; priority?: string; }
+export interface LocalCapturedNotice { id: string; title: string; content: string; source: string; source_type: string; time: string; fingerprint: string; captured_at: number; }

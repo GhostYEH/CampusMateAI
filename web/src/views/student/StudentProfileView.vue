@@ -54,6 +54,14 @@ const quickTools = [
   { label: "校园活动", detail: "发现感兴趣的活动", icon: "PhCalendarStar", path: "/campus-activities", tone: "amber" },
   { label: "AI 校园助手", detail: "获取校园问题建议", icon: "PhRobot", path: "/counselor", tone: "teal" },
 ];
+const profileLinks = [
+  { label: "我的收藏", detail: "查看保存的活动与空间", icon: "PhBookmarkSimple", path: "/profile/favorites", tone: "violet" },
+  { label: "课程资料", detail: "从课程详情继续查看附件", icon: "PhFiles", path: "/profile/files", tone: "blue" },
+  { label: "申请记录", detail: "跟进校园服务申请进度", icon: "PhClipboardText", path: "/profile/requests", tone: "green" },
+  { label: "我的发布", detail: "查看失物招领发布记录", icon: "PhMegaphone", path: "/profile/published", tone: "amber" },
+  { label: "学习记录", detail: "回看专注时长与学习轨迹", icon: "PhChartLineUp", path: "/profile/learning", tone: "indigo" },
+  { label: "校园身份卡", detail: "快速出示校园身份信息", icon: "PhIdentificationCard", path: "/profile/id-card", tone: "blue" },
+];
 const tabs = [
   { key: "overview", label: "资料编辑" },
   { key: "tools", label: "我的工具" },
@@ -229,7 +237,7 @@ onMounted(load);
         </div>
 
         <aside class="profile-side-column">
-          <article class="redesign-panel campus-card">
+          <article class="redesign-panel campus-card" role="button" tabindex="0" @click="router.push('/profile/id-card')" @keydown.enter="router.push('/profile/id-card')" @keydown.space.prevent="router.push('/profile/id-card')">
             <div class="redesign-panel-head"><h2>校园身份卡</h2></div>
             <div class="campus-card-body">
               <div class="campus-card-seal">{{ initial }}</div>
@@ -249,9 +257,11 @@ onMounted(load);
         </aside>
       </section>
 
-      <section v-else-if="tab === 'tools'" class="profile-tools-view">
-        <article class="redesign-panel tools-intro"><div><span class="redesign-label">YOUR TOOLBOX</span><h2>把校园服务整理成自己的工作台</h2><p>从课程、通知到专注记录，常用入口都可以在这里快速打开。</p></div><button class="redesign-button primary" @click="router.push('/home')"><UiIcon name="PhHouse" />回到首页</button></article>
-        <div class="profile-tools-large-grid"><button v-for="item in quickTools" :key="item.path" class="redesign-panel profile-tool-large" @click="router.push(item.path)"><span class="profile-quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="24" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhArrowUpRight" :size="17" /></button></div>
+       <section v-else-if="tab === 'tools'" class="profile-tools-view">
+         <article class="redesign-panel tools-intro"><div><span class="redesign-label">YOUR TOOLBOX</span><h2>把校园服务整理成自己的工作台</h2><p>从课程、通知到专注记录，常用入口都可以在这里快速打开。</p></div><button class="redesign-button primary" @click="router.push('/home')"><UiIcon name="PhHouse" />回到首页</button></article>
+         <div class="profile-tools-large-grid"><button v-for="item in quickTools" :key="item.path" class="redesign-panel profile-tool-large" @click="router.push(item.path)"><span class="profile-quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="24" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhArrowUpRight" :size="17" /></button></div>
+         <div class="profile-tools-section-head"><div><span class="redesign-label">PROFILE SHORTCUTS</span><h2>个人中心入口</h2></div><span>把资料、记录和服务放在同一个地方</span></div>
+         <div class="profile-tools-large-grid profile-links-grid"><button v-for="item in profileLinks" :key="item.path" class="redesign-panel profile-tool-large" @click="router.push(item.path)"><span class="profile-quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="24" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhArrowUpRight" :size="17" /></button></div>
       </section>
 
       <section v-else class="redesign-panel profile-settings-panel">

@@ -1,6 +1,5 @@
 import { ExamItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
-import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { promptAction } from '@kit.ArkUI';
 
 @Component
@@ -26,6 +25,12 @@ export struct ExamsPage {
   onDelete: (id: string) => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   selectedExam(): ExamItem | undefined { return this.exams.find((item: ExamItem) => item.id === this.selectedId); }
+  filteredExams(): ExamItem[] {
+    if (this.filter === '全部') return this.exams;
+    const now: string = new Date().toISOString().substring(0, 10);
+    if (this.filter === '未开始') return this.exams.filter((e: ExamItem) => (e.exam_date ?? '') >= now);
+    return this.exams.filter((e: ExamItem) => (e.exam_date ?? '') < now);
+  }
 
   startEdit(exam?: ExamItem): void {
     if (exam !== undefined) {
@@ -74,6 +79,26 @@ export struct ExamsPage {
     try { promptAction.showDialog({ title: '删除考试', message: `确认删除「${exam.course_name}」?`, buttons: [{ text: '取消', color: '#667784' }, { text: '删除', color: '#C25450' }] }).then((result) => { if (result.index === 1) { this.onDelete(exam.id); this.selectedId = ''; } }); } catch { /* ignore */ }
   }
 
+  @Builder PageHeader() {
+    Row({ space: 12 }) {
+      Stack({ alignContent: Alignment.Center }) {
+        SymbolGlyph($r('sys.symbol.arrow_left')).fontSize(21).fontColor([this.palette().text])
+      }
+      .width(40).height(40).backgroundColor(this.palette().surface).borderRadius(20)
+      .border({ width: 1, color: this.palette().line })
+      .onClick(() => {
+        if (this.showEdit) this.showEdit = false;
+        else if (this.selectedId.length > 0) this.selectedId = '';
+        else this.onBack();
+      })
+
+      Text(this.showEdit ? (this.editId.length > 0 ? '编辑考试' : '添加考试') :
+        this.selectedId.length > 0 ? '考试详情' : '考试安排')
+        .fontColor(this.palette().text).fontSize(25).fontWeight(FontWeight.Bold)
+        .layoutWeight(1)
+    }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 10 }).alignItems(VerticalAlign.Center)
+  }
+
   @Builder Hero() {
     Stack({ alignContent: Alignment.BottomStart }) {
       Image($r('app.media.exam_calendar_hero')).width('100%').height(188).objectFit(ImageFit.Cover)
@@ -111,7 +136,7 @@ export struct ExamsPage {
   @Builder ExamCard(exam: ExamItem) {
     Row({ space: 12 }) {
       Column({ space: 2 }) {
-        Text(exam.exam_date.substring(Math.max(0, exam.exam_date.length - 5))).fontColor(this.palette().primary).fontSize(14).fontWeight(FontWeight.Bold)
+        Text((exam.exam_date ?? '').substring(Math.max(0, (exam.exam_date ?? '').length - 5))).fontColor(this.palette().primary).fontSize(14).fontWeight(FontWeight.Bold)
         Text(exam.exam_type ?? '考试').fontColor(this.palette().muted).fontSize(9)
       }.width(58).height(58).justifyContent(FlexAlign.Center).backgroundColor(this.palette().soft).borderRadius(14)
       Column({ space: 5 }) {
@@ -130,13 +155,7 @@ export struct ExamsPage {
       .border({ width: 1, color: this.palette().line }).borderRadius(18)
       .onClick(() => this.selectedId = exam.id)
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-      .gesture(
-        TapGesture({ count: 1 })
-          .onAction(() => {
-            animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-            })
-          })
-      )
+
   }
 
   @Builder Detail(exam: ExamItem) {
@@ -201,7 +220,7 @@ export struct ExamsPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: this.showEdit ? (this.editId.length > 0 ? '编辑考试' : '添加考试') : this.selectedId.length > 0 ? '考试详情' : '考试安排', subtitle: this.showEdit ? '修改考试信息' : this.selectedId.length > 0 ? '时间、地点与座位信息' : '每一场考试，都替你记得清清楚楚', darkMode: this.darkMode, onBack: () => { if (this.showEdit) { this.showEdit = false; } else if (this.selectedId.length > 0) { this.selectedId = ''; } else { this.onBack(); } } })
+      this.PageHeader()
       if (this.showEdit) {
         this.EditForm()
       } else if (this.selectedExam() !== undefined) {
@@ -209,13 +228,16 @@ export struct ExamsPage {
       } else {
       Scroll() {
         Column({ space: 12 }) {
+          Row() {
+            Blank()
+            Stack({ alignContent: Alignment.Center }) {
+              SymbolGlyph($r('sys.symbol.plus')).fontSize(25).fontColor(['#FFFFFFFF'])
+            }
+            .width(48).height(48).backgroundColor(this.palette().primary).borderRadius(24)
+            .onClick(() => this.startEdit())
+          }.width('100%').padding({ right: 2, bottom: 2 })
           this.Hero()
           this.FilterTabs()
-          Row() {
-            Text('考试列表').fontColor(this.palette().text).fontSize(18).fontWeight(FontWeight.Bold)
-            Blank()
-            Button('添加考试').backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').fontSize(12).height(34).borderRadius(10).onClick(() => this.startEdit())
-          }.width('100%')
           if (this.loading) {
             LoadingProgress().width(34).height(34).color(this.palette().primary).margin({ top: 28 })
           } else if (this.exams.length === 0) {
@@ -225,9 +247,12 @@ export struct ExamsPage {
               Text('下拉刷新或稍后再查看').fontColor(this.palette().muted).fontSize(11)
             }.width('100%').padding({ top: 34, bottom: 34 }).onClick(() => this.onRefresh())
           } else {
-            ForEach(this.exams, (exam: ExamItem) => { this.ExamCard(exam) }, (exam: ExamItem) => exam.id)
+            ForEach(this.filteredExams(), (exam: ExamItem) => { this.ExamCard(exam) }, (exam: ExamItem) => exam.id)
           }
-        }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
+        }
+        .width('100%')
+        .constraintSize({ minHeight: '100%' })
+        .padding({ left: 14, right: 14, bottom: 24 })
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
       }
     }.width('100%').height('100%').backgroundColor(this.palette().background)

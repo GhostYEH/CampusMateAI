@@ -51,6 +51,8 @@ class UserRow:
             "id": self.id,
             "username": self.username,
             "role": self.role,
+            # Kept for Android clients that predate the display_name field.
+            "name": self.display_name or self.username,
             "display_name": self.display_name,
             "student_number": self.student_number,
             "teacher_number": self.teacher_number,
