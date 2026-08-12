@@ -1,5 +1,4 @@
 import { CampusPalette, darkPalette, lightPalette } from './Theme';
-import { curves } from '@kit.ArkUI';
 
 interface DockItem {
   label: string;
@@ -9,44 +8,41 @@ interface DockItem {
 
 @Component
 export struct AppDock {
-  @Prop activeTab: number = 0;
+  @Link activeTab: number;
   @Prop darkMode: boolean = false;
   @Prop pendingCount: number = 0;
   onNavigate: (index: number) => void = () => {};
 
   @State pressedIndex: number = -1;
-  @State pressScale: number = 1.0;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
   }
 
   triggerPress(index: number): void {
+    this.activeTab = index;
     this.pressedIndex = index;
-    animateTo({ duration: 180, curve: curves.springMotion(0.35, 0.6) }, () => {
-      this.pressScale = 0.88;
-    });
     setTimeout(() => {
-      animateTo({ duration: 420, curve: curves.responsiveSpringMotion(0.55, 0.85) }, () => {
-        this.pressScale = 1.0;
-      });
+      if (this.pressedIndex === index) {
+        this.pressedIndex = -1;
+      }
     }, 180);
     this.onNavigate(index);
   }
 
   @Builder
-  DockItemView(item: DockItem, isActive: boolean) {
+  DockItemView(item: DockItem) {
     Column({ space: 3 }) {
       Stack({ alignContent: Alignment.Center }) {
         SymbolGlyph(item.symbol)
-          .fontSize(isActive ? 23 : 21)
-          .fontWeight(isActive ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor([isActive ? this.palette().primary : this.palette().muted])
+          .fontSize(this.activeTab === item.index ? 23 : 21)
+          .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
           .scale({
-            x: isActive ? 1.1 : (this.pressedIndex === item.index ? this.pressScale : 1.0),
-            y: isActive ? 1.1 : (this.pressedIndex === item.index ? this.pressScale : 1.0)
+            x: this.activeTab === item.index ? 1.1 : (this.pressedIndex === item.index ? 0.88 : 1.0),
+            y: this.activeTab === item.index ? 1.1 : (this.pressedIndex === item.index ? 0.88 : 1.0)
           })
-          .animation({ duration: 380, curve: curves.responsiveSpringMotion(0.45, 0.75) })
+          .animation({ duration: 180, curve: Curve.EaseOut })
         if (item.index === 2 && this.pendingCount > 0) {
           Text(this.pendingCount > 9 ? '9+' : this.pendingCount.toString())
             .fontColor('#FFFFFFFF')
@@ -58,31 +54,28 @@ export struct AppDock {
             .backgroundColor('#FFED6E52')
             .borderRadius(8)
             .position({ x: 22, y: -3 })
-            .scale({ x: isActive ? 1.18 : 1.0, y: isActive ? 1.18 : 1.0 })
-            .animation({ duration: 380, curve: curves.responsiveSpringMotion(0.5, 0.8) })
         }
       }
       .width(42)
       .height(26)
       Text(item.label)
-        .fontColor(isActive ? this.palette().primary : this.palette().muted)
+        .fontColor(this.activeTab === item.index ? this.palette().primary : this.palette().muted)
         .fontSize(item.index === 3 ? 8.5 : 10)
-        .fontWeight(isActive ? FontWeight.Bold : FontWeight.Medium)
+        .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
         .maxLines(1)
-        .opacity(isActive ? 1.0 : 0.82)
-        .animation({ duration: 280, curve: Curve.EaseInOut })
+        .opacity(this.activeTab === item.index ? 1.0 : 0.82)
     }
     .layoutWeight(1)
     .height(60)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(26)
-    .backgroundColor(isActive ? (this.darkMode ? '#269CC7D0' : '#1A5B68F2') : Color.Transparent)
+    .backgroundColor(this.activeTab === item.index ? (this.darkMode ? '#269CC7D0' : '#1A5B68F2') : Color.Transparent)
     .scale({
-      x: this.pressedIndex === item.index ? this.pressScale : 1.0,
-      y: this.pressedIndex === item.index ? this.pressScale : 1.0
+      x: this.pressedIndex === item.index ? 0.94 : 1.0,
+      y: this.pressedIndex === item.index ? 0.94 : 1.0
     })
-    .animation({ duration: 420, curve: curves.responsiveSpringMotion(0.55, 0.85) })
+    .animation({ duration: 180, curve: Curve.EaseOut })
     .onClick(() => this.triggerPress(item.index))
   }
 
@@ -95,7 +88,7 @@ export struct AppDock {
         { label: 'AI 校园助手', symbol: $r('sys.symbol.robot'), index: 3 },
         { label: '我的', symbol: $r('sys.symbol.person'), index: 4 }
       ], (item: DockItem) => {
-        this.DockItemView(item, this.activeTab === item.index)
+        this.DockItemView(item)
       })
     }
     .width('100%')

@@ -29,6 +29,7 @@ export struct FocusPage {
   stopClock(): void { if (this.timerId >= 0) { clearInterval(this.timerId); this.timerId = -1; } }
   startClock(): void {
     if (this.running) { this.running = false; this.stopClock(); this.onPause(); return; }
+    this.stopClock();
     this.running = true;
     if (this.secondsLeft === this.totalSeconds()) this.onStart(); else this.onResume();
     this.timerId = setInterval(() => {
@@ -76,8 +77,7 @@ export struct FocusPage {
           .onClick(() => { this.stopClock(); this.running = false; this.secondsLeft = this.totalSeconds(); this.onFinish(); })
       }.width('100%')
     }.width('100%').padding({ top: 20, left: 16, right: 16, bottom: 18 }).backgroundColor(this.palette().surface).borderRadius(22)
-    .scale({ x: 1, y: 1 })
-    .animation({ duration: 200, curve: Curve.EaseInOut })
+
   }
 
   @Builder Record(item: StudySession) {
@@ -86,8 +86,8 @@ export struct FocusPage {
         SymbolGlyph($r('sys.symbol.stopwatch')).fontSize(19).fontColor([this.palette().primary])
       }.width(42).height(42).backgroundColor(this.palette().soft).borderRadius(13)
       Column({ space: 3 }) {
-        Text(`${item.goal ?? '专注学习'} · ${item.started_at.substring(0, Math.min(10, item.started_at.length))}`).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold)
-        Text(`${Math.max(1, Math.floor(item.duration_seconds / 60))} 分钟 · ${item.status === 'completed' ? '已完成' : '进行中'}`).fontColor(this.palette().muted).fontSize(10)
+        Text(`${item.goal ?? '专注学习'} · ${(item.started_at ?? '').substring(0, Math.min(10, (item.started_at ?? '').length))}`).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold)
+        Text(`${Math.max(1, Math.floor((item.duration_seconds ?? 0) / 60))} 分钟 · ${item.status === 'completed' ? '已完成' : '进行中'}`).fontColor(this.palette().muted).fontSize(10)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 10, bottom: 10 })
   }

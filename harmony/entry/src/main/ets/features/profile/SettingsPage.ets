@@ -34,13 +34,7 @@ export struct SettingsPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
     }.width('100%').padding({ top: 11, bottom: 11 }).onClick(() => this.onNavigate(target))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
+
   }
 
   build() {

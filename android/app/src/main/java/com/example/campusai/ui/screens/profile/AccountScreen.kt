@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.DangerText
 import kotlinx.coroutines.launch
 
@@ -73,7 +74,8 @@ fun AccountScreen(
 
     Box(Modifier.fillMaxSize().background(ReferencePageBackground).imePadding()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 28.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(bottom = BottomDockReservedHeight + 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(
@@ -180,7 +182,11 @@ fun AccountScreen(
                 }
             }
         }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+        SnackbarHost(
+            snackbar,
+            Modifier.align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = BottomDockReservedHeight + 16.dp),
+        )
     }
 }
 

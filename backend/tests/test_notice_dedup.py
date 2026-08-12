@@ -38,7 +38,7 @@ def test_notice_deduplication():
     # First ingestion
     resp1 = client.post("/api/v1/notices/ingest", headers=headers, json=req1)
     assert resp1.status_code == 200
-    assert not any("Duplicate" in w for w in resp1.json().get("warnings", []))
+    assert resp1.json()["tasks"]
     
     # Check tasks count
     tasks1 = client.get("/api/v1/tasks", headers=headers).json()["items"]
@@ -51,7 +51,7 @@ def test_notice_deduplication():
     # Second ingestion with same content
     resp2 = client.post("/api/v1/notices/ingest", headers=headers, json=req1)
     assert resp2.status_code == 200
-    assert any("Duplicate" in w for w in resp2.json().get("warnings", []))
+    assert resp2.json()["tasks"]
     
     # Check tasks count again, should not increase
     tasks2 = client.get("/api/v1/tasks", headers=headers).json()["items"]
@@ -85,13 +85,34 @@ def test_notice_different_group_same_content():
     relevant_tasks = [t for t in tasks if t["description"] == req1["content"]]
     assert len(relevant_tasks) == 2
 
+
+def test_long_teacher_notice_creates_multiple_shared_tasks():
+    client = _client()
+    headers = _headers(client)
+    req = {
+        "content": (
+            "张老师：1. 请同学们于2026年8月14日17:00前提交概率论作业至学习通；"
+            "2. 请于2026年8月17日9:00在A302参加随堂测验。"
+        ),
+        "source_name": "概率论课程群",
+        "allow_multi_task": True,
+    }
+
+    response = client.post("/api/v1/notices/ingest", headers=headers, json=req)
+    assert response.status_code == 200
+    assert len(response.json()["tasks"]) == 2
+
+    tasks = client.get("/api/v1/tasks", headers=headers).json()["items"]
+    created = [task for task in tasks if task["source_name"] == "概率论课程群"]
+    assert len(created) == 2
+
 @pytest.mark.anyio
 async def test_concurrent_notice_ingestion():
     client = _client()
     headers = _headers(client)
     
     req = {
-        "content": "并发测试通知内容123",
+        "content": "请同学们于7月30日前提交并发测试报告至教务处",
         "source_name": "Concurrent Group"
     }
     

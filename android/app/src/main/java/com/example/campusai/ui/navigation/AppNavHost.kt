@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -51,6 +50,7 @@ import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
 import com.example.campusai.ui.screens.profile.SettingsScreen
+import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
 import com.example.campusai.ui.screens.services.LeaveRequestScreen
@@ -62,6 +62,9 @@ import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
 import java.net.URLEncoder
+
+private fun mainTabIndex(route: String?): Int = listOf("home", "courses", "tasks", "counselor", "profile")
+    .indexOf(route?.substringBefore('?')?.substringBefore('/'))
 
 @Composable
 fun AppNavHost(
@@ -112,15 +115,13 @@ fun AppNavHost(
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                fadeIn(tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                val from = mainTabIndex(initialState.destination.route)
+                val to = mainTabIndex(targetState.destination.route)
+                val tabDirection = if (from >= 0 && to >= 0 && from != to) if (to > from) 1 else -1 else 0
+                fadeIn(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
                     slideInHorizontally(
-                        animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialOffsetX = { it / 10 },
-                    ) +
-                    scaleIn(
-                        animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialScale = .985f,
-                        transformOrigin = TransformOrigin(.5f, .08f),
+                        animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialOffsetX = { width -> if (tabDirection == 0) width / 10 else width * tabDirection },
                     )
             }
         },
@@ -128,15 +129,13 @@ fun AppNavHost(
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                fadeOut(tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                val from = mainTabIndex(initialState.destination.route)
+                val to = mainTabIndex(targetState.destination.route)
+                val tabDirection = if (from >= 0 && to >= 0 && from != to) if (to > from) 1 else -1 else 0
+                fadeOut(tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
                     slideOutHorizontally(
-                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        targetOffsetX = { -it / 16 },
-                    ) +
-                    scaleOut(
-                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        targetScale = .995f,
-                        transformOrigin = TransformOrigin(.5f, .08f),
+                        animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        targetOffsetX = { width -> if (tabDirection == 0) -width / 16 else -width * tabDirection },
                     )
             }
         },
@@ -144,15 +143,10 @@ fun AppNavHost(
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                fadeIn(tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                fadeIn(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
                     slideInHorizontally(
-                        animationSpec = tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialOffsetX = { -it / 12 },
-                    ) +
-                    scaleIn(
-                        animationSpec = tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialScale = .99f,
-                        transformOrigin = TransformOrigin(.5f, .08f),
+                        animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        initialOffsetX = { -it / 5 },
                     )
             }
         },
@@ -160,10 +154,10 @@ fun AppNavHost(
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                fadeOut(tween(230, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                fadeOut(tween(210, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
                     slideOutHorizontally(
-                        animationSpec = tween(230, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        targetOffsetX = { it / 14 },
+                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        targetOffsetX = { it / 5 },
                     )
             }
         },
@@ -244,6 +238,12 @@ fun AppNavHost(
                 repository = repository,
                 onOpenContribution = { navController.navigate("expression-contribution") },
 
+            )
+        }
+        composable("help-feedback") {
+            HelpFeedbackScreen(
+                repository = repository,
+                onSubmitFeedback = { go("service_form/feedback") },
             )
         }
         composable("notification-settings") {

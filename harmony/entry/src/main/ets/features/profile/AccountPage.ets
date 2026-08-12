@@ -40,15 +40,7 @@ export struct AccountPage {
             Text('密码和令牌不会在界面中明文显示').fontColor(this.palette().muted).fontSize(10)
           }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(15)
           Button('退出当前账号').width('100%').height(50).backgroundColor('#FFFFECEA').fontColor('#FFC25450').onClick(() => this.onSignOut())
-            .scale({ x: 1, y: 1 })
-            .animation({ duration: 200, curve: Curve.EaseInOut })
-            .gesture(
-              TapGesture({ count: 1 })
-                .onAction(() => {
-                  animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-                  })
-                })
-            )
+
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)

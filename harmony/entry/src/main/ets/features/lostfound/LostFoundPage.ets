@@ -31,7 +31,7 @@ export struct LostFoundPage {
 
   filteredItems(): LostFoundItem[] {
     const key = this.query.trim();
-    return this.items.filter((item: LostFoundItem) => item.kind === this.kind && (key.length === 0 || item.title.includes(key) || (item.location ?? '').includes(key)));
+    return this.items.filter((item: LostFoundItem) => item.kind === this.kind && (key.length === 0 || (item.title ?? '').includes(key) || (item.location ?? '').includes(key)));
   }
 
   @Builder Tabs() {

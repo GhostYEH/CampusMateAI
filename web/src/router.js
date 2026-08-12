@@ -29,6 +29,9 @@ import StudentServiceDetailView from "./views/student/StudentServiceDetailView.v
 import StudentClassroomsView from "./views/student/StudentClassroomsView.vue";
 import StudentLostFoundView from "./views/student/StudentLostFoundView.vue";
 import StudentLostFoundDetailView from "./views/student/StudentLostFoundDetailView.vue";
+import TeacherShell from "./views/teacher/TeacherShell.vue";
+import TeacherChaoxingView from "./views/teacher/TeacherChaoxingView.vue";
+import TeacherChaoxingLoginView from "./views/teacher/TeacherChaoxingLoginView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -68,6 +71,12 @@ const router = createRouter({
       { path: "profile", component: StudentProfileView, meta: { roles: ["student"] } },
       { path: "profile/settings", component: StudentSettingsView, meta: { roles: ["student"] } },
       { path: "profile/:section", component: StudentProfileHubView, meta: { roles: ["student"] } },
+    ]},
+    // 教师端
+    { path: "/teacher", component: TeacherShell, meta: { roles: ["student", "admin"] }, children: [
+      { path: "", redirect: "/teacher/chaoxing" },
+      { path: "chaoxing", name: "teacher-chaoxing", component: TeacherChaoxingView },
+      { path: "chaoxing/login", name: "teacher-chaoxing-login", component: TeacherChaoxingLoginView },
     ]},
   ],
 });

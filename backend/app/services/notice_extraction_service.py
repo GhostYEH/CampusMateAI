@@ -1042,7 +1042,10 @@ class NoticeExtractionService:
         if is_completed:
             actionable = False
         else:
-            actionable_keywords = ["提交", "申请", "报名", "登记", "选课", "补退选", "填写", "上传"]
+            actionable_keywords = [
+                "提交", "申请", "报名", "登记", "选课", "补退选", "填写", "上传",
+                "参加", "签到", "打卡", "确认", "领取",
+            ]
             actionable = any(kw in content for kw in actionable_keywords)
 
         audience = _rule_parse_audience(content)

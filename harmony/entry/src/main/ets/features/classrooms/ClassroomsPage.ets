@@ -68,13 +68,7 @@ export struct ClassroomsPage {
       SymbolGlyph($r('sys.symbol.checkmark_circle')).fontSize(18).fontColor([this.palette().success])
     }.width('100%').padding(11).backgroundColor(this.palette().surface).borderRadius(18)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
+
   }
 
   build() {

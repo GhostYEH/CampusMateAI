@@ -138,7 +138,12 @@ async def login_chaoxing(
             raise HTTPException(status_code=403, detail="reauth_required / verification_required")
         raise HTTPException(status_code=401, detail=f"Chaoxing login failed: {msg}")
 
-    cookies = {cookie.name: cookie.value for cookie in client.client.cookies}
+    # Chaoxing commonly returns same-named cookies (for example `route`) on
+    # different domains. httpx Cookies.items() raises CookieConflict for that
+    # legitimate response, which used to turn a successful login into HTTP 500.
+    # The repository stores a portable cookie map; use the jar directly and let
+    # the most recently received value win for duplicate names.
+    cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
     container.chaoxing_repository.save_credentials(user.id, cookies)
 
     return {"status": "success"}
@@ -306,10 +311,19 @@ async def sync_chaoxing(
                 )
 
     # Notice Sync
+    notice_sync_available = True
     for course in courses:
         try:
             notices = await client.get_notices(course["link"])
         except ChaoxingFetchError as error:
+            # Chaoxing has retired the legacy notice endpoint for some tenants.
+            # A missing notice feed must not discard a successful course/work
+            # sync; retain the warning and continue with the authoritative data
+            # that was fetched in this run.
+            if error.code == "http_error_404":
+                notice_sync_available = False
+                logger.warning("Chaoxing notice endpoint unavailable for course %s", course.get("course_id"))
+                continue
             raise _fetch_http_exception(error) from error
         for notice in notices:
             external_id = notice.get("external_id")
@@ -428,7 +442,10 @@ async def sync_chaoxing(
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
 
-    return {"status": "sync completed"}
+    return {
+        "status": "sync completed",
+        "notice_sync": "available" if notice_sync_available else "unavailable",
+    }
 
 @router.post("/chaoxing/disconnect")
 async def disconnect_chaoxing(

@@ -42,8 +42,17 @@ if errorlevel 1 (
     )
 )
 
-:: 4. start uvicorn
-echo [4/4] Starting FastAPI ...
+:: 4. check port 8000 occupancy, auto-kill stale uvicorn/python holding it
+echo [4/4] Checking port 8000 ...
+set "PORT=8000"
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr ":!PORT! " ^| findstr "LISTENING"') do (
+    if not "%%P"=="0" (
+        echo        Port !PORT! occupied by PID %%P, terminating stale process ...
+        taskkill /F /PID %%P >nul 2>&1
+    )
+)
+
+echo        Starting FastAPI ...
 echo.
 echo    Backend : http://localhost:8000
 echo    API Docs: http://localhost:8000/docs

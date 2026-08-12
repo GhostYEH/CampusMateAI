@@ -32,13 +32,6 @@ export struct PersonalHubPage {
       }
     }.width('100%').padding({ top: 11, bottom: 11 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
   }
 
   @Builder ActivityRow(item: ActivityItem) {
@@ -55,13 +48,6 @@ export struct PersonalHubPage {
       }.width('100%')
     }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(17)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
   }
 
   @Builder FavoriteRow(item: FavoriteItem) {
@@ -75,39 +61,47 @@ export struct PersonalHubPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 11, bottom: 11 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
-    .gesture(
-      TapGesture({ count: 1 })
-        .onAction(() => {
-          animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-          })
-        })
-    )
   }
 
   build() {
     Column() {
       SecondaryHeader({ title: `我的${this.title()}`, subtitle: '内容仅保存在当前登录账号下', darkMode: this.darkMode, onBack: () => this.onBack() })
-      Column({ space: 12 }) {
-        Row({ space: 8 }) {
-          SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(17).fontColor([this.palette().muted])
-          TextInput({ placeholder: `搜索${this.title()}`, text: this.query }).layoutWeight(1).height(43).backgroundColor(Color.Transparent)
-            .fontColor(this.palette().text).placeholderColor(this.palette().muted).onChange((value: string) => this.query = value)
-          Text('刷新').fontColor(this.palette().primary).fontSize(11).onClick(() => this.onRefresh())
-        }.width('100%').height(50).padding({ left: 12, right: 12 }).backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().line }).borderRadius(16)
-        if (this.loading) {
-          LoadingProgress().width(34).height(34).color(this.palette().primary).margin({ top: 40 })
-        } else if (this.section === 'files') {
-          if (this.files.length === 0) { Text('没有找到文件').fontColor(this.palette().muted).fontSize(12).padding(34) }
-          else { Column() { ForEach(this.files, (item: PersonalFileItem, index: number) => { this.FileRow(item); if (index < this.files.length - 1) { Divider().color(this.palette().line) } }) }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18) }
-        } else if (this.section === 'activities') {
-          if (this.activities.length === 0) { Text('没有找到活动').fontColor(this.palette().muted).fontSize(12).padding(34) }
-          else { Scroll() { Column({ space: 9 }) { ForEach(this.activities, (item: ActivityItem) => { this.ActivityRow(item) }) }.padding({ bottom: 20 }) }.layoutWeight(1).scrollBar(BarState.Off) }
-        } else {
-          if (this.favorites.length === 0) { Text('还没有收藏').fontColor(this.palette().muted).fontSize(12).padding(34) }
-          else { Column() { ForEach(this.favorites, (item: FavoriteItem, index: number) => { this.FavoriteRow(item); if (index < this.favorites.length - 1) { Divider().color(this.palette().line) } }) }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18) }
-        }
-      }.layoutWeight(1).width('100%').padding({ left: 14, right: 14, bottom: 18 })
+      Scroll() {
+        Column({ space: 12 }) {
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(17).fontColor([this.palette().muted])
+            TextInput({ placeholder: `搜索${this.title()}`, text: this.query }).layoutWeight(1).height(43).backgroundColor(Color.Transparent)
+              .fontColor(this.palette().text).placeholderColor(this.palette().muted).onChange((value: string) => this.query = value)
+            Text('刷新').fontColor(this.palette().primary).fontSize(11).onClick(() => this.onRefresh())
+          }.width('100%').height(50).padding({ left: 12, right: 12 }).backgroundColor(this.palette().surface)
+            .border({ width: 1, color: this.palette().line }).borderRadius(16)
+          if (this.loading) {
+            LoadingProgress().width(34).height(34).color(this.palette().primary).margin({ top: 40 })
+          } else if (this.section === 'files') {
+            if (this.files.length === 0) { Text('没有找到文件').fontColor(this.palette().muted).fontSize(12).padding(34) }
+            else {
+              Column() {
+                ForEach(this.files, (item: PersonalFileItem, index: number) => { this.FileRow(item); if (index < this.files.length - 1) { Divider().color(this.palette().line) } }, (item: PersonalFileItem) => item.id)
+              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+            }
+          } else if (this.section === 'activities') {
+            if (this.activities.length === 0) { Text('没有找到活动').fontColor(this.palette().muted).fontSize(12).padding(34) }
+            else {
+              Column({ space: 9 }) {
+                ForEach(this.activities, (item: ActivityItem) => { this.ActivityRow(item) }, (item: ActivityItem) => item.id)
+              }.width('100%')
+            }
+          } else {
+            if (this.favorites.length === 0) { Text('还没有收藏').fontColor(this.palette().muted).fontSize(12).padding(34) }
+            else {
+              Column() {
+                ForEach(this.favorites, (item: FavoriteItem, index: number) => { this.FavoriteRow(item); if (index < this.favorites.length - 1) { Divider().color(this.palette().line) } }, (item: FavoriteItem) => item.id)
+              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+            }
+          }
+          Blank().height(24)
+        }.width('100%').padding({ left: 14, right: 14, bottom: 18 })
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

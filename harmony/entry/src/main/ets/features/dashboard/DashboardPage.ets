@@ -160,18 +160,7 @@ export struct DashboardPage {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Center)
         .onClick(() => this.onNavigate(action.route))
-        .scale({ x: 1, y: 1 })
-        .animation({
-          duration: 200,
-          curve: Curve.EaseInOut
-        })
-        .gesture(
-          TapGesture({ count: 1 })
-            .onAction(() => {
-              animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-              })
-            })
-        )
+
       })
     }
     .width('100%')
@@ -354,15 +343,19 @@ export struct DashboardPage {
     Column() {
       this.SectionTitle('近期截止', '更多', 'tasks')
       Blank().height(9)
-      this.DeadlineRow(this.tasks.length > 0 ? this.tasks[0].title : '暂无近期截止', this.tasks.length > 0 ? (this.tasks[0].deadline ?? this.tasks[0].due ?? '待设置') : '可以放松一下', true)
+      this.DeadlineRow(this.pendingTasks().length > 0 ? this.pendingTasks()[0].title : '暂无近期截止', this.pendingTasks().length > 0 ? (this.pendingTasks()[0].deadline ?? this.pendingTasks()[0].due ?? '待设置') : '可以放松一下', true)
       Blank().height(7)
-      this.DeadlineRow(this.tasks.length > 1 ? this.tasks[1].title : '下一项待办', this.tasks.length > 1 ? (this.tasks[1].deadline ?? this.tasks[1].due ?? '待设置') : '暂无', false)
+      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '待设置') : '暂无', false)
     }
     .layoutWeight(1.12)
     .height(191)
     .padding(15)
     .backgroundColor(this.palette().surface)
     .borderRadius(22)
+  }
+
+  pendingTasks(): TaskItem[] {
+    return this.tasks.filter((task: TaskItem) => task.status !== 'completed').slice(0, 2);
   }
 
   @Builder
@@ -430,7 +423,7 @@ export struct DashboardPage {
         }
         .width('100%')
         this.CampusUpdates()
-        Blank().height(92)
+        Blank().height(112)
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 10 })

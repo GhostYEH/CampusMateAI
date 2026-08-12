@@ -80,9 +80,11 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
         prefs[KEY_ACCESS_TOKEN]
     }
 
-    val mockMode: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
-        prefs[KEY_MOCK_MODE] ?: BuildConfig.DEFAULT_USE_MOCK
-    }
+    suspend fun readAccessToken(): String? = context.dataStore.data
+        .map { prefs: Preferences -> prefs[KEY_ACCESS_TOKEN] }
+        .first()
+
+    val mockMode: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(false)
 
     val reduceMotion: Flow<Boolean> = context.dataStore.data.map { prefs: Preferences ->
         prefs[KEY_REDUCE_MOTION] ?: false

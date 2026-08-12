@@ -34,11 +34,11 @@ import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val FocusBlue = Color(0xFF5264F5)
-private val FocusViolet = Color(0xFF8959F5)
-private val FocusOrange = Color(0xFFFF7959)
-private val FocusGreen = Color(0xFF24B16A)
-private val FocusBg = Color(0xFFF5F6FF)
+private val FocusBlue: Color @Composable get() = Primary
+private val FocusViolet: Color @Composable get() = PrimaryHover
+private val FocusOrange: Color @Composable get() = Accent
+private val FocusGreen: Color @Composable get() = Success
+private val FocusBg: Color @Composable get() = Background
 
 /** A backend-session-first focus timer. The device never creates a local focus record. */
 @Composable
@@ -54,6 +54,7 @@ fun FocusScreen(
     val records by repository.records.collectAsState()
     val activeSession by repository.activeSession.collectAsState()
     val remoteError by repository.error.collectAsState()
+    val backendOnline by appRepository.backendOnline.collectAsState()
     val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
     val scope = rememberCoroutineScope()
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
@@ -63,7 +64,9 @@ fun FocusScreen(
     var showCompletedDialog by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
 
-    LaunchedEffect(Unit) { repository.refresh() }
+    LaunchedEffect(backendOnline) {
+        if (backendOnline) repository.refresh()
+    }
     LaunchedEffect(activeSession?.id, activeSession?.status) {
         activeSession?.let { session ->
             mode = session.mode
@@ -90,8 +93,8 @@ fun FocusScreen(
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = BottomDockReservedHeight + 26.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        remoteError?.let { message ->
-            item { Surface(color = Color(0xFFFFECE7), shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = FocusOrange); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = TextPrimary, fontSize = 12.sp); TextButton(onClick = { scope.launch { repository.refresh() } }) { Text("重试") } } } }
+        (if (!backendOnline && remoteError == null) "专注自习需要连接真实后端后才能使用" else remoteError)?.let { message ->
+            item { Surface(color = AlertErrorBg, shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = AlertErrorText); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp); TextButton(onClick = { scope.launch { appRepository.refreshBackendStatus(); if (appRepository.backendOnline.value) repository.refresh() } }) { Text("重试", color = FocusBlue) } } } }
         }
         item {
             Column(Modifier.clip(RoundedCornerShape(28.dp)).background(Surface).padding(14.dp)) {
@@ -100,7 +103,7 @@ fun FocusScreen(
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(258.dp)) {
                         CircularProgressIndicator(progress = { ringProgress }, modifier = Modifier.fillMaxSize(), color = FocusBlue, trackColor = PrimarySoft, strokeWidth = 12.dp)
-                        CircularProgressIndicator(progress = { .82f }, modifier = Modifier.size(224.dp), color = Color(0xFFDEE2FF), trackColor = Color.Transparent, strokeWidth = 2.dp)
+                        CircularProgressIndicator(progress = { .82f }, modifier = Modifier.size(224.dp), color = Line, trackColor = Color.Transparent, strokeWidth = 2.dp)
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("$minutes:$seconds", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 55.sp)
                             Spacer(Modifier.height(9.dp))
@@ -136,7 +139,7 @@ fun FocusScreen(
                         Switch(checked = assistanceEnabled, onCheckedChange = { enabled -> scope.launch { appRepository.setLearningAssistanceEnabled(enabled) } })
                     }
                     Spacer(Modifier.height(14.dp))
-                    Surface(shape = RoundedCornerShape(17.dp), color = Color(0xFFFAFBFF), border = BorderStroke(1.dp, Line)) {
+                    Surface(shape = RoundedCornerShape(17.dp), color = Background, border = BorderStroke(1.dp, Line)) {
                         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             AssistLine(Icons.Default.Memory, "本机 LiteRT：状态由设备能力决定")
                             AssistLine(Icons.Default.Visibility, "当前辅助观察：${if (assistanceEnabled) "已开启" else "暂不可用"}")
@@ -147,7 +150,7 @@ fun FocusScreen(
                 }
             }
         }
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Color(0xFFEFF7FF)); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Color(0xFFFFF3EC)) } }
+        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Surface); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Accent.copy(alpha = .14f)) } }
         item {
             Surface(shape = RoundedCornerShape(26.dp), color = Surface) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 164.dp).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -176,7 +179,7 @@ fun FocusScreen(
 
 @Composable
 private fun FocusModeTabs(selected: FocusMode, enabled: Boolean, onSelect: (FocusMode) -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color(0xFFF5F6FF)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(PrimarySoft).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf(FocusMode.FOCUS, FocusMode.SHORT_BREAK, FocusMode.LONG_BREAK).forEach { item ->
             val active = item == selected
             Surface(onClick = { if (enabled) onSelect(item) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp), color = if (active) FocusBlue else Color.Transparent, enabled = enabled) { Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Icon(if (item == FocusMode.FOCUS) Icons.Default.Timer else Icons.Default.NightlightRound, null, modifier = Modifier.size(16.dp), tint = if (active) Color.White else Muted); Spacer(Modifier.width(4.dp)); Text("${item.label} ${item.minutes} 分钟", color = if (active) Color.White else TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) } }

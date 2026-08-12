@@ -293,6 +293,7 @@ def _issue_tokens(
     )
     # 响应中返回降级后的角色,避免前端误判为 teacher
     public_user = UserPublic(**user.to_public_dict())
+    public_user.name = user.display_name or user.username
     public_user.role = effective_role
     return TokenPair(
         access_token=access_token,

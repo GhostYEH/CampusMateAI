@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -22,9 +24,18 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        val localProperties = Properties().apply {
+            val file = rootProject.file("local.properties")
+            if (file.exists()) file.inputStream().use(::load)
+        }
+        // Command-line/project properties take priority. local.properties gives
+        // physical devices a safe, untracked place to use the computer's LAN IP.
         val configuredApiBaseUrl = (project.findProperty("API_BASE_URL") as String?)
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
+            ?: localProperties.getProperty("API_BASE_URL")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
             ?: "http://10.0.2.2:8000/api/v1/"
         val normalizedApiBaseUrl = if (configuredApiBaseUrl.endsWith("/")) {
             configuredApiBaseUrl

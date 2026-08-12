@@ -224,34 +224,20 @@ class ChaoxingClient:
     async def get_assignments_and_notices(self, course_url: str) -> dict:
         """获取单个课程的作业和通知。"""
         try:
-            response = await self.client.get(course_url)
-            auth_error = _auth_error(response)
-            if auth_error:
-                raise ChaoxingFetchError(auth_error)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, "lxml")
-
             query = urllib.parse.parse_qs(urllib.parse.urlparse(course_url).query)
-            course_elem = soup.find("input", {"name": "courseid"}) or soup.find("input", {"id": "courseId"})
-            class_elem = soup.find("input", {"name": "clazzid"}) or soup.find("input", {"id": "classId"})
-            course_id = _identifier(course_elem.get("value") if course_elem else None, *(query.get("courseid") or query.get("courseId") or []))
-            class_id = _identifier(class_elem.get("value") if class_elem else None, *(query.get("clazzid") or query.get("classId") or []))
-
-            work_link = soup.find("a", {"title": "作业"})
-            work_enc_elem = soup.find("input", {"name": "workEnc"})
-            if not course_id or not class_id or not work_link or not work_link.get("data-url"):
+            course_id = _identifier(*(query.get("courseid") or query.get("courseId") or []))
+            class_id = _identifier(*(query.get("clazzid") or query.get("classId") or []))
+            if not course_id or not class_id:
                 raise ChaoxingFetchError("structure_changed")
-            work_url_base = urllib.parse.urljoin(course_url, work_link["data-url"])
-            work_enc = _identifier(work_enc_elem.get("value") if work_enc_elem else None)
 
-            parsed_work_url = urllib.parse.urlparse(work_url_base)
-            work_query = urllib.parse.parse_qs(parsed_work_url.query)
-            work_query.update({"courseId": [course_id], "classId": [class_id]})
-            if work_enc:
-                work_query["enc"] = [work_enc]
-            assignments_url = urllib.parse.urlunparse(parsed_work_url._replace(query=urllib.parse.urlencode(work_query, doseq=True)))
-
-            response = await self.client.get(assignments_url)
+            # The legacy course landing page now responds with "invalid
+            # parameters". The mobile work endpoint remains available, but it
+            # returns the user's work feed rather than one course's DOM. Filter
+            # its stable task URLs by course/class below.
+            response = await self.client.get(
+                "https://mooc1-api.chaoxing.com/work/stu-work",
+                params={"courseId": course_id, "classId": class_id},
+            )
             auth_error = _auth_error(response)
             if auth_error:
                 raise ChaoxingFetchError(auth_error)
@@ -259,45 +245,23 @@ class ChaoxingClient:
             soup = BeautifulSoup(response.text, "lxml")
 
             assignments = []
-            for item in soup.select(".work-item, li, tr"):
-                title_elem = item.select_one(".work-title, .title, h3, .name")
+            for item in soup.select("li[onclick*='goTask']"):
+                work_url = item.get("data") or ""
+                work_query = urllib.parse.parse_qs(urllib.parse.urlparse(work_url).query)
+                if _identifier(*(work_query.get("courseId") or [])) != course_id:
+                    continue
+                if _identifier(*(work_query.get("clazzId") or [])) != class_id:
+                    continue
+
+                title_elem = item.select_one("p, .work-title, .title, h3, .name")
                 if not title_elem:
                     continue
                 title = title_elem.text.strip()
-
-                deadline_elem = item.select_one(".work-deadline, .deadline, .time")
-                deadline = deadline_elem.text.strip() if deadline_elem else ""
-
-                # Extract external_id
-                external_id = item.get("data-workid") or item.get("data-jobid") or item.get("data-id") or item.get("id")
-                
-                link_elem = item.select_one("a")
-                link = link_elem["href"] if link_elem and link_elem.has_attr("href") else ""
-                
-                if not external_id and link:
-                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=([A-Za-z0-9_-]+)', link, re.IGNORECASE)
-                    if match:
-                        external_id = match.group(1)
-
-                if not external_id and item.get("onclick"):
-                    match = re.search(r'(?:workId|jobId|taskId|assignmentId|id)=([A-Za-z0-9_-]+)', item.get("onclick"), re.IGNORECASE)
-                    if match:
-                        external_id = match.group(1)
-                
+                external_id = _identifier(*(work_query.get("taskrefId") or work_query.get("workId") or work_query.get("jobId") or []))
                 if not external_id:
-                    input_id = item.select_one("input[name='workId'], input[name='jobId'], input[name='taskId']")
-                    if input_id:
-                        external_id = input_id.get("value")
+                    continue
 
-                if not external_id:
-                    continue # Do not use title+deadline
-
-                status_text = ""
-                status_elem = item.select_one(".status, .state, .work-status, .type, .sub-status")
-                if status_elem:
-                    status_text = status_elem.text.strip()
-                elif item.select_one(".btn-submit, .submit-btn"):
-                    status_text = "未交"
+                status_text = item.get_text(" ", strip=True)
                 
                 status = "pending"
                 if any(x in status_text for x in ["未交", "未完成", "未提交", "待完成"]):
@@ -305,15 +269,12 @@ class ChaoxingClient:
                 elif any(x in status_text for x in ["已交", "已完成", "已提交", "已批阅", "待批阅"]):
                     status = "completed"
 
-                if link and link.startswith("/"):
-                    link = "https://mooc2-ans.chaoxing.com" + link
-
                 assignments.append({
                     "title": title,
-                    "deadline": deadline,
+                    "deadline": "",
                     "external_id": external_id,
                     "status": status,
-                    "link": link
+                    "link": work_url,
                 })
 
             return {"assignments": assignments, "notices": []}

@@ -34,6 +34,7 @@ private val staticDestinationTitles = mapOf(
     "notifications" to "通知与提醒",
     "task_calendar" to "待办日历",
     "settings" to "系统设置",
+    "help-feedback" to "帮助与反馈",
     "notification-settings" to "微信通知监听",
     "chaoxing" to "学习通同步",
     "chaoxing-login" to "连接学习通",

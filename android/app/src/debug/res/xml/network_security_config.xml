@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Emulator-only backend bridge. Release keeps the HTTPS-only main config. -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.0.2.2</domain>
-    </domain-config>
+    <!-- Debug builds may point at an emulator bridge or a LAN development server.
+         Release continues to use the HTTPS-only main configuration. -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

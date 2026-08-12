@@ -42,15 +42,7 @@ export struct ServicesPage {
       Text(subtitle).fontColor(this.palette().muted).fontSize(9).maxLines(1)
     }.width('48%').padding({ top: 15, bottom: 15 }).backgroundColor(this.palette().surface).borderRadius(20)
       .onClick(() => this.openForm(kind))
-      .scale({ x: 1, y: 1 })
-      .animation({ duration: 200, curve: Curve.EaseInOut })
-      .gesture(
-        TapGesture({ count: 1 })
-          .onAction(() => {
-            animateTo({ duration: 150, curve: Curve.EaseInOut }, () => {
-            })
-          })
-      )
+
   }
 
   @Builder RequestRow(item: ServiceRequestItem) {
@@ -64,7 +56,7 @@ export struct ServicesPage {
       }.width(42).height(42).backgroundColor(this.palette().soft).borderRadius(13)
       Column({ space: 4 }) {
         Text(item.title).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold).maxLines(1)
-        Text(`申请时间：${item.created_at.substring(0, Math.min(10, item.created_at.length))}`).fontColor(this.palette().muted).fontSize(9)
+        Text(`申请时间：${(item.created_at ?? '').substring(0, Math.min(10, (item.created_at ?? '').length))}`).fontColor(this.palette().muted).fontSize(9)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Text(item.status === 'completed' ? '已完成' : item.status === 'processing' ? '处理中' : '已提交')
         .fontColor(item.status === 'completed' ? this.palette().success : this.palette().primary).fontSize(10).fontWeight(FontWeight.Bold)
@@ -86,7 +78,7 @@ export struct ServicesPage {
         Column() {
           this.RequestMeta('业务类型', this.kindTitle(item.kind))
           Divider().color(this.palette().line)
-          this.RequestMeta('申请时间', item.created_at)
+          this.RequestMeta('申请时间', item.created_at ?? '时间待记录')
           Divider().color(this.palette().line)
           this.RequestMeta('申请编号', item.id)
         }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(17)

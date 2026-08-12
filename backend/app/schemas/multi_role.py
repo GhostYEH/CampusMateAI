@@ -67,6 +67,9 @@ class UserPublic(BaseModel):
     id: str
     username: str
     role: str
+    # Legacy Android builds decode this field as required. Keep it alongside
+    # display_name so old clients and current clients share one auth response.
+    name: str = ""
     display_name: Optional[str] = None
     student_number: Optional[str] = None
     teacher_number: Optional[str] = None
