@@ -77,6 +77,7 @@ fun FocusScreen(
     val managerResult by manager.result.collectAsState()
     val managerFocusState by manager.focusState.collectAsState()
     val managerReminder by manager.gentleReminder.collectAsState()
+    val managerBehaviorPrediction by manager.behaviorPrediction.collectAsState()
 
     // ── Focus session state ──
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
@@ -307,11 +308,16 @@ fun FocusScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            when (activeSession?.status) {
-                                null -> repository.start(mode, null, relatedTaskId)
-                                    .onSuccess { secondsLeft = mode.totalSeconds }
-                                "active" -> repository.pause()
-                                "paused" -> repository.resume()
+                            when (focusPrimaryAction(activeSession?.status)) {
+                                FocusPrimaryAction.START ->
+                                    repository.start(mode, null, relatedTaskId)
+                                        .onSuccess { secondsLeft = mode.totalSeconds }
+
+                                FocusPrimaryAction.PAUSE ->
+                                    repository.pause()
+
+                                FocusPrimaryAction.RESUME ->
+                                    repository.resume()
                             }
                         }
                     },
@@ -332,7 +338,7 @@ fun FocusScreen(
                         fontSize = 19.sp,
                     )
                 }
-                if (activeSession != null) {
+                if (shouldShowFinishAction(activeSession?.status)) {
                     TextButton(
                         onClick = { showFinishDialog = true },
                         modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -435,7 +441,7 @@ fun FocusScreen(
                             // Behavior (NoOp)
                             AssistLine(
                                 Icons.Default.Accessibility,
-                                "动作识别模型暂未接入",
+                                behaviorText(managerBehaviorPrediction),
                             )
                         }
                     }
@@ -585,12 +591,12 @@ fun FocusScreen(
             text = { Text("结束时间和时长由后端服务记录。", color = Muted) },
             confirmButton = {
                 TextButton(onClick = {
+                    showFinishDialog = false
                     scope.launch {
                         repository.finish().onSuccess {
                             showCompletedDialog = true
                             secondsLeft = mode.totalSeconds
                         }
-                        showFinishDialog = false
                     }
                 }) {
                     Text("结束", color = FocusOrange)
@@ -651,6 +657,22 @@ fun FocusScreen(
 
 // ── Helpers ──
 
+internal enum class FocusPrimaryAction {
+    START,
+    PAUSE,
+    RESUME,
+}
+
+internal fun focusPrimaryAction(status: String?): FocusPrimaryAction =
+    when (status) {
+        "active" -> FocusPrimaryAction.PAUSE
+        "paused" -> FocusPrimaryAction.RESUME
+        else -> FocusPrimaryAction.START
+    }
+
+internal fun shouldShowFinishAction(status: String?): Boolean =
+    status == "active" || status == "paused"
+
 private fun statusText(
     status: ExpressionServiceStatus,
     enabled: Boolean,
@@ -678,6 +700,40 @@ private fun focusStateText(state: FocusState): String = when (state) {
     FocusState.BREAK_SUGGESTED -> "建议短暂休息"
     FocusState.NO_FACE -> "可能暂时离开"
     FocusState.UNAVAILABLE -> "暂不可用"
+}
+
+internal fun behaviorText(
+    prediction: com.example.campusai.data.behavior.BehaviorPrediction?,
+): String {
+    if (prediction == null) {
+        return "\u52a8\u4f5c\u8bc6\u522b\u51c6\u5907\u4e2d\u2026"
+    }
+
+    when (prediction.modelState) {
+        "MODEL_NOT_AVAILABLE" -> return "\u52a8\u4f5c\u8bc6\u522b\u6a21\u578b\u672a\u5c31\u7eea"
+        "NO_FRAME" -> return "\u7b49\u5f85\u6444\u50cf\u5934\u753b\u9762\u2026"
+        "INFERENCE_ERROR" -> return "\u52a8\u4f5c\u8bc6\u522b\u6682\u4e0d\u53ef\u7528"
+    }
+
+    if (prediction.modelState != "READY_RGB_V1") {
+        return "\u52a8\u4f5c\u8bc6\u522b\u51c6\u5907\u4e2d\u2026"
+    }
+
+    val read = prediction.probabilities[
+        com.example.campusai.data.behavior.StudyBehavior.READING
+    ] ?: 0f
+
+    val write = prediction.probabilities[
+        com.example.campusai.data.behavior.StudyBehavior.WRITING
+    ] ?: 0f
+
+    if (read >= write) {
+        val percent = (read * 100f).toInt().coerceIn(0, 100)
+        return "\u52a8\u4f5c\u8bc6\u522b\uff1a\u9605\u8bfb ${percent}%"
+    }
+
+    val percent = (write * 100f).toInt().coerceIn(0, 100)
+    return "\u52a8\u4f5c\u8bc6\u522b\uff1a\u4e66\u5199 ${percent}%"
 }
 
 private fun expressionText(result: com.example.campusai.data.model.ExpressionResult): String {

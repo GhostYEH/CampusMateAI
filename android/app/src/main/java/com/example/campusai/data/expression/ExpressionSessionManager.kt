@@ -1,4 +1,4 @@
-package com.example.campusai.data.expression
+﻿package com.example.campusai.data.expression
 
 import android.app.Application
 import androidx.camera.view.PreviewView
@@ -7,7 +7,7 @@ import com.example.campusai.data.behavior.BehaviorAnalyzer
 import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.FocusSupervisor
-import com.example.campusai.data.behavior.NoOpBehaviorRecognitionEngine
+import com.example.campusai.data.behavior.OnnxBehaviorRecognitionEngine
 import com.example.campusai.data.focus.FocusObservation
 import com.example.campusai.data.focus.FocusObservationConfig
 import com.example.campusai.data.focus.FocusState
@@ -33,8 +33,8 @@ import kotlinx.coroutines.sync.withLock
  * Application-owned coordinator: one model/service instance, camera only while Focus is eligible.
  *
  * Lifecycle:
- * - [attachLifecycle] / [detachLifecycle] — manages CameraX LifecycleOwner independently.
- * - [attachPreview] / [detachPreview] — manages PreviewView independently.
+ * - [attachLifecycle] / [detachLifecycle] 鈥?manages CameraX LifecycleOwner independently.
+ * - [attachPreview] / [detachPreview] 鈥?manages PreviewView independently.
  * - Analysis runs when: eligible (assistance + permission + timer + page + foreground) AND focusMode == FOCUS.
  * - Preview visibility is orthogonal to analysis.
  * - [release] permanently destroys resources; for page-level pause use eligibility toggles.
@@ -60,14 +60,14 @@ class ExpressionSessionManager(
     private var appForeground = true
     private var focusMode: FocusMode? = null
     private var processor = FocusStateProcessor(observationConfig)
-    private val behaviorAnalyzer = BehaviorAnalyzer(NoOpBehaviorRecognitionEngine())
+    private val behaviorAnalyzer = BehaviorAnalyzer(OnnxBehaviorRecognitionEngine(application))
     private val behaviorSignalProcessor = BehaviorSignalProcessor()
     private val focusSupervisor = FocusSupervisor()
     private var latestResult = initialResult()
     private var releaseJob: kotlinx.coroutines.Job? = null
     private var serviceInitialized = false
 
-    // Collector jobs — tracked so they can be cancelled when service is replaced.
+    // Collector jobs 鈥?tracked so they can be cancelled when service is replaced.
     private var behaviorCollectorJob: Job? = null
     private var statusCollectorJob: Job? = null
     private var resultCollectorJob: Job? = null
@@ -86,7 +86,7 @@ class ExpressionSessionManager(
     val gentleReminder: StateFlow<String?> = _gentleReminder.asStateFlow()
     val modeLabel: String
         get() = (service as? ObservableExpressionRecognitionService)?.modeLabel
-            ?: if (useMock) "Mock 表情模型" else "本机 LiteRT"
+            ?: if (useMock) "Mock 琛ㄦ儏妯″瀷" else "鏈満 LiteRT"
 
     init {
         cameraPipeline.errorListener = com.example.campusai.data.camera.CameraErrorListener { message ->
@@ -94,7 +94,7 @@ class ExpressionSessionManager(
         }
     }
 
-    // ── Lifecycle (independent from Preview) ──
+    // 鈹€鈹€ Lifecycle (independent from Preview) 鈹€鈹€
 
     fun attachLifecycle(owner: LifecycleOwner) {
         lifecycleOwner = owner
@@ -106,7 +106,7 @@ class ExpressionSessionManager(
         lifecycleOwner = null
     }
 
-    // ── Preview (independent from Lifecycle — can be toggled while analysis runs) ──
+    // 鈹€鈹€ Preview (independent from Lifecycle 鈥?can be toggled while analysis runs) 鈹€鈹€
 
     fun attachPreview(view: PreviewView) {
         previewView = view
@@ -118,7 +118,7 @@ class ExpressionSessionManager(
         previewView = null
     }
 
-    // ── Service mode ──
+    // 鈹€鈹€ Service mode 鈹€鈹€
 
     suspend fun setUseMock(enabled: Boolean) {
         releaseJob?.cancel()
@@ -137,7 +137,7 @@ class ExpressionSessionManager(
         }
     }
 
-    // ── Eligibility ──
+    // 鈹€鈹€ Eligibility 鈹€鈹€
 
     suspend fun updateEligibility(
         enabled: Boolean = assistanceEnabled,
@@ -159,7 +159,7 @@ class ExpressionSessionManager(
         }
     }
 
-    // ── Focus session bookkeeping ──
+    // 鈹€鈹€ Focus session bookkeeping 鈹€鈹€
 
     suspend fun beginFocusSession() {
         releaseJob?.cancel()
@@ -167,7 +167,7 @@ class ExpressionSessionManager(
             processor = FocusStateProcessor(observationConfig)
             behaviorSignalProcessor.reset()
             focusSupervisor.reset()
-            _gentleReminder.value = null
+            _gentleReminder.value = "??????????????????????"
         }
     }
 
@@ -184,7 +184,7 @@ class ExpressionSessionManager(
         }
     }
 
-    // ── Permanent teardown (application shutdown) ──
+    // 鈹€鈹€ Permanent teardown (application shutdown) 鈹€鈹€
 
     fun releaseAsync() {
         releaseJob?.cancel()
@@ -206,7 +206,7 @@ class ExpressionSessionManager(
         _focusState.value = FocusState.UNAVAILABLE
     }
 
-    // ── Internal ──
+    // 鈹€鈹€ Internal 鈹€鈹€
 
     private fun cancelCollectors() {
         behaviorCollectorJob?.cancel()
@@ -227,7 +227,7 @@ class ExpressionSessionManager(
             service?.pause()
             val fallbackStatus: ExpressionServiceStatus = when {
                 !assistanceEnabled -> ExpressionServiceStatus.Off
-                !cameraPermissionGranted -> ExpressionServiceStatus.Error("需要摄像头权限")
+                !cameraPermissionGranted -> ExpressionServiceStatus.Error("闇€瑕佹憚鍍忓ご鏉冮檺")
                 !timerRunning -> ExpressionServiceStatus.Ready
                 !pageVisible || !appForeground -> ExpressionServiceStatus.Paused
                 focusMode != FocusMode.FOCUS -> ExpressionServiceStatus.Paused
@@ -243,6 +243,8 @@ class ExpressionSessionManager(
         val target = service ?: createService(useMock).also { created ->
             service = created
             cameraPipeline.addAnalyzer(created)
+
+            behaviorAnalyzer.ensureInitialized()
             cameraPipeline.addAnalyzer(behaviorAnalyzer)
 
             // Cancel any stale collectors before launching new ones
@@ -316,3 +318,4 @@ class ExpressionSessionManager(
         modelVersion = "not-loaded",
     )
 }
+
