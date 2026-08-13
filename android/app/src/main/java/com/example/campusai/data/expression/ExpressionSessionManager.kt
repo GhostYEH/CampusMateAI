@@ -7,7 +7,7 @@ import com.example.campusai.data.behavior.BehaviorAnalyzer
 import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.FocusSupervisor
-import com.example.campusai.data.behavior.NoOpBehaviorRecognitionEngine
+import com.example.campusai.data.behavior.OnnxBehaviorRecognitionEngine
 import com.example.campusai.data.focus.FocusObservation
 import com.example.campusai.data.focus.FocusObservationConfig
 import com.example.campusai.data.focus.FocusState
@@ -46,7 +46,7 @@ class ExpressionSessionManager(
     private var pageVisible = false
     private var appForeground = true
     private var processor = FocusStateProcessor(observationConfig)
-    private val behaviorAnalyzer = BehaviorAnalyzer(NoOpBehaviorRecognitionEngine())
+    private val behaviorAnalyzer = BehaviorAnalyzer(OnnxBehaviorRecognitionEngine(application))
     private val behaviorSignalProcessor = BehaviorSignalProcessor()
     private val focusSupervisor = FocusSupervisor()
     private var latestResult = initialResult()
@@ -168,6 +168,7 @@ class ExpressionSessionManager(
         val target = service ?: createService(useMock).also { created ->
             service = created
             cameraPipeline.addAnalyzer(created)
+            behaviorAnalyzer.ensureInitialized()
             cameraPipeline.addAnalyzer(behaviorAnalyzer)
             
             scope.launch {
