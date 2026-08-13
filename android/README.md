@@ -86,6 +86,71 @@ gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://192.168.1.20:8000/api/v1/
 - 隐私: 画面不保存、不上传、不写日志，仅在用户主动授权且专注计时运行中分析
 - 详见主 README 的"CNN 面部表情识别"章节
 
+## 本地动作识别
+
+专注自习页面已接入本地动作识别（行为识别），与表情识别共享同一 CameraX pipeline。
+
+### 1. 当前能力
+
+当前 Android 专注模式动作识别部署：
+
+- **READING**：阅读
+- **WRITING**：书写
+
+后续候选类别（**尚未部署**）：
+
+- `phone_use`
+- `away`
+- `resting`
+
+### 2. Android 数据流
+
+```
+CameraX
+→ CameraFrame
+→ BehaviorAnalyzer（帧缓冲 + 单线程推理调度）
+→ OnnxBehaviorRecognitionEngine
+→ ResNet18 ONNX（本地推理）
+→ BehaviorPrediction（READING / WRITING 概率）
+→ ExpressionSessionManager
+→ BehaviorSignalProcessor → FocusSupervisor
+→ 专注辅助状态系统（focusState）
+```
+
+- 动作识别与已有表情识别共享现有 CameraX pipeline，**不额外启动第二个摄像头**
+- ONNX 推理全部在 Android 本地完成
+
+### 3. 主要实现文件
+
+- `data/behavior/OnnxBehaviorRecognitionEngine.kt` — ONNX 模型加载、预处理、推理、softmax、类别映射
+- `data/behavior/BehaviorModelMath.kt` — 稳定 softmax 与输出后处理
+- `data/behavior/BehaviorAnalyzer.kt` — 帧缓冲、并发推理控制、Bitmap 回收
+- `data/behavior/BehaviorRecognitionEngine.kt` — 引擎接口与 NoOp 实现
+- `data/expression/ExpressionSessionManager.kt` — 将动作识别接入专注模式、共享 CameraX pipeline
+- `assets/models/behavior/rgb_resnet18.onnx` — 部署模型
+
+### 4. 当前部署模型
+
+| 项 | 值 |
+|------|------|
+| Backbone | ResNet18 |
+| Modality | RGB |
+| Input | 224 × 224 |
+| Runtime | ONNX Runtime Android |
+| Output | READ / WRITE |
+
+当前 Android v1 只部署 RGB 模型（未部署 Pose，未部署 RGB + Pose 融合）。
+
+### 5. 隐私
+
+- 摄像头图像仅设备端处理
+- 不上传服务器
+- 不保存原始实时摄像头画面
+- 不把原始图像写入日志
+- 推理在设备端完成
+
+详见专项研究文档：[`../docs/behavior-recognition.md`](../docs/behavior-recognition.md)
+
 ## 运行要求
 
 - Android Studio Hedgehog (2023.1.1) 或更高版本

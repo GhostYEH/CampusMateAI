@@ -521,6 +521,20 @@ Android 的**专注自习（Focus）**是唯一正式入口，已接入 CameraX�
 
 训练、审计、评估、导出复现命令和真实指标见 [`ml/expression_recognition/README.md`](ml/expression_recognition/README.md)。该能力仅描述画面中可观察到的面部表情，不用于推断心理状态、疲劳、疾病或危机，也不替代用户自述或专业咨询。低置信度与不稳定结果输出 `UNKNOWN`，不触发安慰。
 
+## Android 本地动作识别
+
+CampusMateAI Android 专注模式已接入本地动作识别：
+
+- 当前部署版本支持 **READING（阅读）** 与 **WRITING（书写）** 二分类
+- 使用 **RGB ResNet18**，模型导出为 **ONNX**
+- Android 通过 **ONNX Runtime** 在设备端本地推理
+- 摄像头原始画面**不上传、不保存**
+
+相关文档：
+
+- Android 客户端说明：[`android/README.md`](android/README.md)
+- 动作识别专项研究文档：[`docs/behavior-recognition.md`](docs/behavior-recognition.md)
+
 ## CNN 模型共建（用户主动参与）
 
 设置页的“CNN 模型共建”提供单帧采集流程：用户明确同意后授予相机权限，主动拍摄一张照片，自己选择可观察到的表情标签，确认后通过鉴权接口上传。图片在上传前只暂存在 Android `cacheDir`，上传成功后删除本地文件；用户可以删除自己上传到服务器的样本。
