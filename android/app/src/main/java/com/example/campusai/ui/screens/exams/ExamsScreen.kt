@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -159,7 +159,10 @@ fun ExamsScreen(
                             }
                             grouped.forEach { (date, dateExams) ->
                                 item(key = "date-$date") { ExamDateHeader(date) }
-                                items(dateExams, key = { it.id }) { exam ->
+                                itemsIndexed(
+                                    items = dateExams,
+                                    key = { index, exam -> "exam|${exam.id}|$date|$index" },
+                                ) { _, exam ->
                                     ExamTimelineItem(
                                         exam = exam,
                                         now = now,

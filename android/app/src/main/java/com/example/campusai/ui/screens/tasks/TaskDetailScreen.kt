@@ -39,7 +39,8 @@ fun TaskDetailScreen(
     onBack: () -> Unit,
     onTaskDeleted: () -> Unit,
 ) {
-    val task = repository.getTaskById(taskId)
+    val tasks by repository.tasks.collectAsState()
+    val task = remember(tasks, taskId) { tasks.find { it.id == taskId } }
     val reduceMotion by repository.reduceMotion.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -61,16 +62,12 @@ fun TaskDetailScreen(
     var editCourse by remember { mutableStateOf(task.course) }
     var editDescription by remember { mutableStateOf(task.description) }
 
-    val hasChanges by remember(isEditing) {
-        derivedStateOf {
-            isEditing && (
-                editTitle != task.title ||
-                editDue != task.due ||
-                editCourse != task.course ||
-                editDescription != task.description
-            )
-        }
-    }
+    val hasChanges = isEditing && (
+        editTitle != task.title ||
+        editDue != task.due ||
+        editCourse != task.course ||
+        editDescription != task.description
+    )
 
     fun handleBack() {
         if (isEditing && hasChanges) {

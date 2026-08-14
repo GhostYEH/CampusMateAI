@@ -19,6 +19,7 @@ import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.ui.navigation.AppNavHost
 import com.example.campusai.ui.screens.login.LoginScreen
 import com.example.campusai.ui.screens.shell.AppShell
+import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
 
 import androidx.work.PeriodicWorkRequestBuilder
@@ -45,8 +46,13 @@ class MainActivity : ComponentActivity() {
         // The bottom dock is intentionally floating. Keep the system navigation
         // area transparent so it cannot render a second opaque bar behind it.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = AndroidColor.TRANSPARENT
         window.navigationBarColor = AndroidColor.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.navigationBarDividerColor = AndroidColor.TRANSPARENT
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
             window.isNavigationBarContrastEnforced = false
         }
 
@@ -55,13 +61,19 @@ class MainActivity : ComponentActivity() {
         val notificationInboxRepository = (application as CampusAIApplication).notificationInboxRepository
 
         setContent {
+            val session by repository.session.collectAsState()
             val darkMode by repository.darkMode.collectAsState()
             val reduceMotion by repository.reduceMotion.collectAsState()
             val view = LocalView.current
             SideEffect {
+                val policy = systemBarPolicy(
+                    route = null,
+                    darkTheme = darkMode,
+                    authenticated = session != null,
+                )
                 WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = !darkMode
-                    isAppearanceLightNavigationBars = !darkMode
+                    isAppearanceLightStatusBars = policy.darkStatusBarIcons
+                    isAppearanceLightNavigationBars = policy.darkNavigationBarIcons
                 }
             }
             CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
@@ -102,10 +114,10 @@ fun CampusAIApp(
                 }
             }
             
-            // 检查是否有未上传的通知，如果有则重新调度 Worker
-            val pendingNotices = repository.getPendingNotices().filter { it.status == "pending" }
-            if (pendingNotices.isNotEmpty()) {
-                repository.scheduleNoticeUploadWorker()
+            // Room is the durable notification queue. A startup wake-up recovers
+            // READY/RETRY rows left by process death or device reboot.
+            if (notificationInboxRepository.hasPending()) {
+                com.example.campusai.workers.NoticeWorkScheduler.scheduleUpload(context)
             }
         }
 

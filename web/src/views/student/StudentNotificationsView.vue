@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
-import client, { extractNotice } from "../../services/api";
-import { createPersonalTask, getStudentClasses, markAnnouncementRead } from "../../services/studentApi";
+import { extractNotice } from "../../services/api";
+import { normalizeNoticeItems, noticeMatchesFilters, safeNoticeSourceUrl, shouldMarkAnnouncementRead } from "../../services/noticeFeed";
+import { createPersonalTask, getStudentNotices, markAnnouncementRead } from "../../services/studentApi";
 
 const router = useRouter();
 
@@ -13,19 +14,18 @@ const error = ref("");
 const notices = ref([]);
 const query = ref("");
 const source = ref("all");
-const readFilter = ref("unread");
+const readFilter = ref("all");
 const expandedId = ref(null);
 const text = ref("");
 const extracting = ref(false);
 const extracted = ref(null);
 const saving = ref(false);
 
-const filtered = computed(() => notices.value.filter((item) => {
-  const matchesSource = source.value === "all" || item.source === source.value;
-  const matchesRead = readFilter.value === "all" || !item.has_read;
-  const keyword = `${item.title} ${item.content || ""}`.toLowerCase();
-  return matchesSource && matchesRead && keyword.includes(query.value.trim().toLowerCase());
-}));
+const filtered = computed(() => notices.value.filter((item) => noticeMatchesFilters(item, {
+  source: source.value,
+  readFilter: readFilter.value,
+  query: query.value,
+})));
 
 const unreadCount = computed(() => notices.value.filter((item) => !item.has_read).length);
 const sources = computed(() => [...new Set(notices.value.map((item) => item.source).filter(Boolean))]);
@@ -41,12 +41,7 @@ async function load(refresh = false) {
   else loading.value = true;
   error.value = "";
   try {
-    const classes = (await getStudentClasses()).items || [];
-    const groups = await Promise.all(classes.map(async (cls) => {
-      const { data } = await client.get(`/classes/${cls.id}/announcements`, { params: { page_size: 100 } });
-      return (data.items || []).map((item) => ({ ...item, source: cls.name }));
-    }));
-    notices.value = groups.flat().sort((a, b) => String(b.published_at || b.created_at).localeCompare(String(a.published_at || a.created_at)));
+    notices.value = normalizeNoticeItems(await getStudentNotices());
   } catch (e) {
     error.value = e.response?.data?.detail || "通知加载失败，请稍后重试。";
   } finally {
@@ -63,7 +58,7 @@ function displayNoticeTime(item, index) {
 
 async function toggleNotice(item) {
   expandedId.value = expandedId.value === item.id ? null : item.id;
-  if (item.has_read) return;
+  if (!shouldMarkAnnouncementRead(item)) return;
   try {
     await markAnnouncementRead(item.id);
     item.has_read = true;
@@ -74,8 +69,13 @@ async function toggleNotice(item) {
 
 function openNoticeDetail(item) {
   if (!item?.id) return;
-  if (!item.has_read) {
+  if (shouldMarkAnnouncementRead(item)) {
     markAnnouncementRead(item.id).then(() => { item.has_read = true; }).catch(() => {});
+  }
+  if (item.kind === "unified") {
+    const sourceUrl = safeNoticeSourceUrl(item);
+    if (sourceUrl) window.open(sourceUrl, "_blank", "noopener,noreferrer");
+    return;
   }
   router.push({ path: `/announcements/${item.id}`, query: { source: item.source || "" } });
 }
@@ -127,7 +127,7 @@ onMounted(() => load());
         <p>先浏览课程通知，也可以粘贴一段原文，让系统提取截止时间并确认后保存为待办。</p>
       </div>
       <div class="notice-heading-bg" aria-hidden="true"><img src="/assets/campusmate-notice-illustration.png" alt="" /></div>
-      <div class="hero-side"><div class="hero-decoration"><UiIcon name="PhSparkle" /></div><button class="secondary-button" :disabled="refreshing" @click="load(true)"><UiIcon name="PhArrowClockwise" />刷新</button></div>
+      <div class="hero-side"><div class="hero-decoration"><UiIcon name="PhSparkle" /></div><button class="secondary-button" @click="router.push('/profile/chaoxing')"><UiIcon name="PhGraduationCap" />管理学习通</button><button class="secondary-button" :disabled="refreshing" @click="load(true)"><UiIcon name="PhArrowClockwise" />刷新</button></div>
     </div>
 
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load">重试</button></div>

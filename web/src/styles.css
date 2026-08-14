@@ -245,10 +245,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   color:#fff;
   border:0;
   background-color:#4d5fda;
-  background-image:url("/assets/campus-night.jpg");
+  background-image:linear-gradient(135deg,#293a89 0%,#5b68f2 55%,#7c6be8 100%);
   background-position:center 48%;
   background-size:cover;
-  background-blend-mode:soft-light;
 }
 .next-action>div{
   align-self:stretch;

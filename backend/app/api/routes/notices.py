@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
+from datetime import datetime, timezone
+import asyncio
+import hashlib
+import json
+import re
 import sqlite3
 
 from fastapi import APIRouter, Depends, Query
@@ -15,12 +20,214 @@ from ...schemas.notice import (
     NoticeExtractRequest,
     NoticeExtractResponse,
     NoticeOut,
+    NoticeBatchIngestRequest,
+    NoticeBatchIngestResponse,
+    NoticeBatchItem,
+    NoticeBatchItemResult,
+    NoticeSemanticType,
 )
 from ...services.container import ServiceContainer, get_container
-from ...services.notice_extraction_service import compute_notice_hash
+from ...services.notice_extraction_service import (
+    AUTOMATION_EXTRACTOR_VERSION,
+    SemanticDecision,
+    compute_notice_hash,
+)
 from ..deps import current_user
 
 router = APIRouter()
+
+
+_RELATIVE_TIME_RE = re.compile(r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天])")
+
+
+def _ai_cache_key(item: NoticeBatchItem, container: ServiceContainer) -> Optional[str]:
+    normalized = re.sub(r"\s+", " ", item.content).strip()
+    if item.published_at is None and _RELATIVE_TIME_RE.search(normalized):
+        return None
+    published_context = item.published_at.isoformat() if item.published_at else "unknown"
+    model = container.llm.name if container.llm is not None else "none"
+    raw = "\x1f".join((normalized, published_context, model, AUTOMATION_EXTRACTOR_VERSION))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _persist_automation_result(
+    *,
+    item: NoticeBatchItem,
+    decision: SemanticDecision,
+    user: UserRow,
+    container: ServiceContainer,
+) -> tuple[bool, int, Optional[MultiNoticeExtractResponse]]:
+    if decision.type is NoticeSemanticType.CHAT:
+        return False, 0, None
+    extraction: MultiNoticeExtractResponse
+    if decision.tasks:
+        extraction = MultiNoticeExtractResponse(
+            tasks=decision.tasks,
+            split_reason=decision.reason,
+            needs_user_confirmation=decision.needs_confirmation,
+        )
+    elif decision.type is NoticeSemanticType.ACTIONABLE_NOTICE and decision.reason == "rule_first":
+        extraction = container.notice_extraction._rule_extract_multi(
+            item.content, item.source_name, item.published_at
+        )
+    else:
+        extraction = MultiNoticeExtractResponse(
+            tasks=[], split_reason=decision.reason, needs_user_confirmation=decision.needs_confirmation
+        )
+
+    primary = extraction.tasks[0] if extraction.tasks else None
+    notice_key = f"notification:{item.client_fingerprint}"
+    container.notice_repository.create_or_update_notice(
+        user_id=user.id,
+        source=item.source_name,
+        external_id=notice_key,
+        title=primary.title if primary else "校园通知",
+        content=item.content,
+        published_at=item.published_at.isoformat() if item.published_at else None,
+    )
+    tasks_created = 0
+    for task in extraction.tasks:
+        if decision.type is not NoticeSemanticType.ACTIONABLE_NOTICE or not task.actionable:
+            continue
+        identity = "\n".join((task.task, task.deadline.isoformat() if task.deadline else "", task.submission_method or "", task.location or ""))
+        task_key = f"{notice_key}:{compute_notice_hash(identity)}"
+        before, _ = container.personal_task_repository.list_tasks(user.id, page=1, page_size=200)
+        container.personal_task_repository.create_task(
+            user_id=user.id,
+            title=task.task,
+            description=task.source_text,
+            target_students=task.target_students,
+            deadline=task.deadline.isoformat() if task.deadline else None,
+            materials=[material.name for material in task.materials],
+            submission_method=task.submission_method,
+            location=task.location,
+            source_name=item.source_name,
+            source_text=task.source_text,
+            source_notice_id=task_key,
+            priority={"urgent": "high", "important": "high", "normal": "medium"}.get(task.importance, "medium"),
+        )
+        after, _ = container.personal_task_repository.list_tasks(user.id, page=1, page_size=200)
+        tasks_created += int(len(after) > len(before))
+    return True, tasks_created, extraction
+
+
+async def _ingest_batch(
+    req: NoticeBatchIngestRequest,
+    user: UserRow,
+    container: ServiceContainer,
+) -> NoticeBatchIngestResponse:
+    automation_repo = container.notice_automation_repository
+    results_by_id: dict[str, NoticeBatchItemResult] = {}
+    pending: list[NoticeBatchItem] = []
+    contested: list[NoticeBatchItem] = []
+    stats = {
+        "received_count": len(req.items), "duplicate_count": 0,
+        "rule_chat_count": 0, "rule_notice_count": 0, "rule_task_count": 0,
+        "ai_candidate_count": 0, "ai_batch_count": 0, "ai_cache_hit": 0,
+    }
+
+    for item in req.items:
+        stored = automation_repo.get_ingest_result(user.id, item.client_fingerprint)
+        if stored:
+            replay = NoticeBatchItemResult.model_validate_json(stored).model_copy(update={"duplicate": True})
+            results_by_id[item.client_id] = replay
+            stats["duplicate_count"] += 1
+        elif automation_repo.try_claim_ingest(user.id, item.client_fingerprint):
+            pending.append(item)
+        else:
+            contested.append(item)
+
+    decisions: dict[str, SemanticDecision] = {}
+    ai_misses: list[tuple[NoticeBatchItem, Optional[str]]] = []
+    for item in pending:
+        semantic = container.notice_extraction.classify_semantics(item.content)
+        if semantic is not NoticeSemanticType.AMBIGUOUS:
+            decisions[item.client_id] = SemanticDecision(item.client_id, semantic, reason="rule_first")
+            stats[{
+                NoticeSemanticType.CHAT: "rule_chat_count",
+                NoticeSemanticType.NOTICE: "rule_notice_count",
+                NoticeSemanticType.ACTIONABLE_NOTICE: "rule_task_count",
+            }[semantic]] += 1
+            continue
+        stats["ai_candidate_count"] += 1
+        cache_key = _ai_cache_key(item, container)
+        cached = automation_repo.get_ai_cache(cache_key) if cache_key else None
+        if cached:
+            cached_data = json.loads(cached)
+            cached_data["tasks"] = [
+                NoticeExtractResponse.model_validate(task) for task in cached_data.get("tasks", [])
+            ]
+            decisions[item.client_id] = SemanticDecision(**cached_data)
+            stats["ai_cache_hit"] += 1
+        else:
+            ai_misses.append((item, cache_key))
+
+    if ai_misses:
+        stats["ai_batch_count"] = 1
+        resolved = await container.notice_extraction.extract_ambiguous_batch([
+            {"id": item.client_id, "content": item.content, "source_name": item.source_name, "published_at": item.published_at}
+            for item, _ in ai_misses
+        ])
+        for decision, (_, cache_key) in zip(resolved, ai_misses):
+            decisions[decision.id] = decision
+            if decision.type is not NoticeSemanticType.AMBIGUOUS and cache_key:
+                automation_repo.save_ai_cache(cache_key, json.dumps({
+                    "id": decision.id,
+                    "type": decision.type.value,
+                    "tasks": [task.model_dump(mode="json") for task in decision.tasks],
+                    "needs_confirmation": decision.needs_confirmation,
+                    "reason": decision.reason,
+                }, ensure_ascii=False))
+
+    for item in pending:
+        decision = decisions[item.client_id]
+        if decision.type is NoticeSemanticType.AMBIGUOUS:
+            status, reason = "retryable", decision.reason
+            notice_created, tasks_created, extraction = False, 0, None
+        else:
+            notice_created, tasks_created, extraction = _persist_automation_result(
+                item=item, decision=decision, user=user, container=container
+            )
+            status = "ignored" if decision.type is NoticeSemanticType.CHAT else "completed"
+            reason = decision.reason
+        result = NoticeBatchItemResult(
+            client_id=item.client_id,
+            client_fingerprint=item.client_fingerprint,
+            status=status,
+            semantic_type=decision.type,
+            notice_created=notice_created,
+            tasks_created=tasks_created,
+            extraction=extraction,
+            reason=reason,
+        )
+        results_by_id[item.client_id] = result
+        if status in ("completed", "ignored", "failed"):
+            automation_repo.save_ingest_result(user.id, item.client_fingerprint, result.model_dump_json())
+        else:
+            automation_repo.release_ingest_claim(user.id, item.client_fingerprint)
+
+    for item in contested:
+        stored = None
+        for _ in range(50):
+            stored = automation_repo.get_ingest_result(user.id, item.client_fingerprint)
+            if stored:
+                break
+            await asyncio.sleep(0.02)
+        if stored:
+            results_by_id[item.client_id] = NoticeBatchItemResult.model_validate_json(stored).model_copy(
+                update={"client_id": item.client_id, "duplicate": True}
+            )
+            stats["duplicate_count"] += 1
+        else:
+            results_by_id[item.client_id] = NoticeBatchItemResult(
+                client_id=item.client_id,
+                client_fingerprint=item.client_fingerprint,
+                status="retryable",
+                semantic_type=NoticeSemanticType.AMBIGUOUS,
+                reason="ingest_in_progress",
+            )
+
+    return NoticeBatchIngestResponse(items=[results_by_id[item.client_id] for item in req.items], stats=stats)
 
 
 def _container() -> ServiceContainer:
@@ -79,9 +286,11 @@ def list_notices(
                 title=n.title,
                 source=n.source,
                 time=n.published_at or n.created_at,
-                unread=False,
-                category=n.source,
-                content=n.content,
+                    unread=False,
+                    category=n.source,
+                    content=n.content,
+                    kind="unified",
+                    source_url=n.source_url,
             )
         )
 
@@ -101,9 +310,10 @@ def list_notices(
                     title=ann.title,
                     source=class_name or course_name or ann.author_id,
                     time=ann.published_at or ann.created_at,
-                    unread=unread,
-                    category=course_name,
-                    content=ann.content,
+                        unread=unread,
+                        category=course_name,
+                        content=ann.content,
+                        kind="announcement",
                 )
             )
     
@@ -208,64 +418,30 @@ async def ingest_notice(
     以原文 hash 作为通知幂等键，使用多任务抽取，并只自动创建明确
     actionable 的待办；低置信度结果仍会保留在统一通知列表供确认。
     """
-    extracted = await container.notice_extraction.extract_multi(
-        req.content,
-        source_name=req.source_name,
+    source = req.source_name or "校园通知"
+    published = req.published_at.isoformat() if req.published_at else datetime.now(timezone.utc).date().isoformat()
+    fingerprint = hashlib.sha256(
+        "\x1f".join((source, req.content, published)).encode("utf-8")
+    ).hexdigest()
+    batch = NoticeBatchIngestRequest(items=[NoticeBatchItem(
+        client_id=f"legacy:{fingerprint[:16]}",
+        client_fingerprint=fingerprint,
+        source_name=source,
         published_at=req.published_at,
-        allow_multi_task=req.allow_multi_task,
-    )
-    task_repo = container.personal_task_repository
-    source = req.source_name or "微信通知"
-    content_hash = compute_notice_hash(req.content)
-    # The same announcement in two different allow-listed groups is meaningful
-    # provenance, so its source participates in the idempotency boundary.
-    notice_key = f"wechat:{compute_notice_hash(source)}:{content_hash}"
-    primary = extracted.tasks[0] if extracted.tasks else None
-    title = primary.title if primary else "校园通知"
-
-    # This row is the shared Android/Web notification record. create_or_update
-    # makes retrying a completed WorkManager job safe.
-    container.notice_repository.create_or_update_notice(
-        user_id=user.id,
-        source=source,
-        external_id=notice_key,
-        title=title,
-        content=req.content,
-        published_at=req.published_at.isoformat() if req.published_at else None,
+        messages=[{"text": req.content, "published_at": req.published_at}],
+    )])
+    processed = await _ingest_batch(batch, user, container)
+    result = processed.items[0]
+    return result.extraction or MultiNoticeExtractResponse(
+        tasks=[], split_reason=result.reason or result.semantic_type.value,
+        needs_user_confirmation=result.status == "retryable",
     )
 
-    for index, task in enumerate(extracted.tasks):
-        if not task.actionable:
-            task.warnings.append("非行动型通知，未自动创建待办。")
-            continue
-        # Task titles can legitimately fall back to the same generic title when
-        # rule extraction is conservative. Include stable task attributes so
-        # distinct deadlines/actions in one long teacher notice stay separate.
-        task_identity = "\n".join(
-            [
-                task.task,
-                task.deadline.isoformat() if task.deadline else "",
-                task.submission_method or "",
-                task.location or "",
-            ]
-        )
-        task_key = f"{notice_key}:{compute_notice_hash(task_identity)}"
-        try:
-            task_repo.create_task(
-                user_id=user.id,
-                title=task.task,
-                description=task.source_text,
-                target_students=task.target_students,
-                deadline=task.deadline.isoformat() if task.deadline else None,
-                materials=[item.name for item in task.materials],
-                submission_method=task.submission_method,
-                location=task.location,
-                source_name=source,
-                source_text=task.source_text,
-                source_notice_id=task_key,
-                priority={"urgent": "high", "important": "high", "normal": "medium"}.get(task.importance, "medium"),
-            )
-        except sqlite3.IntegrityError:
-            task.warnings.append("重复通知，未重复创建待办。")
 
-    return extracted
+@router.post("/notices/ingest-batch", response_model=NoticeBatchIngestResponse)
+async def ingest_notice_batch(
+    req: NoticeBatchIngestRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> NoticeBatchIngestResponse:
+    return await _ingest_batch(req, user, container)

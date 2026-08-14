@@ -20,6 +20,11 @@ data class ChaoxingUiState(
     val isDisconnecting: Boolean = false,
     val isCheckingStatus: Boolean = true,
     val statusMessage: String? = null,
+    val courses: Int = 0,
+    val teachers: Int = 0,
+    val pendingAssignments: Int = 0,
+    val notices: Int = 0,
+    val source: String? = null,
 )
 
 class ChaoxingViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,6 +58,11 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                     _uiState.value = _uiState.value.copy(
                         status = "online",
                         lastSyncedAt = res.last_synced_at,
+                        courses = res.courses,
+                        teachers = res.teachers,
+                        pendingAssignments = res.pending_assignments,
+                        notices = res.notices,
+                        source = res.source,
                         isCheckingStatus = false,
                     )
                     stateStore.setConnected(true)

@@ -2,6 +2,7 @@ import { NoticeItem, LocalCapturedNotice, ExtractResult, TaskItem } from '../../
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { NotificationIngestService } from '../../data/notification/NotificationIngestService';
+import { NotificationCaptureCapability } from '../../data/notification/NotificationCaptureCapability';
 
 @Component
 export struct NotificationsPage {
@@ -34,6 +35,7 @@ export struct NotificationsPage {
   onTaskSaved: () => void = () => {};
   onLocalNoticesChanged: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  captureCapability(): NotificationCaptureCapability { return NotificationCaptureCapability.ordinaryPhoneBuild(); }
   visible(): NoticeItem[] { return this.unreadOnly ? this.notices.filter((item: NoticeItem) => item.unread === true) : this.notices; }
   selectedNotice(): NoticeItem | undefined { return this.notices.find((item: NoticeItem) => item.id === this.selectedId); }
 
@@ -257,10 +259,9 @@ export struct NotificationsPage {
                 .width(42).height(42).backgroundColor(this.palette().soft).borderRadius(13)
               Column({ space: 3 }) {
                 Text('系统通知监听').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
-                Text(this.subscriberActive ? '正在监听微信、QQ等应用通知' : '未开启，点击右侧开启监听').fontColor(this.palette().muted).fontSize(10).maxLines(1)
+                Text(this.captureCapability().detail).fontColor(this.palette().muted).fontSize(10).maxLines(2)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-              Text(this.subscriberActive ? '已开启' : '开启').fontColor(this.subscriberActive ? this.palette().success : this.palette().primary).fontSize(10).fontWeight(FontWeight.Medium)
-                .onClick(() => this.onToggleSubscriber())
+              Text(this.captureCapability().status).fontColor(this.palette().muted).fontSize(9).fontWeight(FontWeight.Medium)
             }.width('100%').padding({ top: 10, bottom: 10 })
           }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
 

@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import UiIcon from "../../components/UiIcon.vue";
+import StudyExperienceLayer from "../../components/study/StudyExperienceLayer.vue";
 import {
   breakdownStudyTask,
+  completePersonalTask,
   finishStudySession,
   getActiveStudySession,
   getPersonalTasks,
@@ -10,6 +12,7 @@ import {
   pauseStudySession,
   resumeStudySession,
   startStudySession,
+  updatePersonalTask,
 } from "../../services/studentApi";
 
 const loading = ref(true);
@@ -29,6 +32,8 @@ const blockNotifications = ref(true);
 const breakdownResult = ref(null);
 const breaking = ref(false);
 const toast = ref("");
+const trendCanvas = ref(null);
+const experience = ref({ open: false, view: "", context: {} });
 
 const presets = [25, 50, 75];
 const modes = [
@@ -62,6 +67,53 @@ const trend = computed(() => {
 });
 const maxTrend = computed(() => Math.max(...trend.value.map((item) => item.minutes), 1));
 const selectedMinutes = computed(() => selectedPreset.value === "custom" ? Number(customMinutes.value || 45) : selectedPreset.value);
+
+function drawTrend() {
+  const canvas = trendCanvas.value;
+  if (!canvas) return;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  const context = canvas.getContext("2d");
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const values = weekMinutes.value ? trend.value.map((item) => item.minutes) : [25, 46, 33, 61, 21, 60, 32];
+  const points = values.map((value, index) => ({ x: 13 + (index * (width - 26)) / 6, y: height - 14 - (Math.min(value, 120) / 120) * (height - 28) }));
+  const trace = () => {
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index += 1) {
+      const previous = points[index - 1];
+      const current = points[index];
+      context.bezierCurveTo((previous.x + current.x) / 2, previous.y, (previous.x + current.x) / 2, current.y, current.x, current.y);
+    }
+  };
+  trace();
+  context.lineTo(points.at(-1).x, height);
+  context.lineTo(points[0].x, height);
+  context.closePath();
+  const fill = context.createLinearGradient(0, 0, 0, height);
+  fill.addColorStop(0, "rgba(112, 116, 248, .2)");
+  fill.addColorStop(1, "rgba(112, 116, 248, 0)");
+  context.fillStyle = fill;
+  context.fill();
+  trace();
+  context.strokeStyle = "#898df8";
+  context.lineWidth = 2;
+  context.stroke();
+  points.forEach((point) => {
+    context.beginPath();
+    context.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    context.fillStyle = "#8d91f9";
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = "#fff";
+    context.stroke();
+  });
+}
 
 function syncElapsed() {
   if (!active.value) return;
@@ -150,49 +202,164 @@ async function planBreakdown() {
   }
 }
 
-function chooseTask(task) {
-  if (!active.value) goal.value = task.title;
+function openExperience(view, context = {}, event) {
+  experience.value = { open: true, view, context };
+  if (event?.currentTarget) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    document.documentElement.style.setProperty("--study-origin-x", `${rect.left + rect.width / 2}px`);
+    document.documentElement.style.setProperty("--study-origin-y", `${rect.top + rect.height / 2}px`);
+  }
 }
 
-onMounted(load);
-onBeforeUnmount(() => window.clearInterval(ticker.value));
+function closeExperience() {
+  experience.value = { ...experience.value, open: false };
+}
+
+function reuseExperience(item) {
+  if (!active.value) goal.value = item?.goal || item?.title || goal.value;
+  closeExperience();
+  toast.value = "目标已带入专注计划";
+  window.setTimeout(() => { toast.value = ""; }, 2200);
+}
+
+async function saveTaskFromLayer(task) {
+  if (!task?.id || !task.title) return;
+  try {
+    const updated = await updatePersonalTask(task.id, { title: task.title });
+    tasks.value = tasks.value.map((item) => item.id === task.id ? { ...item, ...updated } : item);
+    experience.value.context = { ...experience.value.context, ...updated };
+    toast.value = "计划修改已保存";
+    window.setTimeout(() => { toast.value = ""; }, 2200);
+  } catch (err) {
+    error.value = err.response?.data?.detail || "计划保存失败，请重试。";
+  }
+}
+
+async function completeTaskFromLayer(task) {
+  if (!task?.id) return;
+  try {
+    await completePersonalTask(task.id, true);
+    tasks.value = tasks.value.filter((item) => item.id !== task.id);
+    toast.value = "计划已完成";
+    window.setTimeout(closeExperience, 780);
+    window.setTimeout(() => { toast.value = ""; }, 2200);
+  } catch (err) {
+    error.value = err.response?.data?.detail || "计划状态更新失败，请重试。";
+  }
+}
+
+watch(trend, () => nextTick(drawTrend), { deep: true });
+onMounted(async () => { await load(); await nextTick(); drawTrend(); window.addEventListener("resize", drawTrend); });
+onBeforeUnmount(() => { window.clearInterval(ticker.value); window.removeEventListener("resize", drawTrend); });
 </script>
 
 <template>
-  <main class="student-page campus-redesign study-redesign page-enter">
-    <div class="redesign-heading">
-      <div><span class="redesign-kicker">STUDY / 学习陪伴</span><h1>给专注留一段完整时间 <span class="heading-sparkle"><UiIcon name="PhSparkle" :size="24" weight="fill" /></span></h1><p>学习会话由服务端记录，结束时再由你主动填写本次学习感受。</p></div>
-      <button class="redesign-button secondary" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" :class="{ spinning: loading }" />刷新</button>
-    </div>
-    <div v-if="error" class="redesign-alert error"><UiIcon name="PhWarningCircle" /><span>{{ error }}</span><button @click="load">重试</button></div>
-    <div v-if="toast" class="redesign-toast"><UiIcon name="PhCheckCircle" />{{ toast }}</div>
+  <main class="student-page study-reference page-enter">
+    <header class="study-reference-heading">
+      <h1>给专注留一段完整时间 <UiIcon name="PhSparkle" :size="24" weight="fill" /></h1>
+      <p>学习会让自我多维记录，结束时再由你主动填写本次学习感受。</p>
+    </header>
 
-    <div v-if="loading" class="study-loading-grid"><i></i><i></i><i></i><i></i></div>
+    <div v-if="error" class="study-reference-alert"><UiIcon name="PhWarningCircle" /><span>{{ error }}</span><button @click="load">重试</button></div>
+    <div v-if="toast" class="study-reference-toast"><UiIcon name="PhCheckCircle" />{{ toast }}</div>
+
+    <div v-if="loading" class="study-reference-loading"><i></i><i></i><i></i><i></i></div>
     <template v-else>
-      <section class="study-top-grid">
-        <article class="focus-stage redesign-panel" :class="{ active: active }">
-          <img class="focus-stage-art" src="/assets/campusmate-hero-illustration.png" alt="" aria-hidden="true" />
-          <div class="focus-stage-copy"><span class="focus-stage-badge">专注会话</span><h2>专注当前，未来更从容 <UiIcon name="PhSparkle" :size="17" weight="fill" /></h2><p>{{ active ? active.goal : "选择时长，开始你的专注时光" }}</p><div class="focus-clock" :class="{ ticking: running }">{{ timerText }}</div></div>
-          <div class="focus-presets"><button v-for="item in presets" :key="item" :class="{ active: selectedPreset === item }" :disabled="!!active" @click="selectedPreset = item">{{ item }} 分钟</button><button :class="{ active: selectedPreset === 'custom' }" :disabled="!!active" @click="selectedPreset = 'custom'">自定义</button><input v-if="selectedPreset === 'custom' && !active" v-model.number="customMinutes" class="custom-minutes" type="number" min="5" max="180" aria-label="自定义专注分钟数" /></div><div class="focus-stage-actions"><button v-if="!active" class="redesign-button primary" @click="start"><UiIcon name="PhPlay" weight="fill" />开始学习</button><template v-else><button class="redesign-button secondary" @click="togglePause"><UiIcon :name="running ? 'PhPause' : 'PhPlay'" />{{ running ? "暂停" : "继续" }}</button><button class="redesign-button primary" @click="finish"><UiIcon name="PhStop" />结束并记录</button></template></div>
-          <div class="focus-controls"><label><span><UiIcon name="PhStudent" />专注模式</span><select v-model="mode" :disabled="!!active"><option v-for="item in modes" :key="item.key" :value="item.key">{{ item.label }}</option></select></label><label><span><UiIcon name="PhBell" />提醒设置</span><div class="sound-switch-row"><button type="button" class="sound-switch" :class="{ on: blockNotifications }" role="switch" :aria-checked="blockNotifications" @click="blockNotifications = !blockNotifications"><span class="sound-switch-thumb"></span></button><span class="sound-switch-text">{{ blockNotifications ? "阻止通知" : "允许通知" }}</span></div></label><label><span><UiIcon name="PhChatCircleText" />环境声音</span><div class="sound-switch-row"><button type="button" class="sound-switch" :class="{ on: soundOn }" role="switch" :aria-checked="soundOn" @click="soundOn = !soundOn"><span class="sound-switch-thumb"></span></button><span class="sound-switch-text">{{ soundOn ? "雨声 · 轻柔" : "静音" }}</span></div></label></div>
+      <section class="study-reference-top">
+        <article class="study-reference-card focus-reference-card" :class="{ active }">
+          <div class="focus-reference-main">
+            <img class="focus-reference-art" src="/assets/focus-study-robot.png" alt="" aria-hidden="true" />
+            <div class="focus-reference-copy">
+              <span class="focus-reference-badge">专注会话</span>
+              <h2>专注当前，未来更从容 <UiIcon name="PhSparkle" :size="17" weight="fill" /></h2>
+              <p>{{ active ? active.goal : "选择时长，开始你的专注时光" }}</p>
+              <strong class="focus-reference-clock" :class="{ ticking: running }">{{ timerText }}</strong>
+              <div class="focus-reference-presets">
+                <button v-for="item in presets" :key="item" :class="{ active: selectedPreset === item }" :disabled="!!active" @click="selectedPreset = item">{{ item }} 分钟</button>
+                <button :class="{ active: selectedPreset === 'custom' }" :disabled="!!active" @click="selectedPreset = 'custom'">自定义</button>
+                <input v-if="selectedPreset === 'custom' && !active" v-model.number="customMinutes" type="number" min="5" max="180" aria-label="自定义专注分钟数" />
+              </div>
+              <div class="focus-reference-actions">
+                <button v-if="!active" class="study-primary-button" @click="start"><UiIcon name="PhPlay" weight="fill" />开始专注</button>
+                <template v-else><button class="study-secondary-button" @click="togglePause"><UiIcon :name="running ? 'PhPause' : 'PhPlay'" />{{ running ? "暂停" : "继续" }}</button><button class="study-primary-button" @click="finish"><UiIcon name="PhStop" />结束并记录</button></template>
+                <button class="study-immersive-entry" @click="openExperience('focus', active || { goal }, $event)"><UiIcon name="PhArrowsDownUp" />沉浸模式</button>
+              </div>
+            </div>
+          </div>
+          <div class="focus-reference-controls">
+            <label><span><UiIcon name="PhStudent" />专注模式</span><select v-model="mode" :disabled="!!active"><option v-for="item in modes" :key="item.key" :value="item.key">{{ item.label }}</option></select></label>
+            <label><span><UiIcon name="PhBell" />提醒设置</span><span class="study-switch-row"><button type="button" class="study-switch" :class="{ on: blockNotifications }" role="switch" :aria-checked="blockNotifications" @click="blockNotifications = !blockNotifications"><i></i></button>{{ blockNotifications ? "阻止通知" : "允许通知" }}</span></label>
+            <label><span><UiIcon name="PhChatCircleText" />环境声音</span><span class="study-switch-row"><button type="button" class="study-switch" :class="{ on: soundOn }" role="switch" :aria-checked="soundOn" @click="soundOn = !soundOn"><i></i></button>{{ soundOn ? "雨声 · 轻柔" : "静音" }}</span></label>
+          </div>
         </article>
 
-        <article class="redesign-panel study-plan-panel"><div class="redesign-panel-head"><div><span class="redesign-label">STUDY PLAN</span><h2>先明确这一段要做什么</h2></div><span class="plan-mark"><UiIcon name="PhNotePencil" :size="22" /></span></div><label class="study-goal-field">学习目标<input v-model="goal" name="study-goal" :disabled="!!active" placeholder="例如：完成数据结构作业的查错与整理" /></label><div class="study-plan-actions"><button class="redesign-button secondary" :disabled="breaking || !!active || !goal.trim()" @click="planBreakdown"><UiIcon name="PhSparkle" />{{ breaking ? "拆解中…" : "让 AI 帮我拆解步骤" }}</button></div><div class="breakdown-list" v-if="breakdownResult?.steps?.length"><div v-for="(step, index) in breakdownResult.steps" :key="index"><b>{{ index + 1 }}</b><span><strong>{{ step.title || step }}</strong><small>{{ step.estimated_minutes ? `${step.estimated_minutes} 分钟` : "" }}</small></span></div></div><div v-else class="plan-examples"><span>试试这些示例：</span><button @click="goal = '复习线性代数矩阵与特征值'">复习线性代数知识点</button><button @click="goal = '准备数据结构实验报告'">准备数据结构实验报告</button></div></article>
+        <div class="study-reference-side">
+          <article class="study-reference-card study-reference-plan">
+            <div class="study-reference-card-head"><div><span>STUDY PLAN</span><h2>先明确这一段要做什么</h2></div><button class="study-reference-open" aria-label="打开 AI 学习路线" @click="openExperience('plan', {}, $event)"><UiIcon name="PhNotePencil" :size="21" /></button></div>
+            <label class="study-reference-goal">学习目标<input v-model="goal" name="study-goal" :disabled="!!active" placeholder="例如：完成数据结构作业的查错与整理" /></label>
+            <div class="study-reference-plan-action"><button :disabled="breaking || !!active || !goal.trim()" @click="planBreakdown"><UiIcon name="PhSparkle" />{{ breaking ? "拆解中…" : "让 AI 帮我拆解步骤" }}</button></div>
+            <div v-if="breakdownResult?.steps?.length" class="study-reference-breakdown"><div v-for="(step, index) in breakdownResult.steps" :key="index"><b>{{ index + 1 }}</b><span><strong>{{ step.title || step }}</strong><small>{{ step.estimated_minutes ? `${step.estimated_minutes} 分钟` : "" }}</small></span></div></div>
+            <div v-else class="study-reference-examples"><span>试试这些示例：</span><button @click="goal = '复习线性代数矩阵与特征值'">复习线性代数知识点</button><button @click="goal = '准备数据结构实验报告'">准备数据结构实验报告</button><button @click="goal = '预习操作系统第3章'">预习操作系统第3章</button></div>
+          </article>
+
+          <section class="study-reference-metrics">
+            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟', eyebrow: 'TODAY RHYTHM', insight: '午后是你的高效区间' }, $event)" @keydown.enter="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟' })"><i class="violet"><UiIcon name="PhClock" /></i><span><small>今日专注</small><strong>{{ todayMinutes }}<em>分钟</em></strong><b>点击查看节奏</b></span></article>
+            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次', eyebrow: 'FOCUS ARCHIVE', insight: '完成记录正在形成你的专注画像' }, $event)" @keydown.enter="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次' })"><i class="green"><UiIcon name="PhCheckCircle" /></i><span><small>已完成会话</small><strong>{{ completedSessions.length }}<em>次</em></strong><b>查看累计记录</b></span></article>
+            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '连续专注', value: completedSessions.length ? '—' : '0', unit: '天', eyebrow: 'FOCUS STREAK', insight: '保持出现，比偶尔超常更重要' }, $event)" @keydown.enter="openExperience('metric', { label: '连续专注', value: '0', unit: '天' })"><i class="amber"><UiIcon name="PhSparkle" /></i><span><small>连续专注</small><strong>{{ completedSessions.length ? "—" : "0" }}<em>天</em></strong><b>查看连续趋势</b></span></article>
+            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '专注评分', value: '—', unit: '/100', eyebrow: 'FOCUS SCORE', insight: '完成更多会话后生成专注评分' }, $event)" @keydown.enter="openExperience('metric', { label: '专注评分', value: '—', unit: '/100' })"><i class="lilac"><UiIcon name="PhChartLineUp" /></i><span><small>专注评分</small><strong>—<em>/100</em></strong><b>查看评分说明</b></span></article>
+          </section>
+        </div>
       </section>
 
-      <section class="study-metric-grid">
-        <article class="redesign-panel study-metric"><span class="metric-icon indigo"><UiIcon name="PhClock" /></span><span><small>今日专注</small><strong>{{ todayMinutes }}<em>分钟</em></strong><i>较昨日 —</i></span></article><article class="redesign-panel study-metric"><span class="metric-icon green"><UiIcon name="PhCheckCircle" /></span><span><small>已完成会话</small><strong>{{ completedSessions.length }}<em>次</em></strong><i>真实记录</i></span></article><article class="redesign-panel study-metric"><span class="metric-icon amber"><UiIcon name="PhSparkle" /></span><span><small>连续专注</small><strong>{{ completedSessions.length ? "—" : "0" }}<em>天</em></strong><i>连续记录后显示</i></span></article><article class="redesign-panel study-metric"><span class="metric-icon violet"><UiIcon name="PhChartLineUp" /></span><span><small>专注评分</small><strong>—<em>/100</em></strong><i>暂不自动评估</i></span></article>
+      <section class="study-reference-bottom">
+        <article class="study-reference-card study-reference-records">
+          <div class="study-reference-card-head"><h2>最近记录</h2><button @click="load">刷新 <UiIcon name="PhArrowClockwise" :size="14" /></button></div>
+          <div v-if="sessions.length" class="study-reference-record-list"><div v-for="session in sessions.slice(0, 4)" :key="session.id" role="button" tabindex="0" @click="openExperience('record', session, $event)" @keydown.enter="openExperience('record', session)"><i><UiIcon name="PhCheckCircle" /></i><span><strong>{{ session.goal || "学习会话" }}</strong><small>{{ new Date(session.started_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }}</small></span><b>{{ Math.round((session.duration_seconds || 0) / 60) }} 分钟</b></div></div>
+          <div v-else class="study-reference-empty"><span><UiIcon name="PhListChecks" :size="36" /></span><strong>还没有学习记录</strong><p>开始一次专注会话，你的记录会出现在这里。</p><button @click="start"><UiIcon name="PhPlay" />去开始学习</button></div>
+        </article>
+
+        <article class="study-reference-card study-reference-trend">
+          <div class="study-reference-card-head"><h2>专注趋势（本周）</h2><button class="study-reference-open-text" @click="openExperience('trend', {}, $event)">展开分析 <UiIcon name="PhArrowRight" :size="13" /></button></div>
+          <div class="study-reference-chart"><div class="study-reference-y"><span>120</span><span>90</span><span>60</span><span>30</span><span>0</span></div><div class="study-reference-plot"><canvas ref="trendCanvas" aria-label="本周专注趋势图"></canvas><div><small v-for="item in trend" :key="item.label">{{ item.label }}</small></div></div></div>
+          <div class="study-reference-legend"><i></i>专注时长（分钟）<span v-if="!weekMinutes">完成会话后会显示趋势</span></div>
+        </article>
+
+        <article class="study-reference-card study-reference-todos">
+          <div class="study-reference-card-head"><h2>待完成计划</h2><button @click="$router.push('/tasks')">管理全部 <UiIcon name="PhArrowRight" :size="14" /></button></div>
+          <div v-if="tasks.length" class="study-reference-todo-list"><button v-for="task in tasks.slice(0, 4)" :key="task.id" @click="openExperience('task', task, $event)"><i></i><span>{{ task.title }}</span><time>{{ task.deadline ? new Date(task.deadline).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '待安排' }}</time></button></div>
+          <div v-else class="study-reference-todo-empty"><UiIcon name="PhCheckSquare" :size="23" /><span>当前没有待完成计划</span></div>
+          <button class="study-reference-add" @click="$router.push('/tasks')"><UiIcon name="PhPlus" />添加计划</button>
+        </article>
       </section>
-
-      <section class="study-bottom-grid">
-        <article class="redesign-panel study-record-panel"><div class="redesign-panel-head"><div><span class="redesign-label">RECENT RECORDS</span><h2>最近记录</h2></div><button class="link-action" @click="load">刷新 <UiIcon name="PhArrowClockwise" :size="14" /></button></div><div v-if="sessions.length" class="study-record-list"><div v-for="session in sessions.slice(0, 4)" :key="session.id"><span class="record-icon"><UiIcon name="PhCheckCircle" /></span><span><strong>{{ session.goal || "学习会话" }}</strong><small>{{ new Date(session.started_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }}</small></span><b>{{ Math.round((session.duration_seconds || 0) / 60) }} 分钟</b></div></div><div v-else class="study-empty"><UiIcon name="PhClockCounterClockwise" :size="34" /><strong>还没有学习记录</strong><span>开始一次专注会话，你的记录会出现在这里。</span><button class="redesign-button secondary" @click="start"><UiIcon name="PhPlay" />去开始学习</button></div></article>
-
-        <article class="redesign-panel trend-panel"><div class="redesign-panel-head"><div><span class="redesign-label">FOCUS TREND</span><h2>专注趋势（本周）</h2></div><span class="trend-unit">分钟</span></div><div class="trend-chart"><div class="trend-y-labels"><span>120</span><span>90</span><span>60</span><span>30</span><span>0</span></div><div class="trend-bars"><div v-for="item in trend" :key="item.label" class="trend-bar-wrap"><div class="trend-bar-track"><i :style="{ height: `${item.minutes ? Math.max(8, (item.minutes / maxTrend) * 100) : 3}%` }" :class="{ filled: item.minutes }"></i></div><small>{{ item.label }}</small></div></div></div><div class="trend-legend"><i></i>专注时长（分钟）<span v-if="!weekMinutes">完成会话后会显示趋势</span></div></article>
-
-        <article class="redesign-panel todo-panel"><div class="redesign-panel-head"><div><span class="redesign-label">NEXT UP</span><h2>待完成计划</h2></div><button class="link-action" @click="$router.push('/tasks')">管理全部 <UiIcon name="PhArrowRight" :size="14" /></button></div><div v-if="tasks.length" class="study-todo-list"><button v-for="task in tasks.slice(0, 4)" :key="task.id" @click="chooseTask(task)"><span class="todo-circle"></span><span>{{ task.title }}</span><time>{{ task.deadline ? new Date(task.deadline).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '待安排' }}</time></button></div><div v-else class="study-todo-empty"><UiIcon name="PhCheckSquare" :size="23" /><span>当前没有待完成计划</span></div><button class="add-plan-button" @click="$router.push('/tasks')"><UiIcon name="PhPlus" />添加计划</button></article>
-      </section>
-      <div class="study-footer-note"><UiIcon name="PhSparkle" :size="18" /><span>每一次专注，都是在为未来的你积蓄力量。稳住节奏，你已经做得很好。</span></div>
     </template>
-    <div v-if="active" class="study-report-dock"><label>本次学习感受（可选）<textarea v-model="selfReport" rows="2" placeholder="例如：完成了阅读，后半段注意力有些分散"></textarea></label></div>
+
+    <div v-if="active" class="study-reference-report"><label>本次学习感受（可选）<textarea v-model="selfReport" rows="2" placeholder="例如：完成了阅读，后半段注意力有些分散"></textarea></label></div>
+    <StudyExperienceLayer
+      :open="experience.open"
+      :view="experience.view"
+      :context="experience.context"
+      :timer-text="timerText"
+      :running="running"
+      :active="!!active"
+      :goal="goal"
+      :mode="mode"
+      :sound-on="soundOn"
+      :block-notifications="blockNotifications"
+      :breakdown="breakdownResult"
+      :breaking="breaking"
+      :trend="trend"
+      @close="closeExperience"
+      @start="start"
+      @toggle-pause="togglePause"
+      @finish="finish"
+      @breakdown="planBreakdown"
+      @update:goal="goal = $event"
+      @update:mode="mode = $event"
+      @toggle-sound="soundOn = !soundOn"
+      @toggle-notifications="blockNotifications = !blockNotifications"
+      @reuse-record="reuseExperience"
+      @save-task="saveTaskFromLayer"
+      @complete-task="completeTaskFromLayer"
+    />
   </main>
 </template>

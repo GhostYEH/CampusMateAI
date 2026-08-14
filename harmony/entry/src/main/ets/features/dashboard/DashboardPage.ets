@@ -16,9 +16,28 @@ export struct DashboardPage {
   @Prop tasks: TaskItem[] = [];
   @Prop notices: NoticeItem[] = [];
   onNavigate: (route: string) => void = () => {};
+  @State pressedRoute: string = '';
+  @State heroPressed: boolean = false;
+  @State profilePressed: boolean = false;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
+  }
+
+  triggerAction(route: string): void {
+    this.pressedRoute = route;
+    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, 160);
+    this.onNavigate(route);
+  }
+  triggerHero(): void {
+    this.heroPressed = true;
+    setTimeout(() => { this.heroPressed = false; }, 200);
+    this.onNavigate('tasks');
+  }
+  triggerProfile(): void {
+    this.profilePressed = true;
+    setTimeout(() => { this.profilePressed = false; }, 160);
+    this.onNavigate('profile');
   }
 
   @Builder
@@ -64,7 +83,9 @@ export struct DashboardPage {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
-    .onClick(() => this.onNavigate('profile'))
+    .scale({ x: this.profilePressed ? 0.97 : 1.0, y: this.profilePressed ? 0.97 : 1.0 })
+    .animation({ duration: 160, curve: Curve.EaseOut })
+    .onClick(() => this.triggerProfile())
   }
 
   @Builder
@@ -129,7 +150,9 @@ export struct DashboardPage {
     .height(188)
     .borderRadius(26)
     .clip(true)
-    .onClick(() => this.onNavigate('tasks'))
+    .scale({ x: this.heroPressed ? 0.97 : 1.0, y: this.heroPressed ? 0.97 : 1.0 })
+    .animation({ duration: 200, curve: Curve.EaseOut })
+    .onClick(() => this.triggerHero())
   }
 
   @Builder
@@ -138,7 +161,7 @@ export struct DashboardPage {
       ForEach([
         { title: '考试安排', route: 'exams', symbol: $r('sys.symbol.calendar'), color: '#5B68F2' },
         { title: '空教室', route: 'classrooms', symbol: $r('sys.symbol.doors_and_windows_open'), color: '#397CEF' },
-        { title: '办事大厅', route: 'services', symbol: $r('sys.symbol.building'), color: '#35B99A' },
+        { title: '校园社区', route: 'community', symbol: $r('sys.symbol.person_2'), color: '#35B99A' },
         { title: '专注自习', route: 'focus', symbol: $r('sys.symbol.timer'), color: '#FFA43A' },
         { title: '失物招领', route: 'lostfound', symbol: $r('sys.symbol.magnifyingglass'), color: '#7C6BE8' }
       ], (action: DashboardAction) => {
@@ -159,7 +182,9 @@ export struct DashboardPage {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Center)
-        .onClick(() => this.onNavigate(action.route))
+        .scale({ x: this.pressedRoute === action.route ? 0.88 : 1.0, y: this.pressedRoute === action.route ? 0.88 : 1.0 })
+        .animation({ duration: 160, curve: Curve.EaseOut })
+        .onClick(() => this.triggerAction(action.route))
 
       })
     }
@@ -240,7 +265,9 @@ export struct DashboardPage {
           colors: [['#FF4259E8', 0.0], ['#FF7B78F7', 1.0]]
         })
         .borderRadius(18)
-        .onClick(() => this.onNavigate('courses'))
+        .scale({ x: this.pressedRoute === 'courses' ? 0.96 : 1.0, y: this.pressedRoute === 'courses' ? 0.96 : 1.0 })
+        .animation({ duration: 160, curve: Curve.EaseOut })
+        .onClick(() => this.triggerAction('courses'))
 
         Column() {
           this.TimelineRow(this.courses.length > 1 ? this.courses[1].name : '高等数学', this.courses.length > 1 ? (this.courses[1].teacher_name ?? '教师待定') : '08:00 · B-301', '已结束', false)

@@ -1,8 +1,8 @@
 .timer-panel {
   padding: 24rpx;
-  border-radius: 18rpx;
+  border-radius: 34rpx;
   color: #ffffff;
-  background: #2f6486;
+  background: linear-gradient(145deg, #5364ee, #7472ee);
 }
 
 .duration-row {
@@ -169,7 +169,7 @@
 
 .feeling-panel {
   margin-top: 20rpx;
-  padding: 0 0 20rpx;
+  padding: 0 22rpx 20rpx;
   border-bottom: 1rpx solid var(--line);
 }
 

@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,8 +61,8 @@ fun StickySecondaryNavigation(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val glassSurface = colors.surface.copy(alpha = .78f)
-    val glassBorder = colors.onSurface.copy(alpha = .18f)
+    val glassSurface = colors.surface.copy(alpha = .64f)
+    val glassBorder = colors.onSurface.copy(alpha = .14f)
 
     Box(
         modifier = modifier
@@ -80,7 +80,7 @@ fun StickySecondaryNavigation(
                 modifier = Modifier
                     .size(44.dp)
                     .shadow(
-                        elevation = 8.dp,
+                        elevation = 6.dp,
                         shape = CircleShape,
                         ambientColor = colors.onSurface.copy(alpha = .08f),
                         spotColor = colors.onSurface.copy(alpha = .10f),
@@ -166,7 +166,7 @@ fun FilterChipRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(options, key = { it }) { option ->
+        itemsIndexed(options, key = { index, option -> "single-option|$option|$index" }) { _, option ->
             val active = option == selected
             Box(
                 modifier = Modifier
@@ -199,7 +199,7 @@ fun MultiSelectChipRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(options, key = { it }) { option ->
+        itemsIndexed(options, key = { index, option -> "multi-option|$option|$index" }) { _, option ->
             val active = option in selected
             Box(
                 modifier = Modifier

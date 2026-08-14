@@ -22,8 +22,8 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
-    fun lostFoundUsesSharedSecondaryNavigation() {
-        assertEquals("失物招领", secondaryDestinationSpec("lostfound")?.title)
+    fun lostFoundOwnsItsImmersiveHeroNavigation() {
+        assertNull(secondaryDestinationSpec("lostfound"))
     }
 
     @Test
@@ -45,18 +45,15 @@ class SecondaryDestinationSpecTest {
             "files",
             "activities",
             "favorites",
+            "university",
+            "community",
+            "academic",
             "campus-news-detail/{newsId}",
             "task_detail/{taskId}",
             "exams",
             "exam_detail/{examId}",
             "exam_edit/{examId}",
             "classrooms",
-            "services",
-            "service_leave",
-            "service_repair",
-            "service_form/{kind}",
-            "service_mine",
-            "service_detail/{requestId}",
             "focus",
             "lostfound_publish",
             "lostfound_detail/{itemId}",
