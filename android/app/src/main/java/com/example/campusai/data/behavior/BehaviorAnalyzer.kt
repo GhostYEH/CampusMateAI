@@ -12,10 +12,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class BehaviorAnalyzer(
     private val engine: BehaviorRecognitionEngine,
-    config: BehaviorModelConfig = BehaviorModelConfig(),
+    @Suppress("UNUSED_PARAMETER") config: BehaviorModelConfig = BehaviorModelConfig(),
 ) : FrameAnalyzer {
 
-    private val frameBuffer = BehaviorFrameBuffer(config)
+    private val stabilizer = BehaviorPredictionStabilizer()
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
     @Volatile
@@ -42,25 +42,18 @@ class BehaviorAnalyzer(
             return
         }
 
-        if (!frameBuffer.addFrame(frame)) {
-            return
-        }
-
         if (analyzing.compareAndSet(false, true)) {
-            // Snapshot the rolling buffer so inference owns its copies.
-            val rawWindow = frameBuffer.getTemporalWindow()
-            val snapshot = rawWindow.mapNotNull { bitmap ->
-                if (bitmap.isRecycled) {
-                    null
-                } else {
-                    bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, bitmap.isMutable)
-                }
-            }
+            // V1 is a single-frame ResNet. Copy exactly one current frame so
+            // CameraFrame may be released immediately after this callback.
+            val snapshot = frame.bitmap.takeUnless { it.isRecycled }?.copy(
+                Bitmap.Config.ARGB_8888,
+                false,
+            )
             val timestamp = frame.timestampMs
 
             executor.execute {
                 try {
-                    if (snapshot.isEmpty()) {
+                    if (snapshot == null || snapshot.isRecycled) {
                         _predictions.value = BehaviorPrediction(
                             emptyMap(),
                             timestamp,
@@ -68,11 +61,20 @@ class BehaviorAnalyzer(
                         )
                         return@execute
                     }
-                    val prediction = engine.analyzeTemporalWindow(snapshot, timestamp)
-                    _predictions.value = prediction
+                    val rawPrediction = engine.analyzeTemporalWindow(listOf(snapshot), timestamp)
+                    _predictions.value = if (rawPrediction.modelState == "READY_RGB_V1") {
+                        val stabilized = stabilizer.stabilize(rawPrediction)
+                        rawPrediction.copy(
+                            probabilities = stabilized.probabilities,
+                            stableBehavior = stabilized.stableBehavior,
+                        )
+                    } else {
+                        stabilizer.reset()
+                        rawPrediction
+                    }
                 } finally {
                     // Inference owns the snapshot; recycle when done.
-                    snapshot.forEach { if (!it.isRecycled) it.recycle() }
+                    if (snapshot != null && !snapshot.isRecycled) snapshot.recycle()
                     analyzing.set(false)
                 }
             }
@@ -84,19 +86,31 @@ class BehaviorAnalyzer(
             return
         }
         if (!initialized) {
+            _predictions.value = BehaviorPrediction(
+                emptyMap(),
+                System.currentTimeMillis(),
+                "INITIALIZING",
+            )
             engine.initialize()
             initialized = true
+            if (!engine.isAvailable) {
+                _predictions.value = BehaviorPrediction(
+                    emptyMap(),
+                    System.currentTimeMillis(),
+                    "MODEL_NOT_AVAILABLE",
+                )
+            }
         }
     }
 
     fun reset() {
-        frameBuffer.clear()
+        stabilizer.reset()
         _predictions.value = BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED")
     }
 
     fun dispose() {
         disposed = true
-        frameBuffer.clear()
+        stabilizer.reset()
         executor.shutdownNow()
         engine.close()
         initialized = false

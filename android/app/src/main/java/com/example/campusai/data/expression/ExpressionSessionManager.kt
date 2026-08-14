@@ -240,14 +240,22 @@ class ExpressionSessionManager(
             cancelCollectors()
 
             behaviorCollectorJob = scope.launch {
+                var lastUiBehaviorUpdateMs = 0L
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
-                    _behaviorPrediction.value = prediction
-                    val events = behaviorSignalProcessor.process(prediction)
-                    val behaviorFocusState = focusSupervisor.processEvents(events, prediction.timestampMs)
-
-                    if (behaviorFocusState != FocusState.FOCUSED || prediction.modelState != "MODEL_NOT_AVAILABLE") {
-                        _focusState.value = behaviorFocusState
+                    // Inference may complete at the camera cadence. Keep the
+                    // visible status calm while the signal processor receives
+                    // every stabilized prediction.
+                    if (
+                        prediction.modelState != "READY_RGB_V1" ||
+                        prediction.timestampMs - lastUiBehaviorUpdateMs >= BEHAVIOR_UI_INTERVAL_MS
+                    ) {
+                        _behaviorPrediction.value = prediction
+                        lastUiBehaviorUpdateMs = prediction.timestampMs
                     }
+                    val events = behaviorSignalProcessor.process(prediction)
+                    focusSupervisor.processEvents(events, prediction.timestampMs)
+                    // READ/WRITE is only V1 learning evidence. It must not
+                    // override FER, head-pose, or eye-derived focus state.
                 }
             }
 
@@ -304,4 +312,8 @@ class ExpressionSessionManager(
         isStable = false,
         modelVersion = "not-loaded",
     )
+
+    private companion object {
+        private const val BEHAVIOR_UI_INTERVAL_MS = 500L
+    }
 }
