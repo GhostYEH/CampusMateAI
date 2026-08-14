@@ -253,11 +253,9 @@ class ExpressionSessionManager(
                         lastUiBehaviorUpdateMs = prediction.timestampMs
                     }
                     val events = behaviorSignalProcessor.process(prediction)
-                    val behaviorFocusState = focusSupervisor.processEvents(events, prediction.timestampMs)
-
-                    if (behaviorFocusState != FocusState.FOCUSED || prediction.modelState != "MODEL_NOT_AVAILABLE") {
-                        _focusState.value = behaviorFocusState
-                    }
+                    focusSupervisor.processEvents(events, prediction.timestampMs)
+                    // READ/WRITE is only V1 learning evidence. It must not
+                    // override FER, head-pose, or eye-derived focus state.
                 }
             }
 
