@@ -196,7 +196,7 @@ PyTorch / ONNX Runtime 一致性验证：
 
 ## 10. Android 部署架构
 
-以下描述以当前分支 `feature/behavior-recognition` 中的真实代码为准。
+以下描述以当前 master / Android Behavior Recognition v1 中的真实代码为准。
 
 ### OnnxBehaviorRecognitionEngine.kt
 
@@ -298,18 +298,40 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 
 **Android Behavior Recognition v1**
 
-当前部署：
+已实现：
 
 ```
 RGB ResNet18
 → ONNX
 → ONNX Runtime Android
+→ 单帧推理
 → READ / WRITE
 ```
 
-研究阶段：
+- ResNet18，input [1, 3, 224, 224]，output [1, 2]
+- 类别：0 = READING，1 = WRITING
+- 预处理：RGB → resize 224×224 → /255 → ImageNet mean/std → NCHW → float32
+- 模型从 assets 复制到 noBackupFilesDir 后由 ONNX Runtime 打开
+- BehaviorAnalyzer 持有 Bitmap snapshot，推理完成后 recycle
+- FocusCameraPipeline 支持 lifecycle/preview 分离，ImageAnalysis 无需 PreviewView
+- ExpressionSessionManager 在 FocusMode.FOCUS 时运行分析，休息阶段暂停
+- FocusScreen 显示真实行为识别结果（动作识别：阅读 83% / 书写 91%）
+
+研究阶段（未实现）：
 
 ```
-Pose MLP
-RGB + Pose fusion / Rule B
+phone_use
+away
+resting
+Pose fusion
+时序模型（16 帧）
+CampusFocusNet V2
+MobileNetV4
+TCN / LTG / Mamba
+13 类行为
+Engagement Head
+Alertness Head
+连续 0–100 Focus Score
 ```
+
+V1 作为未来 CampusFocusNet 的 baseline。
