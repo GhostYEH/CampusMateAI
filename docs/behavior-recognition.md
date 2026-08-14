@@ -226,9 +226,11 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 职责（以代码实际实现为准）：
 
 - 实现 `FrameAnalyzer` 接口，接收 `CameraFrame`
-- 通过 `BehaviorFrameBuffer` 做帧缓冲（默认 200ms 采样间隔、最多 16 帧、缩放到 192 × 192）
-- 使用单线程 `ExecutorService` 控制并发推理（`AtomicBoolean` 防止重复提交）
-- 对时间窗口做 Bitmap snapshot（copy，交给推理任务持有）
+- V1 在第一张有效画面上立即推理；不走 `BehaviorFrameBuffer` 的未来时序模型路径
+- 使用单线程 `ExecutorService` 控制并发推理（`AtomicBoolean` 防止堆积；繁忙时直接保留 CameraX 的最新帧）
+- 每次推理仅持有一张原始画面的安全 Bitmap snapshot，推理结束后回收
+- 原始 snapshot 直接在引擎中 resize 到 224 × 224，不经过 192 × 192 中间缩放
+- 对 READ / WRITE 概率做 EMA、confidence / margin gate 和滞后切换；不可靠时输出 `UNCERTAIN`
 - 推理完成后回收 snapshot Bitmap
 - 初始化 `BehaviorRecognitionEngine`（`ensureInitialized`）
 - 通过 `predictions` StateFlow 暴露推理结果
@@ -253,9 +255,7 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 
 ### FocusScreen.kt
 
-当前 `FocusScreen` 的「学习状态辅助」卡片只显示固定文案（本机 LiteRT、当前辅助观察、稳定表情、本次专注时长等），**尚未直接渲染 READ / WRITE 的概率文本**。
-
-行为预测已经接入 `ExpressionSessionManager`（暴露 `behaviorPrediction` StateFlow，并经 `FocusSupervisor` 更新 `focusState`），但该 `focusState` / `behaviorPrediction` 目前尚未被 `FocusScreen` 采集并展示。即：推理链路已就绪，UI 展示 READ/WRITE 文本尚未完成。
+`FocusScreen` 的「学习状态辅助」卡片会显示稳定后的动作结果：阅读、书写或暂不确定；初始化、模型不可用和推理异常也会分别显示。界面最多约每 500ms 更新一次，展示的百分比为 EMA 平滑后的概率，而不是高速变化的原始单帧 softmax。
 
 ## 11. 隐私与端侧推理
 
@@ -306,6 +306,7 @@ RGB ResNet18
 → ONNX Runtime Android
 → 单帧推理
 → READ / WRITE
+→ runtime smoothing / UNCERTAIN
 ```
 
 - ResNet18，input [1, 3, 224, 224]，output [1, 2]

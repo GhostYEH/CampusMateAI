@@ -270,19 +270,17 @@ private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
         return "动作识别准备中"
     }
     return when (prediction.modelState) {
-        "NOT_INITIALIZED" -> "动作识别准备中"
+        "NOT_INITIALIZED", "INITIALIZING" -> "动作识别初始化中"
         "MODEL_NOT_AVAILABLE" -> "动作模型暂不可用"
         "INFERENCE_ERROR" -> "动作识别异常"
         "NO_FRAME" -> "动作识别等待画面"
         "READY_RGB_V1" -> {
             val readProb = prediction.probabilities[StudyBehavior.READING] ?: 0f
             val writeProb = prediction.probabilities[StudyBehavior.WRITING] ?: 0f
-            if (readProb >= writeProb && readProb > 0f) {
-                "动作识别：阅读 ${(readProb * 100).toInt()}%"
-            } else if (writeProb > 0f) {
-                "动作识别：书写 ${(writeProb * 100).toInt()}%"
-            } else {
-                "动作识别等待画面"
+            when (prediction.stableBehavior) {
+                StudyBehavior.READING -> "动作识别：阅读 ${(readProb * 100).toInt()}%"
+                StudyBehavior.WRITING -> "动作识别：书写 ${(writeProb * 100).toInt()}%"
+                else -> "动作识别：暂不确定"
             }
         }
         else -> "动作识别准备中"
