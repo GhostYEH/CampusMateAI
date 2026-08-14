@@ -1,5 +1,10 @@
 package com.example.campusai.ui.screens.focus
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,12 +24,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.campusai.R
+import com.example.campusai.data.behavior.BehaviorPrediction
+import com.example.campusai.data.behavior.StudyBehavior
+import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
@@ -57,12 +71,73 @@ fun FocusScreen(
     val backendOnline by appRepository.backendOnline.collectAsState()
     val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val manager = appRepository.expressionSessionManager
+    val behaviorPrediction by manager.behaviorPrediction.collectAsState()
+    val assistanceStatus by manager.status.collectAsState()
+    val focusState by manager.focusState.collectAsState()
+    val gentleReminder by manager.gentleReminder.collectAsState()
+
+    var cameraPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        cameraPermissionGranted = granted
+    }
+
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var secondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
     var showFinishDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var showCompletedDialog by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
+
+    val running = activeSession?.status == "active"
+    val paused = activeSession?.status == "paused"
+
+    DisposableEffect(lifecycleOwner) {
+        manager.attachLifecycle(lifecycleOwner)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> scope.launch {
+                    manager.updateEligibility(foreground = true)
+                }
+                Lifecycle.Event.ON_PAUSE -> scope.launch {
+                    manager.updateEligibility(foreground = false)
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            scope.launch {
+                manager.updateEligibility(visible = false, foreground = false)
+                manager.detachLifecycle()
+            }
+        }
+    }
+
+    LaunchedEffect(assistanceEnabled, cameraPermissionGranted, running, mode) {
+        if (assistanceEnabled && !cameraPermissionGranted) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+        manager.updateEligibility(
+            enabled = assistanceEnabled,
+            permissionGranted = cameraPermissionGranted,
+            running = running,
+            visible = true,
+            foreground = true,
+            mode = mode,
+        )
+    }
+
 
     LaunchedEffect(backendOnline) {
         if (backendOnline) repository.refresh()
@@ -73,8 +148,7 @@ fun FocusScreen(
             if (secondsLeft == FocusMode.FOCUS.totalSeconds || secondsLeft > mode.totalSeconds) secondsLeft = mode.totalSeconds
         }
     }
-    val running = activeSession?.status == "active"
-    val paused = activeSession?.status == "paused"
+
     LaunchedEffect(running, activeSession?.id) {
         while (running && secondsLeft > 0) {
             delay(1000)
@@ -141,8 +215,9 @@ fun FocusScreen(
                     Spacer(Modifier.height(14.dp))
                     Surface(shape = RoundedCornerShape(17.dp), color = Background, border = BorderStroke(1.dp, Line)) {
                         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            AssistLine(Icons.Default.Memory, "本机 LiteRT：状态由设备能力决定")
+                            AssistLine(Icons.Default.Memory, "本机 ONNX：状态由设备能力决定")
                             AssistLine(Icons.Default.Visibility, "当前辅助观察：${if (assistanceEnabled) "已开启" else "暂不可用"}")
+                            AssistLine(Icons.Default.Gesture, behaviorPredictionText(behaviorPrediction))
                             AssistLine(Icons.Default.SentimentSatisfied, "稳定表情：仅作本地提示")
                             AssistLine(Icons.Default.Schedule, "本次专注时长：${mode.minutes - secondsLeft / 60} 分钟")
                         }
@@ -189,6 +264,30 @@ private fun FocusModeTabs(selected: FocusMode, enabled: Boolean, onSelect: (Focu
 
 @Composable
 private fun AssistLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = Muted, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(10.dp)); Text(text, color = Muted, fontSize = 12.sp) } }
+
+private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
+    if (prediction == null) {
+        return "动作识别准备中"
+    }
+    return when (prediction.modelState) {
+        "NOT_INITIALIZED" -> "动作识别准备中"
+        "MODEL_NOT_AVAILABLE" -> "动作模型暂不可用"
+        "INFERENCE_ERROR" -> "动作识别异常"
+        "NO_FRAME" -> "动作识别等待画面"
+        "READY_RGB_V1" -> {
+            val readProb = prediction.probabilities[StudyBehavior.READING] ?: 0f
+            val writeProb = prediction.probabilities[StudyBehavior.WRITING] ?: 0f
+            if (readProb >= writeProb && readProb > 0f) {
+                "动作识别：阅读 ${(readProb * 100).toInt()}%"
+            } else if (writeProb > 0f) {
+                "动作识别：书写 ${(writeProb * 100).toInt()}%"
+            } else {
+                "动作识别等待画面"
+            }
+        }
+        else -> "动作识别准备中"
+    }
+}
 
 @Composable
 private fun FocusStat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, label: String, background: Color) { Column(modifier.clip(RoundedCornerShape(20.dp)).background(background).padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (icon == Icons.Default.LocalFireDepartment) FocusOrange else FocusBlue, modifier = Modifier.size(25.dp)); Spacer(Modifier.height(6.dp)); Row(verticalAlignment = Alignment.Bottom) { Text(value, color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.width(2.dp)); Text(unit, color = Muted, fontSize = 10.sp) }; Text(label, color = Muted, fontSize = 11.sp) } }
