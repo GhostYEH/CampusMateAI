@@ -18,9 +18,11 @@ export async function getStudentClasses(courseId) {
 }
 
 export async function getCourseDetail(courseId) {
-  const [courseResponse, classes] = await Promise.all([
+  const [courseResponse, classes, contentSummary, content] = await Promise.all([
     client.get(`/courses/${courseId}`),
     getStudentClasses(courseId),
+    client.get(`/courses/${courseId}/content-summary`).catch(() => ({ data: null })),
+    client.get(`/courses/${courseId}/content`, { params: { page_size: 500 } }).catch(() => ({ data: { items: [] } })),
   ]);
   const course = courseResponse.data;
   const classItems = classes.items || [];
@@ -35,7 +37,32 @@ export async function getCourseDetail(courseId) {
       announcements: pageItems(announcements.data),
     };
   }));
-  return { course, classes: grouped };
+  return { course, classes: grouped, contentSummary: contentSummary.data, remoteContent: pageItems(content.data) };
+}
+
+export async function syncCourseContent(courseId) {
+  const { data } = await client.post(`/courses/${courseId}/sync`);
+  return data;
+}
+
+export async function downloadCourseResource(courseId, itemId, filename = "课程资料") {
+  const { data, headers } = await client.get(
+    `/courses/${courseId}/resources/${itemId}/download`,
+    { responseType: "blob" },
+  );
+  const url = URL.createObjectURL(data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || headers["content-disposition"] || "课程资料";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function getCourseResourceOpenUrl(courseId, itemId) {
+  const { data } = await client.get(`/courses/${courseId}/resources/${itemId}/open`);
+  return data;
 }
 
 export async function getStudentAssignments(params = {}) {
@@ -45,6 +72,11 @@ export async function getStudentAssignments(params = {}) {
 
 export async function getPersonalTasks(params = {}) {
   const { data } = await client.get("/tasks", { params: { page_size: 100, ...params } });
+  return data;
+}
+
+export async function getStudentNotices(params = {}) {
+  const { data } = await client.get("/notices", { params: { page_size: 200, ...params } });
   return data;
 }
 
@@ -230,5 +262,68 @@ export async function createLostFound(payload) {
 
 export async function deleteLostFound(id) {
   const { data } = await client.delete(`/student/lost-found/${id}`);
+  return data;
+}
+
+export async function getUniversities(params = {}) {
+  const { data } = await client.get("/universities", { params });
+  return data;
+}
+export async function selectUniversity(universityId) {
+  const { data } = await client.put("/profile/university", { university_id: universityId });
+  return data;
+}
+export async function getCommunityPosts(params = {}) {
+  const { data } = await client.get("/community/posts", { params });
+  return data;
+}
+export async function createCommunityPost(payload) {
+  const { data } = await client.post("/community/posts", payload);
+  return data;
+}
+export async function likeCommunityPost(id) {
+  const { data } = await client.post(`/community/posts/${id}/like`);
+  return data;
+}
+export async function favoriteCommunityPost(id) {
+  const { data } = await client.post(`/community/posts/${id}/favorite`);
+  return data;
+}
+export async function getAcademicStatus() {
+  const { data } = await client.get("/academic/status");
+  return data;
+}
+export async function getAcademicProviders() {
+  const { data } = await client.get("/academic/providers");
+  return data;
+}
+
+// ===== CampusMate EduConnector =====
+export async function eduDetect(universityId) {
+  const { data } = await client.get("/edu/detect", { params: { university_id: universityId } });
+  return data;
+}
+export async function getEduConfig(universityId) {
+  const { data } = await client.get(`/edu/config/${universityId}`);
+  return data;
+}
+export async function getEduBinding() {
+  const { data } = await client.get("/edu/binding");
+  return data;
+}
+export async function eduBind(username, password, systemType = "undergrad") {
+  const { data } = await client.post("/edu/bind", { username, password, system_type: systemType });
+  return data;
+}
+export async function eduUnbind() {
+  const { data } = await client.delete("/edu/binding");
+  return data;
+}
+export async function eduSync(syncType, params = {}) {
+  const { data } = await client.post(`/edu/sync/${syncType}`, null, { params });
+  return data;
+}
+export async function getEduSyncRecords(limit = 20) {
+  const { data } = await client.get("/edu/sync/records", { params: { limit } });
   return data;
 }

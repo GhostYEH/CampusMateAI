@@ -12,6 +12,8 @@ import { NoticeIngestRequest, ExtractRequest, ExtractResult, TaskCreateRequest, 
 const FINGERPRINTS_KEY: string = 'captured_fingerprints';
 const LOCAL_NOTICES_KEY: string = 'captured_local_notices';
 const WECHAT_WHITELIST_KEY: string = 'captured_wechat_whitelist';
+const WECOM_WHITELIST_KEY: string = 'captured_wecom_whitelist';
+const QQ_WHITELIST_KEY: string = 'captured_qq_whitelist';
 const SOURCE_SETTINGS_KEY: string = 'captured_source_settings';
 const MAX_LOCAL_NOTICES: number = 200;
 
@@ -24,18 +26,17 @@ export interface IngestResult {
 export class NotificationIngestService {
   private readonly apiClient: ApiClient;
   private readonly tokenProvider: () => string;
-  private readonly baseUrl: string;
-
-  constructor(baseUrl: string, tokenProvider: () => string) {
-    this.baseUrl = baseUrl;
+  constructor(apiClient: ApiClient, tokenProvider: () => string) {
     this.tokenProvider = tokenProvider;
-    this.apiClient = new ApiClient(baseUrl, tokenProvider);
+    this.apiClient = apiClient;
   }
 
   async captureAndIngest(notification: CapturedNotification): Promise<IngestResult> {
     const settings: NotificationSourceSettings = await this.loadSourceSettings();
-    const whitelist: string[] = await this.loadWechatWhitelist();
-    if (!NotificationFilter.shouldStore(notification, settings, whitelist)) {
+    const wechatWhitelist: string[] = await this.loadWhitelist(WECHAT_WHITELIST_KEY);
+    const wecomWhitelist: string[] = await this.loadWhitelist(WECOM_WHITELIST_KEY);
+    const qqWhitelist: string[] = await this.loadWhitelist(QQ_WHITELIST_KEY);
+    if (!NotificationFilter.shouldStore(notification, settings, wechatWhitelist, wecomWhitelist, qqWhitelist)) {
       return { success: false, fingerprint: '', reason: 'filtered' };
     }
     const fingerprint: string = NotificationFingerprint.create(notification);
@@ -47,7 +48,7 @@ export class NotificationIngestService {
     if (primaryText.length === 0) {
       return { success: false, fingerprint: fingerprint, reason: 'empty_text' };
     }
-    const sourceName: string = notification.conversationTitle.length > 0 ? notification.conversationTitle : (notification.title.length > 0 ? notification.title : NotificationSourceResolver.displayName(notification.bundleName));
+    const sourceName: string = notification.groupCandidate.length > 0 ? notification.groupCandidate : (notification.title.length > 0 ? notification.title : NotificationSourceResolver.displayName(notification.bundleName));
     await this.saveLocalNotice(notification, fingerprint, primaryText, sourceName);
     try {
       await this.ingestToBackend(primaryText, sourceName, notification.postTime);
@@ -131,7 +132,14 @@ export class NotificationIngestService {
   }
 
   async loadWechatWhitelist(): Promise<string[]> {
-    const raw: string = await PreferencesUtil.getString(WECHAT_WHITELIST_KEY, '');
+    return this.loadWhitelist(WECHAT_WHITELIST_KEY);
+  }
+
+  async loadWecomWhitelist(): Promise<string[]> { return this.loadWhitelist(WECOM_WHITELIST_KEY); }
+  async loadQqWhitelist(): Promise<string[]> { return this.loadWhitelist(QQ_WHITELIST_KEY); }
+
+  private async loadWhitelist(key: string): Promise<string[]> {
+    const raw: string = await PreferencesUtil.getString(key, '');
     if (raw.length === 0) {
       return [];
     }
@@ -144,6 +152,14 @@ export class NotificationIngestService {
 
   async saveWechatWhitelist(groups: string[]): Promise<void> {
     await PreferencesUtil.putString(WECHAT_WHITELIST_KEY, JSON.stringify(groups));
+  }
+
+  async saveWecomWhitelist(groups: string[]): Promise<void> {
+    await PreferencesUtil.putString(WECOM_WHITELIST_KEY, JSON.stringify(groups));
+  }
+
+  async saveQqWhitelist(groups: string[]): Promise<void> {
+    await PreferencesUtil.putString(QQ_WHITELIST_KEY, JSON.stringify(groups));
   }
 
   async addWechatWhitelistGroup(group: string): Promise<string[]> {
@@ -171,6 +187,7 @@ export class NotificationIngestService {
       const parsed: Record<string, boolean> = JSON.parse(raw) as Record<string, boolean>;
       return {
         wechatEnabled: parsed.wechatEnabled ?? DEFAULT_SOURCE_SETTINGS.wechatEnabled,
+        wecomEnabled: parsed.wecomEnabled ?? DEFAULT_SOURCE_SETTINGS.wecomEnabled,
         xuexitongEnabled: parsed.xuexitongEnabled ?? DEFAULT_SOURCE_SETTINGS.xuexitongEnabled,
         qqEnabled: parsed.qqEnabled ?? DEFAULT_SOURCE_SETTINGS.qqEnabled,
         otherEnabled: parsed.otherEnabled ?? DEFAULT_SOURCE_SETTINGS.otherEnabled,

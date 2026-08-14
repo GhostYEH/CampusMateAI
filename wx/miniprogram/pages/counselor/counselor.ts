@@ -11,7 +11,7 @@ Page({
         citation: 'Mock 校园知识库',
       },
     ] as ChatMessage[],
-    suggestions: ['奖学金申请需要哪些材料？', '缓考申请怎么提交？', '帮我整理竞赛报名步骤'],
+    suggestions: ['奖学金申请材料清单', '课程重修办理流程', '校园卡丢失补办地点', '请假流程怎么走'],
     input: '',
     sending: false,
     scrollTarget: 'message-1',

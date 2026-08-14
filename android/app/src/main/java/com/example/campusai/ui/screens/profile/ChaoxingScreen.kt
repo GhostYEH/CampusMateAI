@@ -146,7 +146,10 @@ private fun StatusCard(uiState: ChaoxingUiState) {
                 HorizontalDivider(color = Line)
                 uiState.lastSyncedAt?.let { InfoLine("上次同步", it) }
                 InfoLine("自动同步", "每 ${ChaoxingSyncScheduler.SYNC_INTERVAL_HOURS} 小时")
-                InfoLine("同步范围", "课程 / 作业 / 课程通知")
+                InfoLine("数据来源", if (uiState.source == "chaoxing_live") "学习通实时数据" else "待确认")
+                InfoLine("课程与教师", "${uiState.courses} 门 · ${uiState.teachers} 位")
+                InfoLine("未完成作业", "${uiState.pendingAssignments} 项")
+                InfoLine("已同步通知", "${uiState.notices} 条")
                 uiState.statusMessage?.let { Text(it, color = Muted, fontSize = 12.sp) }
             }
             "expired" -> { HorizontalDivider(color = Line); Text("学习通会话已过期，请重新登录后继续同步。", color = AlertErrorText, fontSize = 12.sp) }

@@ -10,7 +10,8 @@ export interface CapturedNotification {
   text: string;
   bigText: string;
   additionalText: string;
-  conversationTitle: string;
+  groupCandidate: string;
+  groupIdentityConfidence: 'HIGH' | 'LOW' | 'NONE';
   category: string;
   postTime: number;
   source: NotificationSource;
@@ -45,7 +46,8 @@ export class NotificationNormalizer {
       text: text,
       bigText: bigText,
       additionalText: cleanAdditional,
-      conversationTitle: title,
+      groupCandidate: '',
+      groupIdentityConfidence: 'NONE',
       category: category,
       postTime: deliveryTime,
       source: NotificationSourceResolver.resolve(bundleName),

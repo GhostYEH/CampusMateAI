@@ -1,9 +1,10 @@
 package com.example.campusai.ui.screens.tasks
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -28,6 +29,9 @@ fun TaskCalendarScreen(repository: AppRepository, onBack: () -> Unit, onOpenTask
     LazyColumn(Modifier.fillMaxSize().background(Color(0xFFF4F5FF)), contentPadding = PaddingValues(16.dp, 22.dp, 16.dp, BottomDockReservedHeight + 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Surface(shape = RoundedCornerShape(24.dp), color = Surface) { Column(Modifier.padding(18.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CalendarMonth, null, tint = Primary); Spacer(Modifier.width(8.dp)); Text("任务时间线", fontWeight = FontWeight.Bold, fontSize = 18.sp) }; Spacer(Modifier.height(8.dp)); Text("可在任务详情中编辑截止时间；此页不会生成演示任务。", color = Muted, fontSize = 12.sp) } } }
         if (tasks.isEmpty()) item { Text("暂无后端任务记录", Modifier.fillMaxWidth().padding(36.dp), color = Muted) }
-        items(tasks, key = { it.id }) { task -> Surface(onClick = { onOpenTask(task.id) }, color = Surface, shape = RoundedCornerShape(18.dp)) { Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(task.title, fontWeight = FontWeight.SemiBold, color = TextPrimary); Text(task.due, color = Muted, fontSize = 12.sp) }; AssistChip(onClick = { onOpenTask(task.id) }, label = { Text(if (task.done) "已完成" else "查看") }) } } }
+        itemsIndexed(
+            items = tasks,
+            key = { index, task -> "calendar-task|${task.id.ifBlank { task.title }}|$index" },
+        ) { _, task -> Surface(onClick = { onOpenTask(Uri.encode(task.id)) }, color = Surface, shape = RoundedCornerShape(18.dp)) { Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(task.title, fontWeight = FontWeight.SemiBold, color = TextPrimary); Text(task.due, color = Muted, fontSize = 12.sp) }; AssistChip(onClick = { onOpenTask(Uri.encode(task.id)) }, label = { Text(if (task.done) "已完成" else "查看") }) } } }
     }
 }

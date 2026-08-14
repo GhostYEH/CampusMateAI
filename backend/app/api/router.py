@@ -13,6 +13,7 @@ from .routes import (
     contributions,
     courses,
     dashboards,
+    edu,
     health,
     knowledge,
     notices,
@@ -22,6 +23,10 @@ from .routes import (
     submissions,
     student_tools,
     chaoxing,
+    course_content,
+    universities,
+    community,
+    academic,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -51,5 +56,12 @@ api_router.include_router(personal_tasks.router)
 api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
 api_router.include_router(chaoxing.router, tags=["chaoxing"])
+api_router.include_router(course_content.router)
+api_router.include_router(universities.router)
+api_router.include_router(community.router)
+api_router.include_router(community.admin_router)
+api_router.include_router(academic.router)
+# CampusMate EduConnector — 高校教务系统统一连接层
+api_router.include_router(edu.router)
 
 __all__ = ["api_router"]

@@ -44,6 +44,14 @@ async def lifespan(app: FastAPI):
                 logger.info("多角色验收账号已就绪: {}", stats)
         except Exception as e:
             logger.warning("多角色验收账号 seeding 失败: {}", str(e)[:200])
+    # 启动时灌入学校名单(universities.json)，幂等 upsert，不覆盖已补充的教务网址
+    try:
+        seed_path = Path(__file__).resolve().parent.parent / "data" / "universities.json"
+        inserted, updated = container.university_repository.seed_from_json(seed_path)
+        if inserted or updated:
+            logger.info("学校名单 seed 完成: 新增 {} 所，更新 {} 所", inserted, updated)
+    except Exception as e:
+        logger.warning("学校名单 seed 失败: {}", str(e)[:200])
     yield
     # 关闭
     if container.llm is not None and hasattr(container.llm, "aclose"):

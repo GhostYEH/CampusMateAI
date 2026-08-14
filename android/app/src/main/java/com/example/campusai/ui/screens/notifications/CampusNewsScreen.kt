@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -203,7 +203,7 @@ fun CampusNewsScreen(
                     }
                 }
                 val featuredItem = results.first()
-                item(key = featuredItem.news.id) {
+                item(key = "featured-news|${featuredItem.news.id}") {
                     FeaturedNewsCard(
                         item = featuredItem,
                         onOpen = {
@@ -217,7 +217,10 @@ fun CampusNewsScreen(
                         },
                     )
                 }
-                items(results.drop(1), key = { it.news.id }) { item ->
+                itemsIndexed(
+                    items = results.drop(1),
+                    key = { index, item -> "campus-news|${item.news.id}|$index" },
+                ) { _, item ->
                     CompactNewsCard(
                         item = item,
                         onOpen = {

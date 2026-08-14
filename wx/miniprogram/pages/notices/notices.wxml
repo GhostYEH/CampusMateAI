@@ -31,7 +31,7 @@
       <view class="mock-note">提取结果仅供确认，保存前请核对原通知。</view>
     </view>
 
-    <view wx:if="{{result}}" class="result-panel enter">
+    <view wx:for="{{results}}" wx:key="id" wx:for-item="result" class="result-panel enter">
       <view class="result-accent"></view>
       <view class="result-content">
         <view class="result-top">
@@ -48,6 +48,7 @@
         <button
           class="{{result.saved ? 'secondary-button' : 'primary-button'}} save-button"
           disabled="{{result.saved}}"
+          data-id="{{result.id}}"
           bindtap="saveTask"
         >{{result.saved ? '已保存到待办' : '确认并保存到待办'}}</button>
         <button wx:if="{{result.saved}}" class="view-task-button" bindtap="openTasks">去待办中查看</button>
@@ -68,6 +69,14 @@
         state="loading"
         title="正在同步通知"
         description="重要信息马上就好"
+      />
+      <state-view
+        wx:elif="{{error}}"
+        state="error"
+        title="通知加载失败"
+        description="{{error}}"
+        actionText="重试"
+        bindaction="load"
       />
       <state-view
         wx:elif="{{filtered.length === 0}}"

@@ -236,10 +236,10 @@ fun ImagePickField(
         } else null
     }
     Column(modifier = modifier.fillMaxWidth()) {
-        if (bitmap != null) {
+        bitmap?.let { preview ->
             Box {
                 Image(
-                    bitmap = bitmap!!,
+                    bitmap = preview,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -259,7 +259,7 @@ fun ImagePickField(
                     Text("移除", color = Primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-        } else {
+        } ?: run {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

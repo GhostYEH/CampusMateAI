@@ -1,13 +1,14 @@
 package com.example.campusai.data.notification
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationContentClassifierTest {
 
-    private fun accept(text: String) = NotificationContentClassifier.classify(text) is Classification.ACCEPT
-    private fun ignore(text: String) = NotificationContentClassifier.classify(text) is Classification.IGNORE
+    private fun accept(text: String) = NotificationContentClassifier.classify(text).type != NotificationContentType.CHAT
+    private fun ignore(text: String) = NotificationContentClassifier.classify(text).type == NotificationContentType.CHAT
 
     @Test
     fun `chat messages are ignored`() {
@@ -103,5 +104,19 @@ class NotificationContentClassifierTest {
         assertFalse(accept("照片我已经发到群文件了"))
         assertFalse(accept("今天课程讲得不错，晚上一起吃饭吧"))
         assertFalse(accept("宿舍同学周末一起聚餐"))
+    }
+
+    @Test
+    fun `classifier distinguishes chat notice actionable and ambiguous`() {
+        assertEquals(NotificationContentType.CHAT, NotificationContentClassifier.classify("哈哈哈哈").type)
+        assertEquals(NotificationContentType.NOTICE, NotificationContentClassifier.classify("学院明天停电检修").type)
+        assertEquals(
+            NotificationContentType.ACTIONABLE_NOTICE,
+            NotificationContentClassifier.classify("明天下午三点前交一下实验报告").type,
+        )
+        assertEquals(
+            NotificationContentType.AMBIGUOUS,
+            NotificationContentClassifier.classify("明晚记得带一下报名的东西").type,
+        )
     }
 }

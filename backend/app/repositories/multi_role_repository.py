@@ -158,6 +158,14 @@ class UserRepository:
                 (password_hash, now, user_id),
             )
 
+    def update_university(self, user_id: str, university_id: Optional[str]) -> UserRow:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET university_id = ?, updated_at = ? WHERE id = ?",
+                (university_id, _now_iso(), user_id),
+            )
+        return self.get_user_by_id(user_id)  # type: ignore[return-value]
+
     def list_users(
         self,
         *,
@@ -283,6 +291,15 @@ class CourseRepository:
         *,
         name: str,
         teacher_id: Optional[str] = None,
+        remote_teacher_name: Optional[str] = None,
+        remote_class_id: Optional[str] = None,
+        remote_cpi: Optional[str] = None,
+        remote_school_name: Optional[str] = None,
+        remote_class_name: Optional[str] = None,
+        remote_student_count: Optional[int] = None,
+        cover_url: Optional[str] = None,
+        starts_at: Optional[str] = None,
+        ends_at: Optional[str] = None,
         code: Optional[str] = None,
         semester: Optional[str] = None,
         description: Optional[str] = None,
@@ -296,9 +313,16 @@ class CourseRepository:
         now = _now_iso()
         with self._db.transaction() as conn:
             conn.execute(
-                """INSERT INTO courses (id, name, code, semester, description, teacher_id, status, provider, external_id, source_url, last_synced_at, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (cid, name, code, semester, description, teacher_id, status, provider, external_id, source_url, last_synced_at, now, now),
+                """INSERT INTO courses
+                   (id, name, code, semester, description, teacher_id, remote_teacher_name,
+                    remote_class_id, remote_cpi, remote_school_name, remote_class_name,
+                    remote_student_count, cover_url, starts_at, ends_at, status, provider,
+                    external_id, source_url, last_synced_at, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (cid, name, code, semester, description, teacher_id, remote_teacher_name,
+                 remote_class_id, remote_cpi, remote_school_name, remote_class_name,
+                 remote_student_count, cover_url, starts_at, ends_at, status, provider,
+                 external_id, source_url, last_synced_at, now, now),
             )
         return self.get_course(cid)  # type: ignore[return-value]
 
@@ -321,7 +345,7 @@ class CourseRepository:
     def update_course(self, course_id: str, *, fields: dict) -> Optional[CourseRow]:
         if not fields:
             return self.get_course(course_id)
-        allowed = {"name", "code", "semester", "description", "status", "provider", "external_id", "source_url", "last_synced_at"}
+        allowed = {"name", "code", "semester", "description", "status", "provider", "external_id", "source_url", "last_synced_at", "remote_teacher_name", "remote_class_id", "remote_cpi", "remote_school_name", "remote_class_name", "remote_student_count", "cover_url", "starts_at", "ends_at"}
         sets = []
         values: list = []
         for k, v in fields.items():

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Assignment
@@ -123,7 +124,7 @@ fun MyRequestsScreen(
                 contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = BottomDockReservedHeight + 20.dp),
             ) {
                 if (filtered.isEmpty()) item { EmptyState(Icons.Default.Assignment, "还没有符合条件的申请") }
-                items(filtered, key = { it.id }) { request -> RequestProgressCard(request) { onOpenDetail(request.id) } }
+                itemsIndexed(filtered, key = { index, request -> "service-request|${request.id}|$index" }) { _, request -> RequestProgressCard(request) { onOpenDetail(request.id) } }
             }
         }
     }

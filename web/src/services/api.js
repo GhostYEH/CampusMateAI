@@ -13,6 +13,15 @@ client.interceptors.request.use((config) => {
 // 调用 /auth/refresh 换取新 token,然后重放原请求。refresh token 失效则回到登录页。
 let _refreshingPromise = null;
 
+function _isDownstreamChaoxingAuthError(error) {
+  const detail = error.response?.data?.detail;
+  return error.config?.url?.includes("/chaoxing/") && (
+    detail === "reauth_required" ||
+    detail === "Chaoxing credentials not found" ||
+    (typeof detail === "string" && detail.startsWith("Chaoxing login failed:"))
+  );
+}
+
 function _clearSessionAndRedirect() {
   localStorage.removeItem("campus_access_token");
   localStorage.removeItem("campus_refresh_token");
@@ -48,7 +57,8 @@ client.interceptors.response.use(
       original &&
       !original._retried &&
       !original.url?.includes("/auth/login") &&
-      !original.url?.includes("/auth/refresh")
+      !original.url?.includes("/auth/refresh") &&
+      !_isDownstreamChaoxingAuthError(error)
     ) {
       original._retried = true;
       try {
@@ -94,7 +104,7 @@ export async function chat(message) {
  * @param {(err: Error) => void}      callbacks.onError    - 错误/异常
  * @param {AbortSignal}               [callbacks.signal]   - 可取消信号
  */
-export async function chatStream(message, { onSources, onChunk, onDone, onError, signal } = {}) {
+export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null } = {}) {
   const token = localStorage.getItem("campus_access_token");
   try {
     const resp = await fetch(`${BASE_URL}/counselor/chat`, {
@@ -103,7 +113,7 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message, stream: true }),
+      body: JSON.stringify({ message, stream: true, web_search: webSearch, attachment }),
       signal,
     });
 
