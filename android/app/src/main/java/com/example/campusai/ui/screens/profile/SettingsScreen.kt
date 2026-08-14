@@ -49,8 +49,6 @@ fun SettingsScreen(
         val status = repository.refreshBackendStatus()
         backendLabel = if (status.online) "已连接（${status.mode}）" else "未连接（${status.mode}）"
     }
-    ReferenceSystemBars(darkMode)
-
     Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

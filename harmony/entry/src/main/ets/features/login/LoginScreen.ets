@@ -19,6 +19,7 @@ export struct LoginScreen {
   @State showPassword: boolean = false;
   @State usernameFocused: boolean = false;
   @State passwordFocused: boolean = false;
+  @State loginPressed: boolean = false;
   private videoController: VideoController = new VideoController();
 
 
@@ -127,6 +128,7 @@ export struct LoginScreen {
       Divider()
         .strokeWidth(1)
         .color((isPassword ? this.passwordFocused : this.usernameFocused) ? '#FFFFFFFF' : '#52FFFFFF')
+        .animation({ duration: 200, curve: Curve.EaseInOut })
     }
     .width('100%')
   }
@@ -195,6 +197,7 @@ export struct LoginScreen {
               .borderRadius(5)
               .border({ width: 1.2, color: this.rememberUsername ? '#FFFFFFFF' : '#80FFFFFF' })
               .backgroundColor(this.rememberUsername ? LOGIN_BLUE_DEEP : Color.Transparent)
+              .animation({ duration: 180, curve: Curve.EaseInOut })
               .onClick(() => {
                 this.onRememberChange(!this.rememberUsername);
               })
@@ -251,8 +254,12 @@ export struct LoginScreen {
           .backgroundColor('#FFFFFFFF')
           .borderRadius(14)
           .opacity(this.loading ? 0.82 : 1.0)
+          .scale({ x: this.loginPressed ? 0.96 : 1.0, y: this.loginPressed ? 0.96 : 1.0 })
+          .animation({ duration: 150, curve: Curve.EaseOut })
           .onClick(() => {
             if (!this.loading) {
+              this.loginPressed = true;
+              setTimeout(() => { this.loginPressed = false; }, 150);
               this.onSubmit();
             }
           })

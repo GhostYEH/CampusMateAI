@@ -1,6 +1,7 @@
 import { notificationExtensionSubscription } from '@kit.NotificationKit';
 import { NotificationIngestService } from './NotificationIngestService';
 import { CapturedNotification, NotificationNormalizer } from './CapturedNotification';
+import { NotificationCaptureCapability } from './NotificationCaptureCapability';
 
 const TAG: string = '[NotificationSubscriber]';
 
@@ -13,6 +14,11 @@ export class NotificationSubscriberManager {
   }
 
   async start(): Promise<boolean> {
+    const capability: NotificationCaptureCapability = NotificationCaptureCapability.ordinaryPhoneBuild();
+    if (!capability.canStart()) {
+      this.subscribed = false;
+      return false;
+    }
     if (this.ingestService === null) {
       return false;
     }

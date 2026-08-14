@@ -5,7 +5,7 @@ from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
 from app.database.sqlite_db import Database
-from app.api.routes.chaoxing import get_chaoxing_status, sync_chaoxing
+from app.api.routes.chaoxing import disconnect_chaoxing, get_chaoxing_status, sync_chaoxing
 from app.schemas.chaoxing import ChaoxingSyncStatus
 from app.models.multi_role import UserRow
 import httpx
@@ -156,6 +156,71 @@ async def test_chaoxing_json_courses_preserve_course_and_class_ids(mock_httpx_cl
 
 
 @pytest.mark.asyncio
+async def test_chaoxing_json_courses_preserve_remote_teacher(mock_httpx_client):
+    response = MagicMock(status_code=200)
+    response.json.return_value = {
+        "channelList": [{
+            "content": {
+                "id": 222,
+                "course": {"data": [{"id": 111, "name": "高等数学", "teacherfactor": "王老师"}]},
+            }
+        }]
+    }
+    mock_httpx_client.return_value = response
+
+    success, courses = await ChaoxingClient().get_courses()
+
+    assert success is True
+    assert courses[0]["teacher_name"] == "王老师"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_global_work_feed_keeps_only_real_pending_status(mock_httpx_client):
+    response = MagicMock(status_code=200, text="""
+        <li onclick="goTask()" data="https://mooc1-api.chaoxing.com/task?taskrefId=1&courseId=11&clazzId=22">
+            <div><p>未完成作业</p><span>未提交</span><span>《课程》</span></div>
+        </li>
+        <li onclick="goTask()" data="https://mooc1-api.chaoxing.com/task?taskrefId=2&courseId=11&clazzId=22">
+            <div><p>已完成作业</p><span>待批阅</span><span>《课程》</span></div>
+        </li>
+    """)
+    response.raise_for_status = MagicMock()
+    mock_httpx_client.return_value = response
+
+    assignments = await ChaoxingClient().get_all_assignments()
+
+    assert [(item["external_id"], item["status"]) for item in assignments] == [
+        ("1", "pending"), ("2", "completed")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_notice_inbox_parses_course_and_creator(mock_httpx_client):
+    response = MagicMock(status_code=200)
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {
+        "notices": {
+            "list": [{
+                "idCode": "notice-1",
+                "title": "课程通知",
+                "content": "请按时提交",
+                "createrName": "李老师",
+                "insertTime": 1780000000000,
+                "receiverArray": [{"courseId": "11", "clazzId": "22", "name": "高等数学-1班"}],
+            }]
+        }
+    }
+    mock_httpx_client.return_value = response
+
+    notices = await ChaoxingClient().get_all_notices()
+
+    assert notices[0]["external_id"] == "notice-1"
+    assert notices[0]["creator_name"] == "李老师"
+    assert notices[0]["course_id"] == "11"
+    assert notices[0]["clazz_id"] == "22"
+
+
+@pytest.mark.asyncio
 async def test_chaoxing_assignment_endpoint_is_absolute(mock_httpx_client):
     course_page = MagicMock(status_code=200, text="""
         <input name="courseid" value="111" />
@@ -186,7 +251,7 @@ async def test_chaoxing_assignment_network_failure_is_not_silent(mock_httpx_clie
         await ChaoxingClient().get_assignments_and_notices(str(request.url))
 
 @pytest.mark.asyncio
-async def test_chaoxing_status_invalid_session_returns_offline(mock_httpx_client):
+async def test_chaoxing_status_invalid_session_returns_expired(mock_httpx_client):
     db = Database(None)
     with db.transaction() as conn:
         conn.execute("INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -209,7 +274,74 @@ async def test_chaoxing_status_invalid_session_returns_offline(mock_httpx_client
     user = UserRow(id="user1", username="test", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
     
     status = await get_chaoxing_status(user=user, container=container)
-    assert status.status == "offline"
+    assert status.status == "expired"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_status_counts_only_current_user(db, mock_httpx_client):
+    chaoxing_repo = ChaoxingRepository(db)
+    course_repo = CourseRepository(db)
+    task_repo = PersonalTaskRepository(db)
+    notice_repo = NoticeRepository(db)
+    chaoxing_repo.save_credentials("user1", {"cookie": "A"})
+    course_repo.create_course(
+        name="用户一课程", teacher_id="user1", provider="chaoxing", external_id="same-course"
+    )
+    course_repo.create_course(
+        name="用户二课程", teacher_id="user2", provider="chaoxing", external_id="same-course"
+    )
+    task_repo.create_task(
+        user_id="user1", title="用户一作业", source="chaoxing", external_id="same-task"
+    )
+    task_repo.create_task(
+        user_id="user2", title="用户二作业", source="chaoxing", external_id="same-task"
+    )
+    notice_repo.create_or_update_notice(
+        user_id="user1", source="chaoxing", external_id="same-notice", title="用户一通知"
+    )
+    notice_repo.create_or_update_notice(
+        user_id="user2", source="chaoxing", external_id="same-notice", title="用户二通知"
+    )
+    mock_httpx_client.return_value = MagicMock(status_code=200, text="课程列表")
+    container = type("Container", (), {"chaoxing_repository": chaoxing_repo, "db": db})()
+    user = UserRow(id="user1", username="test1", password_hash="hash", role="student")
+
+    status = await get_chaoxing_status(user=user, container=container)
+
+    assert status.courses == 1
+    assert status.pending_assignments == 1
+    assert status.notices == 1
+
+
+@pytest.mark.asyncio
+async def test_disconnect_removes_only_current_credentials_and_preserves_synced_data(db):
+    chaoxing_repo = ChaoxingRepository(db)
+    course_repo = CourseRepository(db)
+    task_repo = PersonalTaskRepository(db)
+    notice_repo = NoticeRepository(db)
+    chaoxing_repo.save_credentials("user1", {"cookie": "A"})
+    chaoxing_repo.save_credentials("user2", {"cookie": "B"})
+    course_repo.create_course(
+        name="历史课程", teacher_id="user1", provider="chaoxing", external_id="course-1"
+    )
+    task_repo.create_task(
+        user_id="user1", title="历史作业", source="chaoxing", external_id="task-1"
+    )
+    notice_repo.create_or_update_notice(
+        user_id="user1", source="chaoxing", external_id="notice-1", title="历史通知"
+    )
+    container = type("Container", (), {"chaoxing_repository": chaoxing_repo})()
+    user = UserRow(id="user1", username="test1", password_hash="hash", role="student")
+
+    result = await disconnect_chaoxing(user=user, container=container)
+
+    assert result == {"status": "disconnected"}
+    assert chaoxing_repo.get_credentials("user1") is None
+    assert chaoxing_repo.get_credentials("user2") == {"cookie": "B"}
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM courses WHERE teacher_id = 'user1'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM personal_tasks WHERE user_id = 'user1'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM notices WHERE user_id = 'user1'").fetchone()[0] == 1
 
 
 @pytest.mark.asyncio
@@ -231,6 +363,21 @@ async def test_chaoxing_status_network_failure_is_unavailable(mock_httpx_client)
     status = await get_chaoxing_status(user=user, container=container)
 
     assert status.status == "unavailable"
+
+
+def test_chaoxing_routes_require_student_role():
+    from app.api.routes.chaoxing import router
+
+    protected = {"/chaoxing/login", "/chaoxing/status", "/chaoxing/sync", "/chaoxing/disconnect"}
+    for route in router.routes:
+        if route.path not in protected:
+            continue
+        dependency_names = {
+            dependency.call.__name__
+            for dependency in route.dependant.dependencies
+            if getattr(dependency.call, "__name__", None)
+        }
+        assert "_check" in dependency_names, route.path
 
 @pytest.mark.asyncio
 async def test_chaoxing_sync_assignments(db, mock_httpx_client):

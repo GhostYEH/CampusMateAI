@@ -65,7 +65,8 @@ object ApiClient {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = if (BuildConfig.DEBUG) {
-            HttpLoggingInterceptor.Level.BODY
+            // Request/response bodies can contain chat text, passwords and tokens.
+            HttpLoggingInterceptor.Level.BASIC
         } else {
             HttpLoggingInterceptor.Level.NONE
         }
@@ -144,7 +145,13 @@ object ApiClient {
                 val line = source.readUtf8Line() ?: break
                 when {
                     line.startsWith("event:") -> event = line.removePrefix("event:").trim()
-                    line.startsWith("data:") -> data.append(line.removePrefix("data:").trim())
+                    line.startsWith("data:") -> {
+                        // SSE permits one optional space after the colon. Preserve all
+                        // remaining whitespace because a streamed text chunk may begin
+                        // or end with meaningful spacing.
+                        if (data.isNotEmpty()) data.append('\n')
+                        data.append(line.removePrefix("data:").removePrefix(" "))
+                    }
                     line.isEmpty() -> {
                         if (event == "chunk" && data.isNotEmpty()) {
                             val text = org.json.JSONObject(data.toString()).optString("text")

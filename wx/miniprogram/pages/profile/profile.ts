@@ -7,6 +7,7 @@ Page({
     settings: repository.getSettings() as AppSettings,
     editingUrl: false,
     apiBaseUrlInput: '',
+    showSettings: false,
   },
   onShow() {
     const user = repository.getSession()
@@ -27,9 +28,12 @@ Page({
   },
   toggleMock(event: WechatMiniprogram.SwitchChange) {
     this.saveSetting({ mockMode: event.detail.value })
-    wx.showToast({
-      title: event.detail.value ? '已切换到 Mock 模式' : '已切换到真实后端',
-      icon: 'none',
+    repository.logout().finally(() => {
+      wx.showToast({
+        title: event.detail.value ? '已切换到 Mock，请重新登录' : '已切换到真实后端，请登录',
+        icon: 'none',
+      })
+      setTimeout(() => wx.reLaunch({ url: '/pages/login/login' }), 400)
     })
   },
   toggleMotion(event: WechatMiniprogram.SwitchChange) {
@@ -43,6 +47,30 @@ Page({
   },
   toggleDemo(event: WechatMiniprogram.SwitchChange) {
     this.saveSetting({ demoMode: event.detail.value })
+  },
+  openService(event: WechatMiniprogram.TouchEvent) {
+    const kind = event.currentTarget.dataset.kind as string
+    if (kind === 'study') {
+      wx.navigateTo({ url: '/pages/study/study' })
+      return
+    }
+    if (kind === 'notices') {
+      wx.navigateTo({ url: '/pages/notices/notices' })
+      return
+    }
+    if (kind === 'settings' || kind === 'account') {
+      this.setData({ showSettings: true })
+      setTimeout(() => wx.pageScrollTo({ selector: '#settings-panel', duration: 260 }), 30)
+      return
+    }
+    if (kind === 'about') {
+      wx.showModal({ title: 'CampusMate', content: '大学生校园事务智能陪伴助手\n微信小程序端', showCancel: false })
+      return
+    }
+    wx.showToast({ title: kind === 'help' ? '反馈入口正在接入' : '该功能正在接入小程序', icon: 'none' })
+  },
+  closeSettings() {
+    this.setData({ showSettings: false, editingUrl: false })
   },
   saveSetting(next: Partial<AppSettings>) {
     this.setData({ settings: repository.saveSettings(next) })
@@ -72,9 +100,9 @@ Page({
       title: '退出当前账号？',
       content: '本机待办与学习记录会保留。',
       confirmText: '退出',
-      success: (result) => {
+      success: async (result) => {
         if (!result.confirm) return
-        repository.logout()
+        await repository.logout()
         wx.reLaunch({ url: '/pages/login/login' })
       },
     })

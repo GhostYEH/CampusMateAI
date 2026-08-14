@@ -12,12 +12,14 @@ export interface CampusTask {
   id: number | string
   title: string
   due: string
+  deadline?: string
   course: string
   done: boolean
+  priority?: 'low' | 'medium' | 'high'
 }
 
 export interface Notice {
-  id: number
+  id: number | string
   title: string
   source: string
   time: string
@@ -25,6 +27,7 @@ export interface Notice {
 }
 
 export interface Course {
+  id?: string
   name: string
   code: string
   type: string
@@ -35,9 +38,12 @@ export interface Course {
 }
 
 export interface ExtractResult {
+  id: string
   title: string
   source: string
   deadline: string
+  rawDeadline?: string
+  sourceText?: string
   tasks: string[]
   confidence: number
   saved?: boolean
@@ -63,4 +69,10 @@ export interface AppSettings {
   remindersEnabled: boolean
   demoMode: boolean
   apiBaseUrl: string
+}
+
+export interface WeekDay {
+  label: string
+  date: number
+  active: boolean
 }

@@ -15,8 +15,7 @@ private fun dynamicDestinationTitle(route: String): String? = when {
     route.startsWith("campus-news-detail/") -> "通知详情"
     route.startsWith("exam_detail/") -> "考试详情"
     route.startsWith("exam_edit/") -> "编辑考试"
-    route.startsWith("service_form/") -> "办理事项"
-    route.startsWith("service_detail/") -> "申请详情"
+    route.startsWith("service_form/") -> "意见反馈"
     route.startsWith("lostfound_detail/") -> "失物招领详情"
     else -> null
 }
@@ -43,14 +42,12 @@ private val staticDestinationTitles = mapOf(
     "files" to "我的文件",
     "activities" to "我的活动",
     "favorites" to "我的收藏",
+    "university" to "我的大学",
+    "community" to "校园社区",
+    "academic" to "教务系统",
     "exams" to "考试安排",
     "classrooms" to "空教室",
-    "services" to "办事大厅",
-    "service_leave" to "请假申请",
-    "service_repair" to "报修申请",
-    "service_mine" to "我的申请",
     "focus" to "专注自习",
-    "lostfound" to "失物招领",
     "lostfound_publish" to "发布失物招领",
     "lostfound_mine" to "我的发布",
 )

@@ -38,7 +38,6 @@ fun AccountScreen(
 ) {
     val user by repository.session.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val darkMode by repository.darkMode.collectAsState()
     var name by remember(user) { mutableStateOf(user?.name.orEmpty()) }
     var detail by remember(user) { mutableStateOf(user?.detail.orEmpty()) }
     var studentId by remember(user) { mutableStateOf(user?.studentId.orEmpty()) }
@@ -50,8 +49,6 @@ fun AccountScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    ReferenceSystemBars(darkMode)
-
     fun save() {
         nameError = if (name.trim().length < 2) "姓名至少需要 2 个字" else null
         emailError = if (email.isNotBlank() && (!email.contains("@") || !email.substringAfter("@").contains("."))) {

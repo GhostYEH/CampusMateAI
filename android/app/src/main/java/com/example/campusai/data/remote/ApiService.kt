@@ -3,6 +3,7 @@ package com.example.campusai.data.remote
 import com.example.campusai.data.model.ExtractResult
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -29,7 +30,36 @@ data class ExpressionContributionResponse(
     val status: String,
     val message: String,
 )
-data class ExtractRequest(val text: String)
+data class NoticeExtractRequest(
+    val content: String,
+    val published_at: String? = null,
+    val source_name: String? = null,
+    val allow_multi_task: Boolean = true,
+)
+data class NoticeExtractTaskDto(
+    val title: String = "",
+    val task: String = "",
+    val actionable: Boolean = false,
+    val deadline: String? = null,
+    val source_name: String? = null,
+    val confidence: Double = 0.0,
+)
+data class MultiNoticeExtractResponseDto(
+    val tasks: List<NoticeExtractTaskDto> = emptyList(),
+    val split_reason: String = "",
+    val needs_user_confirmation: Boolean = false,
+) {
+    fun toExtractResult(): com.example.campusai.data.model.ExtractResult {
+        val first = tasks.firstOrNull()
+        return com.example.campusai.data.model.ExtractResult(
+            title = first?.title.orEmpty(),
+            source = first?.source_name.orEmpty(),
+            deadline = first?.deadline.orEmpty(),
+            tasks = tasks.map { it.task.ifBlank { it.title } }.filter { it.isNotBlank() },
+            confidence = tasks.maxOfOrNull { it.confidence } ?: 0.0,
+        )
+    }
+}
 data class NoticeIngestRequest(
     val content: String,
     val source_name: String,
@@ -42,8 +72,31 @@ data class ChaoxingLoginRequest(
 
 data class ChaoxingSyncStatusResponse(
     val status: String, // "online" or "offline"
-    val last_synced_at: String?
+    val last_synced_at: String?,
+    val source: String? = null,
+    val courses: Int = 0,
+    val teachers: Int = 0,
+    val pending_assignments: Int = 0,
+    val notices: Int = 0,
 )
+data class NoticeBatchMessageRequest(val text: String, val published_at: String?)
+data class NoticeBatchItemRequest(
+    val client_id: String,
+    val client_fingerprint: String,
+    val source_name: String,
+    val published_at: String?,
+    val messages: List<NoticeBatchMessageRequest>,
+)
+data class NoticeBatchIngestRequest(val items: List<NoticeBatchItemRequest>)
+data class NoticeBatchItemResponse(
+    val client_id: String,
+    val client_fingerprint: String,
+    val status: String,
+    val semantic_type: String,
+    val duplicate: Boolean = false,
+    val reason: String? = null,
+)
+data class NoticeBatchIngestResponse(val items: List<NoticeBatchItemResponse> = emptyList())
 
 data class HealthResponse(val mode: String? = null)
 data class KnowledgeStatusResponse(
@@ -62,6 +115,167 @@ data class UserResponse(
     val major: String? = null,
     val grade: String? = null,
     val avatar_url: String? = null,
+    val university_id: String? = null,
+)
+
+data class UniversityDto(
+    val id: String,
+    val name: String,
+    val short_name: String? = null,
+    val province: String? = null,
+    val city: String? = null,
+    val academic_provider: String = "unsupported",
+    val forum_enabled: Boolean = true,
+    val is_demo: Boolean = false,
+)
+data class UniversitySelectionRequest(val university_id: String)
+data class UniversitySelectionResponse(val university_id: String?, val university: UniversityDto?)
+
+data class CommunityPostDto(
+    val id: String,
+    val title: String,
+    val content: String,
+    val category: String = "campus",
+    val author_name: String = "校园同学",
+    val is_anonymous: Boolean = false,
+    val like_count: Int = 0,
+    val comment_count: Int = 0,
+    val favorite_count: Int = 0,
+    val created_at: String = "",
+)
+data class CommunityPostCreateRequest(
+    val title: String,
+    val content: String,
+    val category: String = "campus",
+    val images: List<String> = emptyList(),
+    val is_anonymous: Boolean = false,
+)
+data class AcademicStatusDto(
+    val status: String,
+    val provider: String,
+    val last_synced_at: String? = null,
+    val external_student_id: String? = null,
+)
+data class AcademicProviderDto(
+    val university_id: String,
+    val provider: String,
+    val status: String,
+    val supports: List<String> = emptyList(),
+)
+data class AcademicProvidersResponse(val items: List<AcademicProviderDto> = emptyList())
+data class AcademicBindRequest(val username: String, val password: String)
+
+// ===== CampusMate EduConnector =====
+data class EduDetectResult(
+    val university_id: String,
+    val provider: String,
+    val system_type: String,
+    val detected: Boolean,
+    val confidence: Double = 0.0,
+    val evidence: List<Map<String, Any>> = emptyList(),
+    val detection_source: String = "UNKNOWN",
+    val reason: String? = null,
+)
+data class EduSystemConfigDto(
+    val id: String,
+    val university_id: String,
+    val provider: String,
+    val system_type: String,
+    val academic_system_url: String? = null,
+    val academic_system_url_status: String = "not_discovered",
+    val sso_url: String? = null,
+    val cas_url: String? = null,
+    val webvpn_url: String? = null,
+    val login_method: String = "unknown",
+    val captcha_type: String = "unknown",
+    val requires_campus_network: Boolean? = null,
+    val supported_features: List<String> = emptyList(),
+    val school_code: String? = null,
+    val data_source: String = "unknown",
+)
+data class EduBindingDto(
+    val id: String,
+    val user_id: String,
+    val edu_system_id: String? = null,
+    val university_id: String,
+    val provider: String,
+    val system_type: String = "undergrad",
+    val external_student_id: String? = null,
+    val external_student_name: String? = null,
+    val connection_status: String = "unbound",
+    val session_type: String? = null,
+    val last_synced_at: String? = null,
+    val last_sync_status: String? = null,
+    val last_error: String? = null,
+)
+data class EduBindRequest(val username: String, val password: String, val system_type: String = "undergrad")
+data class EduProfile(
+    val external_student_id: String? = null,
+    val name: String? = null,
+    val gender: String? = null,
+    val college: String? = null,
+    val major: String? = null,
+    val grade: String? = null,
+    val class_name: String? = null,
+    val enrollment_year: String? = null,
+    val schooling_length: String? = null,
+)
+data class EduScheduleItem(
+    val course_name: String? = null,
+    val course_code: String? = null,
+    val teacher: String? = null,
+    val location: String? = null,
+    val weekday: Int? = null,
+    val start_section: Int? = null,
+    val end_section: Int? = null,
+    val start_time: String? = null,
+    val end_time: String? = null,
+    val weeks: String? = null,
+    val semester: String? = null,
+)
+data class EduSchedule(val semester: String? = null, val items: List<EduScheduleItem> = emptyList())
+data class EduGradeItem(
+    val course_name: String? = null,
+    val course_code: String? = null,
+    val credit: Double? = null,
+    val score: String? = null,
+    val grade_point: Double? = null,
+    val semester: String? = null,
+    val category: String? = null,
+    val status: String? = null,
+)
+data class EduGrade(val semester: String? = null, val gpa: Double? = null, val items: List<EduGradeItem> = emptyList())
+data class EduExamItem(
+    val course_name: String? = null,
+    val course_code: String? = null,
+    val exam_type: String? = null,
+    val location: String? = null,
+    val seat: String? = null,
+    val starts_at: String? = null,
+    val ends_at: String? = null,
+    val semester: String? = null,
+    val notes: String? = null,
+)
+data class EduExam(val semester: String? = null, val items: List<EduExamItem> = emptyList())
+data class EduSyncResult(
+    val sync_type: String,
+    val status: String,
+    val items_count: Int = 0,
+    val error_message: String? = null,
+    val profile: EduProfile? = null,
+    val schedule: EduSchedule? = null,
+    val grade: EduGrade? = null,
+    val exam: EduExam? = null,
+)
+data class EduSyncRecord(
+    val id: String,
+    val binding_id: String,
+    val sync_type: String,
+    val status: String,
+    val items_count: Int = 0,
+    val error_message: String? = null,
+    val started_at: String,
+    val finished_at: String? = null,
 )
 
 /** 通用分页响应，对应后端 Page。 */
@@ -99,6 +313,52 @@ data class CourseDto(
     val source_url: String? = null,
     val last_synced_at: String? = null
 )
+
+data class CourseContentItemDto(
+    val id: String,
+    val external_id: String,
+    val kind: String,
+    val title: String,
+    val parent_external_id: String? = null,
+    val description: String? = null,
+    val author_name: String? = null,
+    val status: String = "unknown",
+    val deadline: String? = null,
+    val published_at: String? = null,
+    val mime_type: String? = null,
+    val cached: Boolean = false,
+    val can_download: Boolean = false,
+    val can_open: Boolean = true,
+)
+
+data class CourseSectionStatusDto(
+    val section: String,
+    val status: String,
+    val item_count: Int = 0,
+    val last_synced_at: String? = null,
+    val error_code: String? = null,
+)
+
+data class CourseContentSummaryDto(
+    val course_id: String,
+    val provider: String? = null,
+    val cover_url: String? = null,
+    val teacher_name: String? = null,
+    val school_name: String? = null,
+    val class_name: String? = null,
+    val student_count: Int? = null,
+    val sections: List<CourseSectionStatusDto> = emptyList(),
+)
+
+data class CourseContentPageDto(
+    val items: List<CourseContentItemDto> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val page_size: Int = 100,
+    val has_more: Boolean = false,
+)
+
+data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
 // ── 全校活动（同时作为「校园动态」与「我的活动」数据源） ──
 data class ActivityDto(
@@ -230,6 +490,75 @@ interface ApiService {
     @GET("auth/me")
     suspend fun me(): Response<MeResponse>
 
+    @GET("universities")
+    suspend fun listUniversities(
+        @Query("q") query: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 50,
+    ): Response<PagedResponse<UniversityDto>>
+
+    @PUT("profile/university")
+    suspend fun selectUniversity(@Body request: UniversitySelectionRequest): Response<UniversitySelectionResponse>
+
+    @GET("community/posts")
+    suspend fun listCommunityPosts(
+        @Query("q") query: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 30,
+    ): Response<PagedResponse<CommunityPostDto>>
+
+    @POST("community/posts")
+    suspend fun createCommunityPost(@Body request: CommunityPostCreateRequest): Response<CommunityPostDto>
+
+    @POST("community/posts/{postId}/like")
+    suspend fun likeCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
+    @POST("community/posts/{postId}/favorite")
+    suspend fun favoriteCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
+    @GET("academic/status")
+    suspend fun academicStatus(): Response<AcademicStatusDto>
+
+    @GET("academic/providers")
+    suspend fun academicProviders(): Response<AcademicProvidersResponse>
+
+    @POST("academic/bind")
+    suspend fun bindAcademic(@Body request: AcademicBindRequest): Response<AcademicStatusDto>
+
+    @DELETE("academic/binding")
+    suspend fun disconnectAcademic(): Response<Unit>
+
+    // ===== CampusMate EduConnector =====
+    @GET("edu/detect")
+    suspend fun eduDetect(@Query("university_id") universityId: String): Response<EduDetectResult>
+
+    @GET("edu/config/{universityId}")
+    suspend fun getEduConfig(@Path("universityId") universityId: String): Response<EduSystemConfigDto>
+
+    @GET("edu/binding")
+    suspend fun getEduBinding(): Response<EduBindingDto?>
+
+    @POST("edu/bind")
+    suspend fun eduBind(@Body request: EduBindRequest): Response<EduBindingDto>
+
+    @DELETE("edu/binding")
+    suspend fun eduUnbind(): Response<Unit>
+
+    @POST("edu/sync/profile")
+    suspend fun eduSyncProfile(): Response<EduSyncResult>
+
+    @POST("edu/sync/schedule")
+    suspend fun eduSyncSchedule(@Query("semester") semester: String? = null): Response<EduSyncResult>
+
+    @POST("edu/sync/grade")
+    suspend fun eduSyncGrade(@Query("semester") semester: String? = null): Response<EduSyncResult>
+
+    @POST("edu/sync/exam")
+    suspend fun eduSyncExam(@Query("semester") semester: String? = null): Response<EduSyncResult>
+
+    @GET("edu/sync/records")
+    suspend fun getEduSyncRecords(@Query("limit") limit: Int = 20): Response<List<EduSyncRecord>>
+
     @POST("auth/refresh")
     suspend fun refresh(@Body request: RefreshRequest): Response<LoginResponse>
 
@@ -237,10 +566,13 @@ interface ApiService {
     suspend fun chat(@Body request: ChatRequest): Response<ChatResponse>
 
     @POST("notices/extract-multi")
-    suspend fun extractNotice(@Body request: ExtractRequest): Response<ExtractResult>
+    suspend fun extractNotice(@Body request: NoticeExtractRequest): Response<MultiNoticeExtractResponseDto>
 
     @POST("notices/ingest")
     suspend fun ingestNotice(@Body request: NoticeIngestRequest): Response<Unit> // 假设后端返回200 OK即可
+
+    @POST("notices/ingest-batch")
+    suspend fun ingestNoticeBatch(@Body request: NoticeBatchIngestRequest): Response<NoticeBatchIngestResponse>
 
     @POST("chaoxing/login")
     suspend fun loginChaoxing(@Body request: ChaoxingLoginRequest): Response<Unit>
@@ -267,6 +599,33 @@ interface ApiService {
         @Query("page") page: Int = 1,
         @Query("page_size") pageSize: Int = 100,
     ): Response<PagedResponse<CourseDto>>
+
+    @GET("courses/{courseId}/content-summary")
+    suspend fun getCourseContentSummary(
+        @Path("courseId") courseId: String,
+    ): Response<CourseContentSummaryDto>
+
+    @GET("courses/{courseId}/content")
+    suspend fun getCourseContent(
+        @Path("courseId") courseId: String,
+        @Query("page_size") pageSize: Int = 500,
+    ): Response<CourseContentPageDto>
+
+    @POST("courses/{courseId}/sync")
+    suspend fun syncCourseContent(@Path("courseId") courseId: String): Response<Unit>
+
+    @GET("courses/{courseId}/resources/{itemId}/open")
+    suspend fun openCourseResource(
+        @Path("courseId") courseId: String,
+        @Path("itemId") itemId: String,
+    ): Response<CourseResourceOpenDto>
+
+    @Streaming
+    @GET("courses/{courseId}/resources/{itemId}/download")
+    suspend fun downloadCourseResource(
+        @Path("courseId") courseId: String,
+        @Path("itemId") itemId: String,
+    ): Response<ResponseBody>
 
     // 全校活动列表（校园动态 / 我的活动）
     @GET("activities")
@@ -370,4 +729,20 @@ interface ApiService {
     suspend fun deleteExpressionContribution(
         @Path("sampleId") sampleId: String,
     ): Response<ExpressionContributionResponse>
+
+    @GET("edu/systems/{universityId}")
+    suspend fun listEduSystems(@Path("universityId") universityId: String): Response<List<EduSystemDto>>
 }
+
+data class EduSystemDto(
+    val id: String = "",
+    val university_id: String = "",
+    val system_key: String = "",
+    val name: String? = null,
+    val system_type: String = "unknown",
+    val provider: String = "unknown",
+    val login_execution_mode: String = "unsupported",
+    val status: String = "active",
+    val is_mock: Boolean = false,
+    val supported_features: List<String> = emptyList(),
+)

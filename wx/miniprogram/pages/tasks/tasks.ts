@@ -1,5 +1,6 @@
 import { repository } from '../../services/repository'
 import { CampusTask } from '../../services/types'
+import { buildCurrentWeek, isDueSoon } from '../../services/date-utils'
 
 Page({
   data: {
@@ -9,6 +10,11 @@ Page({
     filters: ['待完成', '已完成', '全部'],
     pendingCount: 0,
     progress: 0,
+    completedCount: 0,
+    urgentCount: 0,
+    focusTask: null as CampusTask | null,
+    query: '',
+    weekDays: buildCurrentWeek(),
     loading: true,
     showAdd: false,
     titleInput: '',
@@ -35,8 +41,11 @@ Page({
     try {
       const tasks = await repository.getTasksAsync()
       this.refresh(tasks, this.data.filter)
-    } catch (e) {
-      wx.showToast({ title: '加载失败', icon: 'none' })
+    } catch (error) {
+      wx.showToast({
+        title: error instanceof Error ? error.message : '待办加载失败',
+        icon: 'none',
+      })
       this.refresh([], this.data.filter)
     } finally {
       this.setData({ loading: false })
@@ -44,16 +53,22 @@ Page({
   },
   refresh(tasks: CampusTask[], filter: string) {
     const pendingCount = tasks.filter((task) => !task.done).length
+    const query = this.data.query.trim().toLowerCase()
     const filtered = tasks.filter((task) => {
       if (filter === '已完成') return task.done
       if (filter === '全部') return true
       return !task.done
-    })
+    }).filter((task) => !query || `${task.title} ${task.course} ${task.due}`.toLowerCase().includes(query))
     this.setData({
       tasks,
       filtered,
       filter,
       pendingCount,
+      completedCount: tasks.length - pendingCount,
+      urgentCount: tasks.filter((task) => !task.done && (
+        isDueSoon(task.deadline) || task.due.includes('今天') || task.due.includes('明天')
+      )).length,
+      focusTask: tasks.find((task) => !task.done) || null,
       progress: tasks.length ? Math.round(((tasks.length - pendingCount) / tasks.length) * 100) : 0,
     })
     wx.nextTick(() => {
@@ -63,6 +78,13 @@ Page({
   },
   chooseFilter(event: WechatMiniprogram.TouchEvent) {
     this.refresh(this.data.tasks, event.currentTarget.dataset.filter as string)
+  },
+  onQuery(event: WechatMiniprogram.Input) {
+    this.setData({ query: event.detail.value })
+    this.refresh(this.data.tasks, this.data.filter)
+  },
+  showCalendar() {
+    wx.showToast({ title: '日历视图正在接入', icon: 'none' })
   },
   async toggleTask(event: WechatMiniprogram.TouchEvent) {
     const id = event.currentTarget.dataset.id

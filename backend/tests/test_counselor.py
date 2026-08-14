@@ -69,8 +69,12 @@ class TestCounselorFallbackMode:
         )
         assert resp.status_code == 200, resp.text
         content = resp.text
-        # SSE 事件格式: data: {...}
-        assert "data:" in content
+        # The mobile clients consume named events. Verify the stream includes
+        # incremental chunks as well as a terminal event with the final answer.
+        assert "event: chunk" in content
+        assert '"text"' in content
+        assert "event: done" in content
+        assert '"answer"' in content
 
     def test_chat_with_irrelevant_question(self):
         """与知识库无关的问题应正常返回（不崩溃）。"""

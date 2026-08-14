@@ -1,0 +1,511 @@
+"""CampusMate EduConnector API 路由。
+
+统一教务连接层端点：
+
+- GET  /edu/detect?university_id=...           探测学校教务厂商
+- GET  /edu/config/{university_id}             获取学校教务系统配置
+- PUT  /edu/config/{university_id}             管理员更新教务系统配置
+- GET  /edu/binding                            获取当前用户教务绑定
+- POST /edu/bind                               绑定教务账号
+- DELETE /edu/binding                          解绑
+- POST /edu/sync/profile                       同步学生基本信息
+- POST /edu/sync/schedule                      同步课表
+- POST /edu/sync/grade                         同步成绩
+- POST /edu/sync/exam                          同步考试安排
+- GET  /edu/sync/records                       同步记录列表
+
+所有端点均不返回密码或凭证明文。
+"""
+from __future__ import annotations
+
+import json
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+
+from ...core.exceptions import AppException, Forbidden, Unauthorized
+from ...models.edu import (
+    EDU_PROVIDER_UNKNOWN,
+    EDU_PROVIDER_UNSUPPORTED,
+    EduSystemConfigRow,
+)
+from ...models.multi_role import UserRow
+from ...schemas.edu import (
+    EduBindRequest,
+    EduBindingOut,
+    EduConnectionContinue,
+    EduConnectionCreate,
+    EduConnectionOut,
+    EduDetectResult,
+    EduSyncRecordOut,
+    EduSyncResult,
+    EduSystemConfigOut,
+    EduSystemConfigUpsert,
+    EduSystemOut,
+    EduSystemUpsert,
+)
+from ...services.container import ServiceContainer, get_container
+from ..deps import current_user, require_role
+
+
+router = APIRouter(prefix="/edu", tags=["edu"])
+
+
+class UniversityRequired(AppException):
+    code = "UNIVERSITY_REQUIRED"
+    http_status = 409
+    message = "请先选择你的大学"
+
+
+class EduBindingNotFound(AppException):
+    code = "EDU_BINDING_NOT_FOUND"
+    http_status = 404
+    message = "未绑定教务账号"
+
+
+class EduAdapterUnavailable(AppException):
+    code = "EDU_ADAPTER_UNAVAILABLE"
+    http_status = 503
+    message = "教务系统 Adapter 暂不可用"
+
+
+def _container() -> ServiceContainer:
+    return get_container()
+
+
+def _config_to_out(row: EduSystemConfigRow) -> EduSystemConfigOut:
+    try:
+        features = json.loads(row.supported_features) if row.supported_features else []
+    except (TypeError, ValueError):
+        features = []
+    return EduSystemConfigOut(
+        id=row.id,
+        university_id=row.university_id,
+        provider=row.provider,
+        system_type=row.system_type,
+        academic_system_url=row.academic_system_url,
+        academic_system_url_status=row.academic_system_url_status,
+        undergrad_system_url=row.undergrad_system_url,
+        undergrad_system_url_status=row.undergrad_system_url_status,
+        postgrad_system_url=row.postgrad_system_url,
+        postgrad_system_url_status=row.postgrad_system_url_status,
+        sso_url=row.sso_url,
+        sso_url_status=row.sso_url_status,
+        cas_url=row.cas_url,
+        cas_url_status=row.cas_url_status,
+        webvpn_url=row.webvpn_url,
+        webvpn_url_status=row.webvpn_url_status,
+        login_method=row.login_method,
+        captcha_type=row.captcha_type,
+        requires_campus_network=row.requires_campus_network,
+        supported_features=features,
+        school_code=row.school_code,
+        notes=row.notes,
+        data_source=row.data_source,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _binding_to_out(binding) -> EduBindingOut:
+    return EduBindingOut(
+        id=binding.id,
+        user_id=binding.user_id,
+        edu_system_id=binding.edu_system_id,
+        university_id=binding.university_id,
+        provider=binding.provider,
+        system_type=binding.system_type,
+        external_student_id=binding.external_student_id,
+        external_student_name=binding.external_student_name,
+        connection_status=binding.connection_status,
+        session_type=binding.session_type,
+        last_authenticated_at=binding.last_authenticated_at,
+        session_expires_at=binding.session_expires_at,
+        last_synced_at=binding.last_synced_at,
+        last_sync_status=binding.last_sync_status,
+        last_error=binding.last_error,
+        created_at=binding.created_at,
+        updated_at=binding.updated_at,
+    )
+
+
+def _sync_record_to_out(record) -> EduSyncRecordOut:
+    return EduSyncRecordOut(
+        id=record.id,
+        binding_id=record.binding_id,
+        sync_type=record.sync_type,
+        status=record.status,
+        items_count=record.items_count,
+        error_message=record.error_message,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
+    )
+
+
+# ===== 探测 =====
+
+
+@router.get("/detect", response_model=EduDetectResult)
+def detect_university(
+    university_id: str = Query(..., min_length=1, max_length=128),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduDetectResult:
+    """探测学校教务厂商与系统类型（不编造 URL）。"""
+    result = container.edu_connector.detect(university_id)
+    return EduDetectResult(
+        university_id=result.university_id,
+        provider=result.provider,
+        system_type=result.system_type,
+        detected=result.detected,
+        confidence=result.confidence,
+        evidence=[{"source": e.source, "detail": e.detail, "weight": e.weight} for e in result.evidence],
+        detection_source=result.detection_source,
+        reason=result.reason,
+    )
+
+
+# ===== 配置 =====
+
+
+@router.get("/config/{university_id}", response_model=EduSystemConfigOut)
+def get_config(
+    university_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduSystemConfigOut:
+    """获取学校教务系统配置。
+
+    若不存在，自动创建默认配置（所有 URL=null, url_status=not_discovered）。
+    """
+    row = container.edu_connector.ensure_config(university_id)
+    return _config_to_out(row)
+
+
+@router.put("/config/{university_id}", response_model=EduSystemConfigOut)
+def upsert_config(
+    university_id: str,
+    request: EduSystemConfigUpsert,
+    user: UserRow = Depends(require_role("admin")),
+    container: ServiceContainer = Depends(_container),
+) -> EduSystemConfigOut:
+    """管理员更新教务系统配置。
+
+    严禁编造 URL：若不确定，应留空并将对应 url_status 设为 not_discovered。
+    """
+    if request.university_id != university_id:
+        raise AppException(
+            code="VALIDATION_FAILED",
+            http_status=422,
+            message="university_id 不一致",
+        )
+    kwargs = request.model_dump(exclude={"university_id"}, exclude_none=True)
+    row = container.edu_connector.upsert_config(university_id, **kwargs)
+    return _config_to_out(row)
+
+
+# ===== 绑定 =====
+
+
+@router.get("/binding", response_model=Optional[EduBindingOut])
+def get_binding(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> Optional[EduBindingOut]:
+    """获取当前用户教务绑定（不含凭证）。"""
+    binding = container.edu_connector.get_binding(user.id)
+    return _binding_to_out(binding) if binding else None
+
+
+@router.post("/bind", response_model=EduBindingOut)
+async def bind(
+    request: EduBindRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduBindingOut:
+    """绑定教务账号。
+
+    需要先选择大学（PUT /profile/university）。
+    username/password 仅用于一次认证，不会明文存储。
+    """
+    if not user.university_id:
+        raise UniversityRequired()
+    try:
+        binding = await container.edu_connector.bind(
+            user_id=user.id,
+            university_id=user.university_id,
+            username=request.username,
+            password=request.password.get_secret_value(),
+            system_type=request.system_type,
+        )
+    except PermissionError as e:
+        raise AppException(
+            code="EDU_LOGIN_FAILED",
+            http_status=401,
+            message=str(e) or "教务账号登录失败",
+        )
+    except AppException:
+        raise
+    except Exception as e:
+        raise AppException(
+            code="EDU_ADAPTER_UNAVAILABLE",
+            http_status=503,
+            message=f"教务系统 Adapter 暂不可用: {str(e)[:200]}",
+        )
+    return binding
+
+
+@router.delete("/binding")
+def unbind(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> dict:
+    """解绑教务账号。"""
+    container.edu_connector.unbind(user.id)
+    return {"ok": True}
+
+
+# ===== 同步 =====
+
+
+def _require_binding_or_failed(user: UserRow, container: ServiceContainer):
+    """获取绑定；未绑定返回 None（由调用方返回 failed EduSyncResult）。"""
+    return container.edu_connector.get_binding(user.id)
+
+
+@router.post("/sync/profile", response_model=EduSyncResult)
+async def sync_profile(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduSyncResult:
+    if _require_binding_or_failed(user, container) is None:
+        return EduSyncResult(sync_type="profile", status="failed", error_message="未绑定教务账号")
+    return await container.edu_connector.sync_profile(user.id)
+
+
+@router.post("/sync/schedule", response_model=EduSyncResult)
+async def sync_schedule(
+    semester: Optional[str] = Query(None, max_length=64),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduSyncResult:
+    if _require_binding_or_failed(user, container) is None:
+        return EduSyncResult(sync_type="schedule", status="failed", error_message="未绑定教务账号")
+    return await container.edu_connector.sync_schedule(user.id, semester=semester)
+
+
+@router.post("/sync/grade", response_model=EduSyncResult)
+async def sync_grade(
+    semester: Optional[str] = Query(None, max_length=64),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduSyncResult:
+    if _require_binding_or_failed(user, container) is None:
+        return EduSyncResult(sync_type="grade", status="failed", error_message="未绑定教务账号")
+    return await container.edu_connector.sync_grade(user.id, semester=semester)
+
+
+@router.post("/sync/exam", response_model=EduSyncResult)
+async def sync_exam(
+    semester: Optional[str] = Query(None, max_length=64),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduSyncResult:
+    if _require_binding_or_failed(user, container) is None:
+        return EduSyncResult(sync_type="exam", status="failed", error_message="未绑定教务账号")
+    return await container.edu_connector.sync_exam(user.id, semester=semester)
+
+
+@router.get("/sync/records", response_model=list[EduSyncRecordOut])
+def list_sync_records(
+    limit: int = Query(20, ge=1, le=100),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> list[EduSyncRecordOut]:
+    records = container.edu_connector.list_sync_records(user.id, limit=limit)
+    return [_sync_record_to_out(r) for r in records]
+
+
+# ===== edu_systems (1:N) =====
+
+
+def _system_to_out(row) -> EduSystemOut:
+    try:
+        features = json.loads(row.supported_features) if row.supported_features else []
+    except (TypeError, ValueError):
+        features = []
+    return EduSystemOut(
+        id=row.id,
+        university_id=row.university_id,
+        system_key=row.system_key,
+        school_code=row.school_code,
+        name=row.name,
+        system_type=row.system_type,
+        provider=row.provider,
+        provider_version=row.provider_version,
+        base_url=row.base_url,
+        login_url=row.login_url,
+        sso_url=row.sso_url,
+        vpn_url=row.vpn_url,
+        auth_type=row.auth_type,
+        login_execution_mode=row.login_execution_mode,
+        captcha_type=row.captcha_type,
+        requires_campus_network=row.requires_campus_network,
+        requires_vpn=row.requires_vpn,
+        status=row.status,
+        verification_status=row.verification_status,
+        supported_features=features,
+        last_verified_at=row.last_verified_at,
+        source=row.source,
+        notes=row.notes,
+        is_mock=row.is_mock,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/systems/{university_id}", response_model=list[EduSystemOut])
+def list_systems(
+    university_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> list[EduSystemOut]:
+    """列出学校的所有教务系统（1:N）。"""
+    systems = container.edu_connector.list_systems(university_id)
+    return [_system_to_out(s) for s in systems]
+
+
+@router.post("/systems/{university_id}", response_model=EduSystemOut)
+def upsert_system(
+    university_id: str,
+    request: EduSystemUpsert,
+    user: UserRow = Depends(require_role("admin")),
+    container: ServiceContainer = Depends(_container),
+) -> EduSystemOut:
+    """管理员 upsert 教务系统。"""
+    row = container.edu_connector.upsert_system(
+        university_id=university_id,
+        system_key=request.system_key,
+        **request.model_dump(exclude={"system_key"}, exclude_none=True),
+    )
+    return _system_to_out(row)
+
+
+# ===== edu_connections (状态机) =====
+
+
+@router.post("/connections", response_model=EduConnectionOut)
+def create_connection(
+    request: EduConnectionCreate,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduConnectionOut:
+    """创建教务连接（返回 connection_id + 初始状态）。
+
+    不默认上传账号密码。后续通过 /connections/{id}/continue 推进状态。
+    """
+    system = container.edu_connector.get_system_by_id(request.edu_system_id)
+    if system is None:
+        raise AppException(
+            code="EDU_SYSTEM_NOT_FOUND",
+            http_status=404,
+            message="教务系统不存在",
+        )
+    detect = container.edu_connector.detect(system.university_id)
+    conn = container.edu_connector.create_connection(
+        user_id=user.id,
+        edu_system_id=request.edu_system_id,
+        university_id=system.university_id,
+        provider=detect.provider,
+        login_execution_mode=system.login_execution_mode,
+    )
+    return EduConnectionOut(
+        id=conn.id,
+        user_id=conn.user_id,
+        edu_system_id=conn.edu_system_id,
+        university_id=conn.university_id,
+        state=conn.state,
+        provider=conn.provider,
+        login_execution_mode=conn.login_execution_mode,
+        external_student_id=conn.external_student_id,
+        external_student_name=conn.external_student_name,
+        error_code=conn.error_code,
+        error_message=conn.error_message,
+        created_at=conn.created_at,
+        updated_at=conn.updated_at,
+    )
+
+
+@router.get("/connections/{connection_id}", response_model=EduConnectionOut)
+def get_connection(
+    connection_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduConnectionOut:
+    conn = container.edu_connector.get_connection(connection_id)
+    if conn is None:
+        raise AppException(
+            code="EDU_CONNECTION_NOT_FOUND",
+            http_status=404,
+            message="连接不存在",
+        )
+    return EduConnectionOut(
+        id=conn.id,
+        user_id=conn.user_id,
+        edu_system_id=conn.edu_system_id,
+        university_id=conn.university_id,
+        state=conn.state,
+        provider=conn.provider,
+        login_execution_mode=conn.login_execution_mode,
+        external_student_id=conn.external_student_id,
+        external_student_name=conn.external_student_name,
+        error_code=conn.error_code,
+        error_message=conn.error_message,
+        created_at=conn.created_at,
+        updated_at=conn.updated_at,
+    )
+
+
+@router.post("/connections/{connection_id}/continue", response_model=EduConnectionOut)
+async def continue_connection(
+    connection_id: str,
+    request: EduConnectionContinue,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduConnectionOut:
+    """推进连接状态。"""
+    conn = container.edu_connector.get_connection(connection_id)
+    if conn is None:
+        raise AppException(
+            code="EDU_CONNECTION_NOT_FOUND",
+            http_status=404,
+            message="连接不存在",
+        )
+    new_state = await container.edu_connector.continue_connection(
+        connection_id=connection_id,
+        username=request.username,
+        password=request.password.get_secret_value() if request.password else None,
+        captcha=request.captcha,
+        sms_code=request.sms_code,
+        mfa_code=request.mfa_code,
+        action=request.action,
+    )
+    updated = container.edu_connector.get_connection(connection_id)
+    return EduConnectionOut(
+        id=updated.id,
+        user_id=updated.user_id,
+        edu_system_id=updated.edu_system_id,
+        university_id=updated.university_id,
+        state=updated.state,
+        provider=updated.provider,
+        login_execution_mode=updated.login_execution_mode,
+        external_student_id=updated.external_student_id,
+        external_student_name=updated.external_student_name,
+        error_code=updated.error_code,
+        error_message=updated.error_message,
+        created_at=updated.created_at,
+        updated_at=updated.updated_at,
+    )
+
+
+__all__ = ["router"]

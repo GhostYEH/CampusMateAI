@@ -33,6 +33,20 @@ class NotificationFilterTest {
     }
 
     @Test
+    fun `wechat wecom and qq use normalized exact whitelist matching`() {
+        assertTrue(filter.shouldStore(sample(title = "高数班群（3条新消息）"), NotificationSourceSettings(), setOf("高数班群")))
+        assertTrue(filter.shouldStore(
+            sample(packageName = "com.tencent.wework", title = "高数班群 (2)", source = NotificationSource.WECOM),
+            NotificationSourceSettings(), wecomWhitelist = setOf("高数班群"),
+        ))
+        assertTrue(filter.shouldStore(
+            sample(packageName = "com.tencent.tim", title = "高数班群 4条消息", source = NotificationSource.QQ),
+            NotificationSourceSettings(), qqWhitelist = setOf("高数班群"),
+        ))
+        assertFalse(filter.shouldStore(sample(title = "高数班群通知"), NotificationSourceSettings(), setOf("高数班群")))
+    }
+
+    @Test
     fun `wechat strict whitelist accepts when group matches conversation title`() {
         val notification = sample(title = "张三", conversationTitle = "高数班群")
         assertTrue(filter.shouldStore(notification, NotificationSourceSettings(), setOf("高数班群")))
@@ -54,6 +68,7 @@ class NotificationFilterTest {
         assertTrue(filter.shouldStore(
             sample(packageName = "com.tencent.mobileqq", source = NotificationSource.QQ),
             enabled,
+            qqWhitelist = setOf("高数班群"),
         ))
         assertFalse(filter.shouldStore(
             sample(
@@ -63,10 +78,12 @@ class NotificationFilterTest {
                 source = NotificationSource.QQ,
             ),
             enabled,
+            qqWhitelist = setOf("教务班群"),
         ))
         assertFalse(filter.shouldStore(
             sample(packageName = "com.tencent.mobileqq", source = NotificationSource.QQ),
             NotificationSourceSettings(qqEnabled = false),
+            qqWhitelist = setOf("高数班群"),
         ))
         assertTrue(filter.shouldStore(
             sample(
@@ -76,6 +93,7 @@ class NotificationFilterTest {
                 source = NotificationSource.QQ,
             ),
             enabled,
+            qqWhitelist = setOf("教务处选课通知"),
         ))
     }
 

@@ -21,7 +21,7 @@
       <view class="timer-actions">
         <button class="secondary-button reset-button" bindtap="reset">重置</button>
         <button class="primary-button start-button" bindtap="toggleTimer">
-          {{status === 'running' ? '暂停一下' : status === 'paused' ? '继续专注' : status === 'finished' ? '再来一次' : '开始专注'}}
+          {{status === 'running' ? '暂停一下' : status === 'paused' ? '继续专注' : status === 'finishError' ? '重试同步' : status === 'finished' ? '再来一次' : '开始专注'}}
         </button>
       </view>
     </view>

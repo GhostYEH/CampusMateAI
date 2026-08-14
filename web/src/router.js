@@ -29,9 +29,10 @@ import StudentServiceDetailView from "./views/student/StudentServiceDetailView.v
 import StudentClassroomsView from "./views/student/StudentClassroomsView.vue";
 import StudentLostFoundView from "./views/student/StudentLostFoundView.vue";
 import StudentLostFoundDetailView from "./views/student/StudentLostFoundDetailView.vue";
-import TeacherShell from "./views/teacher/TeacherShell.vue";
-import TeacherChaoxingView from "./views/teacher/TeacherChaoxingView.vue";
-import TeacherChaoxingLoginView from "./views/teacher/TeacherChaoxingLoginView.vue";
+import StudentChaoxingView from "./views/student/StudentChaoxingView.vue";
+import StudentUniversityView from "./views/student/StudentUniversityView.vue";
+import StudentCommunityView from "./views/student/StudentCommunityView.vue";
+import StudentAcademicView from "./views/student/StudentAcademicView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -55,6 +56,8 @@ const router = createRouter({
       { path: "tasks", component: StudentTasksView, meta: { roles: ["student"] } },
       { path: "tasks/:kind/:id", component: StudentTaskDetailView, meta: { roles: ["student"] } },
       { path: "campus-activities", component: StudentActivitiesView, meta: { roles: ["student"] } },
+      { path: "community", component: StudentCommunityView, meta: { roles: ["student"] } },
+      { path: "university", component: StudentUniversityView, meta: { roles: ["student"] } },
       { path: "campus-activities/:activityId", component: StudentActivityDetailView, meta: { roles: ["student"] } },
       { path: "counselor", component: StudentCounselorView, meta: { roles: ["student"] } },
       { path: "notifications", component: StudentNotificationsView, meta: { roles: ["student"] } },
@@ -69,14 +72,10 @@ const router = createRouter({
       { path: "lostfound", component: StudentLostFoundView, meta: { roles: ["student"] } },
       { path: "lostfound/:itemId", component: StudentLostFoundDetailView, meta: { roles: ["student"] } },
       { path: "profile", component: StudentProfileView, meta: { roles: ["student"] } },
+      { path: "profile/chaoxing", name: "student-chaoxing", component: StudentChaoxingView, meta: { roles: ["student"] } },
+      { path: "profile/academic", component: StudentAcademicView, meta: { roles: ["student"] } },
       { path: "profile/settings", component: StudentSettingsView, meta: { roles: ["student"] } },
       { path: "profile/:section", component: StudentProfileHubView, meta: { roles: ["student"] } },
-    ]},
-    // 教师端
-    { path: "/teacher", component: TeacherShell, meta: { roles: ["student", "admin"] }, children: [
-      { path: "", redirect: "/teacher/chaoxing" },
-      { path: "chaoxing", name: "teacher-chaoxing", component: TeacherChaoxingView },
-      { path: "chaoxing/login", name: "teacher-chaoxing-login", component: TeacherChaoxingLoginView },
     ]},
   ],
 });

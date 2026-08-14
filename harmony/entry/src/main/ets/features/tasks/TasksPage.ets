@@ -58,6 +58,7 @@ export struct TasksPage {
       .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20)
       .opacity(task.status === 'completed' ? 0.6 : 1)
       .animation({ duration: 300, curve: Curve.EaseInOut })
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 14 })).animation({ duration: 280, curve: Curve.EaseOut }))
       .onClick(() => this.selectedId = task.id)
   }
 
@@ -103,28 +104,28 @@ export struct TasksPage {
     }.width('100%').padding({ top: 14, bottom: 14 })
   }
 
+  @Builder RightBadge() {
+    Text('REAL').fontColor(this.palette().success).fontSize(9).fontWeight(FontWeight.Bold)
+  }
+
   build() {
     Column() {
       if (this.selectedTask() !== undefined) {
         SecondaryHeader({ title: '待办详情', subtitle: '查看待办详细信息', darkMode: this.darkMode, onBack: () => this.selectedId = '' })
         this.TaskDetail(this.selectedTask()!)
       } else {
+        SecondaryHeader({ title: '待办', subtitle: '今天先完成最重要的一小步', darkMode: this.darkMode, rightContent: this.RightBadge })
       Scroll() {
         Column({ space: 14 }) {
-          Row() {
-            Column({ space: 2 }) {
-              Text('待办').fontColor(this.palette().text).fontSize(26).fontWeight(FontWeight.Bold)
-              Text('今天先完成最重要的一小步').fontColor(this.palette().muted).fontSize(13)
-            }.alignItems(HorizontalAlign.Start)
-            Blank(); Text('REAL').fontColor(this.palette().success).fontSize(9).fontWeight(FontWeight.Bold)
-          }.width('100%')
           this.Hero()
           Row({ space: 8 }) {
             ForEach(['待完成','已完成','全部'], (item: string) => {
               Text(item).fontColor(this.filter === item ? this.palette().primary : this.palette().muted).fontSize(12)
                 .padding({ left: 13, right: 13, top: 8, bottom: 8 })
                 .backgroundColor(this.filter === item ? this.palette().soft : this.palette().surface)
-                .border({ width: 1, color: this.palette().line }).borderRadius(12).onClick(() => this.filter = item)
+                .border({ width: 1, color: this.palette().line }).borderRadius(12)
+                .animation({ duration: 200, curve: Curve.EaseInOut })
+                .onClick(() => this.filter = item)
             })
           }
           Row() { Text(this.filter).fontColor(this.palette().text).fontSize(18).fontWeight(FontWeight.Bold); Blank(); Text(`${this.tasks.length} 项`).fontColor(this.palette().muted).fontSize(12) }.width('100%')

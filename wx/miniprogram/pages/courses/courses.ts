@@ -1,5 +1,6 @@
 import { repository } from '../../services/repository'
 import { Course } from '../../services/types'
+import { buildCurrentWeek } from '../../services/date-utils'
 
 Page({
   data: {
@@ -13,6 +14,7 @@ Page({
     mockMode: true,
     reduceMotion: false,
     darkMode: false,
+    weekDays: buildCurrentWeek(),
   },
   onShow() {
     this.load()
@@ -21,7 +23,7 @@ Page({
       if (tabBar) tabBar.sync()
     })
   },
-  load() {
+  async load() {
     const settings = repository.getSettings()
     this.setData({
       loading: true,
@@ -30,19 +32,26 @@ Page({
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
     })
-    setTimeout(() => {
-      try {
-        const courses = repository.getCourses()
+    try {
+      if (!settings.reduceMotion) await new Promise((resolve) => setTimeout(resolve, 180))
+      const courses = await repository.getCoursesAsync()
+      const courseTypes = Array.from(new Set(courses.map((course) => course.type)))
         this.setData({
           courses,
           filtered: courses,
-          courseTypeCount: new Set(courses.map((course) => course.type)).size,
+          filters: ['全部', ...courseTypes],
+          filter: '全部',
+          courseTypeCount: courseTypes.length,
           loading: false,
         })
-      } catch {
-        this.setData({ loading: false, error: '课程暂时加载失败' })
-      }
-    }, settings.reduceMotion ? 0 : 180)
+    } catch (error) {
+      this.setData({
+        loading: false,
+        courses: [],
+        filtered: [],
+        error: error instanceof Error ? error.message : '课程暂时加载失败',
+      })
+    }
   },
   chooseFilter(event: WechatMiniprogram.TouchEvent) {
     const filter = event.currentTarget.dataset.filter as string
@@ -54,8 +63,9 @@ Page({
   scrollToCourses() {
     wx.pageScrollTo({ scrollTop: 0, duration: 180 })
   },
-  openDetail() {
-    const course = this.data.courses[0]
+  openDetail(event?: WechatMiniprogram.TouchEvent) {
+    const code = event?.currentTarget.dataset.code as string | undefined
+    const course = this.data.courses.find((item) => item.code === code) || this.data.courses[0]
     if (!course) return
     wx.showModal({
       title: course.name,

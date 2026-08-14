@@ -17,6 +17,7 @@ Page({
     mockMode: true,
     reduceMotion: false,
     darkMode: false,
+    remoteSessionId: '',
     weekBars: [
       { label: '一', value: 32 },
       { label: '二', value: 56 },
@@ -27,25 +28,47 @@ Page({
       { label: '日', value: 40 },
     ],
   },
-  onShow() {
+  async onShow() {
     const settings = repository.getSettings()
     this.setData({
       mockMode: settings.mockMode,
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
     })
+    if (!settings.mockMode && !this.data.remoteSessionId) {
+      try {
+        const session = await repository.getActiveStudySession()
+        if (session) {
+          if (session.status === 'active') await repository.pauseStudySession(session.id)
+          this.setData({ remoteSessionId: session.id, status: 'paused' })
+        }
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '学习会话恢复失败', icon: 'none' })
+      }
+    }
   },
   onHide() {
     this.clearTimers()
     if (this.data.status === 'running') {
       this.setData({ status: 'paused' })
+      if (this.data.remoteSessionId) {
+        repository.pauseStudySession(this.data.remoteSessionId).catch(() => undefined)
+      }
     }
   },
   onUnload() {
     this.clearTimers()
   },
-  chooseDuration(event: WechatMiniprogram.TouchEvent) {
+  async chooseDuration(event: WechatMiniprogram.TouchEvent) {
     if (this.data.status === 'running') return
+    if (this.data.remoteSessionId) {
+      try {
+        await repository.finishStudySession(this.data.remoteSessionId, this.data.feeling)
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '旧会话结束失败', icon: 'none' })
+        return
+      }
+    }
     const targetMinutes = Number(event.currentTarget.dataset.minutes)
     this.setData({
       targetMinutes,
@@ -55,16 +78,40 @@ Page({
       status: 'idle',
       expression: '等待开始学习陪伴',
       expressionConfidence: '',
+      remoteSessionId: '',
     })
   },
-  toggleTimer() {
+  async toggleTimer() {
+    if (this.data.status === 'finishError') {
+      await this.finish()
+      return
+    }
     if (this.data.status === 'running') {
+      try {
+        if (this.data.remoteSessionId) {
+          await repository.pauseStudySession(this.data.remoteSessionId)
+        }
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '暂停同步失败', icon: 'none' })
+        return
+      }
       this.clearTimers()
       this.setData({ status: 'paused' })
       return
     }
     if (this.data.secondsLeft <= 0) {
-      this.reset()
+      await this.reset()
+    }
+    try {
+      if (this.data.status === 'paused' && this.data.remoteSessionId) {
+        await repository.resumeStudySession(this.data.remoteSessionId)
+      } else if (!this.data.mockMode && !this.data.remoteSessionId) {
+        const remoteSessionId = await repository.startStudySession()
+        this.setData({ remoteSessionId: remoteSessionId || '' })
+      }
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '学习会话启动失败', icon: 'none' })
+      return
     }
     this.setData({ status: 'running' })
     this.startTimer()
@@ -93,8 +140,16 @@ Page({
       }
     }, 1000) as unknown as number
   },
-  reset() {
+  async reset() {
     this.clearTimers()
+    if (this.data.remoteSessionId) {
+      try {
+        await repository.finishStudySession(this.data.remoteSessionId, this.data.feeling)
+      } catch (error) {
+        wx.showToast({ title: error instanceof Error ? error.message : '学习会话结束失败', icon: 'none' })
+        return
+      }
+    }
     const secondsLeft = this.data.targetMinutes * 60
     this.setData({
       secondsLeft,
@@ -103,14 +158,28 @@ Page({
       status: 'idle',
       expression: '等待开始学习陪伴',
       expressionConfidence: '',
+      remoteSessionId: '',
     })
   },
-  finish() {
+  async finish() {
     this.clearTimers()
     const elapsedMinutes = Math.max(
       1,
       Math.round((this.data.targetMinutes * 60 - this.data.secondsLeft) / 60),
     )
+    try {
+      if (this.data.remoteSessionId) {
+        await repository.finishStudySession(this.data.remoteSessionId, this.data.feeling)
+      }
+    } catch (error) {
+      this.setData({
+        status: 'finishError',
+        expression: '学习已结束，但记录同步失败',
+        expressionConfidence: '点击“重试同步”后再离开页面',
+      })
+      wx.showToast({ title: error instanceof Error ? error.message : '学习记录同步失败', icon: 'none' })
+      return
+    }
     const logs = (wx.getStorageSync('campus.study.logs') as Array<Record<string, unknown>> | '') || []
     logs.unshift({
       id: Date.now(),
@@ -122,7 +191,8 @@ Page({
     this.setData({
       status: 'finished',
       expression: '本次陪伴已结束',
-      expressionConfidence: '学习记录已保存在本机',
+      expressionConfidence: this.data.mockMode ? '学习记录已保存在本机' : '学习记录已同步到校园后端',
+      remoteSessionId: '',
     })
     wx.showToast({ title: '本次记录已保存', icon: 'success' })
   },

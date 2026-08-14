@@ -1,10 +1,11 @@
 package com.example.campusai.ui.screens.counselor
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,27 +17,35 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campusai.R
 import com.example.campusai.data.model.ChatMessage
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.TypingIndicator
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.components.slideInAnimation
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
+private data class QuickQuestion(
+    val label: String,
+    val prompt: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+)
+
 @Composable
-fun CounselorScreen(
-    repository: AppRepository,
-    initialPrompt: String? = null,
-) {
+fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
     val scope = rememberCoroutineScope()
@@ -44,232 +53,168 @@ fun CounselorScreen(
     var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-
     var messages by remember(mockMode) {
-        mutableStateOf(
-            listOf(
-                ChatMessage(
-                    "assistant",
-                    if (mockMode) {
-                        "你好，我是 AI 校园助手小夏。课程流程、奖助政策、校园服务，都可以来问我。当前为 Mock 知识库演示模式。"
-                    } else {
-                        "你好，我是 AI 校园助手小夏。课程流程、奖助政策、校园服务，都可以来问我。回答会结合校园知识库与后端配置的模型。"
-                    },
-                ),
-            ),
-        )
+        mutableStateOf(listOf(ChatMessage("assistant", "你好，我是 AI 校园助手小灵。课程流程、奖助政策、校园服务，都可以来问我。\n\n我会结合校园知识库与后端配置给你整理清晰步骤。")))
     }
 
     fun sendMessage(text: String) {
         val question = text.trim()
         if (question.isEmpty() || sending) return
         scope.launch {
-            messages = messages + ChatMessage("user", question)
+            messages += ChatMessage("user", question)
             input = ""
             sending = true
             error = null
             try {
-                messages = messages + ChatMessage("assistant", "")
+                messages += ChatMessage("assistant", "")
+                var receivedChunk = false
                 repository.streamChat(question) { chunk ->
-                    val last = messages.lastOrNull()
-                    if (last?.role == "assistant") {
+                    receivedChunk = true
+                    messages.lastOrNull()?.takeIf { it.role == "assistant" }?.let { last ->
                         messages = messages.dropLast(1) + last.copy(text = last.text + chunk)
                     }
                 }
+                if (!receivedChunk) throw IllegalStateException("empty AI stream")
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
+                messages = messages.dropLastWhile { it.role == "assistant" && it.text.isEmpty() }
             } finally {
                 sending = false
             }
         }
     }
 
-    // 从其他模块（如专注自习"生成学习计划"）进入时自动携带并发送上下文
-    LaunchedEffect(initialPrompt) {
-        val prompt = initialPrompt?.trim().orEmpty()
-        if (prompt.isNotEmpty()) sendMessage(prompt)
+    LaunchedEffect(initialPrompt) { initialPrompt?.takeIf { it.isNotBlank() }?.let(::sendMessage) }
+    LaunchedEffect(messages.size, sending) {
+        if (!reduceMotion && messages.isNotEmpty()) {
+            listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+        }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Background)
-            .padding(bottom = 112.dp), // 让出底部 Tab 栏 + 系统导航栏空间，避免输入框被遮挡
-    ) {
+    Column(Modifier.fillMaxSize().background(Background).padding(bottom = 88.dp)) {
         LazyColumn(
             modifier = Modifier.weight(1f),
             state = listState,
-            contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 14.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
-            item { CounselorHeader(mockMode) }
-            item { CounselorHero(reduceMotion, mockMode) }
+            item { AssistantHeader(mockMode) }
+            item { AssistantHero(mockMode, reduceMotion) }
             item {
-                Text("你可以这样问", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(9.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(
-                        listOf(
-                            "奖学金申请需要什么材料？",
-                            "课程重修怎么办理？",
-                            "校园卡丢了怎么补办？",
-                        ),
-                    ) { question ->
-                        SuggestionChip(
-                            onClick = { sendMessage(question) },
-                            label = { Text(question, maxLines = 1) },
-                            icon = { Icon(Icons.Default.AutoAwesome, null, Modifier.size(16.dp)) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = Surface,
-                                labelColor = TextPrimary,
-                                iconContentColor = Primary,
-                            ),
-                            border = SuggestionChipDefaults.suggestionChipBorder(
-                                enabled = true,
-                                borderColor = Line,
-                            ),
-                        )
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("你可以这样问", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    QuickQuestionGrid(onAsk = ::sendMessage)
                 }
             }
-            items(messages) { message ->
-                ChatBubble(message, reduceMotion)
-            }
-            if (sending) {
-                item { TypingBubble(reduceMotion) }
-            }
-            error?.let { message ->
-                item {
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                            .background(AlertErrorBg).padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Icons.Default.CloudOff, null, tint = AlertErrorText, modifier = Modifier.size(18.dp))
-                        Text(message, color = AlertErrorText, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { error = null }) { Text("知道了") }
-                    }
-                }
-            }
+            items(messages) { message -> AssistantBubble(message, reduceMotion) }
+            if (sending) item { LoadingBubble(reduceMotion) }
+            error?.let { message -> item { ErrorNotice(message) { error = null } } }
         }
-        ChatComposer(
-            value = input,
-            sending = sending,
-            onValueChange = { input = it },
-            onSend = { sendMessage(input) },
-        )
+        AssistantComposer(input, sending, { input = it }) { sendMessage(input) }
     }
+}
 
-    LaunchedEffect(messages.size, sending) {
-        if (!reduceMotion && messages.isNotEmpty()) {
-            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1)
+@Composable
+private fun AssistantHeader(mockMode: Boolean) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("AI 校园助手", color = TextPrimary, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+                Text("✦", color = Primary, fontSize = 22.sp, modifier = Modifier.padding(start = 4.dp, bottom = 14.dp))
+            }
+            Text("校园问题，随时来聊一聊", color = Muted, fontSize = 14.sp)
+        }
+        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(if (mockMode) Accent else Color(0xFFFF9646)))
+            Text(if (mockMode) " 演示模式" else " 真实后端", color = TextPrimary, fontSize = 12.sp)
         }
     }
 }
 
 @Composable
-private fun CounselorHeader(mockMode: Boolean) {
-    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("AI 校园助手", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-            Text("校园问题，随时来聊一聊", color = Muted, fontSize = 13.sp)
-        }
-        ModeBadge(mockMode)
-    }
-}
-
-@Composable
-private fun CounselorHero(reduceMotion: Boolean, mockMode: Boolean) {
+private fun AssistantHero(mockMode: Boolean, reduceMotion: Boolean) {
     Box(
-        Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(24.dp))
-            .background(Surface).border(1.dp, Line, RoundedCornerShape(24.dp))
-            .enterAnimation(enabled = !reduceMotion),
+        Modifier.fillMaxWidth().height(144.dp).clip(RoundedCornerShape(25.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFFF9FAFF), Color(0xFFF1F2FF), Color.White)))
+            .border(1.dp, Color(0xFFE1E5FF), RoundedCornerShape(25.dp)).enterAnimation(enabled = !reduceMotion),
     ) {
-        Row(
-            Modifier.fillMaxSize().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(15.dp),
+        Image(
+            painterResource(R.drawable.ai_campus_robot), null,
+            Modifier.size(124.dp).align(Alignment.CenterStart).padding(start = 3.dp), contentScale = ContentScale.Fit,
+        )
+        Column(
+            Modifier.fillMaxWidth().padding(start = 125.dp, top = 25.dp, end = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(PrimarySoft),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.SupportAgent, null, tint = Primary, modifier = Modifier.size(30.dp)) }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("校园事务助手", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    ModeBadge(mockMode)
-                }
-                Text("帮你整理办事流程、材料和下一步", color = Muted, fontSize = 12.sp)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(Success))
-                    Text(
-                        if (mockMode) "Mock 知识库在线 · 结果仅供演示"
-                        else "真实后端链路 · 模型由服务端配置",
-                        color = Muted,
-                        fontSize = 10.sp,
-                    )
-                }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("校园事务助手", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Box(Modifier.size(6.dp).clip(CircleShape).background(if (mockMode) Accent else Color(0xFFFF9646)))
+                Text(if (mockMode) "演示" else "真实后端", color = TextPrimary, fontSize = 10.sp)
+            }
+            Text("帮你整理流程、材料和下一步", color = Muted, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1)
+            Row(
+                Modifier.clip(RoundedCornerShape(15.dp)).background(Color(0xFFF0F1FF)).padding(horizontal = 7.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.VerifiedUser, null, tint = Primary, modifier = Modifier.size(13.dp))
+                Text(" 覆盖奖助、课程、校园服务问答", color = Primary, fontSize = 9.sp, maxLines = 1)
             }
         }
-        Box(
-            Modifier.align(Alignment.BottomStart).padding(start = 16.dp)
-                .width(52.dp).height(3.dp).clip(CircleShape).background(Accent),
-        )
     }
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
-    val isUser = message.role == "user"
+private fun QuickQuestionGrid(onAsk: (String) -> Unit) {
+    val questions = listOf(
+        QuickQuestion("奖学金申请\n材料清单", "奖学金申请需要什么材料？", Icons.Default.School),
+        QuickQuestion("课程重修\n办理流程", "课程重修怎么办理？", Icons.Default.MenuBook),
+        QuickQuestion("校园卡丢失\n补办地点", "校园卡丢失去哪里补办？", Icons.Default.CreditCard),
+        QuickQuestion("请假流程\n怎么走", "请假流程怎么走？", Icons.Default.EventAvailable),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        questions.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { question ->
+                    Row(
+                        Modifier.weight(1f).heightIn(min = 88.dp).clip(RoundedCornerShape(18.dp)).background(Surface)
+                            .border(1.dp, Line, RoundedCornerShape(18.dp)).clickable { onAsk(question.prompt) }.padding(11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
+                            Icon(question.icon, null, tint = Primary, modifier = Modifier.size(21.dp))
+                        }
+                        Text(question.label, Modifier.padding(start = 9.dp).weight(1f), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
+                        Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantBubble(message: ChatMessage, reduceMotion: Boolean) {
+    val assistant = message.role == "assistant"
     Row(
-        Modifier.fillMaxWidth().slideInAnimation(fromLeft = !isUser, enabled = !reduceMotion),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        Modifier.fillMaxWidth().slideInAnimation(fromLeft = assistant, enabled = !reduceMotion),
+        horizontalArrangement = if (assistant) Arrangement.Start else Arrangement.End,
         verticalAlignment = Alignment.Bottom,
     ) {
-        if (!isUser) {
-            Box(
-                Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(RobotAvatarBg),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.SmartToy, null, tint = Primary, modifier = Modifier.size(17.dp)) }
-            Spacer(Modifier.width(7.dp))
+        if (assistant) {
+            Image(painterResource(R.drawable.ai_campus_robot), null, Modifier.size(46.dp).padding(end = 6.dp), contentScale = ContentScale.Fit)
         }
         Column(
-            Modifier.widthIn(max = 292.dp).clip(
-                if (isUser) RoundedCornerShape(19.dp, 19.dp, 5.dp, 19.dp)
-                else RoundedCornerShape(19.dp, 19.dp, 19.dp, 5.dp),
-            ).background(if (isUser) Primary else Surface)
-                .then(if (isUser) Modifier else Modifier.border(1.dp, Line, RoundedCornerShape(19.dp)))
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier.widthIn(max = 300.dp)
+                .clip(if (assistant) RoundedCornerShape(22.dp, 22.dp, 22.dp, 5.dp) else RoundedCornerShape(22.dp, 22.dp, 5.dp, 22.dp))
+                .background(if (assistant) Surface else Primary)
+                .then(if (assistant) Modifier.border(1.dp, Line, RoundedCornerShape(22.dp)) else Modifier)
+                .padding(14.dp),
         ) {
-            if (isUser) {
-                Text(message.text, color = Color.White, fontSize = 13.sp, lineHeight = 20.sp)
-            } else {
-                MarkdownMessage(message.text)
-            }
-            if (isUser && message.expressionLabel != null) {
-                Spacer(Modifier.height(5.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Face,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.78f),
-                        modifier = Modifier.size(12.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "已附带历史表情观察：${message.expressionLabel.name}",
-                        color = Color.White.copy(alpha = 0.82f),
-                        fontSize = 9.sp,
-                    )
-                }
-            }
-            if (!isUser) {
-                Spacer(Modifier.height(7.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Default.MenuBook, null, tint = Muted, modifier = Modifier.size(12.dp))
-                    Text("校园知识库 · 流式回答", color = Muted, fontSize = 9.sp)
+            MarkdownMessage(message.text, color = if (assistant) TextPrimary else Color.White)
+            if (assistant && message.text.isNotBlank()) {
+                Row(Modifier.padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.MenuBook, null, tint = Muted, modifier = Modifier.size(13.dp))
+                    Text("  校友知识库 · 流程同步", color = Muted, fontSize = 11.sp)
                 }
             }
         }
@@ -277,141 +222,101 @@ private fun ChatBubble(message: ChatMessage, reduceMotion: Boolean) {
 }
 
 @Composable
-private fun MarkdownMessage(markdown: String) {
-    val blocks = remember(markdown) { markdown.replace("\r\n", "\n").split("\n") }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        blocks.forEach { raw ->
-            val line = raw.trimEnd()
-            when {
-                line.isBlank() -> Spacer(Modifier.height(3.dp))
-                line.startsWith("### ") -> MarkdownInline(line.removePrefix("### "), 15.sp, FontWeight.Bold)
-                line.startsWith("## ") -> MarkdownInline(line.removePrefix("## "), 17.sp, FontWeight.ExtraBold)
-                line.startsWith("# ") -> MarkdownInline(line.removePrefix("# "), 19.sp, FontWeight.ExtraBold)
-                line.matches(Regex("^[-*+]\\s+.*")) -> Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("•", color = Primary, fontWeight = FontWeight.Bold)
-                    MarkdownInline(line.replaceFirst(Regex("^[-*+]\\s+"), ""), 13.sp, FontWeight.Normal, Modifier.weight(1f))
-                }
-                line.matches(Regex("^\\d+[.)]\\s+.*")) -> Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text(line.split(Regex("\\s+"), limit = 2)[0], color = Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    MarkdownInline(line.replaceFirst(Regex("^\\d+[.)]\\s+"), ""), 13.sp, FontWeight.Normal, Modifier.weight(1f))
-                }
-                else -> MarkdownInline(line, 13.sp, FontWeight.Normal)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MarkdownInline(
-    text: String,
-    fontSize: androidx.compose.ui.unit.TextUnit,
-    fontWeight: FontWeight,
-    modifier: Modifier = Modifier,
-) {
-    val rendered = remember(text) {
-        buildAnnotatedString {
-            var cursor = 0
-            Regex("\\*\\*(.+?)\\*\\*").findAll(text).forEach { match ->
-                append(text.substring(cursor, match.range.first))
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(match.groupValues[1]) }
-                cursor = match.range.last + 1
-            }
-            append(text.substring(cursor))
-        }
-    }
-    Text(rendered, modifier = modifier, color = TextPrimary, fontSize = fontSize, fontWeight = fontWeight, lineHeight = 20.sp)
-}
-
-@Composable
-private fun TypingBubble(reduceMotion: Boolean) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Box(
-            Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(RobotAvatarBg),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Default.SmartToy, null, tint = Primary, modifier = Modifier.size(17.dp)) }
-        Spacer(Modifier.width(7.dp))
-        Row(
-            Modifier.clip(RoundedCornerShape(19.dp, 19.dp, 19.dp, 5.dp)).background(Surface)
-                .border(1.dp, Line, RoundedCornerShape(19.dp)).padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
-        ) {
-            TypingIndicator(dotColor = Primary, enabled = !reduceMotion)
-            Text("正在查找校园知识库", color = Muted, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun ChatComposer(
-    value: String,
-    sending: Boolean,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit,
-) {
-    val canSend = value.isNotBlank() && !sending
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(Surface)
-            .border(1.dp, Line)
-            .imePadding()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+private fun LoadingBubble(reduceMotion: Boolean) = Row(verticalAlignment = Alignment.Bottom) {
+    Image(painterResource(R.drawable.ai_campus_robot), null, Modifier.size(40.dp).padding(end = 6.dp), contentScale = ContentScale.Fit)
+    Row(
+        Modifier.clip(RoundedCornerShape(18.dp)).background(Surface).border(1.dp, Line, RoundedCornerShape(18.dp)).padding(11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        TypingIndicator(dotColor = Primary, enabled = !reduceMotion)
+        Text(" 正在查询校园知识库", color = Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun ErrorNotice(message: String, dismiss: () -> Unit) = Row(
+    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AlertErrorBg).padding(12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+) {
+    Icon(Icons.Default.CloudOff, null, tint = AlertErrorText)
+    Text(message, Modifier.weight(1f).padding(start = 8.dp), color = AlertErrorText, fontSize = 13.sp)
+    TextButton(dismiss) { Text("知道了") }
+}
+
+@Composable
+private fun AssistantComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Surface)
+            .border(1.dp, Line, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).imePadding().padding(11.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("输入你的校园事务问题…", fontSize = 13.sp, color = Muted) },
-                maxLines = 4,
-                shape = RoundedCornerShape(18.dp),
+                value, onValueChange, Modifier.weight(1f),
+                placeholder = { Text("✦ 输入你的校园事务问题…", color = Muted, fontSize = 14.sp) }, maxLines = 2,
+                shape = RoundedCornerShape(19.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Primary,
-                    unfocusedBorderColor = InputBorder,
-                    focusedContainerColor = Surface,
-                    unfocusedContainerColor = Surface,
-                    cursorColor = Primary,
+                    focusedBorderColor = Primary, unfocusedBorderColor = Primary.copy(alpha = .4f),
+                    focusedContainerColor = Surface, unfocusedContainerColor = Surface, cursorColor = Primary,
                 ),
             )
             FilledIconButton(
-                onClick = onSend,
-                enabled = canSend,
-                modifier = Modifier.size(48.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = Primary,
-                    contentColor = Color.White,
-                    disabledContainerColor = PrimarySoft,
-                    disabledContentColor = Primary.copy(alpha = 0.45f),
-                ),
-            ) {
-                Icon(
-                    if (sending) Icons.Default.HourglassTop else Icons.Default.Send,
-                    contentDescription = "发送",
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+                onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(52.dp), shape = RoundedCornerShape(19.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = PrimarySoft),
+            ) { Icon(if (sending) Icons.Default.HourglassTop else Icons.Default.Send, "发送", Modifier.size(22.dp)) }
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Icon(
-                Icons.Default.Shield,
-                null,
-                tint = Success,
-                modifier = Modifier.size(12.dp),
-            )
-            Text(
-                "仅提供校园事务辅助，不替代学校正式通知或专业咨询",
-                color = Muted,
-                fontSize = 10.sp,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Shield, null, tint = Success, modifier = Modifier.size(13.dp))
+            Text(" 仅提供校园事务辅助，不替代学校正式通知或专业咨询", color = Muted, fontSize = 10.sp, maxLines = 1)
         }
     }
+}
+
+@Composable
+private fun MarkdownMessage(markdown: String, color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        markdown.replace("\r\n", "\n").lines().forEach { rawLine ->
+            val line = rawLine.trimEnd()
+            when {
+                line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ") ->
+                    MarkdownText(line.substringAfter(' ').trim(), color, 16.sp, 22.sp, FontWeight.Bold)
+                line.startsWith("- ") || line.startsWith("* ") -> Row(verticalAlignment = Alignment.Top) {
+                    Text("•", color = Primary, fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
+                    MarkdownText(line.drop(2), color, 14.sp, 21.sp, FontWeight.Normal, Modifier.weight(1f))
+                }
+                Regex("^\\d+[.)]\\s+").containsMatchIn(line) -> MarkdownText(line, color, 14.sp, 21.sp, FontWeight.Normal)
+                else -> MarkdownText(line, color, 14.sp, 21.sp, FontWeight.Normal)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownText(
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    fontWeight: FontWeight,
+    modifier: Modifier = Modifier,
+) {
+    val annotated: AnnotatedString = buildAnnotatedString {
+        var cursor = 0
+        while (cursor < text.length) {
+            val start = text.indexOf("**", cursor)
+            if (start < 0) {
+                append(text.substring(cursor))
+                break
+            }
+            append(text.substring(cursor, start))
+            val end = text.indexOf("**", start + 2)
+            if (end < 0) {
+                append(text.substring(start))
+                break
+            }
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text.substring(start + 2, end)) }
+            cursor = end + 2
+        }
+    }
+    Text(annotated, modifier = modifier, color = color, fontSize = fontSize, lineHeight = lineHeight, fontWeight = fontWeight)
 }

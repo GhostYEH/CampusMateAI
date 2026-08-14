@@ -37,6 +37,10 @@ def _course_to_out(
         description=course.description,
         teacher_id=course.teacher_id,
         teacher_name=teacher_name,
+        provider=course.provider,
+        external_id=course.external_id,
+        source_url=course.source_url,
+        last_synced_at=course.last_synced_at,
         status=course.status,
         created_at=course.created_at,
         updated_at=course.updated_at,
@@ -78,7 +82,7 @@ def list_courses(
                 continue
             if query and not _course_matches_query(c, query):
                 continue
-            teacher_name = _teacher_name(container, c.teacher_id)
+            teacher_name = c.remote_teacher_name or _teacher_name(container, c.teacher_id)
             items.append(_course_to_out(c, teacher_name))
         items.sort(key=lambda x: x.created_at, reverse=True)
         total = len(items)
@@ -100,7 +104,7 @@ def list_courses(
         page=page,
         page_size=page_size,
     )
-    items = [_course_to_out(r, _teacher_name(container, r.teacher_id)) for r in rows]
+    items = [_course_to_out(r, r.remote_teacher_name or _teacher_name(container, r.teacher_id)) for r in rows]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
@@ -152,7 +156,7 @@ def get_course(
     if course is None:
         raise CourseNotFound()
     _assert_can_view_course(course, user, container)
-    return _course_to_out(course, _teacher_name(container, course.teacher_id))
+    return _course_to_out(course, course.remote_teacher_name or _teacher_name(container, course.teacher_id))
 
 
 @router.patch("/{course_id}", response_model=CourseOut)
@@ -169,7 +173,7 @@ def update_course(
     updated = container.course_repository.update_course(course_id, fields=fields)
     if updated is None:
         raise CourseNotFound()
-    return _course_to_out(updated, _teacher_name(container, updated.teacher_id))
+    return _course_to_out(updated, updated.remote_teacher_name or _teacher_name(container, updated.teacher_id))
 
 
 def _assert_can_view_course(
@@ -179,6 +183,8 @@ def _assert_can_view_course(
         return
     # 学生: 必须已加入该课程下的任一班级
     enrolls = container.enrollment_repository.list_user_classes(user.id)
+    if course.provider == "chaoxing" and course.teacher_id == user.id:
+        return
     if not any(e["course_id"] == course.id for e in enrolls):
         raise Forbidden("你未加入此课程下的任何班级")
 

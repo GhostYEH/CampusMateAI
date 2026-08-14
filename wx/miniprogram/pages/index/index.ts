@@ -29,37 +29,19 @@ Page({
     darkMode: false,
     quickActions: [
       {
-        label: '课程表',
-        detail: '查看本周安排',
-        route: '/pages/courses/courses',
-        tab: true,
-        tone: 'blue',
+        label: '考试安排', detail: '', route: '', tab: false, tone: 'blue',
         icon: 'quick-calendar',
       },
       {
-        label: '校园通知',
-        detail: '整理长通知',
-        route: '/pages/notices/notices',
-        tab: false,
-        tone: 'teal',
-        icon: 'quick-notice',
+        label: '空教室', detail: '', route: '', tab: false, tone: 'blue', icon: 'quick-calendar',
       },
       {
-        label: '学习陪伴',
-        detail: '开始一段专注',
-        route: '/pages/study/study',
-        tab: false,
-        tone: 'orange',
-        icon: 'quick-study',
+        label: '办事大厅', detail: '', route: '/pages/notices/notices', tab: false, tone: 'teal', icon: 'quick-notice',
       },
       {
-        label: 'AI 校园助手',
-        detail: '问问校园里的事',
-        route: '/pages/counselor/counselor',
-        tab: true,
-        tone: 'navy',
-        icon: 'quick-counselor',
+        label: '专注自习', detail: '', route: '/pages/study/study', tab: false, tone: 'orange', icon: 'quick-study',
       },
+      { label: '失物招领', detail: '', route: '', tab: false, tone: 'navy', icon: 'quick-counselor' },
     ] as QuickAction[],
   },
   onLoad() {
@@ -68,17 +50,26 @@ Page({
       todayLabel: this.formatToday(),
     })
   },
-  onShow() {
+  async onShow() {
     const user = repository.getSession()
     if (!user) {
       wx.reLaunch({ url: '/pages/login/login' })
       return
     }
 
-    const tasks = repository.getTasks()
-    const pendingTasks = tasks.filter((task) => !task.done)
     const settings = repository.getSettings()
-    const courses = repository.getCourses().slice(0, 2)
+    try {
+      const [tasksResult, coursesResult] = await Promise.allSettled([
+        repository.getTasksAsync(),
+        repository.getCoursesAsync(),
+      ])
+      if (tasksResult.status === 'rejected' && coursesResult.status === 'rejected') {
+        throw tasksResult.reason
+      }
+      const tasks = tasksResult.status === 'fulfilled' ? tasksResult.value : []
+      const allCourses = coursesResult.status === 'fulfilled' ? coursesResult.value : []
+      const pendingTasks = tasks.filter((task) => !task.done)
+      const courses = allCourses.slice(0, 2)
     const completedCount = tasks.length - pendingTasks.length
     const deadlineTasks = pendingTasks.slice(0, 3).map((task, index) => ({
       ...task,
@@ -96,6 +87,25 @@ Page({
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
     })
+      if (tasksResult.status === 'rejected' || coursesResult.status === 'rejected') {
+        wx.showToast({ title: '部分校园数据暂未加载', icon: 'none' })
+      }
+    } catch (error) {
+      this.setData({
+        user,
+        courses: [],
+        deadlineTasks: [],
+        pendingCount: 0,
+        completedCount: 0,
+        weekProgress: 0,
+        reduceMotion: settings.reduceMotion,
+        darkMode: settings.darkMode,
+      })
+      wx.showToast({
+        title: error instanceof Error ? error.message : '首页数据加载失败',
+        icon: 'none',
+      })
+    }
     wx.nextTick(() => {
       const tabBar = this.getTabBar()
       if (tabBar) tabBar.sync()
@@ -110,7 +120,10 @@ Page({
   openAction(event: WechatMiniprogram.TouchEvent) {
     const route = event.currentTarget.dataset.route as string
     const tab = event.currentTarget.dataset.tab as boolean
-    if (!route) return
+    if (!route) {
+      wx.showToast({ title: '该功能正在接入小程序', icon: 'none' })
+      return
+    }
     if (tab) {
       wx.switchTab({ url: route })
     } else {

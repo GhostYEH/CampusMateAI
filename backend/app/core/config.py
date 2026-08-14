@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     expression_contribution_path: str = "./data/expression_contributions"
     max_expression_contribution_mb: int = 3
     max_upload_mb: int = 10
+    chaoxing_cache_path: str = "./data/chaoxing_cache"
+    chaoxing_cache_max_mb: int = 1024
+    chaoxing_cache_file_max_mb: int = 256
     # 用字符串表示，逗号分隔；通过 allowed_extensions_list 属性获取列表
     allowed_extensions: str = "md,txt,pdf,docx"
     # 启动时是否自动导入内置测试环境资料(默认关闭;仅 dev/test 显式开启)
@@ -81,6 +84,12 @@ class Settings(BaseSettings):
     # production 环境下强制为 False(见 _normalize 校验)
     auto_seed_demo_users: bool = False
 
+    # ===== EduConnector =====
+    # 教务会话 TTL（秒），默认 30 分钟
+    edu_session_ttl_seconds: int = 1800
+    # production 环境下是否允许使用 MockEduAdapter（默认禁止）
+    edu_allow_mock_in_production: bool = False
+
     # ----- 派生属性 -----
     @property
     def is_dev(self) -> bool:
@@ -108,6 +117,13 @@ class Settings(BaseSettings):
         p = Path(self.knowledge_base_path)
         if not p.is_absolute():
             # 相对 backend/ 根目录解析
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def chaoxing_cache_dir(self) -> Path:
+        p = Path(self.chaoxing_cache_path)
+        if not p.is_absolute():
             p = Path(__file__).resolve().parents[2] / p
         return p
 

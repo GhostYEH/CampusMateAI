@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -26,6 +27,8 @@ class NoticeOut(BaseModel):
     unread: bool = Field(False, description="当前学生视角是否未读")
     category: Optional[str] = Field(None, description="分类(课程名等)")
     content: Optional[str] = Field(None, description="通知正文")
+    kind: str = Field("announcement", pattern="^(announcement|unified)$")
+    source_url: Optional[str] = Field(None, description="原始通知链接")
 
 
 class NoticeExtractRequest(BaseModel):
@@ -49,6 +52,51 @@ class NoticeExtractRequest(BaseModel):
                 "allow_multi_task": True,
             }
         }
+
+
+class NoticeSemanticType(str, Enum):
+    CHAT = "CHAT"
+    NOTICE = "NOTICE"
+    ACTIONABLE_NOTICE = "ACTIONABLE_NOTICE"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
+class NoticeBatchMessage(BaseModel):
+    text: str = Field(..., min_length=1, max_length=5000)
+    published_at: Optional[datetime] = None
+
+
+class NoticeBatchItem(BaseModel):
+    client_id: str = Field(..., min_length=1, max_length=200)
+    client_fingerprint: str = Field(..., min_length=16, max_length=128)
+    source_name: str = Field(..., min_length=1, max_length=200)
+    published_at: Optional[datetime] = None
+    messages: List[NoticeBatchMessage] = Field(..., min_length=1, max_length=20)
+
+    @property
+    def content(self) -> str:
+        return "\n".join(message.text for message in self.messages)
+
+
+class NoticeBatchIngestRequest(BaseModel):
+    items: List[NoticeBatchItem] = Field(..., min_length=1, max_length=20)
+
+
+class NoticeBatchItemResult(BaseModel):
+    client_id: str
+    client_fingerprint: str
+    status: str = Field(..., pattern="^(completed|ignored|retryable|failed)$")
+    semantic_type: NoticeSemanticType
+    notice_created: bool = False
+    tasks_created: int = 0
+    duplicate: bool = False
+    extraction: Optional["MultiNoticeExtractResponse"] = None
+    reason: Optional[str] = None
+
+
+class NoticeBatchIngestResponse(BaseModel):
+    items: List[NoticeBatchItemResult] = Field(default_factory=list)
+    stats: dict[str, int] = Field(default_factory=dict)
 
 
 class RecentNoticeItem(BaseModel):
@@ -205,4 +253,10 @@ __all__ = [
     "DuplicateNoticeMatch",
     "DuplicateNoticeCheckResponse",
     "MultiNoticeExtractResponse",
+    "NoticeSemanticType",
+    "NoticeBatchMessage",
+    "NoticeBatchItem",
+    "NoticeBatchIngestRequest",
+    "NoticeBatchItemResult",
+    "NoticeBatchIngestResponse",
 ]
