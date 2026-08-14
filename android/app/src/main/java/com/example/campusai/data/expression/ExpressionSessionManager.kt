@@ -240,8 +240,18 @@ class ExpressionSessionManager(
             cancelCollectors()
 
             behaviorCollectorJob = scope.launch {
+                var lastUiBehaviorUpdateMs = 0L
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
-                    _behaviorPrediction.value = prediction
+                    // Inference may complete at the camera cadence. Keep the
+                    // visible status calm while the signal processor receives
+                    // every stabilized prediction.
+                    if (
+                        prediction.modelState != "READY_RGB_V1" ||
+                        prediction.timestampMs - lastUiBehaviorUpdateMs >= BEHAVIOR_UI_INTERVAL_MS
+                    ) {
+                        _behaviorPrediction.value = prediction
+                        lastUiBehaviorUpdateMs = prediction.timestampMs
+                    }
                     val events = behaviorSignalProcessor.process(prediction)
                     val behaviorFocusState = focusSupervisor.processEvents(events, prediction.timestampMs)
 
@@ -304,4 +314,8 @@ class ExpressionSessionManager(
         isStable = false,
         modelVersion = "not-loaded",
     )
+
+    private companion object {
+        private const val BEHAVIOR_UI_INTERVAL_MS = 500L
+    }
 }
