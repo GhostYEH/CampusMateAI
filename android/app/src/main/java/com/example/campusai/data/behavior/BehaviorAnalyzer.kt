@@ -18,7 +18,10 @@ class BehaviorAnalyzer(
     private val frameBuffer = BehaviorFrameBuffer(config)
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
+    @Volatile
     private var initialized = false
+    @Volatile
+    private var disposed = false
 
     private val _predictions = MutableStateFlow(
         BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED"),
@@ -26,6 +29,9 @@ class BehaviorAnalyzer(
     val predictions: StateFlow<BehaviorPrediction> = _predictions.asStateFlow()
 
     override fun analyze(frame: CameraFrame) {
+        if (disposed) {
+            return
+        }
         // NoOp engine: do not buffer, do not resize, do not submit async work.
         if (!engine.isAvailable) {
             _predictions.value = BehaviorPrediction(
@@ -43,20 +49,30 @@ class BehaviorAnalyzer(
         if (analyzing.compareAndSet(false, true)) {
             // Snapshot the rolling buffer so inference owns its copies.
             val rawWindow = frameBuffer.getTemporalWindow()
-            val snapshot = rawWindow.map { bitmap ->
-                bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, bitmap.isMutable).also {
-                    // copy() after the original — ownership now belongs to the inference task
+            val snapshot = rawWindow.mapNotNull { bitmap ->
+                if (bitmap.isRecycled) {
+                    null
+                } else {
+                    bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, bitmap.isMutable)
                 }
             }
             val timestamp = frame.timestampMs
 
             executor.execute {
                 try {
+                    if (snapshot.isEmpty()) {
+                        _predictions.value = BehaviorPrediction(
+                            emptyMap(),
+                            timestamp,
+                            "NO_FRAME",
+                        )
+                        return@execute
+                    }
                     val prediction = engine.analyzeTemporalWindow(snapshot, timestamp)
                     _predictions.value = prediction
                 } finally {
                     // Inference owns the snapshot; recycle when done.
-                    snapshot.forEach { it.recycle() }
+                    snapshot.forEach { if (!it.isRecycled) it.recycle() }
                     analyzing.set(false)
                 }
             }
@@ -64,6 +80,9 @@ class BehaviorAnalyzer(
     }
 
     fun ensureInitialized() {
+        if (disposed) {
+            return
+        }
         if (!initialized) {
             engine.initialize()
             initialized = true
@@ -76,6 +95,7 @@ class BehaviorAnalyzer(
     }
 
     fun dispose() {
+        disposed = true
         frameBuffer.clear()
         executor.shutdownNow()
         engine.close()

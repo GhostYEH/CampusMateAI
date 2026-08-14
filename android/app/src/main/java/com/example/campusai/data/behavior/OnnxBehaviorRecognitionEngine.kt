@@ -31,9 +31,7 @@ class OnnxBehaviorRecognitionEngine(
     private val context: Context,
 ) : BehaviorRecognitionEngine {
 
-    private val environment: OrtEnvironment =
-        OrtEnvironment.getEnvironment()
-
+    private var environment: OrtEnvironment? = null
     private var session: OrtSession? = null
     private var inputTensor: OnnxTensor? = null
     private var inputBuffer: FloatBuffer? = null
@@ -56,10 +54,13 @@ class OnnxBehaviorRecognitionEngine(
         var createdTensor: OnnxTensor? = null
 
         try {
+            val env = environment ?: OrtEnvironment.getEnvironment().also {
+                environment = it
+            }
             val modelFile = ensureModelFile()
 
             createdSession =
-                environment.createSession(modelFile.absolutePath)
+                env.createSession(modelFile.absolutePath)
 
             val buffer = ByteBuffer
                 .allocateDirect(INPUT_FLOAT_COUNT * Float.SIZE_BYTES)
@@ -67,7 +68,7 @@ class OnnxBehaviorRecognitionEngine(
                 .asFloatBuffer()
 
             createdTensor = OnnxTensor.createTensor(
-                environment,
+                env,
                 buffer,
                 INPUT_SHAPE,
             )
