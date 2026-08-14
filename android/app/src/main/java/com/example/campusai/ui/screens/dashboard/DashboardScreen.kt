@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Grade
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Notifications
@@ -237,11 +238,11 @@ private fun QuickActions(
     onNavigate: (String) -> Unit,
     reduceMotion: Boolean,
 ) {
-    // 与底部导航不重复的五个校园服务入口
+    // 与底部导航不重复的校园能力入口；V3 不再提供审批式办事大厅。
     val actions = listOf(
         QuickAction("考试安排", "exams", Icons.Default.EventNote, Color(0xFF5B68F2)),
         QuickAction("空教室", "classrooms", Icons.Default.MeetingRoom, Color(0xFF397CEF)),
-        QuickAction("办事大厅", "services", Icons.Default.AccountBalance, Color(0xFF35B99A)),
+        QuickAction("校园社区", "community", Icons.Default.Groups, Color(0xFF35B99A)),
         QuickAction("专注自习", "focus", Icons.Default.Timer, WarmOrange),
         QuickAction("失物招领", "lostfound", Icons.Default.FindInPage, Color(0xFF7C6BE8)),
     )
@@ -471,7 +472,7 @@ private fun CampusUpdates(
         SectionTitle("校园动态", "查看更多") { onNavigate("campus-news") }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(items, key = { it.id }) { item ->
+            itemsIndexed(items, key = { index, item -> "dashboard|${item.id}|$index" }) { _, item ->
                 Column(
                     modifier = Modifier
                         .width(236.dp)

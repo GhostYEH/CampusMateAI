@@ -1,5 +1,8 @@
 package com.example.campusai.ui.screens.shell
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
@@ -45,6 +49,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +60,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,10 +68,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.core.view.WindowCompat
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.navigation.secondaryDestinationSpec
+import com.example.campusai.ui.system.routeOwnsStatusBarInset
+import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
@@ -89,10 +98,29 @@ val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
 val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
-    NavItem("tasks", "待办", Icons.Default.CheckCircle),
-    NavItem("counselor", "AI 校园助手", Icons.Default.SmartToy),
+    NavItem("tasks", "待办", Icons.Default.AssignmentTurnedIn),
+    NavItem("counselor", "AI校园助手", Icons.Default.SmartToy),
     NavItem("profile", "我的", Icons.Default.Person),
 )
+
+private val studentProfileRoutes = setOf(
+    "profile",
+    "settings",
+    "account",
+    "files",
+    "activities",
+    "favorites",
+    "university",
+    "academic",
+    "help-feedback",
+)
+
+internal fun selectedStudentDockRoute(route: String): String = when {
+    route == "community" -> "home"
+    route == "lostfound" -> "counselor"
+    route in studentProfileRoutes -> "profile"
+    else -> route
+}
 
 
 
@@ -105,13 +133,29 @@ fun AppShell(
     val session by repository.session.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val darkMode by repository.darkMode.collectAsState()
     val navItems = studentNavItems.take(5)
     val backStack by navController.currentBackStackEntryAsState()
-    // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
+    // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
     val hasSharedSecondaryNavigation = secondaryDestinationSpec(backStack?.destination?.route) != null
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
+    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback", "university", "academic")
     val isProfileFlow = route in profileRoutes
+    val view = LocalView.current
+    val systemBarPolicy = systemBarPolicy(
+        route = route,
+        darkTheme = darkMode,
+        authenticated = true,
+    )
+
+    SideEffect {
+        view.context.findActivity()?.let { activity ->
+            WindowCompat.getInsetsController(activity.window, view).apply {
+                isAppearanceLightStatusBars = systemBarPolicy.darkStatusBarIcons
+                isAppearanceLightNavigationBars = systemBarPolicy.darkNavigationBarIcons
+            }
+        }
+    }
 
     Box(
         Modifier.fillMaxSize().background(Background),
@@ -133,7 +177,7 @@ fun AppShell(
         }
         Box(
             Modifier.fillMaxSize().then(
-                if (route == "home" || isProfileFlow || hasSharedSecondaryNavigation) {
+                if (routeOwnsStatusBarInset(route) || isProfileFlow || hasSharedSecondaryNavigation) {
                     Modifier
                 } else {
                     Modifier.statusBarsPadding()
@@ -155,6 +199,12 @@ fun AppShell(
             },
         )
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
@@ -240,7 +290,7 @@ private fun CampusDock(
     reduceMotion: Boolean,
     onNavigate: (String) -> Unit,
 ) {
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
+    val selectedRoute = selectedStudentDockRoute(route)
     val primaryColor = Primary
     val dockSurface = Surface
     val dockLine = Line
@@ -253,9 +303,9 @@ private fun CampusDock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(76.dp)
+                .height(80.dp)
                 .clip(RoundedCornerShape(38.dp))
-                .background(dockSurface.copy(alpha = .92f))
+                .background(dockSurface.copy(alpha = .97f))
                 .drawBehind {
                     // Keep the dock layered and calm in both themes; no hard-coded
                     // white wash means night mode retains its surface hierarchy.
@@ -287,8 +337,7 @@ private fun CampusDock(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
-                val selected = route == item.route ||
-                    (item.route == "profile" && route in profileRoutes)
+                val selected = selectedRoute == item.route
                 LiquidGlassNavItem(
                     item = item,
                     isSelected = selected,
@@ -364,10 +413,10 @@ private fun RowScope.LiquidGlassNavItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(58.dp)
                 .clip(itemShape)
                 .background(
-                    if (isSelected) PrimarySoft.copy(alpha = .72f) else Color.Transparent,
+                    if (isSelected) PrimarySoft.copy(alpha = .86f) else Color.Transparent,
                 )
                 .drawBehind {
                     val activeGlow = if (isSelected) .9f else 0f
@@ -399,7 +448,7 @@ private fun RowScope.LiquidGlassNavItem(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
-                    modifier = Modifier.height(27.dp).width(42.dp),
+                    modifier = Modifier.height(29.dp).width(42.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -407,7 +456,7 @@ private fun RowScope.LiquidGlassNavItem(
                         contentDescription = item.label,
                         tint = color,
                         modifier = Modifier
-                            .size(21.dp)
+                            .size(if (item.route == "counselor" && isSelected) 24.dp else 21.dp)
                             .graphicsLayer {
                                 scaleX = iconScale
                                 scaleY = iconScale

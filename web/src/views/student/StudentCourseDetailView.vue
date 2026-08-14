@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
-import { getCourseDetail, getMySubmission, markAnnouncementRead } from "../../services/studentApi";
+import { downloadCourseResource, getCourseDetail, getCourseResourceOpenUrl, getMySubmission, markAnnouncementRead, syncCourseContent } from "../../services/studentApi";
 
 const route = useRoute();
 const router = useRouter();
@@ -12,12 +12,17 @@ const detail = ref(null);
 const tab = ref("overview");
 const selectedSubmission = ref(null);
 const expandedNotice = ref(null);
+const expandedChapters = ref(new Set());
+const syncingContent = ref(false);
 
 const tabs = [
   { key: "overview", label: "课程概览" },
+  { key: "chapters", label: "章节" },
   { key: "materials", label: "资料" },
   { key: "assignments", label: "作业" },
   { key: "announcements", label: "通知" },
+  { key: "exams", label: "考试" },
+  { key: "discussions", label: "讨论" },
   { key: "grades", label: "成绩" },
   { key: "teacher", label: "教师信息" },
 ];
@@ -35,6 +40,52 @@ const courseProgress = computed(() => courseStats.value.assignments ? Math.round
 const ringCircumference = 314.16;
 const ringDash = computed(() => `${Math.max(0, (ringCircumference * courseProgress.value) / 100)} ${ringCircumference}`);
 const materials = computed(() => assignments.value.flatMap((assignment) => (assignment.attachments || []).map((file) => ({ ...file, assignmentId: assignment.id, assignmentTitle: assignment.title, className: assignment.className }))));
+const remoteContent = computed(() => detail.value?.remoteContent || []);
+const remoteMaterials = computed(() => remoteContent.value.filter((item) => ["document", "audio", "image", "material"].includes(item.kind)));
+const chapters = computed(() => remoteContent.value.filter((item) => item.kind === "chapter"));
+const exams = computed(() => remoteContent.value.filter((item) => item.kind === "exam"));
+const discussions = computed(() => remoteContent.value.filter((item) => item.kind === "discussion"));
+const remoteAssignments = computed(() => remoteContent.value.filter((item) => item.kind === "assignment"));
+const remoteNotices = computed(() => remoteContent.value.filter((item) => item.kind === "notice"));
+const sectionStatus = computed(() => Object.fromEntries((detail.value?.contentSummary?.sections || []).map((item) => [item.section, item])));
+
+function sectionMessage(section) {
+  const value = sectionStatus.value[section];
+  if (!value) return "尚未同步，点击刷新本课程获取";
+  if (value.status === "unavailable") return "当前课程或学校暂未开放此栏目";
+  if (value.status === "failed") return "本次同步失败，已保留此前数据";
+  if (value.status === "partial") return "部分内容暂未取回";
+  return value.item_count === 0 ? "学习通返回的列表为空" : `${value.item_count} 项 · ${formatDate(value.last_synced_at)}`;
+}
+
+function toggleChapter(id) {
+  const next = new Set(expandedChapters.value);
+  next.has(id) ? next.delete(id) : next.add(id);
+  expandedChapters.value = next;
+}
+
+function chapterChildren(id) {
+  return remoteContent.value.filter((item) => item.parent_external_id === id);
+}
+
+async function openRemote(item) {
+  if (item.can_download) {
+    await downloadCourseResource(route.params.courseId, item.id, item.title);
+    return;
+  }
+  const result = await getCourseResourceOpenUrl(route.params.courseId, item.id);
+  if (result.url) window.open(result.url, "_blank", "noopener");
+}
+
+async function refreshRemoteContent() {
+  syncingContent.value = true;
+  try {
+    await syncCourseContent(route.params.courseId);
+    await load();
+  } finally {
+    syncingContent.value = false;
+  }
+}
 
 function formatDate(value) {
   if (!value) return "";
@@ -175,6 +226,14 @@ onMounted(load);
         >{{ item.label }}</button>
       </nav>
 
+      <div class="cd-sync-bar">
+        <span><UiIcon name="PhCloudArrowDown" />学习通课程元数据与栏目状态</span>
+        <small>{{ sectionStatus.chapters ? `最近同步：${formatDate(sectionStatus.chapters.last_synced_at)}` : "本课程尚未同步内容" }}</small>
+        <button class="cd-primary-btn" type="button" :disabled="syncingContent" @click="refreshRemoteContent">
+          <UiIcon name="PhArrowsClockwise" />{{ syncingContent ? "同步中…" : "同步本课程" }}
+        </button>
+      </div>
+
       <section v-if="tab === 'overview'" class="cd-overview">
         <div class="cd-overview-left">
           <article class="cd-panel">
@@ -309,6 +368,28 @@ onMounted(load);
         </div>
       </section>
 
+      <section v-else-if="tab === 'chapters'" class="cd-panel cd-tab-panel">
+        <div class="cd-panel-head">
+          <div><span class="cd-eyebrow">Learning path</span><h2>课程章节</h2><p class="cd-panel-sub">章节层级和其中的学习资源来自学习通真实课程数据。</p></div>
+          <span class="cd-count">{{ chapters.length }} 章</span>
+        </div>
+        <div v-if="chapters.length" class="cd-content-list">
+          <article v-for="chapter in chapters.filter((item) => !item.parent_external_id)" :key="chapter.id" class="cd-content-card">
+            <button type="button" class="cd-content-head" @click="toggleChapter(chapter.external_id || chapter.id)">
+              <span class="cd-row-icon blue"><UiIcon name="PhBookOpenText" /></span>
+              <span class="cd-row-main"><strong>{{ chapter.title }}</strong><small>{{ chapter.description || `${chapterChildren(chapter.external_id || chapter.id).length} 项子内容` }}</small></span>
+              <UiIcon name="PhCaretDown" />
+            </button>
+            <div v-if="expandedChapters.has(chapter.external_id || chapter.id)" class="cd-content-children">
+              <button v-for="child in chapterChildren(chapter.external_id || chapter.id)" :key="child.id" type="button" @click="openRemote(child)">
+                <UiIcon :name="child.kind === 'video' ? 'PhPlayCircle' : 'PhFileText'" /><span>{{ child.title }}</span><small>{{ child.kind }}</small>
+              </button>
+            </div>
+          </article>
+        </div>
+        <div v-else class="cd-mini-empty">{{ sectionMessage('chapters') }}</div>
+      </section>
+
       <section v-else-if="tab === 'materials'" class="cd-panel cd-tab-panel">
         <div class="cd-panel-head">
           <div>
@@ -316,7 +397,14 @@ onMounted(load);
             <h2>资料与附件</h2>
             <p class="cd-panel-sub">从作业和课程内容中汇总可下载的附件。</p>
           </div>
-          <span class="cd-count">{{ materials.length }} 个文件</span>
+          <span class="cd-count">{{ materials.length + remoteMaterials.length }} 个文件</span>
+        </div>
+        <div v-if="remoteMaterials.length" class="cd-material-list">
+          <button v-for="material in remoteMaterials" :key="material.id" type="button" class="cd-material-card" @click="openRemote(material)">
+            <span class="cd-material-icon"><UiIcon name="PhFileArrowDown" /></span>
+            <span class="cd-material-info"><strong>{{ material.title }}</strong><small>{{ material.mime_type || material.kind }} · {{ material.cached ? '已缓存' : '点击时获取' }}</small></span>
+            <span class="cd-enter-btn">{{ material.can_download ? '下载' : '打开' }}<UiIcon name="PhArrowSquareOut" /></span>
+          </button>
         </div>
         <div v-if="materials.length" class="cd-material-list">
           <a
@@ -335,7 +423,7 @@ onMounted(load);
             <span class="cd-enter-btn">下载<UiIcon name="PhDownloadSimple" /></span>
           </a>
         </div>
-        <div v-else class="cd-mini-empty">暂无课程资料，教师上传附件后会显示在这里。</div>
+        <div v-if="!materials.length && !remoteMaterials.length" class="cd-mini-empty">{{ sectionMessage('materials') }}</div>
       </section>
 
       <section v-else-if="tab === 'assignments'" class="cd-panel cd-tab-panel">
@@ -345,7 +433,7 @@ onMounted(load);
             <h2>课程作业</h2>
             <p class="cd-panel-sub">点击作业进入详情页查看要求并提交。</p>
           </div>
-          <span class="cd-count">{{ assignments.length }} 项</span>
+          <span class="cd-count">{{ assignments.length + remoteAssignments.length }} 项</span>
         </div>
         <div v-if="assignments.length" class="cd-assign-table">
           <button
@@ -364,7 +452,14 @@ onMounted(load);
             <UiIcon name="PhCaretRight" />
           </button>
         </div>
-        <div v-else class="cd-mini-empty">暂无作业，教师发布后会显示在这里。</div>
+        <div v-if="remoteAssignments.length" class="cd-assign-table">
+          <button v-for="assignment in remoteAssignments" :key="assignment.id" type="button" class="cd-assign-row" @click="openRemote(assignment)">
+            <span class="cd-row-icon blue"><UiIcon name="PhClipboardText" /></span>
+            <span class="cd-row-main"><strong>{{ assignment.title }}</strong><small>学习通 · {{ assignment.status === 'completed' ? '已完成' : '未完成' }}</small></span>
+            <time>{{ formatDeadline(assignment.deadline) }}</time><UiIcon name="PhArrowSquareOut" />
+          </button>
+        </div>
+        <div v-if="!assignments.length && !remoteAssignments.length" class="cd-mini-empty">{{ sectionMessage('assignments') }}</div>
       </section>
 
       <section v-else-if="tab === 'announcements'" class="cd-panel cd-tab-panel">
@@ -374,7 +469,7 @@ onMounted(load);
             <h2>课程通知</h2>
             <p class="cd-panel-sub">课程班级发布的通知会集中显示在这里。</p>
           </div>
-          <span class="cd-count">{{ announcements.length }} 条</span>
+          <span class="cd-count">{{ announcements.length + remoteNotices.length }} 条</span>
         </div>
         <div v-if="announcements.length" class="cd-announce-list">
           <article
@@ -395,7 +490,29 @@ onMounted(load);
             <p>{{ notice.content }}</p>
           </article>
         </div>
-        <div v-else class="cd-mini-empty">暂无课程通知，任课教师发布后会显示在这里。</div>
+        <div v-if="remoteNotices.length" class="cd-announce-list">
+          <article v-for="notice in remoteNotices" :key="notice.id" class="cd-announce-card open">
+            <button class="cd-announce-head" type="button" @click="openRemote(notice)">
+              <span class="cd-notice-icon"><UiIcon name="PhMegaphone" /></span>
+              <span class="cd-announce-main"><strong>{{ notice.title }}</strong><small>学习通 · {{ notice.author_name || '课程教师' }} · {{ formatDate(notice.published_at) }}</small></span>
+              <UiIcon name="PhArrowSquareOut" />
+            </button>
+            <p v-if="notice.description">{{ notice.description }}</p>
+          </article>
+        </div>
+        <div v-if="!announcements.length && !remoteNotices.length" class="cd-mini-empty">{{ sectionMessage('notices') }}</div>
+      </section>
+
+      <section v-else-if="tab === 'exams'" class="cd-panel cd-tab-panel">
+        <div class="cd-panel-head"><div><span class="cd-eyebrow">Assessment</span><h2>课程考试</h2></div><span class="cd-count">{{ exams.length }} 项</span></div>
+        <div v-if="exams.length" class="cd-assign-table"><button v-for="item in exams" :key="item.id" type="button" class="cd-assign-row" @click="openRemote(item)"><span class="cd-row-icon green"><UiIcon name="PhExam" /></span><span class="cd-row-main"><strong>{{ item.title }}</strong><small>{{ item.status }}</small></span><time>{{ formatDeadline(item.deadline) }}</time><UiIcon name="PhArrowSquareOut" /></button></div>
+        <div v-else class="cd-mini-empty">{{ sectionMessage('exams') }}</div>
+      </section>
+
+      <section v-else-if="tab === 'discussions'" class="cd-panel cd-tab-panel">
+        <div class="cd-panel-head"><div><span class="cd-eyebrow">Discussion</span><h2>课程讨论</h2></div><span class="cd-count">{{ discussions.length }} 项</span></div>
+        <div v-if="discussions.length" class="cd-assign-table"><button v-for="item in discussions" :key="item.id" type="button" class="cd-assign-row" @click="openRemote(item)"><span class="cd-row-icon blue"><UiIcon name="PhChatsCircle" /></span><span class="cd-row-main"><strong>{{ item.title }}</strong><small>{{ item.author_name || '课程成员' }}</small></span><time>{{ formatDate(item.published_at) }}</time><UiIcon name="PhArrowSquareOut" /></button></div>
+        <div v-else class="cd-mini-empty">{{ sectionMessage('discussions') }}</div>
       </section>
 
       <section v-else-if="tab === 'grades'" class="cd-panel cd-tab-panel">

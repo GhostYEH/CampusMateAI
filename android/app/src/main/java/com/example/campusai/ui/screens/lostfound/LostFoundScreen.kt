@@ -20,9 +20,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,6 +85,17 @@ import kotlinx.coroutines.withContext
 
 private val LostCategories = listOf("全部", "证件卡片", "电子产品", "书籍资料", "生活用品", "其他")
 
+private val PagePadding = 16.dp
+private val HeroHeight = 300.dp
+private val HeroRadius = 34.dp
+private val FilterRadius = 28.dp
+private val ItemCardRadius = 26.dp
+private val ItemImageSize = 112.dp
+private val SectionSpacing = 12.dp
+
+internal fun lostFoundCategoryChipHorizontalPaddingDp(screenWidthDp: Int): Float =
+    if (screenWidthDp <= 432) 9f else 12f
+
 @Composable
 fun LostFoundScreen(
     repository: LostFoundRepository,
@@ -108,52 +120,59 @@ fun LostFoundScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background),
+            .background(Color(0xFFF6F8FC)),
         contentPadding = PaddingValues(bottom = BottomDockReservedHeight + 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
         item {
             LostHero(
+                onBack = onBack,
                 onMine = onOpenMine,
                 onPublish = onOpenPublish,
             )
         }
         item {
-            LostModeSwitch(
-                selectedKind = browseState.kind,
-                onSelect = { browseState = browseState.copy(kind = it) },
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = PagePadding)
+                    .fillMaxWidth()
+                    .shadow(8.dp, RoundedCornerShape(FilterRadius), ambientColor = Primary.copy(alpha = .08f), spotColor = Primary.copy(alpha = .06f))
+                    .clip(RoundedCornerShape(FilterRadius))
+                    .background(Surface.copy(alpha = .96f))
+                    .border(1.dp, Color.White, RoundedCornerShape(FilterRadius))
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                LostModeSwitch(
+                    selectedKind = browseState.kind,
+                    onSelect = { browseState = browseState.copy(kind = it) },
+                )
+                SearchBox(
+                    value = browseState.keyword,
+                    onValueChange = { browseState = browseState.copy(keyword = it) },
+                )
+                CategoryRow(
+                    categories = LostCategories,
+                    selected = browseState.category,
+                    onSelect = { browseState = browseState.copy(category = it) },
+                    contentPadding = PaddingValues(0.dp),
+                )
+                FilterControls(
+                    location = browseState.location,
+                    newestFirst = browseState.newestFirst,
+                    onLocationChange = { browseState = browseState.copy(location = it) },
+                    onSortToggle = {
+                        browseState = browseState.copy(newestFirst = !browseState.newestFirst)
+                    },
+                    contentPadding = PaddingValues(0.dp),
+                )
+            }
         }
-        item {
-            SearchBox(
-                value = browseState.keyword,
-                onValueChange = { browseState = browseState.copy(keyword = it) },
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-        }
-        item {
-            CategoryRow(
-                categories = LostCategories,
-                selected = browseState.category,
-                onSelect = { browseState = browseState.copy(category = it) },
-            )
-        }
-        item {
-            FilterControls(
-                location = browseState.location,
-                newestFirst = browseState.newestFirst,
-                onLocationChange = { browseState = browseState.copy(location = it) },
-                onSortToggle = {
-                    browseState = browseState.copy(newestFirst = !browseState.newestFirst)
-                },
-            )
-        }
-        items(filtered, key = { it.id }) { item ->
+        itemsIndexed(filtered, key = { index, item -> "lost-found|${item.id}|$index" }) { _, item ->
             LostCard(
                 item = item,
                 onClick = { onOpenDetail(item.id) },
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = PagePadding),
             )
         }
         if (filtered.isEmpty()) {
@@ -168,14 +187,15 @@ fun LostFoundScreen(
 
 @Composable
 private fun LostHero(
+    onBack: () -> Unit,
     onMine: () -> Unit,
     onPublish: () -> Unit,
 ) {
-    val heroShape = RoundedCornerShape(bottomStart = 34.dp, bottomEnd = 34.dp)
+    val heroShape = RoundedCornerShape(bottomStart = HeroRadius, bottomEnd = HeroRadius)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(278.dp)
+            .height(HeroHeight)
             .clip(heroShape)
             .background(
                 Brush.linearGradient(
@@ -188,40 +208,64 @@ private fun LostHero(
             ),
     ) {
         Image(
-                painter = painterResource(R.drawable.hero_lost_found),
+            painter = painterResource(R.drawable.hero_lost_found),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 10.dp, y = 4.dp)
-                .width(272.dp)
-                .height(252.dp),
+                .fillMaxSize(),
         )
         Row(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 18.dp),
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 20.dp, top = 14.dp, end = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .shadow(7.dp, CircleShape, ambientColor = Primary.copy(alpha = .07f), spotColor = Primary.copy(alpha = .06f))
+                    .clip(CircleShape)
+                    .background(Surface.copy(alpha = .68f))
+                    .border(1.dp, Color.White.copy(alpha = .72f), CircleShape)
+                    .campusClickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBackIosNew,
+                    contentDescription = "返回",
+                    tint = Color(0xFF1A2B54),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text = "失物招领",
+                color = Color(0xFF142443),
+                fontSize = 21.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.weight(1f))
             Text(
                 text = "我的发布",
                 color = Primary,
-                fontSize = 15.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clip(CircleShape)
                     .background(Surface.copy(alpha = .82f))
                     .border(1.dp, Color.White.copy(alpha = .9f), CircleShape)
                     .campusClickable(onClick = onMine)
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                    .padding(horizontal = 17.dp, vertical = 11.dp),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(9.dp))
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(48.dp)
+                    .shadow(12.dp, CircleShape, ambientColor = Primary.copy(alpha = .18f), spotColor = Primary.copy(alpha = .14f))
                     .clip(CircleShape)
                     .background(Primary)
-                    .shadow(12.dp, CircleShape, clip = false)
                     .campusClickable(onClick = onPublish),
                 contentAlignment = Alignment.Center,
             ) {
@@ -229,29 +273,29 @@ private fun LostHero(
                     imageVector = Icons.Default.Add,
                     contentDescription = "发布",
                     tint = Color.White,
-                    modifier = Modifier.size(31.dp),
+                    modifier = Modifier.size(29.dp),
                 )
             }
         }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 24.dp, bottom = 33.dp)
-                .width(220.dp),
+                .padding(start = 28.dp, bottom = 38.dp)
+                .width(180.dp),
         ) {
             Text(
                 text = "失物招领",
                 color = Color(0xFF182555),
-                fontSize = 36.sp,
+                fontSize = 35.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = "本地显示数据，接入后端后\n可全校同步",
                 color = Color(0xFF536888),
-                fontSize = 15.sp,
-                lineHeight = 24.sp,
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
             )
         }
     }
@@ -266,11 +310,11 @@ private fun LostModeSwitch(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(70.dp)
-            .clip(RoundedCornerShape(26.dp))
+            .height(52.dp)
+            .clip(RoundedCornerShape(22.dp))
             .background(Surface)
-            .border(1.dp, Line.copy(alpha = .7f), RoundedCornerShape(26.dp))
-            .padding(5.dp),
+            .border(1.dp, Line.copy(alpha = .6f), RoundedCornerShape(22.dp))
+            .padding(3.dp),
     ) {
         ModeSegment(
             label = "失物",
@@ -299,8 +343,8 @@ private fun ModeSegment(
 ) {
     Row(
         modifier = modifier
-            .height(60.dp)
-            .clip(RoundedCornerShape(21.dp))
+            .height(46.dp)
+            .clip(RoundedCornerShape(19.dp))
             .background(if (selected) Primary else Color.Transparent)
             .campusClickable(onClick = onClick),
         horizontalArrangement = Arrangement.Center,
@@ -310,13 +354,13 @@ private fun ModeSegment(
             imageVector = icon,
             contentDescription = label,
             tint = if (selected) Color.White else Primary,
-            modifier = Modifier.size(27.dp),
+            modifier = Modifier.size(22.dp),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(9.dp))
         Text(
             text = label,
             color = if (selected) Color.White else Primary,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -331,10 +375,10 @@ private fun SearchBox(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
-            .clip(RoundedCornerShape(23.dp))
+            .height(48.dp)
+            .clip(RoundedCornerShape(20.dp))
             .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(23.dp))
+            .border(1.dp, Line.copy(alpha = .75f), RoundedCornerShape(20.dp))
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -342,17 +386,17 @@ private fun SearchBox(
             imageVector = Icons.Default.Search,
             contentDescription = null,
             tint = Muted,
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier.size(23.dp),
         )
         Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) {
-                Text("搜索物品、地点", color = Muted, fontSize = 15.sp)
+                Text("搜索物品、地点", color = Muted, fontSize = 14.sp)
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
                 cursorBrush = SolidColor(Primary),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -366,33 +410,38 @@ private fun CategoryRow(
     categories: List<String>,
     selected: String,
     onSelect: (String) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        categories.forEach { category ->
-            val active = category == selected
-            Text(
-                text = category,
-                color = if (active) Color.White else TextPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(if (active) Primary else Surface)
-                    .border(
-                        1.dp,
-                        if (active) Primary else Line,
-                        CircleShape,
-                    )
-                    .campusClickable { onSelect(category) }
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-            )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val chipHorizontalPadding =
+            lostFoundCategoryChipHorizontalPaddingDp(maxWidth.value.toInt()).dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            categories.forEach { category ->
+                val active = category == selected
+                Text(
+                    text = category,
+                    color = if (active) Color.White else TextPrimary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (active) Primary else Surface)
+                        .border(
+                            1.dp,
+                            if (active) Primary else Line,
+                            CircleShape,
+                        )
+                        .campusClickable { onSelect(category) }
+                        .padding(horizontal = chipHorizontalPadding, vertical = 8.dp),
+                )
+            }
         }
     }
 }
@@ -403,11 +452,12 @@ private fun FilterControls(
     newestFirst: Boolean,
     onLocationChange: (String) -> Unit,
     onSortToggle: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
 ) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(contentPadding),
     ) {
         if (maxWidth < 360.dp) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -431,9 +481,14 @@ private fun FilterControls(
                 LocationDropdown(
                     selected = location,
                     onSelect = onLocationChange,
-                    modifier = Modifier.width(166.dp),
+                    modifier = Modifier.weight(1f),
                 )
-                SortButton(newestFirst = newestFirst, onClick = onSortToggle)
+                Spacer(Modifier.width(12.dp))
+                SortButton(
+                    newestFirst = newestFirst,
+                    onClick = onSortToggle,
+                    modifier = Modifier.weight(.92f),
+                )
             }
         }
     }
@@ -446,13 +501,14 @@ private fun LocationDropdown(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Box {
+    Box(modifier = modifier) {
         Row(
-            modifier = modifier
-                .height(58.dp)
-                .clip(RoundedCornerShape(18.dp))
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(17.dp))
                 .background(Surface)
-                .border(1.dp, Line, RoundedCornerShape(18.dp))
+                .border(1.dp, Line.copy(alpha = .75f), RoundedCornerShape(17.dp))
                 .campusClickable { expanded = true }
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -462,7 +518,7 @@ private fun LocationDropdown(
             Text(
                 text = selected,
                 color = TextPrimary,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
@@ -490,10 +546,10 @@ private fun SortButton(
 ) {
     Row(
         modifier = modifier
-            .height(58.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .height(46.dp)
+            .clip(RoundedCornerShape(17.dp))
             .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
+            .border(1.dp, Line.copy(alpha = .75f), RoundedCornerShape(17.dp))
             .campusClickable(onClick = onClick)
             .padding(horizontal = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -503,7 +559,7 @@ private fun SortButton(
         Text(
             text = if (newestFirst) "最新优先" else "最早优先",
             color = TextPrimary,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.width(5.dp))
@@ -520,11 +576,12 @@ private fun LostCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .shadow(5.dp, RoundedCornerShape(ItemCardRadius), ambientColor = Primary.copy(alpha = .05f), spotColor = Primary.copy(alpha = .04f))
+            .clip(RoundedCornerShape(ItemCardRadius))
             .background(Surface)
-            .border(1.dp, Line.copy(alpha = .55f), RoundedCornerShape(28.dp))
+            .border(1.dp, Line.copy(alpha = .45f), RoundedCornerShape(ItemCardRadius))
             .campusClickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LostImage(item)
@@ -534,7 +591,7 @@ private fun LostCard(
                 Text(
                     text = item.title,
                     color = TextPrimary,
-                    fontSize = 20.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -543,7 +600,7 @@ private fun LostCard(
                 Spacer(Modifier.width(8.dp))
                 StatusChip(item)
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ItemChip(
                     text = if (item.kind == LostFoundKind.LOST) "失物招领" else "招领物品",
@@ -556,7 +613,7 @@ private fun LostCard(
                     foreground = Primary,
                 )
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LocationOn, null, tint = Muted, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(4.dp))
@@ -581,12 +638,13 @@ private fun LostCard(
                     modifier = Modifier.weight(1f),
                 )
             }
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(7.dp))
             Text(
                 text = item.description,
                 color = Muted,
                 fontSize = 13.sp,
-                maxLines = 1,
+                maxLines = 2,
+                lineHeight = 18.sp,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -604,12 +662,12 @@ private fun StatusChip(item: LostFoundItem) {
             else -> "待认领"
         },
         color = if (closed) Muted else Color(0xFFF06B45),
-        fontSize = 13.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
             .clip(CircleShape)
             .background(if (closed) PrimarySoft else Color(0xFFFFF0EA))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 11.dp, vertical = 7.dp),
     )
 }
 
@@ -678,19 +736,19 @@ private fun LostImage(item: LostFoundItem) {
     }
     Box(
         modifier = Modifier
-            .size(112.dp)
+            .size(ItemImageSize)
             .clip(RoundedCornerShape(20.dp))
             .background(PrimarySoft),
         contentAlignment = Alignment.Center,
     ) {
-        if (userImage != null) {
+        userImage?.let { image ->
             Image(
-                bitmap = userImage!!,
+                bitmap = image,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
+        } ?: run {
             Image(
                 painter = painterResource(resource),
                 contentDescription = null,

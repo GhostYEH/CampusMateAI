@@ -26,5 +26,16 @@ data class RawNotificationEntity(
     val capturedAt: Long,
     val isOngoing: Boolean,
     val isClearable: Boolean,
-    val processingState: String = "READY_FOR_REVIEW",
+    val processingState: String = "READY",
+    val attemptCount: Int = 0,
+    val stateUpdatedAt: Long = capturedAt,
 )
+
+object NotificationProcessingState {
+    const val READY = "READY"
+    const val PROCESSING = "PROCESSING"
+    const val COMPLETED = "COMPLETED"
+    const val IGNORED = "IGNORED"
+    const val RETRY = "RETRY"
+    const val FAILED = "FAILED"
+}

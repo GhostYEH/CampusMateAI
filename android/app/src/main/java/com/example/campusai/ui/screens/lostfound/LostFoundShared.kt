@@ -135,9 +135,9 @@ fun LostFoundImage(item: LostFoundItem, modifier: Modifier = Modifier.size(100.d
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        if (userImage != null) {
-            Image(userImage!!, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else {
+        userImage?.let { image ->
+            Image(image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } ?: run {
             Icon(Icons.Default.Inventory2, null, tint = Primary, modifier = Modifier.size(36.dp))
         }
     }

@@ -140,6 +140,9 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     teacher2 = created_users["admin_demo3"]
     admin = created_users["admin_demo"]
     student_demo = created_users["student_demo"]
+    demo_university = container.university_repository.ensure_demo_university()
+    if student_demo.university_id != demo_university.id:
+        student_demo = user_repo.update_university(student_demo.id, demo_university.id)
 
     # === 课程 ===
     existing_courses, _ = course_repo.list_courses(page=1, page_size=200)

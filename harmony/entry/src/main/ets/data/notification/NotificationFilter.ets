@@ -2,6 +2,7 @@ import { CapturedNotification } from './CapturedNotification';
 import { NotificationSource, NotificationSourceSettings, isSourceEnabled } from './NotificationSource';
 import { NotificationTextSanitizer } from './NotificationTextSanitizer';
 import { NotificationContentClassifier, Classification, ClassificationKind } from './NotificationContentClassifier';
+import { GroupNameNormalizer } from './GroupNameNormalizer';
 
 const CAMPUSMATE_BUNDLE: string = 'com.example.campusmate';
 
@@ -10,6 +11,8 @@ export class NotificationFilter {
     notification: CapturedNotification,
     settings: NotificationSourceSettings,
     wechatWhitelist: string[] = [],
+    wecomWhitelist: string[] = [],
+    qqWhitelist: string[] = [],
   ): boolean {
     if (notification.bundleName === CAMPUSMATE_BUNDLE) {
       return false;
@@ -17,12 +20,15 @@ export class NotificationFilter {
     if (!isSourceEnabled(settings, notification.source)) {
       return false;
     }
-    if (notification.source === NotificationSource.WECHAT) {
-      if (wechatWhitelist.length === 0) {
+    let sourceWhitelist: string[] | null = null;
+    if (notification.source === NotificationSource.WECHAT) sourceWhitelist = wechatWhitelist;
+    if (notification.source === NotificationSource.WECOM) sourceWhitelist = wecomWhitelist;
+    if (notification.source === NotificationSource.QQ) sourceWhitelist = qqWhitelist;
+    if (sourceWhitelist !== null) {
+      if (sourceWhitelist.length === 0 || notification.groupIdentityConfidence !== 'HIGH') {
         return false;
       }
-      const candidateGroup: string = notification.conversationTitle.length > 0 ? notification.conversationTitle : notification.title;
-      if (candidateGroup.length === 0 || !wechatWhitelist.includes(candidateGroup)) {
+      if (!GroupNameNormalizer.matches(notification.groupCandidate, sourceWhitelist)) {
         return false;
       }
     }
@@ -36,7 +42,7 @@ export class NotificationFilter {
     if (!NotificationContentClassifier.isLikelyNonTask(primaryText)) {
       return true;
     }
-    const heading: string = [notification.conversationTitle, notification.title].filter((s: string) => s.length > 0).join('\n');
+    const heading: string = [notification.groupCandidate, notification.title].filter((s: string) => s.length > 0).join('\n');
     return !NotificationContentClassifier.isLikelyNonTask(heading) && NotificationContentClassifier.hasActionSignal(primaryText);
   }
 

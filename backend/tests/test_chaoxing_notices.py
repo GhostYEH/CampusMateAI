@@ -207,7 +207,8 @@ async def test_chaoxing_actionable_notice_creates_task(mock_container: ServiceCo
     assert tasks[0].source == "chaoxing_notice"
     assert tasks[0].source_notice_id == "n1"
     assert tasks[0].external_id == "n1"
-    assert tasks[0].course_id == "c1"
+    courses, _ = mock_container.course_repository.list_courses(teacher_id=user_id)
+    assert tasks[0].course_id == courses[0].id
 
 @pytest.mark.asyncio
 async def test_chaoxing_normal_notice_does_not_create_task(mock_container: ServiceContainer, user_id: str, monkeypatch):

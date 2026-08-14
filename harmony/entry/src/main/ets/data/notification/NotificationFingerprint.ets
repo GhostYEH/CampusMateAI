@@ -9,10 +9,12 @@ export class NotificationFingerprint {
     const primaryText: string = NotificationTextSanitizer.primaryText(notification.bigText, notification.text);
     const timeBucket: string = Math.floor(notification.postTime / DEDUP_WINDOW_MS).toString();
     const identity: string = [
+      notification.notificationKey,
       notification.bundleName,
+      notification.notificationId.toString(),
       notification.title,
       primaryText,
-      notification.conversationTitle,
+      notification.groupCandidate,
       timeBucket,
     ].join(UNIT_SEPARATOR);
     return NotificationFingerprint.fnv1a(identity);

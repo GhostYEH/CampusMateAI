@@ -1,6 +1,5 @@
 package com.example.campusai.ui.screens.profile
 
-import android.app.Activity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,14 +20,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
@@ -44,7 +41,6 @@ fun ProfileScreen(
     val reduceMotion by repository.reduceMotion.collectAsState()
     val darkMode by repository.darkMode.collectAsState()
     var showAbout by remember { mutableStateOf(false) }
-    ReferenceSystemBars(darkMode)
 
     Box(Modifier.fillMaxSize().background(Background)) {
         LazyColumn(
@@ -78,6 +74,9 @@ fun ProfileScreen(
                 ProfileMenu(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
+                        ProfileRow(Icons.Default.School, "我的大学", "选择学校并隔离校园数据") { onNavigate("university") },
+                        ProfileRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
+                        ProfileRow(Icons.Default.AccountBalance, "教务系统", "查看学校支持状态与连接安全") { onNavigate("academic") },
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
                         ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },
@@ -343,18 +342,3 @@ internal val ReferencePageBackground: Color @Composable get() = Background
 internal val ReferenceText: Color @Composable get() = TextPrimary
 internal val ReferenceMuted: Color @Composable get() = Muted
 internal val ReferenceDivider: Color @Composable get() = Line
-
-@Composable
-internal fun ReferenceSystemBars(darkMode: Boolean) {
-    val view = LocalView.current
-    DisposableEffect(view, darkMode) {
-        val activity = view.context as? Activity
-        val controller = activity?.let { WindowCompat.getInsetsController(it.window, view) }
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = !darkMode
-        onDispose {
-            controller?.isAppearanceLightStatusBars = !darkMode
-            controller?.isAppearanceLightNavigationBars = !darkMode
-        }
-    }
-}

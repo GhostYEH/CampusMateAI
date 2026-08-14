@@ -22,6 +22,7 @@ class UserRow:
     major: Optional[str] = None
     grade: Optional[str] = None
     avatar_url: Optional[str] = None
+    university_id: Optional[str] = None
     is_active: bool = True
     created_at: str = ""
     updated_at: str = ""
@@ -40,6 +41,7 @@ class UserRow:
             major=row["major"],
             grade=row["grade"],
             avatar_url=row["avatar_url"],
+            university_id=row["university_id"],
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -60,6 +62,7 @@ class UserRow:
             "major": self.major,
             "grade": self.grade,
             "avatar_url": self.avatar_url,
+            "university_id": self.university_id,
             "is_active": self.is_active,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -84,6 +87,15 @@ class CourseRow:
     semester: Optional[str] = None
     description: Optional[str] = None
     teacher_id: Optional[str] = None
+    remote_teacher_name: Optional[str] = None
+    remote_class_id: Optional[str] = None
+    remote_cpi: Optional[str] = None
+    remote_school_name: Optional[str] = None
+    remote_class_name: Optional[str] = None
+    remote_student_count: Optional[int] = None
+    cover_url: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
     status: str = "draft"  # draft / active / archived
     provider: Optional[str] = None
     external_id: Optional[str] = None
@@ -107,6 +119,15 @@ class CourseRow:
             semester=row["semester"],
             description=row["description"],
             teacher_id=row["teacher_id"],
+            remote_teacher_name=get_col(row, "remote_teacher_name"),
+            remote_class_id=get_col(row, "remote_class_id"),
+            remote_cpi=get_col(row, "remote_cpi"),
+            remote_school_name=get_col(row, "remote_school_name"),
+            remote_class_name=get_col(row, "remote_class_name"),
+            remote_student_count=get_col(row, "remote_student_count"),
+            cover_url=get_col(row, "cover_url"),
+            starts_at=get_col(row, "starts_at"),
+            ends_at=get_col(row, "ends_at"),
             status=row["status"],
             provider=get_col(row, "provider"),
             external_id=get_col(row, "external_id"),

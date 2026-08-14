@@ -1,0 +1,49 @@
+"""ZhengfangAdapter — 正方教务系统适配器（占位实现）。
+
+正方教务系统是中国高校最主流的教务系统之一，但每所学校的部署差异很大：
+- 部分学校使用新版（JW2017 / JWGL2）
+- 部分学校使用旧版（JW2005）
+- 登录方式有 CAS / SSO / form / WebVPN 多种
+- 验证码有图片 / 滑块 / 短信多种
+
+当前为占位实现，所有方法抛 AdapterNotImplemented。
+等真实高校数据与账号到位后再实现。
+
+**严禁**根据学校官网域名猜测教务 URL。
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+from ....schemas.edu import EduExam, EduGrade, EduProfile, EduSchedule
+from .base import AdapterNotImplemented, EduAdapter
+
+
+class ZhengfangAdapter(EduAdapter):
+    """正方教务系统适配器（占位）。"""
+
+    provider = "zhengfang"
+
+    async def login(
+        self,
+        *,
+        username: str,
+        password: str,
+        config: Optional[dict] = None,
+    ) -> dict:
+        raise AdapterNotImplemented(self.provider, "login")
+
+    async def fetch_profile(self, session: dict) -> EduProfile:
+        raise AdapterNotImplemented(self.provider, "fetch_profile")
+
+    async def fetch_schedule(self, session: dict, *, semester: Optional[str] = None) -> EduSchedule:
+        raise AdapterNotImplemented(self.provider, "fetch_schedule")
+
+    async def fetch_grade(self, session: dict, *, semester: Optional[str] = None) -> EduGrade:
+        raise AdapterNotImplemented(self.provider, "fetch_grade")
+
+    async def fetch_exam(self, session: dict, *, semester: Optional[str] = None) -> EduExam:
+        raise AdapterNotImplemented(self.provider, "fetch_exam")
+
+
+__all__ = ["ZhengfangAdapter"]

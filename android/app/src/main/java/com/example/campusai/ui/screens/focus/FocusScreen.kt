@@ -6,7 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -168,7 +168,7 @@ fun FocusScreen(
         }
         item { Text("最近记录", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp) }
         if (records.isEmpty()) item { Text("完成一次专注后，记录会从后端同步到这里。", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp)) }
-        else items(records.take(8), key = { it.id }) { record ->
+        else itemsIndexed(records.take(8), key = { index, record -> "focus-record|${record.id}|$index" }) { _, record ->
             Surface(shape = RoundedCornerShape(18.dp), color = Surface) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CheckCircle, null, tint = FocusBlue); Spacer(Modifier.width(11.dp)); Column(Modifier.weight(1f)) { Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.SemiBold); Text(record.endedAt, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; Text("已完成", color = FocusGreen, fontSize = 12.sp) } }
         }
     }

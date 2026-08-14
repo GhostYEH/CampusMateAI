@@ -9,7 +9,10 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
-from typing import List, Optional
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
+
+from pydantic import BaseModel, Field, ValidationError
 
 from ..core.config import Settings
 from ..core.exceptions import (
@@ -25,12 +28,45 @@ from ..schemas.notice import (
     MaterialItem,
     MultiNoticeExtractResponse,
     NoticeExtractResponse,
+    NoticeSemanticType,
 )
 from .llm.base import LLMClient, LLMError, LLMTimeoutError
 
 
 MAX_NOTICE_LEN = 5000
 LLM_TIMEOUT = 25.0  # 秒
+AUTOMATION_EXTRACTOR_VERSION = "notification-rule-first-v1"
+
+
+@dataclass
+class SemanticDecision:
+    id: str
+    type: NoticeSemanticType
+    tasks: List[NoticeExtractResponse] = field(default_factory=list)
+    needs_confirmation: bool = False
+    reason: str = ""
+
+
+class _LLMBatchResult(BaseModel):
+    id: str
+    type: NoticeSemanticType
+    tasks: List[dict[str, Any]] = Field(default_factory=list)
+
+
+class _LLMBatchResponse(BaseModel):
+    results: List[_LLMBatchResult]
+
+
+_AUTOMATION_HARD_EXCLUSIONS = (
+    "微信支付", "支付成功", "转账成功", "付款成功", "验证码", "取件码", "红包", "优惠券",
+)
+_AUTOMATION_CHAT_EXACT = {"收到", "好的", "好的收到", "明白", "了解", "在吗", "没问题", "ok", "OK"}
+_AUTOMATION_ACTIONS = ("提交", "上交", "交材料", "交报名表", "交作业", "交报告", "填写", "签到", "打卡", "参加", "领取", "上传", "申请", "完成")
+_AUTOMATION_TASKS = ("作业", "实验报告", "报告", "申请", "报名", "材料", "考试", "班会", "签到")
+_AUTOMATION_CAMPUS = ("学院", "教务", "课程", "班级", "图书馆", "校园", "成绩", "讲座", "停电", "闭馆", "检修")
+_AUTOMATION_TIME_RE = re.compile(
+    r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天]|\d{1,2}月\d{1,2}日|\d{1,2}[:：点时]\d{0,2}|截止|之前|前)"
+)
 
 
 # ===== 规则提取 =====
@@ -876,6 +912,94 @@ class NoticeExtractionService:
         self._llm = llm
         self._settings = settings
 
+    def classify_semantics(self, content: str) -> NoticeSemanticType:
+        """Cheap deterministic gate used only by automatic notification ingestion."""
+        text = re.sub(r"\s+", " ", content or "").strip()
+        if not text or any(marker in text for marker in _AUTOMATION_HARD_EXCLUSIONS):
+            return NoticeSemanticType.CHAT
+        if text in _AUTOMATION_CHAT_EXACT or re.fullmatch(r"(哈|呵|嘿|嘻){2,}.*", text):
+            return NoticeSemanticType.CHAT
+        if any(marker in text for marker in ("吃饭", "聚餐", "天气不错", "到宿舍", "一起去")):
+            return NoticeSemanticType.CHAT
+
+        has_action = any(word in text for word in _AUTOMATION_ACTIONS)
+        has_task = any(word in text for word in _AUTOMATION_TASKS)
+        has_time = bool(_AUTOMATION_TIME_RE.search(text))
+        has_campus = any(word in text for word in _AUTOMATION_CAMPUS)
+        completed = any(pattern.search(text) for pattern in _COMPLETION_PATTERNS)
+        if completed:
+            return NoticeSemanticType.CHAT
+        if has_action and has_task and has_time:
+            return NoticeSemanticType.ACTIONABLE_NOTICE
+        if has_campus and (has_time or any(word in text for word in ("通知", "公布", "安排"))):
+            return NoticeSemanticType.NOTICE
+        if has_action or has_task or has_time or "记得" in text or "报名" in text:
+            return NoticeSemanticType.AMBIGUOUS
+        return NoticeSemanticType.CHAT
+
+    async def extract_ambiguous_batch(self, items: List[dict[str, Any]]) -> List[SemanticDecision]:
+        """Resolve all ambiguous bundles with at most one structured LLM request."""
+        if not items:
+            return []
+        fallback = [
+            SemanticDecision(
+                id=str(item["id"]),
+                type=NoticeSemanticType.AMBIGUOUS,
+                needs_confirmation=True,
+                reason="llm_unavailable_or_invalid",
+            )
+            for item in items
+        ]
+        if self._llm is None or not self._settings.llm_available:
+            return fallback
+        payload = [
+            {
+                "id": str(item["id"]),
+                "content": str(item["content"]),
+                "source_name": item.get("source_name"),
+                "published_at": item.get("published_at").isoformat()
+                if isinstance(item.get("published_at"), datetime)
+                else item.get("published_at"),
+            }
+            for item in items
+        ]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Classify each campus message bundle. Return strict JSON only: "
+                    '{"results":[{"id":"...","type":"CHAT|NOTICE|ACTIONABLE_NOTICE","tasks":[]}]}.'
+                    " Keep every input id exactly once. Tasks may use the existing notice extraction fields."
+                ),
+            },
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+        try:
+            response = await asyncio.wait_for(
+                self._llm.chat(messages, temperature=0.0, max_tokens=3000, timeout=LLM_TIMEOUT),
+                timeout=LLM_TIMEOUT + 5,
+            )
+            parsed = _LLMBatchResponse.model_validate_json(response.content)
+            by_id = {str(item["id"]): item for item in items}
+            seen: set[str] = set()
+            decisions: List[SemanticDecision] = []
+            for result in parsed.results:
+                if result.id not in by_id or result.id in seen or result.type is NoticeSemanticType.AMBIGUOUS:
+                    raise ValueError("LLM batch ids/types do not match the request")
+                seen.add(result.id)
+                original = by_id[result.id]
+                tasks = [
+                    _normalize_llm_output(task, str(original["content"]), original.get("source_name"))
+                    for task in result.tasks
+                ]
+                decisions.append(SemanticDecision(result.id, result.type, tasks, False, "llm_batch"))
+            if seen != set(by_id):
+                raise ValueError("LLM batch omitted input ids")
+            return decisions
+        except (asyncio.TimeoutError, LLMTimeoutError, LLMError, ValidationError, ValueError, TypeError) as exc:
+            logger.warning("Notification LLM batch rejected; using confirmation fallback: {}", str(exc)[:120])
+            return fallback
+
     async def extract(
         self,
         content: str,
@@ -1204,4 +1328,7 @@ __all__ = [
     "NoticeExtractionService",
     "compute_notice_hash",
     "_split_notice_into_segments",
+    "NoticeSemanticType",
+    "SemanticDecision",
+    "AUTOMATION_EXTRACTOR_VERSION",
 ]

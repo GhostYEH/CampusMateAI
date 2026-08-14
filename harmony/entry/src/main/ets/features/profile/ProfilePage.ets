@@ -6,7 +6,13 @@ export struct ProfilePage {
   @Prop name: string = '林知夏';
   @Prop detail: string = '计算机科学与技术 · 大三';
   onNavigate: (route: string) => void = () => {};
+  @State pressedRoute: string = '';
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  triggerNav(route: string): void {
+    this.pressedRoute = route;
+    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, 160);
+    this.onNavigate(route);
+  }
 
   @Builder QuickAction(label: string, symbol: Resource, route: string, accent: boolean) {
     Column({ space: 9 }) {
@@ -14,7 +20,10 @@ export struct ProfilePage {
         SymbolGlyph(symbol).fontSize(23).fontColor([accent ? this.palette().accent : this.palette().primary])
       }.width(43).height(43).backgroundColor(accent ? '#1FE08A4E' : this.palette().soft).borderRadius(14)
       Text(label).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
-    }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).onClick(() => this.onNavigate(route))
+    }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center)
+      .scale({ x: this.pressedRoute === route ? 0.9 : 1.0, y: this.pressedRoute === route ? 0.9 : 1.0 })
+      .animation({ duration: 160, curve: Curve.EaseOut })
+      .onClick(() => this.triggerNav(route))
   }
 
   @Builder MenuRow(label: string, symbol: Resource, route: string) {
@@ -22,7 +31,10 @@ export struct ProfilePage {
       SymbolGlyph(symbol).fontSize(27).fontColor([this.palette().primary])
       Text(label).fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 18 })
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(21).fontColor([this.palette().muted])
-    }.width('100%').height(58).alignItems(VerticalAlign.Center).onClick(() => this.onNavigate(route))
+    }.width('100%').height(58).alignItems(VerticalAlign.Center)
+      .backgroundColor(this.pressedRoute === route ? this.palette().soft : Color.Transparent)
+      .animation({ duration: 160, curve: Curve.EaseOut })
+      .onClick(() => this.triggerNav(route))
   }
 
   build() {
@@ -70,6 +82,9 @@ export struct ProfilePage {
         Column({ space: 14 }) {
           Text('更多服务').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold).width('100%').padding({ left: 4 })
           Column() {
+            this.MenuRow('我的大学', $r('sys.symbol.school'), 'university'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('校园社区', $r('sys.symbol.person_2'), 'community'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('教务系统', $r('sys.symbol.book'), 'academic'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('学习与专注', $r('sys.symbol.timer'), 'focus'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('通知与提醒', $r('sys.symbol.bell'), 'notifications'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('账号与隐私', $r('sys.symbol.person_shield'), 'account'); Divider().color(this.palette().line).margin({ left: 53 })

@@ -1,62 +1,8 @@
-<!--
-  Refactored WXML for the login page, featuring a video background and a layout aligned with the Android app's design.
--->
-<view class="login-page {{reduceMotion ? 'reduce-motion' : ''}}">
-  <!-- Video Background -->
-  <video
-    class="visual-video"
-    src="http://127.0.0.1:8000/login_campus.mp4"
-    autoplay
-    loop
-    muted
-    show-play-btn="{{false}}"
-    controls="{{false}}"
-    object-fit="cover"
-  ></video>
-
-  <view class="visual-shade"></view>
-
-  <view class="visual-content" style="padding-top: {{statusBarHeight + 48}}px;">
-    <image class="brand-icon" src="/assets/app-icon.png" mode="aspectFill"></image>
-    <view class="visual-title">欢迎使用<br/>Campus AI</view>
-    <view class="visual-copy">登录以继续</view>
+<scroll-view class="login-page {{reduceMotion ? 'reduce-motion' : ''}}" scroll-y enhanced show-scrollbar="{{false}}">
+  <image class="visual-image" src="/assets/campus-login.jpg" mode="aspectFill"></image><view class="visual-shade"></view>
+  <view class="visual-content" style="padding-top: {{statusBarHeight + 42}}px;"><image class="brand-icon" src="/assets/app-icon.png" mode="aspectFill"></image><view class="brand-name">CampusMate</view><view class="visual-title">让校园生活<br/>更从容一点</view><view class="visual-copy">课程、待办与校园事务，一处清楚整理。</view></view>
+  <view class="panel enter"><view class="panel-head"><view><view class="title">欢迎回来</view><view class="subtitle">登录以继续你的校园日程</view></view><button class="mode-badge" bindtap="toggleLoginMode">{{mockMode ? 'Mock 模式 · 切换' : '真实后端 · 切换'}}</button></view>
+    <view class="form"><view wx:if="{{!mockMode}}" class="backend-login"><view class="input-label">后端服务地址</view><view class="backend-input-row"><input class="field" value="{{apiBaseUrlInput}}" placeholder="https://api.example.edu" bindinput="onBackendUrl" /><button loading="{{checkingBackend}}" disabled="{{checkingBackend}}" bindtap="saveBackendUrl">检查</button></view></view><view class="input-label">校园账号</view><input class="field" value="{{username}}" placeholder="请输入校园账号" bindinput="onUsername" /><view class="input-label">密码</view><input class="field" value="{{password}}" password="{{!showPassword}}" placeholder="请输入密码" bindinput="onPassword" bindconfirm="submit" /><view wx:if="{{error}}" class="error-banner">{{error}}</view><button class="primary-button submit" loading="{{loading}}" disabled="{{loading}}" hover-class="button-pressed" bindtap="submit">{{loading ? '正在登录…' : '登录'}}</button></view>
+    <view class="demo-note">{{mockMode ? '演示账号 student_demo　密码 Demo123456' : '请使用后端已注册的学生账号'}}</view><button wx:if="{{!mockMode}}" class="mock-recovery" bindtap="useMockMode">暂不连接，返回 Mock 模式</button>
   </view>
-
-  <view class="panel enter">
-    <view class="panel-head">
-      <view class="title">登录</view>
-      <view class="mode-badge">
-        <text>{{mockMode ? 'Mock 模式' : '真实后端'}}</text>
-      </view>
-    </view>
-
-    <view class="form">
-      <input
-        class="field"
-        value="{{username}}"
-        placeholder="校园账号"
-        bindinput="onUsername"
-      />
-      <input
-        class="field"
-        value="{{password}}"
-        password="{{!showPassword}}"
-        placeholder="密码"
-        bindinput="onPassword"
-        bindconfirm="submit"
-      />
-
-      <view wx:if="{{error}}" class="error-banner">{{error}}</view>
-
-      <button
-        class="primary-button submit"
-        loading="{{loading}}"
-        disabled="{{loading}}"
-        hover-class="button-pressed"
-        bindtap="submit"
-      >{{loading ? '正在登录…' : '登录'}}</button>
-    </view>
-
-    <view class="demo-note">演示账号: student_demo / 密码: Demo123456</view>
-  </view>
-</view>
+</scroll-view>

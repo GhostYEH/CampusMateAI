@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -81,7 +81,14 @@ fun ClassroomsScreen(repository: ClassroomRepository, reduceMotion: Boolean, onB
     var multimedia by remember { mutableStateOf(true) }
     var hint by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<List<ClassroomAvailability>>(emptyList()) }
-    LaunchedEffect(Unit) { results = repository.query(ClassroomQuery(repository.campuses().first(), repository.buildings(repository.campuses().first()).first(), dates.first().second, setOf(1), 0, true)) }
+    LaunchedEffect(Unit) {
+        val initialCampus = repository.campuses().firstOrNull()
+        val initialBuilding = initialCampus?.let(repository::buildings)?.firstOrNull()
+        val initialDate = dates.firstOrNull()?.second
+        if (initialCampus != null && initialBuilding != null && initialDate != null) {
+            results = repository.query(ClassroomQuery(initialCampus, initialBuilding, initialDate, setOf(1), 0, true))
+        }
+    }
     fun query() {
         if (campus == null || building == null || date == null) { hint = "请选择校区、教学楼和日期后再查询"; return }
         hint = null; scope.launch { results = repository.query(ClassroomQuery(campus, building, date, setOf(selectedSlot), when (capacity) { ">=40座" -> 40; ">=80座" -> 80; ">=100座" -> 100; else -> 0 }, multimedia)) }
@@ -100,7 +107,10 @@ fun ClassroomsScreen(repository: ClassroomRepository, reduceMotion: Boolean, onB
         }
         item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(width = 5.dp, height = 25.dp).clip(CircleShape).background(Primary)); Spacer(Modifier.width(9.dp)); Text("推荐空教室", color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(12.dp)); Text("根据你的筛选条件为你推荐", color = Muted, fontSize = 10.5.sp, modifier = Modifier.weight(1f)); Text("共 ${results.size} 间可用  ›", color = Muted, fontSize = 11.sp) } }
         if (results.isEmpty() && !loading) item { Text("当前条件下没有可用教室，请调整筛选条件。", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 24.dp) ) }
-        items(results, key = { it.classroom.id }) { ClassroomCard(it) }
+        itemsIndexed(
+            items = results,
+            key = { index, result -> "classroom|${result.classroom.id}|$index" },
+        ) { _, result -> ClassroomCard(result) }
     }
 }
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError, _auth_error
-from ..deps import current_user
+from ..deps import require_role
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
 from ...schemas.notice import DuplicateNoticeCheckRequest, NoticeExtractResponse, RecentNoticeItem
@@ -68,7 +68,9 @@ def _extract_assignment_external_id(notice):
     return match.group(1) if match else None
 
 
-def _is_chaoxing_assignment_duplicate(container, *, user_id, course_name, course_id, notice, extracted):
+def _is_chaoxing_assignment_duplicate(
+    container, *, user_id, course_name, course_id, remote_course_id, notice, extracted
+):
     work_id = _extract_assignment_external_id(notice)
     if work_id:
         with container.db.query() as conn:
@@ -81,9 +83,11 @@ def _is_chaoxing_assignment_duplicate(container, *, user_id, course_name, course
 
     sql = "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND status != 'deleted'"
     params = [user_id]
-    if course_id:
-        sql += " AND (course_id = ? OR course_id IS NULL)"
-        params.append(course_id)
+    course_ids = [value for value in {course_id, remote_course_id} if value]
+    if course_ids:
+        placeholders = ", ".join("?" for _ in course_ids)
+        sql += f" AND (course_id IN ({placeholders}) OR course_id IS NULL)"
+        params.extend(course_ids)
     with container.db.query() as conn:
         assignment_tasks = conn.execute(sql, tuple(params)).fetchall()
 
@@ -125,10 +129,49 @@ def _is_chaoxing_assignment_duplicate(container, *, user_id, course_name, course
 def _container() -> ServiceContainer:
     return get_container()
 
+
+def _count_user_chaoxing(container: ServiceContainer, user_id: str, kind: str) -> int:
+    queries = {
+        "courses": (
+            "SELECT COUNT(*) AS n FROM courses WHERE teacher_id = ? AND provider = 'chaoxing'",
+            (user_id,),
+        ),
+        "teachers": (
+            "SELECT COUNT(DISTINCT remote_teacher_name) AS n FROM courses "
+            "WHERE teacher_id = ? AND provider = 'chaoxing' AND remote_teacher_name IS NOT NULL",
+            (user_id,),
+        ),
+        "pending_assignments": (
+            "SELECT COUNT(*) AS n FROM personal_tasks "
+            "WHERE user_id = ? AND source = 'chaoxing' AND status = 'pending'",
+            (user_id,),
+        ),
+        "notices": (
+            "SELECT COUNT(*) AS n FROM notices WHERE user_id = ? AND source = 'chaoxing'",
+            (user_id,),
+        ),
+    }
+    sql, params = queries[kind]
+    with container.db.query() as conn:
+        return int(conn.execute(sql, params).fetchone()["n"])
+
+
+def _last_user_sync_at(container: ServiceContainer, user_id: str):
+    with container.db.query() as conn:
+        row = conn.execute(
+            "SELECT MAX(last_synced_at) AS synced_at FROM ("
+            "SELECT last_synced_at FROM courses WHERE teacher_id = ? AND provider = 'chaoxing' "
+            "UNION ALL SELECT last_synced_at FROM personal_tasks WHERE user_id = ? AND source LIKE 'chaoxing%' "
+            "UNION ALL SELECT last_synced_at FROM notices WHERE user_id = ? AND source = 'chaoxing'"
+            ")",
+            (user_id, user_id, user_id),
+        ).fetchone()
+    return row["synced_at"] if row else None
+
 @router.post("/chaoxing/login")
 async def login_chaoxing(
     req: ChaoxingLoginRequest,
-    user: UserRow = Depends(current_user),
+    user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
     client = ChaoxingClient()
@@ -150,7 +193,7 @@ async def login_chaoxing(
 
 @router.get("/chaoxing/status", response_model=ChaoxingSyncStatus)
 async def get_chaoxing_status(
-    user: UserRow = Depends(current_user),
+    user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> ChaoxingSyncStatus:
     credentials = container.chaoxing_repository.get_credentials(user.id)
@@ -165,25 +208,25 @@ async def get_chaoxing_status(
     try:
         verify_res = await client.client.get(verify_url, follow_redirects=False)
         if _auth_error(verify_res):
-            return ChaoxingSyncStatus(status="offline")
+            return ChaoxingSyncStatus(status="expired")
         if verify_res.status_code >= 400:
             return ChaoxingSyncStatus(status="unavailable")
     except Exception:
         return ChaoxingSyncStatus(status="unavailable")
 
-    with container.db.query() as conn:
-        row = conn.execute(
-            "SELECT updated_at FROM chaoxing_credentials WHERE user_id = ?", (user.id,)
-        ).fetchone()
-
     return ChaoxingSyncStatus(
         status="online",
-        last_synced_at=row["updated_at"] if row else None,
+        last_synced_at=_last_user_sync_at(container, user.id),
+        source="chaoxing_live",
+        courses=_count_user_chaoxing(container, user.id, "courses"),
+        teachers=_count_user_chaoxing(container, user.id, "teachers"),
+        pending_assignments=_count_user_chaoxing(container, user.id, "pending_assignments"),
+        notices=_count_user_chaoxing(container, user.id, "notices"),
     )
 
 @router.post("/chaoxing/sync")
 async def sync_chaoxing(
-    user: UserRow = Depends(current_user),
+    user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
     credentials = container.chaoxing_repository.get_credentials(user.id)
@@ -191,6 +234,18 @@ async def sync_chaoxing(
         raise HTTPException(status_code=401, detail="Chaoxing credentials not found")
 
     client = ChaoxingClient(cookies=credentials)
+    async def extract_notice(notice, course):
+        content = notice.get("content") or notice["title"]
+        published_at = _parse_chaoxing_datetime(notice.get("published_at"))
+        # Automatic synchronization must remain bounded even when the external
+        # LLM is slow. The deterministic extractor covers action/deadline rules;
+        # manual notice ingestion can still use the richer LLM path.
+        rule_extract = getattr(container.notice_extraction, "_rule_extract", None)
+        if callable(rule_extract):
+            return rule_extract(content, source_name=course["name"], published_at=published_at)
+        return await container.notice_extraction.extract(
+            content, source_name=course["name"], published_at=published_at
+        )
     
     # Retry logic for get_courses
     max_retries = 3
@@ -222,6 +277,20 @@ async def sync_chaoxing(
 
     course_repo = container.course_repository
     now_iso = datetime.now(timezone.utc).isoformat()
+    stats = {
+        "courses_fetched": len(courses),
+        "courses_created": 0,
+        "courses_updated": 0,
+        "teachers_fetched": len({c.get("teacher_name") for c in courses if c.get("teacher_name")}),
+        "assignments_fetched": 0,
+        "assignments_pending": 0,
+        "assignments_created": 0,
+        "assignments_updated": 0,
+        "notices_fetched": 0,
+        "notices_created": 0,
+        "notices_updated": 0,
+    }
+    warnings = []
     
     # Save courses to DB (Idempotent Sync)
     for course_data in courses:
@@ -236,29 +305,76 @@ async def sync_chaoxing(
                 existing_course.id,
                 fields={
                     "name": course_data["name"],
+                    "remote_teacher_name": course_data.get("teacher_name"),
+                    "remote_class_id": course_data.get("clazz_id"),
+                    "remote_cpi": course_data.get("cpi"),
+                    "remote_school_name": course_data.get("school_name"),
+                    "remote_class_name": course_data.get("class_name"),
+                    "remote_student_count": course_data.get("student_count"),
+                    "cover_url": course_data.get("cover_url"),
+                    "starts_at": course_data.get("starts_at"),
+                    "ends_at": course_data.get("ends_at"),
                     "source_url": course_data["link"],
                     "last_synced_at": now_iso,
                 }
             )
+            stats["courses_updated"] += 1
         else:
             # Insert new course
-            course_repo.create_course(
+            existing_course = course_repo.create_course(
                 name=course_data["name"],
                 teacher_id=user.id, # Using student's user_id as owner
+                remote_teacher_name=course_data.get("teacher_name"),
+                remote_class_id=course_data.get("clazz_id"),
+                remote_cpi=course_data.get("cpi"),
+                remote_school_name=course_data.get("school_name"),
+                remote_class_name=course_data.get("class_name"),
+                remote_student_count=course_data.get("student_count"),
+                cover_url=course_data.get("cover_url"),
+                starts_at=course_data.get("starts_at"),
+                ends_at=course_data.get("ends_at"),
                 status="active",
                 provider="chaoxing",
                 external_id=external_id,
                 source_url=course_data["link"],
                 last_synced_at=now_iso,
             )
+            stats["courses_created"] += 1
+        course_data["local_course_id"] = existing_course.id
 
     # Homework sync
-    for course in courses:
+    course_by_remote_id = {str(course.get("course_id")): course for course in courses}
+    if hasattr(client, "get_all_assignments"):
         try:
-            data = await client.get_assignments_and_notices(course["link"])
+            all_assignments = await client.get_all_assignments()
         except ChaoxingFetchError as error:
-            raise _fetch_http_exception(error) from error
-        for assignment in data.get("assignments", []):
+            if error.code in ("reauth_required", "verification_required"):
+                raise _fetch_http_exception(error) from error
+            warnings.append(f"assignments:{error.code}")
+            all_assignments = []
+        assignment_batches = [
+            (course_by_remote_id.get(str(assignment.get("course_id"))) or {
+                "name": "学习通课程", "course_id": assignment.get("course_id")
+            }, [assignment])
+            for assignment in all_assignments
+        ]
+    else:
+        assignment_batches = []
+        for course in courses:
+            try:
+                data = await client.get_assignments_and_notices(course["link"])
+            except ChaoxingFetchError as error:
+                if error.code in ("reauth_required", "verification_required"):
+                    raise _fetch_http_exception(error) from error
+                warnings.append(f"assignments:{course.get('course_id')}:{error.code}")
+                continue
+            assignment_batches.append((course, data.get("assignments", [])))
+
+    for course, assignments in assignment_batches:
+        for assignment in assignments:
+            stats["assignments_fetched"] += 1
+            if assignment.get("status") != "completed":
+                stats["assignments_pending"] += 1
             task_repo = container.personal_task_repository
             external_id = assignment.get("external_id")
             if not external_id:
@@ -282,6 +398,7 @@ async def sync_chaoxing(
                     "source_name": course["name"],
                     "source_url": assignment.get("link"),
                     "last_synced_at": now_iso,
+                    "course_id": course.get("local_course_id"),
                 }
                 
                 # Update status
@@ -295,6 +412,7 @@ async def sync_chaoxing(
                         task_repo.restore(task_id, user_id=user.id)
                 
                 task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
+                stats["assignments_updated"] += 1
             else:
                 if assignment.get("status") == "completed":
                     continue
@@ -307,27 +425,48 @@ async def sync_chaoxing(
                     source_name=course["name"],
                     source="chaoxing",
                     external_id=external_id,
-                    course_id=course.get("course_id"),
+                    course_id=course.get("local_course_id"),
                     source_url=assignment.get("link"),
                     last_synced_at=now_iso,
                 )
+                stats["assignments_created"] += 1
 
     # Notice Sync
     notice_sync_available = True
-    for course in courses:
+    if hasattr(client, "get_all_notices"):
         try:
-            notices = await client.get_notices(course["link"])
+            all_notices = await client.get_all_notices()
         except ChaoxingFetchError as error:
-            # Chaoxing has retired the legacy notice endpoint for some tenants.
-            # A missing notice feed must not discard a successful course/work
-            # sync; retain the warning and continue with the authoritative data
-            # that was fetched in this run.
-            if error.code == "http_error_404":
-                notice_sync_available = False
-                logger.warning("Chaoxing notice endpoint unavailable for course %s", course.get("course_id"))
+            if error.code in ("reauth_required", "verification_required"):
+                raise _fetch_http_exception(error) from error
+            warnings.append(f"notices:{error.code}")
+            all_notices = []
+        notice_batches = [
+            (course_by_remote_id.get(str(notice.get("course_id"))) or {
+                "name": notice.get("course_name") or notice.get("creator_name") or "学习通通知",
+                "course_id": notice.get("course_id"),
+            }, [notice])
+            for notice in all_notices
+        ]
+    else:
+        notice_batches = []
+        for course in courses:
+            try:
+                notices = await client.get_notices(course["link"])
+            except ChaoxingFetchError as error:
+                if error.code == "http_error_404":
+                    notice_sync_available = False
+                    logger.warning("Chaoxing notice endpoint unavailable for course %s", course.get("course_id"))
+                    continue
+                if error.code in ("reauth_required", "verification_required"):
+                    raise _fetch_http_exception(error) from error
+                warnings.append(f"notices:{course.get('course_id')}:{error.code}")
                 continue
-            raise _fetch_http_exception(error) from error
+            notice_batches.append((course, notices))
+
+    for course, notices in notice_batches:
         for notice in notices:
+            stats["notices_fetched"] += 1
             external_id = notice.get("external_id")
             if not external_id:
                 continue
@@ -348,6 +487,7 @@ async def sync_chaoxing(
             # 这里如果不跳过，由于幂等更新也没问题。但是题目要求“新增或内容发生变化”才提取。
             # 这里我们简单比较下
             if existing_notice:
+                stats["notices_updated"] += 1
                 # dict access row
                 existing_content = dict(existing_notice).get("content")
                 # A task proves actionable extraction already succeeded. Without one,
@@ -359,30 +499,28 @@ async def sync_chaoxing(
                         external_id=external_id,
                         title=notice["title"],
                         content=notice.get("content"),
-                        course_id=course.get("course_id"),
+                        course_id=course.get("local_course_id"),
                         published_at=notice.get("published_at"),
                         source_url=notice.get("link"),
                         last_synced_at=now_iso,
                     )
                     continue
+            else:
+                stats["notices_created"] += 1
             container.notice_repository.create_or_update_notice(
                 user_id=user.id,
                 source="chaoxing",
                 external_id=external_id,
                 title=notice["title"],
                 content=notice.get("content"),
-                course_id=course.get("course_id"),
+                course_id=course.get("local_course_id"),
                 published_at=notice.get("published_at"),
                 source_url=notice.get("link"),
                 last_synced_at=now_iso,
             )
             # 2. 调用 AI 提取判断是否 actionable，如果是则创建/更新 PersonalTask
             try:
-                extracted = await container.notice_extraction.extract(
-                    notice.get("content") or notice["title"],
-                    source_name=course["name"],
-                    published_at=_parse_chaoxing_datetime(notice.get("published_at")),
-                )
+                extracted = await extract_notice(notice, course)
             except Exception as e:
                 # AI 抽取失败：Notice 仍然正常保存，不抛异常
                 logger.warning("Failed to extract notice %s: %s", external_id, e)
@@ -395,7 +533,7 @@ async def sync_chaoxing(
                     "source_text": extracted.source_text,
                     "deadline": extracted.deadline.isoformat() if extracted.deadline else None,
                     "source_name": course["name"],
-                    "course_id": course.get("course_id"),
+                    "course_id": course.get("local_course_id"),
                     "source_url": notice.get("link"),
                     "priority": extracted.importance if extracted.importance in ["low", "medium", "high"] else "medium",
                     "last_synced_at": now_iso,
@@ -414,7 +552,8 @@ async def sync_chaoxing(
                     container,
                     user_id=user.id,
                     course_name=course["name"],
-                    course_id=course.get("course_id"),
+                    course_id=course.get("local_course_id"),
+                    remote_course_id=course.get("course_id"),
                     notice=notice,
                     extracted=extracted,
                 ):
@@ -430,7 +569,7 @@ async def sync_chaoxing(
                     source="chaoxing_notice",
                     source_notice_id=external_id,
                     external_id=external_id,
-                    course_id=course.get("course_id"),
+                    course_id=course.get("local_course_id"),
                     source_url=notice.get("link"),
                     priority=fields["priority"],
                     last_synced_at=now_iso,
@@ -447,11 +586,15 @@ async def sync_chaoxing(
     return {
         "status": "sync completed",
         "notice_sync": "available" if notice_sync_available else "unavailable",
+        "source": "chaoxing_live",
+        "complete": notice_sync_available and not warnings,
+        "warnings": warnings,
+        "stats": stats,
     }
 
 @router.post("/chaoxing/disconnect")
 async def disconnect_chaoxing(
-    user: UserRow = Depends(current_user),
+    user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
     container.chaoxing_repository.delete_credentials(user.id)

@@ -59,6 +59,14 @@ class CounselorRecentTask(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class CounselorAttachment(BaseModel):
+    """Small text attachment supplied by the user for one assistant turn."""
+    name: str = Field(..., min_length=1, max_length=160)
+    type: str = Field("text/plain", max_length=80)
+    size: int = Field(0, ge=0, le=1_000_000)
+    content: str = Field(..., min_length=1, max_length=20_000)
+
+
 class ChatRequest(BaseModel):
     """AI 导员聊天请求 — 统一上下文 API Schema。
 
@@ -72,6 +80,11 @@ class ChatRequest(BaseModel):
         "后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略",
     )
     stream: bool = Field(True, description="是否使用 SSE 流式响应")
+    web_search: bool = Field(False, description="是否检索公开网页并将结果作为非官方辅助上下文")
+    attachment: Optional[CounselorAttachment] = Field(
+        None,
+        description="本轮用户选择的文本附件；作为不可信上下文使用，不得覆盖系统规则",
+    )
     # 多角色上下文(可选): 后端会校验当前用户是否有权访问这些资源,
     # 不存在/越权/已删除的对象将被忽略并生成 warning
     course_id: Optional[str] = Field(None, description="课程 ID(需有权限)")
@@ -153,6 +166,7 @@ __all__ = [
     "ChatSource",
     "SuggestedAction",
     "CounselorRecentTask",
+    "CounselorAttachment",
     "ChatRequest",
     "ChatFinalMeta",
 ]

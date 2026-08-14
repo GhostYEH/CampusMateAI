@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -140,7 +140,7 @@ internal fun ServiceOptionRow(
     onSelect: (String) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-        items(options, key = { it }) { option ->
+        itemsIndexed(options, key = { index, option -> "service-option|$option|$index" }) { _, option ->
             val active = option == selected
             Box(
                 modifier = Modifier
