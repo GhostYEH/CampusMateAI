@@ -1,81 +1,52 @@
-.state {
-  min-height: 300rpx;
-  padding: 52rpx 30rpx;
+.state-view {
+  min-height: 176px;
+  padding: 28px 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-.state-skeleton {
-  width: 100%;
-  max-width: 430rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.skeleton-icon {
-  width: 74rpx;
-  height: 74rpx;
-  border-radius: 22rpx;
-}
-
-.skeleton-title {
-  width: 180rpx;
-  margin-top: 22rpx;
-}
-
-.skeleton-copy {
-  width: 280rpx;
-  margin-top: 14rpx;
-}
-
-.mark {
-  min-width: 94rpx;
-  height: 48rpx;
-  padding: 0 14rpx;
-  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999rpx;
-  color: var(--primary, #2f6486);
-  background: var(--primary-soft, #e8f1f7);
-  font-size: 19rpx;
-  font-weight: 650;
   box-sizing: border-box;
+  text-align: center;
 }
 
-.mark.error {
-  color: var(--danger, #c25450);
-  background: var(--danger-soft, #f9eceb);
+.state-view__progress {
+  width: 88px;
 }
 
-.title {
-  margin-top: 22rpx;
-  color: var(--text, #1b2730);
-  font-size: 29rpx;
-  font-weight: 700;
+.state-view__icon {
+  width: 42px;
+  height: 42px;
+  opacity: 0.58;
 }
 
-.description {
-  max-width: 520rpx;
-  margin-top: 10rpx;
-  color: var(--muted, #667784);
-  font-size: 23rpx;
+.state-view__message {
+  margin-top: 14px;
+  color: #667784;
+  font-size: 13px;
   line-height: 1.55;
 }
 
-.action {
-  margin-top: 26rpx;
-  padding: 0 28rpx;
-  min-height: 70rpx;
-  display: flex;
-  align-items: center;
-  border-radius: 20rpx;
-  color: var(--primary, #2f6486);
-  background: var(--primary-soft, #e8f1f7);
-  font-size: 24rpx;
-  font-weight: 600;
+.state-view__message--title {
+  color: #1b2730;
+  font-weight: 650;
+}
+
+.state-view__description {
+  margin-top: 4px;
+  color: #667784;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.state-view__action {
+  min-width: 112px;
+  height: 40px;
+  margin: 18px 0 0;
+  padding: 0 22px;
+  border-radius: 20px;
+  color: #ffffff;
+  background: #596af0;
+  font-size: 13px;
+  line-height: 40px;
+  font-weight: 650;
 }

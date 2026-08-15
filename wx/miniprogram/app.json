@@ -15,6 +15,10 @@
     "backgroundTextStyle": "dark",
     "enablePullDownRefresh": false
   },
+  "usingComponents": {
+    "secondary-nav": "/components/secondary-nav/secondary-nav",
+    "state-view": "/components/state-view/state-view"
+  },
   "tabBar": {
     "custom": true,
     "color": "#667784",

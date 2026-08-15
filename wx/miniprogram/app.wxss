@@ -1,4 +1,16 @@
 page {
+  --campus-primary: #596AF0;
+  --campus-primary-deep: #3E50D9;
+  --campus-primary-soft: #EFF0FF;
+  --campus-background: #F6F8FA;
+  --campus-surface: #FFFFFF;
+  --campus-text: #1B2730;
+  --campus-muted: #667784;
+  --campus-line: #DFE6EB;
+  --campus-danger: #ED6E52;
+  --campus-page-gutter: 24px;
+  --campus-card-radius: 18px;
+  --campus-enter-duration: 300ms;
   --primary: #5b68f2;
   --primary-hover: #4e5edb;
   --primary-soft: #eff0ff;
@@ -24,6 +36,47 @@ page {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 28rpx;
   -webkit-font-smoothing: antialiased;
+}
+
+.campus-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: var(--campus-background);
+  color: var(--campus-text);
+}
+
+.campus-page-body {
+  padding: 0 var(--campus-page-gutter) calc(32px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.campus-card {
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--campus-line);
+  border-radius: var(--campus-card-radius);
+  background: var(--campus-surface);
+}
+
+.campus-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  color: var(--campus-primary);
+  background: var(--campus-primary-soft);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.campus-enter {
+  animation: campus-enter var(--campus-enter-duration) cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes campus-enter {
+  from { opacity: 0; transform: translateX(10%); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 button,
