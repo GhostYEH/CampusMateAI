@@ -71,6 +71,18 @@ export interface AppSettings {
   apiBaseUrl: string
 }
 
+export interface ConnectionState {
+  mode: 'remote' | 'mock'
+  apiBaseUrl: string
+  authenticated: boolean
+}
+
+export interface BackendHealth {
+  status: string
+  mode: string
+  version?: string
+}
+
 export interface WeekDay {
   label: string
   date: number
