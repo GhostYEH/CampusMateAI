@@ -8,7 +8,6 @@ const noticesPage = read('miniprogram/pages/notices/notices.ts')
 const indexPage = read('miniprogram/pages/index/index.ts')
 const coursesPage = read('miniprogram/pages/courses/courses.ts')
 const tabBar = read('miniprogram/custom-tab-bar/index.ts')
-const loginPage = read('miniprogram/pages/login/login.ts')
 const studyPage = read('miniprogram/pages/study/study.ts')
 const tasksPage = read('miniprogram/pages/tasks/tasks.ts')
 const noticesMarkup = read('miniprogram/pages/notices/notices.wxml')
@@ -28,9 +27,10 @@ const checks = [
   ['home loads remote-capable tasks', indexPage.includes('getTasksAsync')],
   ['courses page loads remote-capable courses', coursesPage.includes('getCoursesAsync')],
   ['tab badge loads remote-capable tasks', tabBar.includes('getTasksAsync')],
-  ['login page can configure backend address', loginPage.includes('saveBackendUrl')],
-  ['login page can recover to mock mode', loginPage.includes('useMockMode')],
-  ['login page can switch between data modes', loginPage.includes('toggleLoginMode')],
+  ['student app defaults to remote backend mode', /mockMode:\s*false/.test(repository)],
+  ['student app defaults to active LAN backend', repository.includes("apiBaseUrl: 'http://192.168.1.14:8000'")],
+  ['repository exposes current connection state', repository.includes('getConnectionState()')],
+  ['repository exposes a real backend probe', repository.includes('probeRealBackend()')],
   ['repository can test backend health', repository.includes('checkBackendHealth')],
   ['repository supports real study sessions', repository.includes('startStudySession')
     && repository.includes('pauseStudySession')
@@ -41,7 +41,6 @@ const checks = [
   ['logout does not depend on current mock setting', !repository.includes('!this.getSettings().mockMode && refreshToken')],
   ['logout does not rotate an expired token', /\/auth\/logout[\s\S]*retryAfterRefresh:\s*false/.test(repository)],
   ['logout revokes a freshly rotated token', /async logout[\s\S]*refreshAccessToken[\s\S]*latestRefreshToken/.test(repository)],
-  ['mock recovery clears remote credentials', /async useMockMode[\s\S]*await repository\.logout/.test(loginPage)],
   ['invalid manual deadlines are rejected', repository.includes('无法识别截止时间')],
   ['real course filters are derived from returned data', coursesPage.includes("filters: ['全部', ...courseTypes]" )],
   ['task load errors expose backend message', /catch \(error\)[\s\S]*error instanceof Error/.test(tasksPage)],

@@ -2,8 +2,10 @@ import { formatApiDate, normalizeDeadline } from './date-utils'
 import { defaultCourses, defaultNotices, defaultTasks, demoUsers } from './mock-data'
 import {
   AppSettings,
+  BackendHealth,
   CampusTask,
   ChatReply,
+  ConnectionState,
   Course,
   ExtractResult,
   Notice,
@@ -20,12 +22,12 @@ const STORAGE = {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  mockMode: true,
+  mockMode: false,
   reduceMotion: false,
   darkMode: false,
   remindersEnabled: true,
-  demoMode: true,
-  apiBaseUrl: '',
+  demoMode: false,
+  apiBaseUrl: 'http://192.168.1.14:8000',
 }
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
@@ -117,8 +119,21 @@ class CampusRepository {
   private refreshPromise: Promise<boolean> | null = null
 
   bootstrap(): void {
-    if (!wx.getStorageSync(STORAGE.settings)) {
+    const stored = wx.getStorageSync(STORAGE.settings) as Partial<AppSettings> | ''
+    if (!stored) {
       wx.setStorageSync(STORAGE.settings, DEFAULT_SETTINGS)
+    } else if (!stored.apiBaseUrl && stored.mockMode !== false) {
+      wx.setStorageSync(STORAGE.settings, {
+        ...DEFAULT_SETTINGS,
+        ...stored,
+        mockMode: false,
+        demoMode: false,
+        apiBaseUrl: DEFAULT_SETTINGS.apiBaseUrl,
+      })
+      if (wx.getStorageSync(STORAGE.sessionMode) === 'mock') {
+        wx.removeStorageSync(STORAGE.session)
+        wx.removeStorageSync(STORAGE.sessionMode)
+      }
     }
     if (!wx.getStorageSync(STORAGE.tasks)) {
       wx.setStorageSync(STORAGE.tasks, defaultTasks)
@@ -136,6 +151,22 @@ class CampusRepository {
     const settings = { ...this.getSettings(), ...next }
     wx.setStorageSync(STORAGE.settings, settings)
     return settings
+  }
+
+  getConnectionState(): ConnectionState {
+    const settings = this.getSettings()
+    return {
+      mode: settings.mockMode ? 'mock' : 'remote',
+      apiBaseUrl: settings.apiBaseUrl.replace(/\/$/, ''),
+      authenticated: Boolean(wx.getStorageSync(STORAGE.token)),
+    }
+  }
+
+  probeRealBackend(): Promise<BackendHealth> {
+    return this.request<BackendHealth>('/health', 'GET', undefined, {
+      authenticated: false,
+      retryAfterRefresh: false,
+    })
   }
 
   getSession(): User | null {
@@ -203,10 +234,7 @@ class CampusRepository {
   }
 
   async checkBackendHealth(): Promise<void> {
-    await this.request('/health', 'GET', undefined, {
-      authenticated: false,
-      retryAfterRefresh: false,
-    })
+    await this.probeRealBackend()
   }
 
   async getTasksAsync(): Promise<CampusTask[]> {
