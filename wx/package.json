@@ -5,9 +5,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check:backend": "node scripts/check_real_backend.js",
+    "check:budget": "node scripts/check_package_budget.js",
+    "check:devtools": "node scripts/check_devtools_compat.js",
+    "check:shell": "node scripts/check_shell_parity.js",
     "check:parity": "node scripts/check_android_parity.js",
     "check:contracts": "node scripts/check_backend_contracts.js && node scripts/check_date_utils.js",
-    "check": "npm run check:backend && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
+    "check": "npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
   },
   "keywords": [],
   "author": "",

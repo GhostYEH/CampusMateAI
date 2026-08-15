@@ -1,0 +1,8 @@
+<view class="secondary-nav" style="padding-top: {{statusBarHeight}}px;">
+  <view class="secondary-nav__row">
+    <button class="secondary-nav__back" bindtap="goBack" aria-label="返回">
+      <image src="/assets/icons/arrow-right.svg" mode="aspectFit"></image>
+    </button>
+    <view class="secondary-nav__title">{{title}}</view>
+  </view>
+</view>
