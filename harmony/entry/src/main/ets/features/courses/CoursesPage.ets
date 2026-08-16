@@ -1,12 +1,14 @@
 import { CourseContentBundle, CourseContentItem, CourseContentSummary, CourseItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct CoursesPage {
   @Prop courses: CourseItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State selectedDay: number = 0;
   @State selectedType: string = '全部';
   @State selectedId: string = '';
@@ -197,7 +199,7 @@ export struct CoursesPage {
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
     }.width('100%').padding({ left: 11, right: 11, top: 10, bottom: 10 })
       .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(14)
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.openCourse(course))
   }
 
@@ -279,7 +281,7 @@ export struct CoursesPage {
   build() {
     Column() {
       if (this.selectedCourse() !== undefined) {
-        SecondaryHeader({ title: '课程详情', subtitle: '查看课程基本信息', darkMode: this.darkMode, onBack: () => this.selectedId = '' })
+        SecondaryHeader({ title: '课程详情', subtitle: '查看课程基本信息', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.selectedId = '' })
         this.CourseDetail(this.selectedCourse()!)
       } else {
       Scroll() {

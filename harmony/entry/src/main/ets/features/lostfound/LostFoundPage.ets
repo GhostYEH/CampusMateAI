@@ -1,6 +1,7 @@
 import { LostFoundItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct LostFoundPage {
@@ -8,6 +9,7 @@ export struct LostFoundPage {
   @Prop loading: boolean = false;
   @Prop submitting: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State kind: string = 'lost';
   @State query: string = '';
   @State category: string = '全部';
@@ -77,7 +79,7 @@ export struct LostFoundPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(27)
       .border({ width: 1, color: this.palette().line })
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.selectedId = item.id)
   }
 
@@ -234,7 +236,7 @@ export struct LostFoundPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: this.showPublish ? '发布失物招领' : this.selectedId.length > 0 ? '详情' : this.showMine ? '我的发布' : '失物招领', subtitle: this.showPublish ? '请如实填写物品信息' : this.selectedId.length > 0 ? '查看失物招领详情' : this.showMine ? '管理我的发布记录' : '', darkMode: this.darkMode, onBack: () => { if (this.showPublish) { this.showPublish = false; } else if (this.selectedId.length > 0) { this.selectedId = ''; } else if (this.showMine) { this.showMine = false; } else { this.onBack(); } } })
+      SecondaryHeader({ title: this.showPublish ? '发布失物招领' : this.selectedId.length > 0 ? '详情' : this.showMine ? '我的发布' : '失物招领', subtitle: this.showPublish ? '请如实填写物品信息' : this.selectedId.length > 0 ? '查看失物招领详情' : this.showMine ? '管理我的发布记录' : '', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => { if (this.showPublish) { this.showPublish = false; } else if (this.selectedId.length > 0) { this.selectedId = ''; } else if (this.showMine) { this.showMine = false; } else { this.onBack(); } } })
       if (this.showPublish) { this.PublishPage() }
       else if (this.selectedItem() !== undefined) { this.ItemDetail(this.selectedItem()!) }
       else if (this.showMine) { this.MinePage() }

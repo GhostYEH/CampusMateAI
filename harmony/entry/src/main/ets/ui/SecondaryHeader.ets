@@ -1,10 +1,12 @@
 import { CampusPalette, darkPalette, lightPalette } from './Theme';
+import { MotionDuration, MotionSpec } from './MotionSpec';
 
 @Component
 export struct SecondaryHeader {
   @Prop title: string = '';
   @Prop subtitle: string = '';
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @BuilderParam rightContent: () => void;
   onBack: () => void = () => {};
   @State backPressed: boolean = false;
@@ -13,7 +15,7 @@ export struct SecondaryHeader {
 
   triggerBack(): void {
     this.backPressed = true;
-    setTimeout(() => { this.backPressed = false; }, 160);
+    setTimeout(() => { this.backPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onBack();
   }
 
@@ -24,8 +26,8 @@ export struct SecondaryHeader {
       }
       .width(40).height(40).backgroundColor(this.palette().surface).borderRadius(20)
       .border({ width: 1, color: this.palette().line })
-      .scale({ x: this.backPressed ? 0.88 : 1.0, y: this.backPressed ? 0.88 : 1.0 })
-      .animation({ duration: 160, curve: Curve.EaseOut })
+      .scale({ x: this.backPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.backPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
       .onClick(() => this.triggerBack())
 
       Column({ space: 3 }) {

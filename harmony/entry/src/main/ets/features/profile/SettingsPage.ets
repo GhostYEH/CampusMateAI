@@ -1,5 +1,6 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct SettingsPage {
@@ -36,9 +37,9 @@ export struct SettingsPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
     }.width('100%').padding({ top: 11, bottom: 11 })
-      .scale({ x: this.pressedRow === target ? 0.97 : 1.0, y: this.pressedRow === target ? 0.97 : 1.0 })
-      .animation({ duration: 150, curve: Curve.EaseOut })
-      .onClick(() => { this.pressedRow = target; setTimeout(() => { if (this.pressedRow === target) this.pressedRow = ''; }, 150); this.onNavigate(target); })
+      .scale({ x: this.pressedRow === target ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.pressedRow === target ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+      .onClick(() => { this.pressedRow = target; setTimeout(() => { if (this.pressedRow === target) this.pressedRow = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.onNavigate(target); })
 
   }
 
@@ -61,14 +62,14 @@ export struct SettingsPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
     }.width('100%').padding({ top: 11, bottom: 11 })
-      .scale({ x: this.pressedRow === 'signout' ? 0.97 : 1.0, y: this.pressedRow === 'signout' ? 0.97 : 1.0 })
-      .animation({ duration: 150, curve: Curve.EaseOut })
-      .onClick(() => { this.pressedRow = 'signout'; setTimeout(() => { if (this.pressedRow === 'signout') this.pressedRow = ''; }, 150); this.onSignOut(); })
+      .scale({ x: this.pressedRow === 'signout' ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.pressedRow === 'signout' ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+      .onClick(() => { this.pressedRow = 'signout'; setTimeout(() => { if (this.pressedRow === 'signout') this.pressedRow = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.onSignOut(); })
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: '系统设置', subtitle: '个性化你的校园助手', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: '系统设置', subtitle: '个性化你的校园助手', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
       Scroll() {
         Column({ space: 13 }) {
           Text('显示与动效').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold).width('100%')

@@ -1,9 +1,11 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct AccountPage {
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop name: string = '';
   @Prop detail: string = '';
   onBack: () => void = () => {};
@@ -20,7 +22,7 @@ export struct AccountPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: '账号与隐私', subtitle: '个人资料和账号信息', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: '账号与隐私', subtitle: '个人资料和账号信息', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
       Scroll() {
         Column({ space: 14 }) {
           Column({ space: 10 }) {
@@ -28,6 +30,7 @@ export struct AccountPage {
             Text(this.name).fontColor(this.palette().text).fontSize(21).fontWeight(FontWeight.Bold)
             Text(this.detail).fontColor(this.palette().muted).fontSize(12)
           }.width('100%').padding({ top: 22, bottom: 20 }).backgroundColor(this.palette().surface).borderRadius(20)
+            .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
           Column() {
             this.InfoRow('登录账号', this.name)
             Divider().color(this.palette().line)
@@ -35,10 +38,12 @@ export struct AccountPage {
             Divider().color(this.palette().line)
             this.InfoRow('数据同步', '已连接当前账号')
           }.width('100%').padding({ left: 15, right: 15 }).backgroundColor(this.palette().surface).borderRadius(18)
+            .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
           Row({ space: 9 }) {
             SymbolGlyph($r('sys.symbol.shield_checkered')).fontSize(18).fontColor([this.palette().success])
             Text('密码和令牌不会在界面中明文显示').fontColor(this.palette().muted).fontSize(10)
           }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(15)
+            .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
           Button('退出当前账号').width('100%').height(50).backgroundColor('#FFFFECEA').fontColor('#FFC25450').onClick(() => this.onSignOut())
 
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })

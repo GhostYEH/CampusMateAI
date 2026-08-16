@@ -1,12 +1,14 @@
 import { TaskItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct TasksPage {
   @Prop tasks: TaskItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State filter: string = '待完成';
   @State selectedId: string = '';
   onRefresh: () => void = () => {};
@@ -57,8 +59,8 @@ export struct TasksPage {
     }.width('100%').padding({ left: 12, right: 12, top: 12, bottom: 12 })
       .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20)
       .opacity(task.status === 'completed' ? 0.6 : 1)
-      .animation({ duration: 300, curve: Curve.EaseInOut })
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 14 })).animation({ duration: 280, curve: Curve.EaseOut }))
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.selectedId = task.id)
   }
 
@@ -111,10 +113,10 @@ export struct TasksPage {
   build() {
     Column() {
       if (this.selectedTask() !== undefined) {
-        SecondaryHeader({ title: '待办详情', subtitle: '查看待办详细信息', darkMode: this.darkMode, onBack: () => this.selectedId = '' })
+        SecondaryHeader({ title: '待办详情', subtitle: '查看待办详细信息', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.selectedId = '' })
         this.TaskDetail(this.selectedTask()!)
       } else {
-        SecondaryHeader({ title: '待办', subtitle: '今天先完成最重要的一小步', darkMode: this.darkMode, rightContent: this.RightBadge })
+        SecondaryHeader({ title: '待办', subtitle: '今天先完成最重要的一小步', darkMode: this.darkMode, reduceMotion: this.reduceMotion, rightContent: this.RightBadge })
       Scroll() {
         Column({ space: 14 }) {
           this.Hero()
@@ -124,7 +126,7 @@ export struct TasksPage {
                 .padding({ left: 13, right: 13, top: 8, bottom: 8 })
                 .backgroundColor(this.filter === item ? this.palette().soft : this.palette().surface)
                 .border({ width: 1, color: this.palette().line }).borderRadius(12)
-                .animation({ duration: 200, curve: Curve.EaseInOut })
+                .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
                 .onClick(() => this.filter = item)
             })
           }

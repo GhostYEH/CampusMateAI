@@ -1,6 +1,7 @@
 import { ServiceRequestItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct ServicesPage {
@@ -8,6 +9,7 @@ export struct ServicesPage {
   @Prop loading: boolean = false;
   @Prop submitting: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State showForm: boolean = false;
   @State formKind: string = 'leave';
   @State formTitle: string = '';
@@ -50,9 +52,9 @@ export struct ServicesPage {
       Text(subtitle).fontColor(this.palette().muted).fontSize(9).maxLines(1)
     }.width('31.5%').height(142).padding({ top: 15, bottom: 13, left: 4, right: 4 }).backgroundColor(this.palette().surface).borderRadius(22)
       .border({ width: 1, color: '#CCFFFFFF' })
-      .scale({ x: this.pressedKind === kind ? 0.93 : 1.0, y: this.pressedKind === kind ? 0.93 : 1.0 })
-      .animation({ duration: 160, curve: Curve.EaseOut })
-      .onClick(() => { this.pressedKind = kind; setTimeout(() => { if (this.pressedKind === kind) this.pressedKind = ''; }, 160); this.openForm(kind); })
+      .scale({ x: this.pressedKind === kind ? MotionSpec.scale(this.reduceMotion, 0.93) : 1.0, y: this.pressedKind === kind ? MotionSpec.scale(this.reduceMotion, 0.93) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+      .onClick(() => { this.pressedKind = kind; setTimeout(() => { if (this.pressedKind === kind) this.pressedKind = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.openForm(kind); })
 
   }
 
@@ -73,7 +75,7 @@ export struct ServicesPage {
         .fontColor(item.status === 'completed' ? this.palette().success : this.palette().primary).fontSize(10).fontWeight(FontWeight.Bold)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([this.palette().muted])
     }.width('100%').padding({ top: 11, bottom: 11 })
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 12 })).animation({ duration: 280, curve: Curve.EaseOut }))
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 12) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.selectedId = item.id)
   }
 
@@ -218,7 +220,7 @@ export struct ServicesPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: this.showForm ? this.kindTitle(this.formKind) : this.selectedId.length > 0 ? '申请详情' : this.showAllRequests ? '我的申请' : '办事大厅', subtitle: this.showForm ? '在线提交校园事务' : this.selectedId.length > 0 ? '查看校园事务处理进度' : this.showAllRequests ? '随时掌握办理进度' : '', darkMode: this.darkMode, onBack: () => this.showForm ? this.showForm = false : this.selectedId.length > 0 ? this.selectedId = '' : this.showAllRequests ? this.showAllRequests = false : this.onBack() })
+      SecondaryHeader({ title: this.showForm ? this.kindTitle(this.formKind) : this.selectedId.length > 0 ? '申请详情' : this.showAllRequests ? '我的申请' : '办事大厅', subtitle: this.showForm ? '在线提交校园事务' : this.selectedId.length > 0 ? '查看校园事务处理进度' : this.showAllRequests ? '随时掌握办理进度' : '', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.showForm ? this.showForm = false : this.selectedId.length > 0 ? this.selectedId = '' : this.showAllRequests ? this.showAllRequests = false : this.onBack() })
       if (this.showForm) { this.FormPage() }
       else if (this.selectedRequest() !== undefined) { this.DetailPage(this.selectedRequest()!) }
       else if (this.showAllRequests) { this.AllRequestsPage() }

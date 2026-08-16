@@ -1,12 +1,14 @@
 import { ClassroomAvailability } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct ClassroomsPage {
   @Prop classrooms: ClassroomAvailability[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State slot: string = '1-2节';
   @State capacity: string = '全部容量';
   @State multimedia: boolean = true;
@@ -67,13 +69,13 @@ export struct ClassroomsPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.checkmark_circle')).fontSize(18).fontColor([this.palette().success])
     }.width('100%').padding(11).backgroundColor(this.palette().surface).borderRadius(18)
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
 
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: '空教室查询', subtitle: '基于课程占用数据，帮你快速找到可用教室', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: '空教室查询', subtitle: '基于课程占用数据，帮你快速找到可用教室', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
       Scroll() {
         Column({ space: 13 }) {
           Image($r('app.media.hero_classroom')).width('100%').height(170).objectFit(ImageFit.Cover).borderRadius(20)

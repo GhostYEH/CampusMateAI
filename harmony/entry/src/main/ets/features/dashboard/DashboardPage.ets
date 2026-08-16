@@ -1,5 +1,6 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { CourseItem, NoticeItem, TaskItem } from '../../data/Models';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 interface DashboardAction {
   title: string;
@@ -11,6 +12,7 @@ interface DashboardAction {
 @Component
 export struct DashboardPage {
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop userName: string = '林知夏';
   @Prop courses: CourseItem[] = [];
   @Prop tasks: TaskItem[] = [];
@@ -26,17 +28,17 @@ export struct DashboardPage {
 
   triggerAction(route: string): void {
     this.pressedRoute = route;
-    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, 160);
+    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate(route);
   }
   triggerHero(): void {
     this.heroPressed = true;
-    setTimeout(() => { this.heroPressed = false; }, 200);
+    setTimeout(() => { this.heroPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.STATE));
     this.onNavigate('tasks');
   }
   triggerProfile(): void {
     this.profilePressed = true;
-    setTimeout(() => { this.profilePressed = false; }, 160);
+    setTimeout(() => { this.profilePressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate('profile');
   }
 
@@ -83,8 +85,9 @@ export struct DashboardPage {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
-    .scale({ x: this.profilePressed ? 0.97 : 1.0, y: this.profilePressed ? 0.97 : 1.0 })
-    .animation({ duration: 160, curve: Curve.EaseOut })
+    .scale({ x: this.profilePressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.profilePressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 10) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
     .onClick(() => this.triggerProfile())
   }
 
@@ -150,8 +153,9 @@ export struct DashboardPage {
     .height(188)
     .borderRadius(26)
     .clip(true)
-    .scale({ x: this.heroPressed ? 0.97 : 1.0, y: this.heroPressed ? 0.97 : 1.0 })
-    .animation({ duration: 200, curve: Curve.EaseOut })
+    .scale({ x: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseOut })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
     .onClick(() => this.triggerHero())
   }
 
@@ -182,8 +186,8 @@ export struct DashboardPage {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Center)
-        .scale({ x: this.pressedRoute === action.route ? 0.88 : 1.0, y: this.pressedRoute === action.route ? 0.88 : 1.0 })
-        .animation({ duration: 160, curve: Curve.EaseOut })
+        .scale({ x: this.pressedRoute === action.route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.pressedRoute === action.route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
+        .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
         .onClick(() => this.triggerAction(action.route))
 
       })
@@ -192,6 +196,7 @@ export struct DashboardPage {
     .padding({ left: 8, right: 8, top: 16, bottom: 16 })
     .backgroundColor(this.palette().surface)
     .borderRadius(24)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -265,8 +270,8 @@ export struct DashboardPage {
           colors: [['#FF4259E8', 0.0], ['#FF7B78F7', 1.0]]
         })
         .borderRadius(18)
-        .scale({ x: this.pressedRoute === 'courses' ? 0.96 : 1.0, y: this.pressedRoute === 'courses' ? 0.96 : 1.0 })
-        .animation({ duration: 160, curve: Curve.EaseOut })
+        .scale({ x: this.pressedRoute === 'courses' ? MotionSpec.scale(this.reduceMotion, 0.96) : 1.0, y: this.pressedRoute === 'courses' ? MotionSpec.scale(this.reduceMotion, 0.96) : 1.0 })
+        .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
         .onClick(() => this.triggerAction('courses'))
 
         Column() {
@@ -288,6 +293,7 @@ export struct DashboardPage {
     .padding(16)
     .backgroundColor(this.palette().surface)
     .borderRadius(24)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 3), curve: Curve.EaseOut }))
   }
 
   @Builder
