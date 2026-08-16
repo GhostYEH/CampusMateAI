@@ -93,10 +93,12 @@ async function login() {
   try {
     await loginChaoxing(username.value.trim(), password.value);
     password.value = "";
+    status.value = "online";
+    lastConfirmedStatus.value = "online";
+    localStorage.setItem(LAST_STATUS_KEY, "online");
     message.value = "学习通连接成功，现在可以同步课程、作业和通知。";
     messageTone.value = "success";
     toast.success("学习通连接成功");
-    await checkStatus({ preserveMessage: true });
   } catch (error) {
     message.value = friendlyError(error, "登录失败，请稍后重试。");
     messageTone.value = "danger";
@@ -118,7 +120,17 @@ async function syncNow() {
       : `同步完成：${summaryText}。`;
     messageTone.value = data?.complete === false ? "warning" : "success";
     data?.complete === false ? toast.warning("学习通已完成部分同步") : toast.success("学习通同步成功");
-    await checkStatus({ preserveMessage: true });
+    status.value = "online";
+    lastConfirmedStatus.value = "online";
+    localStorage.setItem(LAST_STATUS_KEY, "online");
+    lastSyncedAt.value = new Date().toISOString();
+    summary.value = {
+      source: "chaoxing_live",
+      courses: stats.courses_fetched || summary.value.courses,
+      teachers: stats.teachers_fetched || summary.value.teachers,
+      pending_assignments: stats.assignments_pending ?? summary.value.pending_assignments,
+      notices: stats.notices_fetched || summary.value.notices,
+    };
   } catch (error) {
     const detail = errorDetail(error);
     if (detail.includes("reauth_required") || detail.includes("verification_required") || error?.response?.status === 401) {

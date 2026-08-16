@@ -87,9 +87,35 @@ class ChaoxingParser:
                               cpi: str) -> dict:
         chapters: list[dict] = []
         resources: list[dict] = []
+        course_meta: dict = {}
         clazzes = data.get("data") or []
         for clazz in clazzes:
+            clazz_meta = {
+                "bbsid": _identifier(clazz.get("bbsid")),
+                "chatid": _identifier(clazz.get("chatid")),
+                "classscore": clazz.get("classscore"),
+                "allowdownload": clazz.get("allowdownload"),
+                "state": clazz.get("state"),
+                "isstart": clazz.get("isstart"),
+                "begindate": clazz.get("begindate"),
+            }
+            clazz_meta = {k: v for k, v in clazz_meta.items()
+                          if v is not None and str(v).strip() not in ("", "None")}
+            if clazz_meta:
+                course_meta.setdefault("clazz", {}).update(clazz_meta)
             for course in ((clazz.get("course") or {}).get("data") or []):
+                course_level_meta = {
+                    "belongschoolid": _identifier(course.get("belongschoolid")),
+                    "mappingcourseid": _identifier(course.get("mappingcourseid")),
+                    "objectid": _identifier(course.get("objectid")),
+                    "jobcount": course.get("jobcount"),
+                    "infocontent": course.get("infocontent"),
+                    "course_state": course.get("state"),
+                }
+                course_level_meta = {k: v for k, v in course_level_meta.items()
+                                     if v is not None and str(v).strip() not in ("", "None")}
+                if course_level_meta:
+                    course_meta.setdefault("course", {}).update(course_level_meta)
                 for position, node in enumerate(
                     ((course.get("knowledge") or {}).get("data") or []), start=1
                 ):
@@ -109,6 +135,15 @@ class ChaoxingParser:
                         "https://mooc1-api.chaoxing.com/knowledge/cards"
                         f"?courseid={course_id}&clazzid={clazz_id}&knowledgeid={external_id}&cpi={cpi}"
                     )
+                    raw_status = node.get("status")
+                    chapter_metadata: dict = {
+                        "job_count": int(node.get("jobcount") or 0),
+                        "raw_status": raw_status,
+                    }
+                    for opt_key in ("isReview", "label", "begintime", "endtime"):
+                        opt_value = node.get(opt_key)
+                        if opt_value is not None and str(opt_value).strip() not in ("", "None"):
+                            chapter_metadata[opt_key] = opt_value
                     chapters.append({
                         "external_id": external_id,
                         "parent_external_id": parent_id or None,
@@ -116,9 +151,9 @@ class ChaoxingParser:
                         "title": title,
                         "position": int(node.get("indexOrder") or position),
                         "depth": depth,
-                        "status": "completed" if node.get("status") in (1, "1", "completed") else "unknown",
+                        "status": "completed" if raw_status in (1, "1", "completed") else "unknown",
                         "source_url": chapter_url,
-                        "metadata": {"job_count": int(node.get("jobcount") or 0)},
+                        "metadata": chapter_metadata,
                     })
                     attachments = (node.get("attachment") or {}).get("data") or []
                     for attachment_position, attachment in enumerate(attachments, start=1):
@@ -128,16 +163,16 @@ class ChaoxingParser:
                         raw_type = str(attachment.get("type") or "").lower()
                         extension = str(attachment.get("extension") or "").lower().lstrip(".")
                         kind = raw_type if raw_type in {"video", "audio", "image", "document"} else "material"
-                        title = str(attachment.get("name") or attachment.get("title") or "").strip()
-                        if not title:
-                            title = f"{kind}-{attachment_id}"
+                        attachment_title = str(attachment.get("name") or attachment.get("title") or "").strip()
+                        if not attachment_title:
+                            attachment_title = f"{kind}-{attachment_id}"
                             if extension:
-                                title += f".{extension}"
+                                attachment_title += f".{extension}"
                         resources.append({
                             "external_id": attachment_id,
                             "parent_external_id": external_id,
                             "kind": kind,
-                            "title": title,
+                            "title": attachment_title,
                             "position": attachment_position,
                             "depth": depth + 1,
                             "status": "unknown",
@@ -147,23 +182,26 @@ class ChaoxingParser:
                             "source_url": chapter_url,
                             "metadata": {"extension": extension, "attachment_type": raw_type},
                         })
-        return {"chapters": chapters, "resources": resources}
+        return {"chapters": chapters, "resources": resources, "course_meta": course_meta}
 
     @staticmethod
     def parse_chapter_card_resources(html: str, *, chapter_id: str,
-                                     card_url: str) -> list[dict]:
+                                     card_url: str) -> dict:
         match = re.search(r"mArg\s*=\s*(\{.*?\})\s*;", html, re.DOTALL)
         if not match:
-            return []
+            if "knowledge-card" in html or "card-content" in html or '"card"' in html:
+                return {"status": "structure_changed", "items": [], "error": "marg_not_found"}
+            return {"status": "empty", "items": [], "error": None}
         try:
             payload = json.loads(match.group(1))
         except (ValueError, TypeError):
-            return []
+            return {"status": "structure_changed", "items": [], "error": "marg_parse_failed"}
         resources: list[dict] = []
         kind_map = {
             "video": "video", "audio": "audio", "document": "document",
-            "image": "image", "vote": "quiz", "work": "quiz",
-            "test": "quiz", "link": "link", "live": "video",
+            "image": "image", "link": "link",
+            "vote": "poll", "work": "task",
+            "test": "quiz", "live": "live",
         }
         for position, attachment in enumerate(payload.get("attachments") or [], start=1):
             if not isinstance(attachment, dict):
@@ -185,6 +223,19 @@ class ChaoxingParser:
             if not title:
                 title = f"{kind}-{external_id}"
             extension = str(prop.get("type") or "").lower().lstrip(".")
+            metadata: dict = {
+                "extension": extension,
+                "attachment_type": raw_type,
+                "raw_type": raw_type,
+            }
+            for opt_key in ("jobid", "aid", "objectId", "objectid", "module"):
+                opt_value = attachment.get(opt_key) or prop.get(opt_key)
+                if opt_value is not None and str(opt_value).strip() not in ("", "None"):
+                    metadata[opt_key] = str(opt_value)
+            if raw_type in ("test", "work", "vote", "live"):
+                metadata["card_url"] = card_url
+                if object_id:
+                    metadata["object_id"] = object_id
             resources.append({
                 "external_id": external_id,
                 "parent_external_id": chapter_id,
@@ -195,9 +246,11 @@ class ChaoxingParser:
                 "remote_object_id": object_id or None,
                 "file_size": prop.get("size"),
                 "source_url": card_url,
-                "metadata": {"extension": extension, "attachment_type": raw_type},
+                "metadata": metadata,
             })
-        return resources
+        if not resources:
+            return {"status": "empty", "items": [], "error": None}
+        return {"status": "complete", "items": resources, "error": None}
 
     @staticmethod
     def parse_courses_html(html: str) -> list[dict]:
@@ -286,7 +339,12 @@ class ChaoxingClient:
         cache_key = (course_id, clazz_id, cpi)
         if cache_key in self._course_chapters_cache:
             cached = self._course_chapters_cache[cache_key]
-            return {"status": cached["status"], "items": list(cached["items"]), "error": cached["error"]}
+            return {
+                "status": cached["status"],
+                "items": list(cached["items"]),
+                "error": cached["error"],
+                "course_meta": dict(cached.get("course_meta") or {}),
+            }
         fields = (
             "id,bbsid,classscore,isstart,allowdownload,chatid,name,state,isfiled,"
             "visiblescore,hideclazz,begindate,forbidintoclazz,"
@@ -313,9 +371,15 @@ class ChaoxingClient:
                 "status": "complete",
                 "items": parsed["chapters"] + parsed["resources"],
                 "error": None,
+                "course_meta": parsed.get("course_meta") or {},
             }
             self._course_chapters_cache[cache_key] = result
-            return {"status": result["status"], "items": list(result["items"]), "error": result["error"]}
+            return {
+                "status": result["status"],
+                "items": list(result["items"]),
+                "error": result["error"],
+                "course_meta": dict(result["course_meta"]),
+            }
         except (ValueError, TypeError, AttributeError):
             return {"status": "failed", "items": [], "error": "structure_changed"}
         except httpx.RequestError:
@@ -323,7 +387,9 @@ class ChaoxingClient:
         except httpx.HTTPStatusError as error:
             return {"status": "failed", "items": [], "error": f"http_error_{error.response.status_code}"}
 
-    async def get_course_materials(self, context: dict) -> dict:
+    async def get_course_materials(self, context: dict, *,
+                                   force_refresh: bool = False,
+                                   unchanged_chapter_ids: set[str] | None = None) -> dict:
         chapter_result = await self.get_course_chapters(context)
         if chapter_result["status"] != "complete":
             return chapter_result
@@ -333,9 +399,13 @@ class ChaoxingClient:
         course_id = _identifier(context.get("course_id"))
         clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
         cpi = _identifier(context.get("cpi"), context.get("remote_cpi"))
+        skip_ids = set() if force_refresh else (unchanged_chapter_ids or set())
+
         async def fetch_card(chapter: dict) -> tuple[list[dict], str | None]:
             chapter_id = str(chapter.get("external_id") or "")
             if not chapter_id:
+                return [], None
+            if chapter_id in skip_ids:
                 return [], None
             card_url = "https://mooc1.chaoxing.com/mooc-ans/knowledge/cards"
             try:
@@ -349,9 +419,12 @@ class ChaoxingClient:
                 if response.status_code in (401, 403):
                     return [], f"chapter_cards_http_{response.status_code}"
                 response.raise_for_status()
-                return ChaoxingParser.parse_chapter_card_resources(
+                parsed = ChaoxingParser.parse_chapter_card_resources(
                     response.text, chapter_id=chapter_id, card_url=str(response.url)
-                ), None
+                )
+                if parsed["status"] == "structure_changed":
+                    return [], parsed.get("error") or "structure_changed"
+                return parsed.get("items") or [], None
             except httpx.RequestError:
                 return [], "chapter_cards_network_error"
             except httpx.HTTPStatusError as error:
@@ -383,16 +456,117 @@ class ChaoxingClient:
             "error": None,
         }
 
-    async def get_course_exams(self, context: dict) -> dict:
-        # Exams are already present in the authenticated task feed on tenants
-        # that expose them. Dedicated exam pages often require signed task IDs;
-        # without those IDs an empty result would be misleading.
-        return {"status": "unavailable", "items": [], "error": "signed_exam_feed_unavailable"}
+    async def get_course_exams(self, context: dict, *,
+                               force_refresh: bool = False,
+                               unchanged_chapter_ids: set[str] | None = None) -> dict:
+        """利用 chapter card 中的 test/work 信息获取考试/作业候选条目。
+
+        学习通专用考试页通常需要签名 task ID，无法直接获取完整考试详情。
+        但 chapter card 中的 test/work 类型附件携带了 jobid/aid/objectId 等信息，
+        可以保存为 exam_candidate，供前端跳转到学习通完成考试。
+        需要真实学习通账号验证 chapter card 中 test/work 的 metadata 完整性。
+        """
+        materials_result = await self.get_course_materials(
+            context, force_refresh=force_refresh,
+            unchanged_chapter_ids=unchanged_chapter_ids,
+        )
+        if materials_result["status"] not in ("complete", "partial"):
+            return materials_result
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        exam_items: list[dict] = []
+        for item in materials_result["items"]:
+            metadata = item.get("metadata") or {}
+            raw_type = str(metadata.get("raw_type") or metadata.get("attachment_type") or "").lower()
+            kind = item.get("kind")
+            candidate_type = None
+            if kind == "quiz" and raw_type == "test":
+                candidate_type = "test"
+            elif kind == "task" and raw_type == "work":
+                candidate_type = "work"
+            if not candidate_type:
+                continue
+            exam_items.append({
+                "kind": "exam_candidate",
+                "external_id": item.get("external_id"),
+                "title": item.get("title") or "未命名考试",
+                "parent_external_id": item.get("parent_external_id"),
+                "status": "unknown",
+                "source_url": item.get("source_url"),
+                "metadata": {
+                    **metadata,
+                    "candidate_type": candidate_type,
+                    "course_id": course_id,
+                    "clazz_id": clazz_id,
+                },
+            })
+        return {"status": "complete", "items": exam_items, "error": None}
 
     async def get_course_discussions(self, context: dict) -> dict:
-        # Discussion feeds vary by tenant and require a course bbs token. Keep
-        # the status explicit until the authenticated course response supplies it.
-        return {"status": "unavailable", "items": [], "error": "discussion_feed_unavailable"}
+        """利用 bbsid 获取课程讨论区数据。
+
+        需要 gas/clazz 返回的 bbsid。如果 bbsid 不存在或请求失败，
+        返回 unavailable 但不绕过权限/验证。
+        需要真实学习通账号验证讨论区端点与字段结构。
+        """
+        chapter_result = await self.get_course_chapters(context)
+        if chapter_result["status"] != "complete":
+            return {"status": "unavailable", "items": [], "error": "chapters_not_available"}
+        course_meta = chapter_result.get("course_meta") or {}
+        bbsid = _identifier((course_meta.get("clazz") or {}).get("bbsid"))
+        if not bbsid:
+            return {"status": "unavailable", "items": [], "error": "bbsid_not_available"}
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        cpi = _identifier(context.get("cpi"), context.get("remote_cpi"))
+        try:
+            response = await self.client.get(
+                "https://mooc1-api.chaoxing.com/gas/clazzthread",
+                params={
+                    "bbsid": bbsid,
+                    "clazzid": clazz_id,
+                    "courseid": course_id,
+                    "cpi": cpi,
+                    "fields": "id,title,creatername,istop,lastreplytime,replycount,clickcount,sectionid",
+                    "view": "json",
+                },
+                headers=self._mobile_headers(),
+            )
+            if response.status_code in (401, 403):
+                return {"status": "unavailable", "items": [], "error": f"http_error_{response.status_code}"}
+            response.raise_for_status()
+            data = response.json()
+            discussions: list[dict] = []
+            for item in (data.get("data") or []):
+                external_id = _identifier(item.get("id"))
+                if not external_id:
+                    continue
+                discussions.append({
+                    "kind": "discussion",
+                    "external_id": external_id,
+                    "title": str(item.get("title") or "无标题").strip(),
+                    "author_name": str(item.get("creatername") or "").strip() or None,
+                    "status": "unknown",
+                    "source_url": (
+                        f"https://mooc1.chaoxing.com/mycourse/comment"
+                        f"?bbsid={bbsid}&courseid={course_id}&clazzid={clazz_id}"
+                    ),
+                    "metadata": {
+                        "bbsid": bbsid,
+                        "reply_count": item.get("replycount"),
+                        "click_count": item.get("clickcount"),
+                        "is_top": item.get("istop"),
+                        "last_reply_time": item.get("lastreplytime"),
+                        "section_id": item.get("sectionid"),
+                    },
+                })
+            return {"status": "complete", "items": discussions, "error": None}
+        except (ValueError, TypeError):
+            return {"status": "failed", "items": [], "error": "structure_changed"}
+        except httpx.RequestError:
+            return {"status": "failed", "items": [], "error": "network_error"}
+        except httpx.HTTPStatusError as error:
+            return {"status": "unavailable", "items": [], "error": f"http_error_{error.response.status_code}"}
 
     async def get_course_assignments(self, context: dict) -> dict:
         """Return the account work feed entries that belong to one real class."""

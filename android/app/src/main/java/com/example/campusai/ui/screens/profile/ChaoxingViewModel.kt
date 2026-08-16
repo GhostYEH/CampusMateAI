@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.workers.ChaoxingSyncScheduler
 import com.example.campusai.workers.ChaoxingSyncStateStore
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -120,9 +123,13 @@ class ChaoxingViewModel(application: Application) : AndroidViewModel(application
                 stateStore.setReauthRequired(false)
                 checkStatus()
                 onRefreshNeeded()
-                appRepository.refreshCourses()
-                appRepository.refreshTasks()
-                appRepository.refreshNotices()
+                coroutineScope {
+                    awaitAll(
+                        async { appRepository.refreshCourses() },
+                        async { appRepository.refreshTasks() },
+                        async { appRepository.refreshNotices() },
+                    )
+                }
             } else if (result.second == "reauth_required" || result.second == "verification_required") {
                 _uiState.value = _uiState.value.copy(
                     isSyncing = false,
