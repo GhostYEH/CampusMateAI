@@ -138,6 +138,8 @@ async def download_resource(course_id: str, item_id: str,
                 status = 404
             elif error.code == "resource_host_not_allowed":
                 status = 400
+            elif error.code == "http_error_416":
+                status = 416
             raise HTTPException(status_code=status, detail=error.code) from error
         headers = {k: v for k, v in stream_result["headers"].items() if v is not None}
         return StreamingResponse(

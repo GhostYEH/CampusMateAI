@@ -137,6 +137,9 @@ class ChaoxingCourseContentSyncService:
                     fp = self._resource_fingerprint(chapter_result["items"], chapter_id)
                     new_sig = self._chapter_signature(chapter, resource_counts.get(chapter_id, 0), fp)
                     if existing_signatures.get(chapter_id) == new_sig:
+                        chapter_metadata = chapter.get("metadata") or {}
+                        if int(chapter_metadata.get("job_count") or 0) > 0:
+                            continue
                         unchanged_chapter_ids.add(chapter_id)
 
         section_results = {}
@@ -174,6 +177,16 @@ class ChaoxingCourseContentSyncService:
                                if key not in {"kind", "external_id", "title"}},
                         )
                     if status == "complete":
+                        if unchanged_chapter_ids and section in ("materials", "exams"):
+                            existing_items = self.repository.list_items(
+                                user_id=user_id, course_id=course_id,
+                                include_stale=True, page_size=1000,
+                            )
+                            section_kinds = self.SECTION_KINDS[section]
+                            for existing_item in existing_items:
+                                parent = str(existing_item.parent_external_id or "")
+                                if parent in unchanged_chapter_ids and existing_item.kind in section_kinds:
+                                    keys.add((str(existing_item.kind), str(existing_item.external_id)))
                         self.repository.mark_section_stale_except(
                             user_id=user_id, course_id=course_id,
                             kinds=self.SECTION_KINDS[section], external_keys=keys,

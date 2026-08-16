@@ -448,3 +448,166 @@ def test_resource_proxy_allows_chaoxing_subdomain():
         "https://mooc1-api.chaoxing.com/gas/clazz",
     ]:
         assert ChaoxingResourceProxy.validate_url(url) == url
+
+
+@pytest.mark.asyncio
+async def test_stream_file_passes_follow_redirects_to_send_not_build_request():
+    """P1: follow_redirects 必须传给 send()，不能传给 build_request()。
+
+    httpx 0.28.1 的 AsyncClient.build_request() 不接受 follow_redirects
+    参数；传错会在发送前触发 TypeError，导致视频/音频流式代理 500。
+    """
+    item = MagicMock()
+    item.source_url = "https://ananas.chaoxing.com/file/123"
+    item.remote_object_id = None
+    item.title = "video.mp4"
+    item.id = "item1"
+    item.user_id = "user1"
+
+    build_request_calls: list[dict] = []
+    send_calls: list[dict] = []
+
+    response_mock = MagicMock()
+    response_mock.status_code = 200
+    response_mock.headers = {"content-type": "video/mp4", "content-length": "4"}
+    response_mock.aclose = AsyncMock()
+
+    def fake_build_request(*args, **kwargs):
+        build_request_calls.append(kwargs)
+        return MagicMock()
+
+    async def fake_send(*args, **kwargs):
+        send_calls.append(kwargs)
+        return response_mock
+
+    with patch("httpx.AsyncClient") as MockClient:
+        mock_instance = MockClient.return_value
+        mock_instance.build_request = fake_build_request
+        mock_instance.send = fake_send
+        mock_instance.aclose = AsyncMock()
+
+        proxy = ChaoxingResourceProxy(
+            settings=MagicMock(),
+            repository=MagicMock(),
+            credentials={},
+        )
+        await proxy.stream_file(item=item, range_header=None)
+
+    assert build_request_calls, "build_request 应被调用"
+    assert send_calls, "send 应被调用"
+    for kwargs in build_request_calls:
+        assert "follow_redirects" not in kwargs, "build_request 不应接受 follow_redirects"
+    for kwargs in send_calls:
+        assert kwargs.get("stream") is True, "send 必须传 stream=True"
+        assert kwargs.get("follow_redirects") is False, "send 必须传 follow_redirects=False"
+
+
+@pytest.mark.asyncio
+async def test_unchanged_chapter_preserves_existing_materials_not_stale(db: Database):
+    """P1/P2: signature 未变的 chapter 跳过 card 请求后，
+    已有 materials 不应被 mark_section_stale_except 误标为 stale。
+    """
+    from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
+
+    course = _course(db, "user1", "11_22")
+    repo = CourseContentRepository(db)
+
+    chapter_dict = {
+        "kind": "chapter", "external_id": "ch1", "title": "第一章",
+        "status": "unknown", "metadata": {"job_count": 0, "raw_status": 0},
+    }
+    fp = ChaoxingCourseContentSyncService._resource_fingerprint([chapter_dict], "ch1")
+    sig = ChaoxingCourseContentSyncService._chapter_signature(chapter_dict, 0, fp)
+
+    repo.upsert_item(
+        user_id="user1", course_id=course.id, kind="chapter",
+        external_id="ch1", title="第一章",
+        metadata={"sync_signature": sig, "job_count": 0, "raw_status": 0},
+    )
+    repo.upsert_item(
+        user_id="user1", course_id=course.id, kind="document",
+        external_id="doc1", title="讲义.pdf",
+        parent_external_id="ch1",
+    )
+
+    container = MagicMock()
+    container.course_repository.get_course.return_value = course
+    container.chaoxing_repository.get_credentials.return_value = {"cookie": "val"}
+    container.course_content_repository = repo
+
+    mock_client = MagicMock()
+    mock_client.client = MagicMock()
+    mock_client.client.aclose = AsyncMock()
+    mock_client.get_course_chapters = AsyncMock(return_value={
+        "status": "complete", "items": [chapter_dict], "error": None,
+    })
+    mock_client.get_course_materials = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    mock_client.get_course_exams = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    mock_client.get_course_discussions = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+
+    with patch("app.services.chaoxing.course_content_sync.ChaoxingClient", return_value=mock_client):
+        service = ChaoxingCourseContentSyncService(container)
+        await service.sync_course(user_id="user1", course_id=course.id, depth="deep")
+
+    items = repo.list_items(user_id="user1", course_id=course.id, kind="document", include_stale=True)
+    assert len(items) == 1
+    assert not items[0].is_stale, "unchanged chapter 的已有 material 不应被标记 stale"
+
+
+@pytest.mark.asyncio
+async def test_chapter_with_job_count_not_skipped_for_card_only_detection(db: Database):
+    """P2: job_count > 0 的 chapter 即使 signature 匹配也不应跳过 card 请求，
+    否则 card-only 内容（test/work/vote）的变化无法被检测。
+    """
+    from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
+
+    course = _course(db, "user1", "11_22")
+    repo = CourseContentRepository(db)
+
+    chapter_dict = {
+        "kind": "chapter", "external_id": "ch1", "title": "第一章",
+        "status": "unknown", "metadata": {"job_count": 2, "raw_status": 0},
+    }
+    fp = ChaoxingCourseContentSyncService._resource_fingerprint([chapter_dict], "ch1")
+    sig = ChaoxingCourseContentSyncService._chapter_signature(chapter_dict, 0, fp)
+
+    repo.upsert_item(
+        user_id="user1", course_id=course.id, kind="chapter",
+        external_id="ch1", title="第一章",
+        metadata={"sync_signature": sig, "job_count": 2, "raw_status": 0},
+    )
+
+    container = MagicMock()
+    container.course_repository.get_course.return_value = course
+    container.chaoxing_repository.get_credentials.return_value = {"cookie": "val"}
+    container.course_content_repository = repo
+
+    mock_client = MagicMock()
+    mock_client.client = MagicMock()
+    mock_client.client.aclose = AsyncMock()
+    mock_client.get_course_chapters = AsyncMock(return_value={
+        "status": "complete", "items": [chapter_dict], "error": None,
+    })
+    mock_client.get_course_materials = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    mock_client.get_course_exams = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    mock_client.get_course_discussions = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+
+    with patch("app.services.chaoxing.course_content_sync.ChaoxingClient", return_value=mock_client):
+        service = ChaoxingCourseContentSyncService(container)
+        await service.sync_course(user_id="user1", course_id=course.id, depth="deep")
+
+    _, kwargs = mock_client.get_course_materials.call_args
+    skip_ids = kwargs.get("unchanged_chapter_ids") or set()
+    assert "ch1" not in skip_ids, "job_count > 0 的 chapter 不应被跳过"
