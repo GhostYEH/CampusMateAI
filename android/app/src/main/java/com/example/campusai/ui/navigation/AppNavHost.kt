@@ -56,7 +56,9 @@ import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
 import com.example.campusai.ui.screens.v3.AcademicScreen
-import com.example.campusai.ui.screens.v3.CommunityScreen
+import com.example.campusai.ui.screens.community.CommunityScreen
+import com.example.campusai.ui.screens.community.CommunityDetailScreen
+import com.example.campusai.ui.screens.community.CommunityPublishScreen
 import com.example.campusai.ui.screens.v3.UniversityScreen
 import java.net.URLEncoder
 
@@ -231,7 +233,35 @@ fun AppNavHost(
             ProfileScreen(repository) { route -> go(route) }
         }
         composable("university") { UniversityScreen() }
-        composable("community") { CommunityScreen() }
+        composable("community") {
+            CommunityScreen(
+                repository = modules.community,
+                onOpenDetail = { id -> go("community_detail/$id") },
+                onOpenPublish = { go("community_publish") },
+            )
+        }
+        composable("community_publish") {
+            CommunityPublishScreen(
+                repository = modules.community,
+                onBack = { navController.popBackStack() },
+                onPublished = { id ->
+                    navController.navigate("community_detail/$id") {
+                        popUpTo("community") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(
+            route = "community_detail/{postId}",
+            arguments = listOf(navArgument("postId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            CommunityDetailScreen(
+                postId = backStackEntry.arguments?.getString("postId") ?: "",
+                repository = modules.community,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable("academic") { AcademicScreen() }
         composable("settings") {
             SettingsScreen(

@@ -1,0 +1,8 @@
+[
+  {"school_code":"4111010006","school_name":"北京航空航天大学","candidate_url":"https://byxt.buaa.edu.cn/jwapp/sys/jwsybuaa/login/index.html","system_type":"undergraduate_main","provider":"unknown","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"本研教育管理系统"},
+  {"school_code":"4111010006","school_name":"北京航空航天大学","candidate_url":"https://gsmis.buaa.edu.cn","system_type":"graduate_main","provider":"unknown","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"研究生信息系统"},
+  {"school_code":"4111010006","school_name":"北京航空航天大学","candidate_url":"https://it.buaa.edu.cn/portal","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"智慧门户"},
+  {"school_code":"4131010248","school_name":"上海交通大学","candidate_url":"http://my.sjtu.edu.cn/","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"My SJTU信息门户"},
+  {"school_code":"4131010248","school_name":"上海交通大学","candidate_url":"http://electsys.sjtu.edu.cn","system_type":"undergraduate_main","provider":"unknown","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"教学信息服务"},
+  {"school_code":"4131010248","school_name":"上海交通大学","candidate_url":"https://oc.sjtu.edu.cn","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"在线教学平台"}
+]

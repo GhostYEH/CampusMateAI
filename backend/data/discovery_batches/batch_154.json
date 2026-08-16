@@ -1,0 +1,498 @@
+[
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "https://one.syu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_note": "师生服务中心"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "https://oa.syu.edu.cn",
+    "system_type": "oa_system",
+    "source": "webfetch_official",
+    "source_note": "OA系统"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://yjs.syu.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official",
+    "source_note": "研究生教育"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://wsc.syu.edu.cn",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "留学生教育/国际交流"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://syuzsjy.syu.edu.cn",
+    "system_type": "admission_website",
+    "source": "webfetch_official",
+    "source_note": "本科生招生"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://zyfzzd.syu.edu.cn",
+    "system_type": "career_website",
+    "source": "webfetch_official",
+    "source_note": "就业工作"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://hzfzc.syu.edu.cn",
+    "system_type": "alumni_website",
+    "source": "webfetch_official",
+    "source_note": "合作发展处/校友会"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://rsc.syu.edu.cn/",
+    "system_type": "hr_website",
+    "source": "webfetch_official",
+    "source_note": "师资/人才招聘"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://lib.syu.edu.cn",
+    "system_type": "library",
+    "source": "webfetch_official",
+    "source_note": "图书馆"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://mail.syu.edu.cn/",
+    "system_type": "email",
+    "source": "webfetch_official",
+    "source_note": "邮箱"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://archives.syu.edu.cn/",
+    "system_type": "archives",
+    "source": "webfetch_official",
+    "source_note": "校史馆"
+  },
+  {
+    "school_name": "沈阳大学",
+    "school_code": "4121011035",
+    "candidate_url": "http://museum.syu.edu.cn/",
+    "system_type": "museum",
+    "source": "webfetch_official",
+    "source_note": "自然博物馆"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://ehall.henu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_note": "网上办事大厅"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://ehall.henu.edu.cn/ywtb-portal/standard/index.html#/hall",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_note": "学生/教职工门户"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "http://oa.henu.edu.cn/",
+    "system_type": "oa_system",
+    "source": "webfetch_official",
+    "source_note": "办公系统"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://jwc.henu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_note": "本科生教育/教务处"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://grs.henu.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official",
+    "source_note": "研究生教育"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://dwhy.henu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "留学生教育"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://yjy.henu.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official",
+    "source_note": "继续教育"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://zs.henu.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official",
+    "source_note": "本科生招生"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://job.henu.edu.cn/",
+    "system_type": "career_website",
+    "source": "webfetch_official",
+    "source_note": "就业指导"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://stu.henu.edu.cn/",
+    "system_type": "student_affairs",
+    "source": "webfetch_official",
+    "source_note": "学生工作部"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://rsc.henu.edu.cn/rczp.htm",
+    "system_type": "hr_website",
+    "source": "webfetch_official",
+    "source_note": "人才招聘"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://iao.henu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "国际合作与交流处"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://kyc.henu.edu.cn/xswyh.htm",
+    "system_type": "academic_committee",
+    "source": "webfetch_official",
+    "source_note": "学术委员会"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://lib.henu.edu.cn/",
+    "system_type": "library",
+    "source": "webfetch_official",
+    "source_note": "图书馆"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://xyh.henu.edu.cn/",
+    "system_type": "alumni_website",
+    "source": "webfetch_official",
+    "source_note": "校友会"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://news.henu.edu.cn/",
+    "system_type": "news",
+    "source": "webfetch_official",
+    "source_note": "新闻网"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://hupress.henu.edu.cn/",
+    "system_type": "press",
+    "source": "webfetch_official",
+    "source_note": "图书出版"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://ist.henu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "国际欧美理工学院"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://oy.henu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "欧亚国际学院"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://aiihu.henu.edu.cn/index.htm",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "阿斯顿国际学院"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://jjs.henu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "清廉河大"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://wmw.henu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "文明创建"
+  },
+  {
+    "school_name": "河南大学",
+    "school_code": "4141010475",
+    "candidate_url": "https://xxgk.henu.edu.cn/index.htm",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "信息公开"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://i.hnust.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_note": "融合门户"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://jwc.hnust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_note": "本科生教育/教务处"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://graduate.hnust.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official",
+    "source_note": "研究生教育"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://jxjyxy.hnust.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official",
+    "source_note": "继续教育"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://dwll.hnust.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official",
+    "source_note": "国际学生教育"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://kyfw.hnust.edu.cn/userAction!do_casLogin.action",
+    "system_type": "research_system",
+    "source": "webfetch_official",
+    "source_note": "科研系统/金智"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://science.hnust.edu.cn/kycg/index.htm",
+    "system_type": "research_system",
+    "source": "webfetch_official",
+    "source_note": "科研成果"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://zscq.hnust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "成果转化"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://qks.hnust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "学术期刊"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://zs.hnust.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official",
+    "source_note": "本科生招生"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://jy.hnust.edu.cn/",
+    "system_type": "career_website",
+    "source": "webfetch_official",
+    "source_note": "就业服务"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://cxcyxy.hnust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "创新创业"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://xyyhzb.hnust.edu.cn/",
+    "system_type": "alumni_website",
+    "source": "webfetch_official",
+    "source_note": "校友/捐赠"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://webvpn.hnust.edu.cn/login",
+    "system_type": "vpn",
+    "source": "webfetch_official",
+    "source_note": "WebVPN"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://english.hnust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "English"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://xgxt.hnust.edu.cn/xsfw/sys/xggzptapp/*default/syindex.do#/lbsy",
+    "system_type": "student_affairs",
+    "source": "webfetch_official",
+    "source_note": "智慧学工"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://p.hnust.edu.cn:80/seeyon/caslogin/sso",
+    "system_type": "oa_system",
+    "source": "webfetch_official",
+    "source_note": "协同办公"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://nic.hnust.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "网络服务"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://cwc.hnust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "财务查询"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://cgzx.hnust.edu.cn/cgxx/cggg/index.htm",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "招标公告"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://rsc.hnust.edu.cn/",
+    "system_type": "hr_website",
+    "source": "webfetch_official",
+    "source_note": "诚聘英才"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://dag.hnust.edu.cn/",
+    "system_type": "archives",
+    "source": "webfetch_official",
+    "source_note": "档案馆"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://lib.hnust.edu.cn",
+    "system_type": "library",
+    "source": "webfetch_official",
+    "source_note": "图书馆"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://xxgk.hnust.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official",
+    "source_note": "信息公开"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://xg.hnust.edu.cn",
+    "system_type": "student_affairs",
+    "source": "webfetch_official",
+    "source_note": "学工在线"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "http://xyh.hnust.edu.cn",
+    "system_type": "alumni_website",
+    "source": "webfetch_official",
+    "source_note": "校友会"
+  },
+  {
+    "school_name": "湖南科技大学",
+    "school_code": "4143010534",
+    "candidate_url": "https://news.hnust.edu.cn/",
+    "system_type": "news",
+    "source": "webfetch_official",
+    "source_note": "新闻网"
+  }
+]

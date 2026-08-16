@@ -1,0 +1,9 @@
+[
+  {"school_name": "安徽农业大学", "school_code": "10364", "candidate_url": "http://e.ahau.edu.cn/ipcheck6.jsp", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "数智安农统一门户"},
+  {"school_name": "安徽农业大学", "school_code": "10364", "candidate_url": "http://jwc.ahau.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科教育教务处"},
+  {"school_name": "安徽农业大学", "school_code": "10364", "candidate_url": "http://yjs.ahau.edu.cn", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生教育研究生招生"},
+  {"school_name": "长治医学院", "school_code": "10117", "candidate_url": "http://jwc.czmc.edu.cn", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生教学教务处"},
+  {"school_name": "长治医学院", "school_code": "10117", "candidate_url": "http://yjsc.czmc.edu.cn", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生"},
+  {"school_name": "长治医学院", "school_code": "10117", "candidate_url": "http://ehall.czmc.com/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "一站式服务"},
+  {"school_name": "长治医学院", "school_code": "10117", "candidate_url": "http://jw.czmc.com:8019/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "教务系统"}
+]

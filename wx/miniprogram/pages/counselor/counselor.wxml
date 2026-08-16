@@ -1,13 +1,13 @@
 <view class="page tab-page chat-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
-  <campus-header title="AI 校园助手 ✦" subtitle="校园问题，随时来聊一聊" mode="{{mockMode ? 'Mock 知识库' : '真实后端'}}" />
+  <campus-header title="AI 校园助手" subtitle="校园问题，随时来聊一聊" mode="{{mockMode ? 'Mock 知识库' : '真实后端'}}" />
   <view class="assistant-identity enter">
-    <image src="/assets/app-icon.png" mode="aspectFit"></image>
-    <view class="assistant-copy"><view class="assistant-title">校园事务助手 <text>● {{mockMode ? 'Mock' : '在线'}}</text></view><view class="assistant-subtitle">帮你整理流程、材料和下一步</view><view class="coverage">◆ 覆盖奖助、课程、校园服务问答</view></view>
+    <image src="/assets/secondary/ai-robot.png" mode="aspectFit"></image>
+    <view class="assistant-copy"><view class="assistant-title">校园事务助手 <text>{{mockMode ? '演示知识库' : '真实后端'}}</text></view><view class="assistant-subtitle">帮你整理流程、材料和下一步</view><view class="coverage">覆盖奖助、课程、校园服务问答</view></view>
   </view>
-  <view class="suggestion-block enter enter-delay-1"><view class="suggestion-title">你可以这样问</view><view class="suggestion-grid"><button wx:for="{{suggestions}}" wx:key="*this" class="suggestion" data-text="{{item}}" bindtap="useSuggestion"><text>▣</text><view>{{item}}</view><view class="suggestion-arrow">›</view></button></view></view>
+  <view class="suggestion-block enter enter-delay-1"><view class="suggestion-title">你可以这样问</view><view class="suggestion-grid"><button wx:for="{{suggestions}}" wx:key="label" class="suggestion" data-text="{{item.label}}" bindtap="useSuggestion"><view class="suggestion-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view><view>{{item.label}}</view><image class="suggestion-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button></view></view>
   <scroll-view class="chat-scroll" scroll-y enhanced enable-flex scroll-with-animation="{{!reduceMotion}}" scroll-into-view="{{scrollTarget}}"><view class="chat-content">
-    <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message-row {{item.role}} enter"><image wx:if="{{item.role === 'assistant'}}" class="assistant-avatar" src="/assets/app-icon.png" mode="aspectFill"></image><view class="bubble-wrap"><view class="bubble">{{item.text}}</view><view wx:if="{{item.citation}}" class="citation">▤ {{item.citation}} · 流程同步</view></view></view>
-    <view wx:if="{{sending}}" id="typing" class="message-row assistant typing-row"><image class="assistant-avatar" src="/assets/app-icon.png" mode="aspectFill"></image><view class="typing"><view></view><view></view><view></view></view></view>
+    <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message-row {{item.role}} enter"><image wx:if="{{item.role === 'assistant'}}" class="assistant-avatar" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image><view class="bubble-wrap"><view class="bubble">{{item.text}}</view><view wx:if="{{item.citation}}" class="citation">{{item.citation}} · 流程同步</view></view></view>
+    <view wx:if="{{sending}}" id="typing" class="message-row assistant typing-row"><image class="assistant-avatar" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image><view class="typing"><view></view><view></view><view></view></view></view>
   </view></scroll-view>
-  <view class="composer"><view class="composer-row"><textarea class="composer-input" value="{{input}}" auto-height maxlength="500" placeholder="✦ 输入你的校园事务问题…" bindinput="onInput" confirm-type="send" bindconfirm="send"></textarea><button class="send-button" disabled="{{!input || sending}}" loading="{{sending}}" bindtap="send">➤</button></view><view class="disclaimer">◆ 仅提供校园事务辅助，请以学校正式通知为准</view></view>
+  <view class="composer"><view class="composer-row"><textarea class="composer-input" value="{{input}}" auto-height maxlength="500" placeholder="输入你的校园事务问题…" bindinput="onInput" confirm-type="send" bindconfirm="send"></textarea><button class="send-button" disabled="{{!input || sending}}" loading="{{sending}}" bindtap="send"><image src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button></view><view class="disclaimer">仅提供校园事务辅助，请以学校正式通知为准</view></view>
 </view>

@@ -1,0 +1,178 @@
+[
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://jwxt.ncut.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务系统"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://jwc.ncut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official_site",
+    "notes": "本科生培养/教务处"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://yjsy.ncut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生培养"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://ywtb.ncut.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://bkzs.ncut.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://jy.ncut.edu.cn",
+    "system_type": "career_services",
+    "source": "webfetch_official_site",
+    "notes": "就业指导"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://jj.ncut.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "北方工业大学",
+    "school_code": "4111010009",
+    "candidate_url": "https://webvpn.ncut.edu.cn",
+    "system_type": "vpn_website",
+    "source": "webfetch_official_site",
+    "notes": "WebVPN"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://jwc.shutcm.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育/教务处"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://yjsy.shutcm.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://jxjy.shutcm.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://ehall.shutcm.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://ygzs.shutcm.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://jy.shutcm.edu.cn",
+    "system_type": "career_services",
+    "source": "webfetch_official_site",
+    "notes": "就业服务"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://iec.shutcm.edu.cn",
+    "system_type": "international_education",
+    "source": "webfetch_official_site",
+    "notes": "国际学生教育"
+  },
+  {
+    "school_name": "上海中医药大学",
+    "school_code": "4131010268",
+    "candidate_url": "https://alumni.shutcm.edu.cn",
+    "system_type": "alumni",
+    "source": "webfetch_official_site",
+    "notes": "校友会"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://rhmh.xju.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "一站式服务大厅新版"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://ehall.xju.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "一站式服务大厅旧版"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://edu.xju.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教育在线"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://welcome.xju.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://lib.xju.edu.cn",
+    "system_type": "library",
+    "source": "webfetch_official_site",
+    "notes": "数字图书"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://net.xju.edu.cn",
+    "system_type": "network_service",
+    "source": "webfetch_official_site",
+    "notes": "网络中心"
+  }
+]

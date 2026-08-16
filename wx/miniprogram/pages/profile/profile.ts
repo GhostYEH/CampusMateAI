@@ -50,6 +50,18 @@ Page({
   },
   openService(event: WechatMiniprogram.TouchEvent) {
     const kind = event.currentTarget.dataset.kind as string
+    if (kind === 'files' || kind === 'activities' || kind === 'favorites' || kind === 'help') {
+      wx.navigateTo({ url: `/pages/hub/hub?kind=${kind}` })
+      return
+    }
+    if (kind === 'university' || kind === 'academic') {
+      wx.navigateTo({ url: `/pages/hub/hub?kind=${kind}` })
+      return
+    }
+    if (kind === 'community') {
+      wx.navigateTo({ url: '/pages/community/community' })
+      return
+    }
     if (kind === 'study') {
       wx.navigateTo({ url: '/pages/study/study' })
       return
@@ -67,7 +79,7 @@ Page({
       wx.showModal({ title: 'CampusMate', content: '大学生校园事务智能陪伴助手\n微信小程序端', showCancel: false })
       return
     }
-    wx.showToast({ title: kind === 'help' ? '反馈入口正在接入' : '该功能正在接入小程序', icon: 'none' })
+    wx.showToast({ title: '该功能正在接入小程序', icon: 'none' })
   },
   closeSettings() {
     this.setData({ showSettings: false, editingUrl: false })

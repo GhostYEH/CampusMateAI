@@ -1,0 +1,146 @@
+[
+  {
+    "school_name": "福建师范大学",
+    "candidate_url": "https://jwglxt.fjnu.edu.cn/",
+    "system_type": "undergraduate-main",
+    "provider": "ZF",
+    "source": "webfetch_official_website",
+    "notes": "正方教务系统 jwglxt"
+  },
+  {
+    "school_name": "福建师范大学",
+    "candidate_url": "https://jwc.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "福建师范大学",
+    "candidate_url": "https://yjsy.fjnu.edu.cn",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "济南大学",
+    "candidate_url": "https://portal.ujn.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "智慧济大统一门户"
+  },
+  {
+    "school_name": "济南大学",
+    "candidate_url": "https://jwc.ujn.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "济南大学",
+    "candidate_url": "https://yjs.ujn.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "鲁东大学",
+    "candidate_url": "https://ehall.ldu.edu.cn/default/index.html#/stuhall",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "学生入口办事大厅"
+  },
+  {
+    "school_name": "鲁东大学",
+    "candidate_url": "https://jwc.ldu.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "鲁东大学",
+    "candidate_url": "https://grad.ldu.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "聊城大学",
+    "candidate_url": "https://one.lcu.edu.cn/tp_up/view?m=up#act=portal/viewhome",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "数字聊大统一门户"
+  },
+  {
+    "school_name": "聊城大学",
+    "candidate_url": "https://yjsc.lcu.edu.cn",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "聊城大学",
+    "candidate_url": "https://sso.lcu.edu.cn/tpass/login?service=https%3A%2F%2Fone.lcu.edu.cn%2Ftp_up%2F",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "统一身份认证SSO"
+  },
+  {
+    "school_name": "山东农业大学",
+    "candidate_url": "https://my.sdau.edu.cn/index.html#/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "融合门户"
+  },
+  {
+    "school_name": "山东农业大学",
+    "candidate_url": "https://jiaowu.sdau.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "山东农业大学",
+    "candidate_url": "https://yjsc.sdau.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "山东理工大学",
+    "candidate_url": "https://ehall.sdut.edu.cn/new/ehall.html",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "信息门户/办事大厅"
+  },
+  {
+    "school_name": "山东理工大学",
+    "candidate_url": "https://yjsh.sdut.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "山东理工大学",
+    "candidate_url": "http://bgxt.sdut.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "校园办公系统"
+  }
+]

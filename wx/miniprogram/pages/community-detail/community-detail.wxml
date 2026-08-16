@@ -1,0 +1,65 @@
+<view class="campus-page community-detail-page">
+  <secondary-nav title="帖子详情"></secondary-nav>
+  <view class="campus-page-body">
+    <state-view wx:if="{{loading}}" state="loading" title="正在加载"></state-view>
+    <state-view wx:elif="{{error}}" state="error" title="加载失败" description="{{error}}" actionText="重试" bindaction="load"></state-view>
+    <block wx:elif="{{post}}">
+      <view class="forum-card">
+        <view class="forum-card-head">
+          <view class="forum-avatar">{{post.author_name[0]}}</view>
+          <view class="forum-card-meta"><view class="forum-author">{{post.author_name}}</view><view class="forum-time">{{catLabel}} · {{timeText}}</view></view>
+        </view>
+        <view class="forum-card-title">{{post.title}}</view>
+        <view class="forum-card-content">{{post.content}}</view>
+        <view wx:if="{{extraTags.length}}" class="forum-extra-tags">
+          <text wx:for="{{extraTags}}" wx:for-item="tag" wx:key="*this" class="forum-extra-tag">{{tag}}</text>
+        </view>
+        <view wx:if="{{previewImages.length}}" class="forum-detail-images">
+          <image wx:for="{{previewImages}}" wx:key="*this" class="forum-detail-image" src="{{item}}" mode="aspectFill" data-idx="{{index}}" bindtap="previewImage"></image>
+        </view>
+        <view class="forum-card-foot">
+          <view class="forum-foot-btn {{post.liked ? 'active' : ''}}" bindtap="onLike">♥ {{post.like_count}}</view>
+          <view class="forum-foot-btn">💬 {{post.comment_count}}</view>
+          <view class="forum-foot-btn {{post.favorited ? 'active' : ''}}" bindtap="onFav">★ {{post.favorite_count}}</view>
+          <view wx:if="{{isOwner}}" class="forum-foot-btn delete-btn" bindtap="onDelete">删除</view>
+        </view>
+      </view>
+
+      <view class="forum-comments">
+        <view class="forum-comments-title">评论 {{comments.length}}</view>
+        <view wx:if="{{!comments.length}}" class="forum-comments-empty">还没有评论，来说点什么吧。</view>
+        <view wx:else class="forum-comment-list">
+          <view wx:for="{{comments}}" wx:key="id" class="forum-comment">
+            <view class="forum-comment-head">
+              <view class="forum-avatar sm">{{item.avatar}}</view>
+              <view class="forum-comment-meta"><view class="forum-comment-author">{{item.author_name}}</view><view class="forum-comment-time">{{item.timeText}}</view></view>
+            </view>
+            <view class="forum-comment-content">{{item.content}}</view>
+            <view class="forum-comment-actions"><text data-id="{{item.id}}" data-name="{{item.author_name}}" bindtap="startReply">回复</text></view>
+            <view wx:if="{{item.children.length}}" class="forum-comment-children">
+              <view wx:for="{{item.children}}" wx:for-item="child" wx:key="id" class="forum-comment child">
+                <view class="forum-comment-head">
+                  <view class="forum-avatar sm">{{child.avatar}}</view>
+                  <view class="forum-comment-meta"><view class="forum-comment-author">{{child.author_name}}</view><view class="forum-comment-time">回复 @{{item.author_name}} · {{child.timeText}}</view></view>
+                </view>
+                <view class="forum-comment-content">{{child.content}}</view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="forum-comment-form">
+          <view wx:if="{{replyTo}}" class="forum-reply-hint">
+            <text>回复 @{{replyName}}</text>
+            <text class="cancel-btn" bindtap="cancelReply">×</text>
+          </view>
+          <textarea class="comment-textarea" value="{{commentText}}" placeholder="写下你的评论…" maxlength="2000" bindinput="onComment"></textarea>
+          <view class="comment-form-row">
+            <view class="composer-check"><switch checked="{{commentAnonymous}}" bindchange="onCommentAnonymous"></switch><text>匿名</text></view>
+            <button class="send-btn" loading="{{sending}}" disabled="{{!commentText}}" bindtap="submitComment">发送</button>
+          </view>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

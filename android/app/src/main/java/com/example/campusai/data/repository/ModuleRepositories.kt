@@ -14,6 +14,7 @@ class ModuleRepositories(
     val services: ServiceRepository,
     val focus: ApiFocusRepository,
     val lostFound: LostFoundRepository,
+    val community: CommunityRepository,
 ) {
     companion object {
         fun create(application: Application, appRepository: AppRepository): ModuleRepositories {
@@ -27,6 +28,7 @@ class ModuleRepositories(
                 services = LocalServiceRepository(storage),
                 focus = ApiFocusRepository(ApiClient.api),
                 lostFound = LocalLostFoundRepository(storage),
+                community = CommunityRepository(),
             )
         }
     }

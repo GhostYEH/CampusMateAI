@@ -87,6 +87,7 @@ class CourseRow:
     semester: Optional[str] = None
     description: Optional[str] = None
     teacher_id: Optional[str] = None
+    owner_user_id: Optional[str] = None
     remote_teacher_name: Optional[str] = None
     remote_class_id: Optional[str] = None
     remote_cpi: Optional[str] = None
@@ -119,6 +120,7 @@ class CourseRow:
             semester=row["semester"],
             description=row["description"],
             teacher_id=row["teacher_id"],
+            owner_user_id=get_col(row, "owner_user_id"),
             remote_teacher_name=get_col(row, "remote_teacher_name"),
             remote_class_id=get_col(row, "remote_class_id"),
             remote_cpi=get_col(row, "remote_cpi"),

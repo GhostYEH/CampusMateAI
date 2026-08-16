@@ -44,6 +44,7 @@ def _course_to_out(
         status=course.status,
         created_at=course.created_at,
         updated_at=course.updated_at,
+        owner_user_id=course.owner_user_id,
     )
 
 
@@ -62,11 +63,12 @@ def list_courses(
         enrolls = container.enrollment_repository.list_user_classes(user.id)
         for e in enrolls:
             course_ids.add(e["course_id"])
-        # Learning Tong courses are private imports. They do not have a campus
-        # class enrollment, so exposing only enrollment-backed courses made a
-        # successful sync invisible to the Android client.
+        # Learning Tong courses are private imports owned by the student via
+        # owner_user_id. They do not have a campus class enrollment, so exposing
+        # only enrollment-backed courses made a successful sync invisible to the
+        # Android client.
         imported, _ = container.course_repository.list_courses(
-            teacher_id=user.id,
+            owner_user_id=user.id,
             page=1,
             page_size=1000,
         )
@@ -183,7 +185,7 @@ def _assert_can_view_course(
         return
     # 学生: 必须已加入该课程下的任一班级
     enrolls = container.enrollment_repository.list_user_classes(user.id)
-    if course.provider == "chaoxing" and course.teacher_id == user.id:
+    if course.provider == "chaoxing" and course.owner_user_id == user.id:
         return
     if not any(e["course_id"] == course.id for e in enrolls):
         raise Forbidden("你未加入此课程下的任何班级")

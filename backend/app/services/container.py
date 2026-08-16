@@ -36,6 +36,7 @@ from ..repositories.community_repository import CommunityRepository
 from ..repositories.academic_repository import AcademicRepository
 from ..repositories.notice_automation_repository import NoticeAutomationRepository
 from ..repositories.course_content_repository import CourseContentRepository
+from ..repositories.edu_data_repository import EduDataRepository
 from ..repositories.edu_repository import EduRepository
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
@@ -120,6 +121,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     course_content_repository = CourseContentRepository(db)
     # EduConnector
     edu_repo = EduRepository(db)
+    edu_data_repo = EduDataRepository(db)
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     session_manager = SessionManager(session_ttl_seconds=settings.edu_session_ttl_seconds)
@@ -129,6 +131,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         detector=system_detector,
         session_manager=session_manager,
         edu_repo=edu_repo,
+        edu_data_repo=edu_data_repo,
     )
     container = ServiceContainer(
         settings=settings,

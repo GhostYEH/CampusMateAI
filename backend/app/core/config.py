@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     expression_contribution_path: str = "./data/expression_contributions"
     max_expression_contribution_mb: int = 3
     max_upload_mb: int = 10
+    community_image_path: str = "./data/community_images"
+    community_image_max_mb: int = 5
     chaoxing_cache_path: str = "./data/chaoxing_cache"
     chaoxing_cache_max_mb: int = 1024
     chaoxing_cache_file_max_mb: int = 256

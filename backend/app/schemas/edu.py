@@ -298,6 +298,14 @@ class EduSyncResult(BaseModel):
     schedule: Optional[EduSchedule] = None
     grade: Optional[EduGrade] = None
     exam: Optional[EduExam] = None
+    inserted: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    removed: int = 0
+    failed: int = 0
+    sync_batch_id: Optional[str] = None
+    semester: Optional[str] = None
+    persisted: bool = False
 
 
 # ===== 探测 =====
@@ -319,6 +327,77 @@ class EduDetectResult(BaseModel):
     reason: Optional[str] = None
 
 
+# ===== 教务系统发现（Discovery）=====
+
+
+class EduDiscoverySubmitUrlRequest(BaseModel):
+    """用户手动提交教务系统 URL。"""
+    university_id: str
+    candidate_url: str = Field(..., min_length=1, max_length=512)
+
+
+class EduDiscoverySubmitUrlResult(BaseModel):
+    """用户提交 URL 后的检测结果。"""
+    school_code: Optional[str] = None
+    school_name: Optional[str] = None
+    candidate_url: str
+    provider: str = "UNKNOWN"
+    provider_confidence: float = 0.0
+    reachable: bool = False
+    http_status: Optional[int] = None
+    final_url: Optional[str] = None
+    title: Optional[str] = None
+    is_edu_page: bool = False
+    evidence: List[dict] = Field(default_factory=list)
+    verification_status: str = "CANDIDATE"
+    saved: bool = False
+    error: Optional[str] = None
+
+
+class EduDiscoveryCandidateOut(BaseModel):
+    """候选数据库条目出参（管理后台用）。"""
+    school_code: str
+    school_name: str
+    candidate_url: str
+    provider: str
+    source_type: str
+    source_url: Optional[str] = None
+    confidence: float = 0.0
+    verification_status: str
+    http_status: Optional[int] = None
+    final_url: Optional[str] = None
+    title: Optional[str] = None
+    evidence: List[dict] = Field(default_factory=list)
+    last_checked_at: Optional[str] = None
+    province: Optional[str] = None
+    level: Optional[str] = None
+    official_domain: Optional[str] = None
+    wakeup_supported: bool = False
+    wakeup_source_date: Optional[str] = None
+    discovered_at: Optional[str] = None
+    reason: Optional[str] = None
+    review_action: Optional[str] = None
+
+
+class EduDiscoveryReviewRequest(BaseModel):
+    """管理后台审核操作。"""
+    action: str = Field(..., description="confirm|reject|mark_historical|mark_intranet|reverify")
+
+
+class EduDiscoveryStatsOut(BaseModel):
+    """发现统计。"""
+    universities_total: int = 0
+    candidates_total: int = 0
+    by_status: dict = Field(default_factory=dict)
+    by_provider: dict = Field(default_factory=dict)
+    wakeup_supported: int = 0
+    verified_official: int = 0
+    verified_live: int = 0
+    candidate: int = 0
+    not_discovered: int = 0
+    dead: int = 0
+
+
 __all__ = [
     "EduSystemConfigOut",
     "EduSystemConfigUpsert",
@@ -334,4 +413,9 @@ __all__ = [
     "EduSyncRecordOut",
     "EduSyncResult",
     "EduDetectResult",
+    "EduDiscoverySubmitUrlRequest",
+    "EduDiscoverySubmitUrlResult",
+    "EduDiscoveryCandidateOut",
+    "EduDiscoveryReviewRequest",
+    "EduDiscoveryStatsOut",
 ]

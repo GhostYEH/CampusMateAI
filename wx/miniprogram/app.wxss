@@ -1,5 +1,5 @@
 page {
-  --campus-primary: #596AF0;
+  --campus-primary: #5B68F2;
   --campus-primary-deep: #3E50D9;
   --campus-primary-soft: #EFF0FF;
   --campus-background: #F6F8FA;
@@ -8,8 +8,14 @@ page {
   --campus-muted: #667784;
   --campus-line: #DFE6EB;
   --campus-danger: #ED6E52;
-  --campus-page-gutter: 24px;
+  --campus-page-gutter: 16px;
+  --campus-title-size: 32px;
+  --campus-subtitle-size: 16px;
   --campus-card-radius: 18px;
+  --campus-card-radius-lg: 28px;
+  --campus-card-padding: 16px;
+  --campus-section-gap: 16px;
+  --campus-tab-reserve: 120px;
   --campus-enter-duration: 300ms;
   --primary: #5b68f2;
   --primary-hover: #4e5edb;
@@ -46,7 +52,7 @@ page {
 }
 
 .campus-page-body {
-  padding: 0 var(--campus-page-gutter) calc(32px + env(safe-area-inset-bottom));
+  padding: 0 var(--campus-page-gutter) calc(var(--campus-section-gap) * 2 + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -103,11 +109,11 @@ button {
 
 .page-body {
   box-sizing: border-box;
-  padding: 20rpx 28rpx calc(48rpx + env(safe-area-inset-bottom));
+  padding: var(--campus-section-gap) var(--campus-page-gutter) calc(24px + env(safe-area-inset-bottom));
 }
 
 .tab-page .page-body {
-  padding-bottom: calc(218rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--campus-tab-reserve) + env(safe-area-inset-bottom));
 }
 
 .surface {

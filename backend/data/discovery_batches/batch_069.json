@@ -1,0 +1,92 @@
+[
+  {
+    "school_name": "贵州大学",
+    "school_code": "4152010657",
+    "province": "贵州省",
+    "candidate_url": "https://i.gzu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "贵州大学信息门户"
+  },
+  {
+    "school_name": "贵州大学",
+    "school_code": "4152010657",
+    "province": "贵州省",
+    "candidate_url": "https://ic.gzu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "贵州大学校园网络/网络服务"
+  },
+  {
+    "school_name": "贵州大学",
+    "school_code": "4152010657",
+    "province": "贵州省",
+    "candidate_url": "https://gs.gzu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "贵州大学研究生招生"
+  },
+  {
+    "school_name": "海南大学",
+    "school_code": "4146010589",
+    "province": "海南省",
+    "candidate_url": "https://ehall.hainanu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南大学网上服务大厅"
+  },
+  {
+    "school_name": "海南大学",
+    "school_code": "4146010589",
+    "province": "海南省",
+    "candidate_url": "https://ugs.hainanu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南大学本科生教育"
+  },
+  {
+    "school_name": "海南大学",
+    "school_code": "4146010589",
+    "province": "海南省",
+    "candidate_url": "https://jwc.hainanu.edu.cn",
+    "system_type": "academic_department_website",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南大学教务处"
+  },
+  {
+    "school_name": "宁夏大学",
+    "school_code": "4164010749",
+    "province": "宁夏回族自治区",
+    "candidate_url": "https://portal.nxu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "宁夏大学信息门户"
+  },
+  {
+    "school_name": "宁夏大学",
+    "school_code": "4164010749",
+    "province": "宁夏回族自治区",
+    "candidate_url": "https://bksy.nxu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "宁夏大学本科生教育"
+  },
+  {
+    "school_name": "宁夏大学",
+    "school_code": "4164010749",
+    "province": "宁夏回族自治区",
+    "candidate_url": "https://graduate.nxu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "宁夏大学研究生教育"
+  }
+]

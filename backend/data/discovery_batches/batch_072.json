@@ -1,0 +1,112 @@
+[
+  {
+    "school_name": "长安大学",
+    "school_code": "4161010710",
+    "province": "陕西省",
+    "candidate_url": "https://portal.chd.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "长安大学校园门户"
+  },
+  {
+    "school_name": "长安大学",
+    "school_code": "4161010710",
+    "province": "陕西省",
+    "candidate_url": "https://jwc.chd.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "长安大学本科教育/教务处"
+  },
+  {
+    "school_name": "长安大学",
+    "school_code": "4161010710",
+    "province": "陕西省",
+    "candidate_url": "https://graduate.chd.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "长安大学研究生教育"
+  },
+  {
+    "school_name": "陕西师范大学",
+    "school_code": "4161010718",
+    "province": "陕西省",
+    "candidate_url": "https://ywtbpt.snnu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "陕西师范大学一网通办"
+  },
+  {
+    "school_name": "陕西师范大学",
+    "school_code": "4161010718",
+    "province": "陕西省",
+    "candidate_url": "https://jwc.snnu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "陕西师范大学本科生教育/教务处"
+  },
+  {
+    "school_name": "陕西师范大学",
+    "school_code": "4161010718",
+    "province": "陕西省",
+    "candidate_url": "https://newyjs.snnu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "陕西师范大学研究生教育"
+  },
+  {
+    "school_name": "西北大学",
+    "school_code": "4161010697",
+    "province": "陕西省",
+    "candidate_url": "https://open.nwu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "西北大学信息门户"
+  },
+  {
+    "school_name": "西北大学",
+    "school_code": "4161010697",
+    "province": "陕西省",
+    "candidate_url": "https://jwc.nwu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "西北大学本科生教育/教务处"
+  },
+  {
+    "school_name": "西北大学",
+    "school_code": "4161010697",
+    "province": "陕西省",
+    "candidate_url": "https://jwgl.nwu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "西北大学教务系统(正方jwglxt)"
+  },
+  {
+    "school_name": "西北大学",
+    "school_code": "4161010697",
+    "province": "陕西省",
+    "candidate_url": "https://yjs.nwu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "西北大学研究生教育"
+  },
+  {
+    "school_name": "西北大学",
+    "school_code": "4161010697",
+    "province": "陕西省",
+    "candidate_url": "https://service.nwu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "西北大学网上办事大厅"
+  }
+]

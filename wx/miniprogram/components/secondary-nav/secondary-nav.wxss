@@ -10,14 +10,19 @@
 }
 
 .secondary-nav__row {
-  height: 60px;
   padding: 0 16px;
   display: flex;
   align-items: center;
   box-sizing: border-box;
 }
 
+.secondary-nav__spacer {
+  width: 100%;
+  flex: none;
+}
+
 .secondary-nav__back {
+  flex: 0 0 44px;
   width: 44px;
   height: 44px;
   margin: 0;
@@ -31,7 +36,7 @@
   box-shadow: 0 6px 18px rgba(27, 39, 48, 0.1);
 }
 
-.secondary-nav__back image {
+.secondary-nav__back-icon {
   width: 25px;
   height: 25px;
   transform: rotate(180deg);
@@ -39,6 +44,7 @@
 
 .secondary-nav__title {
   min-width: 0;
+  flex: 1;
   margin-left: 12px;
   overflow: hidden;
   color: #1b2730;

@@ -1,0 +1,10 @@
+[
+  {"school_name": "中南大学", "candidate_url": "http://csujwc.its.csu.edu.cn/", "source_url": "https://www.bing.com/search?q=中南大学+教务系统+site:edu.cn"},
+  {"school_name": "中南大学", "candidate_url": "http://gms.csu.edu.cn/stu/logon", "source_url": "https://www.bing.com/search?q=中南大学+教务系统+site:edu.cn"},
+  {"school_name": "四川大学", "candidate_url": "http://zhjw.scu.edu.cn/", "source_url": "https://www.bing.com/search?q=四川大学+教务系统+site:edu.cn"},
+  {"school_name": "四川大学", "candidate_url": "https://soejw.scu.edu.cn/", "source_url": "https://www.bing.com/search?q=四川大学+教务系统+site:edu.cn"},
+  {"school_name": "西安交通大学", "candidate_url": "https://jwxt.xjtu.edu.cn/", "source_url": "https://www.bing.com/search?q=西安交通大学+教务系统+site:edu.cn"},
+  {"school_name": "西安交通大学", "candidate_url": "https://gmis.xjtu.edu.cn/", "source_url": "https://www.bing.com/search?q=西安交通大学+教务系统+site:edu.cn"},
+  {"school_name": "西安邮电大学", "candidate_url": "https://zfjw.xupt.edu.cn/jwglxt/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=西安交通大学+教务系统+site:edu.cn"},
+  {"school_name": "湖南铁道职业技术学院", "candidate_url": "https://jw.hntbc.edu.cn/cas/login.action", "source_url": "https://www.bing.com/search?q=KINGOSOFT+青果+教务系统+登录+edu.cn"}
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://ehall.xju.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "新疆大学一站式服务大厅"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://rhmh.xju.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "新疆大学融合门户新版"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://edu.xju.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "新疆大学教育在线"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://uaa.imu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "内蒙古大学本科生教育教务"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://gs.imu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "内蒙古大学研究生教育"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://ehall.imu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "内蒙古大学校内门户"
+  },
+  {
+    "school_name": "黑龙江大学",
+    "school_code": "4123010212",
+    "candidate_url": "https://xyw.hlju.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "黑龙江大学信息门户"
+  },
+  {
+    "school_name": "黑龙江大学",
+    "school_code": "4123010212",
+    "candidate_url": "https://yjsy.hlju.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "黑龙江大学研究生院"
+  }
+]

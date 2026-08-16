@@ -4,8 +4,7 @@
 }
 
 .header-row {
-  min-height: 132rpx;
-  padding: 24rpx 28rpx 16rpx;
+  padding: 15px var(--campus-page-gutter, 16px) 11px;
   display: flex;
   align-items: center;
   gap: 14rpx;
@@ -19,16 +18,16 @@
 
 .title {
   color: var(--text, #1b2730);
-  font-size: 46rpx;
+  font-size: var(--campus-title-size, 32px);
   line-height: 1.2;
   font-weight: 760;
   letter-spacing: -0.5rpx;
 }
 
 .subtitle {
-  margin-top: 7rpx;
+  margin-top: 10rpx;
   color: var(--muted, #667784);
-  font-size: 25rpx;
+  font-size: var(--campus-subtitle-size, 16px);
   line-height: 1.4;
 }
 
@@ -42,7 +41,7 @@
   border-radius: 18rpx;
   color: var(--primary, #2f6486);
   background: var(--surface, #ffffff);
-  font-size: 18rpx;
+  font-size: 20rpx;
   font-weight: 600;
 }
 

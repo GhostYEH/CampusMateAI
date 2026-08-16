@@ -185,6 +185,7 @@ class CourseOut(BaseModel):
     status: str
     created_at: str
     updated_at: str
+    owner_user_id: Optional[str] = None
 
 
 # ===== 班级 =====

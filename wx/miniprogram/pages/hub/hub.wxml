@@ -1,0 +1,13 @@
+<view class="campus-page hub-page">
+  <secondary-nav title="{{title}}"></secondary-nav>
+  <view class="campus-page-body hub-body">
+    <view class="hub-hero campus-enter"><view class="hero-icon"><image src="{{icon}}" mode="aspectFit"></image></view><view><view class="hero-title">{{title}}</view><view class="hero-subtitle">{{subtitle}}</view></view></view>
+    <button wx:if="{{kind === 'help'}}" class="feedback-button" hover-class="button-pressed" bindtap="toggleComposer">提交新问题</button>
+    <view wx:if="{{showComposer}}" class="request-card campus-enter"><input value="{{requestTitle}}" placeholder="问题标题" bindinput="onRequestTitle"></input><textarea value="{{requestContent}}" placeholder="请描述你遇到的问题" bindinput="onRequestContent"></textarea><view><button bindtap="toggleComposer">取消</button><button class="submit" loading="{{sending}}" bindtap="submitRequest">提交</button></view></view>
+    <view class="section-heading"><view>{{kind === 'help' ? '处理记录' : '全部内容'}}</view><text>{{items.length}} 项</text></view>
+    <state-view wx:if="{{loading}}" state="loading" title="正在同步"></state-view>
+    <state-view wx:elif="{{error}}" state="error" title="暂时无法加载" description="{{error}}" actionText="重试" bindaction="load"></state-view>
+    <state-view wx:elif="{{!items.length}}" state="empty" title="这里暂时没有内容" description="数据会从真实校园后端同步到这里"></state-view>
+    <view wx:else class="hub-list"><view wx:for="{{items}}" wx:key="id" class="hub-item campus-enter"><view class="item-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view><view class="item-main"><view>{{item.title}}</view><text>{{item.subtitle}}</text><label>{{item.meta}}</label></view><image class="item-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></view></view>
+  </view>
+</view>

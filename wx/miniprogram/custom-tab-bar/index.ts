@@ -36,9 +36,13 @@ Component({
       const currentRoute = route.startsWith('/') ? route : `/${route}`
       const selected = this.data.list.findIndex((item) => item.pagePath === currentRoute)
       this.setData({
-        selected: selected < 0 ? 0 : selected,
+        selected,
         darkMode: repository.getSettings().darkMode,
       })
+      if (!repository.getSession()) {
+        this.setData({ taskCount: 0 })
+        return
+      }
       try {
         const tasks = await repository.getTasksAsync()
         this.setData({ taskCount: tasks.filter((task) => !task.done).length })

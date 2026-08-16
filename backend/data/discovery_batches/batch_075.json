@@ -1,0 +1,106 @@
+[
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://ugs.hebut.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_hebut_official",
+    "notes": "本科生教育"
+  },
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://yjs.hebut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_hebut_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://ihall.hebut.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_hebut_official",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://jwjs.hebut.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_hebut_official",
+    "notes": "本科教务系统"
+  },
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://yjsedu.hebut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_hebut_official",
+    "notes": "研究生教务系统"
+  },
+  {
+    "school_name": "河北工业大学",
+    "school_code": "4113010080",
+    "candidate_url": "https://cjjw.hebut.edu.cn",
+    "system_type": "undergraduate-legacy",
+    "source": "webfetch_hebut_official",
+    "notes": "继续教育教务系统"
+  },
+  {
+    "school_name": "太原理工大学",
+    "school_code": "4114010112",
+    "candidate_url": "https://one.tyut.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_tyut_official",
+    "notes": "智慧校园/统一门户"
+  },
+  {
+    "school_name": "太原理工大学",
+    "school_code": "4114010112",
+    "candidate_url": "https://jwc.tyut.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_tyut_official",
+    "notes": "教务处/本科生教育"
+  },
+  {
+    "school_name": "太原理工大学",
+    "school_code": "4114010112",
+    "candidate_url": "https://gs.tyut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_tyut_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "西北农林科技大学",
+    "school_code": "4161010712",
+    "candidate_url": "https://jiaowu.nwsuaf.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_nwafu_official",
+    "notes": "本科生教育/教务"
+  },
+  {
+    "school_name": "西北农林科技大学",
+    "school_code": "4161010712",
+    "candidate_url": "https://yjshy.nwsuaf.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_nwafu_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "西北农林科技大学",
+    "school_code": "4161010712",
+    "candidate_url": "https://ehall.nwafu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_nwafu_official",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "西北农林科技大学",
+    "school_code": "4161010712",
+    "candidate_url": "https://newehall.nwafu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_nwafu_official",
+    "notes": "本科教务管理系统/研究生管理系统"
+  }
+]

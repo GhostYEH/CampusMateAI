@@ -28,7 +28,7 @@ const checks = [
   ['courses page loads remote-capable courses', coursesPage.includes('getCoursesAsync')],
   ['tab badge loads remote-capable tasks', tabBar.includes('getTasksAsync')],
   ['student app defaults to remote backend mode', /mockMode:\s*false/.test(repository)],
-  ['student app defaults to active LAN backend', repository.includes("apiBaseUrl: 'http://192.168.1.14:8000'")],
+  ['student app defaults to active LAN backend', repository.includes("apiBaseUrl: 'http://192.168.1.17:8000'")],
   ['repository exposes current connection state', repository.includes('getConnectionState()')],
   ['repository exposes a real backend probe', repository.includes('probeRealBackend()')],
   ['repository can test backend health', repository.includes('checkBackendHealth')],
@@ -42,7 +42,10 @@ const checks = [
   ['logout does not rotate an expired token', /\/auth\/logout[\s\S]*retryAfterRefresh:\s*false/.test(repository)],
   ['logout revokes a freshly rotated token', /async logout[\s\S]*refreshAccessToken[\s\S]*latestRefreshToken/.test(repository)],
   ['invalid manual deadlines are rejected', repository.includes('无法识别截止时间')],
-  ['real course filters are derived from returned data', coursesPage.includes("filters: ['全部', ...courseTypes]" )],
+  ['course filters preserve Android information architecture', coursesPage.includes("'今日课程'")
+    && coursesPage.includes("'专业课'")
+    && coursesPage.includes("'公共课'")
+    && coursesPage.includes("'实验课'")],
   ['task load errors expose backend message', /catch \(error\)[\s\S]*error instanceof Error/.test(tasksPage)],
   ['notice page renders a dedicated error state', noticesMarkup.includes('wx:elif="{{error}}"')],
   ['home tolerates partial backend failures', indexPage.includes('Promise.allSettled')],

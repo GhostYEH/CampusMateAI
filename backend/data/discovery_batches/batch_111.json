@@ -1,0 +1,86 @@
+[
+  {
+    "school_name": "武夷学院",
+    "school_code": "4135010397",
+    "candidate_url": "https://mh.wuyiu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武夷学院",
+    "school_code": "4135010397",
+    "candidate_url": "https://oa.wuyiu.edu.cn:8443/DreamWeb/ctrl/sso/login",
+    "system_type": "oa_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "渭南师范学院",
+    "school_code": "4161010723",
+    "candidate_url": "https://jw.wnu.edu.cn",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "渭南师范学院",
+    "school_code": "4161010723",
+    "candidate_url": "http://zsb.wnu.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "渭南师范学院",
+    "school_code": "4161010723",
+    "candidate_url": "http://jyzx.wnu.edu.cn/",
+    "system_type": "career_center",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "渭南师范学院",
+    "school_code": "4161010723",
+    "candidate_url": "http://oa.wnu.edu.cn/",
+    "system_type": "oa_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "渭南师范学院",
+    "school_code": "4161010723",
+    "candidate_url": "https://kygl.wnu.edu.cn/wnsfxy-h",
+    "system_type": "research_management",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西京学院",
+    "school_code": "4161012715",
+    "candidate_url": "https://jwc.xijing.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西京学院",
+    "school_code": "4161012715",
+    "candidate_url": "https://zhaosh.xijing.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西京学院",
+    "school_code": "4161012715",
+    "candidate_url": "https://yjs.xijing.edu.cn/",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西京学院",
+    "school_code": "4161012715",
+    "candidate_url": "https://my.xijing.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西京学院",
+    "school_code": "4161012715",
+    "candidate_url": "https://xsfzfw.xijing.edu.cn/",
+    "system_type": "student_service",
+    "source": "webfetch_official"
+  }
+]

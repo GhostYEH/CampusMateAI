@@ -1,0 +1,10 @@
+[
+  {"school_code":"4132010299","school_name":"江苏大学","candidate_url":"http://ehall.ujs.edu.cn/","system_type":"unified_portal","provider":"KINGOSOFT","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"综合门户ehall金智"},
+  {"school_code":"4132010299","school_name":"江苏大学","candidate_url":"https://jwc.ujs.edu.cn/","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"教务处本科生教育"},
+  {"school_code":"4132010299","school_name":"江苏大学","candidate_url":"http://yjsy.ujs.edu.cn/","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"研究生院"},
+  {"school_code":"4132010300","school_name":"南京信息工程大学","candidate_url":"https://i.nuist.edu.cn","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"融合门户"},
+  {"school_code":"4132010300","school_name":"南京信息工程大学","candidate_url":"https://jwc.nuist.edu.cn/","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"教务处本科教育"},
+  {"school_code":"4132010300","school_name":"南京信息工程大学","candidate_url":"http://jwxt.nuist.edu.cn","system_type":"undergraduate_main","provider":"unknown","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"本科教务系统"},
+  {"school_code":"4132010300","school_name":"南京信息工程大学","candidate_url":"https://nxdyjs.nuist.edu.cn/gmis5/home/login","system_type":"graduate_main","provider":"KINGOSOFT","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"研究生管理系统gmis5金智"},
+  {"school_code":"4132010300","school_name":"南京信息工程大学","candidate_url":"https://yjs.nuist.edu.cn/","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"研究生院"}
+]

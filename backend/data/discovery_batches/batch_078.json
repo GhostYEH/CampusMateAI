@@ -1,0 +1,66 @@
+[
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://ehall.xju.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_xju_official",
+    "notes": "一站式服务大厅(旧版)"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://rhmh.xju.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_xju_official",
+    "notes": "一站式服务大厅(新版)"
+  },
+  {
+    "school_name": "新疆大学",
+    "school_code": "4165010755",
+    "candidate_url": "https://edu.xju.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_xju_official",
+    "notes": "教育在线"
+  },
+  {
+    "school_name": "石河子大学",
+    "school_code": "4165010759",
+    "candidate_url": "https://one.shzu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_shzu_official",
+    "notes": "一站式服务平台"
+  },
+  {
+    "school_name": "石河子大学",
+    "school_code": "4165010759",
+    "candidate_url": "https://jwc.shzu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_shzu_official",
+    "notes": "教务处/本科生教育"
+  },
+  {
+    "school_name": "石河子大学",
+    "school_code": "4165010759",
+    "candidate_url": "https://yjsh.shzu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_shzu_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "青海师范大学",
+    "school_code": "4163010746",
+    "candidate_url": "https://one.qhnu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_qhnu_official",
+    "notes": "服务门户"
+  },
+  {
+    "school_name": "青海师范大学",
+    "school_code": "4163010746",
+    "candidate_url": "https://yjsb.qhnu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_qhnu_official",
+    "notes": "研究生招生"
+  }
+]

@@ -1,0 +1,52 @@
+[
+  {
+    "school_name": "南昌大学",
+    "school_code": "4136010403",
+    "province": "江西省",
+    "candidate_url": "https://jwc.ncu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "南昌大学教务在线/教务处"
+  },
+  {
+    "school_name": "郑州大学",
+    "school_code": "4141010459",
+    "province": "河南省",
+    "candidate_url": "https://info.s.zzu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "郑州大学信息门户"
+  },
+  {
+    "school_name": "郑州大学",
+    "school_code": "4141010459",
+    "province": "河南省",
+    "candidate_url": "https://ehall.v.zzu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "郑州大学办事大厅"
+  },
+  {
+    "school_name": "郑州大学",
+    "school_code": "4141010459",
+    "province": "河南省",
+    "candidate_url": "https://www5.zzu.edu.cn/jwc",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "郑州大学教务处/本科生教育"
+  },
+  {
+    "school_name": "郑州大学",
+    "school_code": "4141010459",
+    "province": "河南省",
+    "candidate_url": "https://gs.zzu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "郑州大学研究生教育"
+  }
+]

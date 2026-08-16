@@ -1,0 +1,40 @@
+{
+  "appid": "",
+  "projectId": "",
+  "projectName": "",
+  "projectType": "auto",
+  "targetFramework": "auto",
+  "sourceRoot": "",
+  "miniprogramRoot": "",
+  "distRoot": "",
+  "packageManager": "auto",
+  "deployMode": "preview",
+  "robot": 1,
+  "versionStrategy": "package-json",
+  "descStrategy": "git-commit",
+  "backendType": "none",
+  "useCloudBase": false,
+  "cloudBaseEnvId": "",
+  "features": {
+    "login": false,
+    "phoneNumber": false,
+    "payment": false,
+    "subscribeMessage": false,
+    "location": false,
+    "map": false,
+    "file": false,
+    "media": false,
+    "websocket": false
+  },
+  "privacy": {
+    "collectsUserData": false,
+    "generateComplianceChecklist": true
+  },
+  "automation": {
+    "allowModifyPackageJson": true,
+    "allowModifyAgentsMd": true,
+    "allowModifyGitignore": true,
+    "allowGenerateGithubActions": true,
+    "allowSubmitReview": false
+  }
+}

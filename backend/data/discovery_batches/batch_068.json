@@ -1,0 +1,50 @@
+[
+  {
+    "school_name": "吉林大学",
+    "school_code": "4122010183",
+    "candidate_url": "https://jwc.jlu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "吉林大学教务处"
+  },
+  {
+    "school_name": "吉林大学",
+    "school_code": "4122010183",
+    "candidate_url": "https://yjsy.jlu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "吉林大学研究生院"
+  },
+  {
+    "school_name": "东北师范大学",
+    "school_code": "4122010200",
+    "candidate_url": "https://m.nenu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "东北师范大学融合门户"
+  },
+  {
+    "school_name": "东北师范大学",
+    "school_code": "4122010200",
+    "candidate_url": "https://oa.nenu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "东北师范大学服务大厅"
+  },
+  {
+    "school_name": "辽宁大学",
+    "school_code": "4121010140",
+    "candidate_url": "https://jwc.lnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "辽宁大学教务处"
+  },
+  {
+    "school_name": "辽宁大学",
+    "school_code": "4121010140",
+    "candidate_url": "https://grs.lnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "辽宁大学研究生院"
+  }
+]

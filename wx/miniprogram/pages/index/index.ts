@@ -29,19 +29,19 @@ Page({
     darkMode: false,
     quickActions: [
       {
-        label: '考试安排', detail: '', route: '', tab: false, tone: 'blue',
+        label: '考试安排', detail: '', route: '/pages/exams/exams', tab: false, tone: 'indigo',
         icon: 'quick-calendar',
       },
       {
-        label: '空教室', detail: '', route: '', tab: false, tone: 'blue', icon: 'quick-calendar',
+        label: '空教室', detail: '', route: '/pages/classrooms/classrooms', tab: false, tone: 'blue', icon: 'quick-classroom',
       },
       {
-        label: '办事大厅', detail: '', route: '/pages/notices/notices', tab: false, tone: 'teal', icon: 'quick-notice',
+        label: '校园社区', detail: '', route: '/pages/community/community', tab: false, tone: 'teal', icon: 'quick-community',
       },
       {
         label: '专注自习', detail: '', route: '/pages/study/study', tab: false, tone: 'orange', icon: 'quick-study',
       },
-      { label: '失物招领', detail: '', route: '', tab: false, tone: 'navy', icon: 'quick-counselor' },
+      { label: '失物招领', detail: '', route: '/pages/lostfound/lostfound', tab: false, tone: 'violet', icon: 'quick-lost' },
     ] as QuickAction[],
   },
   onLoad() {

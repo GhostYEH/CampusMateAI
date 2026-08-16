@@ -30,7 +30,7 @@ def db() -> Database:
 def _course(db: Database, user_id: str, external_id: str):
     return CourseRepository(db).create_course(
         name="离散数学",
-        teacher_id=user_id,
+        owner_user_id=user_id,
         provider="chaoxing",
         external_id=external_id,
         status="active",
@@ -128,7 +128,7 @@ def test_course_remote_context_round_trips(db: Database):
     repository = CourseRepository(db)
     course = repository.create_course(
         name="程序设计实践",
-        teacher_id="user1",
+        owner_user_id="user1",
         remote_teacher_name="米老师",
         provider="chaoxing",
         external_id="33_44",
@@ -211,7 +211,7 @@ def test_invalid_cache_record_can_be_removed_for_safe_refetch(db: Database):
 
 def test_course_content_routes_are_registered():
     from app.main import app
-    registered = {(method, route.path) for route in app.routes for method in route.methods or set()}
+    registered = {(method, route.path) for route in app.routes for method in (getattr(route, "methods", None) or set())}
     assert ("GET", "/api/v1/courses/{course_id}/content-summary") in registered
     assert ("GET", "/api/v1/courses/{course_id}/content") in registered
     assert ("POST", "/api/v1/courses/{course_id}/sync") in registered

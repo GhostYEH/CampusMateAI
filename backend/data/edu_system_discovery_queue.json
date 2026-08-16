@@ -1,0 +1,236 @@
+[
+  {
+    "name": "中国人民公安大学",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "school_code": "4111010041"
+  },
+  {
+    "name": "中国人民大学",
+    "short_name": "人大",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "ruc.edu.cn",
+    "official_website": "https://www.ruc.edu.cn",
+    "school_code": "4111010002"
+  },
+  {
+    "name": "中国传媒大学",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "school_code": "4111010033"
+  },
+  {
+    "name": "中国农业大学",
+    "short_name": "中国农大",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "cau.edu.cn",
+    "official_website": "https://www.cau.edu.cn",
+    "school_code": "4111010019"
+  },
+  {
+    "name": "中国政法大学",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "school_code": "4111010053"
+  },
+  {
+    "name": "中央民族大学",
+    "short_name": "中央民大",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "muc.edu.cn",
+    "official_website": "https://www.muc.edu.cn",
+    "school_code": "4111010052"
+  },
+  {
+    "name": "北京大学",
+    "short_name": "北大",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "pku.edu.cn",
+    "official_website": "https://www.pku.edu.cn",
+    "school_code": "4111010001"
+  },
+  {
+    "name": "北京理工大学",
+    "short_name": "北理工",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "bit.edu.cn",
+    "official_website": "https://www.bit.edu.cn",
+    "school_code": "4111010007"
+  },
+  {
+    "name": "清华大学",
+    "short_name": "清华",
+    "province": "北京市",
+    "city": "北京市",
+    "level": "本科",
+    "official_domain": "tsinghua.edu.cn",
+    "official_website": "https://www.tsinghua.edu.cn",
+    "school_code": "4111010003"
+  },
+  {
+    "name": "上海中医药大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010268"
+  },
+  {
+    "name": "上海交通大学",
+    "short_name": "上交大",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "official_domain": "sjtu.edu.cn",
+    "official_website": "https://www.sjtu.edu.cn",
+    "school_code": "4131010248"
+  },
+  {
+    "name": "上海体育大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010277"
+  },
+  {
+    "name": "上海健康医学院",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010262"
+  },
+  {
+    "name": "上海公安学院",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010283"
+  },
+  {
+    "name": "上海外国语大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010271"
+  },
+  {
+    "name": "上海大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010280"
+  },
+  {
+    "name": "上海对外经贸大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010273"
+  },
+  {
+    "name": "上海师范大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010270"
+  },
+  {
+    "name": "上海应用技术大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010259"
+  },
+  {
+    "name": "上海戏剧学院",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010279"
+  },
+  {
+    "name": "上海海事大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010254"
+  },
+  {
+    "name": "上海海关学院",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010274"
+  },
+  {
+    "name": "上海海洋大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010264"
+  },
+  {
+    "name": "上海理工大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010252"
+  },
+  {
+    "name": "上海电力大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010256"
+  },
+  {
+    "name": "上海财经大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010272"
+  },
+  {
+    "name": "上海音乐学院",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010278"
+  },
+  {
+    "name": "东华大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010255"
+  },
+  {
+    "name": "华东师范大学",
+    "short_name": "华东师大",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "official_domain": "ecnu.edu.cn",
+    "official_website": "https://www.ecnu.edu.cn",
+    "school_code": "4131010269"
+  },
+  {
+    "name": "华东政法大学",
+    "province": "上海市",
+    "city": "上海市",
+    "level": "本科",
+    "school_code": "4131010276"
+  }
+]

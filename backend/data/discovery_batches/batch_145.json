@@ -1,0 +1,498 @@
+[
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://jwzx.sut.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official",
+    "source_detail": "教务在线"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://ehall.sut.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "服务大厅/ehall"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://main.sut.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "信息门户"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://yjsxy.sut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://zsxxw.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生招生"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://cjxy.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://mba.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "MBA教育"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://iec.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "留学生"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://jy.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "毕业生就业"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://xsc.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生管理服务"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://youth.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "团学活动"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://ghc.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "国际交流"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://oa.sut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "协同办公系统"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://mail.sut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教工邮箱"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "http://mail.smail.sut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生邮箱"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://xb.sut.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学术期刊"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://sutpark.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "大学科技园"
+  },
+  {
+    "school_name": "沈阳工业大学",
+    "school_code": "4121010142",
+    "candidate_url": "https://news.sut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "新闻主站"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://i.haust.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "我i科大/信息门户"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://eip.haust.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "网上办事大厅"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://jwc.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生教育/教务处"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://yjsc.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://jxjy.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://zjc.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科招生/就业"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://kyc.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "自然科学研究"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://skc.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人文社科研究"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://kjy.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科技成果转化中心"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://xbbjb.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学报编辑部"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "http://rsc.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事工作部"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://postdoctor.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "博士后流动站"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://gjb.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "对外合作"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://gjxy.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "中外合作办学"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://oa.haust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "办公OA"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://mail.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "电子邮箱"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://vpn.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "VPN"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://lib.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://xyw.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校友网"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://news.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "新闻网"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://cwyzcglb.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "财务服务"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://zbcg.haust.edu.cn/sso/index.htm",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "招标采购"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://cwcx.haust.edu.cn/logCas",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "财资平台"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://zcgl.haust.edu.cn/asset",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "资产管理"
+  },
+  {
+    "school_name": "河南科技大学",
+    "school_code": "4141010464",
+    "candidate_url": "https://xsc.haust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生工作"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://jwxt.hunau.edu.cn/sso.jsp",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official",
+    "source_detail": "选课系统/教务系统"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://portal.hunau.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "校园门户"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://ehall.hunau.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "办事大厅/ehall"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://jwc.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生教育/教务处"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://yjsy.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://jjxy.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://zs.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科招生"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://zp.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人才招聘"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://xxgk.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://lib.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://mail.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "农大邮箱"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://mail.stu.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生邮箱"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://news.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "新闻网"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://dhr.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事服务"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://kjc.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科技处"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://sun.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教育阳光服务大厅"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://dag.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "档案馆"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "https://oa.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "办公系统"
+  },
+  {
+    "school_name": "湖南农业大学",
+    "school_code": "4143010537",
+    "candidate_url": "http://tpd.hunau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "招标采购"
+  }
+]

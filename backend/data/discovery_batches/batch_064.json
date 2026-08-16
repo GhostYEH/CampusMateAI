@@ -1,0 +1,82 @@
+[
+  {
+    "school_name": "云南大学",
+    "school_code": "4153010673",
+    "candidate_url": "https://jwc.ynu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "云南大学教务处"
+  },
+  {
+    "school_name": "云南大学",
+    "school_code": "4153010673",
+    "candidate_url": "https://grs.ynu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "云南大学研究生院"
+  },
+  {
+    "school_name": "云南大学",
+    "school_code": "4153010673",
+    "candidate_url": "https://casp.ynu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "云南大学融合门户"
+  },
+  {
+    "school_name": "云南师范大学",
+    "school_code": "4153010681",
+    "candidate_url": "https://jwc.ynnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "云南师范大学教务处"
+  },
+  {
+    "school_name": "云南师范大学",
+    "school_code": "4153010681",
+    "candidate_url": "https://grs.ynnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "云南师范大学研究生院"
+  },
+  {
+    "school_name": "云南师范大学",
+    "school_code": "4153010681",
+    "candidate_url": "https://portal.ynnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "云南师范大学融合门户"
+  },
+  {
+    "school_name": "云南师范大学",
+    "school_code": "4153010681",
+    "candidate_url": "https://jwmis.ynnu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "云南师范大学教务系统"
+  },
+  {
+    "school_name": "江苏大学",
+    "school_code": "4132010299",
+    "candidate_url": "https://jwc.ujs.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "江苏大学教务处"
+  },
+  {
+    "school_name": "江苏大学",
+    "school_code": "4132010299",
+    "candidate_url": "https://yjsy.ujs.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "江苏大学研究生院"
+  },
+  {
+    "school_name": "江苏大学",
+    "school_code": "4132010299",
+    "candidate_url": "https://ehall.ujs.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "江苏大学综合门户"
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {"school_name": "海南软件职业技术学院", "school_code": "4146013575", "candidate_url": "https://ehall.hncst.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "服务大厅"},
+  {"school_name": "海南软件职业技术学院", "school_code": "4146013575", "candidate_url": "https://vpn.hncst.edu.cn", "system_type": "vpn_website", "source": "webfetch_official_site", "notes": "VPN"},
+  {"school_name": "海南软件职业技术学院", "school_code": "4146013575", "candidate_url": "https://int.hncst.edu.cn", "system_type": "english_website", "source": "webfetch_official_site", "notes": "English"},
+  {"school_name": "海南软件职业技术学院", "school_code": "4146013575", "candidate_url": "https://zs.hncst.edu.cn", "system_type": "admissions_website", "source": "webfetch_official_site", "notes": "招生"},
+  {"school_name": "海南软件职业技术学院", "school_code": "4146013575", "candidate_url": "https://job.hncst.edu.cn", "system_type": "career_website", "source": "webfetch_official_site", "notes": "就业"},
+
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://portal-paas.hzau.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "门户"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://mail.hzau.edu.cn", "system_type": "email_website", "source": "webfetch_official_site", "notes": "邮箱"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://ai.hzau.edu.cn", "system_type": "ai_website", "source": "webfetch_official_site", "notes": "智慧狮山人工智能广场"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://rsc.hzau.edu.cn", "system_type": "hr_website", "source": "webfetch_official_site", "notes": "招聘"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://xyh.hzau.edu.cn", "system_type": "alumni_website", "source": "webfetch_official_site", "notes": "校友会"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://lib.hzau.edu.cn", "system_type": "library_website", "source": "webfetch_official_site", "notes": "图书馆"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://zs.hzau.edu.cn", "system_type": "admissions_website", "source": "webfetch_official_site", "notes": "招生网"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://en.hzau.edu.cn", "system_type": "english_website", "source": "webfetch_official_site", "notes": "English"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://news.hzau.edu.cn", "system_type": "news_website", "source": "webfetch_official_site", "notes": "新闻"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://xwgk.hzau.edu.cn", "system_type": "info_disclosure_website", "source": "webfetch_official_site", "notes": "信息公开"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://ic.hzau.edu.cn", "system_type": "international_website", "source": "webfetch_official_site", "notes": "留学生"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://fao.hzau.edu.cn", "system_type": "international_website", "source": "webfetch_official_site", "notes": "国际合作"},
+  {"school_name": "华中农业大学", "school_code": "4142010504", "candidate_url": "https://qks.hzau.edu.cn", "system_type": "journal_website", "source": "webfetch_official_site", "notes": "期刊"}
+]

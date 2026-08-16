@@ -1,0 +1,44 @@
+{
+  "kbList": [
+    {
+      "kch": "FIXTURE-MATH101",
+      "kcmc": "高等数学(甲)",
+      "jsxm": " Fixture教师A ",
+      "jsmc": " Fixture教学楼-A101 ",
+      "xqj": "1",
+      "jc1": "1",
+      "jc2": "2",
+      "kssj": "08:00",
+      "jssj": "09:40",
+      "zcd": "1-16",
+      "xqmc": "2024-2025秋季"
+    },
+    {
+      "kch": "FIXTURE-CS101",
+      "kcmc": "程序设计基础",
+      "jsxm": "Fixture教师B",
+      "jsmc": "Fixture计算机楼-B202",
+      "xqj": "3",
+      "jc1": "3",
+      "jc2": "4",
+      "kssj": "10:00",
+      "jssj": "11:40",
+      "zcd": "1-16单",
+      "xqmc": "2024-2025秋季"
+    },
+    {
+      "kch": "FIXTURE-ENG101",
+      "kcmc": "大学英语(三)",
+      "jsxm": "Fixture教师C",
+      "jsmc": "Fixture外语楼-C303",
+      "xqj": "5",
+      "jc1": "5",
+      "jc2": "6",
+      "kssj": "14:00",
+      "jssj": "15:40",
+      "zcd": "1-16",
+      "xqmc": "2024-2025秋季"
+    }
+  ],
+  "_fixture_note": "脱敏课表 JSON，字段名覆盖正方 JWGL2 常见命名。无真实学号/cookie。"
+}

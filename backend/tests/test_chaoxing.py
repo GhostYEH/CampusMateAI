@@ -285,10 +285,10 @@ async def test_chaoxing_status_counts_only_current_user(db, mock_httpx_client):
     notice_repo = NoticeRepository(db)
     chaoxing_repo.save_credentials("user1", {"cookie": "A"})
     course_repo.create_course(
-        name="用户一课程", teacher_id="user1", provider="chaoxing", external_id="same-course"
+        name="用户一课程", owner_user_id="user1", provider="chaoxing", external_id="same-course"
     )
     course_repo.create_course(
-        name="用户二课程", teacher_id="user2", provider="chaoxing", external_id="same-course"
+        name="用户二课程", owner_user_id="user2", provider="chaoxing", external_id="same-course"
     )
     task_repo.create_task(
         user_id="user1", title="用户一作业", source="chaoxing", external_id="same-task"
@@ -322,7 +322,7 @@ async def test_disconnect_removes_only_current_credentials_and_preserves_synced_
     chaoxing_repo.save_credentials("user1", {"cookie": "A"})
     chaoxing_repo.save_credentials("user2", {"cookie": "B"})
     course_repo.create_course(
-        name="历史课程", teacher_id="user1", provider="chaoxing", external_id="course-1"
+        name="历史课程", owner_user_id="user1", provider="chaoxing", external_id="course-1"
     )
     task_repo.create_task(
         user_id="user1", title="历史作业", source="chaoxing", external_id="task-1"
@@ -339,7 +339,7 @@ async def test_disconnect_removes_only_current_credentials_and_preserves_synced_
     assert chaoxing_repo.get_credentials("user1") is None
     assert chaoxing_repo.get_credentials("user2") == {"cookie": "B"}
     with db.query() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM courses WHERE teacher_id = 'user1'").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM courses WHERE owner_user_id = 'user1'").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM personal_tasks WHERE user_id = 'user1'").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM notices WHERE user_id = 'user1'").fetchone()[0] == 1
 
@@ -578,7 +578,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
 
     await sync_chaoxing(user=user, container=container)
     
-    courses, _ = course_repo.list_courses(teacher_id="user1")
+    courses, _ = course_repo.list_courses(owner_user_id="user1")
     assert len(courses) == 1
     assert courses[0].name == "高等数学"
     assert courses[0].external_id == "111_222"
@@ -588,7 +588,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     
     await sync_chaoxing(user=user, container=container)
     
-    courses_after, _ = course_repo.list_courses(teacher_id="user1")
+    courses_after, _ = course_repo.list_courses(owner_user_id="user1")
     assert len(courses_after) == 1
     assert courses_after[0].name == "高等数学（下）"
     assert courses_after[0].id == courses[0].id # ID 没变，说明是 UPDATE
@@ -655,8 +655,8 @@ async def test_chaoxing_sync_courses_isolation(db, mock_httpx_client):
     await sync_chaoxing(user=user1, container=container)
     await sync_chaoxing(user=user2, container=container)
     
-    courses1, _ = course_repo.list_courses(teacher_id="user1")
-    courses2, _ = course_repo.list_courses(teacher_id="user2")
+    courses1, _ = course_repo.list_courses(owner_user_id="user1")
+    courses2, _ = course_repo.list_courses(owner_user_id="user2")
     
     assert len(courses1) == 1
     assert len(courses2) == 1
@@ -667,7 +667,7 @@ async def test_chaoxing_sync_invalid_session_preserves_courses(db, mock_httpx_cl
     repo = ChaoxingRepository(db)
     course_repo = CourseRepository(db)
     repo.save_credentials("user1", {"cookie": "A"})
-    course_repo.create_course(name="旧课程", teacher_id="user1", external_id="old_123")
+    course_repo.create_course(name="旧课程", owner_user_id="user1", external_id="old_123")
     
     class MockContainer:
         def __init__(self):
@@ -689,7 +689,7 @@ async def test_chaoxing_sync_invalid_session_preserves_courses(db, mock_httpx_cl
     assert exc_info.value.detail == "reauth_required"
     
     # 验证旧课程没被清空
-    courses, _ = course_repo.list_courses(teacher_id="user1")
+    courses, _ = course_repo.list_courses(owner_user_id="user1")
     assert len(courses) == 1
     assert courses[0].name == "旧课程"
 
@@ -726,7 +726,7 @@ async def test_chaoxing_sync_abnormal_response(db, mock_httpx_client):
     assert exc_info.value.detail == "reauth_required"
     
     # 没有假课程生成
-    courses, _ = course_repo.list_courses(teacher_id="user1")
+    courses, _ = course_repo.list_courses(owner_user_id="user1")
     assert len(courses) == 0
 
 @pytest.mark.asyncio

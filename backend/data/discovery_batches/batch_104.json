@@ -1,0 +1,12 @@
+[
+  {"school_name": "中华女子学院", "school_code": "4111011149", "candidate_url": "http://my.cwu.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "信息门户/信息服务门户"},
+  {"school_name": "中华女子学院", "school_code": "4111011149", "candidate_url": "http://zhaosheng.cwu.edu.cn", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "招生信息网"},
+  {"school_name": "东北石油大学", "school_code": "4123010220", "candidate_url": "http://jwc.nepu.edu.cn", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生教育/教务处"},
+  {"school_name": "东北石油大学", "school_code": "4123010220", "candidate_url": "https://cas.nepu.edu.cn/lyuapServer/login", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "校园门户"},
+  {"school_name": "东北石油大学", "school_code": "4123010220", "candidate_url": "http://yjsb.nepu.edu.cn", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教育/招生"},
+  {"school_name": "东北石油大学", "school_code": "4123010220", "candidate_url": "https://jxjy.nepu.edu.cn/", "system_type": "continuing_education", "source": "webfetch_official_site", "notes": "继续教育"},
+  {"school_name": "哈尔滨体育学院", "school_code": "4123010242", "candidate_url": "http://jwweb.hrbipe.edu.cn/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "教务管理"},
+  {"school_name": "哈尔滨体育学院", "school_code": "4123010242", "candidate_url": "https://www.hrbipe.edu.cn/jwc/index.htm", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生教育/教务处"},
+  {"school_name": "哈尔滨体育学院", "school_code": "4123010242", "candidate_url": "https://portal.hrbipe.edu.cn/zbp-portal-web", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "统一身份认证"},
+  {"school_name": "哈尔滨体育学院", "school_code": "4123010242", "candidate_url": "http://yjsgl.hrbipe.edu.cn/educationts/index#", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生管理"}
+]

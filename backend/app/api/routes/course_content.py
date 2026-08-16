@@ -78,7 +78,7 @@ def list_content(course_id: str, kind: str | None = Query(None),
 async def sync_course_content(course_id: str, user: UserRow = Depends(current_user),
                               container: ServiceContainer = Depends(_container)):
     course = _course(course_id, user, container)
-    if course.provider != "chaoxing" or course.teacher_id != user.id:
+    if course.provider != "chaoxing" or course.owner_user_id != user.id:
         raise HTTPException(status_code=400, detail="not_chaoxing_course")
     try:
         return await ChaoxingCourseContentSyncService(container).sync_course(

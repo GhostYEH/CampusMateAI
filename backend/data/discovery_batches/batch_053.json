@@ -1,0 +1,92 @@
+[
+  {
+    "university_name": "江西师范大学",
+    "school_code": "4136010414",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.jxnu.edu.cn/Portal/Index.aspx",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "江西师范大学教务在线"
+  },
+  {
+    "university_name": "江西师范大学",
+    "school_code": "4136010414",
+    "system_key": "graduate-academic",
+    "candidate_url": "http://graduate.jxnu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "江西师范大学研究生教育"
+  },
+  {
+    "university_name": "江西师范大学",
+    "school_code": "4136010414",
+    "system_key": "unified-portal",
+    "candidate_url": "https://uis.jxnu.edu.cn/cas/login",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "江西师范大学一站式服务大厅CAS登录"
+  },
+  {
+    "university_name": "江西财经大学",
+    "school_code": "4136010421",
+    "system_key": "unified-portal",
+    "candidate_url": "http://ehall.jxufe.edu.cn/new/index.html",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "智慧江财门户"
+  },
+  {
+    "university_name": "江西财经大学",
+    "school_code": "4136010421",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.jxufe.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "江西财经大学本科生教育教务处"
+  },
+  {
+    "university_name": "江西财经大学",
+    "school_code": "4136010421",
+    "system_key": "graduate-academic",
+    "candidate_url": "https://grs.jxufe.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "江西财经大学研究生教育"
+  },
+  {
+    "university_name": "山东师范大学",
+    "school_code": "4137010445",
+    "system_key": "unified-portal",
+    "candidate_url": "https://myehall.sdnu.edu.cn/index.html",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东师范大学信息门户/办事大厅"
+  },
+  {
+    "university_name": "山东师范大学",
+    "school_code": "4137010445",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "http://www.bkjy.sdnu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东师范大学本科生教育"
+  },
+  {
+    "university_name": "山东师范大学",
+    "school_code": "4137010445",
+    "system_key": "graduate-academic",
+    "candidate_url": "http://www.yjs.sdnu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东师范大学研究生"
+  }
+]

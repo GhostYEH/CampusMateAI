@@ -26,12 +26,13 @@ const messageTone = ref("info");
 const LAST_STATUS_KEY = "campus_chaoxing_last_status";
 
 const isConnected = computed(() => status.value === "online");
-const needsLogin = computed(() => status.value === "offline" || status.value === "expired");
+const needsLogin = computed(() => status.value === "offline" || status.value === "expired" || status.value === "verification_required");
 const statusLabel = computed(() => ({
   checking: "正在检查",
   online: "已连接",
   offline: "未连接",
   expired: "登录已失效",
+  verification_required: "需要验证",
   unavailable: "暂时无法验证",
 }[status.value] || "未知状态"));
 
@@ -209,11 +210,12 @@ onMounted(checkStatus);
 
         <template v-else-if="needsLogin">
           <div v-if="status === 'expired'" class="chaoxing-expired"><UiIcon name="PhWarningCircle" />学习通会话已失效，重新登录后即可继续同步。</div>
+          <div v-else-if="status === 'verification_required'" class="chaoxing-expired"><UiIcon name="PhWarningCircle" />学习通要求额外验证，请先前往学习通官方 App / 网页完成验证后重新登录。</div>
           <form class="chaoxing-form" @submit.prevent="login">
             <label><span>学号 / 手机号</span><input v-model="username" autocomplete="username" placeholder="请输入学习通账号" :disabled="loggingIn" /></label>
             <label><span>密码</span><div class="password-field"><input v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入学习通密码" :disabled="loggingIn" /><button type="button" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword"><UiIcon :name="showPassword ? 'PhEyeSlash' : 'PhEye'" /></button></div></label>
             <button class="redesign-button primary" type="submit" :disabled="loggingIn || !username.trim() || !password">
-              <UiIcon name="PhLink" />{{ loggingIn ? "连接中…" : status === "expired" ? "重新登录" : "登录并连接" }}
+              <UiIcon name="PhLink" />{{ loggingIn ? "连接中…" : status === 'expired' ? "重新登录" : "登录并连接" }}
             </button>
           </form>
           <p class="chaoxing-privacy"><UiIcon name="PhShieldCheck" />密码仅用于本次登录，浏览器和数据库都不会保存密码。</p>
@@ -250,6 +252,7 @@ onMounted(checkStatus);
 .chaoxing-status { margin-left: auto; padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 750; color: var(--muted); background: #eef1f4; }
 .chaoxing-status.online { color: #167a5b; background: #e4f6ee; }
 .chaoxing-status.expired { color: #b64a32; background: #fdece8; }
+.chaoxing-status.verification_required { color: #b64a32; background: #fdece8; }
 .chaoxing-status.unavailable { color: #8b6814; background: #fff2cf; }
 .chaoxing-checking { height: 150px; display: flex; align-items: center; justify-content: center; gap: 7px; }
 .chaoxing-checking span { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); animation: pulse 1s infinite alternate; }

@@ -46,3 +46,18 @@ export async function updateUser(userId, payload) {
   const { data } = await client.patch(`/auth/admin/users/${userId}`, payload);
   return data;
 }
+
+export async function getEduDiscoveryStats() {
+  const { data } = await client.get("/edu/discovery/stats");
+  return data;
+}
+
+export async function listEduDiscoveryCandidates(params = {}) {
+  const { data } = await client.get("/edu/discovery/candidates", { params });
+  return data;
+}
+
+export async function reviewEduCandidate(schoolCode, action) {
+  const { data } = await client.post(`/edu/discovery/candidates/${schoolCode}/review`, { action });
+  return data;
+}

@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS courses (
     semester TEXT,
     description TEXT,
     teacher_id TEXT,
+    owner_user_id TEXT,
     remote_teacher_name TEXT,
     remote_class_id TEXT,
     remote_cpi TEXT,
@@ -155,11 +156,12 @@ CREATE TABLE IF NOT EXISTS courses (
     last_synced_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT
+    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT,
+    FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
--- idx_courses_external_id 在 _migrate() 中创建，兼容尚未包含 external_id 的旧 courses 表。
+-- idx_courses_external_id 和 idx_courses_owner_user_id 在 _migrate() 中创建，兼容旧 courses 表。
 
 CREATE TABLE IF NOT EXISTS class_groups (
     id TEXT PRIMARY KEY,
@@ -580,8 +582,7 @@ CREATE TABLE IF NOT EXISTS universities (
 );
 CREATE INDEX IF NOT EXISTS idx_universities_status_name ON universities(status, name);
 CREATE INDEX IF NOT EXISTS idx_universities_location ON universities(province, city);
-CREATE INDEX IF NOT EXISTS idx_universities_level ON universities(level);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_universities_school_code ON universities(school_code) WHERE school_code IS NOT NULL;
+
 """
 
 COMMUNITY_SCHEMA_SQL = """
@@ -598,6 +599,8 @@ CREATE TABLE IF NOT EXISTS forum_posts (
     like_count INTEGER NOT NULL DEFAULT 0,
     comment_count INTEGER NOT NULL DEFAULT 0,
     favorite_count INTEGER NOT NULL DEFAULT 0,
+    extra_json TEXT NOT NULL DEFAULT '{}',
+    view_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT,
@@ -605,6 +608,8 @@ CREATE TABLE IF NOT EXISTS forum_posts (
 );
 CREATE INDEX IF NOT EXISTS idx_forum_posts_feed
 ON forum_posts(university_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_category
+ON forum_posts(university_id, status, category, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS forum_comments (
     id TEXT PRIMARY KEY,
@@ -812,6 +817,103 @@ CREATE INDEX IF NOT EXISTS idx_edu_sync_records_user ON edu_sync_records(user_id
 """
 
 
+# CampusMate EduConnector 同步数据持久化 schema。
+# 把 Adapter 归一化后的 EduSchedule / EduGrade 落库，供三端真实展示。
+# 幂等同步：基于 (user_id, edu_system_id, semester, course_code, weekday, start_section, weeks) 唯一键。
+# 软删除：stale 行不物理删除，标记 is_stale=1 + last_seen_at，保留历史。
+EDU_DATA_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS edu_courses (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    external_course_id TEXT,
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_courses_unique ON edu_courses(
+    user_id, edu_system_id, semester, course_code
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_courses_user_semester ON edu_courses(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_courses_stale ON edu_courses(is_stale);
+
+CREATE TABLE IF NOT EXISTS edu_schedule_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    teacher TEXT,
+    location TEXT,
+    weekday INTEGER,
+    start_section INTEGER,
+    end_section INTEGER,
+    start_time TEXT,
+    end_time TEXT,
+    weeks TEXT,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_schedule_items_unique ON edu_schedule_items(
+    user_id, edu_system_id, semester, course_code, weekday, start_section, weeks
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_user_semester ON edu_schedule_items(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_weekday ON edu_schedule_items(user_id, semester, weekday);
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_stale ON edu_schedule_items(is_stale);
+
+CREATE TABLE IF NOT EXISTS edu_grades (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    credit REAL,
+    score TEXT,
+    grade_point REAL,
+    category TEXT,
+    status TEXT,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_grades_unique ON edu_grades(
+    user_id, edu_system_id, semester, course_code
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_grades_user_semester ON edu_grades(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_grades_stale ON edu_grades(is_stale);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -862,6 +964,7 @@ class Database:
                 conn.executescript(COMMUNITY_SCHEMA_SQL)
                 conn.executescript(ACADEMIC_SCHEMA_SQL)
                 conn.executescript(EDU_CONNECTOR_SCHEMA_SQL)
+                conn.executescript(EDU_DATA_SCHEMA_SQL)
                 conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
                 conn.executescript(STUDY_SCHEMA_SQL)
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
@@ -918,6 +1021,8 @@ class Database:
             conn.execute("ALTER TABLE courses ADD COLUMN last_synced_at TEXT")
         if "remote_teacher_name" not in course_cols:
             conn.execute("ALTER TABLE courses ADD COLUMN remote_teacher_name TEXT")
+        if "owner_user_id" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN owner_user_id TEXT")
         for column, column_type in (
             ("remote_class_id", "TEXT"),
             ("remote_cpi", "TEXT"),
@@ -931,6 +1036,7 @@ class Database:
             if column not in course_cols:
                 conn.execute(f"ALTER TABLE courses ADD COLUMN {column} {column_type}")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)")
 
         # 检查 personal_tasks 表新增列
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
@@ -988,6 +1094,18 @@ class Database:
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_universities_school_code "
             "ON universities(school_code) WHERE school_code IS NOT NULL"
+        )
+
+        # ---- forum_posts 表补齐 extra_json / view_count 列(旧库) ----
+        cur = conn.execute("PRAGMA table_info(forum_posts)")
+        post_cols = {row["name"] for row in cur.fetchall()}
+        if "extra_json" not in post_cols:
+            conn.execute("ALTER TABLE forum_posts ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}'")
+        if "view_count" not in post_cols:
+            conn.execute("ALTER TABLE forum_posts ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_forum_posts_category "
+            "ON forum_posts(university_id, status, category, created_at DESC)"
         )
 
         # ---- EduConnector 架构迁移 ----

@@ -1,25 +1,25 @@
 <view class="page tab-page tasks-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
-  <campus-header title="待办" subtitle="把重要事情安排得更清楚" mode="{{mockMode ? 'Mock 数据' : '真实后端'}}" />
+  <campus-header title="待办" subtitle="今日待办与截止" mode="{{mockMode ? 'Mock 数据' : '真实后端'}}" />
   <view class="page-body tasks-body">
     <view class="task-summary enter">
       <view><text>今日待办</text><view class="summary-value">{{pendingCount}}</view><view class="summary-line"></view></view><view><text>临近截止</text><view class="summary-value warm">{{urgentCount}}</view><view class="summary-line warm"></view></view><view><text>已完成</text><view class="summary-value green">{{completedCount}}</view><view class="summary-line green"></view></view><view><text>全部任务</text><view class="summary-value">{{tasks.length}}</view><view class="summary-line"></view></view>
       <view class="progress-badge"><view>{{progress}}%</view></view>
     </view>
-    <view class="date-layout enter enter-delay-1"><view class="week-strip"><view wx:for="{{weekDays}}" wx:key="date" class="week-day {{item.active ? 'active' : ''}}"><text>{{item.label}}</text><view class="date-value">{{item.date}}</view><view class="date-dot"></view></view></view><button bindtap="showCalendar">▣<text>日历视图</text></button></view>
+    <view class="date-layout enter enter-delay-1"><view class="week-strip"><view wx:for="{{weekDays}}" wx:key="date" class="week-day {{item.active ? 'active' : ''}}"><text>{{item.label}}</text><view class="date-value">{{item.date}}</view><view class="date-dot"></view></view></view><button bindtap="showCalendar"><image src="/assets/icons/quick-calendar.svg" mode="aspectFit"></image><text>日历视图</text></button></view>
     <view class="task-toolbar enter enter-delay-1">
-      <view class="search-field">⌕<input value="{{query}}" placeholder="搜索任务 / 课程 / 关键词" bindinput="onQuery" /></view>
+      <view class="search-field"><icon type="search" size="18"></icon><input value="{{query}}" placeholder="搜索任务 / 课程 / 关键词" bindinput="onQuery" /></view>
       <scroll-view scroll-x enhanced show-scrollbar="{{false}}"><view class="filters"><button wx:for="{{filters}}" wx:key="*this" class="filter {{filter === item ? 'selected' : ''}}" data-filter="{{item}}" bindtap="chooseFilter">{{item}}</button></view></scroll-view>
     </view>
-    <view wx:if="{{focusTask}}" class="focus-card enter enter-delay-2"><view class="focus-kicker">✦ 智能聚焦</view><view class="focus-row"><view><view class="focus-title">{{focusTask.title}}</view><text>{{focusTask.due}} · {{focusTask.course}}</text></view><button data-id="{{focusTask.id}}" bindtap="toggleTask">去专注</button></view></view>
+    <view wx:if="{{focusTask}}" class="focus-card enter enter-delay-2"><view class="focus-kicker">智能聚焦</view><view class="focus-row"><view><view class="focus-title">{{focusTask.title}}</view><text>{{focusTask.due}} · {{focusTask.course}}</text></view><button data-id="{{focusTask.id}}" bindtap="toggleTask">去专注</button></view></view>
     <view class="task-section-head"><view class="task-section-title">{{filter === '待完成' ? '今日重点' : filter}}</view><view class="task-section-count">{{filtered.length}} 项</view></view>
     <state-view wx:if="{{loading}}" state="loading" title="正在整理待办" description="马上就好" />
-    <state-view wx:elif="{{filtered.length === 0}}" state="empty" title="这里暂时没有内容" description="给自己留一点休息时间吧" actionText="{{filter === '待完成' ? '添加一项待办' : ''}}" bindaction="openAdd" />
+    <state-view wx:elif="{{filtered.length === 0}}" state="empty" title="暂无待办" actionText="{{filter === '待完成' ? '新建待办' : ''}}" bindaction="openAdd" />
     <view wx:else class="task-list"><view wx:for="{{filtered}}" wx:key="id" class="task-card {{item.done ? 'done' : ''}} enter">
       <view class="check-button {{item.done ? 'checked' : ''}}" data-id="{{item.id}}" bindtap="toggleTask"><view class="check-core"></view></view>
-      <view class="task-main" data-id="{{item.id}}" bindtap="toggleTask"><view class="task-title">{{item.title}}</view><view class="task-meta">◷ {{item.due}}　<text>{{item.course}}</text></view></view>
-      <button class="delete-button" data-id="{{item.id}}" bindtap="deleteTask">⋮</button>
+      <view class="task-main" data-id="{{item.id}}" bindtap="toggleTask"><view class="task-title">{{item.title}}</view><view class="task-meta">{{item.due}}　<text>{{item.course}}</text></view></view>
+      <button class="delete-button" data-id="{{item.id}}" bindtap="deleteTask">管理</button>
     </view></view>
   </view>
-  <button class="floating-add" bindtap="openAdd">＋　新建待办</button>
-  <view wx:if="{{showAdd}}" class="sheet-mask" bindtap="closeAdd"><view class="sheet enter" catchtap="stopPropagation"><view class="sheet-handle"></view><view class="sheet-title">新建待办</view><view class="sheet-copy">把任务写清楚，开始会更轻松。</view><view class="input-label">任务名称</view><input class="field" value="{{titleInput}}" placeholder="例如：完成数据结构实验报告" bindinput="onTitleInput" /><view class="input-label">截止时间</view><input class="field" value="{{dueInput}}" placeholder="例如：今天 23:59" bindinput="onDueInput" /><view class="sheet-actions"><button class="secondary-button" bindtap="closeAdd">取消</button><button class="primary-button" disabled="{{!titleInput}}" bindtap="addTask">添加任务</button></view></view></view>
+  <button class="floating-add" bindtap="openAdd">新建待办</button>
+  <view wx:if="{{showAdd}}" class="sheet-mask" bindtap="closeAdd"><view class="sheet enter" catchtap="stopPropagation"><view class="sheet-handle"></view><view class="sheet-title">新建待办</view><view class="input-label">任务名称</view><input class="field" value="{{titleInput}}" placeholder="例如：完成数据结构实验报告" bindinput="onTitleInput" /><view class="input-label">截止时间</view><input class="field" value="{{dueInput}}" placeholder="例如：今天 23:59" bindinput="onDueInput" /><view class="sheet-actions"><button class="secondary-button" bindtap="closeAdd">取消</button><button class="primary-button" disabled="{{!titleInput}}" bindtap="addTask">添加任务</button></view></view></view>
 </view>

@@ -136,12 +136,21 @@ data class CommunityPostDto(
     val title: String,
     val content: String,
     val category: String = "campus",
+    val author_id: String? = null,
     val author_name: String = "校园同学",
     val is_anonymous: Boolean = false,
+    val images: List<String> = emptyList(),
+    val extra: Map<String, Any?>? = null,
+    val status: String = "published",
     val like_count: Int = 0,
     val comment_count: Int = 0,
     val favorite_count: Int = 0,
+    val view_count: Int = 0,
+    val liked: Boolean = false,
+    val favorited: Boolean = false,
+    val is_owner: Boolean = false,
     val created_at: String = "",
+    val updated_at: String? = null,
 )
 data class CommunityPostCreateRequest(
     val title: String,
@@ -149,6 +158,49 @@ data class CommunityPostCreateRequest(
     val category: String = "campus",
     val images: List<String> = emptyList(),
     val is_anonymous: Boolean = false,
+    val extra: Map<String, Any?>? = null,
+)
+data class CommunityPostUpdateRequest(
+    val title: String? = null,
+    val content: String? = null,
+    val category: String? = null,
+    val images: List<String>? = null,
+    val is_anonymous: Boolean? = null,
+    val extra: Map<String, Any?>? = null,
+)
+data class CommentDto(
+    val id: String,
+    val post_id: String = "",
+    val author_id: String? = null,
+    val author_name: String = "校园同学",
+    val parent_comment_id: String? = null,
+    val content: String,
+    val is_anonymous: Boolean = false,
+    val status: String = "published",
+    val created_at: String = "",
+)
+data class CommentCreateRequest(
+    val content: String,
+    val parent_comment_id: String? = null,
+    val is_anonymous: Boolean = false,
+)
+data class CategoryMetaDto(
+    val key: String,
+    val label: String,
+    val description: String = "",
+    val icon: String = "",
+    val color: String = "",
+)
+data class CommunityReportRequest(
+    val target_type: String,
+    val target_id: String,
+    val reason: String,
+    val details: String? = null,
+)
+data class UploadImageResponse(
+    val url: String,
+    val filename: String = "",
+    val size: Int = 0,
 )
 data class AcademicStatusDto(
     val status: String,
@@ -500,21 +552,54 @@ interface ApiService {
     @PUT("profile/university")
     suspend fun selectUniversity(@Body request: UniversitySelectionRequest): Response<UniversitySelectionResponse>
 
+    @GET("community/posts/categories")
+    suspend fun listCommunityCategories(): Response<Map<String, List<CategoryMetaDto>>>
+
     @GET("community/posts")
     suspend fun listCommunityPosts(
         @Query("q") query: String? = null,
+        @Query("category") category: String? = null,
+        @Query("sort") sort: String = "time",
         @Query("page") page: Int = 1,
-        @Query("page_size") pageSize: Int = 30,
+        @Query("page_size") pageSize: Int = 20,
     ): Response<PagedResponse<CommunityPostDto>>
 
     @POST("community/posts")
     suspend fun createCommunityPost(@Body request: CommunityPostCreateRequest): Response<CommunityPostDto>
 
+    @GET("community/posts/{postId}")
+    suspend fun getCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
+    @PUT("community/posts/{postId}")
+    suspend fun updateCommunityPost(@Path("postId") postId: String, @Body request: CommunityPostUpdateRequest): Response<CommunityPostDto>
+
+    @DELETE("community/posts/{postId}")
+    suspend fun deleteCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
     @POST("community/posts/{postId}/like")
     suspend fun likeCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
 
+    @DELETE("community/posts/{postId}/like")
+    suspend fun unlikeCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
     @POST("community/posts/{postId}/favorite")
     suspend fun favoriteCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
+    @DELETE("community/posts/{postId}/favorite")
+    suspend fun unfavoriteCommunityPost(@Path("postId") postId: String): Response<CommunityPostDto>
+
+    @GET("community/posts/{postId}/comments")
+    suspend fun listCommunityComments(@Path("postId") postId: String): Response<PagedResponse<CommentDto>>
+
+    @POST("community/posts/{postId}/comments")
+    suspend fun createCommunityComment(@Path("postId") postId: String, @Body request: CommentCreateRequest): Response<CommentDto>
+
+    @POST("community/reports")
+    suspend fun reportCommunity(@Body request: CommunityReportRequest): Response<Unit>
+
+    @Multipart
+    @POST("community/upload-image")
+    suspend fun uploadCommunityImage(@Part image: MultipartBody.Part): Response<UploadImageResponse>
 
     @GET("academic/status")
     suspend fun academicStatus(): Response<AcademicStatusDto>

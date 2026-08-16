@@ -1,0 +1,16 @@
+[
+  {"school_name": "山西大同大学", "school_code": "10108", "candidate_url": "http://jwglxt.sxdtdx.edu.cn/jwglxt", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "正方教务系统jwglxt"},
+  {"school_name": "山西大同大学", "school_code": "10108", "candidate_url": "https://ehall.sxdtdx.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "同大智枢统一门户"},
+  {"school_name": "山西大同大学", "school_code": "10108", "candidate_url": "http://jwc.sxdtdx.edu.cn", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务部"},
+  {"school_name": "山西大同大学", "school_code": "10108", "candidate_url": "http://yjsc.sxdtdx.edu.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生院"},
+  {"school_name": "贵州医科大学", "school_code": "10660", "candidate_url": "https://ywtb.gmc.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "办事大厅教务系统"},
+  {"school_name": "贵州医科大学", "school_code": "10660", "candidate_url": "https://jwc.gmc.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生教育教务处"},
+  {"school_name": "贵州医科大学", "school_code": "10660", "candidate_url": "https://yjsxy.gmc.edu.cn", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生招生"},
+  {"school_name": "河海大学", "school_code": "10294", "candidate_url": "https://jwc.hhu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生培养教务处"},
+  {"school_name": "河海大学", "school_code": "10294", "candidate_url": "https://gs.hhu.edu.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生培养"},
+  {"school_name": "河海大学", "school_code": "10294", "candidate_url": "https://mynew.hhu.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "滁州学院", "school_code": "10377", "candidate_url": "https://jwgl.chzu.edu.cn/eams/loginExt.action", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "青果金智教务系统eams"},
+  {"school_name": "滁州学院", "school_code": "10377", "candidate_url": "https://jwc.chzu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科教育教务处"},
+  {"school_name": "滁州学院", "school_code": "10377", "candidate_url": "https://my0.chzu.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "综合服务门户"},
+  {"school_name": "滁州学院", "school_code": "10377", "candidate_url": "https://yjszs.chzu.edu.cn/", "system_type": "graduate_admission", "source": "webfetch_official_site", "notes": "研究生招生"}
+]

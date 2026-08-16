@@ -1,0 +1,92 @@
+[
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "unified-portal",
+    "candidate_url": "https://my.sdust.edu.cn/",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学智慧校园"
+  },
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "unified-portal-ehall",
+    "candidate_url": "https://ehall.sdust.edu.cn",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学网上办事大厅"
+  },
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.sdust.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学本科生教育教务处"
+  },
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "undergraduate-main",
+    "candidate_url": "http://jwgl.sdust.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学教务管理系统"
+  },
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "graduate-academic",
+    "candidate_url": "http://yjsy.sdust.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学研究生教育"
+  },
+  {
+    "university_name": "山东科技大学",
+    "school_code": "4137010424",
+    "system_key": "research-system",
+    "candidate_url": "https://kyxt.sdust.edu.cn/userAction!do_casLogin.action",
+    "system_type": "academic_system",
+    "provider": "KINGOSOFT",
+    "discovery_method": "webfetch_official_site",
+    "notes": "山东科技大学科研管理(金智userAction)"
+  },
+  {
+    "university_name": "四川农业大学",
+    "school_code": "4151010626",
+    "system_key": "unified-portal",
+    "candidate_url": "https://ywtb.sicau.edu.cn/",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "四川农业大学网上办事服务大厅"
+  },
+  {
+    "university_name": "四川农业大学",
+    "school_code": "4151010626",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jiaowu.sicau.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "四川农业大学教务处"
+  },
+  {
+    "university_name": "四川农业大学",
+    "school_code": "4151010626",
+    "system_key": "graduate-academic",
+    "candidate_url": "https://yan.sicau.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "四川农业大学研究生院"
+  }
+]
