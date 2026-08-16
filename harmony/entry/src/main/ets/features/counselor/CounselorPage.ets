@@ -1,5 +1,6 @@
 import { ChatMessage, MarkdownLine } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 interface QuickQuestion {
   label: string;
@@ -12,6 +13,7 @@ export struct CounselorPage {
   @Prop messages: ChatMessage[] = [];
   @Prop sending: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop mockMode: boolean = false;
   @Link input: string;
   onSend: () => void = () => {};
@@ -34,13 +36,13 @@ export struct CounselorPage {
   }
   triggerAsk(question: string): void {
     this.pressedPrompt = question;
-    setTimeout(() => { if (this.pressedPrompt === question) this.pressedPrompt = ''; }, 160);
+    setTimeout(() => { if (this.pressedPrompt === question) this.pressedPrompt = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.ask(question);
   }
   triggerSend(): void {
     if (this.sending || this.input.trim().length === 0) return;
     this.sendPressed = true;
-    setTimeout(() => { this.sendPressed = false; }, 200);
+    setTimeout(() => { this.sendPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.STATE));
     this.onSend();
   }
 
@@ -112,8 +114,8 @@ export struct CounselorPage {
     }.width('100%').height(88).padding(11).backgroundColor(this.palette().surface)
       .border({ width: 1, color: this.palette().line }).borderRadius(18)
       .alignItems(VerticalAlign.Center)
-      .scale({ x: this.pressedPrompt === question.prompt ? 0.95 : 1.0, y: this.pressedPrompt === question.prompt ? 0.95 : 1.0 })
-      .animation({ duration: 160, curve: Curve.EaseOut })
+      .scale({ x: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0, y: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
       .onClick(() => this.triggerAsk(question.prompt))
   }
 
@@ -158,7 +160,7 @@ export struct CounselorPage {
         .constraintSize({ maxWidth: '80%' })
       if (message.role === 'assistant') { Blank().layoutWeight(1) }
     }.width('100%').alignItems(VerticalAlign.Bottom)
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 18 })).animation({ duration: 320, curve: Curve.EaseOut }))
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
   @Builder TypingBubble() {
@@ -169,7 +171,7 @@ export struct CounselorPage {
         Text('正在查询校园知识库').fontColor(this.palette().muted).fontSize(12)
       }.padding(11).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18).alignItems(VerticalAlign.Center)
     }.alignItems(VerticalAlign.Bottom)
-      .transition(TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.EaseInOut }))
+      .transition(TransitionEffect.OPACITY.animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut }))
   }
 
   @Builder Composer() {
@@ -183,8 +185,8 @@ export struct CounselorPage {
           if (this.sending) { LoadingProgress().width(19).height(19).color('#FFFFFFFF') }
           else { SymbolGlyph($r('sys.symbol.paperplane_fill')).fontSize(21).fontColor(['#FFFFFFFF']) }
         }.width(52).height(52).backgroundColor(this.palette().primary).borderRadius(19)
-          .scale({ x: this.sendPressed ? 0.88 : 1.0, y: this.sendPressed ? 0.88 : 1.0 })
-          .animation({ duration: 160, curve: Curve.EaseOut })
+          .scale({ x: this.sendPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.sendPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
+          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
           .onClick(() => this.triggerSend())
       }.width('100%').alignItems(VerticalAlign.Center)
       Row({ space: 5 }) {

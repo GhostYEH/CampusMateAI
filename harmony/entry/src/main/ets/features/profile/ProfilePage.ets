@@ -1,8 +1,10 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct ProfilePage {
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop name: string = '林知夏';
   @Prop detail: string = '计算机科学与技术 · 大三';
   onNavigate: (route: string) => void = () => {};
@@ -10,7 +12,7 @@ export struct ProfilePage {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   triggerNav(route: string): void {
     this.pressedRoute = route;
-    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, 160);
+    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate(route);
   }
 
@@ -21,8 +23,8 @@ export struct ProfilePage {
       }.width(43).height(43).backgroundColor(accent ? '#1FE08A4E' : this.palette().soft).borderRadius(14)
       Text(label).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
     }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center)
-      .scale({ x: this.pressedRoute === route ? 0.9 : 1.0, y: this.pressedRoute === route ? 0.9 : 1.0 })
-      .animation({ duration: 160, curve: Curve.EaseOut })
+      .scale({ x: this.pressedRoute === route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.pressedRoute === route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
       .onClick(() => this.triggerNav(route))
   }
 
@@ -33,7 +35,7 @@ export struct ProfilePage {
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(21).fontColor([this.palette().muted])
     }.width('100%').height(58).alignItems(VerticalAlign.Center)
       .backgroundColor(this.pressedRoute === route ? this.palette().soft : Color.Transparent)
-      .animation({ duration: 160, curve: Curve.EaseOut })
+      .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
       .onClick(() => this.triggerNav(route))
   }
 
@@ -71,6 +73,7 @@ export struct ProfilePage {
             }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 15 }).onClick(() => this.onNavigate('account'))
           }.width('100%').padding({ left: 24, top: 15, right: 20 })
         }.width('100%').height(268)
+          .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 10) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
         Row() {
           this.QuickAction('文件', $r('sys.symbol.doc_text'), 'files', false)
           this.QuickAction('活动', $r('sys.symbol.calendar_badge_checkmark'), 'activities', true)
@@ -79,6 +82,7 @@ export struct ProfilePage {
         }.width('91%').height(118).padding({ left: 7, right: 7, top: 14, bottom: 14 })
           .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(24)
           .margin({ top: -52, left: 16, right: 16 })
+          .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
         Column({ space: 14 }) {
           Text('更多服务').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold).width('100%').padding({ left: 4 })
           Column() {
@@ -93,6 +97,7 @@ export struct ProfilePage {
           }.width('100%').padding({ left: 16, right: 16, top: 3, bottom: 3 })
             .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
         }.width('100%').padding({ left: 16, right: 16, top: 18 })
+          .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
         Blank().height(112)
       }.width('100%')
     }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)

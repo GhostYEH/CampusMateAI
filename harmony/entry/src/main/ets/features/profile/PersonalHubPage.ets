@@ -1,6 +1,7 @@
 import { ActivityItem, FavoriteItem, PersonalFileItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct PersonalHubPage {
@@ -10,6 +11,7 @@ export struct PersonalHubPage {
   @Prop favorites: FavoriteItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State query: string = '';
   onBack: () => void = () => {};
   onRefresh: () => void = () => {};
@@ -31,7 +33,7 @@ export struct PersonalHubPage {
         SymbolGlyph($r('sys.symbol.bookmark')).fontSize(18).fontColor([this.palette().primary])
       }
     }.width('100%').padding({ top: 11, bottom: 11 })
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
   @Builder ActivityRow(item: ActivityItem) {
@@ -47,7 +49,7 @@ export struct PersonalHubPage {
         Text(item.location ?? '地点待定').fontColor(this.palette().muted).fontSize(10)
       }.width('100%')
     }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(17)
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
   @Builder FavoriteRow(item: FavoriteItem) {
@@ -60,12 +62,12 @@ export struct PersonalHubPage {
         Text(`${item.type ?? '内容'} · 收藏于 ${item.saved_at ?? ''}`).fontColor(this.palette().muted).fontSize(9)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 11, bottom: 11 })
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: `我的${this.title()}`, subtitle: '内容仅保存在当前登录账号下', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: `我的${this.title()}`, subtitle: '内容仅保存在当前登录账号下', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
       Scroll() {
         Column({ space: 12 }) {
           Row({ space: 8 }) {
