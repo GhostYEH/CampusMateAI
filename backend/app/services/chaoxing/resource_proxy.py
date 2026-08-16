@@ -107,8 +107,8 @@ class ChaoxingResourceProxy:
             headers=headers,
         )
         try:
-            request = client.build_request("GET", current_url, follow_redirects=False)
-            response = await client.send(request, stream=True)
+            request = client.build_request("GET", current_url)
+            response = await client.send(request, stream=True, follow_redirects=False)
             redirects = 0
             while response.status_code in (301, 302, 303, 307, 308) and redirects < 6:
                 location = response.headers.get("location")
@@ -116,8 +116,8 @@ class ChaoxingResourceProxy:
                 if not location:
                     raise CourseResourceProxyError("resource_redirect_invalid")
                 current_url = self.validate_url(urljoin(current_url, location))
-                request = client.build_request("GET", current_url, follow_redirects=False)
-                response = await client.send(request, stream=True)
+                request = client.build_request("GET", current_url)
+                response = await client.send(request, stream=True, follow_redirects=False)
                 redirects += 1
             if response.status_code in (401, 403):
                 await response.aclose()
