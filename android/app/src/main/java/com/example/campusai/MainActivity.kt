@@ -25,6 +25,9 @@ import com.example.campusai.ui.theme.CampusAITheme
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.campusai.workers.ChaoxingSyncWorker
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
@@ -106,9 +109,13 @@ fun CampusAIApp(
             if (syncStateStore.isConnected.first()) {
                 val syncResult = repository.syncChaoxing()
                 if (syncResult.first) {
-                    repository.refreshCourses()
-                    repository.refreshTasks()
-                    repository.refreshNotices()
+                    coroutineScope {
+                        awaitAll(
+                            async { repository.refreshCourses() },
+                            async { repository.refreshTasks() },
+                            async { repository.refreshNotices() },
+                        )
+                    }
                 } else if (syncResult.second == "reauth_required" || syncResult.second == "verification_required") {
                     syncStateStore.setReauthRequired(true)
                 }

@@ -302,14 +302,16 @@ def test_card_parser_extracts_real_video_and_document_metadata():
       {"aid":1003,"type":"vote","property":{"title":"课堂投票"}}
     ]};</script>'''
 
-    items = ChaoxingParser.parse_chapter_card_resources(html, chapter_id="101", card_url="https://mooc1.chaoxing.com/mooc-ans/knowledge/cards")
+    result = ChaoxingParser.parse_chapter_card_resources(html, chapter_id="101", card_url="https://mooc1.chaoxing.com/mooc-ans/knowledge/cards")
+    items = result["items"]
 
     assert [(item["kind"], item["title"], item["remote_object_id"]) for item in items] == [
         ("video", "第一讲.mp4", "video-object"),
         ("document", "实验讲义.pdf", "doc-object"),
-        ("quiz", "课堂投票", None),
+        ("poll", "课堂投票", None),
     ]
     assert all(item["parent_external_id"] == "101" for item in items)
+    assert result["status"] == "complete"
 
 
 @pytest.mark.asyncio
@@ -365,3 +367,84 @@ async def test_course_notices_match_course_and_keep_unscoped_account_notices_out
     assert [item["external_id"] for item in result["items"]] == ["n1"]
     assert result["items"][0]["author_name"] == "王老师"
     assert result["items"][0]["kind"] == "notice"
+
+
+def test_chapter_signature_detects_resource_replacement():
+    """P1: 附件替换但数量不变时 signature 必须变化。"""
+    from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
+
+    chapter = {"external_id": "101", "title": "第一章", "status": "unknown",
+               "metadata": {"job_count": 1, "raw_status": 0}}
+    items_a = [{"kind": "video", "external_id": "501", "parent_external_id": "101", "remote_object_id": "obj-a"}]
+    items_b = [{"kind": "video", "external_id": "502", "parent_external_id": "101", "remote_object_id": "obj-b"}]
+
+    fp_a = ChaoxingCourseContentSyncService._resource_fingerprint(items_a, "101")
+    fp_b = ChaoxingCourseContentSyncService._resource_fingerprint(items_b, "101")
+    sig_a = ChaoxingCourseContentSyncService._chapter_signature(chapter, 1, fp_a)
+    sig_b = ChaoxingCourseContentSyncService._chapter_signature(chapter, 1, fp_b)
+
+    assert sig_a != sig_b, "替换附件后 signature 必须不同"
+
+    fp_same = ChaoxingCourseContentSyncService._resource_fingerprint(items_a, "101")
+    sig_same = ChaoxingCourseContentSyncService._chapter_signature(chapter, 1, fp_same)
+    assert sig_a == sig_same, "相同附件 signature 必须一致"
+
+
+def test_chapter_card_parser_returns_structure_changed_for_login_page():
+    """登录页面被当作课程页时必须返回 structure_changed 而非 empty。"""
+    html = '<div class="knowledge-card"><form>用户登录</form></div>'
+    result = ChaoxingParser.parse_chapter_card_resources(
+        html, chapter_id="101", card_url="https://mooc1.chaoxing.com/card"
+    )
+    assert result["status"] == "structure_changed"
+    assert result["error"] == "marg_not_found"
+
+
+def test_chapter_card_parser_returns_empty_for_genuine_empty_page():
+    """真正没有资源的页面返回 empty。"""
+    html = "<html><body>本章无内容</body></html>"
+    result = ChaoxingParser.parse_chapter_card_resources(
+        html, chapter_id="101", card_url="https://mooc1.chaoxing.com/card"
+    )
+    assert result["status"] == "empty"
+    assert result["error"] is None
+
+
+def test_chapter_card_parser_returns_structure_changed_for_bad_json():
+    """mArg JSON 格式损坏返回 structure_changed。"""
+    html = '<script>mArg = {broken json};</script>'
+    result = ChaoxingParser.parse_chapter_card_resources(
+        html, chapter_id="101", card_url="https://mooc1.chaoxing.com/card"
+    )
+    assert result["status"] == "structure_changed"
+    assert result["error"] == "marg_parse_failed"
+
+
+def test_resource_proxy_rejects_non_chaoxing_host():
+    """SSRF: 非 Chaoxing 域名必须被拒绝。"""
+    from app.services.chaoxing.resource_proxy import ChaoxingResourceProxy, CourseResourceProxyError
+
+    for url in [
+        "https://127.0.0.1/secret",
+        "https://localhost/admin",
+        "https://169.254.169.254/latest/meta-data",
+        "http://chaoxing.com/course",
+        "ftp://chaoxing.com/file",
+    ]:
+        try:
+            ChaoxingResourceProxy.validate_url(url)
+            assert False, f"URL 应被拒绝: {url}"
+        except CourseResourceProxyError as e:
+            assert e.code == "resource_host_not_allowed"
+
+
+def test_resource_proxy_allows_chaoxing_subdomain():
+    """Chaoxing 子域名应被允许。"""
+    from app.services.chaoxing.resource_proxy import ChaoxingResourceProxy
+
+    for url in [
+        "https://ananas.chaoxing.com/file/123",
+        "https://d0.ananas.chaoxing.com/file/456",
+        "https://mooc1-api.chaoxing.com/gas/clazz",
+    ]:
+        assert ChaoxingResourceProxy.validate_url(url) == url

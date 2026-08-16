@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ...models.multi_role import UserRow
 from ...schemas.course_content import (
@@ -76,13 +76,15 @@ def list_content(course_id: str, kind: str | None = Query(None),
 
 @router.post("/{course_id}/sync")
 async def sync_course_content(course_id: str, user: UserRow = Depends(current_user),
+                              depth: str = Query("fast", pattern="^(fast|deep|full)$"),
+                              force_refresh: bool = Query(False),
                               container: ServiceContainer = Depends(_container)):
     course = _course(course_id, user, container)
     if course.provider != "chaoxing" or course.owner_user_id != user.id:
         raise HTTPException(status_code=400, detail="not_chaoxing_course")
     try:
         return await ChaoxingCourseContentSyncService(container).sync_course(
-            user_id=user.id, course_id=course_id
+            user_id=user.id, course_id=course_id, depth=depth, force_refresh=force_refresh
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -107,6 +109,7 @@ def open_resource(course_id: str, item_id: str, user: UserRow = Depends(current_
 
 @router.get("/{course_id}/resources/{item_id}/download")
 async def download_resource(course_id: str, item_id: str,
+                            request: Request,
                             user: UserRow = Depends(current_user),
                             container: ServiceContainer = Depends(_container)):
     course = _course(course_id, user, container)
@@ -118,12 +121,33 @@ async def download_resource(course_id: str, item_id: str,
     credentials = container.chaoxing_repository.get_credentials(user.id)
     if not credentials:
         raise HTTPException(status_code=401, detail="chaoxing_credentials_not_found")
+    proxy = ChaoxingResourceProxy(
+        settings=container.settings,
+        repository=container.course_content_repository,
+        credentials=credentials,
+    )
+    if item.kind in ChaoxingResourceProxy.STREAMING_KINDS:
+        try:
+            range_header = request.headers.get("range")
+            stream_result = await proxy.stream_file(item=item, range_header=range_header)
+        except CourseResourceProxyError as error:
+            status = 413 if error.code == "resource_too_large" else 502
+            if error.code == "chaoxing_session_expired":
+                status = 401
+            elif error.code == "resource_not_found":
+                status = 404
+            elif error.code == "resource_host_not_allowed":
+                status = 400
+            raise HTTPException(status_code=status, detail=error.code) from error
+        headers = {k: v for k, v in stream_result["headers"].items() if v is not None}
+        return StreamingResponse(
+            stream_result["stream"],
+            media_type=stream_result["mime_type"],
+            status_code=stream_result["status_code"],
+            headers=headers,
+        )
     try:
-        path, mime_type, filename = await ChaoxingResourceProxy(
-            settings=container.settings,
-            repository=container.course_content_repository,
-            credentials=credentials,
-        ).get_file(item=item)
+        path, mime_type, filename = await proxy.get_file(item=item)
     except CourseResourceProxyError as error:
         status = 413 if error.code == "resource_too_large" else 502
         if error.code == "chaoxing_session_expired":

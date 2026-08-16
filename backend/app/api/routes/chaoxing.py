@@ -4,6 +4,7 @@ import logging
 import re
 import asyncio
 import threading
+import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -20,6 +21,18 @@ logger = logging.getLogger(__name__)
 
 _sync_locks: dict[str, threading.Lock] = {}
 _sync_locks_guard = threading.Lock()
+
+_status_cache: dict[str, tuple[float, ChaoxingSyncStatus]] = {}
+_STATUS_CACHE_TTL = 30.0
+_STATUS_CACHE_MAX_SIZE = 512
+
+
+def _status_cache_set(user_id: str, result: ChaoxingSyncStatus) -> None:
+    if len(_status_cache) >= _STATUS_CACHE_MAX_SIZE:
+        oldest = sorted(_status_cache.items(), key=lambda kv: kv[1][0])
+        for key, _ in oldest[: len(_status_cache) // 4]:
+            _status_cache.pop(key, None)
+    _status_cache[user_id] = (time.monotonic(), result)
 
 
 def _get_user_sync_lock(user_id: str) -> threading.Lock:
@@ -200,6 +213,7 @@ async def login_chaoxing(
     cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
     container.chaoxing_repository.save_credentials(user.id, cookies)
 
+    _status_cache.pop(user.id, None)
     return {"status": "success"}
 
 @router.get("/chaoxing/status", response_model=ChaoxingSyncStatus)
@@ -207,25 +221,36 @@ async def get_chaoxing_status(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> ChaoxingSyncStatus:
+    cached = _status_cache.get(user.id)
+    if cached and time.monotonic() - cached[0] < _STATUS_CACHE_TTL:
+        return cached[1]
+
     credentials = container.chaoxing_repository.get_credentials(user.id)
     if not credentials:
-        return ChaoxingSyncStatus(status="offline")
+        result = ChaoxingSyncStatus(status="offline")
+        _status_cache_set(user.id, result)
+        return result
 
-    # 检查 cookie 是否仍然有效
-    # Validate the stored remote session. The Android client uses the dedicated
-    # long-timeout client for this operation because it depends on this hop.
     client = ChaoxingClient(cookies=credentials)
     verify_url = "https://mooc2-ans.chaoxing.com/visit/courses/list"
     try:
         verify_res = await client.client.get(verify_url, follow_redirects=False)
         if _auth_error(verify_res):
-            return ChaoxingSyncStatus(status="expired")
+            result = ChaoxingSyncStatus(status="expired")
+            _status_cache_set(user.id, result)
+            return result
         if verify_res.status_code >= 400:
-            return ChaoxingSyncStatus(status="unavailable")
+            result = ChaoxingSyncStatus(status="unavailable")
+            _status_cache_set(user.id, result)
+            return result
     except Exception:
-        return ChaoxingSyncStatus(status="unavailable")
+        result = ChaoxingSyncStatus(status="unavailable")
+        _status_cache_set(user.id, result)
+        return result
+    finally:
+        await client.client.aclose()
 
-    return ChaoxingSyncStatus(
+    result = ChaoxingSyncStatus(
         status="online",
         last_synced_at=_last_user_sync_at(container, user.id),
         source="chaoxing_live",
@@ -234,6 +259,8 @@ async def get_chaoxing_status(
         pending_assignments=_count_user_chaoxing(container, user.id, "pending_assignments"),
         notices=_count_user_chaoxing(container, user.id, "notices"),
     )
+    _status_cache_set(user.id, result)
+    return result
 
 @router.post("/chaoxing/sync")
 async def sync_chaoxing(
@@ -607,6 +634,8 @@ async def _perform_sync_chaoxing(
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
 
+    _status_cache.pop(user.id, None)
+
     return {
         "status": "sync completed",
         "notice_sync": "available" if notice_sync_available else "unavailable",
@@ -622,4 +651,5 @@ async def disconnect_chaoxing(
     container: ServiceContainer = Depends(_container),
 ):
     container.chaoxing_repository.delete_credentials(user.id)
+    _status_cache.pop(user.id, None)
     return {"status": "disconnected"}

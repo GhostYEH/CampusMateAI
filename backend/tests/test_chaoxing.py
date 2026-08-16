@@ -5,7 +5,7 @@ from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
 from app.database.sqlite_db import Database
-from app.api.routes.chaoxing import disconnect_chaoxing, get_chaoxing_status, sync_chaoxing
+from app.api.routes.chaoxing import disconnect_chaoxing, get_chaoxing_status, sync_chaoxing, _status_cache
 from app.schemas.chaoxing import ChaoxingSyncStatus
 from app.models.multi_role import UserRow
 import httpx
@@ -15,6 +15,7 @@ from app.repositories.personal_task_repository import PersonalTaskRepository
 
 @pytest.fixture
 def db():
+    _status_cache.clear()
     database = Database(None)
     with database.transaction() as conn:
         conn.execute("INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -338,6 +339,7 @@ async def test_disconnect_removes_only_current_credentials_and_preserves_synced_
     assert result == {"status": "disconnected"}
     assert chaoxing_repo.get_credentials("user1") is None
     assert chaoxing_repo.get_credentials("user2") == {"cookie": "B"}
+    assert "user1" not in _status_cache
     with db.query() as conn:
         assert conn.execute("SELECT COUNT(*) FROM courses WHERE owner_user_id = 'user1'").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM personal_tasks WHERE user_id = 'user1'").fetchone()[0] == 1
