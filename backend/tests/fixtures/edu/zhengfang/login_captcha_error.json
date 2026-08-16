@@ -1,0 +1,5 @@
+{
+  "resultCode": "CAPTCHA_ERROR",
+  "message": "验证码错误",
+  "_fixture_note": "脱敏验证码错误响应"
+}

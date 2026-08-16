@@ -1,0 +1,58 @@
+[
+  {
+    "school_name": "山西大学",
+    "candidate_url": "http://nehall.sxu.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "数智山大统一门户"
+  },
+  {
+    "school_name": "太原理工大学",
+    "candidate_url": "https://one.tyut.edu.cn",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "智慧校园统一门户"
+  },
+  {
+    "school_name": "太原理工大学",
+    "candidate_url": "http://jwc.tyut.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "太原理工大学",
+    "candidate_url": "http://www.gs.tyut.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "山西师范大学",
+    "candidate_url": "https://ehall.sxnu.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "统一身份认证/办事大厅"
+  },
+  {
+    "school_name": "山西师范大学",
+    "candidate_url": "https://jwcweb.sxnu.edu.cn/",
+    "system_type": "undergraduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "本科教育/教务系统"
+  },
+  {
+    "school_name": "山西师范大学",
+    "candidate_url": "https://grc.sxnu.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  }
+]

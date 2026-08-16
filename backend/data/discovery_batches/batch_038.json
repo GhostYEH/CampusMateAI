@@ -1,0 +1,4 @@
+[
+  {"school_code":"4142010504","school_name":"华中农业大学","candidate_url":"https://portal-paas.hzau.edu.cn","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"门户PaaS"},
+  {"school_code":"4142010511","school_name":"华中师范大学","candidate_url":"https://one.ccnu.edu.cn","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"一站式服务门户"}
+]

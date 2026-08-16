@@ -1,0 +1,98 @@
+[
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://jwxt.gzmu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务系统(正方login_slogin.html)"
+  },
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://yjsy.gzmu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生院/研究生招生"
+  },
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://zjc.gzmu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "招生工作"
+  },
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://i.gzmu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "贵民智服"
+  },
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://oic.gzmu.edu.cn",
+    "system_type": "international-education",
+    "source": "webfetch_official_site",
+    "notes": "国际学生招生/留学生教育"
+  },
+  {
+    "school_name": "贵州民族大学",
+    "school_code": "4152010672",
+    "candidate_url": "https://gzxy.gzmu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育/培训及成人教育"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://jwc.xjnu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育/教务处"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://jwxt.xjnu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务系统(强智jsxsd)"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://yjsc.xjnu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育/研究生招生"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://one.xjnu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "网上办事大厅"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://zhaosheng.xjnu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "新疆师范大学",
+    "school_code": "4165010762",
+    "candidate_url": "https://cei.xjnu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育/继续教育招生"
+  }
+]

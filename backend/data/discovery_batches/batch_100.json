@@ -1,0 +1,22 @@
+[
+  {"school_name": "北京物资学院", "school_code": "10012", "candidate_url": "http://my.bwu.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "数字校园OA门户"},
+  {"school_name": "首都医科大学", "school_code": "10025", "candidate_url": "https://jwch.ccmu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本专科教育教务处"},
+  {"school_name": "首都医科大学", "school_code": "10025", "candidate_url": "https://yjsh.ccmu.edu.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "首都经济贸易大学", "school_code": "10038", "candidate_url": "https://jwxt.cueb.edu.cn/jsxsd/cas/caslogin.jsp", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "强智教务系统jsxsd"},
+  {"school_name": "首都经济贸易大学", "school_code": "10038", "candidate_url": "https://jwc.cueb.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科教育教务处"},
+  {"school_name": "首都经济贸易大学", "school_code": "10038", "candidate_url": "https://gs.cueb.edu.cn/ULogin.aspx", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教务系统"},
+  {"school_name": "首都经济贸易大学", "school_code": "10038", "candidate_url": "https://mh.cueb.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "信息门户学生信息"},
+  {"school_name": "北京工业大学", "school_code": "10005", "candidate_url": "http://admissions.bjut.edu.cn/", "system_type": "admission_portal", "source": "webfetch_official_site", "notes": "本科生招生"},
+  {"school_name": "北京工业大学", "school_code": "10005", "candidate_url": "http://yanzhao.bjut.edu.cn/", "system_type": "graduate_admission", "source": "webfetch_official_site", "notes": "研究生招生"},
+  {"school_name": "北京工业大学", "school_code": "10005", "candidate_url": "http://jxjy.bjut.edu.cn/", "system_type": "continuing_education", "source": "webfetch_official_site", "notes": "继续教育招生"},
+  {"school_name": "北京电子科技学院", "school_code": "10018", "candidate_url": "https://e.besti.edu.cn/login", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "教务系统"},
+  {"school_name": "北京电子科技学院", "school_code": "10018", "candidate_url": "http://gr.besti.edu.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生部网"},
+  {"school_name": "国际关系学院", "school_code": "10040", "candidate_url": "https://my.uir.edu.cn/index.html#/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "数字校园"},
+  {"school_name": "国际关系学院", "school_code": "10040", "candidate_url": "https://jiaowuchu.uir.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处本科生教育"},
+  {"school_name": "国际关系学院", "school_code": "10040", "candidate_url": "https://yjs.uir.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生教育研究生处"},
+  {"school_name": "外交学院", "school_code": "10040", "candidate_url": "https://jwc.cfau.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本科生培养教务处"},
+  {"school_name": "外交学院", "school_code": "10040", "candidate_url": "https://yjsb.cfau.edu.cn/", "system_type": "graduate_portal", "source": "webfetch_official_site", "notes": "研究生部研究生培养"},
+  {"school_name": "上海商学院", "school_code": "10276", "candidate_url": "https://scloud.sbs.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "服务门户学生教师综合服务"},
+  {"school_name": "上海电机学院", "school_code": "11458", "candidate_url": "https://ehall.sdju.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "智慧校园融合门户"},
+  {"school_name": "上海电机学院", "school_code": "11458", "candidate_url": "https://jwgl.sdju.edu.cn/sso/login", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "教学管理系统"}
+]

@@ -1,0 +1,19 @@
+[
+  {"school_name": "华南理工大学", "school_code": "4144010561", "candidate_url": "http://jw.scut.edu.cn/", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "本科生教育链接"},
+  {"school_name": "华南理工大学", "school_code": "4144010561", "candidate_url": "https://www2.scut.edu.cn/graduate/", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生教育链接"},
+  {"school_name": "华南理工大学", "school_code": "4144010561", "candidate_url": "https://ehall.scut.edu.cn/fp/redirect.jsp", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "办事大厅/统一门户"},
+  {"school_name": "华南理工大学", "school_code": "4144010561", "candidate_url": "http://my.scut.edu.cn", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "华北水利水电大学", "school_code": "4141010078", "candidate_url": "https://jwmis.ncwu.edu.cn/hsjw/caslogin", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务系统"},
+  {"school_name": "华北水利水电大学", "school_code": "4141010078", "candidate_url": "https://www2.ncwu.edu.cn/jiaowu/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处"},
+  {"school_name": "华北水利水电大学", "school_code": "4141010078", "candidate_url": "https://gms.ncwu.edu.cn", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生综合管理系统"},
+  {"school_name": "华北水利水电大学", "school_code": "4141010078", "candidate_url": "https://portal.ncwu.edu.cn/main.html", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "智慧校园/门户"},
+  {"school_name": "中南民族大学", "school_code": "4142010524", "candidate_url": "http://ssfw.scuec.edu.cn/ssfw/login.jsp", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务系统"},
+  {"school_name": "中南民族大学", "school_code": "4142010524", "candidate_url": "https://www.scuec.edu.cn/jwc/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处/本科生教育"},
+  {"school_name": "中南民族大学", "school_code": "4142010524", "candidate_url": "https://www.scuec.edu.cn/yjsy/", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "中南民族大学", "school_code": "4142010524", "candidate_url": "https://yjs.scuec.edu.cn/", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生管理"},
+  {"school_name": "中南民族大学", "school_code": "4142010524", "candidate_url": "http://ehall.scuec.edu.cn/new/index.html", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "南华大学", "school_code": "4143010555", "candidate_url": "https://jwc.usc.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处/本科生教育"},
+  {"school_name": "南华大学", "school_code": "4143010555", "candidate_url": "http://jwzx.usc.edu.cn:8924/", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务管理在线"},
+  {"school_name": "南华大学", "school_code": "4143010555", "candidate_url": "https://yjs.usc.edu.cn/", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "南华大学", "school_code": "4143010555", "candidate_url": "https://myportal.usc.edu.cn/", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "信息门户"}
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "school_name": "南京信息工程大学",
+    "school_code": "4132010300",
+    "candidate_url": "https://jwc.nuist.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "南京信息工程大学教务处"
+  },
+  {
+    "school_name": "南京信息工程大学",
+    "school_code": "4132010300",
+    "candidate_url": "https://yjs.nuist.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "南京信息工程大学研究生院"
+  },
+  {
+    "school_name": "南京信息工程大学",
+    "school_code": "4132010300",
+    "candidate_url": "https://i.nuist.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "南京信息工程大学融合门户"
+  },
+  {
+    "school_name": "南京信息工程大学",
+    "school_code": "4132010300",
+    "candidate_url": "https://jwxt.nuist.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "南京信息工程大学本科教务系统"
+  },
+  {
+    "school_name": "广西师范大学",
+    "school_code": "4145010602",
+    "candidate_url": "https://eip.gxnu.edu.cn/EIP/user/index.htm",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "广西师范大学数字校园统一门户"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://jwc.kmust.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "昆明理工大学教务处"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://yjs.kmust.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "昆明理工大学研究生院"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://i.kmust.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "昆明理工大学师生信息服务平台"
+  }
+]

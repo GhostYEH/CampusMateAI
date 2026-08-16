@@ -1,0 +1,583 @@
+[
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://ehall.qdu.edu.cn/new/index.html",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://jwc.qdu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://grad.qdu.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://cie.qdu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://qucec.qdu.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://cxcy.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://zs.qdu.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://grad.qdu.edu.cn/yzb/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://istudy.qdu.edu.cn/cn/index",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://kjc.qdu.edu.cn",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://rwskc.qdu.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://qks.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://tto.qdu.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://international.qdu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://fwqd.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://alumni.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://shjm.qdu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://news.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://rlzy.qdu.edu.cn/szdw.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://rlzy.qdu.edu.cn/rczp.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://dag.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://webvpn.qdu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://oa.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://dflt.qdu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://cg.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://xxgk.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://yqgx.qdu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://lib.qdu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://houqin.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://mail.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://jsjb.sdei.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "http://youth.qdu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "青岛大学",
+    "school_code": "4137011065",
+    "candidate_url": "https://school.gxjy.sdei.edu.cn/qdu",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://jwc.ujn.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://yjs.ujn.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://siee.ujn.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://sce.ujn.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://course.ujn.edu.cn/portal",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://stinfo.ujn.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://skc.ujn.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://xkc.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://t-transfer.ujn.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://admission.ujn.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://yz.ujn.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://isao.ujn.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://sqa.ujn.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://school.gxjy.sdei.edu.cn/ujn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://co-develop.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://iec.ujn.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://portal.ujn.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://xzxx.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://psy.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://library.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://rsc.ujn.edu.cn/rczp.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://xxgk.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://sygz.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "http://jndxb.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://jdda.ujn.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "济南大学",
+    "school_code": "4137010427",
+    "candidate_url": "https://www.ujn.edu.cn/jndxen",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://jwc.ytu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://yjs.ytu.edu.cn/index.htm",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://ies.ytu.edu.cn",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://jxjy.ytu.edu.cn",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://stu.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://youth.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://kjc.ytu.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "http://skc.ytu.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://rso.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://gjc.ytu.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://rsc.ytu.edu.cn/index/zpxx.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://bkzs.ytu.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://yjs.ytu.edu.cn/zsgz.htm",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://sie.ytu.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://school.gxjy.sdei.edu.cn/ytu",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://liuxuekorea.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://cas.ytu.edu.cn/lyuapServer/login",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "http://oa.ytu.edu.cn/seeyon/ssologin.jsp",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://www.lib.ytu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://zcc.ytu.edu.cn/zfcgzx/zbgg.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "http://xiaoyou.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://jyfzjjh.ytu.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://gk.ytu.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "烟台大学",
+    "school_code": "4137011066",
+    "candidate_url": "https://web.ytu.edu.cn/sqfw/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  }
+]

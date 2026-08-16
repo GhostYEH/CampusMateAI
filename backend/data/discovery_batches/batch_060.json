@@ -1,0 +1,90 @@
+[
+  {
+    "school_name": "四川师范大学",
+    "candidate_url": "https://jwc.sicnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处/本科教育"
+  },
+  {
+    "school_name": "四川师范大学",
+    "candidate_url": "https://yjsc.sicnu.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "四川师范大学",
+    "candidate_url": "https://eportal.sicnu.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "内网门户"
+  },
+  {
+    "school_name": "河北大学",
+    "candidate_url": "https://ehall.hbu.edu.cn/shiro-cas",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "办事大厅"
+  },
+  {
+    "school_name": "河北大学",
+    "candidate_url": "https://cas.hbu.edu.cn",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "统一认证"
+  },
+  {
+    "school_name": "河北大学",
+    "candidate_url": "https://yjsy.hbu.edu.cn/zsgz.htm",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "河北师范大学",
+    "candidate_url": "http://portal.hebtu.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "信息门户"
+  },
+  {
+    "school_name": "河北师范大学",
+    "candidate_url": "http://jwgl.hebtu.edu.cn/",
+    "system_type": "undergraduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务系统"
+  },
+  {
+    "school_name": "燕山大学",
+    "candidate_url": "https://ehall.ysu.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "燕山大学",
+    "candidate_url": "http://jwc.ysu.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "燕山大学",
+    "candidate_url": "http://gs.ysu.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  }
+]

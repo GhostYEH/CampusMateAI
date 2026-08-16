@@ -1,0 +1,576 @@
+[
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://jwgl.sdust.edu.cn/",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://my.sdust.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://ehall.sdust.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://jwc.sdust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://yjsy.sdust.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://cie.sdust.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://ccemanager.sdust.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://zs.sdust.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://yjsy.sdust.edu.cn/zhaosheng/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://cj.sdust.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://keyan.sdust.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://rwskc.sdust.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://jszy.sdust.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://stiao.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://xkjs.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://fao.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://xy.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://jjh.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://news.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://xxgk.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://sklib.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://dangan.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://webvpn.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "http://oa.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://kyxt.sdust.edu.cn/userAction!do_casLogin.action",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://sdust.fy.chaoxing.com/portal",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://tech.sdust.edu.cn/wlfw.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://xb.sdust.edu.cn/index/tzgg.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://taxq.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东科技大学",
+    "school_code": "4137010424",
+    "candidate_url": "https://jnxq.sdust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://jwgl.xaut.edu.cn/jsxsd/",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://ids.xaut.edu.cn/authserver/login",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://mail.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://library.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://zhixing.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://webvpn.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://renshichu.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://renshichu.xaut.edu.cn/zpxx1/zpgg.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://zhaosheng.xaut.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://yjsy.xaut.edu.cn/zsgz.htm",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://oice.xaut.edu.cn/lhlxs.htm",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://sce.xaut.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://job.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://xyzh.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://efjjh.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://newoa.xaut.edu.cn:80",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://xxgk.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://nic.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://hqfwc.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://yingxin.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://kjc.xaut.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "http://xuebao.xaut.edu.cn/xbdd.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://en.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://szw.xaut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://ddh.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://sqyr.xaut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "西安理工大学",
+    "school_code": "4161010700",
+    "candidate_url": "https://jsjb.xaut.edu.cn/pc/mail/#/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://jw.henau.edu.cn/cas/login.action",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://i.henau.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://jwc.henau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://gra.henau.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://gj.henau.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://cj.henau.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://stud.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://zs.henau.edu.cn/index.html",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://job.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://kjc.henau.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "https://qkzx.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://rs.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://lib.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://archives.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://xyh.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "https://jjh.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://tw.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://gonghui.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://mail.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://en.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "https://gjc.henau.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "https://xczxyjy.henau.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://inrd.henau.edu.cn",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "http://kjhzglb.henau.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南农业大学",
+    "school_code": "4141010466",
+    "candidate_url": "https://mek.henau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  }
+]

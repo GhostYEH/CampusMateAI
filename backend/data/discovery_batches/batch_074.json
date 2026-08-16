@@ -1,0 +1,74 @@
+[
+  {
+    "school_name": "河北大学",
+    "school_code": "4113010075",
+    "candidate_url": "https://ehall.hbu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_hbu_official",
+    "notes": "网上办事大厅/统一门户"
+  },
+  {
+    "school_name": "河北大学",
+    "school_code": "4113010075",
+    "candidate_url": "https://cas.hbu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_hbu_official",
+    "notes": "统一认证中心"
+  },
+  {
+    "school_name": "河北大学",
+    "school_code": "4113010075",
+    "candidate_url": "https://oa.hbu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_hbu_official",
+    "notes": "OA办公系统"
+  },
+  {
+    "school_name": "山西大学",
+    "school_code": "4114010108",
+    "candidate_url": "https://nehall.sxu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_sxu_official",
+    "notes": "数智山大/统一门户"
+  },
+  {
+    "school_name": "西安电子科技大学",
+    "school_code": "4161010701",
+    "candidate_url": "https://ywtb.xidian.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_xidian_official",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "西安电子科技大学",
+    "school_code": "4161010701",
+    "candidate_url": "https://ehall.xidian.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_xidian_official",
+    "notes": "教务系统"
+  },
+  {
+    "school_name": "西安电子科技大学",
+    "school_code": "4161010701",
+    "candidate_url": "https://yjspt.xidian.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_xidian_official",
+    "notes": "研究生系统"
+  },
+  {
+    "school_name": "西安电子科技大学",
+    "school_code": "4161010701",
+    "candidate_url": "https://oa.xidian.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_xidian_official",
+    "notes": "OA办公系统"
+  },
+  {
+    "school_name": "西安电子科技大学",
+    "school_code": "4161010701",
+    "candidate_url": "https://xgxt.xidian.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_xidian_official",
+    "notes": "学工系统"
+  }
+]

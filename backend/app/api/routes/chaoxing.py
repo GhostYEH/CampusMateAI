@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import asyncio
+import threading
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -16,6 +17,16 @@ from ...services.container import ServiceContainer, get_container
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
+
+_sync_locks: dict[str, threading.Lock] = {}
+_sync_locks_guard = threading.Lock()
+
+
+def _get_user_sync_lock(user_id: str) -> threading.Lock:
+    with _sync_locks_guard:
+        if user_id not in _sync_locks:
+            _sync_locks[user_id] = threading.Lock()
+        return _sync_locks[user_id]
 
 
 def _normalize_compact(value):
@@ -133,12 +144,12 @@ def _container() -> ServiceContainer:
 def _count_user_chaoxing(container: ServiceContainer, user_id: str, kind: str) -> int:
     queries = {
         "courses": (
-            "SELECT COUNT(*) AS n FROM courses WHERE teacher_id = ? AND provider = 'chaoxing'",
+            "SELECT COUNT(*) AS n FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing'",
             (user_id,),
         ),
         "teachers": (
             "SELECT COUNT(DISTINCT remote_teacher_name) AS n FROM courses "
-            "WHERE teacher_id = ? AND provider = 'chaoxing' AND remote_teacher_name IS NOT NULL",
+            "WHERE owner_user_id = ? AND provider = 'chaoxing' AND remote_teacher_name IS NOT NULL",
             (user_id,),
         ),
         "pending_assignments": (
@@ -160,7 +171,7 @@ def _last_user_sync_at(container: ServiceContainer, user_id: str):
     with container.db.query() as conn:
         row = conn.execute(
             "SELECT MAX(last_synced_at) AS synced_at FROM ("
-            "SELECT last_synced_at FROM courses WHERE teacher_id = ? AND provider = 'chaoxing' "
+            "SELECT last_synced_at FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing' "
             "UNION ALL SELECT last_synced_at FROM personal_tasks WHERE user_id = ? AND source LIKE 'chaoxing%' "
             "UNION ALL SELECT last_synced_at FROM notices WHERE user_id = ? AND source = 'chaoxing'"
             ")",
@@ -228,6 +239,19 @@ async def get_chaoxing_status(
 async def sync_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
+):
+    sync_lock = _get_user_sync_lock(user.id)
+    if not sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="sync_in_progress")
+    try:
+        return await _perform_sync_chaoxing(user, container)
+    finally:
+        sync_lock.release()
+
+
+async def _perform_sync_chaoxing(
+    user: UserRow,
+    container: ServiceContainer,
 ):
     credentials = container.chaoxing_repository.get_credentials(user.id)
     if not credentials:
@@ -298,7 +322,7 @@ async def sync_chaoxing(
         if not external_id:
             continue
             
-        existing_course = course_repo.get_course_by_external_id(external_id, teacher_id=user.id)
+        existing_course = course_repo.get_course_by_external_id(external_id, owner_user_id=user.id)
         if existing_course:
             # Update existing course (e.g. if name changed)
             course_repo.update_course(
@@ -323,7 +347,7 @@ async def sync_chaoxing(
             # Insert new course
             existing_course = course_repo.create_course(
                 name=course_data["name"],
-                teacher_id=user.id, # Using student's user_id as owner
+                owner_user_id=user.id,
                 remote_teacher_name=course_data.get("teacher_name"),
                 remote_class_id=course_data.get("clazz_id"),
                 remote_cpi=course_data.get("cpi"),

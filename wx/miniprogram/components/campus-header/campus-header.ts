@@ -1,3 +1,5 @@
+import { getMiniProgramLayoutMetrics } from '../../utils/layout'
+
 Component({
   properties: {
     title: {
@@ -19,11 +21,17 @@ Component({
   },
   data: {
     statusBarHeight: 24,
+    headerContentHeight: 82,
+    menuSafeRight: 12,
   },
   lifetimes: {
     attached() {
-      const windowInfo = wx.getWindowInfo()
-      this.setData({ statusBarHeight: windowInfo.statusBarHeight || 24 })
+      const metrics = getMiniProgramLayoutMetrics()
+      this.setData({
+        statusBarHeight: metrics.statusBarHeight,
+        headerContentHeight: Math.max(82, metrics.navContentHeight),
+        menuSafeRight: metrics.menuSafeRight,
+      })
     },
   },
   methods: {

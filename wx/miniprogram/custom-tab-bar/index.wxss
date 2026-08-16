@@ -6,9 +6,9 @@
   --tab-selected-bg: #eff0ff;
   position: fixed;
   z-index: 999;
-  right: 26rpx;
-  bottom: calc(18rpx + env(safe-area-inset-bottom));
-  left: 26rpx;
+  right: 13px;
+  bottom: calc(9px + env(safe-area-inset-bottom));
+  left: 13px;
 }
 
 .tab-shell.dark-tab {
@@ -20,8 +20,8 @@
 }
 
 .tab-bar {
-  height: 132rpx;
-  padding: 9rpx 12rpx;
+  height: 72px;
+  padding: 5px 6px;
   display: flex;
   gap: 0;
   border: 2rpx solid var(--tab-line);
@@ -40,7 +40,7 @@
   min-width: 0;
   width: 0;
   flex: 1;
-  height: 112rpx;
+  height: 62px;
   margin: 0;
   padding: 8rpx 2rpx 7rpx;
   display: flex;

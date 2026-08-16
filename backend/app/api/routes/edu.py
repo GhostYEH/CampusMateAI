@@ -37,6 +37,11 @@ from ...schemas.edu import (
     EduConnectionCreate,
     EduConnectionOut,
     EduDetectResult,
+    EduDiscoveryCandidateOut,
+    EduDiscoveryReviewRequest,
+    EduDiscoveryStatsOut,
+    EduDiscoverySubmitUrlRequest,
+    EduDiscoverySubmitUrlResult,
     EduSyncRecordOut,
     EduSyncResult,
     EduSystemConfigOut,
@@ -326,6 +331,96 @@ def list_sync_records(
     return [_sync_record_to_out(r) for r in records]
 
 
+# ===== 持久化教务数据读取（供三端展示真实课表/成绩）=====
+
+
+@router.get("/schedule/semesters", response_model=list[str])
+def list_schedule_semesters(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> list[str]:
+    """列出已同步课表的所有学期。"""
+    return container.edu_connector.list_schedule_semesters(user.id)
+
+
+@router.get("/schedule/items")
+def list_schedule_items(
+    semester: Optional[str] = Query(None),
+    include_stale: bool = Query(False),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> dict:
+    """读取已持久化的课表条目。"""
+    items = container.edu_connector.list_schedule_items(
+        user.id, semester=semester, include_stale=include_stale
+    )
+    return {
+        "semester": semester,
+        "items_count": len(items),
+        "items": [
+            {
+                "id": it.id,
+                "semester": it.semester,
+                "course_code": it.course_code,
+                "course_name": it.course_name,
+                "teacher": it.teacher,
+                "location": it.location,
+                "weekday": it.weekday,
+                "start_section": it.start_section,
+                "end_section": it.end_section,
+                "start_time": it.start_time,
+                "end_time": it.end_time,
+                "weeks": it.weeks,
+                "is_stale": it.is_stale,
+                "last_seen_at": it.last_seen_at,
+            }
+            for it in items
+        ],
+    }
+
+
+@router.get("/grade/semesters", response_model=list[str])
+def list_grade_semesters(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> list[str]:
+    """列出已同步成绩的所有学期。"""
+    return container.edu_connector.list_grade_semesters(user.id)
+
+
+@router.get("/grade/items")
+def list_grade_items(
+    semester: Optional[str] = Query(None),
+    include_stale: bool = Query(False),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> dict:
+    """读取已持久化的成绩条目。"""
+    items = container.edu_connector.list_grade_items(
+        user.id, semester=semester, include_stale=include_stale
+    )
+    return {
+        "semester": semester,
+        "items_count": len(items),
+        "items": [
+            {
+                "id": it.id,
+                "semester": it.semester,
+                "course_code": it.course_code,
+                "course_name": it.course_name,
+                "credit": it.credit,
+                "score": it.score,
+                "grade_point": it.grade_point,
+                "category": it.category,
+                "status": it.status,
+                "is_stale": it.is_stale,
+                "last_seen_at": it.last_seen_at,
+            }
+            for it in items
+        ],
+    }
+
+
 # ===== edu_systems (1:N) =====
 
 
@@ -506,6 +601,73 @@ async def continue_connection(
         created_at=updated.created_at,
         updated_at=updated.updated_at,
     )
+
+
+# ===== 教务系统发现（Discovery）=====
+
+from ...services.edu.discovery_service import (
+    submit_url as _discovery_submit_url,
+    list_candidates as _discovery_list_candidates,
+    review_candidate as _discovery_review_candidate,
+    compute_stats as _discovery_compute_stats,
+)
+
+
+@router.post("/discovery/submit-url", response_model=EduDiscoverySubmitUrlResult)
+async def discovery_submit_url(
+    request: EduDiscoverySubmitUrlRequest,
+    user: UserRow = Depends(current_user),
+) -> EduDiscoverySubmitUrlResult:
+    """用户手动提交教务系统 URL。
+
+    检测 Provider → 尝试 HTTP 连接 → 保存为 USER_SUBMITTED 候选。
+    不自动升级 VERIFIED，仅标 CANDIDATE（或 VERIFIED_LIVE 若检测到强信号）。
+    """
+    result = await _discovery_submit_url(
+        university_id=request.university_id,
+        candidate_url=request.candidate_url,
+    )
+    return EduDiscoverySubmitUrlResult(**result)
+
+
+@router.get("/discovery/candidates", response_model=list[EduDiscoveryCandidateOut])
+async def discovery_list_candidates(
+    school_code: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    provider: Optional[str] = Query(None),
+    has_url: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: UserRow = Depends(require_role("admin")),
+) -> list[EduDiscoveryCandidateOut]:
+    """管理后台：列出候选（支持筛选与分页）。"""
+    result = _discovery_list_candidates(
+        school_code=school_code,
+        status=status,
+        provider=provider,
+        has_url=has_url,
+        page=page,
+        page_size=page_size,
+    )
+    return [EduDiscoveryCandidateOut(**item) for item in result["items"]]
+
+
+@router.post("/discovery/candidates/{school_code}/review")
+async def discovery_review_candidate(
+    school_code: str,
+    request: EduDiscoveryReviewRequest,
+    user: UserRow = Depends(require_role("admin")),
+) -> dict:
+    """管理后台：审核候选（confirm/reject/mark_historical/mark_intranet/reverify）。"""
+    return _discovery_review_candidate(school_code, request.action)
+
+
+@router.get("/discovery/stats", response_model=EduDiscoveryStatsOut)
+async def discovery_stats(
+    user: UserRow = Depends(require_role("admin")),
+) -> EduDiscoveryStatsOut:
+    """管理后台：发现统计。"""
+    return EduDiscoveryStatsOut(**_discovery_compute_stats())
 
 
 __all__ = ["router"]

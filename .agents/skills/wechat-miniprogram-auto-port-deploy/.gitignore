@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+
+.env
+.env.*
+private.*.key
+*.pem
+*.secret.json
+.wechat-private/
+
+artifacts/
+official-docs-snapshot.local.json
+*.local-snapshot.json
+.codex/wechat-miniprogram.config.json
+.codex/wechat-miniprogram.secrets.json
+.codex/wechat-miniprogram-experience-ledger.json
+.codex/wechat-miniprogram-experience-index.json

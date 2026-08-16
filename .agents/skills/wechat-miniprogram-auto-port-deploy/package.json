@@ -1,0 +1,37 @@
+{
+  "name": "wechat-miniprogram-auto-port-deploy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex Skill for WeChat Mini Program development, migration, validation, preview, upload, CloudBase, and review preparation automation.",
+  "scripts": {
+    "wx:setup": "node scripts/setup-wechat-config.js",
+    "wx:secrets-init": "node scripts/setup-wechat-secrets.js",
+    "wx:inspect": "node scripts/inspect-project.js",
+    "wx:validate": "node scripts/validate-miniprogram.js",
+    "wx:preview": "node scripts/wx-preview.js",
+    "wx:upload": "node scripts/wx-upload.js",
+    "wx:deploy": "node scripts/wx-deploy.js",
+    "wx:review": "node scripts/generate-review-materials.js",
+    "wx:experience": "node scripts/wechat-experience-ledger.js",
+    "wx:learn": "node scripts/wechat-experience-ledger.js preflight",
+    "wx:experience-audit": "node scripts/wechat-experience-ledger.js audit",
+    "wx:update-check": "node scripts/check-official-updates.js && node scripts/check-dependency-versions.js",
+    "wx:health-check": "node scripts/skill-health-check.js",
+    "wx:update-skill-references": "node scripts/update-skill-references.js"
+  },
+  "devDependencies": {
+    "miniprogram-ci": "latest"
+  },
+  "keywords": [
+    "wechat-miniprogram",
+    "miniprogram",
+    "codex-skill",
+    "miniprogram-ci",
+    "taro",
+    "uni-app",
+    "cloudbase",
+    "ci-cd",
+    "frontend-migration"
+  ],
+  "license": "MIT"
+}

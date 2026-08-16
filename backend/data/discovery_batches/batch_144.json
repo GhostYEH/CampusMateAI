@@ -1,0 +1,418 @@
+[
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://jwglxxfwpt.hebeu.edu.cn/",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official",
+    "source_detail": "综合教务系统服务平台"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://portal.hebeu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "融合门户"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://bsdt.hebeu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "一网通办/办事大厅"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://jiaowu.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本专科教育/教务处"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://yanjs.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://chengjiao.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://zhaosheng.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科招生"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://jiuye.hebeu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业信息"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://international.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "留学生教育"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://keyan.hebeu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科研信息"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://library.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://xuebao.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学术刊物"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://oa.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "网上办公OA"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://mail.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "电子邮箱"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://jiaofei.hebeu.edu.cn/xysf/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "缴费平台"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://svpn.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "VPN"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "http://jswm.hebeu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "军民融合"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://service.aust.edu.cn/EIP/nonlogin/homePage.htm",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "服务大厅"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://jwc.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生教育/教务处"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://yjsc.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://jxjy.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://zs.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科招生网"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://yjszs.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生招生网"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://aust.ahbys.com/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业信息网"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://rsc.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "师资队伍/人事"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://fgc.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学科建设"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://kyb.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科研部"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://tsg.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书资源"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://wsb.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "国际学院"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://news.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "新闻网"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://xxgk.aust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "http://oa.aust.edu.cn/login.shtml",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "电子政务OA"
+  },
+  {
+    "school_name": "安徽理工大学",
+    "school_code": "4134010361",
+    "candidate_url": "https://mail.aust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "邮箱登录"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "https://jwglxt.fjnu.edu.cn/",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official",
+    "source_detail": "正方教学管理系统"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://jwc.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生教育/教务处"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://yjsy.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育/研究生院"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://zsb.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生招生"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://career.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业指导中心"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://wjzy.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育/网络教育"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://kjc.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科学技术研究"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://skc.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "社会科学研究"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://xuebao.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学报编辑部"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://xxgk.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://xyzh.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校友会"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://oice.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "国际合作与交流处"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "https://xywksh.fjnu.edu.cn/xqksh/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "数字校情"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "https://oa.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "OA系统"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://library.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://mail.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "邮件系统"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://rsc.fjnu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事处"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://cwc.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "财务处"
+  },
+  {
+    "school_name": "福建师范大学",
+    "school_code": "4135010394",
+    "candidate_url": "http://youth.fjnu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校团委"
+  }
+]

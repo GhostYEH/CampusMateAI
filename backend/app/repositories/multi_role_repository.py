@@ -291,6 +291,7 @@ class CourseRepository:
         *,
         name: str,
         teacher_id: Optional[str] = None,
+        owner_user_id: Optional[str] = None,
         remote_teacher_name: Optional[str] = None,
         remote_class_id: Optional[str] = None,
         remote_cpi: Optional[str] = None,
@@ -314,12 +315,12 @@ class CourseRepository:
         with self._db.transaction() as conn:
             conn.execute(
                 """INSERT INTO courses
-                   (id, name, code, semester, description, teacher_id, remote_teacher_name,
+                   (id, name, code, semester, description, teacher_id, owner_user_id, remote_teacher_name,
                     remote_class_id, remote_cpi, remote_school_name, remote_class_name,
                     remote_student_count, cover_url, starts_at, ends_at, status, provider,
                     external_id, source_url, last_synced_at, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (cid, name, code, semester, description, teacher_id, remote_teacher_name,
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (cid, name, code, semester, description, teacher_id, owner_user_id, remote_teacher_name,
                  remote_class_id, remote_cpi, remote_school_name, remote_class_name,
                  remote_student_count, cover_url, starts_at, ends_at, status, provider,
                  external_id, source_url, last_synced_at, now, now),
@@ -334,18 +335,23 @@ class CourseRepository:
             row = cur.fetchone()
             return CourseRow.from_row(row) if row else None
 
-    def get_course_by_external_id(self, external_id: str, teacher_id: str) -> Optional[CourseRow]:
+    def get_course_by_external_id(self, external_id: str, *, teacher_id: Optional[str] = None, owner_user_id: Optional[str] = None) -> Optional[CourseRow]:
         with self._db.query() as conn:
-            cur = conn.execute(
-                "SELECT * FROM courses WHERE external_id = ? AND teacher_id = ?", (external_id, teacher_id)
-            )
+            if owner_user_id is not None:
+                cur = conn.execute(
+                    "SELECT * FROM courses WHERE external_id = ? AND owner_user_id = ?", (external_id, owner_user_id)
+                )
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM courses WHERE external_id = ? AND teacher_id = ?", (external_id, teacher_id)
+                )
             row = cur.fetchone()
             return CourseRow.from_row(row) if row else None
 
     def update_course(self, course_id: str, *, fields: dict) -> Optional[CourseRow]:
         if not fields:
             return self.get_course(course_id)
-        allowed = {"name", "code", "semester", "description", "status", "provider", "external_id", "source_url", "last_synced_at", "remote_teacher_name", "remote_class_id", "remote_cpi", "remote_school_name", "remote_class_name", "remote_student_count", "cover_url", "starts_at", "ends_at"}
+        allowed = {"name", "code", "semester", "description", "status", "provider", "external_id", "source_url", "last_synced_at", "remote_teacher_name", "remote_class_id", "remote_cpi", "remote_school_name", "remote_class_name", "remote_student_count", "cover_url", "starts_at", "ends_at", "owner_user_id"}
         sets = []
         values: list = []
         for k, v in fields.items():
@@ -371,6 +377,7 @@ class CourseRepository:
         self,
         *,
         teacher_id: Optional[str] = None,
+        owner_user_id: Optional[str] = None,
         status: Optional[str] = None,
         query: Optional[str] = None,
         page: int = 1,
@@ -381,6 +388,9 @@ class CourseRepository:
         if teacher_id:
             conditions.append("teacher_id = ?")
             params.append(teacher_id)
+        if owner_user_id:
+            conditions.append("owner_user_id = ?")
+            params.append(owner_user_id)
         if status:
             conditions.append("status = ?")
             params.append(status)
@@ -404,7 +414,14 @@ class CourseRepository:
             rows = cur.fetchall()
         return [CourseRow.from_row(r) for r in rows], total
 
-    def count_courses(self, *, teacher_id: Optional[str] = None) -> int:
+    def count_courses(self, *, teacher_id: Optional[str] = None, owner_user_id: Optional[str] = None) -> int:
+        if owner_user_id:
+            with self._db.query() as conn:
+                cur = conn.execute(
+                    "SELECT COUNT(*) AS n FROM courses WHERE owner_user_id = ?",
+                    (owner_user_id,),
+                )
+                return int(cur.fetchone()["n"])
         if teacher_id:
             with self._db.query() as conn:
                 cur = conn.execute(

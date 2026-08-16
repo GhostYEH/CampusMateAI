@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(root, 'miniprogram/services/repository.
 assert.match(source, /mockMode:\s*false/, 'student app must default to real backend mode')
 assert.match(
   source,
-  /apiBaseUrl:\s*'http:\/\/192\.168\.1\.14:8000'/,
+  /apiBaseUrl:\s*'http:\/\/192\.168\.1\.17:8000'/,
   'student app must default to the active LAN backend',
 )
 assert.match(source, /getConnectionState\(\)/, 'repository must expose the active connection state')

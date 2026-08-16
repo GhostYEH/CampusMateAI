@@ -1,0 +1,21 @@
+[
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://ehall.llu.edu.cn/portal/#/home", "system_type": "unified-portal", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://jwgl.llu.edu.cn/llxyjw/caslogin", "system_type": "undergraduate-main", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://llxyzs.llu.edu.cn", "system_type": "undergraduate-admission", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://job.llu.edu.cn", "system_type": "career-service", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "http://hzjlb.llu.edu.cn", "system_type": "international-cooperation", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "http://jyfzjjh.llu.edu.cn", "system_type": "education-foundation", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://mail.llu.edu.cn/", "system_type": "email", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "http://xxgk.llu.edu.cn", "system_type": "info-disclosure", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "http://pjb.llu.edu.cn", "system_type": "assessment", "source": "webfetch_official"},
+  {"school_name": "吕梁学院", "school_code": "4114010812", "candidate_url": "https://jxjyxy.llu.edu.cn/", "system_type": "continuing-education", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://ehall.tyu.edu.cn", "system_type": "unified-portal", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://oa.tyu.edu.cn", "system_type": "office-automation", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "http://mail.tyu.edu.cn", "system_type": "email", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://zhaosheng.tyu.edu.cn/", "system_type": "undergraduate-admission", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://tyu.bysjy.com.cn/", "system_type": "career-service", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://www.tyu.edu.cn/kjb/", "system_type": "research", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://www.tyu.edu.cn/bjb/", "system_type": "academic-journal", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://www.tyu.edu.cn/djztw/", "system_type": "party-building", "source": "webfetch_official"},
+  {"school_name": "太原学院", "school_code": "4114011242", "candidate_url": "https://tyxyjsfz.mh.chaoxing.com", "system_type": "teacher-development", "source": "webfetch_official"}
+]

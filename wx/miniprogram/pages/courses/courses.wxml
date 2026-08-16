@@ -1,11 +1,11 @@
 <view class="page tab-page courses-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
-  <campus-header title="课程" subtitle="把这周的学习节奏握在手里" mode="{{mockMode ? 'Mock 数据' : '真实后端'}}" />
+  <campus-header title="课程" subtitle="本周课程安排" mode="{{mockMode ? 'Mock 数据' : '真实后端'}}" />
   <view class="page-body courses-body">
     <view wx:if="{{courses.length}}" class="next-course-card enter" bindtap="openDetail">
-      <view class="next-kicker">●　下一节课 · {{courses[0].time}}</view>
+      <view class="next-kicker"><view></view>下一节课 · {{courses[0].time}}</view>
       <view class="next-title">{{courses[0].name}}</view>
-      <view class="next-location">⌖　{{courses[0].location}} · {{courses[0].teacher}}</view>
-      <view class="next-links"><text>▣ 课程表</text><text>ⓘ 课程详情</text><text>✓ 待办作业</text><button>去查看 ›</button></view>
+      <view class="next-location"><image src="/assets/icons/pin-white.svg" mode="aspectFit"></image>{{courses[0].location}} · {{courses[0].teacher}}</view>
+      <view class="next-links"><text>课程平台</text><text>课程详情</text><text>待办作业</text><button>去查看</button></view>
     </view>
 
     <view class="week-strip enter enter-delay-1">
@@ -13,14 +13,14 @@
     </view>
 
     <view class="course-stats enter enter-delay-1">
-      <view><view class="stat-value">▤ {{courses.length}}</view><text>门课程</text></view>
-      <view><view class="stat-value teal">◷ 18</view><text>本周学时</text></view>
-      <view><view class="stat-value orange">✓ 26.5</view><text>已修学分</text></view>
-      <view><view class="stat-value violet">▣ 96%</view><text>出勤率</text></view>
+      <view><view class="stat-value">{{courses.length}}</view><text>门课程</text></view>
+      <view><view class="stat-value teal">18</view><text>本周学时</text></view>
+      <view><view class="stat-value orange">26.5</view><text>已修学分</text></view>
+      <view><view class="stat-value violet">96%</view><text>出勤率</text></view>
     </view>
 
     <scroll-view class="filter-scroll enter enter-delay-2" scroll-x enhanced show-scrollbar="{{false}}"><view class="filter-row">
-      <button wx:for="{{filters}}" wx:key="*this" class="filter-chip {{filter === item ? 'selected' : ''}}" data-filter="{{item}}" bindtap="chooseFilter">{{item}}</button>
+      <button wx:for="{{filters}}" wx:key="*this" class="filter-chip filter-chip--{{index}} {{filter === item ? 'selected' : ''}}" data-filter="{{item}}" bindtap="chooseFilter">{{item}}</button>
     </view></scroll-view>
 
     <view class="list-heading"><view><view class="list-title">本学期课程</view><view class="list-copy">按课程卡片查看上课地点与资料</view></view><text>{{filtered.length}} 门</text></view>
@@ -29,7 +29,7 @@
     <state-view wx:elif="{{filtered.length === 0}}" state="empty" title="暂无课程" description="该分类下没有课程" />
     <view wx:else class="course-list">
       <view wx:for="{{filtered}}" wx:key="code" class="course-card enter" data-code="{{item.code}}" bindtap="openDetail">
-        <view class="course-glyph">▮</view><view class="course-main"><view class="course-name">{{item.name}} <text>{{item.type}}</text></view><view class="course-teacher">{{item.teacher}} · {{item.location}}</view><view class="course-time">{{item.weekday}} {{item.time}}</view></view><view class="attendance"><view class="attendance-value">{{96 - index * 2}}%</view><text>出勤率</text></view><view class="arrow">›</view>
+        <view class="course-glyph"><image src="/assets/icons/tab-courses-active-light.svg" mode="aspectFit"></image></view><view class="course-main"><view class="course-name">{{item.name}} <text>{{item.type}}</text></view><view class="course-teacher">{{item.teacher}} · {{item.location}}</view><view class="course-time">{{item.weekday}} {{item.time}}</view></view><view class="attendance"><view class="attendance-value">{{96 - index * 2}}%</view><text>出勤率</text></view><image class="arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image>
       </view>
     </view>
   </view>

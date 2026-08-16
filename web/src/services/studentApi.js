@@ -277,17 +277,74 @@ export async function getCommunityPosts(params = {}) {
   const { data } = await client.get("/community/posts", { params });
   return data;
 }
+export async function getCommunityCategories() {
+  const { data } = await client.get("/community/posts/categories");
+  return data;
+}
+export async function getCommunityPost(id) {
+  const { data } = await client.get(`/community/posts/${id}`);
+  return data;
+}
 export async function createCommunityPost(payload) {
   const { data } = await client.post("/community/posts", payload);
+  return data;
+}
+export async function updateCommunityPost(id, payload) {
+  const { data } = await client.put(`/community/posts/${id}`, payload);
+  return data;
+}
+export async function deleteCommunityPost(id) {
+  const { data } = await client.delete(`/community/posts/${id}`);
   return data;
 }
 export async function likeCommunityPost(id) {
   const { data } = await client.post(`/community/posts/${id}/like`);
   return data;
 }
+export async function unlikeCommunityPost(id) {
+  const { data } = await client.delete(`/community/posts/${id}/like`);
+  return data;
+}
 export async function favoriteCommunityPost(id) {
   const { data } = await client.post(`/community/posts/${id}/favorite`);
   return data;
+}
+export async function unfavoriteCommunityPost(id) {
+  const { data } = await client.delete(`/community/posts/${id}/favorite`);
+  return data;
+}
+export async function getCommunityComments(id) {
+  const { data } = await client.get(`/community/posts/${id}/comments`);
+  return data;
+}
+export async function createCommunityComment(id, payload) {
+  const { data } = await client.post(`/community/posts/${id}/comments`, payload);
+  return data;
+}
+export async function reportCommunityPost(payload) {
+  const { data } = await client.post("/community/reports", payload);
+  return data;
+}
+export async function uploadCommunityImage(file) {
+  const form = new FormData();
+  form.append("image", file);
+  const { data } = await client.post("/community/upload-image", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export function resolveAssetUrl(url) {
+  if (!url) return url;
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
+  if (url.startsWith("/static/")) {
+    const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+    if (base.startsWith("http")) {
+      try { return new URL(base).origin + url; } catch { return url; }
+    }
+    return url;
+  }
+  return url;
 }
 export async function getAcademicStatus() {
   const { data } = await client.get("/academic/status");
@@ -325,5 +382,15 @@ export async function eduSync(syncType, params = {}) {
 }
 export async function getEduSyncRecords(limit = 20) {
   const { data } = await client.get("/edu/sync/records", { params: { limit } });
+  return data;
+}
+
+export async function submitEduUrl(candidateUrl) {
+  const statusData = await getAcademicStatus().catch(() => ({}));
+  const universityId = statusData.university_id || statusData.university_id || "";
+  const { data } = await client.post("/edu/discovery/submit-url", {
+    university_id: universityId,
+    candidate_url: candidateUrl,
+  });
   return data;
 }

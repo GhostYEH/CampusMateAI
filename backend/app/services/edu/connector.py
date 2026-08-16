@@ -28,6 +28,7 @@ from ...models.edu import (
     SYNC_FAILED,
     SYNC_SUCCESS,
 )
+from ...repositories.edu_data_repository import EduDataRepository, SyncStats
 from ...repositories.edu_repository import EduRepository
 from ...schemas.edu import (
     EduBindingOut,
@@ -76,6 +77,7 @@ class EduConnectorService:
         detector: SystemDetector,
         session_manager: EduSessionStore,
         edu_repo: EduRepository,
+        edu_data_repo: Optional[EduDataRepository] = None,
         normalizer: Optional[DataNormalizer] = None,
     ) -> None:
         self._settings = settings
@@ -83,6 +85,7 @@ class EduConnectorService:
         self._detector = detector
         self._sessions = session_manager
         self._edu_repo = edu_repo
+        self._edu_data_repo = edu_data_repo
         self._normalizer = normalizer or DataNormalizer()
 
     # ===== 探测 =====
@@ -284,6 +287,8 @@ class EduConnectorService:
 
     def unbind(self, user_id: str) -> None:
         self._sessions.destroy_user_sessions(user_id)
+        if self._edu_data_repo is not None:
+            self._edu_data_repo.clear_user_data(user_id)
         self._edu_repo.delete_binding(user_id)
 
     # ===== 同步 =====
@@ -349,6 +354,15 @@ class EduConnectorService:
             elif sync_type == "schedule":
                 data = await adapter.fetch_schedule(internal_session, semester=semester)
                 count = len(data.items)
+                stats = SyncStats()
+                sync_batch_id = None
+                if self._edu_data_repo is not None and count > 0:
+                    sync_batch_id = sync_record.id
+                    stats = self._edu_data_repo.sync_schedule_items(
+                        binding=binding,
+                        schedule=data,
+                        sync_batch_id=sync_batch_id,
+                    )
                 self._edu_repo.finish_sync_record(
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
@@ -359,11 +373,31 @@ class EduConnectorService:
                     last_error=None,
                 )
                 return EduSyncResult(
-                    sync_type=sync_type, status=SYNC_SUCCESS, items_count=count, schedule=data
+                    sync_type=sync_type,
+                    status=SYNC_SUCCESS,
+                    items_count=count,
+                    schedule=data,
+                    inserted=stats.inserted,
+                    updated=stats.updated,
+                    unchanged=stats.unchanged,
+                    removed=stats.removed,
+                    failed=stats.failed,
+                    sync_batch_id=sync_batch_id,
+                    semester=data.semester,
+                    persisted=self._edu_data_repo is not None and count > 0,
                 )
             elif sync_type == "grade":
                 data = await adapter.fetch_grade(internal_session, semester=semester)
                 count = len(data.items)
+                stats = SyncStats()
+                sync_batch_id = None
+                if self._edu_data_repo is not None and count > 0:
+                    sync_batch_id = sync_record.id
+                    stats = self._edu_data_repo.sync_grade_items(
+                        binding=binding,
+                        grade=data,
+                        sync_batch_id=sync_batch_id,
+                    )
                 self._edu_repo.finish_sync_record(
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
@@ -374,7 +408,18 @@ class EduConnectorService:
                     last_error=None,
                 )
                 return EduSyncResult(
-                    sync_type=sync_type, status=SYNC_SUCCESS, items_count=count, grade=data
+                    sync_type=sync_type,
+                    status=SYNC_SUCCESS,
+                    items_count=count,
+                    grade=data,
+                    inserted=stats.inserted,
+                    updated=stats.updated,
+                    unchanged=stats.unchanged,
+                    removed=stats.removed,
+                    failed=stats.failed,
+                    sync_batch_id=sync_batch_id,
+                    semester=data.semester,
+                    persisted=self._edu_data_repo is not None and count > 0,
                 )
             elif sync_type == "exam":
                 data = await adapter.fetch_exam(internal_session, semester=semester)
@@ -426,6 +471,28 @@ class EduConnectorService:
 
     def list_sync_records(self, user_id: str, *, limit: int = 20):
         return self._edu_repo.list_sync_records(user_id, limit=limit)
+
+    # ===== 持久化教务数据读取 =====
+
+    def list_schedule_items(self, user_id: str, *, semester: Optional[str] = None, include_stale: bool = False):
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_schedule_items(user_id=user_id, semester=semester, include_stale=include_stale)
+
+    def list_grade_items(self, user_id: str, *, semester: Optional[str] = None, include_stale: bool = False):
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_grade_items(user_id=user_id, semester=semester, include_stale=include_stale)
+
+    def list_schedule_semesters(self, user_id: str) -> list[str]:
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_semesters_with_schedule(user_id)
+
+    def list_grade_semesters(self, user_id: str) -> list[str]:
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_semesters_with_grades(user_id)
 
     # ===== 内部 =====
 

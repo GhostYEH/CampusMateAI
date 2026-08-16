@@ -22,7 +22,7 @@ class ChaoxingCourseContentSyncService:
 
     async def sync_course(self, *, user_id: str, course_id: str) -> dict:
         course = self.container.course_repository.get_course(course_id)
-        if course is None or course.provider != "chaoxing" or course.teacher_id != user_id:
+        if course is None or course.provider != "chaoxing" or course.owner_user_id != user_id:
             raise ValueError("course_not_found")
         credentials = self.container.chaoxing_repository.get_credentials(user_id)
         if not credentials:

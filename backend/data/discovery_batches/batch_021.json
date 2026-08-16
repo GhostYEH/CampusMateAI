@@ -1,0 +1,52 @@
+[
+  {
+    "school_code": "4142010486",
+    "school_name": "武汉大学",
+    "candidate_url": "https://zhlj.whu.edu.cn/",
+    "provider": "unknown",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "source": "webfetch_official_website",
+    "notes": "智慧珞珈统一门户 - 从 whu.edu.cn 官网发现"
+  },
+  {
+    "school_code": "4142010486",
+    "school_name": "武汉大学",
+    "candidate_url": "https://zhlj.whu.edu.cn/casLogin",
+    "provider": "unknown",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "source": "webfetch_official_website",
+    "notes": "智慧珞珈统一门户 casLogin"
+  },
+  {
+    "school_code": "4132010286",
+    "school_name": "东南大学",
+    "candidate_url": "https://i.seu.edu.cn",
+    "provider": "unknown",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "source": "webfetch_official_website",
+    "notes": "校园信息门户 - 从 seu.edu.cn 官网发现"
+  },
+  {
+    "school_code": "4132010286",
+    "school_name": "东南大学",
+    "candidate_url": "https://jwc.seu.edu.cn",
+    "provider": "unknown",
+    "system_type": "academic_department_website",
+    "verification_status": "CANDIDATE",
+    "source": "webfetch_official_website",
+    "notes": "教务处 - 从 seu.edu.cn 官网发现"
+  },
+  {
+    "school_code": "4131010246",
+    "school_name": "复旦大学",
+    "candidate_url": "https://ehall.fudan.edu.cn",
+    "provider": "unknown",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "source": "webfetch_official_website",
+    "notes": "办事大厅 - 从 fudan.edu.cn 官网发现"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "university_name": "青岛大学",
+    "school_code": "4137011065",
+    "system_key": "unified-portal",
+    "candidate_url": "https://ehall.qdu.edu.cn/new/index.html",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "青岛大学智慧校园/网上办事大厅"
+  },
+  {
+    "university_name": "青岛大学",
+    "school_code": "4137011065",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "http://jwc.qdu.edu.cn",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "青岛大学本科生培养教务处"
+  },
+  {
+    "university_name": "青岛大学",
+    "school_code": "4137011065",
+    "system_key": "graduate-academic",
+    "candidate_url": "http://grad.qdu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "青岛大学研究生培养"
+  },
+  {
+    "university_name": "烟台大学",
+    "school_code": "4137011066",
+    "system_key": "unified-portal",
+    "candidate_url": "https://cas.ytu.edu.cn/lyuapServer/login",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "烟台大学办事服务大厅"
+  },
+  {
+    "university_name": "烟台大学",
+    "school_code": "4137011066",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.ytu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "烟台大学本科生教育教务处"
+  },
+  {
+    "university_name": "烟台大学",
+    "school_code": "4137011066",
+    "system_key": "graduate-academic",
+    "candidate_url": "https://yjs.ytu.edu.cn/index.htm",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "烟台大学研究生教育"
+  }
+]

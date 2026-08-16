@@ -11,6 +11,7 @@ import {
   getEduSyncRecords,
   getUniversities,
   selectUniversity,
+  submitEduUrl,
 } from "../../services/studentApi";
 
 const loading = ref(false);
@@ -27,6 +28,10 @@ const bindError = ref("");
 const universities = ref([]);
 const universityQuery = ref("");
 const universityPickerOpen = ref(false);
+const manualUrl = ref("");
+const manualUrlBusy = ref(false);
+const manualUrlResult = ref(null);
+const manualUrlError = ref("");
 
 const isBound = computed(() => !!eduBinding.value && eduBinding.value.connection_status === "active");
 const hasUniversity = computed(() => status.value && status.value.status !== "unbound" || isBound.value);
@@ -135,6 +140,20 @@ async function submitSync(type) {
   }
 }
 
+async function submitManualUrl() {
+  if (!manualUrl.value.trim()) return;
+  manualUrlBusy.value = true;
+  manualUrlError.value = "";
+  manualUrlResult.value = null;
+  try {
+    manualUrlResult.value = await submitEduUrl(manualUrl.value.trim());
+  } catch (e) {
+    manualUrlError.value = e.response?.data?.message || "提交失败";
+  } finally {
+    manualUrlBusy.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 <template>
@@ -187,6 +206,34 @@ onMounted(load);
         <label>密码<input v-model="bindForm.password" type="password" autocomplete="current-password" required /></label>
         <button class="redesign-button" type="submit" :disabled="bindBusy">{{ bindBusy ? "绑定中…" : "绑定" }}</button>
       </form>
+    </section>
+
+    <section v-if="!isBound" class="redesign-panel">
+      <header><h3>手动填写教务系统地址</h3></header>
+      <p class="edu-hint">如果你的学校教务系统暂未支持自动发现，可以手动填写教务系统地址。系统会自动检测厂商并尝试连接，提交后进入候选审核流程。</p>
+      <div v-if="manualUrlError" class="redesign-alert error">{{ manualUrlError }}</div>
+      <form class="edu-form" @submit.prevent="submitManualUrl">
+        <label>教务系统 URL<input v-model="manualUrl" type="url" placeholder="https://jwxt.yourschool.edu.cn/" required /></label>
+        <button class="redesign-button" type="submit" :disabled="manualUrlBusy">{{ manualUrlBusy ? "检测中…" : "提交并检测" }}</button>
+      </form>
+      <div v-if="manualUrlResult" class="manual-url-result">
+        <h4>检测结果</h4>
+        <dl class="edu-meta">
+          <dt>厂商</dt><dd>{{ manualUrlResult.provider }} (置信度 {{ (manualUrlResult.provider_confidence * 100).toFixed(0) }}%)</dd>
+          <dt>可访问</dt><dd>{{ manualUrlResult.reachable ? "是" : "否" }}</dd>
+          <dt>HTTP 状态</dt><dd>{{ manualUrlResult.http_status || "—" }}</dd>
+          <dt>页面标题</dt><dd>{{ manualUrlResult.title || "—" }}</dd>
+          <dt>识别为教务页</dt><dd>{{ manualUrlResult.is_edu_page ? "是" : "否" }}</dd>
+          <dt>状态</dt><dd>{{ manualUrlResult.verification_status }}</dd>
+        </dl>
+        <div v-if="manualUrlResult.evidence?.length" class="edu-evidence">
+          <strong>证据：</strong>
+          <ul>
+            <li v-for="(ev, i) in manualUrlResult.evidence" :key="i">{{ ev.dimension || ev.type || '—' }}: {{ ev.detail || ev.value || '—' }} (权重 {{ ev.weight || 0 }})</li>
+          </ul>
+        </div>
+        <p v-if="manualUrlResult.saved" class="redesign-alert success">已保存为候选，等待审核。感谢你的贡献！</p>
+      </div>
     </section>
 
     <section v-if="syncResult" class="redesign-panel">

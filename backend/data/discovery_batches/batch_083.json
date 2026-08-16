@@ -1,0 +1,98 @@
+[
+  {
+    "school_name": "新疆农业大学",
+    "school_code": "4165010758",
+    "candidate_url": "https://jwc.xjau.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生培养/教务处"
+  },
+  {
+    "school_name": "新疆农业大学",
+    "school_code": "4165010758",
+    "candidate_url": "https://yjsc.xjau.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生培养/研究生招生"
+  },
+  {
+    "school_name": "新疆农业大学",
+    "school_code": "4165010758",
+    "candidate_url": "https://rhmh.xjau.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "网上服务大厅"
+  },
+  {
+    "school_name": "新疆农业大学",
+    "school_code": "4165010758",
+    "candidate_url": "https://zs.xjau.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "新疆医科大学",
+    "school_code": "4165010760",
+    "candidate_url": "https://portal.xjmu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "智慧新医"
+  },
+  {
+    "school_name": "新疆医科大学",
+    "school_code": "4165010760",
+    "candidate_url": "https://yjsxy.xjmu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "新疆医科大学",
+    "school_code": "4165010760",
+    "candidate_url": "https://jxjyxy.xjmu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "延边大学",
+    "school_code": "4122010184",
+    "candidate_url": "https://jiaowu.ybu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育"
+  },
+  {
+    "school_name": "延边大学",
+    "school_code": "4122010184",
+    "candidate_url": "https://grad.ybu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育/研究生招生"
+  },
+  {
+    "school_name": "延边大学",
+    "school_code": "4122010184",
+    "candidate_url": "https://portal.ybu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "新版信息门户"
+  },
+  {
+    "school_name": "延边大学",
+    "school_code": "4122010184",
+    "candidate_url": "https://zsjy.ybu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生/就业信息"
+  },
+  {
+    "school_name": "延边大学",
+    "school_code": "4122010184",
+    "candidate_url": "https://chengjiao.ybu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育/继续教育招生"
+  }
+]

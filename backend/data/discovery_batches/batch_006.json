@@ -1,0 +1,6 @@
+[
+  {"school_name": "华中科技大学", "candidate_url": "http://pass.hust.edu.cn/cas/login", "source_url": "https://www.bing.com/search?q=hust.edu.cn+教务+登录+选课"},
+  {"school_name": "天津大学", "candidate_url": "https://classes.tju.edu.cn/eams/homeExt.action", "source_url": "https://www.bing.com/search?q=tju.edu.cn+教务+登录+选课"},
+  {"school_name": "山东大学", "candidate_url": "http://service.sdu.edu.cn/", "source_url": "https://www.bing.com/search?q=sdu.edu.cn+教务+登录+选课"},
+  {"school_name": "南京大学", "candidate_url": "https://jw.nju.edu.cn/main.htm", "source_url": "https://www.bing.com/search?q=nju.edu.cn+教务+登录+选课"}
+]

@@ -7,6 +7,7 @@ import AdminKnowledgeView from "./views/admin/AdminKnowledgeView.vue";
 import AdminRagIndexView from "./views/admin/AdminRagIndexView.vue";
 import AdminSystemView from "./views/admin/AdminSystemView.vue";
 import AdminUsersView from "./views/admin/AdminUsersView.vue";
+import AdminEduDiscoveryView from "./views/admin/AdminEduDiscoveryView.vue";
 import StudentSettingsView from "./views/student/StudentSettingsView.vue";
 import StudentExamDetailView from "./views/student/StudentExamDetailView.vue";
 import StudentExamEditView from "./views/student/StudentExamEditView.vue";
@@ -32,6 +33,7 @@ import StudentLostFoundDetailView from "./views/student/StudentLostFoundDetailVi
 import StudentChaoxingView from "./views/student/StudentChaoxingView.vue";
 import StudentUniversityView from "./views/student/StudentUniversityView.vue";
 import StudentCommunityView from "./views/student/StudentCommunityView.vue";
+import StudentCommunityDetailView from "./views/student/StudentCommunityDetailView.vue";
 import StudentAcademicView from "./views/student/StudentAcademicView.vue";
 
 const router = createRouter({
@@ -46,6 +48,7 @@ const router = createRouter({
       { path: "rag-index", component: AdminRagIndexView },
       { path: "system", component: AdminSystemView },
       { path: "users", component: AdminUsersView },
+      { path: "edu-discovery", component: AdminEduDiscoveryView },
     ]},
     // 学生端
     { path: "/", component: AppShell, children: [
@@ -57,6 +60,7 @@ const router = createRouter({
       { path: "tasks/:kind/:id", component: StudentTaskDetailView, meta: { roles: ["student"] } },
       { path: "campus-activities", component: StudentActivitiesView, meta: { roles: ["student"] } },
       { path: "community", component: StudentCommunityView, meta: { roles: ["student"] } },
+      { path: "community/:postId", component: StudentCommunityDetailView, meta: { roles: ["student"] } },
       { path: "university", component: StudentUniversityView, meta: { roles: ["student"] } },
       { path: "campus-activities/:activityId", component: StudentActivityDetailView, meta: { roles: ["student"] } },
       { path: "counselor", component: StudentCounselorView, meta: { roles: ["student"] } },

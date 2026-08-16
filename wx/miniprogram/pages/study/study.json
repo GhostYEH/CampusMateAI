@@ -1,5 +1,6 @@
 {
   "usingComponents": {
-    "campus-header": "/components/campus-header/campus-header"
+    "secondary-nav": "/components/secondary-nav/secondary-nav",
+    "custom-tab-bar": "/custom-tab-bar/index"
   }
 }

@@ -1,0 +1,23 @@
+[
+  {"school_name":"东华大学","school_code":"4131010255","candidate_url":"https://jw.dhu.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"东华大学","school_code":"4131010255","candidate_url":"https://gs.dhu.edu.cn","system_type":"graduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"东华大学","school_code":"4131010255","candidate_url":"http://ehall.dhu.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海师范大学","school_code":"4131010270","candidate_url":"https://i.shnu.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海师范大学","school_code":"4131010270","candidate_url":"http://course.shnu.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海理工大学","school_code":"4131010252","candidate_url":"http://jwc.usst.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海理工大学","school_code":"4131010252","candidate_url":"http://yjs.usst.edu.cn","system_type":"graduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海理工大学","school_code":"4131010252","candidate_url":"http://myportal.usst.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海海洋大学","school_code":"4131010264","candidate_url":"http://jwc.shou.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海海洋大学","school_code":"4131010264","candidate_url":"http://yjs.shou.edu.cn","system_type":"graduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海海洋大学","school_code":"4131010264","candidate_url":"https://uis.shou.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海外国语大学","school_code":"4131010271","candidate_url":"https://portal.shisu.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海外国语大学","school_code":"4131010271","candidate_url":"https://cc.shisu.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海对外经贸大学","school_code":"4131010273","candidate_url":"http://jwc.suibe.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海对外经贸大学","school_code":"4131010273","candidate_url":"https://ehallxc.suibe.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"华东理工大学","school_code":"4131010251","candidate_url":"http://jwc.ecust.edu.cn","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"华东理工大学","school_code":"4131010251","candidate_url":"http://gschool.ecust.edu.cn","system_type":"graduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"华东理工大学","school_code":"4131010251","candidate_url":"https://i.ecust.edu.cn","system_type":"unified-portal","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5},
+  {"school_name":"上海第二工业大学","school_code":"4131012044","candidate_url":"http://jx.sspu.edu.cn/eams/login.action","system_type":"undergraduate-main","source_type":"S7_THIRD_PARTY","provider":"KINGOSOFT","confidence":0.7},
+  {"school_name":"上海第二工业大学","school_code":"4131012044","candidate_url":"http://jwc.sspu.edu.cn","system_type":"academic_department_website","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.3},
+  {"school_name":"上海第二工业大学","school_code":"4131012044","candidate_url":"http://yjs.sspu.edu.cn","system_type":"graduate-main","source_type":"S7_THIRD_PARTY","provider":"UNKNOWN","confidence":0.5}
+]

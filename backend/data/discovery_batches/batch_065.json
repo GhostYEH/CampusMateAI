@@ -1,0 +1,122 @@
+[
+  {
+    "school_name": "南京邮电大学",
+    "school_code": "4132010293",
+    "candidate_url": "https://jwc.njupt.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "南京邮电大学教务处"
+  },
+  {
+    "school_name": "南京邮电大学",
+    "school_code": "4132010293",
+    "candidate_url": "https://pg.njupt.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "南京邮电大学研究生院"
+  },
+  {
+    "school_name": "南京邮电大学",
+    "school_code": "4132010293",
+    "candidate_url": "https://i.njupt.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "南京邮电大学智慧校园统一门户"
+  },
+  {
+    "school_name": "南京工业大学",
+    "school_code": "4132010291",
+    "candidate_url": "https://jwc.njtech.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "南京工业大学教务处"
+  },
+  {
+    "school_name": "南京工业大学",
+    "school_code": "4132010291",
+    "candidate_url": "https://gra.njtech.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "南京工业大学研究生院"
+  },
+  {
+    "school_name": "南京工业大学",
+    "school_code": "4132010291",
+    "candidate_url": "https://jwgl.njtech.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "南京工业大学教务管理"
+  },
+  {
+    "school_name": "南京工业大学",
+    "school_code": "4132010291",
+    "candidate_url": "https://i.njtech.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "南京工业大学智慧校园统一门户"
+  },
+  {
+    "school_name": "云南财经大学",
+    "school_code": "4153010689",
+    "candidate_url": "https://www.ynufe.edu.cn/jwcgb",
+    "source": "webfetch_official_site",
+    "system_type": "academic_department_website",
+    "notes": "云南财经大学教务处本科管理"
+  },
+  {
+    "school_name": "云南财经大学",
+    "school_code": "4153010689",
+    "candidate_url": "https://www.ynufe.edu.cn/yjsy",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "云南财经大学研究生院"
+  },
+  {
+    "school_name": "云南财经大学",
+    "school_code": "4153010689",
+    "candidate_url": "https://gms.ynufe.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_main",
+    "notes": "云南财经大学研究生管理"
+  },
+  {
+    "school_name": "云南财经大学",
+    "school_code": "4153010689",
+    "candidate_url": "https://ids.ynufe.cloud/portal",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "云南财经大学云财一网通"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://jwc.gxu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "undergraduate_main",
+    "notes": "广西大学本科教务管理"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://yjsc.gxu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "graduate_department_website",
+    "notes": "广西大学研究生教育"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://one.gxu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "广西大学一件事门户"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://bsdt.gxu.edu.cn",
+    "source": "webfetch_official_site",
+    "system_type": "unified_portal",
+    "notes": "广西大学办事大厅"
+  }
+]

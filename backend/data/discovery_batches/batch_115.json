@@ -1,0 +1,100 @@
+[
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "http://jwc.cicp.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "http://yjs.cicp.edu.cn",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "http://zs.cicp.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "http://jy.cicp.edu.cn",
+    "system_type": "career_center",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "https://xxfw.cicp.edu.cn/backstage/cas/login",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中央司法警官学院",
+    "school_code": "4113011903",
+    "candidate_url": "https://vpn.cicp.edu.cn/vpn/theme/auth_home.html",
+    "system_type": "vpn_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "https://jwc.jlnku.edu.cn/",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "http://vpn.jlnku.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "http://i.jlnku.edu.cn/",
+    "system_type": "oa_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "https://zs.jlnku.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "http://hjiuye.jlnku.edu.cn/",
+    "system_type": "career_center",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "http://jxjy.jlnku.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "https://tsg1.jlnku.edu.cn/",
+    "system_type": "library",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "吉林农业科技学院",
+    "school_code": "4122010194",
+    "candidate_url": "http://zhny.jlnku.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  }
+]

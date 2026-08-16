@@ -1,0 +1,9 @@
+[
+  {"school_name": "福建理工大学", "candidate_url": "https://jwxtwx.fjut.edu.cn/jwglxt/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=jwglxt+edu.cn+教务管理系统+登录"},
+  {"school_name": "南京工业职业技术大学", "candidate_url": "https://jw.nith.edu.cn/jwglxt/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=jwglxt+edu.cn+教务管理系统+登录"},
+  {"school_name": "广州理工学院", "candidate_url": "http://jw.gzist.edu.cn/jwglxt/", "source_url": "https://www.bing.com/search?q=jwglxt+edu.cn+教务管理系统+登录"},
+  {"school_name": "河南大学", "candidate_url": "https://xk.henu.edu.cn/cas/login.action", "source_url": "https://www.bing.com/search?q=KINGOSOFT+青果+教务系统+登录+edu.cn"},
+  {"school_name": "上海工程技术大学", "candidate_url": "http://qgjw.suet.edu.cn/", "source_url": "https://www.bing.com/search?q=KINGOSOFT+青果+教务系统+登录+edu.cn"},
+  {"school_name": "上海交通大学", "candidate_url": "https://i.sjtu.edu.cn/", "source_url": "https://www.bing.com/search?q=sjtu.edu.cn+教务+登录+选课"},
+  {"school_name": "华东师范大学", "candidate_url": "https://portal2020.ecnu.edu.cn/", "source_url": "https://www.bing.com/search?q=ecnu.edu.cn+教务系统+登录"}
+]

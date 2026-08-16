@@ -1,0 +1,74 @@
+[
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://xmh.nuc.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_nuc_official",
+    "notes": "数字校园/统一门户"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://jwc.nuc.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_nuc_official",
+    "notes": "教务处/本科生教育"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://grs.nuc.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_nuc_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://zhmh.nuc.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_nuc_official",
+    "notes": "本科生查询/研究生查询"
+  },
+  {
+    "school_name": "山西师范大学",
+    "school_code": "4114010118",
+    "candidate_url": "https://ehall.sxnu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_sxnu_official",
+    "notes": "统一身份认证/ehall"
+  },
+  {
+    "school_name": "山西师范大学",
+    "school_code": "4114010118",
+    "candidate_url": "https://jwcweb.sxnu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_sxnu_official",
+    "notes": "本科教育/教务处"
+  },
+  {
+    "school_name": "山西师范大学",
+    "school_code": "4114010118",
+    "candidate_url": "https://grc.sxnu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_sxnu_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "河北师范大学",
+    "school_code": "4113010094",
+    "candidate_url": "https://portal.hebtu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_hebtu_official",
+    "notes": "信息门户"
+  },
+  {
+    "school_name": "河北师范大学",
+    "school_code": "4113010094",
+    "candidate_url": "https://jwgl.hebtu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_hebtu_official",
+    "notes": "教务系统/正方jwgl"
+  }
+]

@@ -1,0 +1,7 @@
+# Codex CLI 项目级配置
+# 详见 https://github.com/openai/codex 和 AGENTS.md
+
+# 让 Codex 在每次 shell 会话注入 JAVA_HOME / PATH
+# 适用于 Codex CLI 0.x+ 的 project config
+[shell]
+env = { JAVA_HOME = "F:\\demo1\\android\\.tools\\jdk21-full\\jdk-21.0.12+8", PATH = "F:\\demo1\\android\\.tools\\jdk21-full\\jdk-21.0.12+8\\bin;${PATH}" }

@@ -1,0 +1,92 @@
+[
+  {
+    "university_name": "河南大学",
+    "school_code": "4141010475",
+    "system_key": "unified-portal",
+    "candidate_url": "https://ehall.henu.edu.cn/",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南大学网上办事大厅"
+  },
+  {
+    "university_name": "河南大学",
+    "school_code": "4141010475",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.henu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南大学本科生教育教务处"
+  },
+  {
+    "university_name": "河南大学",
+    "school_code": "4141010475",
+    "system_key": "graduate-academic",
+    "candidate_url": "https://grs.henu.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南大学研究生教育"
+  },
+  {
+    "university_name": "河南师范大学",
+    "school_code": "4141010476",
+    "system_key": "unified-portal",
+    "candidate_url": "http://ehall2.htu.edu.cn/new/index.html",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南师范大学办事大厅"
+  },
+  {
+    "university_name": "河南师范大学",
+    "school_code": "4141010476",
+    "system_key": "unified-portal-auth",
+    "candidate_url": "https://authserver2.htu.edu.cn/authserver/login",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南师范大学统一身份认证"
+  },
+  {
+    "university_name": "河南科技大学",
+    "school_code": "4141010464",
+    "system_key": "unified-portal",
+    "candidate_url": "https://i.haust.edu.cn/",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南科技大学我i科大统一门户"
+  },
+  {
+    "university_name": "河南科技大学",
+    "school_code": "4141010464",
+    "system_key": "unified-portal-ehall",
+    "candidate_url": "https://eip.haust.edu.cn/",
+    "system_type": "unified_portal",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南科技大学网上办事大厅"
+  },
+  {
+    "university_name": "河南科技大学",
+    "school_code": "4141010464",
+    "system_key": "undergraduate-academic",
+    "candidate_url": "https://jwc.haust.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南科技大学本科生教育教务管理"
+  },
+  {
+    "university_name": "河南科技大学",
+    "school_code": "4141010464",
+    "system_key": "graduate-academic",
+    "candidate_url": "https://yjsc.haust.edu.cn/",
+    "system_type": "academic_system",
+    "provider": "unknown",
+    "discovery_method": "webfetch_official_site",
+    "notes": "河南科技大学研究生教育"
+  }
+]

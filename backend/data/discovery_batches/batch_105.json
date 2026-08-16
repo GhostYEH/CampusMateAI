@@ -1,0 +1,15 @@
+[
+  {"school_name": "合肥大学", "school_code": "4134011059", "candidate_url": "http://www.hfuu.edu.cn/jwc", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处"},
+  {"school_name": "合肥大学", "school_code": "4134011059", "candidate_url": "http://www.hfuu.edu.cn/yjs", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "合肥大学", "school_code": "4134011059", "system_type": "unified_portal", "candidate_url": "https://my.hfuu.edu.cn", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "合肥大学", "school_code": "4134011059", "candidate_url": "http://www.hfuu.edu.cn/zs/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "本科招生"},
+  {"school_name": "五邑大学", "school_code": "4144011349", "candidate_url": "http://www.wyu.edu.cn/jwc/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处"},
+  {"school_name": "五邑大学", "school_code": "4144011349", "candidate_url": "http://www.wyu.edu.cn/yjscx", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生处"},
+  {"school_name": "五邑大学", "school_code": "4144011349", "candidate_url": "https://ehall.wyu.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "门户入口"},
+  {"school_name": "五邑大学", "school_code": "4144011349", "candidate_url": "http://www.wyu.edu.cn/zsb/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "本科招生"},
+  {"school_name": "三峡大学", "school_code": "4142011075", "candidate_url": "http://sxdxjwc.ctgu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处/本科教育"},
+  {"school_name": "三峡大学", "school_code": "4142011075", "candidate_url": "http://sxdxyjsy.ctgu.edu.cn/", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生院/研究生教育"},
+  {"school_name": "三峡大学", "school_code": "4142011075", "candidate_url": "http://portal.ctgu.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "个人门户"},
+  {"school_name": "三峡大学", "school_code": "4142011075", "candidate_url": "https://zs.ctgu.edu.cn/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "本科招生"},
+  {"school_name": "三峡大学", "school_code": "4142011075", "candidate_url": "http://jxjy.ctgu.edu.cn/", "system_type": "continuing_education", "source": "webfetch_official_site", "notes": "继续教育"}
+]

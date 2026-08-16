@@ -1,0 +1,534 @@
+[
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://jwc.sdutcm.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://yjs.sdutcm.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://gjjiaoyu.sdutcm.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://sso.sdutcm.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://renshichu.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://renshichu.sdutcm.edu.cn/rcgz/rczp.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://kycx.sdutcm.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://cgzyzh.sdutcm.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://tcmlab.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://sdxb.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://sdzz.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://xxgk.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "http://sdutcm.ihwrm.com/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://yqgx.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "http://mail.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://lib.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://sdutcm.sdbys.com/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "http://zsc.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://xyh1.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://hqjj.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://sfpt.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://ddh.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "http://ztjy.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://dsxx.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东中医药大学",
+    "school_code": "4137010441",
+    "candidate_url": "https://bwcx.sdutcm.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://e.hbut.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://dean.hbut.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://yjs.hbut.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://sie.hbut.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://ce.hbut.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://kjcy.hbut.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://rs.hbut.edu.cn/rczp.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://rs.hbut.edu.cn/bsh/zdjj.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://zs.hbut.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://hbut.91wllm.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://hbutyjs.91wllm.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://dir.hbut.edu.cn/index.htm",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://xyh.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://lib.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://museum.hbut.edu.cn/xsg/index.html",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "http://news.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://xmail.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "http://en.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://xxgk.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://tend.hbut.edu.cn/index.chtml",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "湖北工业大学",
+    "school_code": "4142010500",
+    "candidate_url": "https://dag.hbut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://jiaowu.sicau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://yan.sicau.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://ywtb.sicau.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://ecology.sicau.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://webvpn.sicau.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://zs.sicau.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://job.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "http://ghc.sicau.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "http://nfy.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://rsc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://rsc.sicau.edu.cn/rczp.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://kjc.sicau.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://lib.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://dag.sicau.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://ietc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://mail.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "http://mail.stu.sicau.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://op.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://labshare.sicau.edu.cn/Portals/Home/Index",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://vrs.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "http://news.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://xyh.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://xsc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://zjc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://cwc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://bwc.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://tw.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://xgh.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "http://www.cnzx.info/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川农业大学",
+    "school_code": "4151010626",
+    "candidate_url": "https://ic.sicau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  }
+]

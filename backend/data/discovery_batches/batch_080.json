@@ -1,0 +1,122 @@
+[
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://jwweb.hebmu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务系统"
+  },
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://jwc.hebmu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official_site",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://gschool.hebmu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生学院/研究生招生"
+  },
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://zsb.hebmu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本专科生招生"
+  },
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://career.hebmu.edu.cn",
+    "system_type": "career-employment",
+    "source": "webfetch_official_site",
+    "notes": "就业网"
+  },
+  {
+    "school_name": "河北医科大学",
+    "school_code": "4113010089",
+    "candidate_url": "https://jxjyxy.hebmu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育学院"
+  },
+  {
+    "school_name": "华北电力大学",
+    "school_code": "4111010054",
+    "candidate_url": "https://jwc.ncepu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育/教务处"
+  },
+  {
+    "school_name": "华北电力大学",
+    "school_code": "4111010054",
+    "candidate_url": "https://yjsy.ncepu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "华北电力大学",
+    "school_code": "4111010054",
+    "candidate_url": "https://jxjyxy.ncepu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "华北电力大学",
+    "school_code": "4111010054",
+    "candidate_url": "https://my.ncepu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "数字华电"
+  },
+  {
+    "school_name": "内蒙古师范大学",
+    "school_code": "4115010135",
+    "candidate_url": "https://jwc.imnu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育/教育教学"
+  },
+  {
+    "school_name": "内蒙古师范大学",
+    "school_code": "4115010135",
+    "candidate_url": "https://yjsc.imnu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育/研究生招生"
+  },
+  {
+    "school_name": "内蒙古师范大学",
+    "school_code": "4115010135",
+    "candidate_url": "https://jxjy.imnu.edu.cn",
+    "system_type": "continuing-education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "内蒙古师范大学",
+    "school_code": "4115010135",
+    "candidate_url": "https://all.imnu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "内蒙古师范大学",
+    "school_code": "4115010135",
+    "candidate_url": "https://zs.imnu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  }
+]

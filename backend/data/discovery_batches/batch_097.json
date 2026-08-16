@@ -1,0 +1,202 @@
+[
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://jwc.cumtb.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official_site",
+    "notes": "本科教育/教务处"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://yjs.cumtb.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://jxjy.cumtb.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://zb.cumtb.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://yz.cumtb.edu.cn",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://jy.cumtb.edu.cn",
+    "system_type": "career_services",
+    "source": "webfetch_official_site",
+    "notes": "就业"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://login.cumtb.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "认证登录"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://lxxld.cumtb.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "师生e通"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://xszz.cumtb.edu.cn",
+    "system_type": "student_affairs",
+    "source": "webfetch_official_site",
+    "notes": "学生资助"
+  },
+  {
+    "school_name": "中国矿业大学（北京）",
+    "school_code": "4111011413",
+    "candidate_url": "https://zhyx.cumtb.edu.cn",
+    "system_type": "student_affairs",
+    "source": "webfetch_official_site",
+    "notes": "智慧迎新"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://service.cnu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "服务门户"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://oa.cnu.edu.cn",
+    "system_type": "oa_system",
+    "source": "webfetch_official_site",
+    "notes": "办公系统"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://lib.cnu.edu.cn",
+    "system_type": "library",
+    "source": "webfetch_official_site",
+    "notes": "图书馆"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://news.cnu.edu.cn",
+    "system_type": "news_website",
+    "source": "webfetch_official_site",
+    "notes": "新闻网"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://xyh.cnu.edu.cn",
+    "system_type": "alumni",
+    "source": "webfetch_official_site",
+    "notes": "校友网"
+  },
+  {
+    "school_name": "首都师范大学",
+    "school_code": "4111010028",
+    "candidate_url": "https://jjh.cnu.edu.cn",
+    "system_type": "foundation",
+    "source": "webfetch_official_site",
+    "notes": "教育基金会"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://ehall.btbu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "办事大厅"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://oa.btbu.edu.cn",
+    "system_type": "oa_system",
+    "source": "webfetch_official_site",
+    "notes": "协同办公"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://vpn.btbu.edu.cn",
+    "system_type": "vpn_website",
+    "source": "webfetch_official_site",
+    "notes": "VPN"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://zsb.btbu.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://yzb.btbu.edu.cn",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://gjjy.btbu.edu.cn",
+    "system_type": "international_education",
+    "source": "webfetch_official_site",
+    "notes": "国际教育"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://cj.btbu.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official_site",
+    "notes": "继续教育"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://international.btbu.edu.cn",
+    "system_type": "international_education",
+    "source": "webfetch_official_site",
+    "notes": "国际交流"
+  },
+  {
+    "school_name": "北京工商大学",
+    "school_code": "4111010011",
+    "candidate_url": "https://llm.btbu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official_site",
+    "notes": "百事通"
+  }
+]

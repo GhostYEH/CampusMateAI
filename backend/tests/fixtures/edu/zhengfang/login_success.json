@@ -1,0 +1,6 @@
+{
+  "resultCode": "SUCCESS",
+  "message": "登录成功",
+  "success": true,
+  "_fixture_note": "脱敏登录成功响应，不含真实用户名/学号/cookie/token"
+}

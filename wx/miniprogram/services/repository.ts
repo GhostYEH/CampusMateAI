@@ -3,12 +3,23 @@ import { defaultCourses, defaultNotices, defaultTasks, demoUsers } from './mock-
 import {
   AppSettings,
   BackendHealth,
+  CampusActivity,
   CampusTask,
+  CategoryMeta,
   ChatReply,
+  Classroom,
+  CommunityComment,
+  CommunityPost,
   ConnectionState,
   Course,
   ExtractResult,
+  FavoriteItem,
+  LostFoundItem,
   Notice,
+  PersonalFile,
+  ServiceRequest,
+  StudentExam,
+  University,
   User,
 } from './types'
 
@@ -27,10 +38,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   darkMode: false,
   remindersEnabled: true,
   demoMode: false,
-  apiBaseUrl: 'http://192.168.1.14:8000',
+  apiBaseUrl: 'http://192.168.1.17:8000',
 }
 
-type RequestMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 type SessionMode = 'mock' | 'remote'
 
 interface RequestOptions {
@@ -332,6 +343,163 @@ class CampusRepository {
     return defaultCourses.map((course) => ({ ...course }))
   }
 
+  async getStudentExamsAsync(): Promise<StudentExam[]> {
+    return this.request<StudentExam[]>('/student/exams', 'GET')
+  }
+
+  async saveStudentExam(exam: Omit<StudentExam, 'id'>, id?: string): Promise<StudentExam> {
+    return this.request<StudentExam>(id ? `/student/exams/${id}` : '/student/exams', id ? 'PATCH' : 'POST', exam)
+  }
+
+  async deleteStudentExam(id: string): Promise<void> {
+    await this.request(`/student/exams/${id}`, 'DELETE')
+  }
+
+  async getClassroomsAsync(date?: string, building?: string): Promise<Classroom[]> {
+    const query = [date ? `date=${encodeURIComponent(date)}` : '', building ? `building=${encodeURIComponent(building)}` : '']
+      .filter(Boolean)
+      .join('&')
+    const response = await this.request<ApiPage<Classroom>>(`/student/classrooms${query ? `?${query}` : ''}`, 'GET')
+    return response.items
+  }
+
+  async getCommunityCategoriesAsync(): Promise<CategoryMeta[]> {
+    const response = await this.request<{ items: CategoryMeta[] }>('/community/posts/categories', 'GET')
+    return response.items
+  }
+
+  async getCommunityPostsAsync(params?: { q?: string; category?: string; sort?: string; page?: number; page_size?: number }): Promise<{ items: CommunityPost[]; total: number }> {
+    const query = [
+      params?.q ? `q=${encodeURIComponent(params.q)}` : '',
+      params?.category ? `category=${encodeURIComponent(params.category)}` : '',
+      params?.sort ? `sort=${encodeURIComponent(params.sort)}` : '',
+      params?.page ? `page=${params.page}` : '',
+      params?.page_size ? `page_size=${params.page_size}` : '',
+    ].filter(Boolean).join('&')
+    const response = await this.request<{ items: CommunityPost[]; total: number }>(`/community/posts${query ? `?${query}` : ''}`, 'GET')
+    return { items: response.items || [], total: response.total || 0 }
+  }
+
+  async getCommunityPostAsync(id: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/community/posts/${id}`, 'GET')
+  }
+
+  async createCommunityPost(payload: { title: string; content: string; category: string; images?: string[]; is_anonymous?: boolean; extra?: Record<string, unknown> | null }): Promise<CommunityPost> {
+    return this.request<CommunityPost>('/community/posts', 'POST', {
+      title: payload.title,
+      content: payload.content,
+      category: payload.category,
+      images: payload.images || [],
+      is_anonymous: payload.is_anonymous || false,
+      extra: payload.extra || null,
+    })
+  }
+
+  async deleteCommunityPost(id: string): Promise<void> {
+    await this.request(`/community/posts/${id}`, 'DELETE')
+  }
+
+  async likeCommunityPost(id: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/community/posts/${id}/like`, 'POST')
+  }
+
+  async unlikeCommunityPost(id: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/community/posts/${id}/like`, 'DELETE')
+  }
+
+  async favoriteCommunityPost(id: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/community/posts/${id}/favorite`, 'POST')
+  }
+
+  async unfavoriteCommunityPost(id: string): Promise<CommunityPost> {
+    return this.request<CommunityPost>(`/community/posts/${id}/favorite`, 'DELETE')
+  }
+
+  async getCommunityCommentsAsync(id: string): Promise<CommunityComment[]> {
+    const response = await this.request<{ items: CommunityComment[] }>(`/community/posts/${id}/comments`, 'GET')
+    return response.items || []
+  }
+
+  async createCommunityCommentAsync(id: string, payload: { content: string; parent_comment_id?: string; is_anonymous?: boolean }): Promise<CommunityComment> {
+    return this.request<CommunityComment>(`/community/posts/${id}/comments`, 'POST', payload)
+  }
+
+  async reportCommunityPostAsync(payload: { target_type: string; target_id: string; reason: string; details?: string }): Promise<void> {
+    await this.request('/community/reports', 'POST', payload)
+  }
+
+  async uploadCommunityImageAsync(filePath: string): Promise<string> {
+    const settings = this.getSettings()
+    const baseUrl = settings.apiBaseUrl.replace(/\/$/, '')
+    const token = wx.getStorageSync(STORAGE.token) as string
+    return new Promise<string>((resolve, reject) => {
+      wx.uploadFile({
+        url: `${baseUrl}/api/v1/community/upload-image`,
+        filePath,
+        name: 'image',
+        header: token ? { Authorization: `Bearer ${token}` } : {},
+        success: (response) => {
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            try { const data = JSON.parse(response.data) as { url: string }; resolve(data.url) }
+            catch { reject(new Error('上传响应解析失败')) }
+            return
+          }
+          reject(new Error('图片上传失败'))
+        },
+        fail: () => reject(new Error('图片上传失败，请检查网络')),
+      })
+    })
+  }
+
+  resolveAssetUrl(url: string): string {
+    if (!url) return url
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    if (url.startsWith('/static/')) {
+      const settings = this.getSettings()
+      const baseUrl = settings.apiBaseUrl.replace(/\/$/, '')
+      return `${baseUrl}${url}`
+    }
+    return url
+  }
+
+  async getLostFoundAsync(mine = false): Promise<LostFoundItem[]> {
+    return this.request<LostFoundItem[]>(`/student/lost-found${mine ? '?mine=true' : ''}`, 'GET')
+  }
+
+  async createLostFound(item: Pick<LostFoundItem, 'kind' | 'title' | 'content' | 'location' | 'contact' | 'contact_visibility'>): Promise<LostFoundItem> {
+    return this.request<LostFoundItem>('/student/lost-found', 'POST', item)
+  }
+
+  async deleteLostFound(id: string): Promise<void> {
+    await this.request(`/student/lost-found/${id}`, 'DELETE')
+  }
+
+  async getActivitiesAsync(): Promise<CampusActivity[]> {
+    const response = await this.request<ApiPage<CampusActivity>>('/activities', 'GET')
+    return response.items
+  }
+
+  async getPersonalFilesAsync(): Promise<PersonalFile[]> {
+    return this.request<PersonalFile[]>('/personal-hub/files', 'GET')
+  }
+
+  async getFavoritesAsync(): Promise<FavoriteItem[]> {
+    return this.request<FavoriteItem[]>('/personal-hub/favorites', 'GET')
+  }
+
+  async getUniversitiesAsync(): Promise<University[]> {
+    const response = await this.request<ApiPage<University>>('/universities', 'GET')
+    return response.items
+  }
+
+  async getServiceRequestsAsync(): Promise<ServiceRequest[]> {
+    return this.request<ServiceRequest[]>('/student/service-requests', 'GET')
+  }
+
+  async createServiceRequest(kind: string, title: string, content: string): Promise<ServiceRequest> {
+    return this.request<ServiceRequest>('/student/service-requests', 'POST', { kind, title, content })
+  }
+
   async extractNotice(text: string): Promise<ExtractResult[]> {
     const content = text.trim()
     if (!content) throw new Error('请先粘贴通知正文')
@@ -432,7 +600,7 @@ class CampusRepository {
     return new Promise<T>((resolve, reject) => {
       wx.request({
         url: `${baseUrl}/api/v1${path}`,
-        method,
+        method: method as WechatMiniprogram.RequestOption['method'],
         data,
         header: authenticated && token ? { Authorization: `Bearer ${token}` } : {},
         timeout: 15000,
