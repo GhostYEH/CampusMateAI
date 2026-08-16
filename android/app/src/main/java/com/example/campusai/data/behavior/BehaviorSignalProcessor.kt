@@ -18,8 +18,21 @@ data class BehaviorSignalConfig(
     val penFidgetingThresholdMs: Long = 10000L,
     val absentThresholdMs: Long = 10000L,
     val learningRecoveryThresholdMs: Long = 5000L,
-    val confidenceThreshold: Float = 0.5f
+    val confidenceThreshold: Float = 0.5f,
+    val startupWarmupMs: Long = 1500L,
+    val stableBehaviorWindowMs: Long = 2000L,
+    val stableBehaviorDominantRatio: Float = 0.70f,
+    val stableBehaviorAverageConfidence: Float = 0.65f,
 )
+
+sealed class BehaviorDisplayState {
+    object Observing : BehaviorDisplayState()
+    object NoStableBehavior : BehaviorDisplayState()
+    data class Stable(
+        val behavior: StudyBehavior,
+        val confidence: Float,
+    ) : BehaviorDisplayState()
+}
 
 class BehaviorSignalProcessor(
     private val config: BehaviorSignalConfig = BehaviorSignalConfig()
@@ -34,6 +47,63 @@ class BehaviorSignalProcessor(
     private var currentlyPhoneDistracted = false
     private var currentlyFidgeting = false
     private var currentlyLookingAway = false
+    private var behaviorObservationStartedAt = 0L
+    private val behaviorSamples = ArrayDeque<BehaviorSample>()
+
+    /** Starts the UI-only observation window for the current focus session. */
+    fun beginBehaviorObservation(startedAtMs: Long) {
+        behaviorObservationStartedAt = startedAtMs
+        behaviorSamples.clear()
+    }
+
+    /**
+     * Converts raw V3.1 predictions into the state shown by Focus.
+     */
+    fun processDisplayState(prediction: BehaviorPrediction): BehaviorDisplayState {
+        if (prediction.modelState !in SUPPORTED_MODEL_STATES || prediction.probabilities.isEmpty()) {
+            return BehaviorDisplayState.Observing
+        }
+
+        if (behaviorObservationStartedAt == 0L) {
+            beginBehaviorObservation(prediction.timestampMs)
+        }
+
+        val top = prediction.probabilities
+            .filterKeys { it in UI_BEHAVIORS }
+            .maxByOrNull { it.value }
+            ?: return BehaviorDisplayState.NoStableBehavior
+        behaviorSamples.addLast(
+            BehaviorSample(
+                behavior = top.key,
+                confidence = top.value,
+                timestampMs = prediction.timestampMs,
+            ),
+        )
+        val windowStart = prediction.timestampMs - config.stableBehaviorWindowMs
+        while ((behaviorSamples.firstOrNull()?.timestampMs ?: Long.MAX_VALUE) < windowStart) {
+            behaviorSamples.removeFirst()
+        }
+
+        if (prediction.timestampMs - behaviorObservationStartedAt < config.startupWarmupMs) {
+            return BehaviorDisplayState.Observing
+        }
+
+        val samples = behaviorSamples.toList()
+        if (samples.isEmpty()) return BehaviorDisplayState.NoStableBehavior
+        val dominant = samples.groupBy { it.behavior }
+            .maxByOrNull { (_, values) -> values.size }
+            ?: return BehaviorDisplayState.NoStableBehavior
+        val dominantRatio = dominant.value.size.toFloat() / samples.size
+        val averageConfidence = dominant.value.map { it.confidence }.average().toFloat()
+        return if (
+            dominantRatio >= config.stableBehaviorDominantRatio &&
+            averageConfidence >= config.stableBehaviorAverageConfidence
+        ) {
+            BehaviorDisplayState.Stable(dominant.key, averageConfidence)
+        } else {
+            BehaviorDisplayState.NoStableBehavior
+        }
+    }
 
     fun process(prediction: BehaviorPrediction): List<StableBehaviorEvent> {
         val now = prediction.timestampMs
@@ -128,5 +198,24 @@ class BehaviorSignalProcessor(
         currentlyPhoneDistracted = false
         currentlyFidgeting = false
         currentlyLookingAway = false
+        behaviorObservationStartedAt = 0L
+        behaviorSamples.clear()
+    }
+
+    private data class BehaviorSample(
+        val behavior: StudyBehavior,
+        val confidence: Float,
+        val timestampMs: Long,
+    )
+
+    private companion object {
+        val UI_BEHAVIORS = setOf(
+            StudyBehavior.IDLE,
+            StudyBehavior.VISIBLE_STUDY,
+            StudyBehavior.READING,
+            StudyBehavior.WRITING,
+            StudyBehavior.PHONE_USE,
+        )
+        val SUPPORTED_MODEL_STATES = setOf("READY_VISIBLE_STUDY_V31", "READY_RGB_V2")
     }
 }

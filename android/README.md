@@ -74,7 +74,7 @@ gradlew.bat :app:assembleDebug        # Windows
 gradlew.bat :app:assembleRelease
 
 # 自定义后端地址(真机调试)
-gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://192.168.1.20:8000/api/v1/
+gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
 ```
 
 ## 表情识别

@@ -4,6 +4,12 @@ import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import android.app.Application
 import com.example.campusai.data.behavior.BehaviorAnalyzer
+import com.example.campusai.data.behavior.BehaviorDisplayState
+import com.example.campusai.data.behavior.BehaviorInputDebugExporter
+import com.example.campusai.data.behavior.BehaviorObservationHistory
+import com.example.campusai.data.behavior.BehaviorObservationSnapshot
+import com.example.campusai.data.behavior.LearningContinuityState
+import com.example.campusai.data.behavior.LearningContinuityStateMachine
 import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.FocusSupervisor
@@ -48,6 +54,8 @@ class ExpressionSessionManager(
     private var processor = FocusStateProcessor(observationConfig)
     private val behaviorAnalyzer = BehaviorAnalyzer(OnnxBehaviorRecognitionEngine(application))
     private val behaviorSignalProcessor = BehaviorSignalProcessor()
+    private val behaviorObservationHistory = BehaviorObservationHistory()
+    private val learningContinuityStateMachine = LearningContinuityStateMachine()
     private val focusSupervisor = FocusSupervisor()
     private var latestResult = initialResult()
     private var releaseJob: kotlinx.coroutines.Job? = null
@@ -61,6 +69,13 @@ class ExpressionSessionManager(
     
     private val _behaviorPrediction = MutableStateFlow<BehaviorPrediction?>(null)
     val behaviorPrediction: StateFlow<BehaviorPrediction?> = _behaviorPrediction.asStateFlow()
+    private val _behaviorDisplayState = MutableStateFlow<BehaviorDisplayState>(BehaviorDisplayState.Observing)
+    val behaviorDisplayState: StateFlow<BehaviorDisplayState> = _behaviorDisplayState.asStateFlow()
+    private val _behaviorObservation = MutableStateFlow(BehaviorObservationSnapshot())
+    val behaviorObservation: StateFlow<BehaviorObservationSnapshot> = _behaviorObservation.asStateFlow()
+    private val _learningContinuityState = MutableStateFlow(LearningContinuityState.OBSERVING)
+    val learningContinuityState: StateFlow<LearningContinuityState> = _learningContinuityState.asStateFlow()
+    private var behaviorObservationActive = false
 
     private val _gentleReminder = MutableStateFlow<String?>(null)
     val gentleReminder: StateFlow<String?> = _gentleReminder.asStateFlow()
@@ -114,11 +129,29 @@ class ExpressionSessionManager(
         }
     }
 
+    /**
+     * Fire-and-forget teardown for the UI: stops the camera and marks the page
+     * ineligible, but keeps the loaded model warm for the next visit. Runs on the
+     * manager's own scope so it survives the composable being disposed.
+     */
+    fun detachPreviewAsync() {
+        scope.launch {
+            updateEligibility(visible = false, running = false)
+            detachPreview()
+        }
+    }
+
     suspend fun beginFocusSession() {
         releaseJob?.cancel()
         mutex.withLock {
             processor = FocusStateProcessor(observationConfig)
             behaviorSignalProcessor.reset()
+            learningContinuityStateMachine.reset()
+            _learningContinuityState.value = LearningContinuityState.OBSERVING
+            behaviorObservationHistory.reset(System.currentTimeMillis())
+            _behaviorObservation.value = behaviorObservationHistory.snapshot()
+            _behaviorDisplayState.value = BehaviorDisplayState.Observing
+            behaviorObservationActive = false
             focusSupervisor.reset()
             _gentleReminder.value = null
         }
@@ -158,12 +191,30 @@ class ExpressionSessionManager(
 
     private suspend fun syncLocked() {
         val shouldRun = assistanceEnabled && cameraPermissionGranted && timerRunning && pageVisible && appForeground
+        android.util.Log.i(
+            "FocusEligibility",
+            "enabled=$assistanceEnabled, " +
+                    "permission=$cameraPermissionGranted, " +
+                    "timer=$timerRunning, " +
+                    "visible=$pageVisible, " +
+                    "foreground=$appForeground, " +
+                    "shouldRun=$shouldRun"
+        )
         if (!shouldRun) {
             cameraPipeline.unbindCamera()
             cameraPipeline.pause()
             service?.pause()
+            behaviorSignalProcessor.reset()
+            _behaviorDisplayState.value = BehaviorDisplayState.Observing
+            behaviorObservationActive = false
             _focusState.value = if (assistanceEnabled) FocusState.UNAVAILABLE else FocusState.UNAVAILABLE
             return
+        }
+        if (!behaviorObservationActive) {
+            behaviorSignalProcessor.reset()
+            behaviorSignalProcessor.beginBehaviorObservation(System.currentTimeMillis())
+            _behaviorDisplayState.value = BehaviorDisplayState.Observing
+            behaviorObservationActive = true
         }
         val target = service ?: createService(useMock).also { created ->
             service = created
@@ -174,6 +225,13 @@ class ExpressionSessionManager(
             scope.launch {
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
                     _behaviorPrediction.value = prediction
+                    val displayState = behaviorSignalProcessor.processDisplayState(prediction)
+                    _behaviorDisplayState.value = displayState
+                    val continuity = learningContinuityStateMachine.process(displayState, prediction.timestampMs)
+                    _learningContinuityState.value = continuity.state
+                    behaviorObservationHistory.record(continuity.state, prediction.timestampMs)
+                    _behaviorObservation.value = behaviorObservationHistory.snapshot()
+                    BehaviorInputDebugExporter.recordPrediction(application, prediction, displayState)
                     val events = behaviorSignalProcessor.process(prediction)
                     val behaviorFocusState = focusSupervisor.processEvents(events, prediction.timestampMs)
                     

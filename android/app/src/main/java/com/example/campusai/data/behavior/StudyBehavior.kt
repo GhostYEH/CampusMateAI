@@ -1,6 +1,11 @@
 package com.example.campusai.data.behavior
 
 enum class StudyBehavior {
+    /** V3.1: no clearly observable study action in the current image. */
+    IDLE,
+    /** V3.1: a clearly observable reading, writing, or material interaction action. */
+    VISIBLE_STUDY,
+
     READING,
     WRITING,
     TYPING,

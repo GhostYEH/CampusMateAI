@@ -7,6 +7,45 @@ import org.junit.Test
 class BehaviorSignalProcessorTest {
 
     @Test
+    fun displayStateWaitsForWarmupThenEmitsDominantBehavior() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(
+                startupWarmupMs = 1500L,
+                stableBehaviorWindowMs = 2000L,
+            ),
+        )
+        processor.beginBehaviorObservation(100L)
+
+        assertEquals(
+            BehaviorDisplayState.Observing,
+            processor.processDisplayState(BehaviorPrediction(mapOf(StudyBehavior.VISIBLE_STUDY to 0.9f), 500L, "READY_VISIBLE_STUDY_V31")),
+        )
+        assertEquals(
+            BehaviorDisplayState.Observing,
+            processor.processDisplayState(BehaviorPrediction(mapOf(StudyBehavior.VISIBLE_STUDY to 0.9f), 1000L, "READY_VISIBLE_STUDY_V31")),
+        )
+
+        val result = processor.processDisplayState(
+            BehaviorPrediction(mapOf(StudyBehavior.VISIBLE_STUDY to 0.9f), 1600L, "READY_VISIBLE_STUDY_V31"),
+        )
+        assertEquals(BehaviorDisplayState.Stable(StudyBehavior.VISIBLE_STUDY, 0.9f), result)
+    }
+
+    @Test
+    fun displayStateRejectsMixedPredictionsAfterWarmup() {
+        val processor = BehaviorSignalProcessor(BehaviorSignalConfig(startupWarmupMs = 1500L))
+        processor.beginBehaviorObservation(100L)
+
+        processor.processDisplayState(BehaviorPrediction(mapOf(StudyBehavior.VISIBLE_STUDY to 0.9f), 500L, "READY_VISIBLE_STUDY_V31"))
+        processor.processDisplayState(BehaviorPrediction(mapOf(StudyBehavior.IDLE to 0.9f), 1000L, "READY_VISIBLE_STUDY_V31"))
+
+        assertEquals(
+            BehaviorDisplayState.NoStableBehavior,
+            processor.processDisplayState(BehaviorPrediction(mapOf(StudyBehavior.VISIBLE_STUDY to 0.9f), 1600L, "READY_VISIBLE_STUDY_V31")),
+        )
+    }
+
+    @Test
     fun testPhoneDistraction() {
         val processor = BehaviorSignalProcessor(
             BehaviorSignalConfig(phoneUseThresholdMs = 3000L)
