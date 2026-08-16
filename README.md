@@ -523,12 +523,13 @@ Android 的**专注自习（Focus）**是唯一正式入口，已接入 CameraX�
 
 ## Android 本地动作识别
 
-CampusMateAI Android 专注模式已接入本地动作识别：
+CampusMateAI Android 专注模式当前使用 V3.1「学习状态辅助」模型：
 
-- 当前部署版本支持 **READING（阅读）** 与 **WRITING（书写）** 二分类
-- 使用 **RGB ResNet18**，模型导出为 **ONNX**
-- Android 通过 **ONNX Runtime** 在设备端本地推理
-- 摄像头原始画面**不上传、不保存**
+- **VISIBLE_STUDY（可见学习行为）**：画面中存在明确可观察的阅读、书写或操作学习材料等行为
+- **IDLE（暂未观察到明确学习行为）**：人在画面中，但当前单帧未观察到明确学习动作；这不等同于“不专注”或“没有学习”
+- 当前模型为 `campusmate_visible_study_v31.onnx`（RGB ResNet18，ONNX Runtime 本地推理）；`rgb_resnet18_v2.onnx` 保留为历史 V2 回退模型
+- 模型稳定结果还会经过会话级连续性处理：短暂的遮挡、思考或姿势调整不会立刻切换为“暂时停顿”
+- 表情识别与行为识别共享同一条 CameraX pipeline，摄像头原始画面**不上传、不保存**
 
 相关文档：
 

@@ -1,14 +1,38 @@
-# CampusMateAI Android 专注模式动作识别
+# CampusMateAI Android 行为识别：V3.1 部署基线与历史研究
 
-本文档记录 CampusMateAI Android 专注模式下的本地动作识别（行为识别）的完整研究、实验、模型与部署情况，适合作为计算机设计大赛项目仓库的专项说明。
+本文档记录 CampusMateAI Android 专注模式下的本地行为识别研究、实验、模型与部署情况。文首说明当前 V3.1 部署基线，后续章节保留 V1/V2 历史研究记录，便于追溯实验结论。
 
-> 说明：本文严格区分「已部署」与「研究阶段」。Android v1 只部署了 RGB ResNet18 单一模型，Pose、融合等均为研究阶段产物，未部署到移动端。
+## 当前部署状态：学习状态辅助 V3.1
+
+当前 Android 部署模型为 `android/app/src/main/assets/models/behavior/campusmate_visible_study_v31.onnx`。它是 RGB ResNet18 的 ONNX 模型，输入为 `1×3×224×224` 的 RGB 图像（`/255` 后使用 ImageNet mean/std 标准化），输出类别顺序固定为：
+
+1. `idle` → `IDLE`：暂未观察到明确可见学习行为。
+2. `visible_study` → `VISIBLE_STUDY`：观察到阅读、书写或明显操作学习材料等明确学习动作。
+
+这不是“专注 vs 不专注”的判断：`IDLE` 只表示当前视觉帧没有足够明确的可观察学习动作。旧模型 `rgb_resnet18_v2.onnx` 保留在 assets 中，仅用于历史 V2 回退，不是当前默认模型。
+
+Android 的当前数据流为：
+
+```
+同一条 FocusCameraPipeline / CameraFrame
+→ BehaviorAnalyzer
+→ OnnxBehaviorRecognitionEngine
+→ BehaviorSignalProcessor（启动观察期、时间窗口、置信度与多数判定）
+→ LearningContinuityStateMachine
+→ FocusScreen 学习状态辅助 UI
+```
+
+行为识别和表情识别共享这同一条 CameraX pipeline，不会启动第二个摄像头。连续性状态将短暂的 `IDLE`、`UNKNOWN`、遮挡或姿势调整吸收在学习上下文中：学习后 0～8 秒的短暂 `IDLE` 保持 `STUDYING`，8～20 秒进入 `THINKING_OR_ADJUSTING`，超过 20 秒才进入 `PAUSED`。因此，最近节奏、累计学习时长和最长连续学习均基于产品连续性状态，而不是单次模型跳变。
+
+当前已知限制：侧面书写且手臂严重遮挡时可能不稳定；“坐在电脑前学习”这类单帧视觉语义模糊的场景不能可靠推断；多用户、多环境泛化尚未验证。表情识别是独立能力，仍需继续优化。
+
+## 历史 V1/V2 研究记录（非当前部署）
 
 ## 1. 研究背景与目标
 
 CampusMateAI 在 Android 专注模式下，使用前置摄像头辅助识别学习行为，用于专注状态辅助（学习陪伴）。摄像头画面仅在设备端处理，不上传、不保存。
 
-当前 Android v1 已部署：
+历史 Android v1 曾部署：
 
 - **READING**：阅读
 - **WRITING**：书写
@@ -69,13 +93,13 @@ RGB 输入预处理：
 - Accuracy = **79.78%**
 - Macro-F1 = **77.23%**
 
-当前 Android v1 最终选择 RGB ResNet18 作为部署模型。
+历史 Android v1 最终选择 RGB ResNet18 作为部署模型。
 
-> 注意：Android 现场推理出现的 90%、99% 等预测 confidence 是单帧 softmax 置信度，不是模型准确率（Accuracy）。二者含义不同，不可混用。
+> 注意：历史 Android v1 现场推理出现的 90%、99% 等预测 confidence 是单帧 softmax 置信度，不是模型准确率（Accuracy）。二者含义不同，不可混用。
 
 ## 5. Pose 对比实验
 
-> 本节属于研究阶段，当前 Android v1 未部署 Pose 模型。
+> 本节属于历史研究阶段，Android 当前 V3.1 未部署 Pose 模型。
 
 MediaPipe Pose 在原始数据上的有效可用率：
 
@@ -146,9 +170,9 @@ Macro-F1：
 - Accuracy = **80.47%**
 - Macro-F1 = **76.29%**
 
-> 说明：这些阈值是在同一验证集上探索得到的，没有独立测试集验证，因此不能作为最终泛化性能结论。当前 Android v1 不部署 Rule B。
+> 说明：这些阈值是在同一验证集上探索得到的，没有独立测试集验证，因此不能作为最终泛化性能结论。当前 V3.1 不部署 Rule B。
 
-## 8. 为什么最终先部署 RGB Only
+## 8. 历史：为什么 V1 最终先部署 RGB Only
 
 - RGB 主模型整体性能更稳定
 - RGB 不依赖 Pose 成功提取
@@ -157,13 +181,13 @@ Macro-F1：
 - Android 第一阶段优先保证部署稳定性
 - 降低移动端推理链路复杂度
 
-当前阶段：
+历史阶段：
 
-- **阶段 1**：RGB ResNet18 → 已部署
+- **阶段 1**：RGB ResNet18 → 曾部署为 V1
 - **阶段 2**：Pose MLP → 研究中 / 未部署
 - **阶段 3**：RGB + Pose fusion → 研究中 / 未部署
 
-## 9. ONNX 导出
+## 9. 历史 V1 ONNX 导出
 
 模型路径：
 
@@ -194,7 +218,7 @@ PyTorch / ONNX Runtime 一致性验证：
 
 > 说明：该指标用于证明模型导出前后数值基本一致，不是分类准确率。
 
-## 10. Android 部署架构
+## 10. 历史 V1 Android 部署架构
 
 以下描述以当前分支 `feature/behavior-recognition` 中的真实代码为准。
 
@@ -253,11 +277,11 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 
 ### FocusScreen.kt
 
-当前 `FocusScreen` 的「学习状态辅助」卡片只显示固定文案（本机 LiteRT、当前辅助观察、稳定表情、本次专注时长等），**尚未直接渲染 READ / WRITE 的概率文本**。
+历史 V1 的 `FocusScreen`「学习状态辅助」卡片只显示固定文案（本机 LiteRT、当前辅助观察、稳定表情、本次专注时长等），**尚未直接渲染 READ / WRITE 的概率文本**。
 
-行为预测已经接入 `ExpressionSessionManager`（暴露 `behaviorPrediction` StateFlow，并经 `FocusSupervisor` 更新 `focusState`），但该 `focusState` / `behaviorPrediction` 目前尚未被 `FocusScreen` 采集并展示。即：推理链路已就绪，UI 展示 READ/WRITE 文本尚未完成。
+历史 V1 的行为预测已经接入 `ExpressionSessionManager`（暴露 `behaviorPrediction` StateFlow，并经 `FocusSupervisor` 更新 `focusState`），但当时该 `focusState` / `behaviorPrediction` 尚未被 `FocusScreen` 展示。当前 V3.1 已完成产品化 UI、稳定状态与会话级连续性展示，具体以本文开头的部署状态为准。
 
-## 11. 隐私与端侧推理
+## 11. 历史 V1 隐私与端侧推理
 
 - 原始摄像头画面仅在 Android 设备内存中处理
 - 不上传服务器
@@ -265,9 +289,9 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 - 不把原始画面写入日志
 - ONNX Runtime 推理在设备端完成
 
-## 12. 当前限制
+## 12. 历史 V1 限制
 
-1. 当前 Android v1 只有 READ / WRITE 两类。
+1. 历史 Android v1 只有 READ / WRITE 两类。
 2. 训练数据场景与真实手机前置摄像头存在 domain gap。
 3. 训练阶段的人物区域和实时摄像头输入分布可能不同。
 4. 高 softmax confidence 不代表真实场景一定判断正确。
@@ -277,7 +301,7 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 8. phone_use / away / resting 尚未实现。
 9. 仍需真实手机端数据进行进一步评估。
 
-## 13. 后续工作
+## 13. 历史后续工作
 
 以下为计划 / 后续研究 / 候选方向，**尚未完成**：
 
@@ -294,7 +318,7 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 - 时序行为识别
 - 多帧稳定性处理
 
-## 14. 当前版本总结
+## 14. 历史版本总结（V1）
 
 **Android Behavior Recognition v1**
 

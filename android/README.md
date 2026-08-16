@@ -86,62 +86,60 @@ gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
 - 隐私: 画面不保存、不上传、不写日志，仅在用户主动授权且专注计时运行中分析
 - 详见主 README 的"CNN 面部表情识别"章节
 
-## 本地动作识别
+## 学习状态辅助（V3.1）
 
-专注自习页面已接入本地动作识别（行为识别），与表情识别共享同一 CameraX pipeline。
+专注自习页的学习状态辅助与表情识别共享同一条 CameraX pipeline；不会为行为识别启动第二个摄像头。
 
-### 1. 当前能力
+### 1. 当前能力与产品语义
 
-当前 Android 专注模式动作识别部署：
+V3.1 是「是否观察到明确可见学习行为」的二分类，而不是专注度或心理状态判断：
 
-- **READING**：阅读
-- **WRITING**：书写
+- **VISIBLE_STUDY（可见学习行为）**：阅读、书写、明显操作书本、纸张等学习材料。
+- **IDLE（暂未观察到明确学习行为）**：人在画面中，但当前未看到明确学习动作；不应解读为“不专注”或“没有学习”。
 
-后续候选类别（**尚未部署**）：
-
-- `phone_use`
-- `away`
-- `resting`
+UI 会将模型稳定状态进一步映射为 `OBSERVING`、`STUDYING`、`THINKING_OR_ADJUSTING` 和 `PAUSED`。学习中短暂出现 `IDLE` 时，前 8 秒仍保留学习状态，8～20 秒显示“短暂思考或调整中”，超过 20 秒才进入“暂时停顿”。
 
 ### 2. Android 数据流
 
 ```
 CameraX
-→ CameraFrame
-→ BehaviorAnalyzer（帧缓冲 + 单线程推理调度）
+→ FocusCameraPipeline / CameraFrame
+→ BehaviorAnalyzer（帧缓冲与单线程推理调度）
 → OnnxBehaviorRecognitionEngine
-→ ResNet18 ONNX（本地推理）
-→ BehaviorPrediction（READING / WRITING 概率）
-→ ExpressionSessionManager
-→ BehaviorSignalProcessor → FocusSupervisor
-→ 专注辅助状态系统（focusState）
+→ campusmate_visible_study_v31.onnx（本地 ONNX 推理）
+→ BehaviorPrediction（IDLE / VISIBLE_STUDY 概率）
+→ BehaviorSignalProcessor（启动观察、时间窗口与稳定判定）
+→ LearningContinuityStateMachine（会话级连续性）
+→ FocusScreen（学习状态、节奏与本次观察摘要）
 ```
 
-- 动作识别与已有表情识别共享现有 CameraX pipeline，**不额外启动第二个摄像头**
-- ONNX 推理全部在 Android 本地完成
+行为识别与表情识别继续共享现有 CameraX pipeline；ONNX 推理全部在设备端完成。
 
-### 3. 主要实现文件
-
-- `data/behavior/OnnxBehaviorRecognitionEngine.kt` — ONNX 模型加载、预处理、推理、softmax、类别映射
-- `data/behavior/BehaviorModelMath.kt` — 稳定 softmax 与输出后处理
-- `data/behavior/BehaviorAnalyzer.kt` — 帧缓冲、并发推理控制、Bitmap 回收
-- `data/behavior/BehaviorRecognitionEngine.kt` — 引擎接口与 NoOp 实现
-- `data/expression/ExpressionSessionManager.kt` — 将动作识别接入专注模式、共享 CameraX pipeline
-- `assets/models/behavior/rgb_resnet18.onnx` — 部署模型
-
-### 4. 当前部署模型
+### 3. 当前部署模型
 
 | 项 | 值 |
 |------|------|
 | Backbone | ResNet18 |
 | Modality | RGB |
-| Input | 224 × 224 |
+| Input | 224 × 224，RGB，ImageNet normalize |
 | Runtime | ONNX Runtime Android |
-| Output | READ / WRITE |
+| Output | `IDLE` / `VISIBLE_STUDY` |
+| 当前模型 | `assets/models/behavior/campusmate_visible_study_v31.onnx` |
+| 回退模型 | `assets/models/behavior/rgb_resnet18_v2.onnx`（历史 V2） |
 
-当前 Android v1 只部署 RGB 模型（未部署 Pose，未部署 RGB + Pose 融合）。
+### 4. 主要实现文件
 
-### 5. 隐私
+- `data/behavior/OnnxBehaviorRecognitionEngine.kt` — 模型加载、预处理、推理、softmax 与 V3.1 类别映射
+- `data/behavior/BehaviorAnalyzer.kt` — 帧缓冲、并发推理控制与 Bitmap 回收
+- `data/behavior/BehaviorSignalProcessor.kt` — 观察期、时间窗口与稳定状态输出
+- `data/behavior/LearningContinuityStateMachine.kt` — 会话级连续性状态
+- `data/behavior/BehaviorObservationHistory.kt` — 当前 Focus session 的节奏与统计历史
+- `data/expression/ExpressionSessionManager.kt` — 在共享 CameraX pipeline 中接入表情和行为结果
+- `ui/focus/FocusScreen.kt` — 学习状态辅助产品 UI
+
+### 5. 调试采集与隐私
+
+Debug 构建可在开发者工具中采集 `idle` 与 `visible_study` 目标域样本；该入口在 Release 中不可见。正常运行时：
 
 - 摄像头图像仅设备端处理
 - 不上传服务器
