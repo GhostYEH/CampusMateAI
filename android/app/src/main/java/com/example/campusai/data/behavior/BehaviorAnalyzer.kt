@@ -8,20 +8,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 class BehaviorAnalyzer(
     private val engine: BehaviorRecognitionEngine,
-    @Suppress("UNUSED_PARAMETER") config: BehaviorModelConfig = BehaviorModelConfig(),
+    config: BehaviorModelConfig = BehaviorModelConfig(),
 ) : FrameAnalyzer {
 
-    private val stabilizer = BehaviorPredictionStabilizer()
+    private val frameBuffer = BehaviorFrameBuffer(config)
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val analyzing = AtomicBoolean(false)
-    @Volatile
+    private val disposed = AtomicBoolean(false)
+    private val lifecycleLock = Any()
     private var initialized = false
-    @Volatile
-    private var disposed = false
 
     private val _predictions = MutableStateFlow(
         BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED"),
@@ -29,9 +29,9 @@ class BehaviorAnalyzer(
     val predictions: StateFlow<BehaviorPrediction> = _predictions.asStateFlow()
 
     override fun analyze(frame: CameraFrame) {
-        if (disposed) {
-            return
-        }
+        synchronized(lifecycleLock) {
+            if (disposed.get()) return
+
         // NoOp engine: do not buffer, do not resize, do not submit async work.
         if (!engine.isAvailable) {
             _predictions.value = BehaviorPrediction(
@@ -42,39 +42,43 @@ class BehaviorAnalyzer(
             return
         }
 
-        if (analyzing.compareAndSet(false, true)) {
-            // V1 is a single-frame ResNet. Copy exactly one current frame so
-            // CameraFrame may be released immediately after this callback.
-            val snapshot = frame.bitmap.takeUnless { it.isRecycled }?.copy(
-                Bitmap.Config.ARGB_8888,
-                false,
-            )
-            val timestamp = frame.timestampMs
+            if (!frameBuffer.addFrame(frame)) {
+                return
+            }
 
-            executor.execute {
+            if (analyzing.compareAndSet(false, true)) {
+                // Snapshot the rolling buffer so inference owns its copies.
+                val rawWindow = frameBuffer.getTemporalWindow()
+                val snapshot = rawWindow.map { bitmap ->
+                    bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, bitmap.isMutable).also {
+                        // copy() after the original — ownership now belongs to the inference task
+                    }
+                }
+                val timestamp = frame.timestampMs
+
                 try {
-                    if (snapshot == null || snapshot.isRecycled) {
-                        _predictions.value = BehaviorPrediction(
-                            emptyMap(),
-                            timestamp,
-                            "NO_FRAME",
-                        )
-                        return@execute
+                    executor.execute {
+                        try {
+                            val prediction = try {
+                                engine.analyzeTemporalWindow(snapshot, timestamp)
+                            } catch (_: Throwable) {
+                                BehaviorPrediction(
+                                    emptyMap(),
+                                    timestamp,
+                                    "INFERENCE_ERROR",
+                                )
+                            }
+                            if (!disposed.get()) {
+                                _predictions.value = prediction
+                            }
+                        } finally {
+                            // Inference owns the snapshot; recycle when done.
+                            snapshot.forEach { it.recycle() }
+                            analyzing.set(false)
+                        }
                     }
-                    val rawPrediction = engine.analyzeTemporalWindow(listOf(snapshot), timestamp)
-                    _predictions.value = if (rawPrediction.modelState == "READY_RGB_V1") {
-                        val stabilized = stabilizer.stabilize(rawPrediction)
-                        rawPrediction.copy(
-                            probabilities = stabilized.probabilities,
-                            stableBehavior = stabilized.stableBehavior,
-                        )
-                    } else {
-                        stabilizer.reset()
-                        rawPrediction
-                    }
-                } finally {
-                    // Inference owns the snapshot; recycle when done.
-                    if (snapshot != null && !snapshot.isRecycled) snapshot.recycle()
+                } catch (_: RejectedExecutionException) {
+                    snapshot.forEach { it.recycle() }
                     analyzing.set(false)
                 }
             }
@@ -82,37 +86,30 @@ class BehaviorAnalyzer(
     }
 
     fun ensureInitialized() {
-        if (disposed) {
-            return
-        }
-        if (!initialized) {
-            _predictions.value = BehaviorPrediction(
-                emptyMap(),
-                System.currentTimeMillis(),
-                "INITIALIZING",
-            )
-            engine.initialize()
-            initialized = true
-            if (!engine.isAvailable) {
-                _predictions.value = BehaviorPrediction(
-                    emptyMap(),
-                    System.currentTimeMillis(),
-                    "MODEL_NOT_AVAILABLE",
-                )
+        synchronized(lifecycleLock) {
+            if (disposed.get()) return
+            if (!initialized) {
+                engine.initialize()
+                initialized = true
             }
         }
     }
 
     fun reset() {
-        stabilizer.reset()
-        _predictions.value = BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED")
+        synchronized(lifecycleLock) {
+            if (disposed.get()) return
+            frameBuffer.clear()
+            _predictions.value = BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED")
+        }
     }
 
     fun dispose() {
-        disposed = true
-        stabilizer.reset()
-        executor.shutdownNow()
-        engine.close()
-        initialized = false
+        synchronized(lifecycleLock) {
+            if (!disposed.compareAndSet(false, true)) return
+            frameBuffer.clear()
+            executor.shutdownNow()
+            engine.close()
+            initialized = false
+        }
     }
 }

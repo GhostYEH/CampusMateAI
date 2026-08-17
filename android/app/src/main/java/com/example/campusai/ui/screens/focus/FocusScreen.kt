@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,10 +36,19 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.campusai.BuildConfig
 import com.example.campusai.R
+import com.example.campusai.data.behavior.BehaviorDatasetCaptureState
+import com.example.campusai.data.behavior.BehaviorDatasetLabel
+import com.example.campusai.data.behavior.BehaviorDisplayState
+import com.example.campusai.data.behavior.BehaviorInputDebugExporter
+import com.example.campusai.data.behavior.BehaviorObservationSummary
 import com.example.campusai.data.behavior.BehaviorPrediction
+import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.expression.ExpressionServiceStatus
+import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
@@ -75,7 +85,12 @@ fun FocusScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val manager = appRepository.expressionSessionManager
     val behaviorPrediction by manager.behaviorPrediction.collectAsState()
+    val behaviorDisplayState by manager.behaviorDisplayState.collectAsState()
+    val behaviorObservation by manager.behaviorObservation.collectAsState()
+    val learningContinuityState by manager.learningContinuityState.collectAsState()
+    val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsState()
     val assistanceStatus by manager.status.collectAsState()
+    val expressionResult by manager.result.collectAsState()
     val focusState by manager.focusState.collectAsState()
     val gentleReminder by manager.gentleReminder.collectAsState()
 
@@ -85,10 +100,12 @@ fun FocusScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
+    var permissionDenied by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         cameraPermissionGranted = granted
+        permissionDenied = !granted
     }
 
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
@@ -96,6 +113,9 @@ fun FocusScreen(
     var showFinishDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var showCompletedDialog by remember { mutableStateOf(false) }
+    var previewExpanded by remember { mutableStateOf(false) }
+    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
+    var datasetLabel by remember { mutableStateOf(BehaviorDatasetLabel.IDLE) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
 
     val running = activeSession?.status == "active"
@@ -161,6 +181,11 @@ fun FocusScreen(
     val minutes = (secondsLeft / 60).toString().padStart(2, '0')
     val seconds = (secondsLeft % 60).toString().padStart(2, '0')
     val ringProgress = secondsLeft.toFloat() / mode.totalSeconds
+    val observationNowMs = remember(secondsLeft, behaviorObservation) { System.currentTimeMillis() }
+    val observationSummary = remember(behaviorObservation, observationNowMs) {
+        behaviorObservation.summary(observationNowMs)
+    }
+    val focusElapsedSeconds = (mode.totalSeconds - secondsLeft).coerceAtLeast(0)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(FocusBg),
@@ -190,7 +215,12 @@ fun FocusScreen(
                     onClick = {
                         scope.launch {
                             when (activeSession?.status) {
-                                null -> repository.start(mode, null, relatedTaskId).onSuccess { secondsLeft = mode.totalSeconds }
+                                null -> {
+                                    repository.start(mode, null, relatedTaskId).onSuccess {
+                                        secondsLeft = mode.totalSeconds
+                                        manager.beginFocusSession()
+                                    }
+                                }
                                 "active" -> repository.pause()
                                 "paused" -> repository.resume()
                             }
@@ -213,14 +243,111 @@ fun FocusScreen(
                         Switch(checked = assistanceEnabled, onCheckedChange = { enabled -> scope.launch { appRepository.setLearningAssistanceEnabled(enabled) } })
                     }
                     Spacer(Modifier.height(14.dp))
-                    Surface(shape = RoundedCornerShape(17.dp), color = Background, border = BorderStroke(1.dp, Line)) {
-                        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            AssistLine(Icons.Default.Memory, "本机 ONNX：状态由设备能力决定")
-                            AssistLine(Icons.Default.Visibility, "当前辅助观察：${if (assistanceEnabled) "已开启" else "暂不可用"}")
-                            AssistLine(Icons.Default.Gesture, behaviorPredictionText(behaviorPrediction))
-                            AssistLine(Icons.Default.SentimentSatisfied, "稳定表情：仅作本地提示")
-                            AssistLine(Icons.Default.Schedule, "本次专注时长：${mode.minutes - secondsLeft / 60} 分钟")
+                    if (assistanceEnabled && cameraPermissionGranted) {
+                        if (previewExpanded) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                IconButton(onClick = { previewExpanded = false }) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = "收起观察画面", tint = FocusBlue)
+                                }
+                                Text("调整观察画面", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(Modifier.height(6.dp))
                         }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(if (previewExpanded) 1f else .78f)
+                                .align(Alignment.CenterHorizontally)
+                                .aspectRatio(4f / 5f)
+                                .clip(RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.TopEnd,
+                        ) {
+                            key("focus-camera-preview") {
+                                AndroidView(
+                                    factory = { viewContext ->
+                                        PreviewView(viewContext).apply {
+                                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                                            setOnClickListener { previewExpanded = !previewExpanded }
+                                            manager.attachPreview(lifecycleOwner, this)
+                                        }
+                                    },
+                                    update = { view ->
+                                        view.setOnClickListener { previewExpanded = !previewExpanded }
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            Surface(
+                                onClick = { previewExpanded = !previewExpanded },
+                                modifier = Modifier.padding(8.dp),
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = .42f),
+                            ) {
+                                Icon(
+                                    imageVector = if (previewExpanded) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = if (previewExpanded) "收起观察画面" else "放大调整画面",
+                                    modifier = Modifier.padding(8.dp).size(18.dp),
+                                    tint = Color.White,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.TipsAndUpdates, contentDescription = null, tint = Muted, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("请保持头部、上半身和双手在画面内", color = Muted, fontSize = 11.sp)
+                        }
+                        if (previewExpanded) {
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { previewExpanded = false },
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Text("完成调整", color = FocusBlue, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LearningStateMainCard(
+                        continuityState = learningContinuityState,
+                        expressionResult = expressionResult,
+                        expressionStatus = assistanceStatus,
+                        currentStudyMs = observationSummary.currentContinuousStudyMs,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    LearningRhythmCard(observationSummary)
+                    Spacer(Modifier.height(14.dp))
+                    ObservationSummaryCard(
+                        focusElapsedSeconds = focusElapsedSeconds,
+                        summary = observationSummary,
+                    )
+                    if (BuildConfig.DEBUG) {
+                        Spacer(Modifier.height(12.dp))
+                        DeveloperTools(
+                            expanded = developerToolsExpanded,
+                            onExpandedChange = { developerToolsExpanded = it },
+                            selectedLabel = datasetLabel,
+                            onLabelSelected = { datasetLabel = it },
+                            captureState = datasetCaptureState,
+                            onStart = { BehaviorInputDebugExporter.startDatasetSession(context, datasetLabel) },
+                            onStop = { BehaviorInputDebugExporter.stopDatasetSession() },
+                        )
+                    }
+                    if (permissionDenied) {
+                        Spacer(Modifier.height(10.dp))
+                        AssistLine(Icons.Default.Lock, "未授予相机权限，学习状态辅助未启动")
+                    }
+                    gentleReminder?.let {
+                        Spacer(Modifier.height(8.dp))
+                        AssistLine(Icons.Default.Notifications, it)
                     }
                 }
             }
@@ -285,6 +412,240 @@ private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
         }
         else -> "动作识别准备中"
     }
+}
+
+@Composable
+private fun LearningStateMainCard(
+    continuityState: LearningContinuityState,
+    expressionResult: ExpressionResult,
+    expressionStatus: ExpressionServiceStatus,
+    currentStudyMs: Long,
+) {
+    val presentation = behaviorPresentation(continuityState)
+    val background = when (continuityState) {
+        LearningContinuityState.STUDYING -> PrimarySoft
+        LearningContinuityState.PAUSED -> Background
+        else -> Surface
+    }
+    Surface(shape = RoundedCornerShape(20.dp), color = background) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = Surface) {
+                    Icon(presentation.icon, null, Modifier.padding(8.dp), tint = FocusBlue)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(presentation.title, color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(presentation.subtitle, color = Muted, fontSize = 13.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                StatusChip(Icons.Default.SentimentSatisfied, formatExpressionChip(expressionResult))
+                StatusChip(Icons.Default.Lock, "本机处理")
+            }
+            if (continuityState == LearningContinuityState.STUDYING && currentStudyMs >= 3_000L) {
+                Text("已持续观察到学习行为 ${formatDuration(currentStudyMs)}", color = Muted, fontSize = 12.sp)
+            }
+            if (expressionStatus is ExpressionServiceStatus.Error) {
+                Text("表情辅助暂不可用", color = Muted, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Surface(shape = RoundedCornerShape(50), color = Surface, border = BorderStroke(1.dp, Line)) {
+        Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = Muted, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(label, color = Muted, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun LearningRhythmCard(summary: BehaviorObservationSummary) {
+    Surface(shape = RoundedCornerShape(18.dp), color = Background) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(if (summary.sessionElapsedMs < 5 * 60 * 1_000L) "本次学习节奏" else "最近 5 分钟学习节奏", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            if (summary.recentSegments.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(20.dp)).background(Line))
+            } else {
+                Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(20.dp))) {
+                    summary.recentSegments.forEach { segment ->
+                        Box(Modifier.fillMaxHeight().weight(segment.durationMs.coerceAtLeast(1_000L).toFloat()).background(rhythmColor(segment.state)))
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("学习行为 ${formatDuration(summary.recentStudyMs)}", color = Muted, fontSize = 12.sp)
+                Text("暂时停顿 ${formatDuration(summary.recentPausedMs)}", color = Muted, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ObservationSummaryCard(focusElapsedSeconds: Int, summary: BehaviorObservationSummary) {
+    Surface(shape = RoundedCornerShape(18.dp), color = Surface) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("本次观察摘要", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Row(Modifier.fillMaxWidth()) {
+                ObservationMetric(Modifier.weight(1f), formatDuration(focusElapsedSeconds * 1_000L), "专注时长")
+                ObservationMetric(Modifier.weight(1f), formatDuration(summary.totalStudyMs), "学习行为")
+            }
+            Row(Modifier.fillMaxWidth()) {
+                ObservationMetric(Modifier.weight(1f), formatDuration(summary.longestContinuousStudyMs), "最长连续学习")
+                ObservationMetric(Modifier.weight(1f), formatDuration(summary.totalPausedMs), "暂时停顿")
+            }
+            Text("状态切换 ${summary.meaningfulSwitchCount} 次", color = Muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.End))
+        }
+    }
+}
+
+@Composable
+private fun ObservationMetric(modifier: Modifier, value: String, label: String) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun DeveloperTools(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    selectedLabel: BehaviorDatasetLabel,
+    onLabelSelected: (BehaviorDatasetLabel) -> Unit,
+    captureState: BehaviorDatasetCaptureState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Surface(modifier = Modifier.fillMaxWidth().clickable { onExpandedChange(!expanded) }, shape = RoundedCornerShape(14.dp), color = Background) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Build, null, tint = Muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("开发者工具", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = Muted, modifier = Modifier.size(18.dp))
+            }
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                DebugBehaviorDatasetControls(selectedLabel, onLabelSelected, captureState, onStart, onStop)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugBehaviorDatasetControls(
+    selectedLabel: BehaviorDatasetLabel,
+    onLabelSelected: (BehaviorDatasetLabel) -> Unit,
+    captureState: BehaviorDatasetCaptureState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Debug · 目标域数据采集", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BehaviorDatasetLabel.entries.forEach { label ->
+                    FilterChip(
+                        selected = selectedLabel == label,
+                        onClick = { onLabelSelected(label) },
+                        enabled = !captureState.active,
+                        label = { Text(label.displayName, fontSize = 12.sp) },
+                    )
+                }
+            }
+            val status = if (captureState.active) {
+                "采集中：${captureState.label?.displayName} · ${captureState.sessionId} · ${captureState.capturedCount}/180"
+            } else if (captureState.sessionId != null) {
+                "已停止：${captureState.label?.displayName} · ${captureState.sessionId} · ${captureState.capturedCount} 张"
+            } else {
+                "选择标签后开始采集（约 1 张/秒）"
+            }
+            Text(status, color = Muted, fontSize = 11.sp)
+            if (captureState.active) {
+                OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp)) {
+                    Text("停止采集", color = FocusOrange, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(onClick = onStart, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = FocusBlue)) {
+                    Text("开始采集", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+private data class BehaviorPresentation(
+    val title: String,
+    val subtitle: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+)
+
+private fun behaviorPresentation(state: LearningContinuityState): BehaviorPresentation = when (state) {
+    LearningContinuityState.OBSERVING -> BehaviorPresentation(
+        title = "正在观察",
+        subtitle = "正在了解你当前的学习状态",
+        icon = Icons.Default.Visibility,
+    )
+    LearningContinuityState.STUDYING -> BehaviorPresentation(
+        title = "学习进行中",
+        subtitle = "已检测到明确学习行为",
+        icon = Icons.Default.MenuBook,
+    )
+    LearningContinuityState.THINKING_OR_ADJUSTING -> BehaviorPresentation(
+        title = "短暂思考或调整中",
+        subtitle = "暂时观察到明确学习行为",
+        icon = Icons.Default.Psychology,
+    )
+    LearningContinuityState.PAUSED -> BehaviorPresentation(
+        title = "暂时停顿",
+        subtitle = "暂时未检测到明确学习行为\n可能在思考或短暂调整",
+        icon = Icons.Default.PauseCircleOutline,
+    )
+}
+
+private fun formatCurrentExpression(result: ExpressionResult): String {
+    if (result.label in setOf(ExpressionLabel.UNKNOWN, ExpressionLabel.NO_FACE)) {
+        return "正在观察..."
+    }
+    return when (result.label) {
+        ExpressionLabel.HAPPY -> "愉悦"
+        ExpressionLabel.NEUTRAL -> "平静"
+        ExpressionLabel.SAD -> "低落"
+        ExpressionLabel.ANGRY -> "不悦"
+        ExpressionLabel.FEAR -> "紧张"
+        ExpressionLabel.SURPRISE -> "惊讶"
+        ExpressionLabel.DISGUST -> "厌恶"
+        ExpressionLabel.UNKNOWN, ExpressionLabel.NO_FACE -> "正在观察..."
+    }
+}
+
+private fun formatExpressionChip(result: ExpressionResult): String {
+    if (!result.isStable || result.label in setOf(ExpressionLabel.UNKNOWN, ExpressionLabel.NO_FACE)) {
+        return "表情观察中"
+    }
+    return formatCurrentExpression(result)
+}
+
+@Composable
+private fun rhythmColor(state: LearningContinuityState): Color = when (state) {
+    LearningContinuityState.STUDYING -> FocusBlue
+    LearningContinuityState.THINKING_OR_ADJUSTING -> PrimarySoft
+    LearningContinuityState.PAUSED -> Line
+    LearningContinuityState.OBSERVING -> Muted.copy(alpha = 0.45f)
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs.coerceAtLeast(0L) / 1_000L).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return if (minutes > 0) "${minutes}分${seconds}秒" else "${seconds}秒"
 }
 
 @Composable
