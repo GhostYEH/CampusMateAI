@@ -12,7 +12,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * V1 RGB behavior recognition engine.
+ * Current V3.1 RGB behavior recognition engine.
  *
  * Model:
  *   ResNet18
@@ -20,10 +20,10 @@ import java.nio.FloatBuffer
  *   output = [1, 2] logits
  *
  * Classes:
- *   0 = read
- *   1 = write
+ *   0 = idle
+ *   1 = visible_study
  *
- * V1 is intentionally single-frame:
+ * The model remains single-frame:
  * BehaviorAnalyzer may provide a temporal window, but this engine
  * uses only the newest frame.
  */
@@ -32,6 +32,7 @@ class OnnxBehaviorRecognitionEngine(
 ) : BehaviorRecognitionEngine {
 
     private var environment: OrtEnvironment? = null
+
     private var session: OrtSession? = null
     private var inputTensor: OnnxTensor? = null
     private var inputBuffer: FloatBuffer? = null
@@ -54,13 +55,12 @@ class OnnxBehaviorRecognitionEngine(
         var createdTensor: OnnxTensor? = null
 
         try {
-            val env = environment ?: OrtEnvironment.getEnvironment().also {
-                environment = it
-            }
             val modelFile = ensureModelFile()
+            val currentEnvironment = environment
+                ?: OrtEnvironment.getEnvironment().also { environment = it }
 
             createdSession =
-                env.createSession(modelFile.absolutePath)
+                currentEnvironment.createSession(modelFile.absolutePath)
 
             val buffer = ByteBuffer
                 .allocateDirect(INPUT_FLOAT_COUNT * Float.SIZE_BYTES)
@@ -68,7 +68,7 @@ class OnnxBehaviorRecognitionEngine(
                 .asFloatBuffer()
 
             createdTensor = OnnxTensor.createTensor(
-                env,
+                currentEnvironment,
                 buffer,
                 INPUT_SHAPE,
             )
@@ -138,7 +138,7 @@ class OnnxBehaviorRecognitionEngine(
             ?: return unavailablePrediction(timestampMs)
 
         return try {
-            preprocess(frame)
+            preprocess(frame, timestampMs)
 
             currentSession.run(
                 mapOf(INPUT_NAME to currentTensor),
@@ -147,32 +147,41 @@ class OnnxBehaviorRecognitionEngine(
                 val outputTensor =
                     result.get(0) as OnnxTensor
 
-                val logits =
+                val logitsBuffer =
                     outputTensor.floatBuffer
                         ?: error("RGB model output is not float")
 
-                if (logits.remaining() < 2) {
+                if (
+                    logitsBuffer.remaining() <
+                    OUTPUT_CLASSES.size
+                ) {
                     error(
-                        "Expected 2 logits, got ${logits.remaining()}",
+                        "Expected ${OUTPUT_CLASSES.size} logits, " +
+                                "got ${logitsBuffer.remaining()}",
                     )
                 }
 
-                val readLogit = logits.get(0)
-                val writeLogit = logits.get(1)
+                val logits = FloatArray(
+                    OUTPUT_CLASSES.size
+                ) { index ->
+                    logitsBuffer.get(index)
+                }
 
                 val probabilities =
-                    BehaviorModelMath.softmax2(
-                        readLogit,
-                        writeLogit,
+                    BehaviorModelMath.softmax(
+                        logits
                     )
 
                 BehaviorPrediction(
-                    probabilities = mapOf(
-                        StudyBehavior.READING to probabilities[0],
-                        StudyBehavior.WRITING to probabilities[1],
-                    ),
+                    probabilities =
+                        OUTPUT_CLASSES
+                            .indices
+                            .associate { index ->
+                                OUTPUT_CLASSES[index] to
+                                        probabilities[index]
+                            },
                     timestampMs = timestampMs,
-                    modelState = "READY_RGB_V1",
+                    modelState = MODEL_STATE,
                 )
             }
         } catch (error: Throwable) {
@@ -199,7 +208,7 @@ class OnnxBehaviorRecognitionEngine(
      * ImageNet normalization
      * NCHW
      */
-    private fun preprocess(bitmap: Bitmap) {
+    private fun preprocess(bitmap: Bitmap, timestampMs: Long) {
         val buffer = inputBuffer
             ?: error("Input buffer is unavailable")
 
@@ -211,6 +220,12 @@ class OnnxBehaviorRecognitionEngine(
         )
 
         try {
+            BehaviorInputDebugExporter.export(
+                context = context,
+                behaviorInput = bitmap,
+                resizedRgbInput = scaled,
+                timestampMs = timestampMs,
+            )
             scaled.getPixels(
                 pixelBuffer,
                 0,
@@ -348,13 +363,41 @@ class OnnxBehaviorRecognitionEngine(
         private const val TAG =
             "OnnxBehaviorEngine"
 
-        private const val ASSET_PATH =
-            "models/behavior/rgb_resnet18.onnx"
+        private data class BehaviorModelSpec(
+            val assetPath: String,
+            val internalFilename: String,
+            val readyState: String,
+            val outputClasses: Array<StudyBehavior>,
+        )
 
-        // Change this filename when replacing the model in a future V2.
-        private const val INTERNAL_MODEL_FILENAME =
-            "rgb_resnet18_v1.onnx"
+        private val V31_MODEL = BehaviorModelSpec(
+            assetPath = "models/behavior/campusmate_visible_study_v31.onnx",
+            internalFilename = "campusmate_visible_study_v31.onnx",
+            readyState = "READY_VISIBLE_STUDY_V31",
+            outputClasses = arrayOf(
+                StudyBehavior.IDLE,
+                StudyBehavior.VISIBLE_STUDY,
+            ),
+        )
 
+        // Preserved rollback configuration for the packaged V2 model.
+        private val V2_MODEL = BehaviorModelSpec(
+            assetPath = "models/behavior/rgb_resnet18_v2.onnx",
+            internalFilename = "rgb_resnet18_v2.onnx",
+            readyState = "READY_RGB_V2",
+            outputClasses = arrayOf(
+                StudyBehavior.READING,
+                StudyBehavior.WRITING,
+                StudyBehavior.PHONE_USE,
+            ),
+        )
+
+        // Change this one explicit selection to V2_MODEL to roll back.
+        private val CURRENT_BEHAVIOR_MODEL = V31_MODEL
+        private val ASSET_PATH get() = CURRENT_BEHAVIOR_MODEL.assetPath
+        private val INTERNAL_MODEL_FILENAME get() = CURRENT_BEHAVIOR_MODEL.internalFilename
+        private val MODEL_STATE get() = CURRENT_BEHAVIOR_MODEL.readyState
+        private val OUTPUT_CLASSES get() = CURRENT_BEHAVIOR_MODEL.outputClasses
         private const val INPUT_NAME =
             "input"
 
