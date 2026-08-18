@@ -176,6 +176,9 @@ onMounted(() => { load(); });
           </div>
         </div>
       </div>
+      <div class="tasks-hero-art" aria-hidden="true">
+        <img class="hero-illust-img" src="/assets/generated/tasks-hero-illustration.png" alt="" />
+      </div>
     </section>
 
     <div v-if="error" class="student-alert error">

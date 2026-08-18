@@ -3,7 +3,17 @@
   <view class="campus-page-body community-body">
     <view class="community-heading campus-enter">
       <view><view class="community-title">校园论坛</view><view class="community-subtitle">提问 / 招募 / 带价帮忙 / 失物招领，一站刷到</view></view>
-      <button class="publish-entry" hover-class="button-pressed" bindtap="toggleComposer">发布帖子</button>
+      <button class="publish-entry" hover-class="button-pressed" bindtap="openPublish">＋ 发布</button>
+    </view>
+
+    <view class="today-hot-card campus-enter" bindtap="openHotTopics" aria-label="查看今日热门话题">
+      <view class="today-hot-head"><view><text class="today-hot-fire">🔥</text><text>今日热门话题</text></view><text class="today-hot-more">更多 ›</text></view>
+      <view class="today-hot-list">
+        <view wx:for="{{hotPosts}}" wx:key="id" class="today-hot-item" data-id="{{item.id}}" catchtap="onOpen">
+          <text class="hot-rank-pill">TOP{{index + 1}}</text><text class="today-hot-title">{{item.title}}</text>
+        </view>
+        <view wx:if="{{!hotPosts.length}}" class="today-hot-empty">热度正在汇总中，先来发布第一条话题吧</view>
+      </view>
     </view>
 
     <view class="forum-toolbar">
@@ -23,51 +33,6 @@
           <view class="forum-sort-item {{sort === 'hot' ? 'active' : ''}}" data-sort="hot" bindtap="switchSort">热门</view>
         </view>
       </view>
-    </view>
-
-    <view wx:if="{{showComposer}}" class="forum-composer campus-enter">
-      <view class="composer-title-label">标题</view>
-      <input class="composer-input" value="{{title}}" placeholder="一句话说清主题" maxlength="120" bindinput="onTitle"></input>
-      <view class="composer-title-label">正文</view>
-      <textarea class="composer-textarea" value="{{content}}" placeholder="详细描述…" maxlength="10000" bindinput="onContent"></textarea>
-      <view class="composer-row">
-        <view class="composer-field">
-          <view class="composer-title-label">分类</view>
-          <picker range="{{categories}}" range-key="label" value="{{formCategory}}" bindchange="onFormCategory">
-            <view class="picker-value">{{formCategoryLabel}}</view>
-          </picker>
-        </view>
-        <view class="composer-check"><switch checked="{{isAnonymous}}" bindchange="onAnonymous"></switch><text>匿名</text></view>
-      </view>
-
-      <view wx:if="{{formCategory === 'recruit'}}" class="forum-extra-form">
-        <view class="composer-field"><view class="composer-title-label">招募人数</view><input class="composer-input" type="number" value="{{extraHeadcount}}" placeholder="如 3" bindinput="onExtraHeadcount"></input></view>
-        <view class="composer-field"><view class="composer-title-label">地点</view><input class="composer-input" value="{{extraLocation}}" placeholder="如 教3-201" bindinput="onExtraLocation"></input></view>
-        <view class="composer-field"><view class="composer-title-label">截止时间</view><input class="composer-input" type="date" value="{{extraDeadline}}" bindinput="onExtraDeadline"></input></view>
-      </view>
-      <view wx:if="{{formCategory === 'errand'}}" class="forum-extra-form">
-        <view class="composer-field"><view class="composer-title-label">酬金（元）</view><input class="composer-input" type="digit" value="{{extraPrice}}" placeholder="如 10" bindinput="onExtraPrice"></input></view>
-        <view class="composer-field"><view class="composer-title-label">地点</view><input class="composer-input" value="{{extraLocation}}" placeholder="如 北门菜鸟驿站" bindinput="onExtraLocation"></input></view>
-        <view class="composer-field"><view class="composer-title-label">截止时间</view><input class="composer-input" type="datetime-local" value="{{extraDeadline}}" bindinput="onExtraDeadline"></input></view>
-      </view>
-      <view wx:if="{{formCategory === 'lostfound'}}" class="forum-extra-form">
-        <view class="composer-field"><view class="composer-title-label">类型</view><picker range="{{['寻物','招领']}}" value="{{extraKind === 'found' ? 1 : 0}}" bindchange="onExtraKind"><view class="picker-value">{{extraKind === 'found' ? '招领' : '寻物'}}</view></picker></view>
-        <view class="composer-field"><view class="composer-title-label">地点</view><input class="composer-input" value="{{extraLocation}}" placeholder="遗失/拾取地点" bindinput="onExtraLocation"></input></view>
-        <view class="composer-field"><view class="composer-title-label">联系方式</view><input class="composer-input" value="{{extraContact}}" placeholder="手机/微信" bindinput="onExtraContact"></input></view>
-        <view class="composer-field"><view class="composer-title-label">可见性</view><picker range="{{['仅发布者可见','公开']}}" value="{{extraContactVisibility === 'public' ? 1 : 0}}" bindchange="onExtraVisibility"><view class="picker-value">{{extraContactVisibility === 'public' ? '公开' : '仅发布者可见'}}</view></picker></view>
-      </view>
-
-      <view class="composer-title-label">配图（最多 4 张）</view>
-      <view class="img-uploader-grid">
-        <view wx:for="{{imageUrls}}" wx:key="*this" class="img-uploader-item">
-          <image src="{{item}}" mode="aspectFill"></image>
-          <view class="img-uploader-remove" data-idx="{{index}}" catchtap="removeImage">×</view>
-        </view>
-        <view wx:if="{{images.length < 4}}" class="img-uploader-add" bindtap="chooseImage">+ 添加</view>
-      </view>
-
-      <view wx:if="{{composerError}}" class="composer-error">{{composerError}}</view>
-      <view class="composer-actions"><button bindtap="toggleComposer">取消</button><button class="send" loading="{{sending}}" bindtap="publish">确认发布</button></view>
     </view>
 
     <state-view wx:if="{{loading && !posts.length}}" state="loading" title="正在加载论坛"></state-view>

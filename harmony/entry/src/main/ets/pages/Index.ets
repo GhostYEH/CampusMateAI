@@ -11,6 +11,8 @@ import { CoursesPage } from '../features/courses/CoursesPage';
 import { TasksPage } from '../features/tasks/TasksPage';
 import { CounselorPage } from '../features/counselor/CounselorPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
+import { QrScannerPage } from '../features/profile/QrScannerPage';
+import { QrConfirmPage } from '../features/profile/QrConfirmPage';
 import { ExamsPage } from '../features/exams/ExamsPage';
 import { ClassroomsPage } from '../features/classrooms/ClassroomsPage';
 import { V3CorePage } from '../features/v3/V3CorePage';
@@ -54,6 +56,12 @@ struct Index {
   @State route: string = '';
   @State eduLoginUrl: string = '';
   @State eduLoginConnectionId: string = '';
+  // QR 扫码登录
+  @State qrSessionId: string = '';
+  @State qrScanToken: string = '';
+  @State qrBrowserName: string = '';
+  @State qrOsName: string = '';
+  @State qrDeviceLabel: string = '';
   @State username: string = '';
   @State password: string = '';
   @State loginError: string = '';
@@ -530,6 +538,8 @@ struct Index {
     if (this.route === 'focus') return '专注自习';
     if (this.route === 'lostfound') return '失物招领';
     if (this.route === 'settings') return '设置';
+    if (this.route === 'qr_scanner') return '扫一扫';
+    if (this.route === 'qr_confirm') return '确认登录';
     if (this.route === 'profile') return '个人资料';
     return '校园服务';
   }
@@ -634,6 +644,32 @@ struct Index {
       PersonalHubPage({ section: this.route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route) })
     } else if (this.route === 'settings') {
       SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
+    } else if (this.route === 'qr_scanner') {
+      QrScannerPage({
+        darkMode: this.darkMode,
+        apiClient: this.createApiClient(),
+        onBack: () => this.route = '',
+        onScanned: (sessionId: string, scanToken: string, browserName: string, osName: string, deviceLabel: string) => {
+          this.qrSessionId = sessionId;
+          this.qrScanToken = scanToken;
+          this.qrBrowserName = browserName;
+          this.qrOsName = osName;
+          this.qrDeviceLabel = deviceLabel;
+          this.route = 'qr_confirm';
+        }
+      })
+    } else if (this.route === 'qr_confirm') {
+      QrConfirmPage({
+        darkMode: this.darkMode,
+        sessionId: this.qrSessionId,
+        scanToken: this.qrScanToken,
+        browserName: this.qrBrowserName,
+        osName: this.qrOsName,
+        deviceLabel: this.qrDeviceLabel,
+        apiClient: this.createApiClient(),
+        onBack: () => { this.route = 'profile'; },
+        onSuccess: () => { this.route = 'profile'; }
+      })
     } else if (this.route === 'account') {
       AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.route = '', onSignOut: () => this.signOut() })
     } else if (this.route === 'edu_system') {

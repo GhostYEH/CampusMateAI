@@ -1,8 +1,6 @@
 package com.example.campusai.ui.screens.profile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,15 +8,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
@@ -81,7 +75,7 @@ fun EduScheduleScreen(
 
     val allItems = scheduleItems?.items.orEmpty().filter { !it.is_stale }
     val weekFiltered = allItems.filter { weeksContains(it.weeks, it.week_text, currentWeek) }
-    val layout = remember(weekFiltered) { layoutScheduleItems(weekFiltered) }
+    val byWeekday = (1..7).associateWith { wd -> weekFiltered.filter { it.weekday == wd } }
 
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
         Row(
@@ -116,68 +110,35 @@ fun EduScheduleScreen(
                     Text("请先在教务系统页面连接并同步课表", color = Muted, fontSize = 12.sp)
                 }
             }
-        } else if (layout.placements.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("本周没有课程", color = Muted)
-            }
         } else {
-            val timeColumnWidth = 52.dp
-            val dayColumnWidth = 112.dp
-            val sectionHeight = 72.dp
-            val contentWidth = timeColumnWidth + dayColumnWidth * 7
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .horizontalScroll(rememberScrollState())
-                    .verticalScroll(rememberScrollState()),
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(Modifier.width(contentWidth).padding(16.dp)) {
-                    Row(Modifier.width(contentWidth).height(40.dp)) {
-                        Box(Modifier.width(timeColumnWidth))
-                        (1..7).forEach { wd ->
-                            Box(
-                                Modifier.width(dayColumnWidth).height(40.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(WEEKDAY_NAMES.getOrNull(wd - 1) ?: "", color = Primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                    Box(
-                        Modifier.width(contentWidth).height(sectionHeight * layout.maxSection),
-                    ) {
-                        Column {
-                            (1..layout.maxSection).forEach { section ->
-                                Row(Modifier.width(contentWidth).height(sectionHeight)) {
-                                    Box(
-                                        Modifier.width(timeColumnWidth).height(sectionHeight),
-                                        contentAlignment = Alignment.TopCenter,
-                                    ) {
-                                        Text(section.toString(), color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                                    }
-                                    (1..7).forEach {
-                                        Box(
-                                            Modifier.width(dayColumnWidth).height(sectionHeight)
-                                                .border(1.dp, Color(0xFFE5E7EB)),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        layout.placements.forEach { placement ->
-                            val laneWidth = dayColumnWidth / placement.laneCount
-                            ScheduleCourseCard(
-                                item = placement.item,
-                                onClick = { selectedCourse = placement.item },
-                                modifier = Modifier
-                                    .offset(
-                                        x = timeColumnWidth + dayColumnWidth * ((placement.item.weekday ?: 1) - 1) + laneWidth * placement.lane + 2.dp,
-                                        y = sectionHeight * (placement.startSection - 1) + 2.dp,
-                                    )
-                                    .width(maxOf(44.dp, laneWidth - 4.dp))
-                                    .height(maxOf(44.dp, sectionHeight * placement.durationSections - 4.dp)),
+                (1..7).forEach { wd ->
+                    val dayItems = byWeekday[wd].orEmpty().sortedWith(
+                        compareBy(nullsLast()) { it.start_section ?: 99 }
+                    )
+                    if (dayItems.isNotEmpty()) {
+                        item(key = "day_$wd") {
+                            Text(
+                                WEEKDAY_NAMES[wd - 1],
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Primary,
                             )
                         }
+                        items(
+                            dayItems,
+                            key = { it.id ?: "${wd}_${it.course_code}_${it.start_section}_${it.location}_${it.weeks}" },
+                        ) { item ->
+                            ScheduleCourseCard(item = item, onClick = { selectedCourse = item })
+                        }
                     }
+                }
+                if (weekFiltered.isEmpty()) {
+                    item { Text("本周没有课程", color = Muted, modifier = Modifier.padding(16.dp)) }
                 }
             }
         }
@@ -189,11 +150,11 @@ fun EduScheduleScreen(
 }
 
 @Composable
-private fun ScheduleCourseCard(item: EduScheduleItemDto, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ScheduleCourseCard(item: EduScheduleItemDto, onClick: () -> Unit) {
     val colorIndex = ((item.course_code ?: item.course_name ?: "").hashCode() and 0x7FFFFFFF) % COURSE_COLORS.size
     val accent = Color(COURSE_COLORS[colorIndex])
     Column(
-        modifier = modifier.clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.16f))
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Surface)
             .campusClickable(onClick = onClick).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -212,6 +173,13 @@ private fun ScheduleCourseCard(item: EduScheduleItemDto, onClick: () -> Unit, mo
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (item.start_section != null) {
+            Text(
+                text = "第${item.start_section}${if (item.end_section != null && item.end_section != item.start_section) "-${item.end_section}" else ""}节",
+                color = accent,
+                fontSize = 10.sp,
             )
         }
     }

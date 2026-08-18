@@ -29,7 +29,8 @@ _EXTRA_INFO_BLOCKED_EXACT = {
     "created_at", "updated_at", "id",
 }
 
-def sanitize_extra_info(raw: Any, exclude_keys: Optional[set[str]] = None) -> Optional[Dict[str, Any]]:
+
+def sanitize_extra_info(raw: Any) -> Optional[Dict[str, Any]]:
     """过滤 extra_info：只保留适合用户查看的课程业务字段。
 
     - 拒绝 dict/list 以外的类型
@@ -46,10 +47,9 @@ def sanitize_extra_info(raw: Any, exclude_keys: Optional[set[str]] = None) -> Op
     def _blocked_key(key: str) -> bool:
         if not isinstance(key, str):
             return True
-        normalized = key.strip().lower()
-        if key in _EXTRA_INFO_BLOCKED_EXACT or normalized in {item.lower() for item in (exclude_keys or set())}:
+        if key in _EXTRA_INFO_BLOCKED_EXACT:
             return True
-        lowered = normalized
+        lowered = key.lower()
         for sub in _EXTRA_INFO_BLOCKED_SUBSTRINGS:
             if sub in lowered:
                 return True

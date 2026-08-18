@@ -46,23 +46,6 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
-def _safe_weekday(value: Any) -> Optional[int]:
-    """保留合法星期，脏坐标降级为空而不是让整张课表失败。"""
-    weekday = _to_int(value)
-    return weekday if weekday is not None and 1 <= weekday <= 7 else None
-
-
-def _safe_section_range(start_value: Any, end_value: Any) -> tuple[Optional[int], Optional[int]]:
-    """把节次限制到正数，并把反向范围收敛为单节。"""
-    start = _to_int(start_value)
-    end = _to_int(end_value)
-    start = start if start is not None and start >= 1 else None
-    end = end if end is not None and end >= 1 else None
-    if start is not None and end is not None and end < start:
-        end = start
-    return start, end
-
-
 def _split_teachers(value: Any) -> Optional[list[str]]:
     """把教师字符串拆成列表。支持逗号/顿号/分号/空格分隔。"""
     if value is None:
@@ -77,33 +60,6 @@ def _split_teachers(value: Any) -> Optional[list[str]]:
     parts = re.split(r"[，,；;、/]\s*", s)
     items = [_clean_str(p) for p in parts]
     return [it for it in items if it] or None
-
-
-_STANDARD_EXTRA_ALIASES = (
-    ("course_name", "kcmc", "课程名称"), ("course_code", "kch", "课程代码"),
-    ("teacher", "teachers", "jsxm", "jsxm", "教师", "任课教师", "授课教师"),
-    ("location", "jsmc2", "dd", "jxcdmc", "地点", "上课地点"),
-    ("campus", "xqmc2", "xq", "校区"), ("building", "jxlmc", "jxl", "教学楼"),
-    ("classroom", "jsdm", "教室"), ("weekday", "xqj", "星期"),
-    ("start_section", "jc1", "start_jc", "节次"), ("end_section", "jc2", "end_jc"),
-    ("start_time", "kssj", "上课时间"), ("end_time", "jssj"), ("weeks", "zcd", "kkzc", "周次"),
-    ("week_text", "zcd_text"), ("credit", "xf", "学分"), ("course_nature", "kcxzmc", "kcxz", "课程性质"),
-    ("course_category", "kcflmc", "kclxmc", "课程类别"), ("course_type", "kclx", "课程类型"),
-    ("teaching_class", "jxbmc", "jxb_id", "教学班"), ("class_name", "bjmc", "bj", "班级"),
-    ("college", "kkxymc", "kkyxmc", "yxmc", "开课学院"), ("department", "kkxsmc", "开课系"),
-    ("assessment_method", "skfsmc", "khfs", "考核方式"), ("exam_type", "kslxmc", "考试类型"),
-    ("total_hours", "zxs", "zongs", "总学时"), ("theory_hours", "llxs", "理论学时"),
-    ("practice_hours", "sjxs", "实践学时"), ("language", "skyy", "yy", "授课语言"),
-    ("note", "bz", "beizhu", "备注"), ("semester", "xqmc", "xnxq01id", "学期"),
-)
-
-
-def _present_standard_extra_keys(raw: dict) -> set[str]:
-    keys: set[str] = set()
-    for aliases in _STANDARD_EXTRA_ALIASES:
-        if any(raw.get(alias) is not None for alias in aliases):
-            keys.update(aliases)
-    return keys
 
 
 class DataNormalizer:
@@ -134,11 +90,6 @@ class DataNormalizer:
                 it.get("teachers") if it.get("teachers") is not None else teacher_raw
             )
             extra_raw = it.get("extra_info") if isinstance(it.get("extra_info"), dict) else None
-            weekday = _safe_weekday(it.get("weekday") or it.get("xqj"))
-            start_section, end_section = _safe_section_range(
-                it.get("start_section") or it.get("jc1") or it.get("start_jc"),
-                it.get("end_section") or it.get("jc2") or it.get("end_jc"),
-            )
             items.append(
                 EduScheduleItem(
                     course_name=_clean_str(it.get("course_name") or it.get("kcmc")),
@@ -149,9 +100,9 @@ class DataNormalizer:
                     campus=_clean_str(it.get("campus") or it.get("xqmc2") or it.get("xq")),
                     building=_clean_str(it.get("building") or it.get("jxlmc") or it.get("jxl")),
                     classroom=_clean_str(it.get("classroom") or it.get("jsdm") or it.get("jsmc2")),
-                    weekday=weekday,
-                    start_section=start_section,
-                    end_section=end_section,
+                    weekday=_to_int(it.get("weekday") or it.get("xqj")),
+                    start_section=_to_int(it.get("start_section") or it.get("jc1") or it.get("start_jc")),
+                    end_section=_to_int(it.get("end_section") or it.get("jc2") or it.get("end_jc")),
                     start_time=_clean_str(it.get("start_time") or it.get("kssj")),
                     end_time=_clean_str(it.get("end_time") or it.get("jssj")),
                     weeks=_clean_str(it.get("weeks") or it.get("zcd") or it.get("kkzc")),
@@ -173,7 +124,7 @@ class DataNormalizer:
                     note=_clean_str(it.get("note") or it.get("bz") or it.get("beizhu")),
                     semester=_clean_str(it.get("semester") or it.get("xqmc") or it.get("xnxq01id")),
                     semester_id=_clean_str(it.get("semester_id") or it.get("xnxq01id")),
-                    extra_info=sanitize_extra_info(extra_raw, exclude_keys=_present_standard_extra_keys(it)),
+                    extra_info=sanitize_extra_info(extra_raw),
                 )
             )
         return EduSchedule(

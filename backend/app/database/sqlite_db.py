@@ -936,6 +936,56 @@ CREATE INDEX IF NOT EXISTS idx_edu_grades_stale ON edu_grades(is_stale);
 """
 
 
+# QR 扫码登录 + 可信设备 schema
+# - qr_login_sessions: 二维码登录会话状态机
+# - trusted_devices: 可信设备自动登录凭据
+QR_AUTH_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS qr_login_sessions (
+    id TEXT PRIMARY KEY,
+    scan_token_hash TEXT NOT NULL,
+    browser_token_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    user_id TEXT,
+    device_id TEXT,
+    browser_name TEXT,
+    os_name TEXT,
+    device_label TEXT,
+    user_agent TEXT,
+    trust_device INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    scanned_at TEXT,
+    confirmed_at TEXT,
+    consumed_at TEXT,
+    cancelled_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_status ON qr_login_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_user ON qr_login_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_expires ON qr_login_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_device ON qr_login_sessions(device_id);
+
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    device_name TEXT,
+    browser_name TEXT,
+    os_name TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(token_hash);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_device ON trusted_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expires_at);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -992,6 +1042,7 @@ class Database:
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
+                conn.executescript(QR_AUTH_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

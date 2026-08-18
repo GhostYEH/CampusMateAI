@@ -1,5 +1,6 @@
 import { repository } from '../../services/repository'
 import { AppSettings, User } from '../../services/types'
+import { parseQrPayload } from '../../utils/qr-payload-parser'
 
 Page({
   data: {
@@ -87,6 +88,40 @@ Page({
   },
   closeSettings() {
     this.setData({ showSettings: false, editingUrl: false })
+  },
+  /**
+   * 扫码登录 Web 端 — 调起微信原生扫码 (wx.scanCode)。
+   * 扫到 CampusMate QR 协议字符串后跳转到确认页，由确认页调用后端 scan/confirm。
+   * 非本协议二维码会提示用户并保留在当前页。
+   */
+  openScanner() {
+    const user = this.data.user
+    if (!user) {
+      wx.showToast({ title: '请先登录后再扫码', icon: 'none' })
+      return
+    }
+    wx.scanCode({
+      onlyFromCamera: false,
+      scanType: ['qrCode', 'barCode'],
+      success: (res) => {
+        const raw = res.result || ''
+        const payload = parseQrPayload(raw)
+        if (!payload) {
+          wx.showModal({
+            title: '无法识别',
+            content: '这个二维码不是 CampusMate Web 登录二维码。请使用 Web 端登录页显示的二维码。',
+            showCancel: false,
+          })
+          return
+        }
+        const params = `sid=${encodeURIComponent(payload.sessionId)}&token=${encodeURIComponent(payload.scanToken)}`
+        wx.navigateTo({ url: `/pages/qr-confirm/qr-confirm?${params}` })
+      },
+      fail: (error) => {
+        if (error && error.errMsg && error.errMsg.indexOf('cancel') >= 0) return
+        wx.showToast({ title: '扫码失败，请重试', icon: 'none' })
+      },
+    })
   },
   saveSetting(next: Partial<AppSettings>) {
     this.setData({ settings: repository.saveSettings(next) })

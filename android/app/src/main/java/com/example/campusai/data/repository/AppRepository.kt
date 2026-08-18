@@ -264,6 +264,7 @@ class AppRepository(
                 role = meUser?.role?.takeIf { it.isNotBlank() } ?: "student",
                 detail = detail,
                 accountId = meUser?.id.orEmpty(),
+                universityId = meUser?.university_id.orEmpty(),
             )
         } else {
             throw Exception("无法连接到后端服务器，请检查网络或后端是否运行")
@@ -1013,6 +1014,53 @@ class AppRepository(
             phone = phone.trim(),
             studentId = studentId.trim(),
         )
+        _session.value = updated
+        dataStore.saveSession(updated)
+    }
+
+    /**
+     * 搜索大学列表（复用现有 GET /universities 接口）。
+     * 用于个人资料编辑页的「所在大学」选择器。
+     */
+    suspend fun loadUniversities(query: String? = null): List<com.example.campusai.data.remote.UniversityDto> {
+        val response = ApiClient.api.listUniversities(query?.takeIf(String::isNotBlank))
+        if (!response.isSuccessful) throw Exception("大学列表加载失败 (${response.code()})")
+        return response.body()?.items.orEmpty()
+    }
+
+    /**
+     * 切换当前用户所属大学（复用现有 PUT /profile/university 接口）。
+     * 成功后同步更新本地 session 中的 universityId / universityName 并持久化，
+     * 保证「我的」页面、首页等订阅 session 的地方立即显示新学校，
+     * 且重新进入 App / 重新登录后仍能从后端 me() 读到正确 university_id。
+     */
+    suspend fun updateUniversity(universityId: String, universityName: String) {
+        val response = ApiClient.api.selectUniversity(
+            com.example.campusai.data.remote.UniversitySelectionRequest(universityId),
+        )
+        if (!response.isSuccessful) throw Exception("切换大学失败 (${response.code()})")
+        val current = _session.value ?: throw IllegalStateException("当前未登录")
+        val updated = current.copy(
+            universityId = universityId,
+            universityName = universityName,
+        )
+        _session.value = updated
+        dataStore.saveSession(updated)
+    }
+
+    /**
+     * 若 session 中已有 universityId 但缺 universityName（例如登录时只拿到 id），
+     * 通过 listUniversities 拉取并在列表中匹配 id 补全名称，写回 session。
+     * 找不到则保持空，不影响主流程。
+     */
+    suspend fun ensureUniversityNameLoaded() {
+        val current = _session.value ?: return
+        if (current.universityId.isBlank() || current.universityName.isNotBlank()) return
+        val matched = runCatching { loadUniversities(null) }
+            .getOrNull()
+            ?.firstOrNull { it.id == current.universityId }
+            ?: return
+        val updated = current.copy(universityName = matched.name)
         _session.value = updated
         dataStore.saveSession(updated)
     }

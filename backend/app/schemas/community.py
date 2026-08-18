@@ -64,7 +64,7 @@ class PostCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     content: str = Field(..., min_length=1, max_length=10000)
     category: str = Field("campus", pattern=CATEGORIES)
-    images: list[str] = Field(default_factory=list, max_length=4)
+    images: list[str] = Field(default_factory=list, max_length=9)
     is_anonymous: bool = False
     extra: Optional[dict[str, Any]] = None
 
@@ -73,7 +73,7 @@ class PostUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=120)
     content: Optional[str] = Field(None, min_length=1, max_length=10000)
     category: Optional[str] = Field(None, pattern=CATEGORIES)
-    images: Optional[list[str]] = Field(None, max_length=4)
+    images: Optional[list[str]] = Field(None, max_length=9)
     is_anonymous: Optional[bool] = None
     extra: Optional[dict[str, Any]] = None
 

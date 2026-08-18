@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-const client = axios.create({ baseURL: BASE_URL, timeout: 8000 });
+const client = axios.create({ baseURL: BASE_URL, timeout: 8000, withCredentials: true });
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("campus_access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -81,10 +81,67 @@ export async function probeBackend() { try { await client.get("/health"); return
 
 export async function realLogin(username, password) {
   const { data } = await client.post("/auth/login", { username, password });
-  localStorage.setItem("campus_access_token", data.access_token);
-  localStorage.setItem("campus_refresh_token", data.refresh_token);
+  applyTokenPair(data);
   const me = await client.get("/auth/me");
   return me.data.user || me.data;
+}
+
+/** 将 TokenPair 写入 localStorage（复用于账号登录和扫码 exchange）。 */
+export function applyTokenPair(data) {
+  localStorage.setItem("campus_access_token", data.access_token);
+  localStorage.setItem("campus_refresh_token", data.refresh_token);
+}
+
+// ===== QR 扫码登录 =====
+
+/** 生成或读取浏览器持久化的 device_id（用于 QR session 和 trusted device）。 */
+export function getDeviceId() {
+  let id = localStorage.getItem("campus_device_id");
+  if (!id) {
+    id = "web_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("campus_device_id", id);
+  }
+  return id;
+}
+
+/** Web 创建 QR Login Session。 */
+export async function qrCreate() {
+  const { data } = await client.post("/auth/qr/create", {
+    device_id: getDeviceId(),
+  });
+  return data;
+}
+
+/** Web 用 browser_token 查询 QR 状态（polling）。 */
+export async function qrStatus(sessionId, browserToken) {
+  const { data } = await client.get(`/auth/qr/${sessionId}/status`, {
+    headers: { "x-browser-token": browserToken },
+  });
+  return data;
+}
+
+/** Web 用 browser_token 兑换登录态。 */
+export async function qrExchange(sessionId, browserToken) {
+  const { data } = await client.post("/auth/qr/exchange", {
+    session_id: sessionId,
+    browser_token: browserToken,
+  });
+  return data;
+}
+
+/** 可信设备自动登录（依赖 HttpOnly Cookie）。 */
+export async function trustedDeviceAutoLogin() {
+  const { data } = await client.post("/auth/trusted-device/auto-login", {
+    device_id: getDeviceId(),
+  });
+  return data;
+}
+
+/** 退出登录时撤销可信设备。 */
+export async function revokeTrustedDevice() {
+  try {
+    await client.post("/auth/trusted-device/revoke", {});
+  } catch { /* 忽略：无 cookie 时正常 */ }
 }
 
 /** 非流式聊天（向后兼容） */

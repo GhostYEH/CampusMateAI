@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,9 @@ import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
 import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
+import com.example.campusai.ui.screens.profile.QrScannerScreen
+import com.example.campusai.ui.screens.profile.QrConfirmScreen
+import com.example.campusai.ui.screens.profile.QrScanResultHolder
 import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
@@ -59,7 +63,9 @@ import com.example.campusai.ui.screens.v3.AcademicScreen
 import com.example.campusai.ui.screens.community.CommunityScreen
 import com.example.campusai.ui.screens.community.CommunityDetailScreen
 import com.example.campusai.ui.screens.community.CommunityPublishScreen
+import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
 import com.example.campusai.ui.screens.v3.UniversityScreen
+import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import java.net.URLEncoder
 
 private fun mainTabIndex(route: String?): Int = listOf("home", "courses", "tasks", "counselor", "profile")
@@ -232,12 +238,61 @@ fun AppNavHost(
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }
         }
-        composable("university") { UniversityScreen() }
-        composable("community") {
+        composable("qr_scanner") {
+            QrScannerScreen(
+                onBack = { navController.popBackStack() },
+                onScanned = { sid, token, bName, oName, dLabel ->
+                    QrScanResultHolder.set(sid, token, bName, oName, dLabel)
+                    go("qr_confirm")
+                },
+            )
+        }
+        composable("qr_confirm") {
+            val holder = QrScanResultHolder
+            QrConfirmScreen(
+                sessionId = holder.sessionId ?: "",
+                scanToken = holder.scanToken ?: "",
+                browserName = holder.browserName,
+                osName = holder.osName,
+                deviceLabel = holder.deviceLabel,
+                onBack = {
+                    holder.clear()
+                    navController.popBackStack()
+                },
+                onSuccess = {
+                    holder.clear()
+                    navController.popBackStack("profile", inclusive = false)
+                },
+            )
+        }
+        composable("university") {
+            UniversityScreen(
+                repository = repository,
+                onNavigate = { route -> go(route) },
+            )
+        }
+        composable(
+            route = "community?sort={sort}&query={query}",
+            arguments = listOf(
+                navArgument("sort") { type = NavType.StringType; nullable = true; defaultValue = "time" },
+                navArgument("query") { type = NavType.StringType; nullable = true; defaultValue = "" },
+            ),
+        ) { backStackEntry ->
+            val sort = backStackEntry.arguments?.getString("sort") ?: "time"
+            val query = backStackEntry.arguments?.getString("query") ?: ""
             CommunityScreen(
                 repository = modules.community,
                 onOpenDetail = { id -> go("community_detail/$id") },
                 onOpenPublish = { go("community_publish") },
+                onOpenHotTopics = { go("community_hot") },
+                initialSort = sort,
+                initialQuery = query,
+            )
+        }
+        composable("community_hot") {
+            CommunityHotTopicsScreen(
+                repository = modules.community,
+                onOpenDetail = { id -> go("community_detail/$id") },
             )
         }
         composable("community_publish") {
@@ -318,7 +373,36 @@ fun AppNavHost(
         composable("expression-contribution") {
             ExpressionContributionScreen(repository) { navController.popBackStack() }
         }
-        composable("account") { AccountScreen(repository) { navController.popBackStack() } }
+        composable("account") {
+            val accountEntry = remember { navController.getBackStackEntry("account") }
+            val pickedId by accountEntry.savedStateHandle
+                .getStateFlow<String?>("pickedUniversityId", null).collectAsState()
+            val pickedName by accountEntry.savedStateHandle
+                .getStateFlow<String?>("pickedUniversityName", null).collectAsState()
+            AccountScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onPickUniversity = { go("university_picker") },
+                pickedUniversityId = pickedId,
+                pickedUniversityName = pickedName,
+                onConsumePicked = {
+                    accountEntry.savedStateHandle.remove<String>("pickedUniversityId")
+                    accountEntry.savedStateHandle.remove<String>("pickedUniversityName")
+                },
+            )
+        }
+        composable("university_picker") {
+            UniversityPickerScreen(
+                repository = repository,
+                currentUniversityId = repository.session.value?.universityId.orEmpty(),
+                onSelected = { id, name ->
+                    navController.getBackStackEntry("account").savedStateHandle["pickedUniversityId"] = id
+                    navController.getBackStackEntry("account").savedStateHandle["pickedUniversityName"] = name
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
 
 
         composable("files") {

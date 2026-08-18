@@ -72,8 +72,6 @@ import androidx.core.view.WindowCompat
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
-import com.example.campusai.ui.navigation.secondaryDestinationSpec
-import com.example.campusai.ui.system.routeOwnsStatusBarInset
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
@@ -108,7 +106,6 @@ private val studentProfileRoutes = setOf(
     "settings",
     "account",
     "files",
-    "activities",
     "favorites",
     "university",
     "academic",
@@ -138,9 +135,6 @@ fun AppShell(
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
-    val hasSharedSecondaryNavigation = secondaryDestinationSpec(backStack?.destination?.route) != null
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback", "university", "academic")
-    val isProfileFlow = route in profileRoutes
     val view = LocalView.current
     val systemBarPolicy = systemBarPolicy(
         route = route,
@@ -175,15 +169,7 @@ fun AppShell(
                 },
             )
         }
-        Box(
-            Modifier.fillMaxSize().then(
-                if (routeOwnsStatusBarInset(route) || isProfileFlow || hasSharedSecondaryNavigation) {
-                    Modifier
-                } else {
-                    Modifier.statusBarsPadding()
-                },
-            ),
-        ) { content() }
+        Box(Modifier.fillMaxSize()) { content() }
         CampusDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter),

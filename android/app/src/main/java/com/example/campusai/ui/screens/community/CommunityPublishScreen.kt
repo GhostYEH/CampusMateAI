@@ -65,7 +65,8 @@ fun CommunityPublishScreen(
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         uploadingImage = true; error = null
         scope.launch {
-            for (uri in uris) {
+            val uploadCount = uploadableCommunityImageCount(imageUrls.size, uris.size)
+            for (uri in uris.take(uploadCount)) {
                 val bytes = withContext(Dispatchers.IO) { readUriBytes(context, uri) }
                 if (bytes == null) { error = "无法读取图片"; continue }
                 val result = repository.uploadImage(bytes, "image.jpg")
@@ -106,10 +107,13 @@ fun CommunityPublishScreen(
             Text("发布帖子", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(title, { title = it.take(120) }, label = { Text("标题") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
-            OutlinedTextField(content, { content = it.take(10000) }, label = { Text("正文") }, modifier = Modifier.fillMaxWidth(), minLines = 5, shape = RoundedCornerShape(10.dp))
+            Card(colors = CardDefaults.cardColors(containerColor = PrimarySoft), shape = RoundedCornerShape(18.dp)) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Campaign, null, tint = Primary); Spacer(Modifier.width(10.dp)); Text("分享校园信息，友善交流，注意保护隐私", color = TextPrimary, fontSize = 13.sp) }
+            }
+            OutlinedTextField(title, { title = it.take(60) }, label = { Text("● 标题   ${title.length}/60") }, placeholder = { Text("输入一个清晰的标题") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(18.dp))
+            OutlinedTextField(content, { content = it.take(1000) }, label = { Text("● 正文   ${content.length}/1000") }, placeholder = { Text("写下你的内容、问题或需求…") }, modifier = Modifier.fillMaxWidth(), minLines = 7, shape = RoundedCornerShape(18.dp))
 
-            Text("分类", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text("● 选择分类", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 categories.take(6).forEach { cat ->
                     FilterChip(category == cat.key, { category = cat.key }, label = { Text(cat.label) })
@@ -121,7 +125,7 @@ fun CommunityPublishScreen(
                 }
             }
 
-            Text("图片", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text("● 添加图片（最多9张）", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 imageUrls.forEach { url ->
                     Box {
@@ -198,6 +202,10 @@ fun CommunityPublishScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+internal fun uploadableCommunityImageCount(currentCount: Int, pickedCount: Int): Int {
+    return minOf((9 - currentCount).coerceAtLeast(0), pickedCount.coerceAtLeast(0))
 }
 
 private fun readUriBytes(context: Context, uri: Uri): ByteArray? {

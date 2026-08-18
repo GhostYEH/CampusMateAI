@@ -127,6 +127,8 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.google.ai.edge.litert)
     implementation(libs.google.mlkit.face.detection)
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)

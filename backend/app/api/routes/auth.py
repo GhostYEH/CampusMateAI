@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from ...core.config import Settings, get_settings
 from ...core.exceptions import (
@@ -157,13 +157,24 @@ def refresh(
 @router.post("/logout")
 def logout(
     req: LogoutRequest,
+    request: Request,
+    response: Response,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> dict:
-    """撤销当前 refresh token(若有)。"""
+    """撤销当前 refresh token(若有)，并撤销当前浏览器的可信设备凭据。"""
     if req.refresh_token:
         token_hash = hash_token(req.refresh_token)
         container.refresh_token_repository.revoke(token_hash)
+    # 撤销当前浏览器的可信设备凭据(避免退出后又被自动登录)
+    cookie_name = "campus_trusted_device"
+    cookie_token = request.cookies.get(cookie_name)
+    if cookie_token:
+        try:
+            container.trusted_device_repository.revoke_by_token_hash(hash_token(cookie_token))
+        except Exception:
+            pass
+        response.delete_cookie(key=cookie_name, path="/api/v1/auth")
     return {"ok": True, "message": "已退出登录"}
 
 
@@ -262,6 +273,12 @@ def admin_update_user(
     updated = container.user_repository.update_user(user_id, fields=fields)
     if updated is None:
         raise UserNotFound()
+    # 停用用户时撤销其所有可信设备，防止停用后仍可通过 trusted device 登录
+    if fields.get("is_active") is False:
+        try:
+            container.trusted_device_repository.revoke_all_for_user(user_id)
+        except Exception:
+            pass
     return UserPublic(**updated.to_public_dict())
 
 

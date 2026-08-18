@@ -960,7 +960,45 @@ interface ApiService {
 
     @GET("edu/systems/{universityId}")
     suspend fun listEduSystems(@Path("universityId") universityId: String): Response<List<EduSystemDto>>
+
+    // ===== QR 扫码登录 =====
+    @POST("auth/qr/scan")
+    suspend fun qrScan(@Body request: QrScanRequest): Response<QrScanResponse>
+
+    @POST("auth/qr/confirm")
+    suspend fun qrConfirm(@Body request: QrConfirmRequest): Response<QrConfirmResponse>
+
+    @POST("auth/qr/cancel")
+    suspend fun qrCancel(@Body request: QrScanRequest): Response<Map<String, Any>>
 }
+
+// ===== QR 扫码登录 DTO =====
+
+data class QrScanRequest(
+    val session_id: String,
+    val scan_token: String,
+)
+
+data class QrScanResponse(
+    val session_id: String = "",
+    val browser_name: String? = null,
+    val os_name: String? = null,
+    val device_label: String? = null,
+    val expires_at: String = "",
+    val status: String = "SCANNED",
+)
+
+data class QrConfirmRequest(
+    val session_id: String,
+    val scan_token: String,
+    val trust_device: Boolean = false,
+)
+
+data class QrConfirmResponse(
+    val session_id: String = "",
+    val status: String = "CONFIRMED",
+    val trust_device: Boolean = false,
+)
 
 data class EduSystemDto(
     val id: String = "",

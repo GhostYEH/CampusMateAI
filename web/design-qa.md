@@ -39,3 +39,23 @@
 - Mobile Lighthouse snapshot: accessibility 93 and best practices 100.
 
 final result: passed
+
+## CampusMate three-page redesign QA (2026-08-18)
+
+- Source visuals: user-provided task, forum, and create-post screenshots.
+- Prototype routes: `/tasks`, `/community`, `/community/create` at 1440 x 900 with an authenticated student session.
+- Evidence: `F:/demo1/artifacts/web-ui/tasks.png`, `community.png`, `community-create.png`, and `create-preview.png`.
+
+### Findings
+
+- P0/P1: none. Shared AppShell/sidebar/header stay fixed across all three routes; primary layouts match the reference hierarchy and responsive collapse rules.
+- P2: none. Task hero uses a generated raster illustration; forum includes two right-rail cards and hot-topic strip; create page includes real image uploader, draft, preview, and publish states.
+- P3: the backend was not running during the visual pass, so list screens intentionally rendered their existing error/empty states. API calls remain wired to the existing student service layer.
+
+### Verification
+
+- `npm run build`: passed (Vite production build, 1685 modules transformed).
+- Playwright/Chrome visual pass: passed for all three routes at 1440 x 900.
+- Interaction smoke checks: task “新建待办” opens and closes its modal; create-post title/body fill and “预览” open the live preview modal; category chips, draft button, toggles, upload control, report, search, sort, and navigation are wired.
+
+final result: passed

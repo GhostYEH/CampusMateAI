@@ -49,5 +49,19 @@ export interface UniversityItem { id: string; name: string; short_name?: string;
 export interface UniversitySelectionResponse { university_id?: string; university?: UniversityItem; }
 export interface UniversitySelectionRequest { university_id: string; }
 export interface CommunityPostItem { id: string; title: string; content: string; category: string; author_name: string; is_anonymous: boolean; like_count: number; comment_count: number; favorite_count: number; created_at: string; }
-export interface CommunityPostPayload { title: string; content: string; category: string; images: string[]; is_anonymous: boolean; }
+export interface CommunityPostExtra {
+  location: string;
+  topic_tag: string;
+  allow_comments: boolean;
+}
+export interface CommunityPostPayload {
+  title: string;
+  content: string;
+  category: string;
+  post_type?: string;
+  sub_category?: string;
+  images: string[];
+  is_anonymous: boolean;
+  extra?: CommunityPostExtra;
+}
 export interface AcademicStatusItem { status: string; provider: string; last_synced_at?: string; external_student_id?: string; }

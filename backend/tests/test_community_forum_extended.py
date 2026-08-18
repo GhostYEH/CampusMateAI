@@ -129,6 +129,17 @@ def test_image_upload_returns_url() -> None:
     assert url.endswith(".png")
 
 
+def test_post_accepts_nine_images_for_forum_composer() -> None:
+    client, _ = _setup()
+    h = _headers(client)
+    response = client.post("/api/v1/community/posts", headers=h, json={
+        "title": "九宫格校园生活", "content": "配合发帖页的九张图片上限", "category": "campus",
+        "images": [f"/static/community_images/{index}.png" for index in range(9)],
+    })
+    assert response.status_code == 201, response.text
+    assert len(response.json()["images"]) == 9
+
+
 def test_post_detail_increments_view_count() -> None:
     client, _ = _setup()
     h = _headers(client)

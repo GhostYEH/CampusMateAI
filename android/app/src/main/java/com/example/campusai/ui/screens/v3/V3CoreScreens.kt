@@ -17,72 +17,116 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.remote.*
+import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
 private val PanelShape = RoundedCornerShape(22.dp)
 
+/**
+ * 「我的大学」服务页。
+ *
+ * 功能边界：仅展示当前所属大学信息 + 校园服务入口（社区 / 热搜 / 教务 / 通知 / 待办），
+ * **不提供**修改当前大学的入口。修改大学唯一入口在：
+ * 我的 → 个人资料 → 编辑资料 → 所在大学（[com.example.campusai.ui.screens.profile.UniversityPickerScreen]）。
+ *
+ * 若用户尚未选择大学，引导其前往个人资料编辑页，而不是在此页内选择。
+ */
 @Composable
-fun UniversityScreen() {
-    var query by remember { mutableStateOf("") }
-    var universities by remember { mutableStateOf(emptyList<UniversityDto>()) }
-    var selectedId by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+fun UniversityScreen(
+    repository: AppRepository,
+    onNavigate: (String) -> Unit,
+) {
+    val user by repository.session.collectAsState()
+    val universityName = user?.universityName.orEmpty()
+    val universityId = user?.universityId.orEmpty()
+    val hasUniversity = universityId.isNotBlank()
 
-    suspend fun load() {
-        loading = true
-        message = null
-        runCatching {
-            val me = ApiClient.api.me()
-            if (me.isSuccessful) selectedId = me.body()?.user?.university_id
-            val response = ApiClient.api.listUniversities(query.takeIf(String::isNotBlank))
-            check(response.isSuccessful) { "大学列表加载失败 (${response.code()})" }
-            universities = response.body()?.items.orEmpty()
-        }.onFailure { message = it.message ?: "大学列表加载失败" }
-        loading = false
-    }
-    LaunchedEffect(Unit) { load() }
-
-    V3Page("我的大学", "选择后，社区、失物招领和教务能力将按大学隔离。") {
+    V3Page("我的大学", "当前学校信息、校园服务与一站式入口。") {
         item {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("搜索大学") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = { IconButton(onClick = { scope.launch { load() } }) { Icon(Icons.Default.ArrowForward, "搜索") } },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-            )
-        }
-        statusItems(loading, message, universities.isEmpty(), "未找到匹配的大学")
-        items(universities, key = { it.id }) { university ->
             Card(colors = CardDefaults.cardColors(containerColor = Surface), shape = PanelShape) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(46.dp).background(PrimarySoft, RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.School, null, tint = Primary)
+                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(46.dp).background(PrimarySoft, RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.School, null, tint = Primary)
+                        }
+                        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                            Text("当前所在大学", color = Muted, fontSize = 12.sp)
+                            Text(
+                                if (hasUniversity) universityName else "尚未选择大学",
+                                color = TextPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                    if (hasUniversity) {
+                        Text(
+                            "如需更换学校，请前往「我的 → 编辑资料 → 所在大学」修改。",
+                            color = Muted,
+                            fontSize = 12.sp,
+                        )
+                    } else {
+                        Text("选择所在大学后，社区、失物招领与教务能力将按大学隔离。", color = Muted, fontSize = 12.sp)
+                        Button(
+                            onClick = { onNavigate("account") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("去编辑资料选择大学")
+                        }
+                    }
+                }
+            }
+        }
+        if (hasUniversity) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("校园服务", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 2.dp))
+                    UniversityServiceList(universityServiceRows(onNavigate))
+                }
+            }
+        }
+    }
+}
+
+private fun universityServiceRows(onNavigate: (String) -> Unit): List<UniversityServiceRow> = listOf(
+    UniversityServiceRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
+    UniversityServiceRow(Icons.Default.Whatshot, "校园热搜", "热门话题排行榜") { onNavigate("community_hot") },
+    UniversityServiceRow(Icons.Default.AccountBalance, "教务系统", "课表、成绩与选课") { onNavigate("edu_system") },
+    UniversityServiceRow(Icons.Default.NotificationsActive, "校园通知", "校园公告与提醒") { onNavigate("notifications") },
+    UniversityServiceRow(Icons.Default.CheckCircle, "待办事项", "学习任务与截止") { onNavigate("tasks") },
+)
+
+private data class UniversityServiceRow(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val title: String,
+    val subtitle: String,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun UniversityServiceList(rows: List<UniversityServiceRow>) {
+    Card(colors = CardDefaults.cardColors(containerColor = Surface), shape = PanelShape) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            rows.forEachIndexed { index, row ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(40.dp).background(PrimarySoft, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                        Icon(row.icon, null, tint = Primary, modifier = Modifier.size(20.dp))
                     }
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                        Text(university.name, color = TextPrimary, fontWeight = FontWeight.Bold)
-                        Text(listOfNotNull(university.province, university.city).joinToString(" · ").ifBlank { "中国" }, color = Muted, fontSize = 12.sp)
-                        Text(if (university.academic_provider == "unsupported") "暂未支持自动教务同步" else "支持教务同步", color = Muted, fontSize = 11.sp)
+                        Text(row.title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(row.subtitle, color = Muted, fontSize = 12.sp)
                     }
-                    if (selectedId == university.id) {
-                        AssistChip(onClick = {}, label = { Text("当前大学") }, leadingIcon = { Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp)) })
-                    } else {
-                        Button(onClick = {
-                            scope.launch {
-                                val response = ApiClient.api.selectUniversity(UniversitySelectionRequest(university.id))
-                                if (response.isSuccessful) {
-                                    selectedId = university.id
-                                    message = "已切换到 ${university.name}，大学范围数据已更新"
-                                } else message = "切换大学失败 (${response.code()})"
-                            }
-                        }) { Text("选择") }
-                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(20.dp))
+                }
+                if (index != rows.lastIndex) {
+                    HorizontalDivider(color = Line, modifier = Modifier.padding(horizontal = 18.dp))
                 }
             }
         }

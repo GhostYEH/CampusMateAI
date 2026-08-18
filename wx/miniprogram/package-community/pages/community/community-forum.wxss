@@ -1,4 +1,6 @@
 /* 校园论坛新样式 */
+.today-hot-card{margin-top:18px;padding:17px 16px;border:1px solid #edf0fa;border-radius:22px;background:linear-gradient(135deg,#fff,#fbfbff);box-shadow:0 12rpx 32rpx rgba(74,89,140,.05)}
+.today-hot-head{display:flex;align-items:center;justify-content:space-between;color:#192849;font-size:18px;font-weight:800}.today-hot-fire{margin-right:8px}.today-hot-more{color:#7181a3;font-size:13px;font-weight:600}.today-hot-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.today-hot-item{display:flex;align-items:center;max-width:100%;gap:7px;padding:7px 9px;border-radius:12px;background:#f7f8fc}.hot-rank-pill{padding:3px 6px;border-radius:6px;background:linear-gradient(135deg,#ff7a44,#ff4d58);color:#fff;font-size:10px;font-weight:800}.today-hot-item:nth-child(2) .hot-rank-pill{background:linear-gradient(135deg,#ffaf45,#ff8238)}.today-hot-item:nth-child(3) .hot-rank-pill{background:linear-gradient(135deg,#5790ff,#5268f5)}.today-hot-title{overflow:hidden;max-width:176px;color:#364866;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.today-hot-empty{color:var(--campus-muted);font-size:12px}
 .forum-toolbar{margin-top:16px;padding:14px;border:1px solid var(--campus-line);border-radius:16px;background:#fff}
 .forum-cats-scroll{white-space:nowrap}
 .forum-cats{display:inline-flex;gap:8px;padding-bottom:4px}

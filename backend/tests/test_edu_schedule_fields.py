@@ -226,48 +226,8 @@ def test_sanitize_extra_info_nested():
     assert cleaned == {"课程信息": {"授课语言": "中文"}, "教师列表": ["张三", "李四"]}
 
 
-def test_sanitize_extra_info_drops_standard_field_duplicates():
-    """extra_info 不应重复展示已经有标准字段的教师/地点等信息。"""
-    cleaned = sanitize_extra_info({
-        "任课教师": "张三",
-        "教师": "张三",
-        "location": "A101",
-        "课程归属": "专业基础课程",
-    }, exclude_keys={"teacher", "教师", "任课教师", "location", "地点"})
-    assert cleaned == {"课程归属": "专业基础课程"}
-
-
 def test_schedule_item_zero_credit_not_treated_as_empty():
     """credit=0 是合法值，不能被误认为空值而隐藏。"""
     it = EduScheduleItem(course_name="X", credit=0.0)
     assert it.credit == 0.0
     assert it.credit is not None
-
-
-def test_normalizer_clears_invalid_weekday_without_dropping_schedule():
-    """脏 weekday 不能触发 Pydantic 整体失败，课程详情仍应保留。"""
-    schedule = DataNormalizer().normalize_schedule({
-        "items": [{
-            "course_name": "异常数据课程",
-            "weekday": 8,
-            "start_section": 1,
-            "end_section": 2,
-        }]
-    })
-    assert len(schedule.items) == 1
-    assert schedule.items[0].weekday is None
-
-
-def test_normalizer_clamps_reversed_sections_to_non_negative_range():
-    """反向节次只能降级为单节，不能让前端计算出负高度。"""
-    schedule = DataNormalizer().normalize_schedule({
-        "items": [{
-            "course_name": "反向节次课程",
-            "weekday": 3,
-            "start_section": 5,
-            "end_section": 2,
-        }]
-    })
-    item = schedule.items[0]
-    assert item.start_section == 5
-    assert item.end_section == 5

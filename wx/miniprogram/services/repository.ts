@@ -119,6 +119,21 @@ interface MultiExtractResponse {
   tasks: ApiExtractTask[]
 }
 
+interface QrScanResult {
+  session_id: string
+  browser_name?: string
+  os_name?: string
+  device_label?: string
+  expires_at: string
+  status: string
+}
+
+interface QrConfirmResult {
+  session_id: string
+  status: string
+  trust_device: boolean
+}
+
 interface ChatResponse {
   answer?: string
   message?: string
@@ -651,6 +666,64 @@ class CampusRepository {
       self_report: feeling || null,
       self_report_tags: feeling ? [feeling] : [],
     })
+  }
+
+  /**
+   * 扫码登录 - 手机端调用，绑定 QR Session 到当前登录用户。
+   * 后端从 JWT Bearer Token 提取 user_id，不从 body 信任。
+   */
+  async qrScan(sessionId: string, scanToken: string): Promise<QrScanResult> {
+    if (this.getSettings().mockMode) {
+      await this.delay(420)
+      return {
+        session_id: sessionId,
+        browser_name: 'Mock 浏览器',
+        os_name: 'Mock OS',
+        device_label: 'Mock 设备',
+        expires_at: new Date(Date.now() + 120000).toISOString(),
+        status: 'SCANNED',
+      }
+    }
+    return this.request<QrScanResult>(
+      '/auth/qr/scan',
+      'POST',
+      { session_id: sessionId, scan_token: scanToken },
+      { authenticated: true, retryAfterRefresh: true },
+    )
+  }
+
+  /**
+   * 扫码登录 - 手机端确认登录 Web。
+   * trust_device=true 时后端会签发 trusted device token（HttpOnly Cookie）。
+   */
+  async qrConfirm(sessionId: string, scanToken: string, trustDevice: boolean): Promise<QrConfirmResult> {
+    if (this.getSettings().mockMode) {
+      await this.delay(360)
+      return { session_id: sessionId, status: 'CONFIRMED', trust_device: trustDevice }
+    }
+    return this.request<QrConfirmResult>(
+      '/auth/qr/confirm',
+      'POST',
+      { session_id: sessionId, scan_token: scanToken, trust_device: trustDevice },
+      { authenticated: true, retryAfterRefresh: true },
+    )
+  }
+
+  /**
+   * 扫码登录 - 手机端取消登录。
+   */
+  async qrCancel(sessionId: string, scanToken: string): Promise<void> {
+    if (this.getSettings().mockMode) return
+    try {
+      await this.request(
+        '/auth/qr/cancel',
+        'POST',
+        { session_id: sessionId, scan_token: scanToken },
+        { authenticated: true, retryAfterRefresh: true },
+      )
+    } catch {
+      // 取消失败不应阻塞用户返回，忽略网络错误。
+    }
   }
 
   private request<T>(

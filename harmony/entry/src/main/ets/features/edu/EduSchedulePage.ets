@@ -8,23 +8,8 @@ const WEEKDAY_NAMES: string[] = ['周一', '周二', '周三', '周四', '周五
 const COURSE_COLORS: number[] = [0xFF5B70ED, 0xFFF29A49, 0xFF37B89B, 0xFF9369E8, 0xFFE85B7A, 0xFF42A5F5, 0xFF66BB6A, 0xFFAB47BC];
 
 interface DetailRow { label: string; value: string; }
-interface ScheduleCard {
-  id: string;
-  item: EduScheduleItemDto;
-  weekday: number;
-  startSection: number;
-  endSection: number;
-  lane: number;
-  laneCount: number;
-  course_name: string;
-  location: string;
-  color: number;
-}
-
-const TIME_COLUMN_WIDTH: number = 48;
-const DAY_COLUMN_WIDTH: number = 112;
-const SECTION_HEIGHT: number = 72;
-const HEADER_HEIGHT: number = 40;
+interface ScheduleCard { id: string; course_name: string; location: string; section_label: string; color: number; }
+interface ScheduleGroup { weekday: number; label: string; items: ScheduleCard[]; }
 
 function weeksContains(weeks: string | undefined, weekText: string | undefined, week: number): boolean {
   const w = weeks !== undefined ? weeks.trim() : '';
@@ -150,8 +135,7 @@ export struct EduSchedulePage {
   @State loading: boolean = true;
   @State currentWeek: number = 1;
   @State allItems: EduScheduleItemDto[] = [];
-  @State scheduleCards: ScheduleCard[] = [];
-  @State maxSection: number = 12;
+  @State scheduleGroups: ScheduleGroup[] = [];
   @State scheduleEmpty: boolean = false;
   @State sheetVisible: boolean = false;
   @State detailCourseName: string = '';
@@ -184,24 +168,14 @@ export struct EduSchedulePage {
       this.allItems = [];
     } finally {
       this.loading = false;
-       this.buildScheduleGrid();
+      this.buildScheduleGroups();
     }
   }
 
-  buildScheduleGrid() {
+  buildScheduleGroups() {
     const week = this.currentWeek;
-    const filtered = this.allItems.filter((it: EduScheduleItemDto) => {
-      return weeksContains(it.weeks, it.week_text, week)
-        && it.weekday !== undefined && it.weekday >= 1 && it.weekday <= 7
-        && it.start_section !== undefined && it.start_section >= 1;
-    });
-    let maxSection = 12;
-    for (let i = 0; i < filtered.length; i++) {
-      const end = filtered[i].end_section !== undefined && filtered[i].end_section! >= filtered[i].start_section!
-        ? filtered[i].end_section! : filtered[i].start_section!;
-      if (end > maxSection) maxSection = end;
-    }
-    const cards: ScheduleCard[] = [];
+    const filtered = this.allItems.filter((it: EduScheduleItemDto) => weeksContains(it.weeks, it.week_text, week));
+    const groups: ScheduleGroup[] = [];
     for (let wd = 1; wd <= 7; wd++) {
       const dayItems = filtered.filter((it: EduScheduleItemDto) => it.weekday === wd)
         .sort((a: EduScheduleItemDto, b: EduScheduleItemDto) => {
@@ -209,50 +183,23 @@ export struct EduSchedulePage {
           const sb = b.start_section !== undefined ? b.start_section : 99;
           return sa - sb;
         });
-      const lanes: EduScheduleItemDto[][] = [];
-      const laneIndexes: number[] = [];
-      for (let j = 0; j < dayItems.length; j++) {
-        const item = dayItems[j];
-        const start = item.start_section!;
-        const end = item.end_section !== undefined && item.end_section >= start ? item.end_section : start;
-        let lane = 0;
-        while (lane < lanes.length && lanes[lane].some((other: EduScheduleItemDto) => {
-          const otherStart = other.start_section!;
-          const otherEnd = other.end_section !== undefined && other.end_section >= otherStart ? other.end_section : otherStart;
-          return otherStart <= end && start <= otherEnd;
-        })) lane++;
-        if (lane === lanes.length) lanes.push([]);
-        lanes[lane].push(item);
-        laneIndexes.push(lane);
-      }
-      for (let j = 0; j < dayItems.length; j++) {
-        const item = dayItems[j];
-        const start = item.start_section!;
-        const end = item.end_section !== undefined && item.end_section >= start ? item.end_section : start;
-        let overlapCount = 0;
-        for (let k = 0; k < dayItems.length; k++) {
-          const otherItem = dayItems[k];
-          if (otherItem === undefined || otherItem.start_section === undefined) continue;
-          const otherStart: number = otherItem.start_section;
-          const otherEnd: number = otherItem.end_section !== undefined && otherItem.end_section >= otherStart ? otherItem.end_section : otherStart;
-          if (otherStart <= end && start <= otherEnd) overlapCount++;
+      if (dayItems.length > 0) {
+        const cards: ScheduleCard[] = [];
+        for (let j = 0; j < dayItems.length; j++) {
+          const item = dayItems[j];
+          const card: ScheduleCard = {
+            id: item.id || (wd + '_' + (item.course_code || '') + '_' + (item.start_section || 0) + '_' + (item.location || '') + '_' + (item.weeks || '')),
+            course_name: item.course_name || '未命名课程',
+            location: item.location || '',
+            section_label: item.start_section !== undefined ? '第' + item.start_section + (item.end_section !== undefined && item.end_section !== item.start_section ? '-' + item.end_section : '') + '节' : '',
+            color: courseColorCode(item),
+          };
+          cards.push(card);
         }
-        cards.push({
-          id: item.id || (wd + '_' + (item.course_code || '') + '_' + start + '_' + (item.location || '') + '_' + (item.weeks || '')),
-          item: item,
-          weekday: wd,
-          startSection: start,
-          endSection: end,
-          lane: laneIndexes[j],
-          laneCount: Math.max(1, Math.min(lanes.length, overlapCount)),
-          course_name: item.course_name || '未命名课程',
-          location: item.location || '',
-          color: courseColorCode(item),
-        });
+        groups.push({ weekday: wd, label: WEEKDAY_NAMES[wd - 1], items: cards });
       }
     }
-    this.scheduleCards = cards;
-    this.maxSection = maxSection;
+    this.scheduleGroups = groups;
     this.scheduleEmpty = this.allItems.length === 0;
   }
 
@@ -271,10 +218,10 @@ export struct EduSchedulePage {
 
         Row({ space: 8 }) {
           Button('上一周').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
-            .enabled(this.currentWeek > 1).onClick(() => { if (this.currentWeek > 1) { this.currentWeek--; this.buildScheduleGrid(); } })
+            .enabled(this.currentWeek > 1).onClick(() => { if (this.currentWeek > 1) { this.currentWeek--; this.buildScheduleGroups(); } })
           Text('第 ' + this.currentWeek + ' 周').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text).layoutWeight(1).textAlign(TextAlign.Center)
           Button('下一周').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
-            .enabled(this.currentWeek < 25).onClick(() => { if (this.currentWeek < 25) { this.currentWeek++; this.buildScheduleGrid(); } })
+            .enabled(this.currentWeek < 25).onClick(() => { if (this.currentWeek < 25) { this.currentWeek++; this.buildScheduleGroups(); } })
           Button('刷新').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
             .onClick(() => this.loadSchedule())
         }.width('100%').padding(12)
@@ -288,47 +235,33 @@ export struct EduSchedulePage {
             Text('本学期暂无课程').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.palette().text)
             Text('请先在教务系统页面连接并同步课表').fontSize(12).fontColor(this.palette().muted)
           }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
-        } else if (this.scheduleCards.length === 0) {
-          Text('本周没有课程').fontSize(13).fontColor(this.palette().muted).layoutWeight(1).padding(16)
         } else {
           Scroll() {
-            Stack({ alignContent: Alignment.TopStart }) {
-              Column({ space: 0 }) {
-                Row({ space: 0 }) {
-                  Text('').width(TIME_COLUMN_WIDTH).height(HEADER_HEIGHT)
-                  ForEach(WEEKDAY_NAMES, (label: string) => {
-                    Text(label).width(DAY_COLUMN_WIDTH).height(HEADER_HEIGHT).textAlign(TextAlign.Center)
-                      .fontSize(12).fontWeight(FontWeight.Bold).fontColor(this.palette().primary)
-                  }, (label: string) => label)
-                }
-                ForEach(Array.from({ length: this.maxSection }, (_: Object, index: number) => index + 1), (section: number) => {
-                  Row({ space: 0 }) {
-                    Text(section.toString()).width(TIME_COLUMN_WIDTH).height(SECTION_HEIGHT).textAlign(TextAlign.Center)
-                      .fontSize(11).fontColor(this.palette().muted)
-                    ForEach(WEEKDAY_NAMES, (_label: string) => {
-                      Text('').width(DAY_COLUMN_WIDTH).height(SECTION_HEIGHT).border({ width: 1, color: this.palette().line })
-                    }, (_label: string, index: number) => 'cell_' + section + '_' + index)
-                  }
-                }, (section: number) => 'section_' + section)
-              }.width(TIME_COLUMN_WIDTH + DAY_COLUMN_WIDTH * 7)
-              ForEach(this.scheduleCards, (card: ScheduleCard) => {
-                Column({ space: 3 }) {
-                  Text(card.course_name).fontSize(13).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-                    .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-                  if (card.location.length > 0) {
-                    Text(card.location).fontSize(11).fontColor(this.palette().muted)
-                      .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                  }
-                }.width(Math.max(44, DAY_COLUMN_WIDTH / card.laneCount - 4)).height(Math.max(44, SECTION_HEIGHT * (card.endSection - card.startSection + 1) - 4))
-                  .padding(8).backgroundColor(this.palette().surface).border({ width: 2, color: card.color }).borderRadius(10)
-                  .position({
-                    x: TIME_COLUMN_WIDTH + DAY_COLUMN_WIDTH * (card.weekday - 1) + (DAY_COLUMN_WIDTH / card.laneCount) * card.lane + 2,
-                    y: HEADER_HEIGHT + SECTION_HEIGHT * (card.startSection - 1) + 2,
-                  })
-                  .onClick(() => this.openDetail(card.item))
-              }, (card: ScheduleCard) => card.id)
-            }.width(TIME_COLUMN_WIDTH + DAY_COLUMN_WIDTH * 7).height(HEADER_HEIGHT + SECTION_HEIGHT * this.maxSection)
-          }.layoutWeight(1).width('100%').scrollBar(BarState.Off).scrollable(ScrollDirection.Horizontal)
+            Column({ space: 12 }) {
+              ForEach(this.scheduleGroups, (group: ScheduleGroup) => {
+                Column({ space: 8 }) {
+                  Text(group.label).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.palette().primary).width('100%')
+                  ForEach(group.items, (card: ScheduleCard) => {
+                    Column({ space: 3 }) {
+                      Text(card.course_name).fontSize(14).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+                        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                      if (card.location.length > 0) {
+                        Text(card.location).fontSize(11).fontColor(this.palette().muted)
+                          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                      }
+                      if (card.section_label.length > 0) {
+                        Text(card.section_label).fontSize(10).fontColor(card.color)
+                      }
+                    }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(12)
+                    .onClick(() => this.openDetailByCard(card))
+                  }, (card: ScheduleCard) => card.id)
+                }.width('100%')
+              }, (group: ScheduleGroup) => 'group_' + group.weekday)
+              if (this.scheduleGroups.length === 0) {
+                Text('本周没有课程').fontSize(13).fontColor(this.palette().muted).padding(16)
+              }
+            }.width('100%').padding(16)
+          }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
         }
       }.width('100%').height('100%').backgroundColor(this.palette().background)
 
@@ -338,6 +271,18 @@ export struct EduSchedulePage {
     }.width('100%').height('100%')
   }
 
+  openDetailByCard(card: ScheduleCard) {
+    const week = this.currentWeek;
+    const filtered = this.allItems.filter((it: EduScheduleItemDto) => weeksContains(it.weeks, it.week_text, week));
+    for (let i = 0; i < filtered.length; i++) {
+      const item = filtered[i];
+      const id = item.id || (item.weekday + '_' + (item.course_code || '') + '_' + (item.start_section || 0) + '_' + (item.location || '') + '_' + (item.weeks || ''));
+      if (id === card.id) {
+        this.openDetail(item);
+        return;
+      }
+    }
+  }
 
   @Builder DetailOverlay() {
     Column({ space: 0 }) {

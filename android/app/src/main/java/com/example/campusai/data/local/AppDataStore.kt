@@ -71,7 +71,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                     phone = obj.optString("phone", ""),
                     studentId = obj.optString("studentId", ""),
                     accountId = obj.optString("accountId", ""),
-
+                    universityId = obj.optString("universityId", ""),
+                    universityName = obj.optString("universityName", ""),
                 )
             } catch (_: Exception) { null }
         }
@@ -174,7 +175,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             json.put("phone", user.phone)
             json.put("studentId", user.studentId)
             json.put("accountId", user.accountId)
-
+            json.put("universityId", user.universityId)
+            json.put("universityName", user.universityName)
             prefs[KEY_SESSION] = json.toString()
         }
     }
