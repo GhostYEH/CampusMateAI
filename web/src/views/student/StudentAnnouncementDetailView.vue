@@ -105,9 +105,9 @@ onMounted(load);
 
     <div v-else-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load">重试</button></div>
 
-    <article v-else-if="announcement" class="activity-detail-layout announcement-detail-layout">
+    <article v-else-if="announcement" class="announcement-detail-layout">
       <section class="student-panel surface">
-        <div class="activity-detail-kicker">
+        <div class="announcement-detail-kicker">
           <span class="status-pill" :class="isRequired ? 'red' : 'blue'">{{ isRequired ? "必读通知" : "课程通知" }}</span>
           <span class="status-pill" :class="isUnread ? 'warm' : 'green'">{{ isUnread ? "未读" : "已读" }}</span>
           <span class="announcement-source">{{ sourceLabel }}</span>
@@ -115,7 +115,7 @@ onMounted(load);
         <h1>{{ announcement.title }}</h1>
         <p class="detail-description announcement-subtitle">来自 {{ announcement.author_name || "课程教师" }} · {{ relativeTime(announcement.published_at || announcement.created_at) }}</p>
 
-        <div class="activity-info-grid announcement-info-grid">
+        <div class="announcement-info-grid">
           <div><UiIcon name="PhMegaphone" /><span><small>通知来源</small><strong>{{ sourceLabel }}</strong></span></div>
           <div><UiIcon name="PhUserCircle" /><span><small>发布人</small><strong>{{ announcement.author_name || "课程教师" }}</strong></span></div>
           <div><UiIcon name="PhCalendarBlank" /><span><small>发布时间</small><strong>{{ formatDateTime(announcement.published_at || announcement.created_at) }}</strong></span></div>

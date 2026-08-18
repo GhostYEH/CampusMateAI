@@ -54,11 +54,10 @@ const quickTools = [
   { label: "课程表", detail: "查看本周课程安排", icon: "PhCalendarBlank", path: "/courses", tone: "blue" },
   { label: "待办事项", detail: "管理待完成任务", icon: "PhCheckSquare", path: "/tasks", tone: "green" },
   { label: "通知整理", detail: "查看重要校园信息", icon: "PhBell", path: "/notifications", tone: "indigo" },
-  { label: "校园活动", detail: "发现感兴趣的活动", icon: "PhCalendarStar", path: "/campus-activities", tone: "amber" },
   { label: "AI 校园助手", detail: "获取校园问题建议", icon: "PhRobot", path: "/counselor", tone: "teal" },
 ];
 const profileLinks = [
-  { label: "我的收藏", detail: "查看保存的活动与空间", icon: "PhBookmarkSimple", path: "/profile/favorites", tone: "violet" },
+  { label: "我的收藏", detail: "查看保存的帖子与空间", icon: "PhBookmarkSimple", path: "/profile/favorites", tone: "violet" },
   { label: "课程资料", detail: "从课程详情继续查看附件", icon: "PhFiles", path: "/profile/files", tone: "blue" },
   { label: "申请记录", detail: "跟进校园服务申请进度", icon: "PhClipboardText", path: "/profile/requests", tone: "green" },
   { label: "我的发布", detail: "查看失物招领发布记录", icon: "PhMegaphone", path: "/profile/published", tone: "amber" },

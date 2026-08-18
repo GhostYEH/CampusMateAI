@@ -138,7 +138,7 @@ onMounted(load);
             <button class="preference-toggle" :class="{ on: notifications.taskDue }" :aria-pressed="notifications.taskDue" @click="setNotification('taskDue', !notifications.taskDue)"><i></i></button>
           </div>
           <div class="toggle-row">
-            <span><strong>校园通知</strong><small>接收校园公告与活动通知</small></span>
+            <span><strong>校园通知</strong><small>接收校园公告与课程通知</small></span>
             <button class="preference-toggle" :class="{ on: notifications.announcement }" :aria-pressed="notifications.announcement" @click="setNotification('announcement', !notifications.announcement)"><i></i></button>
           </div>
         </div>

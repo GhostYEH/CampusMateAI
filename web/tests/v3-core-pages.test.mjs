@@ -10,7 +10,7 @@ after(async () => { await vite?.close(); });
 
 for (const [modulePath, phrases] of [
   ["/src/views/student/StudentUniversityView.vue", ["我的大学", "搜索大学", "切换大学后"]],
-  ["/src/views/student/StudentCommunityView.vue", ["校园社区", "发布帖子", "暂无帖子"]],
+  ["/src/views/student/StudentCommunityView.vue", ["校园论坛", "发布帖子", "暂无帖子"]],
   ["/src/views/student/StudentAcademicView.vue", ["教务系统", "暂未支持自动教务同步", "不会保存在浏览器"]],
 ]) {
   test(`renders V3 core state copy for ${modulePath}`, async () => {

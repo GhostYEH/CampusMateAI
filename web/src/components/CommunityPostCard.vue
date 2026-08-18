@@ -15,7 +15,7 @@ const FALLBACK_CATS = {
   recruit: { label: "招募", color: "#8b5cf6", icon: "PhUsers" },
   errand: { label: "带价帮忙", color: "#f59e0b", icon: "PhHandCoins" },
   lostfound: { label: "失物招领", color: "#ef4444", icon: "PhMagnifyingGlass" },
-  campus: { label: "校园动态", color: "#10b981", icon: "PhBuildings" },
+  campus: { label: "校园讨论", color: "#10b981", icon: "PhBuildings" },
   study: { label: "学习交流", color: "#06b6d4", icon: "PhBookOpen" },
   life: { label: "生活随笔", color: "#ec4899", icon: "PhCoffee" },
   secondhand: { label: "二手交易", color: "#6366f1", icon: "PhStorefront" },

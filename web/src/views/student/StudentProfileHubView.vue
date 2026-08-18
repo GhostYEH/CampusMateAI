@@ -35,7 +35,7 @@ const sectionMeta = {
   favorites: {
     eyebrow: "SAVED / 收藏中心",
     title: "我的收藏",
-    desc: "把重要的活动、教室和校园内容留在这里，之后继续处理。",
+    desc: "把重要的帖子、教室和校园内容留在这里，之后继续处理。",
     icon: "PhBookmarkSimple",
     tone: "violet",
   },
@@ -220,7 +220,7 @@ onMounted(load);
           <div class="profile-id-card-foot"><span><UiIcon name="PhCheckCircle" />身份信息来自 CampusMate 登录账户</span><button class="text-action" @click="copyStudentNumber"><UiIcon name="PhCopy" />复制学号</button></div>
         </article>
         <aside class="profile-id-side">
-          <article class="redesign-panel profile-id-qr"><div class="profile-id-qr-art"><UiIcon name="PhQrCode" :size="80" weight="duotone" /></div><span class="redesign-label">QUICK VERIFY</span><h2>需要出示身份？</h2><p>在课程、校园活动或办事服务中，可直接打开这张身份卡核对个人信息。</p><button class="redesign-button primary" @click="copyStudentNumber"><UiIcon name="PhCopy" />复制学号</button></article>
+          <article class="redesign-panel profile-id-qr"><div class="profile-id-qr-art"><UiIcon name="PhQrCode" :size="80" weight="duotone" /></div><span class="redesign-label">QUICK VERIFY</span><h2>需要出示身份？</h2><p>在课程或办事服务中，可直接打开这张身份卡核对个人信息。</p><button class="redesign-button primary" @click="copyStudentNumber"><UiIcon name="PhCopy" />复制学号</button></article>
           <article class="redesign-panel profile-id-tip"><UiIcon name="PhShieldCheck" :size="22" /><div><strong>信息安全提示</strong><p>请勿将身份卡截图分享给不熟悉的人，涉及账号安全时请联系学校服务中心。</p></div></article>
         </aside>
       </section>
@@ -234,8 +234,8 @@ onMounted(load);
       </section>
 
       <section v-else-if="section === 'favorites'" class="profile-secondary-workspace favorites-workspace">
-        <div class="profile-summary-grid"><article class="redesign-panel"><span class="profile-summary-icon violet"><UiIcon name="PhBookmarkSimple" /></span><span><small>已收藏内容</small><strong>—</strong><em>收藏服务尚未接入统一数据源</em></span></article><article class="redesign-panel"><span class="profile-summary-icon blue"><UiIcon name="PhCalendarStar" /></span><span><small>活动收藏</small><strong>—</strong><em>浏览活动时可继续关注</em></span></article><article class="redesign-panel"><span class="profile-summary-icon green"><UiIcon name="PhBuildings" /></span><span><small>空间收藏</small><strong>—</strong><em>空教室收藏保存在对应页面</em></span></article></div>
-        <article class="redesign-panel profile-secondary-empty profile-favorites-empty"><span class="profile-empty-orbit violet"><UiIcon name="PhBookmarkSimple" :size="26" /></span><span class="redesign-label">YOUR SAVED SPACE</span><h2>收藏中心正在等你放入第一条内容</h2><p>活动详情和空教室页面都支持收藏。收藏服务接入后，你可以在这里集中查看，不需要重复搜索。</p><div class="profile-empty-actions"><button class="redesign-button primary" @click="router.push('/campus-activities')"><UiIcon name="PhCalendarStar" />浏览校园活动</button><button class="redesign-button secondary" @click="router.push('/classrooms')"><UiIcon name="PhBuildings" />查找空教室</button></div></article>
+        <div class="profile-summary-grid"><article class="redesign-panel"><span class="profile-summary-icon violet"><UiIcon name="PhBookmarkSimple" /></span><span><small>已收藏内容</small><strong>—</strong><em>收藏服务尚未接入统一数据源</em></span></article><article class="redesign-panel"><span class="profile-summary-icon blue"><UiIcon name="PhChatsCircle" /></span><span><small>论坛收藏</small><strong>—</strong><em>浏览帖子时可继续关注</em></span></article><article class="redesign-panel"><span class="profile-summary-icon green"><UiIcon name="PhBuildings" /></span><span><small>空间收藏</small><strong>—</strong><em>空教室收藏保存在对应页面</em></span></article></div>
+        <article class="redesign-panel profile-secondary-empty profile-favorites-empty"><span class="profile-empty-orbit violet"><UiIcon name="PhBookmarkSimple" :size="26" /></span><span class="redesign-label">YOUR SAVED SPACE</span><h2>收藏中心正在等你放入第一条内容</h2><p>论坛帖子和空教室页面都支持收藏。收藏服务接入后，你可以在这里集中查看，不需要重复搜索。</p><div class="profile-empty-actions"><button class="redesign-button primary" @click="router.push('/community')"><UiIcon name="PhChatsCircle" />浏览校园论坛</button><button class="redesign-button secondary" @click="router.push('/classrooms')"><UiIcon name="PhBuildings" />查找空教室</button></div></article>
       </section>
 
       <section v-else-if="section === 'files'" class="profile-secondary-workspace files-workspace">

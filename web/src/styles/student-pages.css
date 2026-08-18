@@ -15,18 +15,18 @@
  */
 
 /* ===== 课程列表页（StudentCoursesView） ===== */
-.student-course-card,.activity-card,.lost-card{display:block;width:100%;border:1px solid #e2eaed;text-align:left;cursor:pointer;transition:.2s}
-.student-course-card:hover,.activity-card:hover,.lost-card:hover{transform:translateY(-3px);border-color:#afd0d9;box-shadow:0 10px 25px rgba(45,86,103,.09)}
+.student-course-card,.lost-card{display:block;width:100%;border:1px solid #e2eaed;text-align:left;cursor:pointer;transition:.2s}
+.student-course-card:hover,.lost-card:hover{transform:translateY(-3px);border-color:#afd0d9;box-shadow:0 10px 25px rgba(45,86,103,.09)}
 .student-course-card{padding:20px;min-height:190px}
-.course-card-top,.activity-card-top{display:flex;align-items:center;justify-content:space-between;color:#8aa1aa}
+.course-card-top{display:flex;align-items:center;justify-content:space-between;color:#8aa1aa}
 .course-badge{font-size:10px;font-weight:800;letter-spacing:.1em;color:#3d829b;background:#eaf5f8;padding:5px 8px;border-radius:5px}
-.student-course-card h2,.activity-card h2,.lost-card h2{font-size:18px;color:#294755;margin:24px 0 9px}
-.student-course-card p,.activity-card p,.lost-card p{color:#81929b;font-size:12px;line-height:1.65;margin:0 0 19px}
-.course-card-meta,.activity-card-meta{display:flex;gap:15px;flex-wrap:wrap;color:#82939b;font-size:11px}
-.course-card-meta span,.activity-card-meta span{display:flex;align-items:center;gap:5px}
-.student-layout .student-course-card,.student-layout .activity-card,.student-layout .lost-card{min-height:210px;padding:19px;border-radius:16px;background:#fff}
-.student-layout .student-course-card h2,.student-layout .activity-card h2,.student-layout .lost-card h2{font-size:17px;margin:20px 0 9px;line-height:1.35}
-.student-layout .student-course-card p,.student-layout .activity-card p,.student-layout .lost-card p{margin-bottom:16px}
+.student-course-card h2,.lost-card h2{font-size:18px;color:#294755;margin:24px 0 9px}
+.student-course-card p,.lost-card p{color:#81929b;font-size:12px;line-height:1.65;margin:0 0 19px}
+.course-card-meta{display:flex;gap:15px;flex-wrap:wrap;color:#82939b;font-size:11px}
+.course-card-meta span{display:flex;align-items:center;gap:5px}
+.student-layout .student-course-card,.student-layout .lost-card{min-height:210px;padding:19px;border-radius:16px;background:#fff}
+.student-layout .student-course-card h2,.student-layout .lost-card h2{font-size:17px;margin:20px 0 9px;line-height:1.35}
+.student-layout .student-course-card p,.student-layout .lost-card p{margin-bottom:16px}
 
 /* ===== 待办列表页（StudentTasksView） ===== */
 .task-list{display:grid}
@@ -84,8 +84,8 @@
 /* ===== 任务详情页（StudentTaskDetailView） ===== */
 .task-detail-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,.9fr);gap:18px}
 .task-detail-layout>.student-panel{min-height:300px}
-.detail-kicker,.activity-detail-kicker{display:flex;align-items:center;gap:10px;color:#8a9aa2;font-size:12px}
-.task-detail-layout h1,.activity-detail-layout h1{font-size:27px;letter-spacing:-.04em;color:#294754;margin:18px 0 10px}
+.detail-kicker{display:flex;align-items:center;gap:10px;color:#8a9aa2;font-size:12px}
+.task-detail-layout h1{font-size:27px;letter-spacing:-.04em;color:#294754;margin:18px 0 10px}
 .detail-description{font-size:13px;line-height:1.8;color:#71848c;white-space:pre-wrap}
 .submission-panel textarea{width:100%;border:1px solid #dde7ea;border-radius:9px;padding:12px;resize:vertical;line-height:1.7;outline:0;color:#4d626c;font:13px inherit}
 .submission-actions,.detail-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px}
@@ -95,87 +95,7 @@
 .inline-result small{color:#789099}
 .student-layout .task-detail-layout{grid-template-columns:minmax(0,1.18fr) minmax(330px,.82fr);gap:16px}
 .student-layout .task-detail-layout>.student-panel{min-height:0}
-.student-layout .task-detail-layout h1,.student-layout .activity-detail-layout h1{font-size:27px;line-height:1.25;margin:15px 0 10px}
-
-/* ===== 活动详情页（StudentActivityDetailView） ===== */
-.activity-detail-layout{display:grid;gap:18px}
-.activity-detail-layout>.student-panel{padding:28px}
-.activity-info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:18px 0;margin:22px 0;border-top:1px solid #e9eff0;border-bottom:1px solid #e9eff0}
-.activity-info-grid>div{display:flex;gap:8px;color:#4c8ca0}
-.activity-info-grid span{display:grid;gap:5px}
-.activity-info-grid small{color:#96a5aa;font-size:10px}
-.activity-info-grid strong{color:#49616b;font-size:12px}
-.registration-note{color:#38876d;font-size:12px;display:flex;align-items:center;gap:4px}
-.rich-text{color:#63777f;line-height:1.85;font-size:13px;white-space:pre-wrap}
-.student-layout .activity-detail-layout>.student-panel{padding:25px 27px}
-.student-layout .activity-info-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:0;padding:17px 0;margin:20px 0}
-.student-layout .activity-info-grid>div{padding:0 14px;border-right:1px solid #e9eff0}
-.student-layout .activity-info-grid>div:first-child{padding-left:0}
-.student-layout .activity-info-grid>div:last-child{border-right:0}
-.student-layout .activity-info-grid>div,.student-layout .activity-info-grid>div:first-child{padding:0}
-
-/* ===== 校园活动列表页（StudentActivitiesView） ===== */
-.activities-page .activity-filter{padding:17px 16px 14px;margin-bottom:22px}
-.filter-main{display:grid;grid-template-columns:minmax(0,1fr) 175px 175px;gap:12px}
-.filter-main select,.notice-toolbar select{height:42px;border:1px solid #e3e7f0;border-radius:12px;background:#fff;padding:0 13px;color:#627592;font-size:12px;outline:0}
-.activities-page .search-field{height:42px;border-color:#e3e7f0;border-radius:12px}
-.filter-bottom{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:14px}
-.filter-tabs,.status-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.filter-tabs button,.status-tabs button{height:34px;border:0;border-radius:10px;background:#f7f8fc;color:#70819e;padding:0 14px;font-size:12px}
-.filter-tabs button.active,.status-tabs button.active{background:#eef0ff;color:#5866ee;font-weight:750}
-.status-tabs button:nth-child(2).active{background:#e7faf1;color:#22a677}
-.status-tabs button:nth-child(3).active{background:#fff3e7;color:#e77b2d}
-.status-tabs .clear-filter{background:transparent;color:#6c7dff;display:inline-flex;gap:6px;align-items:center;margin-left:10px}
-
-.activity-feature{display:grid;grid-template-columns:1.15fr .85fr;min-height:198px;width:100%;padding:0;text-align:left;overflow:hidden;background:linear-gradient(110deg,#e5e9ff,#f7f4ff 60%,#f6e8ff);border:0;cursor:pointer;position:relative}
-.activity-feature:hover{box-shadow:0 16px 34px rgba(79,93,203,.12);transform:translateY(-2px);transition:.25s}
-.feature-copy{padding:29px 36px;position:relative;z-index:1}
-.feature-copy h2{font-size:24px;letter-spacing:-.04em;color:#1c3351;margin:13px 0 8px}
-.feature-copy p{font-size:13px;color:#70809e;margin:0;max-width:620px}
-.activity-feature-meta{display:flex;gap:24px;flex-wrap:wrap;margin-top:22px;color:#667b9b;font-size:11px}
-.activity-feature-meta span{display:flex;align-items:center;gap:6px}
-.feature-visual{position:relative;min-height:198px;overflow:hidden}
-.feature-visual:before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,rgba(235,235,255,.15),rgba(249,227,255,.55))}
-.feature-visual img{width:100%;height:100%;object-fit:cover;object-position:58% 55%;mix-blend-mode:multiply;opacity:.94}
-.feature-cta{position:absolute;right:27px;bottom:24px;display:inline-flex;align-items:center;gap:10px;padding:12px 17px;border-radius:12px;background:#5866ee;color:#fff;font-size:12px;font-weight:750;box-shadow:0 9px 17px rgba(88,102,238,.26)}
-
-.section-bar{display:flex;justify-content:space-between;align-items:center;margin:23px 0 13px}
-.section-bar>div:first-child{display:flex;align-items:baseline;gap:12px}
-.section-bar h2{margin:0;font-size:19px;color:#1d314d}
-.section-bar span{font-size:12px;color:#94a0b5}
-.view-tools{display:flex;align-items:center;gap:4px}
-.view-tools .icon-button{border:1px solid #e6eaf4;background:#fff;color:#91a0b8;border-radius:9px;padding:7px}
-.view-tools .icon-button.active{color:#5866ee;background:#f0f1ff}
-.sort-button{height:34px;border:1px solid #e4e8f2;border-radius:10px;background:#fff;color:#657795;padding:0 11px;display:flex;align-items:center;gap:6px;font-size:11px}
-.activity-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.activity-card{padding:0;min-height:228px;display:grid;grid-template-columns:176px 1fr;overflow:hidden;border-radius:16px;text-align:left}
-.activity-card:hover{transform:translateY(-2px);box-shadow:0 14px 28px rgba(64,82,150,.1)}
-.activity-art{min-height:100%;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;color:#5872ee;background:linear-gradient(145deg,#dbe7ff,#b1c5ff)}
-.activity-art:after{content:"";position:absolute;width:120px;height:120px;border-radius:50%;border:1px solid rgba(255,255,255,.6);box-shadow:0 0 0 16px rgba(255,255,255,.16),0 0 0 32px rgba(255,255,255,.1)}
-.activity-art svg,.activity-art span{position:relative;z-index:1}
-.activity-art span{position:absolute;left:14px;top:14px;background:rgba(255,255,255,.78);padding:5px 8px;border-radius:7px;font-size:10px;color:#5a6be9;font-weight:750}
-.activity-art.art-1{background:linear-gradient(145deg,#d6f3ff,#b2e7da);color:#31a77f}
-.activity-card-body{padding:16px 17px 13px;min-width:0}
-.activity-card h2{font-size:16px;margin:14px 0 7px;color:#1f3856;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.activity-card p{font-size:11px;color:#8594aa;line-height:1.65;margin:0 0 14px}
-.activity-card-meta{gap:10px;font-size:10px}
-.card-actions{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #eef0f5;margin-top:13px;padding-top:11px;color:#5866ee;font-size:11px;font-weight:750}
-.card-actions span:last-child{display:flex;align-items:center;gap:6px}
-.list-end{display:flex;align-items:center;justify-content:center;gap:14px;color:#a5afc0;font-size:11px;margin-top:20px}
-.list-end:before,.list-end:after{content:"";width:90px;height:1px;background:#e8ebf2}
-/* 活动卡片图片防溢出：原 styles.css 行 1505-1507 的最终修正 */
-.activity-feature{height:198px;min-height:198px}
-.activity-feature .feature-visual{height:198px;min-height:198px;min-width:0}
-.activity-feature .feature-visual img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:58% 55%}
-.activity-art{min-height:0;background:#dce7ff!important}
-.activity-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
-.activity-art.art-1{background:#e1f5ee!important}
-.activity-art span{z-index:2}
-.student-layout .activities-page{padding:10px 54px 64px 62px}
-.student-layout .activities-page .student-card-grid.activity-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.student-layout .activities-page .section-bar{margin-top:12px}
-.student-layout .activities-page .activity-card{height:254px;min-height:254px;grid-template-columns:176px minmax(0,1fr)}
-.student-layout .activities-page .activity-art{height:254px;min-height:254px}
+.student-layout .task-detail-layout h1{font-size:27px;line-height:1.25;margin:15px 0 10px}
 
 /* ===== 通知整理页（StudentNotificationsView） ===== */
 .notifications-page .notice-heading{position:relative;align-items:center}
@@ -442,7 +362,7 @@
   .student-layout .counselor-right{display:block}
   .counselor-page .counselor-hero{height:155px;min-height:155px}
   .counselor-page .counselor-hero img{right:-90px}
-  .student-layout .activities-page,.student-layout .notifications-page{padding:22px 18px 50px}
+  .student-layout .notifications-page{padding:22px 18px 50px}
   .student-layout .notifications-page .notice-layout{grid-template-columns:1fr}
   .student-layout .notifications-page .notice-extract-panel{height:auto;min-height:0}
   .student-layout .notifications-page .notice-list-column.surface{min-height:0}
@@ -450,9 +370,6 @@
   .student-layout .notifications-page .extract-example-row>div:nth-of-type(n+2){display:none}
   .student-layout .notifications-page .extract-example-footer{align-items:flex-start;flex-direction:column}
   .student-layout .notifications-page .extract-example-footer .primary-button{width:100%}
-  .activity-feature{grid-template-columns:1fr}
-  .feature-visual{height:150px}
-  .feature-copy{padding:24px}
   .notice-layout{grid-template-columns:1fr}
   .notice-extract-panel{position:static}
   .counselor-hero img{width:260px}
@@ -461,7 +378,6 @@
   .counselor-chat{max-height:none}
   .course-detail-grid,.task-detail-layout,.counselor-layout{grid-template-columns:1fr}
   .student-card-grid{grid-template-columns:repeat(2,1fr)}
-  .activity-info-grid{grid-template-columns:repeat(2,1fr)}
   .lost-grid{grid-template-columns:repeat(2,1fr)}
   .service-entry-grid{grid-template-columns:repeat(2,1fr)}
   .student-page{padding:30px}
@@ -471,13 +387,7 @@
 @media(max-width:620px){
   .student-layout .student-heading{align-items:flex-start;flex-direction:column;gap:14px}
   .student-layout .student-heading>.secondary-button{width:100%}
-  .filter-main,.notice-toolbar{grid-template-columns:1fr}
-  .filter-bottom{align-items:flex-start;flex-direction:column}
-  .status-tabs .clear-filter{margin-left:0}
-  .activity-grid{grid-template-columns:1fr}
-  .activity-card{grid-template-columns:120px 1fr}
-  .activity-card h2{font-size:14px}
-  .activity-art{min-height:220px}
+  .notice-toolbar{grid-template-columns:1fr}
   .notice-heading-bg{display:none}
   .notice-tabs{align-items:flex-start;flex-direction:column}
   .notice-count-tabs{width:100%;justify-content:space-between;gap:7px}
@@ -491,18 +401,15 @@
   .student-card-grid{grid-template-columns:1fr}
   .student-form-grid{grid-template-columns:1fr}
   .info-grid{grid-template-columns:1fr}
-  .activity-info-grid{grid-template-columns:1fr}
   .lost-grid{grid-template-columns:1fr}
   .service-entry-grid{grid-template-columns:1fr}
   .service-summary-grid{grid-template-columns:1fr}
   .student-toolbar>select{width:100%}
-  .student-layout .activities-page .activity-card{height:254px;min-height:254px;grid-template-columns:120px minmax(0,1fr)}
-  .student-layout .activities-page .activity-art{height:254px;min-height:254px}
 }
 @media(max-width:560px){
   .student-form-grid{grid-template-columns:1fr}
   .info-grid{grid-template-columns:1fr}
-  .activity-info-grid{grid-template-columns:1fr}
+  .announcement-info-grid{grid-template-columns:1fr}
   .chat-composer>div{align-items:flex-start;flex-direction:column}
   .chat-composer .primary-button{align-self:stretch;justify-content:center}
 }
@@ -1953,13 +1860,11 @@
 }
 
 /* ============================================================
-   待办与作业：横向通铺底图 Hero（复用 campusmate-activity-hero.png）
+   待办与作业：横向通铺 Hero
    ============================================================ */
 .tasks-redesign .tasks-hero.tasks-hero-bg {
   grid-template-columns: 1fr;
-  background-image: url("/assets/campusmate-activity-hero.png");
-  background-size: cover;
-  background-position: center;
+  background: linear-gradient(118deg, #f9fbff 0%, #eef4ff 52%, #f2efff 100%);
   min-height: 300px;
 }
 .tasks-redesign .tasks-hero.tasks-hero-bg::before {
@@ -2425,9 +2330,14 @@
    ============================================================ */
 .announcement-detail-layout{display:grid;gap:16px}
 .announcement-detail-layout>.student-panel{padding:28px}
+.announcement-detail-kicker{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .announcement-source{color:#6c7d9b;font-size:12px;margin-left:auto}
 .announcement-subtitle{margin:6px 0 0;color:#71848c;font-size:13px}
-.announcement-info-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.announcement-info-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.announcement-info-grid>div{display:flex;align-items:center;gap:10px;padding:14px;border:1px solid #e6edf0;border-radius:12px;background:#fbfdfe;color:#62808b}
+.announcement-info-grid span{display:grid;gap:3px;min-width:0}
+.announcement-info-grid small{color:#8b9aa2;font-size:10px}
+.announcement-info-grid strong{overflow:hidden;color:#45616c;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .announcement-detail-actions{margin-top:20px;padding-top:18px;border-top:1px solid #f0f3f7}
 .announcement-content-panel h2{margin:8px 0 14px;font-size:18px;color:#294754}
 .announcement-content{padding:18px 20px;border:1px solid #e0e6f5;border-radius:12px;background:#fff;color:#4d626c;font-size:13px;line-height:1.85;white-space:pre-wrap;word-break:break-word}

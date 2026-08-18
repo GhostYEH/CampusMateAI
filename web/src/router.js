@@ -12,13 +12,11 @@ import AdminCommunityView from "./views/admin/AdminCommunityView.vue";
 import StudentSettingsView from "./views/student/StudentSettingsView.vue";
 import StudentExamDetailView from "./views/student/StudentExamDetailView.vue";
 import StudentExamEditView from "./views/student/StudentExamEditView.vue";
-import StudentActivitiesView from "./views/StudentActivitiesView.vue";
 import StudentHomeView from "./views/student/StudentHomeView.vue";
 import StudentCoursesView from "./views/student/StudentCoursesView.vue";
 import StudentCourseDetailView from "./views/student/StudentCourseDetailView.vue";
 import StudentTasksView from "./views/student/StudentTasksView.vue";
 import StudentTaskDetailView from "./views/student/StudentTaskDetailView.vue";
-import StudentActivityDetailView from "./views/student/StudentActivityDetailView.vue";
 import StudentCounselorView from "./views/student/StudentCounselorView.vue";
 import StudentNotificationsView from "./views/student/StudentNotificationsView.vue";
 import StudentAnnouncementDetailView from "./views/student/StudentAnnouncementDetailView.vue";
@@ -61,12 +59,10 @@ const router = createRouter({
       { path: "courses/:courseId", component: StudentCourseDetailView, meta: { roles: ["student"] } },
       { path: "tasks", component: StudentTasksView, meta: { roles: ["student"] } },
       { path: "tasks/:kind/:id", component: StudentTaskDetailView, meta: { roles: ["student"] } },
-      { path: "campus-activities", component: StudentActivitiesView, meta: { roles: ["student"] } },
       { path: "community", component: StudentCommunityView, meta: { roles: ["student"] } },
       { path: "community/create", component: StudentCommunityCreateView, meta: { roles: ["student"] } },
       { path: "community/:postId", component: StudentCommunityDetailView, meta: { roles: ["student"] } },
       { path: "university", component: StudentUniversityView, meta: { roles: ["student"] } },
-      { path: "campus-activities/:activityId", component: StudentActivityDetailView, meta: { roles: ["student"] } },
       { path: "counselor", component: StudentCounselorView, meta: { roles: ["student"] } },
       { path: "notifications", component: StudentNotificationsView, meta: { roles: ["student"] } },
       { path: "announcements/:announcementId", component: StudentAnnouncementDetailView, meta: { roles: ["student"] } },

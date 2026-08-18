@@ -144,5 +144,5 @@
   .student-layout .chat-composer .primary-button{justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){
-  .student-layout .student-course-card,.student-layout .activity-card,.student-layout .lost-card,.student-layout .student-quick{transition:none}
+  .student-layout .student-course-card,.student-layout .lost-card,.student-layout .student-quick{transition:none}
 }
