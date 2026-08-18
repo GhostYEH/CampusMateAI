@@ -80,6 +80,21 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30  # access token 短有效期
     refresh_token_expire_days: int = 14   # refresh token 较长有效期
 
+    # ===== QR 扫码登录 =====
+    # 二维码有效期(秒)，默认 2 分钟
+    qr_login_expire_seconds: int = 120
+    # QR session 惰性清理：每次创建时清理过期记录的最大条数
+    qr_login_cleanup_batch: int = 50
+    # QR create 接口简单防刷：同一 device_id 在窗口期内最大创建次数
+    qr_create_rate_window_seconds: int = 10
+    qr_create_rate_max: int = 5
+
+    # ===== Trusted Device（可信设备自动登录）=====
+    # 可信设备有效期(天)，默认 30 天
+    trusted_device_expire_days: int = 30
+    # 可信设备 cookie 名称
+    trusted_device_cookie_name: str = "campus_trusted_device"
+
     # ===== 测试环境数据 seeding =====
     # 启动时是否自动 seed 测试账号
     # 默认关闭;仅 dev/test 显式开启

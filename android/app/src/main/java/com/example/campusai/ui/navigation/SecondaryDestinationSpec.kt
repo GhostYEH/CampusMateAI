@@ -1,6 +1,34 @@
 package com.example.campusai.ui.navigation
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.example.campusai.ui.components.StickySecondaryNavigationContentHeight
+import com.example.campusai.ui.system.routeOwnsStatusBarInset
+
 internal data class SecondaryDestinationSpec(val title: String)
+
+/**
+ * Keeps the NavHost's bounds fixed while each destination reserves the space
+ * required by its own system and secondary-navigation chrome.
+ */
+internal data class NavigationDestinationLayout(
+    val navHostTopPadding: Dp = 0.dp,
+    val contentTopPadding: Dp,
+)
+
+internal fun navigationDestinationLayout(
+    route: String?,
+    statusBarHeight: Dp,
+): NavigationDestinationLayout {
+    val normalizedRoute = route?.substringBefore('?')?.substringBefore('/')
+    val contentTopPadding = when {
+        secondaryDestinationSpec(route) != null ->
+            statusBarHeight + StickySecondaryNavigationContentHeight
+        routeOwnsStatusBarInset(route) || normalizedRoute in profileFlowRoutes -> 0.dp
+        else -> statusBarHeight
+    }
+    return NavigationDestinationLayout(contentTopPadding = contentTopPadding)
+}
 
 internal fun secondaryDestinationSpec(route: String?): SecondaryDestinationSpec? {
     val normalizedRoute = route?.substringBefore('?') ?: return null
@@ -30,6 +58,17 @@ private val rootRoutes = setOf(
     "counselor",
 )
 
+private val profileFlowRoutes = setOf(
+    "profile",
+    "settings",
+    "account",
+    "files",
+    "favorites",
+    "help-feedback",
+    "university",
+    "academic",
+)
+
 private val staticDestinationTitles = mapOf(
     "notifications" to "通知与提醒",
     "task_calendar" to "待办日历",
@@ -45,6 +84,7 @@ private val staticDestinationTitles = mapOf(
     "favorites" to "我的收藏",
     "university" to "我的大学",
     "community" to "校园论坛",
+    "community_hot" to "热门话题",
     "community_publish" to "发布帖子",
     "academic" to "教务系统",
     "exams" to "考试安排",

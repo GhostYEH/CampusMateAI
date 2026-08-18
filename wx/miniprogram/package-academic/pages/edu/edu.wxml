@@ -81,21 +81,17 @@
         </view>
         <state-view wx:if="{{phase === 'syncing'}}" state="loading" title="正在同步课表"></state-view>
         <state-view wx:elif="{{scheduleEmpty}}" state="empty" title="暂无课表" description="连接成功后会自动同步课表"></state-view>
-        <state-view wx:elif="{{!scheduleCards.length}}" state="empty" title="本周没有课程"></state-view>
-        <scroll-view wx:else scroll-x class="schedule-grid-scroll">
-          <view class="schedule-grid" style="height:{{gridHeight}}px;">
-            <view class="schedule-grid-corner"></view>
-            <view wx:for="{{weekdayHeaders}}" wx:key="label" class="schedule-grid-header" style="{{item.style}}">{{item.label}}</view>
-            <block wx:for="{{sectionRows}}" wx:for-item="section" wx:key="label">
-              <view class="schedule-grid-section" style="{{section.style}}">{{section.label}}</view>
-              <view wx:for="{{section.cells}}" wx:for-item="cell" wx:key="style" class="schedule-grid-cell" style="{{cell.style}}"></view>
-            </block>
-            <view wx:for="{{scheduleCards}}" wx:for-item="card" wx:for-index="ci" wx:key="id" class="schedule-card" style="{{card.style}}" data-index="{{ci}}" bindtap="onCourseTap">
+        <state-view wx:elif="{{!scheduleGroups.length}}" state="empty" title="本周没有课程"></state-view>
+        <view wx:else class="schedule-groups">
+          <view wx:for="{{scheduleGroups}}" wx:for-item="group" wx:for-index="gi" wx:key="weekday" class="schedule-group">
+            <view class="schedule-day-title">{{group.label}}</view>
+            <view wx:for="{{group.items}}" wx:for-item="card" wx:for-index="ii" wx:key="id" class="schedule-card" data-group="{{gi}}" data-index="{{ii}}" bindtap="onCourseTap">
               <view class="schedule-card-name">{{card.course_name}}</view>
               <view wx:if="{{card.location}}" class="schedule-card-loc">{{card.location}}</view>
+              <view wx:if="{{card.section_label}}" class="schedule-card-sec">{{card.section_label}}</view>
             </view>
           </view>
-        </scroll-view>
+        </view>
       </view>
 
       <view wx:if="{{activeTab === 'grade'}}" class="edu-list">

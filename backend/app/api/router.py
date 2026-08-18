@@ -19,6 +19,7 @@ from .routes import (
     notices,
     personal_hub,
     personal_tasks,
+    qr_auth,
     study,
     submissions,
     student_tools,
@@ -40,6 +41,7 @@ api_router.include_router(contributions.router, tags=["contributions"])
 # 认证与用户管理
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])
+api_router.include_router(qr_auth.router, tags=["auth-qr"])
 api_router.include_router(dashboards.router)
 
 api_router.include_router(courses.router, tags=["courses"])

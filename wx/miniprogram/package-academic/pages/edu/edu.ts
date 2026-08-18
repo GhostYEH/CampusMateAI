@@ -16,26 +16,16 @@ type Phase =
 
 interface ScheduleCard {
   id: string
-  weekday: number
-  start_section: number
-  end_section: number
-  lane: number
-  lane_count: number
   course_name: string
   location: string
-  style: string
+  section_label: string
   raw: EduScheduleItem
 }
 
-interface WeekdayHeader {
+interface ScheduleGroup {
+  weekday: number
   label: string
-  style: string
-}
-
-interface SectionRow {
-  label: string
-  style: string
-  cells: { style: string }[]
+  items: ScheduleCard[]
 }
 
 interface DetailRow {
@@ -52,40 +42,6 @@ interface GradeRow {
 }
 
 const WEEKDAY_LABELS = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
-const TIME_COLUMN_WIDTH = 48
-const DAY_COLUMN_WIDTH = 112
-const SECTION_HEIGHT = 72
-const HEADER_HEIGHT = 40
-const COURSE_COLORS = ['#5B70ED', '#D9792B', '#258C78', '#7952B3', '#C43D5C', '#1976B9', '#438A45', '#873A91']
-const COURSE_SOFT_COLORS = ['#EEF0FF', '#FFF1E5', '#E8F7F3', '#F1EBFF', '#FFEBF0', '#E8F4FC', '#ECF8EC', '#F5EAF7']
-
-function courseColor(item: EduScheduleItem): { border: string; background: string } {
-  const key = item.course_code || item.course_name || ''
-  let hash = 0
-  for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0
-  const index = Math.abs(hash) % COURSE_COLORS.length
-  return { border: COURSE_COLORS[index], background: COURSE_SOFT_COLORS[index] }
-}
-
-function buildWeekdayHeaders(): WeekdayHeader[] {
-  return WEEKDAY_LABELS.slice(1).map((label, index) => ({
-    label,
-    style: `left:${TIME_COLUMN_WIDTH + index * DAY_COLUMN_WIDTH}px;top:0px;width:${DAY_COLUMN_WIDTH}px;height:${HEADER_HEIGHT}px;`,
-  }))
-}
-
-function buildSectionRows(maxSection: number): SectionRow[] {
-  return Array.from({ length: maxSection }, (_, index) => {
-    const section = index + 1
-    return {
-      label: String(section),
-      style: `left:0px;top:${HEADER_HEIGHT + index * SECTION_HEIGHT}px;width:${TIME_COLUMN_WIDTH}px;height:${SECTION_HEIGHT}px;`,
-      cells: WEEKDAY_LABELS.slice(1).map((_label, dayIndex) => ({
-        style: `left:${TIME_COLUMN_WIDTH + dayIndex * DAY_COLUMN_WIDTH}px;top:${HEADER_HEIGHT + index * SECTION_HEIGHT}px;width:${DAY_COLUMN_WIDTH}px;height:${SECTION_HEIGHT}px;`,
-      })),
-    }
-  })
-}
 
 function weeksContains(weeks: string, weekText: string, week: number): boolean {
   const w = (weeks || '').trim()
@@ -214,10 +170,7 @@ Page({
     busy: false,
     errorMessage: '',
     allScheduleItems: [] as EduScheduleItem[],
-    weekdayHeaders: buildWeekdayHeaders() as WeekdayHeader[],
-    sectionRows: buildSectionRows(12) as SectionRow[],
-    scheduleCards: [] as ScheduleCard[],
-    gridHeight: HEADER_HEIGHT + 12 * SECTION_HEIGHT,
+    scheduleGroups: [] as ScheduleGroup[],
     currentWeek: 1,
     scheduleEmpty: false,
     detailVisible: false,
@@ -434,95 +387,51 @@ Page({
         grade_point: String(item.grade_point || ''),
         category: item.category || '',
       }))
-      this.setData({ allScheduleItems, gradeRows }, () => this.buildScheduleGrid())
+      this.setData({ allScheduleItems, gradeRows }, () => this.buildScheduleGroups())
     } catch {
       // 条目加载失败不阻塞
     }
   },
-  buildScheduleGrid() {
+  buildScheduleGroups() {
     const week = this.data.currentWeek
-    const filtered = this.data.allScheduleItems.filter((it) => {
-      const start = Number(it.start_section)
-      const end = Number(it.end_section || start)
-      return weeksContains(it.weeks, it.week_text, week)
-        && Number.isInteger(it.weekday) && it.weekday >= 1 && it.weekday <= 7
-        && Number.isInteger(start) && start >= 1 && Number.isInteger(end) && end >= start
-    })
-    const maxSection = Math.max(12, ...filtered.map((it) => Number(it.end_section || it.start_section)), 0)
-    const cards: ScheduleCard[] = []
+    const filtered = this.data.allScheduleItems.filter((it) => weeksContains(it.weeks, it.week_text, week))
+    const groups: ScheduleGroup[] = []
     for (let wd = 1; wd <= 7; wd++) {
       const dayItems = filtered
         .filter((it) => it.weekday === wd)
-        .sort((a, b) => (a.start_section - b.start_section) || (a.end_section - b.end_section))
-      const lanes: EduScheduleItem[][] = []
-      const laneIndexes: number[] = []
-      dayItems.forEach((item) => {
-        const start = Number(item.start_section)
-        const end = Number(item.end_section || start)
-        let lane = -1
-        for (let candidate = 0; candidate < lanes.length; candidate++) {
-          const available = lanes[candidate].every((other) => {
-            const otherStart = Number(other.start_section)
-            const otherEnd = Number(other.end_section || otherStart)
-            return otherEnd < start || end < otherStart
-          })
-          if (available) {
-            lane = candidate
-            break
-          }
-        }
-        if (lane < 0) {
-          lane = lanes.length
-          lanes.push([])
-        }
-        lanes[lane].push(item)
-        laneIndexes.push(lane)
-      })
-      dayItems.forEach((item, index) => {
-        const start = Number(item.start_section)
-        const end = Number(item.end_section || start)
-        const overlapCount = dayItems.filter((other) => {
-          const otherStart = Number(other.start_section)
-          const otherEnd = Number(other.end_section || otherStart)
-          return otherStart <= end && start <= otherEnd
-        }).length
-        const laneCount = Math.max(1, Math.min(lanes.length, overlapCount))
-        const laneWidth = DAY_COLUMN_WIDTH / laneCount
-        const color = courseColor(item)
-        cards.push({
-          id: item.id || `${wd}_${item.course_code}_${start}_${item.location}_${item.weeks}`,
+        .sort((a, b) => (a.start_section ?? 99) - (b.start_section ?? 99))
+      if (dayItems.length > 0) {
+        groups.push({
           weekday: wd,
-          start_section: start,
-          end_section: end,
-          lane: laneIndexes[index],
-          lane_count: laneCount,
-          course_name: item.course_name || '未命名课程',
-          location: item.location || '',
-          style: `left:${TIME_COLUMN_WIDTH + (wd - 1) * DAY_COLUMN_WIDTH + laneIndexes[index] * laneWidth + 2}px;top:${HEADER_HEIGHT + (start - 1) * SECTION_HEIGHT + 2}px;width:${Math.max(44, laneWidth - 4)}px;height:${Math.max(44, (end - start + 1) * SECTION_HEIGHT - 4)}px;border-color:${color.border};background-color:${color.background};`,
-          raw: item,
+          label: WEEKDAY_LABELS[wd],
+          items: dayItems.map((item) => ({
+            id: item.id || `${wd}_${item.course_code}_${item.start_section}_${item.location}`,
+            course_name: item.course_name || '未命名课程',
+            location: item.location || '',
+            section_label: item.start_section ? `第${item.start_section}${item.end_section && item.end_section !== item.start_section ? '-' + item.end_section : ''}节` : '',
+            raw: item,
+          })),
         })
-      })
+      }
     }
-    this.setData({
-      scheduleCards: cards,
-      sectionRows: buildSectionRows(maxSection),
-      gridHeight: HEADER_HEIGHT + maxSection * SECTION_HEIGHT,
-      scheduleEmpty: this.data.allScheduleItems.length === 0,
-    })
+    this.setData({ scheduleGroups: groups, scheduleEmpty: this.data.allScheduleItems.length === 0 })
   },
   onWeekPrev() {
     if (this.data.currentWeek > 1) {
-      this.setData({ currentWeek: this.data.currentWeek - 1 }, () => this.buildScheduleGrid())
+      this.setData({ currentWeek: this.data.currentWeek - 1 }, () => this.buildScheduleGroups())
     }
   },
   onWeekNext() {
     if (this.data.currentWeek < 25) {
-      this.setData({ currentWeek: this.data.currentWeek + 1 }, () => this.buildScheduleGrid())
+      this.setData({ currentWeek: this.data.currentWeek + 1 }, () => this.buildScheduleGroups())
     }
   },
   onCourseTap(event: WechatMiniprogram.TouchEvent) {
+    const groupIdx = event.currentTarget.dataset.group as number
     const itemIdx = event.currentTarget.dataset.index as number
-    const card = this.data.scheduleCards[itemIdx]
+    const group = this.data.scheduleGroups[groupIdx]
+    if (!group) return
+    const card = group.items[itemIdx]
     if (!card) return
     const item = card.raw
     this.setData({
@@ -596,9 +505,7 @@ Page({
             connection: null,
             probe: null,
             allScheduleItems: [],
-            scheduleCards: [],
-            sectionRows: buildSectionRows(12),
-            gridHeight: HEADER_HEIGHT + 12 * SECTION_HEIGHT,
+            scheduleGroups: [],
             gradeRows: [],
             errorMessage: '',
           })

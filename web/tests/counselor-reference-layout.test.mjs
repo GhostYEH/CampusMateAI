@@ -20,8 +20,14 @@ test("AI campus assistant exposes the screenshot-matched workspace and working c
   assert.match(view, /我是 CampusMate AI/);
   assert.match(view, /@keydown\.enter\.exact\.prevent="send\(\)"/);
   assert.match(view, /@click="send\(question\)"/);
+  assert.match(view, /function openService\(item\)/);
+  assert.match(view, /@click="openService\(item\)"/);
   assert.match(view, /counselor-campus-hero-reference\.png/);
   assert.match(shell, /'counselor-mode': route\.path === ['"]\/counselor['"]/);
-  assert.match(css, /grid-template-columns:\s*272px\s+minmax\(0,1fr\)/);
-  assert.match(css, /grid-template-columns:\s*274px\s+minmax\(0,1fr\)\s+310px/);
+  assert.match(css, /grid-template-columns:\s*minmax\(274px,300px\)\s+minmax\(0,1fr\)\s+minmax\(310px,347px\)/);
+
+  const layout = await readFile(path.join(webRoot, "src", "styles", "layout-system.css"), "utf8");
+  assert.match(layout, /--sidebar-width:\s*282px/);
+  assert.match(layout, /--header-height:\s*85px/);
+  assert.match(layout, /grid-template-columns:\s*var\(--sidebar-width\)/);
 });

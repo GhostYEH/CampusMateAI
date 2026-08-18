@@ -319,59 +319,15 @@ function formatHours(hours) {
 
 const allScheduleItems = computed(() => (scheduleItems.value || []).filter((it) => !it.is_stale));
 const weekFiltered = computed(() => allScheduleItems.value.filter((it) => weeksContains(it.weeks, it.week_text, currentWeek.value)));
-function buildScheduleLayout(items) {
-  const valid = items.filter((item) => {
-    const start = Number(item.start_section);
-    const end = Number(item.end_section ?? start);
-    return Number.isInteger(item.weekday) && item.weekday >= 1 && item.weekday <= 7
-      && Number.isInteger(start) && start >= 1 && Number.isInteger(end) && end >= start;
-  });
-  const maxSection = Math.max(12, ...valid.map((item) => Number(item.end_section ?? item.start_section)), 0);
-  const placements = [];
-  for (let weekday = 1; weekday <= 7; weekday++) {
-    const dayItems = valid.filter((item) => item.weekday === weekday)
-      .sort((a, b) => (a.start_section - b.start_section) || (a.end_section - b.end_section));
-    const lanes = [];
-    const laneByItem = new Map();
-    dayItems.forEach((item) => {
-      const start = Number(item.start_section);
-      const end = Number(item.end_section ?? start);
-      let lane = lanes.findIndex((laneItems) => laneItems.every((other) => {
-        const otherStart = Number(other.start_section);
-        const otherEnd = Number(other.end_section ?? otherStart);
-        return otherEnd < start || end < otherStart;
-      }));
-      if (lane < 0) {
-        lane = lanes.length;
-        lanes.push([]);
-      }
-      lanes[lane].push(item);
-      laneByItem.set(item, lane);
-    });
-    dayItems.forEach((item) => {
-      const start = Number(item.start_section);
-      const end = Number(item.end_section ?? start);
-      const overlapCount = dayItems.filter((other) => {
-        const otherStart = Number(other.start_section);
-        const otherEnd = Number(other.end_section ?? otherStart);
-        return otherStart <= end && start <= otherEnd;
-      }).length;
-      placements.push({
-        item,
-        weekday,
-        start,
-        end,
-        duration: end - start + 1,
-        lane: laneByItem.get(item) ?? 0,
-        laneCount: Math.max(1, Math.min(lanes.length, overlapCount)),
-        colorIndex: Math.abs((item.course_code || item.course_name || '').split('').reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0)) % 8,
-      });
-    });
+const byWeekday = computed(() => {
+  const map = {};
+  for (let wd = 1; wd <= 7; wd++) {
+    map[wd] = weekFiltered.value
+      .filter((it) => it.weekday === wd)
+      .sort((a, b) => (a.start_section ?? 99) - (b.start_section ?? 99));
   }
-  return { maxSection, placements };
-}
-
-const scheduleLayout = computed(() => buildScheduleLayout(weekFiltered.value));
+  return map;
+});
 
 async function loadSchedule() {
   scheduleLoading.value = true;
@@ -504,20 +460,20 @@ onUnmounted(stopPolling);
       </div>
       <div v-if="scheduleLoading" class="profile-loading"><div class="profile-loading-grid"><i></i><i></i><i></i></div></div>
       <div v-else-if="allScheduleItems.length === 0" class="edu-hint">本学期暂无课程，请先同步课表。</div>
-      <div v-else-if="scheduleLayout.placements.length === 0" class="edu-hint">本周没有课程。</div>
-      <div v-else class="schedule-grid-scroll">
-        <div class="schedule-grid" :style="{ gridTemplateColumns: `52px repeat(7, 112px)`, gridTemplateRows: `40px repeat(${scheduleLayout.maxSection}, 72px)` }">
-          <div class="schedule-grid-corner"></div>
-          <div v-for="(label, index) in WEEKDAY_NAMES" :key="label" class="schedule-grid-header" :style="{ gridColumn: index + 2, gridRow: 1 }">{{ label }}</div>
-          <template v-for="section in scheduleLayout.maxSection" :key="`section-${section}`">
-            <div class="schedule-grid-section" :style="{ gridColumn: 1, gridRow: section + 1 }">{{ section }}</div>
-            <div v-for="weekday in 7" :key="`cell-${section}-${weekday}`" class="schedule-grid-cell" :style="{ gridColumn: weekday + 1, gridRow: section + 1 }"></div>
+      <div v-else>
+        <div v-for="wd in 7" :key="wd">
+          <template v-if="byWeekday[wd] && byWeekday[wd].length">
+            <h4 class="schedule-day-title">{{ ['','周一','周二','周三','周四','周五','周六','周日'][wd] }}</h4>
+            <div class="schedule-card-list">
+              <div v-for="item in byWeekday[wd]" :key="item.id || `${wd}_${item.course_code}_${item.start_section}_${item.location}`" class="schedule-course-card" @click="openCourseDetail(item)">
+                <div class="schedule-course-name">{{ item.course_name || "未命名课程" }}</div>
+                <div v-if="item.location" class="schedule-course-loc">{{ item.location }}</div>
+                <div v-if="item.start_section" class="schedule-course-sec">第{{ item.start_section }}{{ item.end_section && item.end_section !== item.start_section ? '-' + item.end_section : '' }}节</div>
+              </div>
+            </div>
           </template>
-          <div v-for="placement in scheduleLayout.placements" :key="placement.item.id || `${placement.weekday}_${placement.item.course_code}_${placement.start}_${placement.item.location}`" class="schedule-course-card" :style="{ gridColumn: placement.weekday + 1, gridRow: `${placement.start + 1} / span ${placement.duration}`, marginLeft: `${placement.lane * 100 / placement.laneCount}%`, width: `calc(${100 / placement.laneCount}% - 6px)`, borderColor: `hsl(${placement.colorIndex * 45} 65% 52%)` }" @click="openCourseDetail(placement.item)">
-            <div class="schedule-course-name">{{ placement.item.course_name || "未命名课程" }}</div>
-            <div v-if="placement.item.location" class="schedule-course-loc">{{ placement.item.location }}</div>
-          </div>
         </div>
+        <div v-if="weekFiltered.length === 0" class="edu-hint">本周没有课程。</div>
       </div>
     </section>
 
@@ -609,16 +565,13 @@ onUnmounted(stopPolling);
   </main>
 </template>
 <style scoped>
-.schedule-grid-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 0 8px; }
-.schedule-grid { display: grid; width: max-content; min-width: 836px; position: relative; }
-.schedule-grid-corner, .schedule-grid-header, .schedule-grid-section, .schedule-grid-cell { box-sizing: border-box; }
-.schedule-grid-header { display: flex; align-items: center; justify-content: center; color: var(--primary, #5b68f2); font-size: 12px; font-weight: 700; }
-.schedule-grid-section { padding-top: 8px; text-align: center; color: var(--muted, #667784); font-size: 11px; }
-.schedule-grid-cell { border: 1px solid var(--border, #e5e7eb); }
-.schedule-course-card { align-self: stretch; box-sizing: border-box; min-width: 0; margin-top: 3px; margin-bottom: 3px; background: var(--surface, #fff); border-radius: 10px; padding: 8px; cursor: pointer; border: 2px solid var(--border, #e5e7eb); overflow: hidden; transition: border-color .15s; z-index: 1; }
+.schedule-day-title { color: var(--primary, #5b68f2); font-size: 14px; font-weight: 700; margin: 16px 0 8px; }
+.schedule-card-list { display: flex; flex-direction: column; gap: 8px; }
+.schedule-course-card { background: var(--surface, #fff); border-radius: 12px; padding: 12px; cursor: pointer; border: 1px solid var(--border, #e5e7eb); transition: border-color .15s; }
 .schedule-course-card:hover { border-color: var(--primary, #5b68f2); }
 .schedule-course-name { font-size: 14px; font-weight: 700; color: var(--text, #1b2730); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .schedule-course-loc { font-size: 11px; color: var(--muted, #667784); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-course-sec { font-size: 10px; color: var(--primary, #5b68f2); margin-top: 2px; }
 .schedule-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
 .schedule-modal { background: var(--surface, #fff); border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; max-height: 80vh; overflow-y: auto; position: relative; }
 .schedule-modal-close { position: absolute; top: 12px; right: 16px; font-size: 24px; background: none; border: none; cursor: pointer; color: var(--muted, #667784); }

@@ -6,7 +6,8 @@
     "pages/tasks/tasks",
     "pages/counselor/counselor",
     "pages/profile/profile",
-    "pages/hub/hub"
+    "pages/hub/hub",
+    "pages/qr-confirm/qr-confirm"
   ],
   "subPackages": [
     {
@@ -22,6 +23,8 @@
       "pages": [
         "pages/community/community",
         "pages/community-detail/community-detail",
+        "pages/hot-topics/hot-topics",
+        "pages/community-publish/community-publish",
         "pages/lostfound/lostfound"
       ]
     },

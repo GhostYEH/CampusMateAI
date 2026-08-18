@@ -109,6 +109,25 @@ export class ApiClient {
     }
   }
 
+  // ===== QR 扫码登录 =====
+  async qrScan(sessionId: string, scanToken: string): Promise<QrScanResult> {
+    return this.request<QrScanResult>(http.RequestMethod.POST, 'auth/qr/scan', {
+      session_id: sessionId, scan_token: scanToken,
+    });
+  }
+
+  async qrConfirm(sessionId: string, scanToken: string, trustDevice: boolean): Promise<QrConfirmResult> {
+    return this.request<QrConfirmResult>(http.RequestMethod.POST, 'auth/qr/confirm', {
+      session_id: sessionId, scan_token: scanToken, trust_device: trustDevice,
+    });
+  }
+
+  async qrCancel(sessionId: string, scanToken: string): Promise<void> {
+    await this.requestVoid(http.RequestMethod.POST, 'auth/qr/cancel', {
+      session_id: sessionId, scan_token: scanToken,
+    });
+  }
+
   async request<T>(method: http.RequestMethod, path: string, body?: object): Promise<T> {
     const result: T | undefined = await this.executeRequest<T>(method, path, body, true);
     if (result === undefined) {
@@ -549,4 +568,19 @@ export interface EduGradeItemsResponse {
   semester?: string;
   items_count: number;
   items: EduGradeItemDto[];
+}
+
+// ===== QR 扫码登录 DTO =====
+export interface QrScanResult {
+  session_id: string;
+  browser_name?: string;
+  os_name?: string;
+  device_label?: string;
+  expires_at: string;
+  status: string;
+}
+export interface QrConfirmResult {
+  session_id: string;
+  status: string;
+  trust_device: boolean;
 }

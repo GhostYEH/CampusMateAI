@@ -1,6 +1,20 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { probeBackend, realLogin } from "../services/api";
+import { probeBackend, realLogin, applyTokenPair, trustedDeviceAutoLogin, revokeTrustedDevice } from "../services/api";
+
+function _normalizeUser(user) {
+  return {
+    ...user,
+    name: user.name || user.display_name || user.username,
+    detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", admin: "管理员" }[user.role]),
+  };
+}
+
+function _persistSession(user) {
+  const normalized = _normalizeUser(user);
+  localStorage.setItem("campus_session", JSON.stringify(normalized));
+  return normalized;
+}
 
 export const useAppStore = defineStore("app", () => {
   const accessToken = localStorage.getItem("campus_access_token");
@@ -27,21 +41,34 @@ export const useAppStore = defineStore("app", () => {
     backendOnline.value = await probeBackend();
     if (!backendOnline.value) throw new Error("无法连接后端服务，请确认 FastAPI 已启动");
     const user = await realLogin(username, password);
-    const normalized = {
-      ...user,
-      name: user.name || user.display_name || user.username,
-      detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", admin: "管理员" }[user.role]),
-    };
-    session.value = normalized;
-    localStorage.setItem("campus_session", JSON.stringify(normalized));
-    return normalized;
+    session.value = _persistSession(user);
+    return session.value;
+  }
+  /** 扫码 exchange 成功后应用 TokenPair 并建立 session。 */
+  function applyQrLoginResult(tokenPair) {
+    applyTokenPair(tokenPair);
+    session.value = _persistSession(tokenPair.user);
+    return session.value;
+  }
+  /** 尝试用 trusted device cookie 自动登录，成功返回 true。 */
+  async function tryTrustedDeviceAutoLogin() {
+    try {
+      const tokenPair = await trustedDeviceAutoLogin();
+      applyTokenPair(tokenPair);
+      session.value = _persistSession(tokenPair.user);
+      return true;
+    } catch {
+      return false;
+    }
   }
   function logout() {
+    // 撤销可信设备凭据（避免退出后又被自动登录）
+    void revokeTrustedDevice();
     localStorage.removeItem("campus_session");
     localStorage.removeItem("campus_access_token");
     localStorage.removeItem("campus_refresh_token");
     session.value = null;
   }
   function setReduceMotion(v) { reduceMotion.value = v; localStorage.setItem("campus_reduce_motion", String(v)); }
-  return { session, backendOnline, reduceMotion, tasks, notices, dashboardSummary, pendingCount, unreadCount, setDashboardSummary, login, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
+  return { session, backendOnline, reduceMotion, tasks, notices, dashboardSummary, pendingCount, unreadCount, setDashboardSummary, login, applyQrLoginResult, tryTrustedDeviceAutoLogin, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
 });

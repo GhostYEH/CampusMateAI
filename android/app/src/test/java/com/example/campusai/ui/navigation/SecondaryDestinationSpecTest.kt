@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 
 class SecondaryDestinationSpecTest {
     @Test
@@ -19,6 +20,14 @@ class SecondaryDestinationSpecTest {
     @Test
     fun rootRouteOmitsSecondaryChrome() {
         assertNull(secondaryDestinationSpec("home"))
+    }
+
+    @Test
+    fun secondaryDestinationKeepsNavHostAtTopAndPadsOnlyItsOwnContent() {
+        val layout = navigationDestinationLayout("settings", statusBarHeight = 24.dp)
+
+        assertEquals(0.dp, layout.navHostTopPadding)
+        assertEquals(84.dp, layout.contentTopPadding)
     }
 
     @Test
@@ -47,6 +56,8 @@ class SecondaryDestinationSpecTest {
             "favorites",
             "university",
             "community",
+            "community_hot",
+            "community_publish",
             "academic",
             "campus-news-detail/{newsId}",
             "task_detail/{taskId}",
@@ -61,5 +72,10 @@ class SecondaryDestinationSpecTest {
         ).forEach { route ->
             assertFalse("Route $route needs a fixed navigation title", secondaryDestinationSpec(route)?.title.isNullOrBlank())
         }
+    }
+
+    @Test
+    fun communityHotRouteHasRankingTitle() {
+        assertEquals("热门话题", secondaryDestinationSpec("community_hot")?.title)
     }
 }

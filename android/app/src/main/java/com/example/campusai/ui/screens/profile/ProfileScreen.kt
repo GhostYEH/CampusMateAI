@@ -59,6 +59,7 @@ fun ProfileScreen(
                     onActivities = { onNavigate("activities") },
                     onFavorites = { onNavigate("favorites") },
                     onSettings = { onNavigate("settings") },
+                    onScan = { onNavigate("qr_scanner") },
                 )
             }
             item {
@@ -74,7 +75,7 @@ fun ProfileScreen(
                 ProfileMenu(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
-                        ProfileRow(Icons.Default.School, "我的大学", "选择学校并隔离校园数据") { onNavigate("university") },
+                        ProfileRow(Icons.Default.School, "我的大学", "校园信息 · 校园卡 · 一站式服务") { onNavigate("university") },
                         ProfileRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
                         ProfileRow(Icons.Default.AccountBalance, "教务系统", "连接教务系统，同步课表与成绩") { onNavigate("edu_system") },
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
@@ -120,6 +121,7 @@ private fun ProfileHero(
     onActivities: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
+    onScan: () -> Unit,
 ) {
     Box(
         Modifier.fillMaxWidth().height(382.dp)
@@ -151,7 +153,7 @@ private fun ProfileHero(
                     Spacer(Modifier.weight(1f))
                     Box(
                         Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = .12f))
-                            .campusClickable(onClick = onSettings),
+                            .campusClickable(onClick = onScan),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Default.CropFree, "扫一扫", tint = Color.White, modifier = Modifier.size(22.dp))

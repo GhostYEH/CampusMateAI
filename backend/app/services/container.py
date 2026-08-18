@@ -38,6 +38,10 @@ from ..repositories.notice_automation_repository import NoticeAutomationReposito
 from ..repositories.course_content_repository import CourseContentRepository
 from ..repositories.edu_data_repository import EduDataRepository
 from ..repositories.edu_repository import EduRepository
+from ..repositories.qr_auth_repository import (
+    QrLoginSessionRepository,
+    TrustedDeviceRepository,
+)
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
@@ -84,6 +88,9 @@ class ServiceContainer:
     notice_automation_repository: NoticeAutomationRepository
     course_content_repository: CourseContentRepository
     task_breakdown_service: TaskBreakdownService
+    # QR 扫码登录与可信设备
+    qr_login_session_repository: QrLoginSessionRepository
+    trusted_device_repository: TrustedDeviceRepository
     # EduConnector
     edu_repository: EduRepository
     edu_connector: EduConnectorService
@@ -164,6 +171,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         notice_automation_repository=NoticeAutomationRepository(db),
         course_content_repository=CourseContentRepository(db),
         task_breakdown_service=task_breakdown,
+        qr_login_session_repository=QrLoginSessionRepository(db),
+        trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
         edu_connector=edu_connector,
     )

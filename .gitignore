@@ -201,4 +201,7 @@ android/lostfound.xml
 android/window.xml
 web/counselor-*.png
 
+# Backend test temp artifacts (pytest tmpdir, jieba cache, legacy db snapshots)
+backend/.pytest_tmp/
+
 

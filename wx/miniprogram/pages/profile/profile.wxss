@@ -3,3 +3,7 @@
 .service-list .service-icon{width:50rpx;flex:none;color:var(--primary);font-size:31rpx;text-align:center}.service-list .service-arrow{color:var(--muted);font-size:37rpx;font-weight:400}.settings-heading{display:block;color:var(--text);font-size:30rpx;font-weight:700}
 .sync-state{align-items:center;gap:8rpx}.sync-state view{width:10rpx;height:10rpx;border-radius:50%;background:#69d4ac}.identity-arrow{width:34rpx;height:34rpx;filter:brightness(0) invert(1);opacity:.8}.shortcut-card button view{display:flex;align-items:center;justify-content:center;font-size:0}.shortcut-card button view image{width:40rpx;height:40rpx}.service-list .service-icon{width:34rpx;height:34rpx;margin:0 8rpx;flex:none}.service-list .service-arrow{width:26rpx;height:26rpx;opacity:.55}
 .shortcut-card{display:flex!important}.shortcut-card button{width:25%!important;flex:0 0 25%}
+
+.hero-top-row{display:flex;align-items:center;justify-content:space-between;width:100%}
+.hero-scan-btn{width:72rpx;height:72rpx;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center}
+.hero-scan-btn image{width:40rpx;height:40rpx}

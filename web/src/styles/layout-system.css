@@ -1,0 +1,94 @@
+/* Shared authenticated workspace shell. Route pages may theme the surface,
+   but they must not resize the navigation rail or top header. */
+.student-layout {
+  --sidebar-width: 282px;
+  --sidebar-collapsed-width: 82px;
+  --header-height: 85px;
+}
+
+@media (min-width: 901px) {
+  .student-layout:not(.collapsed) {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr) !important;
+  }
+
+  .student-layout.collapsed {
+    grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr) !important;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar {
+    width: auto;
+    min-width: 0;
+    padding: 20px 14px 18px !important;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar .profile-mini {
+    height: 110px;
+    min-height: 110px;
+    grid-template-columns: 54px minmax(0, 1fr) 16px;
+    gap: 11px;
+    margin: 0 0 14px;
+    padding: 18px 16px;
+    border: 1px solid #e7ebf5;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(47, 69, 126, .035);
+  }
+
+  .student-layout:not(.collapsed) > .sidebar .profile-mini .avatar {
+    width: 54px;
+    height: 54px;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar nav {
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar nav button,
+  .student-layout:not(.collapsed) > .sidebar .sidebar-bottom button {
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 11px;
+    font-size: 15px;
+    gap: 14px;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar nav button.active {
+    background: linear-gradient(135deg, #714ff4, #405cf2);
+    color: #fff;
+    box-shadow: 0 10px 18px rgba(75, 88, 239, .22);
+  }
+
+  .student-layout:not(.collapsed) > .sidebar nav button.active::before {
+    display: none;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar nav button.active svg {
+    color: #fff;
+  }
+
+  .student-layout:not(.collapsed) > .sidebar .sidebar-bottom {
+    gap: 1px;
+    padding: 16px 6px 0;
+    border-top-color: #edf0f6;
+  }
+
+  .student-layout:not(.collapsed) > .workspace > .topbar {
+    height: var(--header-height) !important;
+    padding: 0 34px 0 28px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .student-layout > .sidebar {
+    width: 250px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .student-layout,
+  .student-layout .sidebar,
+  .student-layout .topbar {
+    transition: none !important;
+  }
+}

@@ -28,6 +28,7 @@ Page({
     category: '',
     sort: 'time',
     categories: [] as CategoryMeta[],
+    hotPosts: [] as PostView[],
     showComposer: false,
     sending: false,
     composerError: '',
@@ -50,6 +51,13 @@ Page({
   onShow() {
     this.loadCategories()
     this.load(true)
+    this.loadHotTopics()
+  },
+  async loadHotTopics() {
+    try {
+      const { items } = await repository.getCommunityPostsAsync({ sort: 'hot', page: 1, page_size: 3 })
+      this.setData({ hotPosts: items.map((item) => this.toView(item)) })
+    } catch {}
   },
   async loadCategories() {
     try {
@@ -121,7 +129,13 @@ Page({
   onSearch() { this.load(true) },
   loadMore() { this.setData({ page: this.data.page + 1 }); this.load() },
   toggleComposer() {
-    this.setData({ showComposer: !this.data.showComposer, composerError: '' })
+    this.openPublish()
+  },
+  openPublish() {
+    wx.navigateTo({ url: '/package-community/pages/community-publish/community-publish' })
+  },
+  openHotTopics() {
+    wx.navigateTo({ url: '/package-community/pages/hot-topics/hot-topics' })
   },
   onTitle(e: WechatMiniprogram.Input) { this.setData({ title: e.detail.value }) },
   onContent(e: WechatMiniprogram.Input) { this.setData({ content: e.detail.value }) },

@@ -837,6 +837,19 @@
   object-fit: cover;
 }
 
+.tasks-redesign .tasks-hero-art {
+  min-height: 220px;
+  justify-items: end;
+  align-items: center;
+}
+.tasks-redesign .tasks-hero-art .hero-illust-img {
+  width: min(100%, 390px);
+  max-height: 240px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 18px 28px rgba(86, 101, 244, .12));
+}
+
 /* Toolbar */
 .courses-redesign .courses-toolbar,
 .tasks-redesign .tasks-toolbar {

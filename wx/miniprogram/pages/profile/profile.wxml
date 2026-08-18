@@ -1,6 +1,10 @@
 <view class="page tab-page profile-page {{settings.darkMode ? 'dark' : ''}} {{settings.reduceMotion ? 'reduce-motion' : ''}}">
   <view class="profile-hero">
-    <view class="hero-safe"></view><view class="hero-title">我的</view>
+    <view class="hero-safe"></view>
+    <view class="hero-top-row">
+      <view class="hero-title">我的</view>
+      <view class="hero-scan-btn" bindtap="openScanner"><image src="/assets/icons/qr-scan.svg" mode="aspectFit"></image></view>
+    </view>
     <view class="identity"><image class="avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image><view class="identity-copy"><view class="name">{{user.name}}</view><view class="detail">{{user.detail}} · {{user.studentId}}</view><view class="sync-state"><view></view>资料已同步</view></view><image class="identity-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></view>
   </view>
   <view class="page-body profile-body">

@@ -75,20 +75,27 @@ fun CommunityScreen(
     repository: CommunityRepository,
     onOpenDetail: (String) -> Unit,
     onOpenPublish: () -> Unit,
+    onOpenHotTopics: () -> Unit,
+    initialSort: String = "time",
+    initialQuery: String = "",
 ) {
     val posts by repository.posts.collectAsState()
     val loading by repository.loading.collectAsState()
     val error by repository.error.collectAsState()
     val categories by repository.categories.collectAsState()
     val total by repository.total.collectAsState()
-    var query by remember { mutableStateOf("") }
+    var query by remember(initialQuery) { mutableStateOf(initialQuery) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
-    var sort by remember { mutableStateOf("time") }
+    var sort by remember(initialSort) { mutableStateOf(initialSort) }
+    var hotPosts by remember { mutableStateOf<List<CommunityPostDto>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialSort, initialQuery) {
         repository.loadCategories()
-        repository.refresh()
+        repository.refresh(query, selectedCategory, sort)
+        repository.refresh(sort = "hot")
+        hotPosts = repository.posts.value.take(3)
+        repository.refresh(query, selectedCategory, sort)
     }
 
     Column(Modifier.fillMaxSize().background(Background)) {
@@ -103,6 +110,21 @@ fun CommunityScreen(
             }
             Button(onClick = onOpenPublish, shape = RoundedCornerShape(12.dp)) {
                 Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("发帖")
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpenHotTopics),
+            colors = CardDefaults.cardColors(containerColor = Surface), shape = RoundedCornerShape(20.dp),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("🔥 今日热门话题", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("更多 ›", color = Primary, fontSize = 13.sp)
+                }
+                hotPosts.forEachIndexed { index, post ->
+                    Text("TOP${index + 1}  ${post.title}", color = TextPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
 
@@ -356,6 +378,30 @@ fun CommunityDetailScreen(
                             onClick = { scope.launch { repository.addComment(postId, com.example.campusai.data.remote.CommentCreateRequest(commentText.trim(), replyTo?.id)).onSuccess { comments = repository.listComments(postId); commentText = ""; replyTo = null } } },
                             enabled = commentText.isNotBlank(),
                         ) { Text("发送") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CommunityHotTopicsScreen(repository: CommunityRepository, onOpenDetail: (String) -> Unit) {
+    val posts by repository.posts.collectAsState()
+    val loading by repository.loading.collectAsState()
+    LaunchedEffect(Unit) { repository.refresh(sort = "hot") }
+    if (loading && posts.isEmpty()) {
+        Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+    } else {
+        LazyColumn(Modifier.fillMaxSize().background(Background).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Text("🔥 今日热门话题", color = TextPrimary, fontSize = 25.sp, fontWeight = FontWeight.Bold); Text("按点赞和讨论热度排行", color = Muted, fontSize = 13.sp) }
+            items(posts.take(50), key = { it.id }) { post ->
+                val rank = posts.indexOf(post) + 1
+                Card(Modifier.fillMaxWidth().clickable { onOpenDetail(post.id) }, colors = CardDefaults.cardColors(containerColor = Surface), shape = RoundedCornerShape(18.dp)) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(rank.toString(), color = if (rank <= 3) Danger else Muted, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.width(34.dp))
+                        Column(Modifier.weight(1f)) { Text(post.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(post.content, color = Muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                        Text("🔥 ${post.like_count + post.comment_count * 2}", color = Danger, fontSize = 12.sp)
                     }
                 }
             }

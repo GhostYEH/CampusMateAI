@@ -56,7 +56,7 @@ export struct ProfilePage {
               Blank()
               Stack({ alignContent: Alignment.Center }) {
                 SymbolGlyph($r('sys.symbol.qrcode')).fontSize(22).fontColor(['#FFFFFFFF'])
-              }.width(40).height(40).backgroundColor('#1FFFFFFF').borderRadius(20).onClick(() => this.onNavigate('settings'))
+              }.width(40).height(40).backgroundColor('#1FFFFFFF').borderRadius(20).onClick(() => this.onNavigate('qr_scanner'))
             }.width('100%')
             Row() {
               Image($r('app.media.profile_avatar_reference')).width(82).height(82).objectFit(ImageFit.Cover).borderRadius(41)
