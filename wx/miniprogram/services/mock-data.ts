@@ -15,7 +15,7 @@ export const demoUsers: Record<string, User> = {
 export const defaultTasks: CampusTask[] = [
   { id: 1, title: '《数据结构》作业三：链表与栈', due: '今天 23:59', course: '课程作业', done: false },
   { id: 2, title: '《高等数学》习题课报告提交', due: '明天 20:00', course: '课程作业', done: false },
-  { id: 3, title: '“互联网+”大赛校内选拔报名', due: '8月5日 18:00', course: '活动报名', done: false },
+  { id: 3, title: '整理创新创业项目资料', due: '8月5日 18:00', course: '个人待办', done: false },
   { id: 4, title: '图书馆座位预约', due: '今天 14:00', course: '学习安排', done: true },
 ]
 

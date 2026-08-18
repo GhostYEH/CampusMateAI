@@ -10,7 +10,6 @@ interface HubItem {
 
 const CONFIG: Record<string, { title: string; subtitle: string; icon: string }> = {
   files: { title: '我的文件', subtitle: '校园材料与常用文档', icon: '/assets/icons/quick-notice.svg' },
-  activities: { title: '校园活动', subtitle: '发现并参与校园生活', icon: '/assets/icons/quick-calendar.svg' },
   favorites: { title: '我的收藏', subtitle: '集中查看收藏的校园内容', icon: '/assets/icons/quick-counselor.svg' },
   help: { title: '帮助与反馈', subtitle: '提交问题并跟踪处理进度', icon: '/assets/icons/quick-task.svg' },
   university: { title: '我的大学', subtitle: '查看已连接的学校信息', icon: '/assets/icons/quick-counselor.svg' },
@@ -45,8 +44,6 @@ Page({
       let items: HubItem[] = []
       if (this.data.kind === 'files') {
         items = (await repository.getPersonalFilesAsync()).map((item) => ({ id: item.id, title: item.name, subtitle: item.category, meta: item.size_label || item.updated_at, icon: CONFIG.files.icon }))
-      } else if (this.data.kind === 'activities') {
-        items = (await repository.getActivitiesAsync()).map((item) => ({ id: item.id, title: item.title, subtitle: item.summary || item.location || '校园活动', meta: item.start_time || item.registration_deadline || '', icon: CONFIG.activities.icon }))
       } else if (this.data.kind === 'favorites') {
         items = (await repository.getFavoritesAsync()).map((item) => ({ id: item.id, title: item.title, subtitle: item.subtitle || item.type, meta: item.saved_at, icon: CONFIG.favorites.icon }))
       } else if (this.data.kind === 'university') {

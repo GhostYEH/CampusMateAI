@@ -10,7 +10,6 @@ for (const endpoint of [
   '/student/classrooms',
   '/community/posts',
   '/student/lost-found',
-  '/activities',
   '/personal-hub/files',
   '/personal-hub/favorites',
   '/universities',

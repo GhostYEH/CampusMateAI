@@ -3,7 +3,6 @@ import { defaultCourses, defaultNotices, defaultTasks, demoUsers } from './mock-
 import {
   AppSettings,
   BackendHealth,
-  CampusActivity,
   CampusTask,
   CategoryMeta,
   ChatReply,
@@ -503,11 +502,6 @@ class CampusRepository {
 
   async deleteLostFound(id: string): Promise<void> {
     await this.request(`/student/lost-found/${id}`, 'DELETE')
-  }
-
-  async getActivitiesAsync(): Promise<CampusActivity[]> {
-    const response = await this.request<ApiPage<CampusActivity>>('/activities', 'GET')
-    return response.items
   }
 
   async getPersonalFilesAsync(): Promise<PersonalFile[]> {

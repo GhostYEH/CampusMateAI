@@ -171,16 +171,6 @@ export interface LostFoundItem {
   created_at: string
 }
 
-export interface CampusActivity {
-  id: string
-  title: string
-  summary?: string
-  location?: string
-  start_time?: string
-  registration_deadline?: string
-  capacity?: number
-}
-
 export interface PersonalFile {
   id: string
   name: string

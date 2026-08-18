@@ -3,7 +3,7 @@ import { CommunityPost, CommunityComment } from '../../../services/types'
 
 const CATEGORY_LABELS: Record<string, string> = {
   question: '提问', recruit: '招募', errand: '带价帮忙', lostfound: '失物招领',
-  campus: '校园动态', study: '学习交流', life: '生活随笔', secondhand: '二手交易',
+  campus: '校园讨论', study: '学习交流', life: '生活随笔', secondhand: '二手交易',
   activity: '活动', experience: '经验分享', other: '其它',
 }
 

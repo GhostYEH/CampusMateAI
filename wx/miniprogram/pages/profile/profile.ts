@@ -53,7 +53,7 @@ Page({
   },
   openService(event: WechatMiniprogram.TouchEvent) {
     const kind = event.currentTarget.dataset.kind as string
-    if (kind === 'files' || kind === 'activities' || kind === 'favorites' || kind === 'help') {
+    if (kind === 'files' || kind === 'favorites' || kind === 'help') {
       wx.navigateTo({ url: `/pages/hub/hub?kind=${kind}` })
       return
     }
