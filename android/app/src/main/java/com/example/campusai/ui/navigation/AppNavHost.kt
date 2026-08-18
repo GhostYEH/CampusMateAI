@@ -263,6 +263,37 @@ fun AppNavHost(
             )
         }
         composable("academic") { AcademicScreen() }
+        composable("edu_system") {
+            com.example.campusai.ui.screens.profile.EduSystemScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToLogin = { loginUrl, connectionId ->
+                    val encodedUrl = URLEncoder.encode(loginUrl, "UTF-8")
+                    navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl")
+                },
+                onOpenSchedule = { go("edu_schedule") },
+            )
+        }
+        composable("edu_schedule") {
+            com.example.campusai.ui.screens.profile.EduScheduleScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = "edu_login/{connectionId}?loginUrl={loginUrl}",
+            arguments = listOf(
+                navArgument("connectionId") { type = NavType.StringType },
+                navArgument("loginUrl") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val connectionId = backStackEntry.arguments?.getString("connectionId") ?: ""
+            val loginUrl = backStackEntry.arguments?.getString("loginUrl") ?: ""
+            com.example.campusai.ui.screens.profile.EduLoginScreen(
+                loginUrl = java.net.URLDecoder.decode(loginUrl, "UTF-8"),
+                connectionId = connectionId,
+                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable("settings") {
             SettingsScreen(
                 repository = repository,

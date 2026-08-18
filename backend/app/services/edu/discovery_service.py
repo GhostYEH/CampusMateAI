@@ -139,10 +139,13 @@ async def submit_url(
 
     try:
         import httpx
+        from ...core.config import get_settings
+        _settings = get_settings()
+        allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
         async with httpx.AsyncClient(
             timeout=15,
             follow_redirects=True,
-            verify=False,
+            verify=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
         ) as client:
             try:
@@ -150,7 +153,20 @@ async def submit_url(
                 if resp.status_code >= 400:
                     resp = await client.get(candidate_url)
             except Exception:
-                resp = await client.get(candidate_url)
+                if not allow_insecure:
+                    raise
+                async with httpx.AsyncClient(
+                    timeout=15,
+                    follow_redirects=True,
+                    verify=False,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
+                ) as client2:
+                    try:
+                        resp = await client2.head(candidate_url)
+                        if resp.status_code >= 400:
+                            resp = await client2.get(candidate_url)
+                    except Exception:
+                        resp = await client2.get(candidate_url)
 
             result["reachable"] = True
             result["http_status"] = resp.status_code

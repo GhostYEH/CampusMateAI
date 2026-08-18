@@ -17,14 +17,29 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ...core.config import Settings
+from ...core.exceptions import AppException
 from ...models.edu import (
     BINDING_ACTIVE,
     BINDING_ERROR,
     BINDING_UNBOUND,
+    CONN_AUTHENTICATED,
+    CONN_AUTH_FAILED,
+    CONN_AUTH_REQUIRED,
+    CONN_CONNECTED,
+    CONN_CONNECTING,
+    CONN_ERROR,
+    CONN_IDLE,
+    CONN_SESSION_EXPIRED,
+    CONN_UNSUPPORTED,
+    CONN_WAITING_USER_LOGIN,
+    EDU_PROVIDER_MOCK,
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_UNSUPPORTED,
     EDU_SYSTEM_UNKNOWN,
     KNOWN_PROVIDERS,
+    LOGIN_EXEC_BACKEND_HTTP,
+    LOGIN_EXEC_CLIENT_WEBVIEW,
+    SESSION_CLIENT_COOKIE,
     SYNC_FAILED,
     SYNC_SUCCESS,
 )
@@ -118,6 +133,125 @@ class EduConnectorService:
     def get_connection(self, connection_id: str):
         return self._edu_repo.get_connection(connection_id)
 
+    async def probe_portal(self, portal_url: str) -> dict:
+        """探测教务系统 URL（不需要 university_id）。
+
+        返回 provider/可达性/建议登录模式，不持久化任何数据。
+        """
+        from .provider_detector import ProviderDetector
+        import re
+        detector = ProviderDetector()
+        result = {
+            "portal_url": portal_url,
+            "provider": "unknown",
+            "provider_confidence": 0.0,
+            "reachable": False,
+            "http_status": None,
+            "final_url": None,
+            "title": None,
+            "is_edu_page": False,
+            "suggested_login_mode": LOGIN_EXEC_BACKEND_HTTP,
+            "evidence": [],
+            "error": None,
+        }
+        try:
+            import httpx
+            from ...core.config import get_settings
+            _settings = get_settings()
+            allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
+            async with httpx.AsyncClient(
+                timeout=15,
+                follow_redirects=True,
+                verify=True,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
+            ) as client:
+                try:
+                    resp = await client.head(portal_url)
+                    if resp.status_code >= 400:
+                        resp = await client.get(portal_url)
+                except Exception:
+                    if not allow_insecure:
+                        raise
+                    # 仅在显式允许时降级到不验证 SSL
+                    async with httpx.AsyncClient(
+                        timeout=15,
+                        follow_redirects=True,
+                        verify=False,
+                        headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
+                    ) as client2:
+                        try:
+                            resp = await client2.head(portal_url)
+                            if resp.status_code >= 400:
+                                resp = await client2.get(portal_url)
+                        except Exception:
+                            resp = await client2.get(portal_url)
+            result["reachable"] = True
+            result["http_status"] = resp.status_code
+            result["final_url"] = str(resp.url)
+            content = resp.text[:50000] if resp.text else ""
+            headers = dict(resp.headers)
+            fp = detector.detect(url=portal_url, html=content, headers=headers, final_url=str(resp.url))
+            result["provider"] = fp.provider
+            result["provider_confidence"] = fp.confidence
+            result["evidence"] = [
+                {"dimension": e.dimension, "provider": e.provider, "pattern": e.pattern, "matched": e.matched[:200], "weight": e.weight}
+                for e in fp.evidence
+            ]
+            result["is_edu_page"] = fp.is_edu_page
+            title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
+            if title_match:
+                result["title"] = title_match.group(1).strip()[:200]
+            # 正方新版通常需要 client_webview（有验证码/滑块）
+            if fp.provider in KNOWN_PROVIDERS and fp.is_edu_page:
+                result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
+        except Exception as e:
+            result["error"] = str(e)[:200]
+        return result
+
+    async def create_connection_from_url(
+        self,
+        *,
+        user_id: str,
+        portal_url: str,
+        university_id: str,
+    ) -> tuple:
+        """从教务系统 URL 创建连接（便捷流程）。
+
+        1. probe portal_url 拿 provider
+        2. ensure_default_system 拿 edu_system
+        3. 更新 edu_system 的 base_url/login_url/provider/login_execution_mode
+        4. create_connection
+        返回 (connection, system, probe_result)
+        """
+        probe = await self.probe_portal(portal_url)
+        provider = probe["provider"] if probe["provider"] != "unknown" else EDU_PROVIDER_UNKNOWN
+        login_mode = probe["suggested_login_mode"]
+
+        edu_system = self._registry.ensure_default_system(university_id)
+        # 更新 edu_system 的 URL 与 provider 信息
+        edu_system = self._registry.upsert_system(
+            university_id,
+            system_key=edu_system.system_key,
+            provider=provider,
+            base_url=portal_url,
+            login_url=portal_url,
+            login_execution_mode=login_mode,
+        )
+
+        # 防重复：如果已有活跃连接，复用而非新建
+        existing = self._edu_repo.get_active_connection_by_user(user_id, edu_system.id)
+        if existing is not None:
+            return existing, edu_system, probe
+
+        conn = self.create_connection(
+            user_id=user_id,
+            edu_system_id=edu_system.id,
+            university_id=university_id,
+            provider=provider,
+            login_execution_mode=login_mode,
+        )
+        return conn, edu_system, probe
+
     async def continue_connection(
         self,
         *,
@@ -128,31 +262,52 @@ class EduConnectorService:
         sms_code: Optional[str] = None,
         mfa_code: Optional[str] = None,
         action: Optional[str] = None,
+        cookies: Optional[dict] = None,
+        current_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> str:
-        """推进连接状态机。"""
-        from ...models.edu import (
-            CONN_AUTH_REQUIRED,
-            CONN_AUTHENTICATED,
-            CONN_CONNECTING,
-            CONN_ERROR,
-            CONN_IDLE,
-            CONN_UNSUPPORTED,
-        )
+        """推进连接状态机。
+
+        支持两条路径：
+        A. server_credentials: CONN_IDLE → CONN_AUTH_REQUIRED → (username+password) → login → CONN_CONNECTED
+        B. client_webview: CONN_IDLE → CONN_WAITING_USER_LOGIN → (cookies) → login_with_cookies → CONN_CONNECTED
+
+        登录成功后创建 binding + session，使后续 sync 可用。
+        """
         conn = self._edu_repo.get_connection(connection_id)
         if conn is None:
             raise AppException(code="EDU_CONNECTION_NOT_FOUND", http_status=404, message="连接不存在")
+
+        # POLL: 客户端轮询，不推进
+        if action == "POLL":
+            return conn.state
+
+        # CANCEL: 取消连接
+        if action == "CANCEL":
+            self._edu_repo.update_connection_state(connection_id, state=CONN_ERROR, error_code="CANCELLED", error_message="用户取消")
+            return CONN_ERROR
+
+        # CONN_IDLE: 根据 login_execution_mode 分流
         if conn.state == CONN_IDLE:
+            if conn.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
+                self._edu_repo.update_connection_state(connection_id, state=CONN_WAITING_USER_LOGIN)
+                return CONN_WAITING_USER_LOGIN
+            # backend_http 或默认
             self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
             return CONN_AUTH_REQUIRED
+
+        # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
         if conn.state == CONN_AUTH_REQUIRED and username and password:
             self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
+            system = self._registry.get_system_by_id(conn.edu_system_id)
+            config = self._build_config_dict(system)
             try:
-                internal = await adapter.login(username=username, password=password, config={})
+                internal = await adapter.login(username=username, password=password, config=config)
             except AdapterNotImplemented:
                 if self._is_mock_allowed():
                     adapter = _ADAPTERS["mock"]
-                    internal = await adapter.login(username=username, password=password, config={})
+                    internal = await adapter.login(username=username, password=password, config=config)
                 else:
                     self._edu_repo.update_connection_state(
                         connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
@@ -162,18 +317,128 @@ class EduConnectorService:
             except PermissionError:
                 self._edu_repo.update_connection_state(
                     connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
-                    error_message="登录失败",
+                    error_message="登录失败：用户名或密码错误",
                 )
-                from ...models.edu import CONN_AUTH_FAILED
                 return CONN_AUTH_FAILED
-            external_student_id = internal.get("external_student_id") if isinstance(internal, dict) else None
+            await self._finalize_authenticated(connection_id, conn, adapter, internal, username=username)
+            return CONN_CONNECTED
+
+        # CONN_WAITING_USER_LOGIN + cookies (action=CLIENT_WEBVIEW_COMPLETE): 客户端 WebView 登录完成
+        if conn.state == CONN_WAITING_USER_LOGIN and cookies and action == "CLIENT_WEBVIEW_COMPLETE":
+            self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
+            adapter, _ = self._select_adapter(conn.provider)
+            system = self._registry.get_system_by_id(conn.edu_system_id)
+            config = self._build_config_dict(system)
+            if current_url:
+                config = {**config, "current_url": current_url}
+            try:
+                internal = await adapter.login_with_cookies(
+                    cookies=cookies, current_url=current_url, user_agent=user_agent, config=config,
+                )
+            except AdapterNotImplemented:
+                if self._is_mock_allowed():
+                    adapter = _ADAPTERS["mock"]
+                    internal = await adapter.login_with_cookies(
+                        cookies=cookies, current_url=current_url, user_agent=user_agent, config=config,
+                    )
+                else:
+                    self._edu_repo.update_connection_state(
+                        connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
+                        error_message=f"Provider[{conn.provider}] login_with_cookies not implemented",
+                    )
+                    return CONN_UNSUPPORTED
+            except PermissionError as e:
+                self._edu_repo.update_connection_state(
+                    connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
+                    error_message=str(e) or "回传的 cookies 无效",
+                )
+                return CONN_AUTH_FAILED
+            await self._finalize_authenticated(connection_id, conn, adapter, internal, session_type=SESSION_CLIENT_COOKIE)
+            return CONN_CONNECTED
+
+        # CONN_WAITING_USER_LOGIN + action=CLIENT_WEBVIEW_COMPLETE 但无 cookies: 提示未检测到
+        if conn.state == CONN_WAITING_USER_LOGIN and action == "CLIENT_WEBVIEW_COMPLETE" and not cookies:
+            self._edu_repo.update_connection_state(
+                connection_id, state=CONN_WAITING_USER_LOGIN,
+                error_code="NO_COOKIE", error_message="未检测到有效登录状态，请确认已进入教务系统首页",
+            )
+            return CONN_WAITING_USER_LOGIN
+
+        return conn.state
+
+    async def _finalize_authenticated(
+        self,
+        connection_id: str,
+        conn,
+        adapter: EduAdapter,
+        internal: dict,
+        *,
+        username: Optional[str] = None,
+        session_type: str = "backend_cookie",
+    ) -> None:
+        """登录成功后：更新 connection 状态 + 创建 binding + 创建 session。
+
+        如果 binding/session 创建失败，回滚 connection 到 auth_failed。
+        """
+        external_student_id = internal.get("external_student_id") if isinstance(internal, dict) else None
+        # 更新 connection 为 authenticated
+        self._edu_repo.update_connection_state(
+            connection_id,
+            state=CONN_AUTHENTICATED,
+            external_student_id=external_student_id,
+        )
+        try:
+            # 创建 binding
+            credential_ref = EduSessionStore.make_credential_ref(conn.user_id, conn.university_id)
+            self._edu_repo.upsert_binding(
+                user_id=conn.user_id,
+                university_id=conn.university_id,
+                edu_system_id=conn.edu_system_id,
+                provider=adapter.provider,
+                system_type="undergrad",
+                external_student_id=external_student_id,
+                connection_status=BINDING_ACTIVE,
+                session_type=session_type,
+                credential_ref=credential_ref,
+                last_authenticated_at=datetime.now(timezone.utc).isoformat(),
+            )
+            # 创建 session
+            self._sessions.destroy_user_sessions(conn.user_id)
+            self._sessions.create_session(
+                user_id=conn.user_id,
+                university_id=conn.university_id,
+                provider=adapter.provider,
+                system_type="undergrad",
+                session_type=session_type,
+                external_student_id=external_student_id,
+                internal=internal if isinstance(internal, dict) else {},
+            )
+        except Exception as e:
+            # binding/session 创建失败，回滚 connection 状态
             self._edu_repo.update_connection_state(
                 connection_id,
-                state=CONN_AUTHENTICATED,
-                external_student_id=external_student_id,
+                state=CONN_AUTH_FAILED,
+                error_code="FINALIZE_FAILED",
+                error_message=f"登录成功但会话初始化失败: {str(e)[:100]}",
             )
-            return CONN_AUTHENTICATED
-        return conn.state
+            return
+        # 更新 connection 为 connected
+        self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTED)
+
+    def _build_config_dict(self, system) -> dict:
+        """从 EduSystemRow 构造 adapter config dict。"""
+        if system is None:
+            return {}
+        return {
+            "base_url": system.base_url,
+            "login_url": system.login_url,
+            "sso_url": system.sso_url,
+            "vpn_url": system.vpn_url,
+            "auth_type": system.auth_type,
+            "login_execution_mode": system.login_execution_mode,
+            "captcha_type": system.captcha_type,
+            "provider": system.provider,
+        }
 
     # ===== 配置 =====
 

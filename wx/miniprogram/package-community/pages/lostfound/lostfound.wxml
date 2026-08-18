@@ -1,0 +1,76 @@
+<view class="campus-page lost-page">
+  <view class="lost-hero campus-enter">
+    <image class="lost-hero__image" src="/package-community/assets/lostfound-hero.jpg" mode="aspectFill"></image>
+    <view class="lost-hero__nav" style="padding-top: {{statusBarHeight}}px; min-height: {{navContentHeight}}px; padding-right: {{menuSafeRight}}px;">
+      <button class="lost-back" bindtap="goBack" aria-label="返回"><image src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <view class="lost-nav-title">失物招领</view>
+    </view>
+    <view class="lost-hero__actions" style="top: {{actionTop}}px;">
+      <button class="mine-button {{mineOnly ? 'mine-button--active' : ''}}" bindtap="toggleMine">
+        <image class="mine-button__icon" src="/package-community/assets/icons/lost-mine.svg"></image><text>{{mineOnly ? '全部信息' : '我的发布'}}</text>
+      </button>
+      <button class="publish-fab" bindtap="openPublish" aria-label="发布信息"><image src="/package-community/assets/icons/lost-plus.svg"></image></button>
+    </view>
+    <view class="lost-hero__copy">
+      <view class="lost-hero__title">失物招领</view>
+      <text class="lost-hero__subtitle">本地显示数据，接入后端后可全校同步</text>
+    </view>
+  </view>
+
+  <view class="lost-content">
+    <view class="filter-card campus-enter">
+      <view class="kind-tabs">
+        <button class="{{activeKind === 'lost' ? 'active' : ''}}" data-kind="lost" bindtap="chooseKind">失物</button>
+        <button class="{{activeKind === 'found' ? 'active' : ''}}" data-kind="found" bindtap="chooseKind">招领</button>
+      </view>
+      <view class="search-field"><icon type="search" size="19" color="#667784"></icon><input value="{{query}}" placeholder="搜索物品、地点" bindinput="onQuery"></input></view>
+      <scroll-view class="category-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="category-row">
+          <button wx:for="{{categories}}" wx:key="*this" class="{{activeCategory === item ? 'active' : ''}}" data-category="{{item}}" bindtap="chooseCategory">{{item}}</button>
+        </view>
+      </scroll-view>
+      <view class="browse-row">
+        <picker class="browse-picker" range="{{locations}}" bindchange="chooseLocation">
+          <view class="browse-picker__content"><image class="browse-picker__icon" src="/package-community/assets/icons/lost-location.svg"></image><text class="browse-picker__label">{{activeLocation}}</text><image class="browse-arrow" src="/assets/icons/arrow-right.svg"></image></view>
+        </picker>
+        <picker class="browse-picker" range="{{sorts}}" bindchange="chooseSort">
+          <view class="browse-picker__content"><image class="browse-picker__icon" src="/package-community/assets/icons/lost-sort.svg"></image><text class="browse-picker__label">{{activeSort}}</text><image class="browse-arrow" src="/assets/icons/arrow-right.svg"></image></view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="result-card">
+      <state-view wx:if="{{loading}}" state="loading" title="正在加载失物信息"></state-view>
+      <state-view wx:elif="{{error}}" state="error" title="暂时无法加载" description="{{error}}" actionText="重试" bindaction="load"></state-view>
+      <state-view wx:elif="{{!filtered.length}}" state="empty" title="暂无相关信息" description="换个筛选条件，或发布一条新的线索"></state-view>
+    </view>
+    <view wx:if="{{!loading && !error && filtered.length}}" class="lost-list">
+      <view wx:for="{{filtered}}" wx:key="id" class="lost-card campus-enter" data-id="{{item.id}}" bindtap="showDetail">
+        <image class="item-image" src="{{item.image}}" mode="aspectFill"></image>
+        <view class="item-content">
+          <view class="item-title-row"><view class="item-title">{{item.title}}</view><view class="status-chip">{{item.status === 'resolved' ? '已解决' : item.kind === 'lost' ? '寻找中' : '待认领'}}</view></view>
+          <view class="item-chips"><text class="kind-chip {{item.kind}}">{{item.kind === 'lost' ? '失物招领' : '招领信息'}}</text><text class="category-chip">{{item.categoryLabel}}</text></view>
+          <view class="item-meta"><text>{{item.location || '地点待补充'}}</text><text>{{item.dateLabel}}</text></view>
+          <view class="item-desc">{{item.content || '暂无补充说明'}}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showPublish}}" class="publish-mask" bindtap="closePublish">
+    <view class="publish-sheet" catchtap="stopPropagation">
+      <view class="sheet-handle"></view>
+      <view class="sheet-head"><view>发布失物信息</view><button bindtap="closePublish">取消</button></view>
+      <view class="publish-kind">
+        <button class="{{publishKind === 'lost' ? 'active' : ''}}" data-kind="lost" bindtap="choosePublishKind">我丢了物品</button>
+        <button class="{{publishKind === 'found' ? 'active' : ''}}" data-kind="found" bindtap="choosePublishKind">我捡到物品</button>
+      </view>
+      <input class="publish-field" value="{{publishTitle}}" placeholder="物品名称" bindinput="onPublishTitle"></input>
+      <textarea class="publish-field publish-textarea" value="{{publishContent}}" placeholder="补充外观、时间等线索" bindinput="onPublishContent"></textarea>
+      <input class="publish-field" value="{{publishLocation}}" placeholder="地点" bindinput="onPublishLocation"></input>
+      <input class="publish-field" value="{{publishContact}}" placeholder="联系方式（仅授权后展示）" bindinput="onPublishContact"></input>
+      <button class="publish-submit" loading="{{publishing}}" disabled="{{publishing}}" bindtap="submitPublish">确认发布</button>
+    </view>
+  </view>
+  <custom-tab-bar></custom-tab-bar>
+</view>

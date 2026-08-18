@@ -508,6 +508,26 @@ class EduRepository:
             row = conn.execute("SELECT * FROM edu_connections WHERE id = ?", (connection_id,)).fetchone()
         return EduConnectionRow.from_row(row) if row else None
 
+    def get_active_connection_by_user(self, user_id: str, edu_system_id: Optional[str] = None) -> Optional[EduConnectionRow]:
+        """查找用户的活跃连接（非终态）。"""
+        active_states = (
+            "idle", "auth_required", "waiting_user_login", "connecting",
+            "authenticated", "connected", "syncing",
+        )
+        placeholders = ",".join("?" for _ in active_states)
+        with self._db.query() as conn:
+            if edu_system_id:
+                row = conn.execute(
+                    f"SELECT * FROM edu_connections WHERE user_id = ? AND edu_system_id = ? AND state IN ({placeholders}) ORDER BY updated_at DESC LIMIT 1",
+                    (user_id, edu_system_id, *active_states),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    f"SELECT * FROM edu_connections WHERE user_id = ? AND state IN ({placeholders}) ORDER BY updated_at DESC LIMIT 1",
+                    (user_id, *active_states),
+                ).fetchone()
+        return EduConnectionRow.from_row(row) if row else None
+
     def update_connection_state(
         self,
         connection_id: str,

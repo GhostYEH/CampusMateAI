@@ -20,6 +20,9 @@ import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { PersonalHubPage } from '../features/profile/PersonalHubPage';
 import { SettingsPage } from '../features/profile/SettingsPage';
 import { AccountPage } from '../features/profile/AccountPage';
+import { EduSystemPage } from '../features/profile/EduSystemPage';
+import { EduLoginPage } from '../features/edu/EduLoginPage';
+import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { AcademicStatusItem, ActivityItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityPostItem, CommunityPostPayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { notificationSubscriberManager } from '../data/notification/NotificationSubscriber';
@@ -49,6 +52,8 @@ struct Index {
   @State reduceMotion: boolean = false;
   @State activeTab: number = 0;
   @State route: string = '';
+  @State eduLoginUrl: string = '';
+  @State eduLoginConnectionId: string = '';
   @State username: string = '';
   @State password: string = '';
   @State loginError: string = '';
@@ -631,6 +636,37 @@ struct Index {
       SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
     } else if (this.route === 'account') {
       AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.route = '', onSignOut: () => this.signOut() })
+    } else if (this.route === 'edu_system') {
+      EduSystemPage({
+        darkMode: this.darkMode,
+        universityId: this.selectedUniversityId,
+        apiBaseUrl: API_BASE_URL,
+        authToken: this.appState.getAccessToken(),
+        onBack: () => this.route = '',
+        onNavigateToLogin: (loginUrl: string, connectionId: string) => {
+          this.eduLoginUrl = loginUrl;
+          this.eduLoginConnectionId = connectionId;
+          this.route = 'edu_login';
+        },
+        onOpenSchedule: () => { this.route = 'edu_schedule'; }
+      })
+    } else if (this.route === 'edu_login') {
+      EduLoginPage({
+        darkMode: this.darkMode,
+        loginUrl: this.eduLoginUrl,
+        connectionId: this.eduLoginConnectionId,
+        apiBaseUrl: API_BASE_URL,
+        authToken: this.appState.getAccessToken(),
+        onBack: () => this.route = 'edu_system',
+        onConnected: () => { this.route = 'edu_system'; }
+      })
+    } else if (this.route === 'edu_schedule') {
+      EduSchedulePage({
+        darkMode: this.darkMode,
+        apiBaseUrl: API_BASE_URL,
+        authToken: this.appState.getAccessToken(),
+        onBack: () => this.route = 'edu_system'
+      })
     } else if (this.route === 'about') {
       Column({ space: 12 }) {
         SecondaryHeader({ title: '关于 CampusMate', subtitle: '校园事务智能陪伴助手', darkMode: this.darkMode, onBack: () => this.route = '' })

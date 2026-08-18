@@ -394,3 +394,35 @@ export async function submitEduUrl(candidateUrl) {
   });
   return data;
 }
+
+// ===== EduConnection 状态机（client_webview 流程） =====
+export async function eduProbe(portalUrl) {
+  const { data } = await client.post("/edu/discovery/probe", { portal_url: portalUrl });
+  return data;
+}
+export async function eduCreateConnectionFromUrl(portalUrl, universityId = null) {
+  const body = { portal_url: portalUrl };
+  if (universityId) body.university_id = universityId;
+  const { data } = await client.post("/edu/connections/from-url", body);
+  return data;
+}
+export async function eduGetConnection(connectionId) {
+  const { data } = await client.get(`/edu/connections/${connectionId}`);
+  return data;
+}
+export async function eduContinueConnection(connectionId, payload) {
+  const { data } = await client.post(`/edu/connections/${connectionId}/continue`, payload);
+  return data;
+}
+export async function eduPollConnection(connectionId) {
+  const { data } = await client.post(`/edu/connections/${connectionId}/continue`, { action: "POLL" });
+  return data;
+}
+export async function eduScheduleItems(semester = null) {
+  const { data } = await client.get("/edu/schedule/items", { params: semester ? { semester } : {} });
+  return data;
+}
+export async function eduGradeItems(semester = null) {
+  const { data } = await client.get("/edu/grade/items", { params: semester ? { semester } : {} });
+  return data;
+}

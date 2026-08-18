@@ -12,6 +12,10 @@ import {
   CommunityPost,
   ConnectionState,
   Course,
+  EduConnection,
+  EduGradeItemsResponse,
+  EduProbeResult,
+  EduScheduleItemsResponse,
   ExtractResult,
   FavoriteItem,
   LostFoundItem,
@@ -559,6 +563,71 @@ class CampusRepository {
       mode: 'focus',
     })
     return session.id
+  }
+
+  async eduProbe(portalUrl: string): Promise<EduProbeResult> {
+    return this.request<EduProbeResult>('/edu/discovery/probe', 'POST', { portal_url: portalUrl })
+  }
+
+  async eduCreateConnectionFromUrl(portalUrl: string): Promise<EduConnection> {
+    return this.request<EduConnection>('/edu/connections/from-url', 'POST', { portal_url: portalUrl })
+  }
+
+  async eduGetConnection(connectionId: string): Promise<EduConnection> {
+    return this.request<EduConnection>(`/edu/connections/${connectionId}`, 'GET')
+  }
+
+  async eduContinueConnection(
+    connectionId: string,
+    payload: {
+      username?: string
+      password?: string
+      captcha?: string
+      action?: string
+      cookies?: Record<string, string>
+      current_url?: string
+      user_agent?: string
+    },
+  ): Promise<EduConnection> {
+    return this.request<EduConnection>(`/edu/connections/${connectionId}/continue`, 'POST', payload)
+  }
+
+  async eduPollConnection(connectionId: string): Promise<EduConnection> {
+    return this.eduContinueConnection(connectionId, { action: 'POLL' })
+  }
+
+  async eduCancelConnection(connectionId: string): Promise<EduConnection> {
+    return this.eduContinueConnection(connectionId, { action: 'CANCEL' })
+  }
+
+  async eduSyncSchedule(): Promise<void> {
+    await this.request('/edu/sync/schedule', 'POST')
+  }
+
+  async eduSyncGrade(): Promise<void> {
+    await this.request('/edu/sync/grade', 'POST')
+  }
+
+  async eduUnbind(): Promise<void> {
+    await this.request('/edu/binding', 'DELETE')
+  }
+
+  async eduScheduleSemesters(): Promise<string[]> {
+    return this.request<string[]>('/edu/schedule/semesters', 'GET')
+  }
+
+  async eduScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : ''
+    return this.request<EduScheduleItemsResponse>(`/edu/schedule/items${query}`, 'GET')
+  }
+
+  async eduGradeSemesters(): Promise<string[]> {
+    return this.request<string[]>('/edu/grade/semesters', 'GET')
+  }
+
+  async eduGradeItems(semester?: string): Promise<EduGradeItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : ''
+    return this.request<EduGradeItemsResponse>(`/edu/grade/items${query}`, 'GET')
   }
 
   async getActiveStudySession(): Promise<StudySessionResponse | null> {

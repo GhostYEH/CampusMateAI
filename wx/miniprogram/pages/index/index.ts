@@ -29,19 +29,19 @@ Page({
     darkMode: false,
     quickActions: [
       {
-        label: '考试安排', detail: '', route: '/pages/exams/exams', tab: false, tone: 'indigo',
+        label: '考试安排', detail: '', route: '/package-campus/pages/exams/exams', tab: false, tone: 'indigo',
         icon: 'quick-calendar',
       },
       {
-        label: '空教室', detail: '', route: '/pages/classrooms/classrooms', tab: false, tone: 'blue', icon: 'quick-classroom',
+        label: '空教室', detail: '', route: '/package-campus/pages/classrooms/classrooms', tab: false, tone: 'blue', icon: 'quick-classroom',
       },
       {
-        label: '校园社区', detail: '', route: '/pages/community/community', tab: false, tone: 'teal', icon: 'quick-community',
+        label: '校园社区', detail: '', route: '/package-community/pages/community/community', tab: false, tone: 'teal', icon: 'quick-community',
       },
       {
-        label: '专注自习', detail: '', route: '/pages/study/study', tab: false, tone: 'orange', icon: 'quick-study',
+        label: '专注自习', detail: '', route: '/package-study/pages/study/study', tab: false, tone: 'orange', icon: 'quick-study',
       },
-      { label: '失物招领', detail: '', route: '/pages/lostfound/lostfound', tab: false, tone: 'violet', icon: 'quick-lost' },
+      { label: '失物招领', detail: '', route: '/package-community/pages/lostfound/lostfound', tab: false, tone: 'violet', icon: 'quick-lost' },
     ] as QuickAction[],
   },
   onLoad() {
@@ -115,7 +115,7 @@ Page({
     wx.switchTab({ url: '/pages/profile/profile' })
   },
   openNotice() {
-    wx.navigateTo({ url: '/pages/notices/notices' })
+    wx.navigateTo({ url: '/package-campus/pages/notices/notices' })
   },
   openAction(event: WechatMiniprogram.TouchEvent) {
     const route = event.currentTarget.dataset.route as string

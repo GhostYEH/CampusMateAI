@@ -76,7 +76,7 @@ fun ProfileScreen(
                     rows = listOf(
                         ProfileRow(Icons.Default.School, "我的大学", "选择学校并隔离校园数据") { onNavigate("university") },
                         ProfileRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
-                        ProfileRow(Icons.Default.AccountBalance, "教务系统", "查看学校支持状态与连接安全") { onNavigate("academic") },
+                        ProfileRow(Icons.Default.AccountBalance, "教务系统", "连接教务系统，同步课表与成绩") { onNavigate("edu_system") },
                         ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
                         ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },

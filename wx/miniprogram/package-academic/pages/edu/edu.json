@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "secondary-nav": "/components/secondary-nav/secondary-nav",
+    "state-view": "/components/state-view/state-view"
+  }
+}

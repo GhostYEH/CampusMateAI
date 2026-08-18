@@ -88,7 +88,7 @@ export struct ProfilePage {
           Column() {
             this.MenuRow('我的大学', $r('sys.symbol.school'), 'university'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('校园社区', $r('sys.symbol.person_2'), 'community'); Divider().color(this.palette().line).margin({ left: 53 })
-            this.MenuRow('教务系统', $r('sys.symbol.book'), 'academic'); Divider().color(this.palette().line).margin({ left: 53 })
+            this.MenuRow('教务系统', $r('sys.symbol.book'), 'edu_system'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('学习与专注', $r('sys.symbol.timer'), 'focus'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('通知与提醒', $r('sys.symbol.bell'), 'notifications'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('账号与隐私', $r('sys.symbol.person_shield'), 'account'); Divider().color(this.palette().line).margin({ left: 53 })

@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from ..database.sqlite_db import Database
 from ..models.edu import EduBindingRow
@@ -60,15 +61,37 @@ class PersistedScheduleItem:
     course_code: Optional[str]
     course_name: str
     teacher: Optional[str]
-    location: Optional[str]
-    weekday: Optional[int]
-    start_section: Optional[int]
-    end_section: Optional[int]
-    start_time: Optional[str]
-    end_time: Optional[str]
-    weeks: Optional[str]
-    is_stale: bool
-    last_seen_at: Optional[str]
+    teachers: Optional[list] = None
+    location: Optional[str] = None
+    campus: Optional[str] = None
+    building: Optional[str] = None
+    classroom: Optional[str] = None
+    weekday: Optional[int] = None
+    start_section: Optional[int] = None
+    end_section: Optional[int] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    weeks: Optional[str] = None
+    week_text: Optional[str] = None
+    credit: Optional[float] = None
+    course_nature: Optional[str] = None
+    course_category: Optional[str] = None
+    course_type: Optional[str] = None
+    teaching_class: Optional[str] = None
+    class_name: Optional[str] = None
+    college: Optional[str] = None
+    department: Optional[str] = None
+    assessment_method: Optional[str] = None
+    exam_type: Optional[str] = None
+    total_hours: Optional[float] = None
+    theory_hours: Optional[float] = None
+    practice_hours: Optional[float] = None
+    language: Optional[str] = None
+    note: Optional[str] = None
+    semester_id: Optional[str] = None
+    extra_info: Optional[dict] = None
+    is_stale: bool = False
+    last_seen_at: Optional[str] = None
 
 
 @dataclass
@@ -116,15 +139,23 @@ class EduDataRepository:
                     stats.failed += 1
                     continue
                 item_semester = item.semester or semester
+                teachers_json = json.dumps(item.teachers, ensure_ascii=False) if item.teachers else None
+                extra_info_json = json.dumps(item.extra_info, ensure_ascii=False) if item.extra_info else None
                 source_hash = _source_hash(
                     course_code=item.course_code or "",
                     course_name=item.course_name,
                     teacher=item.teacher or "",
+                    teachers=teachers_json or "",
                     location=item.location or "",
                     weekday=item.weekday,
                     start_section=item.start_section,
                     end_section=item.end_section,
                     weeks=item.weeks or "",
+                    credit=item.credit,
+                    course_nature=item.course_nature or "",
+                    teaching_class=item.teaching_class or "",
+                    assessment_method=item.assessment_method or "",
+                    extra_info=extra_info_json or "",
                 )
                 item_id = _short_id(
                     "edu_sch",
@@ -135,6 +166,7 @@ class EduDataRepository:
                     str(item.weekday or ""),
                     str(item.start_section or ""),
                     item.weeks or "",
+                    item.teaching_class or "",
                 )
                 seen_ids.append(item_id)
                 existing = conn.execute(
@@ -146,19 +178,33 @@ class EduDataRepository:
                         """
                         INSERT INTO edu_schedule_items (
                             id, user_id, edu_system_id, university_id, semester,
-                            course_code, course_name, teacher, location,
-                            weekday, start_section, end_section, start_time, end_time, weeks,
+                            course_code, course_name, teacher, teachers, location,
+                            campus, building, classroom,
+                            weekday, start_section, end_section, start_time, end_time,
+                            weeks, week_text, credit,
+                            course_nature, course_category, course_type,
+                            teaching_class, class_name, college, department,
+                            assessment_method, exam_type,
+                            total_hours, theory_hours, practice_hours,
+                            language, note, semester_id, extra_info,
                             provider, source, source_hash, last_seen_at, sync_batch_id,
                             is_stale, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             item_id, user_id, edu_system_id, university_id, item_semester,
-                            item.course_code, item.course_name, item.teacher, item.location,
+                            item.course_code, item.course_name, item.teacher, teachers_json, item.location,
+                            item.campus, item.building, item.classroom,
                             item.weekday, item.start_section, item.end_section,
-                            item.start_time, item.end_time, item.weeks,
+                            item.start_time, item.end_time,
+                            item.weeks, item.week_text, item.credit,
+                            item.course_nature, item.course_category, item.course_type,
+                            item.teaching_class, item.class_name, item.college, item.department,
+                            item.assessment_method, item.exam_type,
+                            item.total_hours, item.theory_hours, item.practice_hours,
+                            item.language, item.note, item.semester_id, extra_info_json,
                             binding.provider, "edu_connector", source_hash, now, sync_batch_id,
-                            now, now,
+                            0, now, now,
                         ),
                     )
                     stats.inserted += 1
@@ -167,18 +213,32 @@ class EduDataRepository:
                         conn.execute(
                             """
                             UPDATE edu_schedule_items SET
-                                course_name = ?, teacher = ?, location = ?,
+                                course_name = ?, teacher = ?, teachers = ?, location = ?,
+                                campus = ?, building = ?, classroom = ?,
                                 weekday = ?, start_section = ?, end_section = ?,
-                                start_time = ?, end_time = ?, weeks = ?,
+                                start_time = ?, end_time = ?,
+                                weeks = ?, week_text = ?, credit = ?,
+                                course_nature = ?, course_category = ?, course_type = ?,
+                                teaching_class = ?, class_name = ?, college = ?, department = ?,
+                                assessment_method = ?, exam_type = ?,
+                                total_hours = ?, theory_hours = ?, practice_hours = ?,
+                                language = ?, note = ?, semester_id = ?, extra_info = ?,
                                 semester = COALESCE(?, semester),
                                 source_hash = ?, last_seen_at = ?, sync_batch_id = ?,
                                 is_stale = 0, updated_at = ?
                             WHERE id = ?
                             """,
                             (
-                                item.course_name, item.teacher, item.location,
+                                item.course_name, item.teacher, teachers_json, item.location,
+                                item.campus, item.building, item.classroom,
                                 item.weekday, item.start_section, item.end_section,
-                                item.start_time, item.end_time, item.weeks,
+                                item.start_time, item.end_time,
+                                item.weeks, item.week_text, item.credit,
+                                item.course_nature, item.course_category, item.course_type,
+                                item.teaching_class, item.class_name, item.college, item.department,
+                                item.assessment_method, item.exam_type,
+                                item.total_hours, item.theory_hours, item.practice_hours,
+                                item.language, item.note, item.semester_id, extra_info_json,
                                 item_semester, source_hash, now, sync_batch_id, now, item_id,
                             ),
                         )
@@ -247,6 +307,26 @@ class EduDataRepository:
 
     @staticmethod
     def _row_to_schedule_item(row) -> PersistedScheduleItem:
+        teachers_raw = row["teachers"] if "teachers" in row.keys() else None
+        teachers_list: Optional[list] = None
+        if teachers_raw:
+            try:
+                teachers_list = json.loads(teachers_raw)
+                if not isinstance(teachers_list, list):
+                    teachers_list = None
+            except (TypeError, ValueError):
+                teachers_list = None
+        extra_raw = row["extra_info"] if "extra_info" in row.keys() else None
+        extra_dict: Optional[dict] = None
+        if extra_raw:
+            try:
+                extra_dict = json.loads(extra_raw)
+                if not isinstance(extra_dict, dict):
+                    extra_dict = None
+            except (TypeError, ValueError):
+                extra_dict = None
+        def _g(key: str) -> Any:
+            return row[key] if key in row.keys() else None
         return PersistedScheduleItem(
             id=row["id"],
             user_id=row["user_id"],
@@ -254,13 +334,35 @@ class EduDataRepository:
             course_code=row["course_code"],
             course_name=row["course_name"],
             teacher=row["teacher"],
+            teachers=teachers_list,
             location=row["location"],
+            campus=_g("campus"),
+            building=_g("building"),
+            classroom=_g("classroom"),
             weekday=row["weekday"],
             start_section=row["start_section"],
             end_section=row["end_section"],
             start_time=row["start_time"],
             end_time=row["end_time"],
             weeks=row["weeks"],
+            week_text=_g("week_text"),
+            credit=_g("credit"),
+            course_nature=_g("course_nature"),
+            course_category=_g("course_category"),
+            course_type=_g("course_type"),
+            teaching_class=_g("teaching_class"),
+            class_name=_g("class_name"),
+            college=_g("college"),
+            department=_g("department"),
+            assessment_method=_g("assessment_method"),
+            exam_type=_g("exam_type"),
+            total_hours=_g("total_hours"),
+            theory_hours=_g("theory_hours"),
+            practice_hours=_g("practice_hours"),
+            language=_g("language"),
+            note=_g("note"),
+            semester_id=_g("semester_id"),
+            extra_info=extra_dict,
             is_stale=bool(row["is_stale"]),
             last_seen_at=row["last_seen_at"],
         )

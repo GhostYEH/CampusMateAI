@@ -330,6 +330,118 @@ data class EduSyncRecord(
     val finished_at: String? = null,
 )
 
+// ===== EduConnection 状态机（client_webview 登录流程） =====
+data class EduConnectionDto(
+    val id: String,
+    val user_id: String = "",
+    val edu_system_id: String = "",
+    val university_id: String = "",
+    val state: String = "idle",
+    val provider: String = "unknown",
+    val login_execution_mode: String = "unsupported",
+    val external_student_id: String? = null,
+    val external_student_name: String? = null,
+    val error_code: String? = null,
+    val error_message: String? = null,
+    val created_at: String = "",
+    val updated_at: String = "",
+)
+
+data class EduProbeRequest(val portal_url: String)
+data class EduProbeResult(
+    val portal_url: String,
+    val provider: String = "unknown",
+    val provider_confidence: Double = 0.0,
+    val reachable: Boolean = false,
+    val http_status: Int? = null,
+    val final_url: String? = null,
+    val title: String? = null,
+    val is_edu_page: Boolean = false,
+    val suggested_login_mode: String = "backend_http",
+    val evidence: List<Map<String, Any>> = emptyList(),
+    val error: String? = null,
+)
+
+data class EduConnectionFromUrlRequest(
+    val portal_url: String,
+    val university_id: String? = null,
+)
+
+data class EduConnectionContinueRequest(
+    val username: String? = null,
+    val password: String? = null,
+    val captcha: String? = null,
+    val sms_code: String? = null,
+    val mfa_code: String? = null,
+    val action: String? = null,
+    val cookies: Map<String, String>? = null,
+    val current_url: String? = null,
+    val user_agent: String? = null,
+)
+
+data class EduScheduleItemsResponse(
+    val semester: String? = null,
+    val items_count: Int = 0,
+    val items: List<EduScheduleItemDto> = emptyList(),
+)
+data class EduScheduleItemDto(
+    val id: String? = null,
+    val semester: String? = null,
+    val course_code: String? = null,
+    val course_name: String? = null,
+    val teacher: String? = null,
+    val teachers: List<String>? = null,
+    val location: String? = null,
+    val campus: String? = null,
+    val building: String? = null,
+    val classroom: String? = null,
+    val weekday: Int? = null,
+    val start_section: Int? = null,
+    val end_section: Int? = null,
+    val start_time: String? = null,
+    val end_time: String? = null,
+    val weeks: String? = null,
+    val week_text: String? = null,
+    val credit: Double? = null,
+    val course_nature: String? = null,
+    val course_category: String? = null,
+    val course_type: String? = null,
+    val teaching_class: String? = null,
+    val class_name: String? = null,
+    val college: String? = null,
+    val department: String? = null,
+    val assessment_method: String? = null,
+    val exam_type: String? = null,
+    val total_hours: Double? = null,
+    val theory_hours: Double? = null,
+    val practice_hours: Double? = null,
+    val language: String? = null,
+    val note: String? = null,
+    val semester_id: String? = null,
+    val extra_info: Map<String, Any?>? = null,
+    val is_stale: Boolean = false,
+    val last_seen_at: String? = null,
+)
+
+data class EduGradeItemsResponse(
+    val semester: String? = null,
+    val items_count: Int = 0,
+    val items: List<EduGradeItemDto> = emptyList(),
+)
+data class EduGradeItemDto(
+    val id: String? = null,
+    val semester: String? = null,
+    val course_code: String? = null,
+    val course_name: String? = null,
+    val credit: Double? = null,
+    val score: String? = null,
+    val grade_point: Double? = null,
+    val category: String? = null,
+    val status: String? = null,
+    val is_stale: Boolean = false,
+    val last_seen_at: String? = null,
+)
+
 /** 通用分页响应，对应后端 Page。 */
 data class PagedResponse<T>(
     val items: List<T> = emptyList(),
@@ -643,6 +755,37 @@ interface ApiService {
 
     @GET("edu/sync/records")
     suspend fun getEduSyncRecords(@Query("limit") limit: Int = 20): Response<List<EduSyncRecord>>
+
+    // ===== EduConnection 状态机 =====
+    @POST("edu/discovery/probe")
+    suspend fun eduProbe(@Body request: EduProbeRequest): Response<EduProbeResult>
+
+    @POST("edu/connections/from-url")
+    suspend fun eduCreateConnectionFromUrl(@Body request: EduConnectionFromUrlRequest): Response<EduConnectionDto>
+
+    @POST("edu/connections")
+    suspend fun eduCreateConnection(@Body request: Map<String, String>): Response<EduConnectionDto>
+
+    @GET("edu/connections/{connectionId}")
+    suspend fun eduGetConnection(@Path("connectionId") connectionId: String): Response<EduConnectionDto>
+
+    @POST("edu/connections/{connectionId}/continue")
+    suspend fun eduContinueConnection(
+        @Path("connectionId") connectionId: String,
+        @Body request: EduConnectionContinueRequest,
+    ): Response<EduConnectionDto>
+
+    @GET("edu/schedule/semesters")
+    suspend fun eduScheduleSemesters(): Response<List<String>>
+
+    @GET("edu/schedule/items")
+    suspend fun eduScheduleItems(@Query("semester") semester: String? = null): Response<EduScheduleItemsResponse>
+
+    @GET("edu/grade/semesters")
+    suspend fun eduGradeSemesters(): Response<List<String>>
+
+    @GET("edu/grade/items")
+    suspend fun eduGradeItems(@Query("semester") semester: String? = null): Response<EduGradeItemsResponse>
 
     @POST("auth/refresh")
     suspend fun refresh(@Body request: RefreshRequest): Response<LoginResponse>

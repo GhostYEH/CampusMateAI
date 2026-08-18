@@ -209,3 +209,98 @@ export interface WeekDay {
   date: number
   active: boolean
 }
+
+export interface EduProbeResult {
+  portal_url: string
+  provider: string
+  provider_confidence: number
+  reachable: boolean
+  http_status: number | null
+  final_url: string | null
+  title: string | null
+  is_edu_page: boolean
+  suggested_login_mode: string
+  evidence: Array<Record<string, unknown>>
+  error: string | null
+}
+
+export interface EduConnection {
+  id: string
+  user_id: string
+  edu_system_id: string
+  university_id: string
+  state: string
+  provider: string
+  login_execution_mode: string
+  external_student_id: string | null
+  external_student_name: string | null
+  error_code: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface EduScheduleItem {
+  id: string
+  semester: string
+  course_code: string
+  course_name: string
+  teacher: string
+  teachers: string[]
+  location: string
+  campus: string
+  building: string
+  classroom: string
+  weekday: number
+  start_section: number
+  end_section: number
+  start_time: string
+  end_time: string
+  weeks: string
+  week_text: string
+  credit: number
+  course_nature: string
+  course_category: string
+  course_type: string
+  teaching_class: string
+  class_name: string
+  college: string
+  department: string
+  assessment_method: string
+  exam_type: string
+  total_hours: number
+  theory_hours: number
+  practice_hours: number
+  language: string
+  note: string
+  semester_id: string
+  extra_info: Record<string, string>
+  is_stale: boolean
+  last_seen_at: string
+}
+
+export interface EduScheduleItemsResponse {
+  semester: string | null
+  items_count: number
+  items: EduScheduleItem[]
+}
+
+export interface EduGradeItem {
+  id: string
+  semester: string
+  course_code: string
+  course_name: string
+  credit: number
+  score: string
+  grade_point: string
+  category: string
+  status: string
+  is_stale: boolean
+  last_seen_at: string
+}
+
+export interface EduGradeItemsResponse {
+  semester: string | null
+  items_count: number
+  items: EduGradeItem[]
+}

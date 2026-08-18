@@ -19,6 +19,7 @@ from ....schemas.edu import (
     EduProfile,
     EduSchedule,
     EduScheduleItem,
+    sanitize_extra_info,
 )
 
 
@@ -47,6 +48,21 @@ def _to_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _split_teachers(value: Any) -> Optional[list[str]]:
+    """把教师字符串拆成列表。支持逗号/顿号/分号/空格分隔。"""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        items = [_clean(v) for v in value]
+        return [it for it in items if it] or None
+    s = _clean(value)
+    if not s:
+        return None
+    parts = re.split(r"[，,；;、/]\s*", s)
+    items = [_clean(p) for p in parts]
+    return [it for it in items if it] or None
 
 
 def _parse_weeks(weeks_raw: Any) -> Optional[str]:
@@ -94,19 +110,73 @@ class ZhengfangParser:
             course_name = _clean(it.get("kcmc") or it.get("kc_mc") or it.get("course_name"))
             if not course_name:
                 continue
+            teacher_raw = _clean(
+                it.get("jsxm") or it.get("jsmx") or it.get("jsmc")
+                or it.get("teacher") or it.get("teacher_name")
+            )
+            teachers_list = _split_teachers(teacher_raw)
+            weeks_raw = it.get("zcd") or it.get("weeks") or it.get("kkzc")
+            # 收集标准模型未覆盖但对用户有意义的字段到 extra_info
+            extra: dict = {}
+            for k, v in it.items():
+                if k in (
+                    "kcmc", "kc_mc", "course_name", "kch", "kch_id", "course_code",
+                    "jsxm", "jsmx", "jsmc", "teacher", "teacher_name",
+                    "dd", "jxcdmc", "location", "xqj", "weekday", "day",
+                    "jc1", "jc", "start_section", "start_jc",
+                    "jc2", "end_section", "end_jc",
+                    "kssj", "start_time", "jssj", "end_time",
+                    "zcd", "weeks", "kkzc", "xqmc", "xnxq01id", "semester",
+                    "xf", "credit", "kcxzmc", "kcxz", "course_nature",
+                    "kcflmc", "kclxmc", "course_category", "kclx", "course_type",
+                    "jxbmc", "jxb_id", "teaching_class", "bjmc", "bj", "class_name",
+                    "kkxymc", "kkyxmc", "yxmc", "college", "kkxsmc", "department",
+                    "skfsmc", "khfs", "assessment_method", "kslxmc", "exam_type",
+                    "zxs", "zongs", "total_hours", "llxs", "theory_hours",
+                    "sjxs", "practice_hours", "skyy", "yy", "language",
+                    "bz", "beizhu", "note", "xq", "campus", "jxlmc", "jxl",
+                    "building", "jsdm", "classroom", "zcd_text", "week_text",
+                    "semester_id",
+                ):
+                    continue
+                cv = _clean(v)
+                if cv is not None:
+                    extra[k] = cv
             items.append(
                 EduScheduleItem(
                     course_name=course_name,
                     course_code=_clean(it.get("kch") or it.get("kch_id") or it.get("course_code")),
-                    teacher=_clean(it.get("jsxm") or it.get("jsmc") or it.get("teacher") or it.get("teacher_name")),
+                    teacher=teacher_raw,
+                    teachers=teachers_list,
                     location=_clean(it.get("jsmc") or it.get("dd") or it.get("jxcdmc") or it.get("location")),
+                    campus=_clean(it.get("xq") or it.get("xqmc2") or it.get("campus")),
+                    building=_clean(it.get("jxlmc") or it.get("jxl") or it.get("building")),
+                    classroom=_clean(it.get("jsdm") or it.get("jsmc2") or it.get("classroom")),
                     weekday=_to_int(it.get("xqj") or it.get("weekday") or it.get("day")),
                     start_section=_to_int(it.get("jc1") or it.get("jc") or it.get("start_section") or it.get("start_jc")),
                     end_section=_to_int(it.get("jc2") or it.get("end_section") or it.get("end_jc")),
                     start_time=_clean(it.get("kssj") or it.get("start_time")),
                     end_time=_clean(it.get("jssj") or it.get("end_time")),
-                    weeks=_parse_weeks(it.get("zcd") or it.get("weeks") or it.get("kkzc")),
+                    weeks=_parse_weeks(weeks_raw),
+                    week_text=_clean(it.get("zcd_text") or it.get("week_text")),
+                    credit=_to_float(it.get("xf") or it.get("credit")),
+                    course_nature=_clean(it.get("kcxzmc") or it.get("kcxz") or it.get("course_nature")),
+                    course_category=_clean(it.get("kcflmc") or it.get("kclxmc") or it.get("course_category")),
+                    course_type=_clean(it.get("kclx") or it.get("course_type")),
+                    teaching_class=_clean(it.get("jxbmc") or it.get("jxb_id") or it.get("teaching_class")),
+                    class_name=_clean(it.get("bjmc") or it.get("bj") or it.get("class_name")),
+                    college=_clean(it.get("kkxymc") or it.get("kkyxmc") or it.get("yxmc") or it.get("college")),
+                    department=_clean(it.get("kkxsmc") or it.get("department")),
+                    assessment_method=_clean(it.get("skfsmc") or it.get("khfs") or it.get("assessment_method")),
+                    exam_type=_clean(it.get("kslxmc") or it.get("exam_type")),
+                    total_hours=_to_float(it.get("zxs") or it.get("zongs") or it.get("total_hours")),
+                    theory_hours=_to_float(it.get("llxs") or it.get("theory_hours")),
+                    practice_hours=_to_float(it.get("sjxs") or it.get("practice_hours")),
+                    language=_clean(it.get("skyy") or it.get("yy") or it.get("language")),
+                    note=_clean(it.get("bz") or it.get("beizhu") or it.get("note")),
                     semester=_clean(it.get("xqmc") or it.get("xnxq01id") or semester),
+                    semester_id=_clean(it.get("xnxq01id") or it.get("semester_id")),
+                    extra_info=sanitize_extra_info(extra),
                 )
             )
         return EduSchedule(semester=semester, items=items)
