@@ -160,6 +160,7 @@ def logout(
     request: Request,
     response: Response,
     user: UserRow = Depends(current_user),
+    settings: Settings = Depends(get_settings_dep),
     container: ServiceContainer = Depends(_container),
 ) -> dict:
     """撤销当前 refresh token(若有)，并撤销当前浏览器的可信设备凭据。"""
@@ -167,14 +168,20 @@ def logout(
         token_hash = hash_token(req.refresh_token)
         container.refresh_token_repository.revoke(token_hash)
     # 撤销当前浏览器的可信设备凭据(避免退出后又被自动登录)
-    cookie_name = "campus_trusted_device"
+    cookie_name = settings.trusted_device_cookie_name
     cookie_token = request.cookies.get(cookie_name)
     if cookie_token:
         try:
             container.trusted_device_repository.revoke_by_token_hash(hash_token(cookie_token))
         except Exception:
             pass
-        response.delete_cookie(key=cookie_name, path="/api/v1/auth")
+        response.delete_cookie(
+            key=cookie_name, 
+            path="/api/v1/auth",
+            httponly=True,
+            secure=settings.trusted_device_cookie_secure,
+            samesite="lax"
+        )
     return {"ok": True, "message": "已退出登录"}
 
 
