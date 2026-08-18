@@ -28,11 +28,6 @@ class AdminRepository:
                    FROM users ORDER BY created_at DESC LIMIT ?""",
                 (recent_limit,),
             ).fetchall()
-            recent_activities = conn.execute(
-                """SELECT id, title, category, status, starts_at, created_at
-                   FROM campus_activities ORDER BY created_at DESC LIMIT ?""",
-                (recent_limit,),
-            ).fetchall()
             growth = conn.execute(
                 """SELECT date(created_at) AS day, COUNT(*) AS count
                    FROM users
@@ -57,16 +52,11 @@ class AdminRepository:
                 "active_course_count": scalar("SELECT COUNT(*) AS n FROM courses WHERE status = 'active'"),
                 "class_count": scalar("SELECT COUNT(*) AS n FROM class_groups"),
                 "active_student_count": int(active_students),
-                "activity_count": scalar("SELECT COUNT(*) AS n FROM campus_activities"),
-                "draft_activity_count": scalar("SELECT COUNT(*) AS n FROM campus_activities WHERE status = 'draft'"),
-                "published_activity_count": scalar("SELECT COUNT(*) AS n FROM campus_activities WHERE status = 'published'"),
-                "closed_activity_count": scalar("SELECT COUNT(*) AS n FROM campus_activities WHERE status = 'closed'"),
                 "document_count": scalar("SELECT COUNT(*) AS n FROM documents"),
                 "chunk_count": scalar("SELECT COUNT(*) AS n FROM chunks"),
                 "user_growth": [dict(row) for row in growth],
                 "role_distribution": roles,
                 "recent_users": [dict(row) for row in recent_users],
-                "recent_activities": [dict(row) for row in recent_activities],
                 "recent_admin_operations": [],
             }
 

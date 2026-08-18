@@ -4,7 +4,6 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .routes import (
-    activities,
     announcements,
     assignments,
     auth,
@@ -42,7 +41,6 @@ api_router.include_router(tts.router, tags=["assistant-tts"])
 api_router.include_router(contributions.router, tags=["contributions"])
 # 认证与用户管理
 api_router.include_router(auth.router, tags=["auth"])
-api_router.include_router(activities.router, tags=["activities"])
 api_router.include_router(qr_auth.router, tags=["auth-qr"])
 api_router.include_router(dashboards.router)
 

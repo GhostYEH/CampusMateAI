@@ -218,47 +218,6 @@ class AnnouncementRow:
 
 
 @dataclass
-class CampusActivityRow:
-    """管理员面向全校发布的活动，与班级通知保持数据边界。"""
-
-    id: str
-    author_id: str
-    title: str
-    summary: Optional[str] = None
-    content: str = ""
-    category: str = "campus"
-    location: Optional[str] = None
-    registration_deadline: Optional[str] = None
-    starts_at: Optional[str] = None
-    ends_at: Optional[str] = None
-    capacity: Optional[int] = None
-    status: str = "draft"
-    published_at: Optional[str] = None
-    created_at: str = ""
-    updated_at: str = ""
-
-    @classmethod
-    def from_row(cls, row) -> "CampusActivityRow":
-        return cls(
-            id=row["id"],
-            author_id=row["author_id"],
-            title=row["title"],
-            summary=row["summary"],
-            content=row["content"],
-            category=row["category"],
-            location=row["location"],
-            registration_deadline=row["registration_deadline"],
-            starts_at=row["starts_at"],
-            ends_at=row["ends_at"],
-            capacity=row["capacity"],
-            status=row["status"],
-            published_at=row["published_at"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-
-
-@dataclass
 class AssignmentRow:
     id: str
     class_group_id: str
@@ -426,7 +385,6 @@ __all__ = [
     "ClassGroupRow",
     "EnrollmentRow",
     "AnnouncementRow",
-    "CampusActivityRow",
     "AssignmentRow",
     "SubmissionRow",
     "SubmissionAttachmentRow",

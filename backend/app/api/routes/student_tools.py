@@ -1,4 +1,4 @@
-"""学生端扩展能力：活动报名、个人考试安排、办事申请和失物招领。
+"""学生端扩展能力：个人考试安排、办事申请和失物招领。
 
 这些数据均绑定 JWT 用户；课程/作业/通知仍复用各自业务仓库，避免在学生端复制权限逻辑。
 空教室接口只返回学校数据源已有的记录，不生成演示课表。
@@ -36,11 +36,6 @@ def _ensure_tables(c: ServiceContainer) -> None:
     with c.db.transaction() as conn:
         conn.executescript(
             """
-            CREATE TABLE IF NOT EXISTS activity_registrations (
-                id TEXT PRIMARY KEY, activity_id TEXT NOT NULL, student_id TEXT NOT NULL,
-                registered_at TEXT NOT NULL, UNIQUE(activity_id, student_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_activity_registrations_student ON activity_registrations(student_id);
             CREATE TABLE IF NOT EXISTS student_exams (
                 id TEXT PRIMARY KEY, user_id TEXT NOT NULL, course_name TEXT NOT NULL,
                 exam_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT,
@@ -116,68 +111,6 @@ def _lost_found_out(row, viewer_id: str) -> dict:
     if result.get("owner_id") != viewer_id and result.get("contact_visibility") != "public":
         result["contact"] = None
     return result
-
-
-def _activity_out(row, c: ServiceContainer, user_id: str) -> dict:
-    activity = c.campus_activity_repository.get_activity(row["activity_id"])
-    count = 0
-    with c.db.query() as conn:
-        count = int(conn.execute("SELECT COUNT(*) n FROM activity_registrations WHERE activity_id = ?", (row["activity_id"],)).fetchone()["n"])
-    return {
-        "registered": activity is not None and row["student_id"] == user_id,
-        "registered_at": row["registered_at"],
-        "registered_count": count,
-        "capacity": activity.capacity if activity else None,
-    }
-
-
-@router.get("/activities/{activity_id}")
-def activity_detail(activity_id: str, user: UserRow = Depends(current_user), c: ServiceContainer = Depends(_container)):
-    activity = c.campus_activity_repository.get_activity(activity_id)
-    if activity is None or (user.role != "admin" and activity.status != "published"):
-        raise HTTPException(status_code=404, detail="活动不存在")
-    author = c.user_repository.get_user_by_id(activity.author_id)
-    return {**activity.__dict__, "author_name": (author.display_name or author.username) if author else None}
-
-
-@router.get("/activities/{activity_id}/registration")
-def activity_registration(activity_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c)
-    activity = c.campus_activity_repository.get_activity(activity_id)
-    if activity is None or activity.status != "published":
-        raise HTTPException(status_code=404, detail="活动不存在")
-    with c.db.query() as conn:
-        row = conn.execute("SELECT * FROM activity_registrations WHERE activity_id = ? AND student_id = ?", (activity_id, user.id)).fetchone()
-    return _activity_out(row, c, user.id) if row else {"registered": False, "registered_at": None, "registered_count": _registration_count(c, activity_id), "capacity": activity.capacity}
-
-
-def _registration_count(c: ServiceContainer, activity_id: str) -> int:
-    with c.db.query() as conn:
-        return int(conn.execute("SELECT COUNT(*) n FROM activity_registrations WHERE activity_id = ?", (activity_id,)).fetchone()["n"])
-
-
-@router.post("/activities/{activity_id}/registration")
-def register_activity(activity_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c)
-    activity = c.campus_activity_repository.get_activity(activity_id)
-    if activity is None or activity.status != "published":
-        raise HTTPException(status_code=404, detail="活动不存在")
-    if activity.registration_deadline and activity.registration_deadline < _now():
-        raise HTTPException(status_code=409, detail="报名已截止")
-    if activity.capacity and _registration_count(c, activity_id) >= activity.capacity:
-        raise HTTPException(status_code=409, detail="报名名额已满")
-    with c.db.transaction() as conn:
-        conn.execute("INSERT OR IGNORE INTO activity_registrations (id, activity_id, student_id, registered_at) VALUES (?,?,?,?)", (_id("reg"), activity_id, user.id, _now()))
-        row = conn.execute("SELECT * FROM activity_registrations WHERE activity_id = ? AND student_id = ?", (activity_id, user.id)).fetchone()
-    return _activity_out(row, c, user.id)
-
-
-@router.delete("/activities/{activity_id}/registration")
-def cancel_activity(activity_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c)
-    with c.db.transaction() as conn:
-        conn.execute("DELETE FROM activity_registrations WHERE activity_id = ? AND student_id = ?", (activity_id, user.id))
-    return {"registered": False, "registered_at": None, "registered_count": _registration_count(c, activity_id), "capacity": None}
 
 
 @router.get("/student/exams")

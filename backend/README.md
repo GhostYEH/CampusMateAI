@@ -353,14 +353,13 @@ production 已被 config 校验拦截):
 
 - 沿用现有 SQLite 封装,不重建 `app.db`,不破坏知识库 / 通知抽取 / RAG 表
 - 新增多角色表(users / courses / class_groups / enrollments / announcements /
-  announcement_read_receipts / assignments / submissions / submission_attachments /
-  campus_activities)
+  announcement_read_receipts / assignments / submissions / submission_attachments)
 - 索引: `users.username` / `users.student_number` / `users.teacher_number` /
   `courses.teacher_id` / `class_groups.course_id` / `enrollments.class_group_id` /
   `enrollments.user_id` / `announcements.class_group_id` / `assignments.class_group_id` /
   `assignments.deadline` / `submissions.assignment_id` / `submissions.student_id` /
   `submissions.status` / `read_receipts.announcement_id` / `read_receipts.student_id`
-- 旧库迁移幂等:重复启动不重复创建数据,不破坏索引
+- 旧库迁移幂等:重复启动不重复创建数据,不破坏索引；历史校园活动及报名表会被永久删除
 
 ### 附件限制
 

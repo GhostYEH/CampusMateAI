@@ -1,7 +1,7 @@
 """个人中心数据行模型 —— 用户私有文件与跨模块收藏。
 
 与 `personal_tasks` 一样按 `user_id` 隔离，仅 JWT 持有者可读写。
-`favorites.id` 为逻辑标识(如 "file:abc"、"activity:xyz")，
+`favorites.id` 为逻辑标识(如 "file:abc")，
 不同用户可收藏同一个对象，因此表使用 (user_id, id) 复合主键。
 """
 from __future__ import annotations

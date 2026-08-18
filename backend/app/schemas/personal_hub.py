@@ -35,7 +35,7 @@ class PersonalFileOut(BaseModel):
 
 
 class FavoriteCreate(BaseModel):
-    """添加收藏。`id` 为客户端逻辑标识(如 "file:abc"、"activity:xyz")。"""
+    """添加收藏。`id` 为客户端逻辑标识(如 "file:abc")。"""
     id: str = Field(..., min_length=1, max_length=128)
     title: str = Field(..., min_length=1, max_length=256)
     type: Optional[str] = Field(None, max_length=32)

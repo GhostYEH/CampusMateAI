@@ -18,16 +18,11 @@ class AdminOverview(BaseModel):
     active_course_count: int = 0
     class_count: int = 0
     active_student_count: int = 0
-    activity_count: int = 0
-    draft_activity_count: int = 0
-    published_activity_count: int = 0
-    closed_activity_count: int = 0
     document_count: int = 0
     chunk_count: int = 0
     user_growth: list[dict[str, Any]] = Field(default_factory=list)
     role_distribution: dict[str, int] = Field(default_factory=dict)
     recent_users: list[dict[str, Any]] = Field(default_factory=list)
-    recent_activities: list[dict[str, Any]] = Field(default_factory=list)
     recent_admin_operations: list[dict[str, Any]] = Field(default_factory=list)
 
 

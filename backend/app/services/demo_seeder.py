@@ -101,7 +101,6 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
         "classes_added": 0,
         "enrollments_added": 0,
         "announcements_added": 0,
-        "activities_added": 0,
         "assignments_added": 0,
         "submissions_added": 0,
         "personal_tasks_added": 0,
@@ -114,7 +113,6 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     ann_repo = container.announcement_repository
     asg_repo = container.assignment_repository
     sub_repo = container.submission_repository
-    activity_repo = container.campus_activity_repository
     personal_task_repo = container.personal_task_repository
 
     # === 用户 ===
@@ -235,61 +233,6 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
             require_read=require_read, status=status,
         )
         stats["announcements_added"] += 1
-
-    # === 全校活动 ===
-    activity_defs = [
-        (
-            "暑期社会实践项目成果展",
-            "看看不同学院的同学如何把专业所学带进社区与乡村。",
-            "现场设有项目路演、成果海报展示与优秀团队交流环节，面向全校师生开放。",
-            "volunteer",
-            "大学生活动中心一楼",
-            "2026-08-18T18:00:00+08:00",
-            "2026-08-20T14:00:00+08:00",
-            300,
-            "published",
-        ),
-        (
-            "人工智能与校园创新应用讲座",
-            "从真实校园问题出发，了解 AI 产品设计与工程落地。",
-            "讲座包含主题分享与开放问答，报名后请留意站内通知。",
-            "lecture",
-            "图书馆报告厅",
-            "2026-08-25T12:00:00+08:00",
-            "2026-08-27T19:00:00+08:00",
-            220,
-            "published",
-        ),
-        (
-            "新生志愿服务队招募",
-            "参与迎新引导、校园咨询与物资协助。",
-            "本活动当前为草稿，仅管理员可见。",
-            "volunteer",
-            "学生事务中心",
-            "2026-09-01T18:00:00+08:00",
-            "2026-09-03T09:00:00+08:00",
-            120,
-            "draft",
-        ),
-    ]
-    existing_activities, _ = activity_repo.list_activities(page=1, page_size=100)
-    existing_activity_titles = {item.title for item in existing_activities}
-    for title, summary, content, category, location, deadline, starts_at, capacity, status in activity_defs:
-        if title in existing_activity_titles:
-            continue
-        activity_repo.create_activity(
-            author_id=admin.id,
-            title=title,
-            summary=summary,
-            content=content,
-            category=category,
-            location=location,
-            registration_deadline=deadline,
-            starts_at=starts_at,
-            capacity=capacity,
-            status=status,
-        )
-        stats["activities_added"] += 1
 
     # === 任务 ===
     assignment_defs = [

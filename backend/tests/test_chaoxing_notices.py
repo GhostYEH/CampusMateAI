@@ -121,7 +121,6 @@ def test_container():
         "class_group_repository",
         "enrollment_repository",
         "announcement_repository",
-        "campus_activity_repository",
         "assignment_repository",
         "submission_repository",
         "personal_task_repository",

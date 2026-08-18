@@ -20,7 +20,6 @@ from ..models.multi_role import (
     AnnouncementRow,
     AssignmentAttachmentRow,
     AssignmentRow,
-    CampusActivityRow,
     ClassGroupRow,
     CourseRow,
     EnrollmentRow,
@@ -988,138 +987,6 @@ class AnnouncementRepository:
             }
             for r in rows
         ]
-
-
-# ===== 全校活动仓库 =====
-
-
-class CampusActivityRepository:
-    def __init__(self, db: Database) -> None:
-        self._db = db
-
-    def create_activity(
-        self,
-        *,
-        author_id: str,
-        title: str,
-        content: str,
-        summary: Optional[str] = None,
-        category: str = "campus",
-        location: Optional[str] = None,
-        registration_deadline: Optional[str] = None,
-        starts_at: Optional[str] = None,
-        ends_at: Optional[str] = None,
-        capacity: Optional[int] = None,
-        status: str = "draft",
-    ) -> CampusActivityRow:
-        activity_id = _new_id("act")
-        now = _now_iso()
-        published_at = now if status == "published" else None
-        with self._db.transaction() as conn:
-            conn.execute(
-                """INSERT INTO campus_activities (
-                       id, author_id, title, summary, content, category, location,
-                       registration_deadline, starts_at, ends_at, capacity, status,
-                       published_at, created_at, updated_at
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    activity_id, author_id, title, summary, content, category,
-                    location, registration_deadline, starts_at, ends_at, capacity,
-                    status, published_at, now, now,
-                ),
-            )
-        return self.get_activity(activity_id)  # type: ignore[return-value]
-
-    def get_activity(self, activity_id: str) -> Optional[CampusActivityRow]:
-        with self._db.query() as conn:
-            row = conn.execute(
-                "SELECT * FROM campus_activities WHERE id = ?",
-                (activity_id,),
-            ).fetchone()
-        return CampusActivityRow.from_row(row) if row else None
-
-    def list_activities(
-        self,
-        *,
-        status: Optional[str] = None,
-        query: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ) -> tuple[List[CampusActivityRow], int]:
-        conditions: list[str] = []
-        params: list = []
-        if status:
-            conditions.append("status = ?")
-            params.append(status)
-        if query:
-            conditions.append(
-                "(title LIKE ? OR summary LIKE ? OR content LIKE ? OR location LIKE ?)"
-            )
-            like = f"%{query}%"
-            params.extend([like, like, like, like])
-        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
-        offset = (page - 1) * page_size
-        with self._db.query() as conn:
-            total = int(
-                conn.execute(
-                    f"SELECT COUNT(*) AS n FROM campus_activities{where}",
-                    params,
-                ).fetchone()["n"]
-            )
-            rows = conn.execute(
-                f"""SELECT * FROM campus_activities{where}
-                    ORDER BY COALESCE(starts_at, created_at) DESC
-                    LIMIT ? OFFSET ?""",
-                params + [page_size, offset],
-            ).fetchall()
-        return [CampusActivityRow.from_row(row) for row in rows], total
-
-    def update_activity(
-        self,
-        activity_id: str,
-        *,
-        fields: dict,
-    ) -> Optional[CampusActivityRow]:
-        allowed = {
-            "title", "summary", "content", "category", "location",
-            "registration_deadline", "starts_at", "ends_at", "capacity", "status",
-        }
-        current = self.get_activity(activity_id)
-        if current is None or not fields:
-            return current
-        sets: list[str] = []
-        values: list = []
-        for key, value in fields.items():
-            if key not in allowed:
-                continue
-            sets.append(f"{key} = ?")
-            values.append(value)
-            if key == "status" and value == "published" and not current.published_at:
-                sets.append("published_at = ?")
-                values.append(_now_iso())
-        if not sets:
-            return current
-        sets.append("updated_at = ?")
-        values.extend([_now_iso(), activity_id])
-        with self._db.transaction() as conn:
-            conn.execute(
-                f"UPDATE campus_activities SET {', '.join(sets)} WHERE id = ?",
-                values,
-            )
-        return self.get_activity(activity_id)
-
-    def count_activities(self, *, status: Optional[str] = None) -> int:
-        with self._db.query() as conn:
-            if status:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS n FROM campus_activities WHERE status = ?",
-                    (status,),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS n FROM campus_activities"
-                ).fetchone()
-        return int(row["n"])
 
 
 # ===== 任务仓库 =====
@@ -2559,7 +2426,6 @@ __all__ = [
     "ClassGroupRepository",
     "EnrollmentRepository",
     "AnnouncementRepository",
-    "CampusActivityRepository",
     "AssignmentRepository",
     "SubmissionRepository",
     "_generate_invite_code",
