@@ -76,7 +76,7 @@ export struct ProfilePage {
           .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 10) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
         Row() {
           this.QuickAction('文件', $r('sys.symbol.doc_text'), 'files', false)
-          this.QuickAction('活动', $r('sys.symbol.calendar_badge_checkmark'), 'activities', true)
+          this.QuickAction('论坛', $r('sys.symbol.person_2'), 'community', true)
           this.QuickAction('收藏', $r('sys.symbol.bookmark'), 'favorites', false)
           this.QuickAction('设置', $r('sys.symbol.gearshape'), 'settings', false)
         }.width('91%').height(118).padding({ left: 7, right: 7, top: 14, bottom: 14 })

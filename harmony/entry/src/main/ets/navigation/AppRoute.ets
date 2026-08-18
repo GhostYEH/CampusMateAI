@@ -14,7 +14,6 @@ export enum AppRoute {
   NOTIFICATION_SOURCE_SETTINGS = 'notification_source_settings',
   CHAOXING = 'chaoxing',
   FILES = 'files',
-  ACTIVITIES = 'activities',
   FAVORITES = 'favorites',
   SETTINGS = 'settings',
   QR_SCANNER = 'qr_scanner',
@@ -64,7 +63,6 @@ export class AppRouteRegistry {
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS:
       case AppRoute.CHAOXING:
       case AppRoute.FILES:
-      case AppRoute.ACTIVITIES:
       case AppRoute.FAVORITES:
       case AppRoute.SETTINGS:
       case AppRoute.QR_SCANNER:
@@ -101,7 +99,6 @@ export class AppRouteRegistry {
       case AppRoute.NOTIFICATIONS:
       case AppRoute.CHAOXING:
       case AppRoute.FILES:
-      case AppRoute.ACTIVITIES:
       case AppRoute.FAVORITES:
         return true;
       default:
@@ -126,7 +123,6 @@ export class AppRouteRegistry {
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS: return '通知来源设置';
       case AppRoute.CHAOXING: return '学习通';
       case AppRoute.FILES: return '我的文件';
-      case AppRoute.ACTIVITIES: return '我的活动';
       case AppRoute.FAVORITES: return '我的收藏';
       case AppRoute.SETTINGS: return '系统设置';
       case AppRoute.QR_SCANNER: return '扫一扫';

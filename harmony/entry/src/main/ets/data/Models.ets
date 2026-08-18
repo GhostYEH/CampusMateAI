@@ -14,7 +14,6 @@ export interface CourseSectionStatus { section: string; status: string; item_cou
 export interface CourseContentSummary { course_id: string; provider?: string; cover_url?: string; teacher_name?: string; school_name?: string; class_name?: string; student_count?: number; sections: CourseSectionStatus[]; }
 export interface CourseContentPage { items: CourseContentItem[]; total: number; page: number; page_size: number; has_more: boolean; }
 export interface CourseContentBundle { summary?: CourseContentSummary; items: CourseContentItem[]; }
-export interface ActivityItem { id: string; title: string; summary?: string; content?: string; category?: string; location?: string; starts_at?: string; author_name?: string; status?: string; capacity?: number; }
 export interface PagedResponse<T> { items: T[]; total: number; page: number; page_size: number; has_more: boolean; }
 export interface UserItem { id?: string; username?: string; name?: string; display_name?: string; role?: string; detail?: string; college?: string; major?: string; grade?: string; university_id?: string; university_name?: string; }
 export interface MeResponse { user: UserItem; }

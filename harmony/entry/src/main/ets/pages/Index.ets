@@ -32,7 +32,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ActivityItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
@@ -123,7 +123,6 @@ struct Index {
   @State localNotices: LocalCapturedNotice[] = [];
   @State chaoxingStatus: ChaoxingAccountStatus = ChaoxingStatusMapper.unavailable();
   @State personalFiles: PersonalFileItem[] = [];
-  @State activities: ActivityItem[] = [];
   @State favorites: FavoriteItem[] = [];
   @State backendOnline: boolean = true;
   @State rememberUsername: boolean = false;
@@ -719,9 +718,6 @@ struct Index {
         this.activeStudySession = await repository.activeSession();
       } else if (target === 'files') {
         this.personalFiles = safeArray<PersonalFileItem>(await client.request<PersonalFileItem[]>(http.RequestMethod.GET, 'personal-hub/files'));
-      } else if (target === 'activities') {
-        const page = await client.request<PagedResponse<ActivityItem>>(http.RequestMethod.GET, 'activities?page=1&page_size=100');
-        this.activities = safeArray<ActivityItem>(page?.items);
       } else if (target === 'favorites') {
         this.favorites = safeArray<FavoriteItem>(await client.request<FavoriteItem[]>(http.RequestMethod.GET, 'personal-hub/favorites'));
       }
@@ -1145,8 +1141,8 @@ struct Index {
       NotificationSourceSettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, source: this.notificationSettingsSource ?? NotificationSource.WECHAT, ingestService: this.ingestService, onBack: () => this.popRoute() })
     } else if (route === AppRoute.CHAOXING) {
       ChaoxingPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.chaoxingRepository, onBack: () => this.popRoute(), onStatusChanged: (status: ChaoxingAccountStatus) => { this.chaoxingStatus = status; }, onSynced: () => { this.refreshPrimaryData(); this.loadLocalNotices(); } })
-    } else if (route === AppRoute.FILES || route === AppRoute.ACTIVITIES || route === AppRoute.FAVORITES) {
-      PersonalHubPage({ section: route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onRefresh: () => this.refreshSecondaryData(route) })
+    } else if (route === AppRoute.FILES || route === AppRoute.FAVORITES) {
+      PersonalHubPage({ section: route, files: this.personalFiles, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onRefresh: () => this.refreshSecondaryData(route) })
     } else if (route === AppRoute.SETTINGS) {
       SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.popRoute(), onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
     } else if (route === AppRoute.QR_SCANNER) {

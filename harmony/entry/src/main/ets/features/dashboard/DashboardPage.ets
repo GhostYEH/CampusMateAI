@@ -1,5 +1,5 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
-import { CourseItem, NoticeItem, TaskItem } from '../../data/Models';
+import { CommunityPostItem, CourseItem, NoticeItem, TaskItem } from '../../data/Models';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 interface DashboardAction {
@@ -17,6 +17,7 @@ export struct DashboardPage {
   @Prop courses: CourseItem[] = [];
   @Prop tasks: TaskItem[] = [];
   @Prop notices: NoticeItem[] = [];
+  @Prop hotPosts: CommunityPostItem[] = [];
   onNavigate: (route: string) => void = () => {};
   @State pressedRoute: string = '';
   @State heroPressed: boolean = false;
@@ -446,11 +447,11 @@ export struct DashboardPage {
   @Builder
   CampusUpdates() {
     Column() {
-      this.SectionTitle('校园动态', '查看更多', 'notifications')
+      this.SectionTitle('校园热搜', '查看更多', 'community')
       Scroll() {
         Row({ space: 10 }) {
-          this.CampusUpdate(this.notices.length > 0 ? this.notices[0].title : '期末考试安排通知', this.notices.length > 0 ? (this.notices[0].content ?? this.notices[0].source ?? '校园通知') : '请及时查看考试时间与考场', '#9E5368E8', $r('sys.symbol.school'))
-          this.CampusUpdate(this.notices.length > 1 ? this.notices[1].title : '创新创业比赛报名', this.notices.length > 1 ? (this.notices[1].content ?? this.notices[1].source ?? '校园通知') : '报名通道现已开放', '#8CFFA43A', $r('sys.symbol.bell'))
+          this.CampusUpdate(this.hotPosts.length > 0 ? this.hotPosts[0].title : '校园论坛热门讨论', this.hotPosts.length > 0 ? this.hotPosts[0].content : '前往校园论坛查看热门帖子', '#9E5368E8', $r('sys.symbol.person_2'))
+          this.CampusUpdate(this.hotPosts.length > 1 ? this.hotPosts[1].title : '学习交流正在讨论', this.hotPosts.length > 1 ? this.hotPosts[1].content : '与同学一起交流学习和校园生活', '#8CFFA43A', $r('sys.symbol.person_2'))
         }
       }
       .width('100%')

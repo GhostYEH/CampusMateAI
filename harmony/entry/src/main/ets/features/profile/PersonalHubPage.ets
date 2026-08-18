@@ -1,4 +1,4 @@
-import { ActivityItem, FavoriteItem, PersonalFileItem } from '../../data/Models';
+import { FavoriteItem, PersonalFileItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
@@ -7,7 +7,6 @@ import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 export struct PersonalHubPage {
   @Prop section: string = 'files';
   @Prop files: PersonalFileItem[] = [];
-  @Prop activities: ActivityItem[] = [];
   @Prop favorites: FavoriteItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
@@ -16,7 +15,7 @@ export struct PersonalHubPage {
   onBack: () => void = () => {};
   onRefresh: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  title(): string { return this.section === 'files' ? '文件' : this.section === 'activities' ? '活动' : '收藏'; }
+  title(): string { return this.section === 'files' ? '文件' : '收藏'; }
 
   @Builder FileRow(item: PersonalFileItem) {
     Row({ space: 11 }) {
@@ -33,22 +32,6 @@ export struct PersonalHubPage {
         SymbolGlyph($r('sys.symbol.bookmark')).fontSize(18).fontColor([this.palette().primary])
       }
     }.width('100%').padding({ top: 11, bottom: 11 })
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
-  }
-
-  @Builder ActivityRow(item: ActivityItem) {
-    Column({ space: 7 }) {
-      Row() {
-        Text(item.category ?? '校园活动').fontColor(this.palette().primary).fontSize(9).fontWeight(FontWeight.Bold)
-        Blank(); Text(item.status === 'closed' ? '已结束' : '报名中').fontColor(this.palette().success).fontSize(9)
-      }.width('100%')
-      Text(item.title).fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold).width('100%').maxLines(1)
-      Text(item.summary ?? '暂无活动简介').fontColor(this.palette().muted).fontSize(10).width('100%').maxLines(2)
-      Row({ space: 10 }) {
-        Text(item.author_name ?? '校园活动中心').fontColor(this.palette().primary).fontSize(10)
-        Text(item.location ?? '地点待定').fontColor(this.palette().muted).fontSize(10)
-      }.width('100%')
-    }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(17)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
@@ -85,13 +68,6 @@ export struct PersonalHubPage {
               Column() {
                 ForEach(this.files, (item: PersonalFileItem, index: number) => { this.FileRow(item); if (index < this.files.length - 1) { Divider().color(this.palette().line) } }, (item: PersonalFileItem) => item.id)
               }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
-            }
-          } else if (this.section === 'activities') {
-            if (this.activities.length === 0) { Text('没有找到活动').fontColor(this.palette().muted).fontSize(12).padding(34) }
-            else {
-              Column({ space: 9 }) {
-                ForEach(this.activities, (item: ActivityItem) => { this.ActivityRow(item) }, (item: ActivityItem) => item.id)
-              }.width('100%')
             }
           } else {
             if (this.favorites.length === 0) { Text('还没有收藏').fontColor(this.palette().muted).fontSize(12).padding(34) }
