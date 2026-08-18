@@ -16,16 +16,6 @@ data class CampusFile(
     val isFavorite: Boolean = false,
 )
 
-data class CampusActivity(
-    val id: String,
-    val title: String,
-    val organizer: String,
-    val date: String,
-    val location: String,
-    val status: String,
-    val isFavorite: Boolean = false,
-)
-
 data class FavoriteItem(
     val id: String,
     val title: String,
@@ -37,6 +27,5 @@ data class FavoriteItem(
 
 data class PersonalHubSnapshot(
     val files: List<CampusFile> = emptyList(),
-    val activities: List<CampusActivity> = emptyList(),
     val favorites: List<FavoriteItem> = emptyList(),
 )

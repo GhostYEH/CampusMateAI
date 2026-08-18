@@ -124,7 +124,7 @@ fun CampusNewsScreen(
     ) {
         Spacer(Modifier.height(16.dp))
         CampusPageHeader(
-            title = "校园动态",
+            title = "校园热搜",
             subtitle = "${results.size} 条结果",
             onBack = onBack,
             actions = {
@@ -166,13 +166,13 @@ fun CampusNewsScreen(
         Spacer(Modifier.height(12.dp))
 
         when {
-            news.isEmpty() && isRefreshing -> LoadingState("正在加载校园动态", Modifier.weight(1f))
+            news.isEmpty() && isRefreshing -> LoadingState("正在加载校园热搜", Modifier.weight(1f))
             news.isEmpty() && refreshError != null -> ErrorState(
                 message = refreshError.orEmpty(),
                 onRetry = ::refresh,
                 modifier = Modifier.weight(1f),
             )
-            news.isEmpty() -> PageEmptyState(Icons.Default.Search, "暂时没有校园动态", Modifier.weight(1f))
+            news.isEmpty() -> PageEmptyState(Icons.Default.Search, "暂时没有校园热搜", Modifier.weight(1f))
             results.isEmpty() -> Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -182,7 +182,7 @@ fun CampusNewsScreen(
                 }
                 PageEmptyState(
                     icon = Icons.Default.Search,
-                    message = "没有匹配的校园动态",
+                    message = "没有匹配的校园热搜",
                     modifier = Modifier.weight(1f),
                 )
             }

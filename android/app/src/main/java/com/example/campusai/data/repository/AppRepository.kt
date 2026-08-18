@@ -126,12 +126,10 @@ class AppRepository(
     private val personalHubMutex = Mutex()
     private var personalHubJob: Job? = null
     private var activeAccountKey: String? = null
+    private val personalHubMigratedAccountKeys = mutableSetOf<String>()
 
     private val _files = MutableStateFlow<List<CampusFile>>(emptyList())
     val files: StateFlow<List<CampusFile>> = _files.asStateFlow()
-
-    private val _activities = MutableStateFlow<List<CampusActivity>>(emptyList())
-    val activities: StateFlow<List<CampusActivity>> = _activities.asStateFlow()
 
     private val _favorites = MutableStateFlow<List<FavoriteItem>>(emptyList())
     val favorites: StateFlow<List<FavoriteItem>> = _favorites.asStateFlow()
@@ -448,11 +446,11 @@ class AppRepository(
         } catch (_: Exception) { /* 保留现有数据 */ }
     }
 
-    /** 拉取校园动态（来自全校活动）。 */
+    /** 拉取校园热搜（来自校园论坛的热门帖子）。 */
     suspend fun refreshCampusNews(): Boolean {
         if (!_backendOnline.value || _mockMode.value) return true
         return try {
-            val resp = ApiClient.api.listActivities(page = 1, pageSize = 50)
+            val resp = ApiClient.api.listCommunityPosts(sort = "hot", page = 1, pageSize = 50)
             if (!resp.isSuccessful) {
                 false
             } else {
@@ -461,12 +459,12 @@ class AppRepository(
                     CampusNews(
                         id = dto.id,
                         title = dto.title,
-                        summary = dto.summary ?: "",
-                        content = dto.content ?: "",
-                        source = dto.author_name ?: "校园活动",
-                        time = dto.published_at ?: dto.created_at ?: "",
-                        category = dto.category ?: "校园活动",
-                        tags = emptyList(),
+                        summary = dto.content,
+                        content = dto.content,
+                        source = dto.author_name,
+                        time = dto.created_at,
+                        category = dto.category,
+                        tags = listOf("热度 ${dto.like_count + dto.comment_count}"),
                         relatedTasks = emptyList(),
                     )
                 }
@@ -614,24 +612,6 @@ class AppRepository(
                         subtitle = dto.subtitle ?: "",
                         savedAt = dto.saved_at ?: "",
                         sourceRoute = dto.source_route ?: "",
-                    )
-                }
-            }
-            // 「我的活动」复用 /activities
-            val actResp = ApiClient.api.listActivities(page = 1, pageSize = 50)
-            if (actResp.isSuccessful) {
-                val items = actResp.body()?.items.orEmpty()
-                val favIds = _favorites.value.map { it.id }.toSet()
-                _activities.value = items.map { dto ->
-                    val isFav = "activity:${dto.id}" in favIds
-                    CampusActivity(
-                        id = dto.id,
-                        title = dto.title,
-                        organizer = dto.author_name ?: "校园活动",
-                        date = dto.starts_at ?: dto.published_at ?: "",
-                        location = dto.location ?: "",
-                        status = if (dto.status == "closed") "已结束" else "可报名",
-                        isFavorite = isFav,
                     )
                 }
             }
@@ -939,55 +919,6 @@ class AppRepository(
         persistPersonalHub()
     }
 
-    suspend fun toggleActivityJoined(id: String) = personalHubMutex.withLock {
-        _activities.value = _activities.value.map { activity ->
-            if (activity.id != id) activity
-            else activity.copy(status = if (activity.status == "已报名") "可报名" else "已报名")
-        }
-        persistPersonalHub()
-    }
-
-    suspend fun toggleActivityFavorite(id: String) = personalHubMutex.withLock {
-        val target = _activities.value.firstOrNull { it.id == id } ?: return@withLock
-        val willFavorite = !target.isFavorite
-        _activities.value = _activities.value.map {
-            if (it.id == id) it.copy(isFavorite = willFavorite) else it
-        }
-        val favId = "activity:$id"
-        _favorites.value = if (willFavorite) {
-            if (_backendOnline.value && !_mockMode.value) {
-                try {
-                    ApiClient.api.addFavorite(
-                        FavoriteCreateRequest(
-                            id = favId,
-                            title = target.title,
-                            type = "活动",
-                            subtitle = "${target.date} · ${target.organizer}",
-                            saved_at = "刚刚",
-                            source_route = "activities",
-                        )
-                    )
-                } catch (_: Exception) { /* 本地仍保留 */ }
-            }
-            listOf(
-                FavoriteItem(
-                    id = favId,
-                    title = target.title,
-                    type = "活动",
-                    subtitle = "${target.date} · ${target.organizer}",
-                    savedAt = "刚刚",
-                    sourceRoute = "activities",
-                ),
-            ) + _favorites.value.filterNot { it.id == favId }
-        } else {
-            if (_backendOnline.value && !_mockMode.value) {
-                try { ApiClient.api.removeFavorite(favId) } catch (_: Exception) {}
-            }
-            _favorites.value.filterNot { it.id == favId }
-        }
-        persistPersonalHub()
-    }
-
     suspend fun removeFavorite(id: String) = personalHubMutex.withLock {
         if (_backendOnline.value && !_mockMode.value) {
             try { ApiClient.api.removeFavorite(id) } catch (_: Exception) {}
@@ -997,12 +928,6 @@ class AppRepository(
             id.startsWith("file:") -> {
                 val sourceId = id.substringAfter(':')
                 _files.value = _files.value.map {
-                    if (it.id == sourceId) it.copy(isFavorite = false) else it
-                }
-            }
-            id.startsWith("activity:") -> {
-                val sourceId = id.substringAfter(':')
-                _activities.value = _activities.value.map {
                     if (it.id == sourceId) it.copy(isFavorite = false) else it
                 }
             }
@@ -1161,7 +1086,7 @@ class AppRepository(
     private fun defaultTasks() = listOf(
         Task("demo-1", "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),
         Task("demo-2", "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
-        Task("demo-3", "\"互联网+\"大赛校内选拔报名", "5月21日 18:00", "活动报名", false, "第八届中国国际\"互联网+\"大学生创新创业大赛校内选拔赛。\n\n报名材料：\n- 项目计划书（PDF）\n- 团队信息表\n- 指导教师推荐意见\n\n报名网站：校创新创业中心官网"),
+        Task("demo-3", "整理创新创业项目资料", "5月21日 18:00", "个人待办", false, "整理已有项目资料并确认下一步计划。\n\n- 汇总项目计划书\n- 整理团队分工\n- 记录需要咨询的问题"),
         Task("demo-4", "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
     )
 
@@ -1175,8 +1100,8 @@ class AppRepository(
     )
 
     private fun defaultNotices() = listOf(
-        Notice("demo-n-1", "关于开展暑期社会实践活动的通知", "学生事务", "10:15", true),
-        Notice("demo-n-2", "第十六届程序设计竞赛报名通知", "创新实践中心", "昨天", true),
+        Notice("demo-n-1", "暑期社会实践材料提交提醒", "学生事务", "10:15", true),
+        Notice("demo-n-2", "第十六届程序设计竞赛结果公告", "创新实践中心", "昨天", true),
         Notice("demo-n-3", "期末考试安排及相关事项说明", "教务处", "5月17日", false),
         Notice("demo-n-4", "图书馆数据库试用资源更新通知", "图书馆", "5月16日", false),
     )
@@ -1280,38 +1205,13 @@ class AppRepository(
         ),
         CampusNews(
             id = "news-4",
-            title = "心理健康月系列活动预告",
-            summary = "关注心灵成长，拥抱阳光生活",
-            content = """亲爱的同学们：
-
-五月是心理健康月，校心理健康教育中心策划了丰富多彩的活动，诚邀大家参与。
-
-【活动安排】
-
-🌿 "心灵驿站"开放日
-• 时间：5月20日-24日 每日 14:00-17:00
-• 地点：学生活动中心二楼心理健康中心
-• 内容：心理沙盘体验、放松训练、一对一咨询体验
-
-📝 "写给未来自己的一封信"
-• 在心理健康中心领取信纸，写好后投入"时光信箱"
-• 一年后由中心寄还给你
-• 活动持续整个五月
-
-🎬 心理电影展播
-• 5月21日 19:00《心灵奇旅》- 图书馆报告厅
-• 映后有心理咨询师带领的分享交流环节
-
-👥 团体辅导工作坊
-• "情绪管理与压力应对" 5月23日 15:00
-• "人际关系沟通技巧" 5月25日 15:00
-• 每场限 20 人，请提前扫码报名
-
-所有活动免费向全校学生开放。如有任何心理困扰，欢迎随时预约咨询（预约电话：6278-6688）。""",
-            source = "心理健康教育中心",
+            title = "期末周图书馆座位还有哪些区域好找？",
+            summary = "同学们分享了不同楼层的空位情况和安静程度。",
+            content = "想找一个安静、插座方便的位置复习。大家最近在哪个区域比较容易找到座位？也欢迎分享空位和环境情况。",
+            source = "校园同学",
             time = "2026-05-15 10:00",
-            category = "校园活动",
-            tags = listOf("心理健康", "活动", "团体辅导", "电影展播"),
+            category = "学习交流",
+            tags = listOf("热度 128", "图书馆", "期末周"),
         ),
     )
 
@@ -1321,7 +1221,6 @@ class AppRepository(
             activeAccountKey = null
             _personalHubLoading.value = false
             _files.value = emptyList()
-            _activities.value = emptyList()
             _favorites.value = emptyList()
             return
         }
@@ -1333,8 +1232,10 @@ class AppRepository(
                 val snapshot = stored ?: defaultPersonalHub().also {
                     dataStore.savePersonalHub(accountKey, it)
                 }
+                if (stored != null && personalHubMigratedAccountKeys.add(accountKey)) {
+                    dataStore.savePersonalHub(accountKey, snapshot)
+                }
                 _files.value = snapshot.files
-                _activities.value = snapshot.activities
                 _favorites.value = snapshot.favorites
                 _personalHubLoading.value = false
             }
@@ -1428,7 +1329,6 @@ class AppRepository(
             accountKey,
             PersonalHubSnapshot(
                 files = _files.value,
-                activities = _activities.value,
                 favorites = _favorites.value,
             ),
         )
@@ -1450,16 +1350,9 @@ class AppRepository(
             CampusFile(id = "demo-f-2", name = "奖学金申请材料清单.docx", category = "校园事务", sizeLabel = "860 KB", updatedAt = "昨天 18:40", source = "学生工作处"),
             CampusFile(id = "demo-f-3", name = "创新创业训练计划书.pdf", category = "竞赛资料", sizeLabel = "1.7 MB", updatedAt = "7月28日", source = "创新实践中心"),
         )
-        val activities = listOf(
-            CampusActivity(id = "demo-a-1", title = "第十六届程序设计竞赛", organizer = "创新实践中心", date = "8月16日 09:00", location = "信息楼报告厅", status = "已报名", isFavorite = true),
-            CampusActivity(id = "demo-a-2", title = "图书馆新生志愿讲解员招募", organizer = "校图书馆", date = "8月20日 14:30", location = "图书馆一层", status = "可报名"),
-            CampusActivity(id = "demo-a-3", title = "暑期社会实践成果分享会", organizer = "校团委", date = "9月03日 19:00", location = "大学生活动中心", status = "可报名"),
-        )
         return PersonalHubSnapshot(
             files = files,
-            activities = activities,
             favorites = listOf(
-                FavoriteItem("activity:demo-a-1", activities.first().title, "活动", "8月16日 · 创新实践中心", "7月30日", "activities"),
                 FavoriteItem("file:demo-f-1", files.first().name, "文件", "课程资料 · 数据结构", "7月29日", "files"),
                 FavoriteItem("notice:scholarship", "2026 学年奖学金评审通知", "通知", "学生工作处 · 申请流程", "7月26日", "notifications"),
             ),

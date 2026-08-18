@@ -8,7 +8,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.example.campusai.data.model.CampusActivity
 import com.example.campusai.data.model.CampusFile
 import com.example.campusai.data.model.FavoriteItem
 import com.example.campusai.data.model.PersonalHubSnapshot
@@ -278,19 +277,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                 })
             }
         })
-        root.put("activities", JSONArray().apply {
-            snapshot.activities.forEach { activity ->
-                put(JSONObject().apply {
-                    put("id", activity.id)
-                    put("title", activity.title)
-                    put("organizer", activity.organizer)
-                    put("date", activity.date)
-                    put("location", activity.location)
-                    put("status", activity.status)
-                    put("isFavorite", activity.isFavorite)
-                })
-            }
-        })
         root.put("favorites", JSONArray().apply {
             snapshot.favorites.forEach { favorite ->
                 put(JSONObject().apply {
@@ -309,7 +295,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private fun decodePersonalHub(raw: String): PersonalHubSnapshot? = try {
         val root = JSONObject(raw)
         val filesJson = root.optJSONArray("files") ?: JSONArray()
-        val activitiesJson = root.optJSONArray("activities") ?: JSONArray()
         val favoritesJson = root.optJSONArray("favorites") ?: JSONArray()
         PersonalHubSnapshot(
             files = List(filesJson.length()) { index ->
@@ -326,19 +311,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                     )
                 }
             },
-            activities = List(activitiesJson.length()) { index ->
-                activitiesJson.getJSONObject(index).let { obj ->
-                    CampusActivity(
-                        id = obj.optString("id").ifBlank { obj.optLong("id").toString() },
-                        title = obj.optString("title"),
-                        organizer = obj.optString("organizer"),
-                        date = obj.optString("date"),
-                        location = obj.optString("location"),
-                        status = obj.optString("status"),
-                        isFavorite = obj.optBoolean("isFavorite"),
-                    )
-                }
-            },
             favorites = List(favoritesJson.length()) { index ->
                 favoritesJson.getJSONObject(index).let { obj ->
                     FavoriteItem(
@@ -350,6 +322,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                         sourceRoute = obj.optString("sourceRoute"),
                     )
                 }
+            }.filterNot { favorite ->
+                favorite.id.startsWith("activity:") || favorite.sourceRoute == "activities"
             },
         )
     } catch (_: Exception) {

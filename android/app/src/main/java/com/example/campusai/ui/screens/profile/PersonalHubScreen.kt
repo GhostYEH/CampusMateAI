@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.campusai.data.model.CampusActivity
 import com.example.campusai.data.model.CampusFile
 import com.example.campusai.data.model.FavoriteItem
 import com.example.campusai.data.repository.AppRepository
@@ -38,7 +37,6 @@ import kotlinx.coroutines.launch
 
 private enum class PersonalSection(val label: String, val icon: ImageVector) {
     Files("文件", Icons.Default.FolderOpen),
-    Activities("活动", Icons.Default.EventAvailable),
     Favorites("收藏", Icons.Default.Bookmark),
 }
 
@@ -52,7 +50,6 @@ fun PersonalHubScreen(
     onNavigate: (String) -> Unit,
 ) {
     val files by repository.files.collectAsState()
-    val activities by repository.activities.collectAsState()
     val favorites by repository.favorites.collectAsState()
     val loading by repository.personalHubLoading.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
@@ -62,7 +59,6 @@ fun PersonalHubScreen(
     var query by remember { mutableStateOf("") }
     var showAddFile by remember { mutableStateOf(false) }
     val section = when (sectionName) {
-        "activities" -> PersonalSection.Activities
         "favorites" -> PersonalSection.Favorites
         else -> PersonalSection.Files
     }
@@ -82,7 +78,6 @@ fun PersonalHubScreen(
                 onSelected = {
                     val targetSection = when (it) {
                         PersonalSection.Files -> "files"
-                        PersonalSection.Activities -> "activities"
                         PersonalSection.Favorites -> "favorites"
                     }
                     if (targetSection != sectionName) {
@@ -95,7 +90,6 @@ fun PersonalHubScreen(
                 onValueChange = { query = it },
                 placeholder = when (section) {
                     PersonalSection.Files -> "搜索文件名、课程或来源"
-                    PersonalSection.Activities -> "搜索活动、地点或主办方"
                     PersonalSection.Favorites -> "搜索已收藏内容"
                 },
             )
@@ -131,25 +125,6 @@ fun PersonalHubScreen(
                             scope.launch {
                                 repository.deleteFile(id)
                                 snackbar.showSnackbar("文件记录已移除")
-                            }
-                        },
-                    )
-                    PersonalSection.Activities -> ActivityList(
-                        activities = activities.filter {
-                            query.isBlank() || listOf(it.title, it.organizer, it.location)
-                                .any { field -> field.contains(query, ignoreCase = true) }
-                        },
-                        reduceMotion = reduceMotion,
-                        onJoin = { id ->
-                            scope.launch {
-                                repository.toggleActivityJoined(id)
-                                snackbar.showSnackbar("报名状态已更新")
-                            }
-                        },
-                        onFavorite = { id ->
-                            scope.launch {
-                                repository.toggleActivityFavorite(id)
-                                snackbar.showSnackbar("收藏状态已更新")
                             }
                         },
                     )
@@ -331,68 +306,6 @@ private fun FileList(
 }
 
 @Composable
-private fun ActivityList(
-    activities: List<CampusActivity>,
-    reduceMotion: Boolean,
-    onJoin: (String) -> Unit,
-    onFavorite: (String) -> Unit,
-) {
-    ContentList(
-        empty = activities.isEmpty(),
-        emptyIcon = Icons.Default.EventBusy,
-        emptyTitle = "没有找到活动",
-        emptyHint = "换个关键词看看校园里还有什么",
-    ) {
-        itemsIndexed(activities, key = { index, activity -> "personal-activity|${activity.id}|$index" }) { _, activity ->
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-                    .clip(RoundedCornerShape(20.dp)).background(Surface)
-                    .border(1.dp, Line.copy(alpha = .75f), RoundedCornerShape(20.dp))
-                    .padding(15.dp)
-                    .enterAnimation(enabled = !reduceMotion),
-            ) {
-                Row(verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f)) {
-                        Text(activity.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Spacer(Modifier.height(5.dp))
-                        Text(activity.organizer, color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                    }
-                    IconButton(onClick = { onFavorite(activity.id) }, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            if (activity.isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            null,
-                            tint = if (activity.isFavorite) Accent else Muted,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                MetaLine(Icons.Default.Schedule, activity.date)
-                Spacer(Modifier.height(6.dp))
-                MetaLine(Icons.Default.LocationOn, activity.location)
-                Spacer(Modifier.height(13.dp))
-                Button(
-                    onClick = { onJoin(activity.id) },
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(13.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (activity.status == "已报名") PrimarySoft else Primary,
-                        contentColor = if (activity.status == "已报名") Primary else MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Icon(
-                        if (activity.status == "已报名") Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,
-                        null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (activity.status == "已报名") "已报名 · 点击取消" else "报名活动", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun FavoriteList(
     favorites: List<FavoriteItem>,
     reduceMotion: Boolean,
@@ -403,7 +316,7 @@ private fun FavoriteList(
         empty = favorites.isEmpty(),
         emptyIcon = Icons.Default.Bookmarks,
         emptyTitle = "还没有收藏",
-        emptyHint = "收藏常用文件和活动，之后会更好找",
+        emptyHint = "收藏常用文件和帖子，之后会更好找",
     ) {
         itemsIndexed(favorites, key = { index, favorite -> "favorite|${favorite.id}|$index" }) { _, favorite ->
             Row(

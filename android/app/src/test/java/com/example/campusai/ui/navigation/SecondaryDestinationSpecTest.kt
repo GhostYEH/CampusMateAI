@@ -60,7 +60,6 @@ class SecondaryDestinationSpecTest {
             "expression-contribution",
             "account",
             "files",
-            "activities",
             "favorites",
             "university",
             "community",

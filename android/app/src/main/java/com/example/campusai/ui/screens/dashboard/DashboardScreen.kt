@@ -100,7 +100,7 @@ fun DashboardScreen(
     val campusNews by repository.campusNews.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
 
-    // 首页加载时尝试从后端拉取最新数据（通知 / 动态 / 课程 / 任务）
+    // 首页加载时尝试从后端拉取最新数据（通知 / 热搜 / 课程 / 任务）
     androidx.compose.runtime.LaunchedEffect(Unit) {
         repository.refreshNotices()
         repository.refreshCampusNews()
@@ -472,7 +472,7 @@ private fun CampusUpdates(
             .padding(16.dp)
             .enterAnimation(delayMs = 220, enabled = !reduceMotion),
     ) {
-        SectionTitle("校园动态", "查看更多") { onNavigate("campus-news") }
+        SectionTitle("校园热搜", "查看更多") { onNavigate("campus-news") }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             itemsIndexed(items, key = { index, item -> "dashboard|${item.id}|$index" }) { _, item ->

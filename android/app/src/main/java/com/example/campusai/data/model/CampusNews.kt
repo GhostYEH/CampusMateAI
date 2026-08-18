@@ -1,8 +1,8 @@
 package com.example.campusai.data.model
 
 /**
- * 校园动态条目数据模型。
- * 用于「校园动态」卡片及详情展示。
+ * 校园热搜条目数据模型。
+ * 用于论坛热门帖子卡片及详情展示。
  */
 data class CampusNews(
     val id: String,

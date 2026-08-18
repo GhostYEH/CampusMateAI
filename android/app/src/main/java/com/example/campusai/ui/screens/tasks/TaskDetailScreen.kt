@@ -203,7 +203,7 @@ fun TaskDetailScreen(
                         onValueChange = { editCourse = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("分类") },
-                        placeholder = { Text("例如：课程作业 / 活动报名 / 个人待办") },
+                        placeholder = { Text("例如：课程作业 / 个人待办 / 学习安排") },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         leadingIcon = { Icon(Icons.Default.Category, null, tint = Primary) },

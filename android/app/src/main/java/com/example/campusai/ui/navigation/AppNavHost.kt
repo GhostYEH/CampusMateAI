@@ -451,15 +451,6 @@ fun AppNavHost(
                 onNavigate = { route -> go(route) },
             )
         }
-        composable("activities") {
-            PersonalHubScreen(
-                repository = repository,
-                initialSection = "activities",
-                onBack = { navController.popBackStack() },
-                onSectionNavigate = { route -> switchPersonalSection("activities", route) },
-                onNavigate = { route -> go(route) },
-            )
-        }
         composable("favorites") {
             PersonalHubScreen(
                 repository = repository,

@@ -81,7 +81,6 @@ private val staticDestinationTitles = mapOf(
     "expression-contribution" to "模型共建",
     "account" to "账号设置",
     "files" to "我的文件",
-    "activities" to "我的活动",
     "favorites" to "我的收藏",
     "university" to "我的大学",
     "community" to "校园论坛",

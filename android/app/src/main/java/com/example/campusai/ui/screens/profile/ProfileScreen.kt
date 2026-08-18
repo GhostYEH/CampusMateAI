@@ -61,7 +61,7 @@ fun ProfileScreen(
                     darkMode = darkMode,
                     onAccount = { onNavigate("account") },
                     onFiles = { onNavigate("files") },
-                    onActivities = { onNavigate("activities") },
+                    onCommunity = { onNavigate("community") },
                     onFavorites = { onNavigate("favorites") },
                     onSettings = { onNavigate("settings") },
                     onScan = { onNavigate("qr_scanner") },
@@ -123,7 +123,7 @@ private fun ProfileHero(
     darkMode: Boolean,
     onAccount: () -> Unit,
     onFiles: () -> Unit,
-    onActivities: () -> Unit,
+    onCommunity: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
     onScan: () -> Unit,
@@ -205,7 +205,7 @@ private fun ProfileHero(
         ProfileQuickActions(
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp),
             onFiles = onFiles,
-            onActivities = onActivities,
+            onCommunity = onCommunity,
             onFavorites = onFavorites,
             onSettings = onSettings,
         )
@@ -241,13 +241,13 @@ private fun HeroDecorations() {
 private fun ProfileQuickActions(
     modifier: Modifier = Modifier,
     onFiles: () -> Unit,
-    onActivities: () -> Unit,
+    onCommunity: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val actions = listOf(
         QuickAction(Icons.Default.Description, "文件", onFiles),
-        QuickAction(Icons.Default.EventAvailable, "活动", onActivities),
+        QuickAction(Icons.Default.Groups, "论坛", onCommunity),
         QuickAction(Icons.Default.Bookmark, "收藏", onFavorites),
         QuickAction(Icons.Default.Settings, "设置", onSettings),
     )
