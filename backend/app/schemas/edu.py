@@ -6,9 +6,91 @@ DataNormalizer 负责把异构数据归一化到这些模型。
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, SecretStr
+
+
+# ===== extra_info 敏感字段过滤 =====
+
+# 绝不放入 extra_info 的键（大小写不敏感子串匹配）
+_EXTRA_INFO_BLOCKED_SUBSTRINGS = (
+    "cookie", "token", "csrf", "jsessionid", "session", "password", "passwd",
+    "secret", "credential", "authorization", "auth_header", "api_key",
+    "private_key", "access_key", "refresh_token", "bearer",
+)
+
+# 技术内部字段（精确匹配）
+_EXTRA_INFO_BLOCKED_EXACT = {
+    "provider", "adapter_id", "adapter", "row_index", "raw_id", "source_url",
+    "internal_id", "html_selector", "raw_html", "raw_json", "raw_text",
+    "source_hash", "sync_batch_id", "edu_system_id", "university_id",
+    "user_id", "binding_id", "connection_id", "is_stale", "last_seen_at",
+    "created_at", "updated_at", "id",
+}
+
+def sanitize_extra_info(raw: Any, exclude_keys: Optional[set[str]] = None) -> Optional[Dict[str, Any]]:
+    """过滤 extra_info：只保留适合用户查看的课程业务字段。
+
+    - 拒绝 dict/list 以外的类型
+    - 拒绝敏感键（cookie/token/session/password 等）
+    - 拒绝技术内部字段（provider/adapter_id/raw_html 等）
+    - 值只保留 str/int/float/bool/None（以及嵌套 dict/list，递归过滤）
+    - 过滤后为空则返回 None
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+
+    def _blocked_key(key: str) -> bool:
+        if not isinstance(key, str):
+            return True
+        normalized = key.strip().lower()
+        if key in _EXTRA_INFO_BLOCKED_EXACT or normalized in {item.lower() for item in (exclude_keys or set())}:
+            return True
+        lowered = normalized
+        for sub in _EXTRA_INFO_BLOCKED_SUBSTRINGS:
+            if sub in lowered:
+                return True
+        return False
+
+    def _clean_value(v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            return s if s else None
+        if isinstance(v, dict):
+            cleaned = {}
+            for k, val in v.items():
+                if _blocked_key(str(k)):
+                    continue
+                cv = _clean_value(val)
+                if cv is not None:
+                    cleaned[str(k)] = cv
+            return cleaned if cleaned else None
+        if isinstance(v, (list, tuple)):
+            items = []
+            for it in v:
+                cv = _clean_value(it)
+                if cv is not None:
+                    items.append(cv)
+            return items if items else None
+        return None
+
+    result: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if _blocked_key(str(key)):
+            continue
+        cleaned = _clean_value(value)
+        if cleaned is not None:
+            result[str(key)] = cleaned
+    return result if result else None
 
 
 # ===== 教务系统配置 =====
@@ -92,13 +174,55 @@ class EduConnectionCreate(BaseModel):
 
 
 class EduConnectionContinue(BaseModel):
-    """推进连接状态请求。"""
+    """推进连接状态请求。
+
+    支持两种登录路径：
+    1. server_credentials: username + password（后端代理登录）
+    2. client_webview: cookies + current_url + user_agent（客户端 WebView 登录完成后回传）
+
+    action 可选值：
+    - CLIENT_WEBVIEW_COMPLETE: 客户端 WebView 登录完成，回传 cookies
+    - POLL: 客户端轮询当前状态（不推进）
+    - CANCEL: 取消连接
+    """
     username: Optional[str] = None
     password: Optional[SecretStr] = None
     captcha: Optional[str] = None
     sms_code: Optional[str] = None
     mfa_code: Optional[str] = None
     action: Optional[str] = None
+    cookies: Optional[dict] = None
+    current_url: Optional[str] = None
+    user_agent: Optional[str] = None
+
+
+class EduProbeRequest(BaseModel):
+    """教务系统 URL 探测请求（不需要 university_id）。"""
+    portal_url: str = Field(..., min_length=1, max_length=512)
+
+
+class EduProbeResult(BaseModel):
+    """教务系统 URL 探测结果。"""
+    portal_url: str
+    provider: str = "unknown"
+    provider_confidence: float = 0.0
+    reachable: bool = False
+    http_status: Optional[int] = None
+    final_url: Optional[str] = None
+    title: Optional[str] = None
+    is_edu_page: bool = False
+    suggested_login_mode: str = "backend_http"
+    evidence: List[dict] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class EduConnectionFromUrlRequest(BaseModel):
+    """从教务系统 URL 创建连接（便捷流程，不需预先 edu_system_id）。
+
+    university_id 可选；若未提供则使用当前用户的 university_id。
+    """
+    portal_url: str = Field(..., min_length=1, max_length=512)
+    university_id: Optional[str] = None
 
 
 class EduSystemConfigOut(BaseModel):
@@ -216,18 +340,45 @@ class EduProfile(BaseModel):
 
 
 class EduScheduleItem(BaseModel):
-    """课表单条。"""
+    """课表单条。
+
+    字段策略：教务系统能提供多少有效信息就保存多少。
+    所有字段可选 nullable，不同学校差异由 DataNormalizer 归一化。
+    extra_info 保存标准模型未覆盖但对用户有意义的业务字段（已脱敏）。
+    """
     course_name: Optional[str] = None
     course_code: Optional[str] = None
     teacher: Optional[str] = None
+    teachers: Optional[List[str]] = None
     location: Optional[str] = None
+    campus: Optional[str] = None
+    building: Optional[str] = None
+    classroom: Optional[str] = None
     weekday: Optional[int] = Field(None, ge=1, le=7)
     start_section: Optional[int] = None
     end_section: Optional[int] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     weeks: Optional[str] = None
+    week_text: Optional[str] = None
+    credit: Optional[float] = None
+    course_nature: Optional[str] = None
+    course_category: Optional[str] = None
+    course_type: Optional[str] = None
+    teaching_class: Optional[str] = None
+    class_name: Optional[str] = None
+    college: Optional[str] = None
+    department: Optional[str] = None
+    assessment_method: Optional[str] = None
+    exam_type: Optional[str] = None
+    total_hours: Optional[float] = None
+    theory_hours: Optional[float] = None
+    practice_hours: Optional[float] = None
+    language: Optional[str] = None
+    note: Optional[str] = None
     semester: Optional[str] = None
+    semester_id: Optional[str] = None
+    extra_info: Optional[Dict[str, Any]] = None
 
 
 class EduSchedule(BaseModel):
@@ -418,4 +569,11 @@ __all__ = [
     "EduDiscoveryCandidateOut",
     "EduDiscoveryReviewRequest",
     "EduDiscoveryStatsOut",
+    "EduConnectionContinue",
+    "EduConnectionCreate",
+    "EduConnectionOut",
+    "EduProbeRequest",
+    "EduProbeResult",
+    "EduConnectionFromUrlRequest",
+    "sanitize_extra_info",
 ]

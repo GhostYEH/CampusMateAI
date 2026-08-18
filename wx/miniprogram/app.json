@@ -6,15 +6,39 @@
     "pages/tasks/tasks",
     "pages/counselor/counselor",
     "pages/profile/profile",
-    "pages/notices/notices",
-    "pages/study/study",
-    "pages/exams/exams",
-    "pages/classrooms/classrooms",
-    "pages/community/community",
-    "pages/community-detail/community-detail",
-    "pages/lostfound/lostfound",
     "pages/hub/hub"
   ],
+  "subPackages": [
+    {
+      "root": "package-campus",
+      "pages": [
+        "pages/notices/notices",
+        "pages/classrooms/classrooms",
+        "pages/exams/exams"
+      ]
+    },
+    {
+      "root": "package-community",
+      "pages": [
+        "pages/community/community",
+        "pages/community-detail/community-detail",
+        "pages/lostfound/lostfound"
+      ]
+    },
+    {
+      "root": "package-study",
+      "pages": [
+        "pages/study/study"
+      ]
+    },
+    {
+      "root": "package-academic",
+      "pages": [
+        "pages/edu/edu"
+      ]
+    }
+  ],
+  "preloadRule": {},
   "window": {
     "navigationStyle": "custom",
     "backgroundColor": "#F6F8FA",

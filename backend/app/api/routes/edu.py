@@ -35,6 +35,7 @@ from ...schemas.edu import (
     EduBindingOut,
     EduConnectionContinue,
     EduConnectionCreate,
+    EduConnectionFromUrlRequest,
     EduConnectionOut,
     EduDetectResult,
     EduDiscoveryCandidateOut,
@@ -42,6 +43,8 @@ from ...schemas.edu import (
     EduDiscoveryStatsOut,
     EduDiscoverySubmitUrlRequest,
     EduDiscoverySubmitUrlResult,
+    EduProbeRequest,
+    EduProbeResult,
     EduSyncRecordOut,
     EduSyncResult,
     EduSystemConfigOut,
@@ -364,13 +367,35 @@ def list_schedule_items(
                 "course_code": it.course_code,
                 "course_name": it.course_name,
                 "teacher": it.teacher,
+                "teachers": it.teachers,
                 "location": it.location,
+                "campus": it.campus,
+                "building": it.building,
+                "classroom": it.classroom,
                 "weekday": it.weekday,
                 "start_section": it.start_section,
                 "end_section": it.end_section,
                 "start_time": it.start_time,
                 "end_time": it.end_time,
                 "weeks": it.weeks,
+                "week_text": it.week_text,
+                "credit": it.credit,
+                "course_nature": it.course_nature,
+                "course_category": it.course_category,
+                "course_type": it.course_type,
+                "teaching_class": it.teaching_class,
+                "class_name": it.class_name,
+                "college": it.college,
+                "department": it.department,
+                "assessment_method": it.assessment_method,
+                "exam_type": it.exam_type,
+                "total_hours": it.total_hours,
+                "theory_hours": it.theory_hours,
+                "practice_hours": it.practice_hours,
+                "language": it.language,
+                "note": it.note,
+                "semester_id": it.semester_id,
+                "extra_info": it.extra_info,
                 "is_stale": it.is_stale,
                 "last_seen_at": it.last_seen_at,
             }
@@ -568,7 +593,14 @@ async def continue_connection(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduConnectionOut:
-    """推进连接状态。"""
+    """推进连接状态。
+
+    支持两种路径：
+    - server_credentials: username + password
+    - client_webview: action=CLIENT_WEBVIEW_COMPLETE + cookies + current_url + user_agent
+    - action=POLL: 轮询当前状态
+    - action=CANCEL: 取消连接
+    """
     conn = container.edu_connector.get_connection(connection_id)
     if conn is None:
         raise AppException(
@@ -576,6 +608,8 @@ async def continue_connection(
             http_status=404,
             message="连接不存在",
         )
+    if conn.user_id != user.id:
+        raise Forbidden()
     new_state = await container.edu_connector.continue_connection(
         connection_id=connection_id,
         username=request.username,
@@ -584,6 +618,9 @@ async def continue_connection(
         sms_code=request.sms_code,
         mfa_code=request.mfa_code,
         action=request.action,
+        cookies=request.cookies,
+        current_url=request.current_url,
+        user_agent=request.user_agent,
     )
     updated = container.edu_connector.get_connection(connection_id)
     return EduConnectionOut(
@@ -601,6 +638,58 @@ async def continue_connection(
         created_at=updated.created_at,
         updated_at=updated.updated_at,
     )
+
+
+@router.post("/connections/from-url", response_model=EduConnectionOut)
+async def create_connection_from_url(
+    request: EduConnectionFromUrlRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduConnectionOut:
+    """从教务系统 URL 创建连接（便捷流程）。
+
+    1. probe URL 检测 provider
+    2. ensure_default_system 创建/复用 edu_system
+    3. create_connection
+    返回 connection（初始 state=idle），客户端再调 /continue 推进。
+    """
+    university_id = request.university_id or user.university_id
+    if not university_id:
+        raise UniversityRequired()
+    conn, system, probe = await container.edu_connector.create_connection_from_url(
+        user_id=user.id,
+        portal_url=request.portal_url,
+        university_id=university_id,
+    )
+    return EduConnectionOut(
+        id=conn.id,
+        user_id=conn.user_id,
+        edu_system_id=conn.edu_system_id,
+        university_id=conn.university_id,
+        state=conn.state,
+        provider=conn.provider,
+        login_execution_mode=conn.login_execution_mode,
+        external_student_id=conn.external_student_id,
+        external_student_name=conn.external_student_name,
+        error_code=conn.error_code,
+        error_message=conn.error_message,
+        created_at=conn.created_at,
+        updated_at=conn.updated_at,
+    )
+
+
+@router.post("/discovery/probe", response_model=EduProbeResult)
+async def discovery_probe(
+    request: EduProbeRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduProbeResult:
+    """探测教务系统 URL（不需要 university_id）。
+
+    只检测 provider/可达性/建议登录模式，不持久化任何数据。
+    """
+    result = await container.edu_connector.probe_portal(request.portal_url)
+    return EduProbeResult(**result)
 
 
 # ===== 教务系统发现（Discovery）=====

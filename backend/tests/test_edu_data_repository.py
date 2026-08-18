@@ -211,3 +211,189 @@ def test_sync_schedule_skips_empty_course_name(repo, binding):
     stats = repo.sync_schedule_items(binding=binding, schedule=bad, sync_batch_id="batch_001")
     assert stats.failed == 2
     assert stats.inserted == 1
+
+
+# ===== 课程详情完整字段持久化测试 =====
+
+
+def test_sync_schedule_persists_full_fields(repo, binding):
+    """教务系统能提供多少字段就保存多少，详情弹窗能读到全部。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(
+                course_name="社会心理学",
+                course_code="PSY20301",
+                teacher="张三,李四",
+                teachers=["张三", "李四"],
+                location="逸夫楼 A302",
+                campus="主校区",
+                building="逸夫楼",
+                classroom="A302",
+                weekday=2,
+                start_section=3,
+                end_section=4,
+                start_time="10:00",
+                end_time="11:40",
+                weeks="1-8,10-16",
+                credit=2.0,
+                course_nature="专业必修",
+                course_category="专业基础课",
+                course_type="必修",
+                teaching_class="社会心理学-01",
+                class_name="心理类-2401",
+                college="社会学院",
+                department="社会学系",
+                assessment_method="考试",
+                exam_type="期末考试",
+                total_hours=32.0,
+                theory_hours=24.0,
+                practice_hours=8.0,
+                language="中文",
+                note="详情备注",
+                semester_id="2024-2025-1",
+                extra_info={"课程归属": "专业基础课程", "授课语言": "中文"},
+            ),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="batch_001")
+    items = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")
+    assert len(items) == 1
+    it = items[0]
+    assert it.course_name == "社会心理学"
+    assert it.course_code == "PSY20301"
+    assert it.teachers == ["张三", "李四"]
+    assert it.credit == 2.0
+    assert it.course_nature == "专业必修"
+    assert it.course_category == "专业基础课"
+    assert it.teaching_class == "社会心理学-01"
+    assert it.college == "社会学院"
+    assert it.assessment_method == "考试"
+    assert it.weeks == "1-8,10-16"
+    assert it.campus == "主校区"
+    assert it.total_hours == 32.0
+    assert it.extra_info == {"课程归属": "专业基础课程", "授课语言": "中文"}
+
+
+def test_sync_schedule_multiple_teachers(repo, binding):
+    """多教师必须保留全部，不能只留第一个。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(
+                course_name="联合授课研讨",
+                course_code="SEM301",
+                teacher="张三,李四,王五",
+                teachers=["张三", "李四", "王五"],
+                weekday=1, start_section=1, end_section=2, weeks="1-16",
+            ),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="batch_001")
+    it = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")[0]
+    assert it.teachers == ["张三", "李四", "王五"]
+
+
+def test_sync_schedule_multi_location_not_deduped(repo, binding):
+    """同一课程同一星期同一节次，不同周次不同地点，必须保留两条 session。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(course_name="数据结构", course_code="CS201", location="A101", weekday=4, start_section=1, end_section=2, weeks="1-8"),
+            EduScheduleItem(course_name="数据结构", course_code="CS201", location="B202", weekday=4, start_section=1, end_section=2, weeks="9-16"),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="batch_001")
+    items = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")
+    assert len(items) == 2
+    locs = {it.location for it in items}
+    assert locs == {"A101", "B202"}
+
+
+def test_sync_schedule_odd_even_weeks_preserved(repo, binding):
+    """单双周/非连续周次必须原样保留，不能被错误解析成 1-16。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(course_name="大学体育", course_code="PE201", weekday=5, start_section=3, end_section=4, weeks="1,3,5,7,9,11,13,15", week_text="单周"),
+            EduScheduleItem(course_name="实验心理学", course_code="PSY301", weekday=3, start_section=3, end_section=4, weeks="1-8,10-16"),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="batch_001")
+    items = {it.course_code: it for it in repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")}
+    assert items["PE201"].weeks == "1,3,5,7,9,11,13,15"
+    assert items["PE201"].week_text == "单周"
+    assert items["PSY301"].weeks == "1-8,10-16"
+
+
+def test_sync_schedule_idempotent_with_full_fields(repo, binding):
+    """重复同步含新字段的课程，结果应 unchanged，不重复插入。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(course_name="社会心理学", course_code="PSY203", teachers=["张三", "李四"], credit=2.0, course_nature="专业必修", weekday=2, start_section=3, end_section=4, weeks="1-16", extra_info={"开课学院": "社会学院"}),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="b1")
+    stats2 = repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="b2")
+    assert stats2.inserted == 0
+    assert stats2.unchanged == 1
+    assert len(repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")) == 1
+
+
+def test_sync_schedule_update_on_field_change(repo, binding):
+    """字段变化（如学分/教师）应触发 update。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[EduScheduleItem(course_name="高数", course_code="MATH101", credit=3.0, teacher="张三", weekday=1, start_section=1, end_section=2, weeks="1-16")],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="b1")
+    updated = EduSchedule(
+        semester="2024-2025秋季",
+        items=[EduScheduleItem(course_name="高数", course_code="MATH101", credit=4.0, teacher="张三,李四", teachers=["张三", "李四"], weekday=1, start_section=1, end_section=2, weeks="1-16")],
+    )
+    stats = repo.sync_schedule_items(binding=binding, schedule=updated, sync_batch_id="b2")
+    assert stats.updated == 1
+    it = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")[0]
+    assert it.credit == 4.0
+    assert it.teachers == ["张三", "李四"]
+
+
+def test_sync_schedule_empty_fields_safe(repo, binding):
+    """无教师/无地点/无学分等空字段必须正常保存与展示，不报错。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[
+            EduScheduleItem(course_name="自习研讨课", course_code="SEM101", location="研讨室-3", weekday=6, start_section=3, end_section=4, weeks="2-14"),
+            EduScheduleItem(course_name="在线慕课", course_code="ONL101", teacher="孙老师", weekday=7, start_section=1, end_section=2, weeks="1-8"),
+        ],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="b1")
+    items = {it.course_code: it for it in repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")}
+    assert items["SEM101"].teacher is None
+    assert items["SEM101"].credit is None
+    assert items["ONL101"].location is None
+
+
+def test_sync_schedule_section_11_12_safe(repo, binding):
+    """11-12 节课程必须正常保存，不假设一天只有 10 节。"""
+    schedule = EduSchedule(
+        semester="2024-2025秋季",
+        items=[EduScheduleItem(course_name="夜间选修", course_code="AST101", weekday=3, start_section=11, end_section=12, weeks="1-16")],
+    )
+    repo.sync_schedule_items(binding=binding, schedule=schedule, sync_batch_id="b1")
+    it = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")[0]
+    assert it.start_section == 11
+    assert it.end_section == 12
+
+
+def test_sync_schedule_semester_isolation(repo, binding):
+    """切换学期只能看到对应学期课程，不能串学期。"""
+    s1 = EduSchedule(semester="2025-2026-2", items=[EduScheduleItem(course_name="A", course_code="A1", weekday=1, start_section=1, end_section=2, weeks="1-16")])
+    s2 = EduSchedule(semester="2026-2027-1", items=[EduScheduleItem(course_name="B", course_code="B1", weekday=1, start_section=1, end_section=2, weeks="1-16")])
+    repo.sync_schedule_items(binding=binding, schedule=s1, sync_batch_id="b1")
+    repo.sync_schedule_items(binding=binding, schedule=s2, sync_batch_id="b2")
+    autumn = repo.list_schedule_items(user_id=binding.user_id, semester="2026-2027-1")
+    spring = repo.list_schedule_items(user_id=binding.user_id, semester="2025-2026-2")
+    assert len(autumn) == 1 and autumn[0].course_code == "B1"
+    assert len(spring) == 1 and spring[0].course_code == "A1"

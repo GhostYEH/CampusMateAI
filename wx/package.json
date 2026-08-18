@@ -4,6 +4,7 @@
   "description": "大学生校园事务智能陪伴助手微信小程序端",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "audit:size": "node scripts/audit-package-size.js",
     "check:backend": "node scripts/check_real_backend.js",
     "check:budget": "node scripts/check_package_budget.js",
     "check:devtools": "node scripts/check_devtools_compat.js",

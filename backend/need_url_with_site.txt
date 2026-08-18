@@ -1,4 +1,0 @@
-Undergrad without URL but HAS official_website/domain: 1
-  兰州大学 | lzu.edu.cn | https://www.lzu.edu.cn
-
-Undergrad without URL and NO official_website/domain: 1093

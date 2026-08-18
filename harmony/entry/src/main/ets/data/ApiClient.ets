@@ -303,6 +303,30 @@ export class ApiClient {
   async getEduSyncRecords(limit: number = 20): Promise<EduSyncRecord[]> {
     return this.request<EduSyncRecord[]>('GET' as http.RequestMethod, `edu/sync/records?limit=${limit}`);
   }
+
+  // ===== EduConnection 状态机（client_webview 登录流程） =====
+  async eduProbe(portalUrl: string): Promise<EduProbeResult> {
+    const body: EduProbeRequest = { portal_url: portalUrl };
+    return this.request<EduProbeResult>('POST' as http.RequestMethod, 'edu/discovery/probe', body as object);
+  }
+  async eduCreateConnectionFromUrl(portalUrl: string, universityId?: string): Promise<EduConnectionDto> {
+    const body: EduConnectionFromUrlRequest = { portal_url: portalUrl, university_id: universityId };
+    return this.request<EduConnectionDto>('POST' as http.RequestMethod, 'edu/connections/from-url', body as object);
+  }
+  async eduGetConnection(connectionId: string): Promise<EduConnectionDto> {
+    return this.request<EduConnectionDto>('GET' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}`);
+  }
+  async eduContinueConnection(connectionId: string, body: EduConnectionContinueRequest): Promise<EduConnectionDto> {
+    return this.request<EduConnectionDto>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/continue`, body as object);
+  }
+  async eduScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
+    return this.request<EduScheduleItemsResponse>('GET' as http.RequestMethod, `edu/schedule/items${query}`);
+  }
+  async eduGradeItems(semester?: string): Promise<EduGradeItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
+    return this.request<EduGradeItemsResponse>('GET' as http.RequestMethod, `edu/grade/items${query}`);
+  }
 }
 
 // ===== EduConnector 数据模型 =====
@@ -416,4 +440,113 @@ export interface EduSyncRecord {
   error_message?: string;
   started_at: string;
   finished_at?: string;
+}
+
+// ===== EduConnection 状态机 =====
+export interface EduConnectionDto {
+  id: string;
+  user_id?: string;
+  edu_system_id?: string;
+  university_id?: string;
+  state: string;
+  provider: string;
+  login_execution_mode: string;
+  external_student_id?: string;
+  external_student_name?: string;
+  error_code?: string;
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+export interface EduProbeResult {
+  portal_url: string;
+  provider: string;
+  provider_confidence: number;
+  reachable: boolean;
+  http_status?: number;
+  final_url?: string;
+  title?: string;
+  is_edu_page: boolean;
+  suggested_login_mode: string;
+  evidence: object[];
+  error?: string;
+}
+export interface EduConnectionFromUrlRequest {
+  portal_url: string;
+  university_id?: string;
+}
+export interface EduProbeRequest {
+  portal_url: string;
+}
+export interface EduConnectionContinueRequest {
+  username?: string;
+  password?: string;
+  captcha?: string;
+  sms_code?: string;
+  mfa_code?: string;
+  action?: string;
+  cookies?: Record<string, string>;
+  current_url?: string;
+  user_agent?: string;
+}
+export interface EduScheduleItemDto {
+  id?: string;
+  semester?: string;
+  course_code?: string;
+  course_name?: string;
+  teacher?: string;
+  teachers?: string[];
+  location?: string;
+  campus?: string;
+  building?: string;
+  classroom?: string;
+  weekday?: number;
+  start_section?: number;
+  end_section?: number;
+  start_time?: string;
+  end_time?: string;
+  weeks?: string;
+  week_text?: string;
+  credit?: number;
+  course_nature?: string;
+  course_category?: string;
+  course_type?: string;
+  teaching_class?: string;
+  class_name?: string;
+  college?: string;
+  department?: string;
+  assessment_method?: string;
+  exam_type?: string;
+  total_hours?: number;
+  theory_hours?: number;
+  practice_hours?: number;
+  language?: string;
+  note?: string;
+  semester_id?: string;
+  extra_info?: Record<string, Object>;
+  is_stale?: boolean;
+  last_seen_at?: string;
+}
+export interface EduScheduleItemsResponse {
+  semester?: string;
+  items_count: number;
+  items: EduScheduleItemDto[];
+}
+export interface EduGradeItemDto {
+  id?: string;
+  semester?: string;
+  course_code?: string;
+  course_name?: string;
+  credit?: number;
+  score?: string;
+  grade_point?: number;
+  category?: string;
+  status?: string;
+  is_stale?: boolean;
+  last_seen_at?: string;
+}
+export interface EduGradeItemsResponse {
+  semester?: string;
+  items_count: number;
+  items: EduGradeItemDto[];
 }

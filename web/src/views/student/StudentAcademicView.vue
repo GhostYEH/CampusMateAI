@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed } from "vue";
 import UiIcon from "../../components/UiIcon.vue";
 import {
   getAcademicProviders,
@@ -12,6 +12,12 @@ import {
   getUniversities,
   selectUniversity,
   submitEduUrl,
+  eduProbe,
+  eduCreateConnectionFromUrl,
+  eduContinueConnection,
+  eduPollConnection,
+  eduScheduleItems,
+  eduGradeItems,
 } from "../../services/studentApi";
 
 const loading = ref(false);
@@ -32,6 +38,14 @@ const manualUrl = ref("");
 const manualUrlBusy = ref(false);
 const manualUrlResult = ref(null);
 const manualUrlError = ref("");
+
+// ===== Connection 状态机（probe + from-url + continue） =====
+const probeResult = ref(null);
+const connection = ref(null);
+const connectionBusy = ref(false);
+const connectionError = ref("");
+const polling = ref(false);
+let pollTimer = null;
 
 const isBound = computed(() => !!eduBinding.value && eduBinding.value.connection_status === "active");
 const hasUniversity = computed(() => status.value && status.value.status !== "unbound" || isBound.value);
@@ -154,7 +168,234 @@ async function submitManualUrl() {
   }
 }
 
+// ===== Probe + 创建连接 =====
+async function probeAndConnect() {
+  const url = manualUrl.value.trim();
+  if (!url) return;
+  connectionBusy.value = true;
+  connectionError.value = "";
+  probeResult.value = null;
+  connection.value = null;
+  try {
+    probeResult.value = await eduProbe(url);
+    connection.value = await eduCreateConnectionFromUrl(url);
+    if (connection.value.login_execution_mode === "client_webview") {
+      startPolling(connection.value.id);
+    }
+  } catch (e) {
+    connectionError.value = e.response?.data?.message || "探测或创建连接失败";
+  } finally {
+    connectionBusy.value = false;
+  }
+}
+
+// ===== server_credentials 路径：账密登录 =====
+async function submitCredentialConnect() {
+  if (!connection.value || !bindForm.value.username || !bindForm.value.password) return;
+  bindBusy.value = true;
+  bindError.value = "";
+  try {
+    connection.value = await eduContinueConnection(connection.value.id, {
+      username: bindForm.value.username,
+      password: bindForm.value.password,
+    });
+    if (connection.value.state === "connected") {
+      await load();
+      bindForm.value = { username: "", password: "" };
+    } else if (connection.value.state === "auth_failed") {
+      bindError.value = connection.value.error_message || "账号或密码错误";
+    } else {
+      bindError.value = connection.value.error_message || "登录失败";
+    }
+  } catch (e) {
+    bindError.value = e.response?.data?.message || "登录失败";
+  } finally {
+    bindBusy.value = false;
+  }
+}
+
+// ===== 轮询连接状态（client_webview 模式，移动端登录后 Web 端轮询） =====
+function startPolling(connId) {
+  stopPolling();
+  polling.value = true;
+  let count = 0;
+  pollTimer = setInterval(async () => {
+    count++;
+    if (count > 60) { stopPolling(); return; }
+    try {
+      const conn = await eduPollConnection(connId);
+      connection.value = conn;
+      if (conn.state === "connected") {
+        stopPolling();
+        await load();
+      }
+    } catch { /* ignore poll error */ }
+  }, 3000);
+}
+function stopPolling() {
+  polling.value = false;
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function refreshConnectionStatus() {
+  if (!connection.value) { await load(); return; }
+  try {
+    connection.value = await eduPollConnection(connection.value.id);
+    await load();
+  } catch (e) {
+    connectionError.value = e.response?.data?.message || "刷新失败";
+  }
+}
+
+async function reconnect() {
+  stopPolling();
+  connection.value = null;
+  probeResult.value = null;
+  connectionError.value = "";
+  bindForm.value = { username: "", password: "" };
+}
+
+// ===== 课表展示 =====
+const WEEKDAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+const scheduleItems = ref([]);
+const scheduleLoading = ref(false);
+const currentWeek = ref(1);
+const selectedCourse = ref(null);
+const showScheduleModal = ref(false);
+
+function weeksContains(weeks, weekText, week) {
+  const w = (weeks || "").trim();
+  if (!w) return true;
+  if (weekText && weekText.includes("单") && week % 2 === 0) return false;
+  if (weekText && weekText.includes("双") && week % 2 === 1) return false;
+  const cleaned = w.replace(/周/g, "").replace(/ /g, "");
+  const parts = cleaned.split(/[,，;；]/);
+  for (const part of parts) {
+    const p = part.trim();
+    if (!p) continue;
+    if (p.endsWith("单") && week % 2 === 0) continue;
+    if (p.endsWith("双") && week % 2 === 1) continue;
+    const core = p.replace(/单$/, "").replace(/双$/, "");
+    if (core.includes("-")) {
+      const [s, e] = core.split("-").map(Number);
+      if (s && e && week >= s && week <= e) return true;
+    } else {
+      const n = parseInt(core, 10);
+      if (n === week) return true;
+    }
+  }
+  return false;
+}
+
+function formatTeachers(teachers, teacher) {
+  if (teachers && teachers.length) {
+    const filtered = teachers.filter((t) => t && t.trim());
+    if (filtered.length) return filtered.join("、");
+  }
+  return teacher || "";
+}
+function formatTime(weekday, start, end, startTime, endTime) {
+  if (weekday == null && start == null) return "";
+  let sb = "";
+  if (weekday >= 1 && weekday <= 7) sb += WEEKDAY_NAMES[weekday - 1];
+  if (start != null) {
+    sb += ` 第${start}`;
+    if (end != null && end !== start) sb += `-${end}`;
+    sb += "节";
+  }
+  if (startTime || endTime) sb += `\n${startTime || ""}${endTime ? "-" + endTime : ""}`;
+  return sb;
+}
+function formatWeeks(weeks, weekText) {
+  if (weekText) return weeks ? `${weekText}（${weeks}）` : weekText;
+  return weeks || "";
+}
+function formatCredit(credit) {
+  return credit === Math.floor(credit) ? `${Math.floor(credit)} 学分` : `${credit} 学分`;
+}
+function formatHours(hours) {
+  return hours === Math.floor(hours) ? `${Math.floor(hours)}` : `${hours}`;
+}
+
+const allScheduleItems = computed(() => (scheduleItems.value || []).filter((it) => !it.is_stale));
+const weekFiltered = computed(() => allScheduleItems.value.filter((it) => weeksContains(it.weeks, it.week_text, currentWeek.value)));
+function buildScheduleLayout(items) {
+  const valid = items.filter((item) => {
+    const start = Number(item.start_section);
+    const end = Number(item.end_section ?? start);
+    return Number.isInteger(item.weekday) && item.weekday >= 1 && item.weekday <= 7
+      && Number.isInteger(start) && start >= 1 && Number.isInteger(end) && end >= start;
+  });
+  const maxSection = Math.max(12, ...valid.map((item) => Number(item.end_section ?? item.start_section)), 0);
+  const placements = [];
+  for (let weekday = 1; weekday <= 7; weekday++) {
+    const dayItems = valid.filter((item) => item.weekday === weekday)
+      .sort((a, b) => (a.start_section - b.start_section) || (a.end_section - b.end_section));
+    const lanes = [];
+    const laneByItem = new Map();
+    dayItems.forEach((item) => {
+      const start = Number(item.start_section);
+      const end = Number(item.end_section ?? start);
+      let lane = lanes.findIndex((laneItems) => laneItems.every((other) => {
+        const otherStart = Number(other.start_section);
+        const otherEnd = Number(other.end_section ?? otherStart);
+        return otherEnd < start || end < otherStart;
+      }));
+      if (lane < 0) {
+        lane = lanes.length;
+        lanes.push([]);
+      }
+      lanes[lane].push(item);
+      laneByItem.set(item, lane);
+    });
+    dayItems.forEach((item) => {
+      const start = Number(item.start_section);
+      const end = Number(item.end_section ?? start);
+      const overlapCount = dayItems.filter((other) => {
+        const otherStart = Number(other.start_section);
+        const otherEnd = Number(other.end_section ?? otherStart);
+        return otherStart <= end && start <= otherEnd;
+      }).length;
+      placements.push({
+        item,
+        weekday,
+        start,
+        end,
+        duration: end - start + 1,
+        lane: laneByItem.get(item) ?? 0,
+        laneCount: Math.max(1, Math.min(lanes.length, overlapCount)),
+        colorIndex: Math.abs((item.course_code || item.course_name || '').split('').reduce((hash, char) => ((hash << 5) - hash + char.charCodeAt(0)) | 0, 0)) % 8,
+      });
+    });
+  }
+  return { maxSection, placements };
+}
+
+const scheduleLayout = computed(() => buildScheduleLayout(weekFiltered.value));
+
+async function loadSchedule() {
+  scheduleLoading.value = true;
+  try {
+    const resp = await eduScheduleItems(null);
+    scheduleItems.value = resp.items || [];
+  } catch {
+    scheduleItems.value = [];
+  } finally {
+    scheduleLoading.value = false;
+  }
+}
+
+function openCourseDetail(item) {
+  selectedCourse.value = item;
+  showScheduleModal.value = true;
+}
+function closeCourseDetail() {
+  showScheduleModal.value = false;
+  selectedCourse.value = null;
+}
+
 onMounted(load);
+onUnmounted(stopPolling);
 </script>
 <template>
   <main class="student-page campus-redesign page-enter">
@@ -209,30 +450,82 @@ onMounted(load);
     </section>
 
     <section v-if="!isBound" class="redesign-panel">
-      <header><h3>手动填写教务系统地址</h3></header>
-      <p class="edu-hint">如果你的学校教务系统暂未支持自动发现，可以手动填写教务系统地址。系统会自动检测厂商并尝试连接，提交后进入候选审核流程。</p>
-      <div v-if="manualUrlError" class="redesign-alert error">{{ manualUrlError }}</div>
-      <form class="edu-form" @submit.prevent="submitManualUrl">
-        <label>教务系统 URL<input v-model="manualUrl" type="url" placeholder="https://jwxt.yourschool.edu.cn/" required /></label>
-        <button class="redesign-button" type="submit" :disabled="manualUrlBusy">{{ manualUrlBusy ? "检测中…" : "提交并检测" }}</button>
+      <header><h3>连接教务系统</h3></header>
+      <p class="edu-hint">输入高校教务系统网址，CampusMate 将自动识别系统类型并创建连接。</p>
+      <div v-if="connectionError" class="redesign-alert error">{{ connectionError }}</div>
+      <form class="edu-form" @submit.prevent="probeAndConnect">
+        <label>教务系统地址<input v-model="manualUrl" type="url" placeholder="https://jwxt.yourschool.edu.cn/" required /></label>
+        <button class="redesign-button" type="submit" :disabled="connectionBusy">{{ connectionBusy ? "检测中…" : "检测教务系统" }}</button>
       </form>
-      <div v-if="manualUrlResult" class="manual-url-result">
+
+      <div v-if="probeResult" class="manual-url-result">
         <h4>检测结果</h4>
         <dl class="edu-meta">
-          <dt>厂商</dt><dd>{{ manualUrlResult.provider }} (置信度 {{ (manualUrlResult.provider_confidence * 100).toFixed(0) }}%)</dd>
-          <dt>可访问</dt><dd>{{ manualUrlResult.reachable ? "是" : "否" }}</dd>
-          <dt>HTTP 状态</dt><dd>{{ manualUrlResult.http_status || "—" }}</dd>
-          <dt>页面标题</dt><dd>{{ manualUrlResult.title || "—" }}</dd>
-          <dt>识别为教务页</dt><dd>{{ manualUrlResult.is_edu_page ? "是" : "否" }}</dd>
-          <dt>状态</dt><dd>{{ manualUrlResult.verification_status }}</dd>
+          <dt>厂商</dt><dd>{{ probeResult.provider }}</dd>
+          <dt>可访问</dt><dd>{{ probeResult.reachable ? "是" : "否" }}</dd>
+          <dt>登录方式</dt><dd>{{ probeResult.suggested_login_mode === 'client_webview' ? '客户端浏览器登录' : '账号密码登录' }}</dd>
         </dl>
-        <div v-if="manualUrlResult.evidence?.length" class="edu-evidence">
-          <strong>证据：</strong>
-          <ul>
-            <li v-for="(ev, i) in manualUrlResult.evidence" :key="i">{{ ev.dimension || ev.type || '—' }}: {{ ev.detail || ev.value || '—' }} (权重 {{ ev.weight || 0 }})</li>
-          </ul>
+      </div>
+
+      <div v-if="connection && connection.login_execution_mode === 'backend_http'" class="edu-credential-block">
+        <h4>账号密码登录</h4>
+        <div v-if="bindError" class="redesign-alert error">{{ bindError }}</div>
+        <form class="edu-form" @submit.prevent="submitCredentialConnect">
+          <label>学号<input v-model="bindForm.username" type="text" required /></label>
+          <label>密码<input v-model="bindForm.password" type="password" required /></label>
+          <button class="redesign-button" type="submit" :disabled="bindBusy">{{ bindBusy ? "验证中…" : "登录" }}</button>
+        </form>
+        <p class="edu-hint">密码仅用于本次登录校验，不会明文保存。</p>
+      </div>
+
+      <div v-if="connection && connection.login_execution_mode === 'client_webview'" class="edu-webview-block">
+        <div class="redesign-alert info">
+          <UiIcon name="PhDeviceMobile" />
+          <div>
+            <strong>该教务系统需要在移动客户端中完成网页登录。</strong>
+            <p>请使用 CampusMate Android / Harmony 客户端完成首次连接。连接成功后，本页面将自动显示已同步的课表和成绩。</p>
+          </div>
         </div>
-        <p v-if="manualUrlResult.saved" class="redesign-alert success">已保存为候选，等待审核。感谢你的贡献！</p>
+        <div class="edu-actions">
+          <button class="redesign-button secondary" :disabled="polling" @click="refreshConnectionStatus">
+            <UiIcon name="PhArrowClockwise" />{{ polling ? "轮询中…" : "刷新连接状态" }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="isBound" class="redesign-panel">
+      <header><h3>教务课表</h3></header>
+      <div class="edu-actions" style="margin-bottom: 12px;">
+        <button class="redesign-button secondary" :disabled="currentWeek <= 1" @click="currentWeek--">上一周</button>
+        <strong style="margin: 0 12px;">第 {{ currentWeek }} 周</strong>
+        <button class="redesign-button secondary" :disabled="currentWeek >= 25" @click="currentWeek++">下一周</button>
+        <button class="redesign-button secondary" @click="loadSchedule"><UiIcon name="PhArrowClockwise" />刷新课表</button>
+      </div>
+      <div v-if="scheduleLoading" class="profile-loading"><div class="profile-loading-grid"><i></i><i></i><i></i></div></div>
+      <div v-else-if="allScheduleItems.length === 0" class="edu-hint">本学期暂无课程，请先同步课表。</div>
+      <div v-else-if="scheduleLayout.placements.length === 0" class="edu-hint">本周没有课程。</div>
+      <div v-else class="schedule-grid-scroll">
+        <div class="schedule-grid" :style="{ gridTemplateColumns: `52px repeat(7, 112px)`, gridTemplateRows: `40px repeat(${scheduleLayout.maxSection}, 72px)` }">
+          <div class="schedule-grid-corner"></div>
+          <div v-for="(label, index) in WEEKDAY_NAMES" :key="label" class="schedule-grid-header" :style="{ gridColumn: index + 2, gridRow: 1 }">{{ label }}</div>
+          <template v-for="section in scheduleLayout.maxSection" :key="`section-${section}`">
+            <div class="schedule-grid-section" :style="{ gridColumn: 1, gridRow: section + 1 }">{{ section }}</div>
+            <div v-for="weekday in 7" :key="`cell-${section}-${weekday}`" class="schedule-grid-cell" :style="{ gridColumn: weekday + 1, gridRow: section + 1 }"></div>
+          </template>
+          <div v-for="placement in scheduleLayout.placements" :key="placement.item.id || `${placement.weekday}_${placement.item.course_code}_${placement.start}_${placement.item.location}`" class="schedule-course-card" :style="{ gridColumn: placement.weekday + 1, gridRow: `${placement.start + 1} / span ${placement.duration}`, marginLeft: `${placement.lane * 100 / placement.laneCount}%`, width: `calc(${100 / placement.laneCount}% - 6px)`, borderColor: `hsl(${placement.colorIndex * 45} 65% 52%)` }" @click="openCourseDetail(placement.item)">
+            <div class="schedule-course-name">{{ placement.item.course_name || "未命名课程" }}</div>
+            <div v-if="placement.item.location" class="schedule-course-loc">{{ placement.item.location }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="isBound" class="redesign-panel">
+      <header><h3>连接管理</h3></header>
+      <div class="edu-actions">
+        <button class="redesign-button secondary" @click="reconnect"><UiIcon name="PhArrowClockwise" />重新连接</button>
+        <button class="redesign-button secondary" @click="submitUnbind"><UiIcon name="PhX" />断开连接</button>
       </div>
     </section>
 
@@ -273,5 +566,67 @@ onMounted(load);
       <span>自动同步未支持时，可以继续使用手动课程、个人待办和学习陪伴。</span>
       <em>不会保存在浏览器的教务密码</em>
     </section>
+
+    <div v-if="showScheduleModal && selectedCourse" class="schedule-modal-overlay" @click.self="closeCourseDetail">
+      <div class="schedule-modal">
+        <button class="schedule-modal-close" @click="closeCourseDetail">&times;</button>
+        <h2>{{ selectedCourse.course_name || "未命名课程" }}</h2>
+        <p v-if="selectedCourse.course_code" class="schedule-modal-code">{{ selectedCourse.course_code }}</p>
+        <dl class="schedule-detail-list">
+          <template v-if="formatTeachers(selectedCourse.teachers, selectedCourse.teacher)"><dt>教师</dt><dd>{{ formatTeachers(selectedCourse.teachers, selectedCourse.teacher) }}</dd></template>
+          <template v-if="formatTime(selectedCourse.weekday, selectedCourse.start_section, selectedCourse.end_section, selectedCourse.start_time, selectedCourse.end_time)"><dt>上课时间</dt><dd style="white-space: pre-line;">{{ formatTime(selectedCourse.weekday, selectedCourse.start_section, selectedCourse.end_section, selectedCourse.start_time, selectedCourse.end_time) }}</dd></template>
+          <template v-if="selectedCourse.location"><dt>地点</dt><dd>{{ selectedCourse.location }}</dd></template>
+          <template v-if="formatWeeks(selectedCourse.weeks, selectedCourse.week_text)"><dt>周次</dt><dd>{{ formatWeeks(selectedCourse.weeks, selectedCourse.week_text) }}</dd></template>
+          <template v-if="selectedCourse.credit != null"><dt>学分</dt><dd>{{ formatCredit(selectedCourse.credit) }}</dd></template>
+          <template v-if="selectedCourse.course_nature"><dt>课程性质</dt><dd>{{ selectedCourse.course_nature }}</dd></template>
+          <template v-if="selectedCourse.course_category"><dt>课程类别</dt><dd>{{ selectedCourse.course_category }}</dd></template>
+          <template v-if="selectedCourse.course_type"><dt>课程类型</dt><dd>{{ selectedCourse.course_type }}</dd></template>
+          <template v-if="selectedCourse.teaching_class"><dt>教学班</dt><dd>{{ selectedCourse.teaching_class }}</dd></template>
+          <template v-if="selectedCourse.assessment_method"><dt>考核方式</dt><dd>{{ selectedCourse.assessment_method }}</dd></template>
+          <template v-if="selectedCourse.exam_type"><dt>考试类型</dt><dd>{{ selectedCourse.exam_type }}</dd></template>
+          <template v-if="selectedCourse.college"><dt>开课学院</dt><dd>{{ selectedCourse.college }}</dd></template>
+          <template v-if="selectedCourse.department"><dt>开课系</dt><dd>{{ selectedCourse.department }}</dd></template>
+          <template v-if="selectedCourse.campus"><dt>校区</dt><dd>{{ selectedCourse.campus }}</dd></template>
+          <template v-if="selectedCourse.class_name"><dt>班级</dt><dd>{{ selectedCourse.class_name }}</dd></template>
+          <template v-if="selectedCourse.total_hours != null"><dt>总学时</dt><dd>{{ formatHours(selectedCourse.total_hours) }}</dd></template>
+          <template v-if="selectedCourse.theory_hours != null"><dt>理论学时</dt><dd>{{ formatHours(selectedCourse.theory_hours) }}</dd></template>
+          <template v-if="selectedCourse.practice_hours != null"><dt>实践学时</dt><dd>{{ formatHours(selectedCourse.practice_hours) }}</dd></template>
+          <template v-if="selectedCourse.language"><dt>授课语言</dt><dd>{{ selectedCourse.language }}</dd></template>
+          <template v-if="selectedCourse.semester"><dt>学期</dt><dd>{{ selectedCourse.semester }}</dd></template>
+          <template v-if="selectedCourse.note"><dt>备注</dt><dd>{{ selectedCourse.note }}</dd></template>
+        </dl>
+        <template v-if="selectedCourse.extra_info && Object.keys(selectedCourse.extra_info).length">
+          <h4 class="schedule-extra-title">更多信息</h4>
+          <dl class="schedule-detail-list">
+            <template v-for="(v, k) in selectedCourse.extra_info" :key="k">
+              <template v-if="v != null && String(v).trim()"><dt>{{ k }}</dt><dd>{{ String(v) }}</dd></template>
+            </template>
+          </dl>
+        </template>
+        <p class="schedule-modal-source">数据来源：学校教务系统</p>
+      </div>
+    </div>
   </main>
 </template>
+<style scoped>
+.schedule-grid-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 0 8px; }
+.schedule-grid { display: grid; width: max-content; min-width: 836px; position: relative; }
+.schedule-grid-corner, .schedule-grid-header, .schedule-grid-section, .schedule-grid-cell { box-sizing: border-box; }
+.schedule-grid-header { display: flex; align-items: center; justify-content: center; color: var(--primary, #5b68f2); font-size: 12px; font-weight: 700; }
+.schedule-grid-section { padding-top: 8px; text-align: center; color: var(--muted, #667784); font-size: 11px; }
+.schedule-grid-cell { border: 1px solid var(--border, #e5e7eb); }
+.schedule-course-card { align-self: stretch; box-sizing: border-box; min-width: 0; margin-top: 3px; margin-bottom: 3px; background: var(--surface, #fff); border-radius: 10px; padding: 8px; cursor: pointer; border: 2px solid var(--border, #e5e7eb); overflow: hidden; transition: border-color .15s; z-index: 1; }
+.schedule-course-card:hover { border-color: var(--primary, #5b68f2); }
+.schedule-course-name { font-size: 14px; font-weight: 700; color: var(--text, #1b2730); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.schedule-course-loc { font-size: 11px; color: var(--muted, #667784); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.schedule-modal { background: var(--surface, #fff); border-radius: 16px; padding: 24px; max-width: 480px; width: 100%; max-height: 80vh; overflow-y: auto; position: relative; }
+.schedule-modal-close { position: absolute; top: 12px; right: 16px; font-size: 24px; background: none; border: none; cursor: pointer; color: var(--muted, #667784); }
+.schedule-modal h2 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.schedule-modal-code { font-size: 12px; color: var(--muted, #667784); margin: 0 0 12px; }
+.schedule-detail-list { display: grid; grid-template-columns: 80px 1fr; gap: 6px 12px; font-size: 13px; }
+.schedule-detail-list dt { color: var(--muted, #667784); font-size: 12px; }
+.schedule-detail-list dd { font-weight: 600; margin: 0; }
+.schedule-extra-title { font-size: 13px; font-weight: 700; margin: 16px 0 8px; }
+.schedule-modal-source { font-size: 10px; color: var(--muted, #667784); margin-top: 16px; }
+</style>

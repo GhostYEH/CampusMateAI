@@ -54,20 +54,24 @@ Page({
       wx.navigateTo({ url: `/pages/hub/hub?kind=${kind}` })
       return
     }
-    if (kind === 'university' || kind === 'academic') {
+    if (kind === 'academic') {
+      wx.navigateTo({ url: '/package-academic/pages/edu/edu' })
+      return
+    }
+    if (kind === 'university') {
       wx.navigateTo({ url: `/pages/hub/hub?kind=${kind}` })
       return
     }
     if (kind === 'community') {
-      wx.navigateTo({ url: '/pages/community/community' })
+      wx.navigateTo({ url: '/package-community/pages/community/community' })
       return
     }
     if (kind === 'study') {
-      wx.navigateTo({ url: '/pages/study/study' })
+      wx.navigateTo({ url: '/package-study/pages/study/study' })
       return
     }
     if (kind === 'notices') {
-      wx.navigateTo({ url: '/pages/notices/notices' })
+      wx.navigateTo({ url: '/package-campus/pages/notices/notices' })
       return
     }
     if (kind === 'settings' || kind === 'account') {

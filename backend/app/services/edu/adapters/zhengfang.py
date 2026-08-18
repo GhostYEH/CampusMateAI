@@ -135,6 +135,74 @@ class ZhengfangAdapter(EduAdapter):
             "external_student_id": username,
         }
 
+    async def login_with_cookies(
+        self,
+        *,
+        cookies: dict,
+        current_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        config: Optional[dict] = None,
+    ) -> dict:
+        """用客户端 WebView 登录后获取的 cookies 建立后端会话。
+
+        不再走表单登录，直接用 cookies 构造 client，供后续 fetch_schedule/fetch_grade 复用。
+        """
+        if not cookies:
+            raise PermissionError("cookie 登录需要非空 cookies")
+
+        school = school_config_from_dict(config)
+        if school is None:
+            # 如果 config 没有 base_url，尝试从 current_url 推导
+            if current_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(current_url)
+                if parsed.scheme and parsed.netloc:
+                    base_url = f"{parsed.scheme}://{parsed.netloc}"
+                    school = SchoolConfig(base_url=base_url)
+            if school is None:
+                raise AdapterNotImplemented(self.provider, "login_with_cookies: missing base_url in config and current_url")
+
+        client = ZhengfangHttpClient(
+            base_url=school.base_url,
+            encoding=school.encoding,
+            allow_private=False,
+            extra_headers=school.extra_headers,
+        )
+        client.set_cookies(cookies)
+
+        # 验证 session 是否有效：尝试访问一个轻量页面
+        try:
+            await client.get(school.base_url, referer=school.base_url)
+        except EduAdapterError as e:
+            if e.code == "AUTH_FAILED":
+                raise PermissionError("回传的 cookies 已失效或未登录") from e
+            # 其他错误（如 404/超时）不阻断，信任客户端 cookie
+        except Exception:
+            # 网络异常不阻断 cookie 接受（后续 sync 时再失败）
+            pass
+
+        return {
+            "provider": self.provider,
+            "adapter_version": self.adapter_version,
+            "base_url": school.base_url,
+            "version": school.version,
+            "cookies": dict(cookies),
+            "via_cookies": True,
+            "external_student_id": None,
+        }
+
+    async def verify_session(self, session: dict) -> bool:
+        try:
+            school, client = self._prepare(session)
+            await client.get(school.base_url, referer=school.base_url)
+            return True
+        except EduAdapterError as e:
+            if e.code == "AUTH_FAILED":
+                return False
+            return True
+        except Exception:
+            return True
+
     # ===== 数据获取 =====
 
     async def fetch_profile(self, session: dict) -> EduProfile:

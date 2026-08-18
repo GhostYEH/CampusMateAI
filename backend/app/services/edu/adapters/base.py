@@ -42,6 +42,28 @@ class EduAdapter(ABC):
         """登录教务系统，返回 adapter 内部会话状态（如 cookies）。"""
         raise NotImplementedError
 
+    async def login_with_cookies(
+        self,
+        *,
+        cookies: dict,
+        current_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        config: Optional[dict] = None,
+    ) -> dict:
+        """用客户端 WebView 登录后获取的 cookies 建立后端会话。
+
+        默认抛 AdapterNotImplemented；支持 client_webview 模式的 adapter 覆盖此方法。
+        返回与 login() 相同结构的内部会话状态。
+        """
+        raise AdapterNotImplemented(self.provider, "login_with_cookies")
+
+    async def verify_session(self, session: dict) -> bool:
+        """验证 session 是否仍然有效（用于客户端 cookie 回传后的服务端确认）。
+
+        默认返回 True（信任客户端）；真实 adapter 应覆盖此方法做主动验证。
+        """
+        return True
+
     @abstractmethod
     async def fetch_profile(self, session: dict) -> EduProfile:
         raise NotImplementedError

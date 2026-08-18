@@ -22,9 +22,15 @@ from app.main import create_app
 from app.models.edu import (
     BINDING_ACTIVE,
     CONN_AUTH_REQUIRED,
+    CONN_CONNECTED,
+    CONN_ERROR,
     CONN_IDLE,
+    CONN_WAITING_USER_LOGIN,
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_ZHENGFANG,
+    LOGIN_EXEC_BACKEND_HTTP,
+    LOGIN_EXEC_CLIENT_WEBVIEW,
+    SESSION_CLIENT_COOKIE,
     SYSTEM_KEY_UNDERGRADUATE_MAIN,
     URL_NOT_DISCOVERED,
 )
@@ -510,3 +516,309 @@ def test_edu_endpoints_require_authentication() -> None:
     ]:
         response = client.request(method, path)
         assert response.status_code == 401, f"{method} {path}: {response.status_code}"
+
+
+# ===== Discovery probe + connection from URL =====
+
+
+def test_probe_unreachable_url_returns_error_not_reachable() -> None:
+    client = _client()
+    headers = _headers(client)
+    response = client.post(
+        "/api/v1/edu/discovery/probe",
+        headers=headers,
+        json={"portal_url": "https://this-host-does-not-exist-12345.invalid/"},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["reachable"] is False
+    assert result["error"] is not None
+    assert result["provider"] == "unknown"
+    assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
+
+
+def test_probe_requires_authentication() -> None:
+    client = _client()
+    response = client.post(
+        "/api/v1/edu/discovery/probe",
+        json={"portal_url": "https://example.edu/"},
+    )
+    assert response.status_code == 401
+
+
+def test_create_connection_from_url_creates_idle_connection() -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": "https://this-host-does-not-exist-12345.invalid/"},
+    )
+    assert response.status_code == 200, response.text
+    conn = response.json()
+    assert conn["state"] == CONN_IDLE
+    assert conn["id"]
+    assert conn["login_execution_mode"] in (LOGIN_EXEC_BACKEND_HTTP, LOGIN_EXEC_CLIENT_WEBVIEW)
+
+
+def test_create_connection_from_url_requires_university() -> None:
+    client = _client()
+    headers = _headers(client, "student_demo_01")
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": "https://example.edu/"},
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "UNIVERSITY_REQUIRED"
+
+
+# ===== continue: POLL / CANCEL =====
+
+
+def test_continue_poll_returns_current_state_without_change() -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    conn = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": "https://this-host-does-not-exist-12345.invalid/"},
+    ).json()
+    response = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={"action": "POLL"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["state"] == conn["state"]
+
+
+def test_continue_cancel_marks_error() -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    conn = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": "https://this-host-does-not-exist-12345.invalid/"},
+    ).json()
+    response = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={"action": "CANCEL"},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["state"] == CONN_ERROR
+    assert result["error_code"] == "CANCELLED"
+
+
+def test_continue_unknown_connection_returns_404() -> None:
+    client = _client()
+    headers = _headers(client)
+    response = client.post(
+        "/api/v1/edu/connections/conn-does-not-exist/continue",
+        headers=headers,
+        json={},
+    )
+    assert response.status_code == 404
+
+
+# ===== backend_http + client_webview 完整流程 =====
+
+
+def _admin_headers_for(client: TestClient) -> dict[str, str]:
+    return _headers(client, "admin_demo")
+
+
+def test_backend_http_flow_idle_to_auth_required_to_connected() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers_for(client)
+    sys_resp = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={"system_key": "undergraduate-main", "provider": "mock"},
+    )
+    system_id = sys_resp.json()["id"]
+    conn = client.post(
+        "/api/v1/edu/connections",
+        headers=headers,
+        json={"edu_system_id": system_id},
+    ).json()
+    assert conn["state"] == CONN_IDLE
+    cont_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={},
+    )
+    assert cont_resp.json()["state"] == CONN_AUTH_REQUIRED
+    login_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={"username": "S202401001", "password": "demo-password"},
+    )
+    final_conn = login_resp.json()
+    assert final_conn["state"] == CONN_CONNECTED
+    binding = client.get("/api/v1/edu/binding", headers=headers).json()
+    assert binding is not None
+    assert binding["connection_status"] == BINDING_ACTIVE
+    sync_resp = client.post("/api/v1/edu/sync/schedule", headers=headers)
+    assert sync_resp.json()["status"] == "success"
+
+
+def test_client_webview_flow_idle_to_waiting_to_connected() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers_for(client)
+    sys_resp = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "mock",
+            "login_execution_mode": LOGIN_EXEC_CLIENT_WEBVIEW,
+        },
+    )
+    system_id = sys_resp.json()["id"]
+    conn = client.post(
+        "/api/v1/edu/connections",
+        headers=headers,
+        json={"edu_system_id": system_id},
+    ).json()
+    cont_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={},
+    )
+    assert cont_resp.json()["state"] == CONN_WAITING_USER_LOGIN
+    complete_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={
+            "action": "CLIENT_WEBVIEW_COMPLETE",
+            "cookies": {"JSESSIONID": "mock-session-id-12345", "route": "default"},
+            "current_url": "https://jwxt.example.edu/student/index",
+            "user_agent": "Mozilla/5.0 (Linux; Android 14) CampusMate/1.0",
+        },
+    )
+    final_conn = complete_resp.json()
+    assert final_conn["state"] == CONN_CONNECTED
+    binding = client.get("/api/v1/edu/binding", headers=headers).json()
+    assert binding["connection_status"] == BINDING_ACTIVE
+    assert binding["session_type"] == SESSION_CLIENT_COOKIE
+
+
+def test_client_webview_complete_without_cookies_stays_waiting() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers_for(client)
+    sys_resp = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "mock",
+            "login_execution_mode": LOGIN_EXEC_CLIENT_WEBVIEW,
+        },
+    )
+    system_id = sys_resp.json()["id"]
+    conn = client.post(
+        "/api/v1/edu/connections",
+        headers=headers,
+        json={"edu_system_id": system_id},
+    ).json()
+    client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={},
+    )
+    resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={"action": "CLIENT_WEBVIEW_COMPLETE"},
+    )
+    result = resp.json()
+    assert result["state"] == CONN_WAITING_USER_LOGIN
+    assert result["error_code"] == "NO_COOKIE"
+
+
+# ===== 安全：cookies/password 不泄露 =====
+
+
+def test_cookies_not_persisted_in_sync_records() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers_for(client)
+    sys_resp = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "mock",
+            "login_execution_mode": LOGIN_EXEC_CLIENT_WEBVIEW,
+        },
+    )
+    system_id = sys_resp.json()["id"]
+    conn = client.post(
+        "/api/v1/edu/connections",
+        headers=headers,
+        json={"edu_system_id": system_id},
+    ).json()
+    client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={},
+    )
+    secret_cookie_value = "super-secret-jsessionid-98765"
+    complete_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={
+            "action": "CLIENT_WEBVIEW_COMPLETE",
+            "cookies": {"JSESSIONID": secret_cookie_value},
+        },
+    )
+    assert secret_cookie_value not in complete_resp.text
+    client.post("/api/v1/edu/sync/schedule", headers=headers)
+    records_resp = client.get("/api/v1/edu/sync/records", headers=headers)
+    assert secret_cookie_value not in records_resp.text
+    binding_resp = client.get("/api/v1/edu/binding", headers=headers)
+    assert secret_cookie_value not in binding_resp.text
+
+
+def test_password_not_in_connection_response() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers_for(client)
+    sys_resp = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={"system_key": "undergraduate-main", "provider": "mock"},
+    )
+    system_id = sys_resp.json()["id"]
+    conn = client.post(
+        "/api/v1/edu/connections",
+        headers=headers,
+        json={"edu_system_id": system_id},
+    ).json()
+    client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={},
+    )
+    secret_password = "must-not-leak-password-xyz"
+    login_resp = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={"username": "S202401001", "password": secret_password},
+    )
+    assert secret_password not in login_resp.text
+    assert "password" not in json.dumps(login_resp.json())

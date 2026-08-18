@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     edu_session_ttl_seconds: int = 1800
     # production 环境下是否允许使用 MockEduAdapter（默认禁止）
     edu_allow_mock_in_production: bool = False
+    # 是否允许教务探测跳过 SSL 验证（仅非 production + 显式开启）
+    edu_allow_insecure_ssl: bool = False
 
     # ----- 派生属性 -----
     @property
@@ -163,6 +165,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "production 环境禁止启用 AUTO_IMPORT_DEMO;"
                     "测试环境资料不得进入生产数据"
+                )
+            if self.edu_allow_insecure_ssl:
+                raise ValueError(
+                    "production 环境禁止启用 EDU_ALLOW_INSECURE_SSL;"
+                    "教务系统探测必须验证 SSL 证书"
                 )
         return self
 

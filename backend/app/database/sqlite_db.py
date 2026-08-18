@@ -857,13 +857,35 @@ CREATE TABLE IF NOT EXISTS edu_schedule_items (
     course_code TEXT,
     course_name TEXT NOT NULL,
     teacher TEXT,
+    teachers TEXT,
     location TEXT,
+    campus TEXT,
+    building TEXT,
+    classroom TEXT,
     weekday INTEGER,
     start_section INTEGER,
     end_section INTEGER,
     start_time TEXT,
     end_time TEXT,
     weeks TEXT,
+    week_text TEXT,
+    credit REAL,
+    course_nature TEXT,
+    course_category TEXT,
+    course_type TEXT,
+    teaching_class TEXT,
+    class_name TEXT,
+    college TEXT,
+    department TEXT,
+    assessment_method TEXT,
+    exam_type TEXT,
+    total_hours REAL,
+    theory_hours REAL,
+    practice_hours REAL,
+    language TEXT,
+    note TEXT,
+    semester_id TEXT,
+    extra_info TEXT,
     provider TEXT,
     source TEXT NOT NULL DEFAULT 'edu_connector',
     source_hash TEXT,
@@ -1183,6 +1205,38 @@ class Database:
             conn.execute("ALTER TABLE edu_sync_records ADD COLUMN adapter_version TEXT")
         if sync_cols and "error_code" not in sync_cols:
             conn.execute("ALTER TABLE edu_sync_records ADD COLUMN error_code TEXT")
+
+        # 4. edu_schedule_items 扩展列迁移（课程详情完整字段 + extra_info）
+        cur = conn.execute("PRAGMA table_info(edu_schedule_items)")
+        sch_cols = {row["name"] for row in cur.fetchall()}
+        for column, column_type in (
+            ("teachers", "TEXT"),
+            ("campus", "TEXT"),
+            ("building", "TEXT"),
+            ("classroom", "TEXT"),
+            ("week_text", "TEXT"),
+            ("credit", "REAL"),
+            ("course_nature", "TEXT"),
+            ("course_category", "TEXT"),
+            ("course_type", "TEXT"),
+            ("teaching_class", "TEXT"),
+            ("class_name", "TEXT"),
+            ("college", "TEXT"),
+            ("department", "TEXT"),
+            ("assessment_method", "TEXT"),
+            ("exam_type", "TEXT"),
+            ("total_hours", "REAL"),
+            ("theory_hours", "REAL"),
+            ("practice_hours", "REAL"),
+            ("language", "TEXT"),
+            ("note", "TEXT"),
+            ("semester_id", "TEXT"),
+            ("extra_info", "TEXT"),
+        ):
+            if column not in sch_cols:
+                conn.execute(
+                    f"ALTER TABLE edu_schedule_items ADD COLUMN {column} {column_type}"
+                )
 
         # 3. edu_system_configs → edu_systems 幂等迁移
         cur = conn.execute("PRAGMA table_info(edu_systems)")

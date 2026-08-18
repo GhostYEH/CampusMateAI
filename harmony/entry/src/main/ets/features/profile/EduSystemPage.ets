@@ -1,138 +1,298 @@
-import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
+import { EduRepository, eduStateText } from '../../repository/EduRepository';
+import { EduBindingDto, EduConnectionDto, EduProbeResult, EduSyncResult } from '../../data/ApiClient';
+import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
+import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { ApiClient } from '../../data/ApiClient';
+import { promptAction } from '@kit.ArkUI';
 
-export interface EduSystemInfo {
-  id: string;
-  system_key: string;
-  name: string | null;
-  provider: string;
-  status: string;
-  is_mock: boolean;
-  login_execution_mode: string;
-  supported_features: string[];
-}
+/** EduSystemPage — 教务系统连接主页（完整闭环）。
 
-export function eduStateText(state: string): string {
-  const map: Record<string, string> = {
-    'idle': '未连接',
-    'connecting': '连接中…',
-    'auth_required': '需要登录验证',
-    'waiting_user_login': '等待用户登录',
-    'need_captcha': '学校要求完成人机验证',
-    'need_slider': '需要完成滑块验证',
-    'need_sms': '需要短信验证码',
-    'need_mfa': '需要多因素认证',
-    'need_user_action': '需要用户操作',
-    'authenticated': '已认证',
-    'syncing': '同步中…',
-    'connected': '已连接',
-    'session_expired': '登录状态已过期，请重新验证',
-    'auth_failed': '认证失败',
-    'network_error': '网络错误',
-    'system_unavailable': '教务系统暂不可用',
-    'unsupported': '该教务系统暂未完成适配',
-    'error': '连接出错',
-    'active': '已连接',
-    'unbound': '未绑定',
-  };
-  return map[state] || state;
-}
-
+ * 地址输入 → 探测 → 创建连接 → 分流（server_credentials / client_webview）→ 连接管理。
+ */
 @Component
 export struct EduSystemPage {
   @Prop darkMode: boolean = false;
   @Prop universityId: string = '';
-  @Prop universityName: string = '';
-  @State systems: EduSystemInfo[] = [];
-  @State loading: boolean = true;
-  @State errorText: string = '';
-  onBack: () => void = () => {};
-  palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  @Prop apiBaseUrl: string = '';
+  @Prop authToken: string = '';
+  @State portalUrl: string = '';
+  @State username: string = '';
+  @State password: string = '';
+  @State loading: boolean = false;
+  @State errorMsg: string = '';
+  @State infoMsg: string = '';
+  @State binding: EduBindingDto | null = null;
+  @State connection: EduConnectionDto | null = null;
+  @State probe: EduProbeResult | null = null;
+  @State syncing: boolean = false;
+  @State syncMsg: string = '';
 
-  aboutToAppear() {
-    this.loadSystems();
+  onBack: () => void = () => {};
+  onNavigateToLogin: (loginUrl: string, connectionId: string) => void = () => {};
+  onOpenSchedule: () => void = () => {};
+
+  palette(): CampusPalette {
+    return this.darkMode ? darkPalette : lightPalette;
   }
 
-  async loadSystems() {
-    if (!this.universityId) {
-      this.loading = false;
-      return;
-    }
-    this.loading = true;
+  buildClient(): ApiClient {
+    return new ApiClient(this.apiBaseUrl, () => this.authToken, null);
+  }
+
+  async aboutToAppear() {
+    await this.loadBinding();
+  }
+
+  async loadBinding() {
     try {
-      const token = AppStorage.get<string>('auth_token') || '';
-      const resp = await fetch(`${AppStorage.get<string>('api_base') || ''}/api/v1/edu/systems/${this.universityId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (resp.ok) {
-        this.systems = await resp.json() as EduSystemInfo[];
-      } else {
-        this.errorText = '加载失败';
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      this.binding = await repo.getBinding() || null;
+    } catch (e) {
+      // 忽略初始加载错误
+    }
+  }
+
+  async probeAndConnect() {
+    const url = this.portalUrl.trim();
+    if (url.length === 0) return;
+    this.loading = true;
+    this.errorMsg = '';
+    this.infoMsg = '';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      const conn = await repo.createConnectionFromUrl(url, this.universityId || undefined);
+      this.connection = conn;
+      this.probe = { portal_url: url, provider: conn.provider, provider_confidence: 0, reachable: true, is_edu_page: true, suggested_login_mode: conn.login_execution_mode, evidence: [] } as EduProbeResult;
+      if (conn.login_execution_mode === 'client_webview') {
+        this.infoMsg = '该教务系统需要在客户端浏览器中由您本人完成登录。';
+      } else if (conn.login_execution_mode === 'backend_http') {
+        this.infoMsg = '该教务系统支持账号密码登录。';
       }
     } catch (e) {
-      this.errorText = '网络错误';
+      this.errorMsg = String(e).substring(0, 150);
     } finally {
       this.loading = false;
     }
   }
 
-  @Builder SystemCard(sys: EduSystemInfo) {
-    Column({ space: 6 }) {
-      Text(sys.name || sys.system_key)
-        .fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-      Text(`厂商：${sys.provider}`)
-        .fontSize(13).fontColor(this.palette().muted)
-      Text(`状态：${sys.status}`)
-        .fontSize(13).fontColor(this.palette().muted)
-      Text(`登录方式：${sys.login_execution_mode}`)
-        .fontSize(13).fontColor(this.palette().muted)
-      if (sys.is_mock) {
-        Text('⚠ Mock 数据').fontSize(13).fontColor('#E08A4E')
+  async submitCredentials() {
+    if (this.connection === null || this.username.length === 0 || this.password.length === 0) return;
+    this.loading = true;
+    this.errorMsg = '';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      const conn = await repo.continueWithCredentials(this.connection.id, this.username, this.password);
+      this.connection = conn;
+      if (conn.state === 'connected') {
+        await this.onConnected();
+      } else if (conn.state === 'auth_failed') {
+        this.errorMsg = conn.error_message || '账号或密码错误';
+      } else {
+        this.errorMsg = conn.error_message || '登录失败';
       }
-      Row({ space: 8 }) {
-        ForEach(sys.supported_features, (f: string) => {
-          Text(`✓ ${f}`).fontSize(12).fontColor(this.palette().primary)
-        })
-      }
-      Button('连接教务系统')
-        .backgroundColor(this.palette().primary).fontColor(Color.White)
-        .height(40).borderRadius(12)
+    } catch (e) {
+      this.errorMsg = String(e).substring(0, 150);
+    } finally {
+      this.loading = false;
     }
-    .width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+  }
+
+  async onConnected() {
+    this.infoMsg = '教务系统连接成功';
+    await this.loadBinding();
+    await this.autoSync();
+  }
+
+  async autoSync() {
+    this.syncing = true;
+    this.syncMsg = '正在同步课表…';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      const schedResult = await repo.syncSchedule();
+      this.syncMsg = '正在同步成绩…';
+      const gradeResult = await repo.syncGrade();
+      const schedOk = schedResult.status === 'success';
+      const gradeOk = gradeResult.status === 'success';
+      this.syncMsg = `课表同步${schedOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}`;
+      await this.loadBinding();
+    } catch (e) {
+      this.syncMsg = '同步失败: ' + String(e).substring(0, 100);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  async disconnect() {
+    this.loading = true;
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      await repo.unbind();
+      this.binding = null;
+      this.connection = null;
+      this.probe = null;
+      this.infoMsg = '已断开教务系统连接';
+    } catch (e) {
+      this.errorMsg = String(e).substring(0, 150);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  confirmDisconnect() {
+    promptAction.showDialog({
+      title: '断开教务系统',
+      message: '断开后将停止自动同步，但已经同步的数据不会立即删除。',
+      buttons: [
+        { text: '确认断开', color: this.palette().danger },
+        { text: '取消', color: this.palette().muted }
+      ]
+    }).then((res: promptAction.ShowDialogSuccessResponse) => {
+      if (res.index === 0) {
+        this.disconnect();
+      }
+    }).catch(() => {});
   }
 
   build() {
-    Column({ space: 12 }) {
-      Row() {
-        Text('教务系统').fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-        Blank()
-        Text('返回').fontSize(15).fontColor(this.palette().primary).onClick(() => this.onBack())
-      }.width('100%')
+    Column({ space: 0 }) {
+      SecondaryHeader({ title: '教务系统', subtitle: '连接教务系统，同步课表与成绩', darkMode: this.darkMode, onBack: () => this.onBack() })
 
-      if (this.universityName) {
-        Text(this.universityName).fontSize(16).fontColor(this.palette().text)
-      }
-
-      if (this.loading) {
-        Column() {
-          LoadingProgress().width(40).height(40)
-        }.width('100%').height(200).justifyContent(FlexAlign.Center)
-      } else if (this.errorText) {
-        Text(this.errorText).fontColor(this.palette().muted)
-      } else if (this.systems.length === 0) {
-        Column({ space: 8 }) {
-          Text('暂未收录该校教务系统').fontSize(16).fontWeight(FontWeight.Bold)
-          Text('你仍可继续使用手动课程表和其他 CampusMate 功能。').fontSize(13).fontColor(this.palette().muted)
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
-      } else {
-        Scroll() {
-          Column({ space: 10 }) {
-            ForEach(this.systems, (sys: EduSystemInfo) => {
-              this.SystemCard(sys)
-            })
+      Scroll() {
+        Column({ space: 12 }) {
+          if (this.universityId.length === 0) {
+            Column({ space: 6 }) {
+              Text('请先选择你的大学').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+              Text('教务系统连接需要先在个人中心选择所在大学。').fontSize(12).fontColor(this.palette().muted)
+            }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+          } else if (this.binding !== null && (this.binding.status === 'active' || this.binding.status === 'connected')) {
+            this.ConnectedCard()
+          } else {
+            this.PortalInputCard()
+            if (this.probe !== null) {
+              this.ProbeResultCard()
+            }
+            if (this.connection !== null && this.connection.login_execution_mode === 'backend_http') {
+              this.CredentialFormCard()
+            }
+            if (this.connection !== null && this.connection.login_execution_mode === 'client_webview') {
+              Button('打开教务登录页面')
+                .width('90%').height(44)
+                .backgroundColor(this.palette().primary).fontColor(Color.White)
+                .onClick(() => {
+                  if (this.connection !== null) {
+                    this.onNavigateToLogin(this.portalUrl, this.connection.id);
+                  }
+                })
+            }
           }
-        }.layoutWeight(1)
+
+          if (this.errorMsg.length > 0) {
+            Text(this.errorMsg).fontSize(12).fontColor(this.palette().danger).padding(16)
+          }
+          if (this.infoMsg.length > 0) {
+            Text(this.infoMsg).fontSize(13).fontColor(this.palette().success).padding(16)
+          }
+          if (this.syncing) {
+            Row({ space: 8 }) {
+              LoadingProgress().width(20).height(20).color(this.palette().primary)
+              Text(this.syncMsg).fontSize(13).fontColor(this.palette().muted)
+            }.padding(16)
+          }
+        }.width('100%').padding(16)
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.width('100%').height('100%').backgroundColor(this.palette().background)
+
+  }
+
+  @Builder PortalInputCard() {
+    Column({ space: 8 }) {
+      Text('连接教务系统').fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+      Text('输入高校教务系统网址，CampusMate 将自动识别系统类型。').fontSize(12).fontColor(this.palette().muted)
+      TextInput({ text: this.portalUrl, placeholder: 'https://jwxt.yourschool.edu.cn/' })
+        .width('100%').height(44)
+        .onChange((value: string) => { this.portalUrl = value; })
+        .enabled(!this.loading)
+      Button(this.loading ? '检测中…' : '检测教务系统')
+        .width('100%').height(44)
+        .backgroundColor(this.palette().primary).fontColor(Color.White)
+        .enabled(!this.loading && this.portalUrl.trim().length > 0)
+        .onClick(() => this.probeAndConnect())
+    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+  }
+
+  @Builder ProbeResultCard() {
+    Column({ space: 4 }) {
+      Text('已识别').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+      if (this.probe !== null && this.probe.title !== undefined) {
+        Text('页面：' + (this.probe.title || '')).fontSize(12).fontColor(this.palette().muted)
       }
-    }
-    .width('100%').height('100%').padding(16)
+      if (this.probe !== null) {
+        Text('系统厂商：' + this.probe.provider).fontSize(12).fontColor(this.palette().muted)
+        Text('登录方式：' + (this.probe.suggested_login_mode === 'client_webview' ? '客户端浏览器登录' : '账号密码登录')).fontSize(12).fontColor(this.palette().muted)
+      }
+    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+  }
+
+  @Builder CredentialFormCard() {
+    Column({ space: 8 }) {
+      Text('账号密码登录').fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+      TextInput({ text: this.username, placeholder: '学号' })
+        .width('100%').height(44)
+        .onChange((value: string) => { this.username = value; })
+        .enabled(!this.loading)
+      TextInput({ text: this.password, placeholder: '密码' })
+        .width('100%').height(44).type(InputType.Password)
+        .onChange((value: string) => { this.password = value; })
+        .enabled(!this.loading)
+      Button(this.loading ? '验证中…' : '登录')
+        .width('100%').height(44)
+        .backgroundColor(this.palette().primary).fontColor(Color.White)
+        .enabled(!this.loading && this.username.length > 0 && this.password.length > 0)
+        .onClick(() => this.submitCredentials())
+      Text('密码仅用于本次登录校验，不会明文保存。').fontSize(11).fontColor(this.palette().muted)
+    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+  }
+
+  @Builder ConnectedCard() {
+    Column({ space: 6 }) {
+      if (this.binding !== null) {
+        Text(this.binding.provider).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+        Text('状态：' + eduStateText(this.binding.status)).fontSize(12).fontColor(this.palette().muted)
+        if (this.binding.external_student_id !== undefined) {
+          Text('学号：' + (this.binding.external_student_id || '')).fontSize(12).fontColor(this.palette().muted)
+        }
+        if (this.binding.last_synced_at !== undefined) {
+          Text('最后同步：' + (this.binding.last_synced_at || '')).fontSize(12).fontColor(this.palette().muted)
+        }
+        if (this.binding.last_error !== undefined && (this.binding.last_error || '').length > 0) {
+          Text('错误：' + (this.binding.last_error || '')).fontSize(12).fontColor(this.palette().danger)
+        }
+      }
+      Blank().height(8)
+      if (this.syncing) {
+        LoadingProgress().width(20).height(20).color(this.palette().primary)
+        Text(this.syncMsg).fontSize(12).fontColor(this.palette().muted)
+      } else {
+        Row({ space: 8 }) {
+          Button('立即同步').backgroundColor(this.palette().primary).fontColor(Color.White).onClick(() => this.autoSync())
+          Button('重新登录').backgroundColor(this.palette().surface).fontColor(this.palette().text).onClick(() => {
+            this.binding = null;
+            this.connection = null;
+            this.probe = null;
+            this.portalUrl = '';
+          })
+          Button('断开').backgroundColor(this.palette().surface).fontColor(this.palette().danger).onClick(() => {
+            this.confirmDisconnect();
+          })
+        }
+        Button('查看课表').width('100%').height(40).backgroundColor(this.palette().surface).fontColor(this.palette().primary)
+          .margin({ top: 8 }).onClick(() => this.onOpenSchedule())
+      }
+    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
   }
 }
