@@ -94,6 +94,8 @@ class Settings(BaseSettings):
     trusted_device_expire_days: int = 30
     # 可信设备 cookie 名称
     trusted_device_cookie_name: str = "campus_trusted_device"
+    # 可信设备 cookie 是否启用 Secure
+    trusted_device_cookie_secure: bool = False
 
     # ===== 测试环境数据 seeding =====
     # 启动时是否自动 seed 测试账号
@@ -186,6 +188,7 @@ class Settings(BaseSettings):
                     "production 环境禁止启用 EDU_ALLOW_INSECURE_SSL;"
                     "教务系统探测必须验证 SSL 证书"
                 )
+            self.trusted_device_cookie_secure = True
         return self
 
 

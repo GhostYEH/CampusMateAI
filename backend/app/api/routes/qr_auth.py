@@ -131,18 +131,15 @@ def _set_trusted_device_cookie(
     cookie_name: str,
     token: str,
     expires_days: int,
-    is_dev: bool,
+    secure: bool,
 ) -> None:
-    """设置可信设备 HttpOnly Cookie。
-
-    生产环境 Secure=True；开发环境(localhost/http)允许 Secure=False 以便测试。
-    """
+    """设置可信设备 HttpOnly Cookie。"""
     response.set_cookie(
         key=cookie_name,
         value=token,
         max_age=expires_days * 86400,
         httponly=True,
-        secure=not is_dev,
+        secure=secure,
         samesite="lax",
         path="/api/v1/auth",
     )
@@ -510,7 +507,7 @@ def _establish_trusted_device(
         cookie_name=settings.trusted_device_cookie_name,
         token=trusted_token,
         expires_days=settings.trusted_device_expire_days,
-        is_dev=settings.is_dev,
+        secure=settings.trusted_device_cookie_secure,
     )
 
 
@@ -559,6 +556,7 @@ def trusted_device_auto_login(
 def list_trusted_devices(
     request: Request,
     user: UserRow = Depends(current_user),
+    settings: Settings = Depends(get_settings_dep),
     container: ServiceContainer = Depends(_container),
 ) -> TrustedDeviceListResponse:
     """列出当前用户的可信设备。"""
@@ -578,7 +576,7 @@ def list_trusted_devices(
     # 判断哪个是当前浏览器（通过 cookie token hash 匹配）
     from ...models.qr_auth import TrustedDeviceRow
     current_token_hash = None
-    cookie_token = request.cookies.get("campus_trusted_device")
+    cookie_token = request.cookies.get(settings.trusted_device_cookie_name)
     if cookie_token:
         current_token_hash = hash_token(cookie_token)
     items = []
