@@ -86,13 +86,13 @@ gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
 - 隐私: 画面不保存、不上传、不写日志，仅在用户主动授权且专注计时运行中分析
 - 详见主 README 的"CNN 面部表情识别"章节
 
-## 学习状态辅助（V3.1）
+## 学习状态辅助（V3.2-A）与 Presence（V3.3.1）
 
 专注自习页的学习状态辅助与表情识别共享同一条 CameraX pipeline；不会为行为识别启动第二个摄像头。
 
 ### 1. 当前能力与产品语义
 
-V3.1 是「是否观察到明确可见学习行为」的二分类，而不是专注度或心理状态判断：
+V3.2-A 是「是否观察到明确可见学习行为」的二分类，而不是专注度或心理状态判断：
 
 - **VISIBLE_STUDY（可见学习行为）**：阅读、书写、明显操作书本、纸张等学习材料。
 - **IDLE（暂未观察到明确学习行为）**：人在画面中，但当前未看到明确学习动作；不应解读为“不专注”或“没有学习”。
@@ -106,14 +106,14 @@ CameraX
 → FocusCameraPipeline / CameraFrame
 → BehaviorAnalyzer（帧缓冲与单线程推理调度）
 → OnnxBehaviorRecognitionEngine
-→ campusmate_visible_study_v31.onnx（本地 ONNX 推理）
+→ campusmate_visible_study_v32.onnx（本地 ONNX 推理）
 → BehaviorPrediction（IDLE / VISIBLE_STUDY 概率）
 → BehaviorSignalProcessor（启动观察、时间窗口与稳定判定）
 → LearningContinuityStateMachine（会话级连续性）
 → FocusScreen（学习状态、节奏与本次观察摘要）
 ```
 
-行为识别与表情识别继续共享现有 CameraX pipeline；ONNX 推理全部在设备端完成。
+同一条 `FocusCameraPipeline` 的 `CameraFrame` 还会低频送入 `PersonAnalyzer`。行为识别、表情识别和 person detector 共享这一个 CameraX pipeline；ONNX 与 TFLite 推理全部在设备端完成，不会启动第二个摄像头。
 
 ### 3. 当前部署模型
 
@@ -124,12 +124,12 @@ CameraX
 | Input | 224 × 224，RGB，ImageNet normalize |
 | Runtime | ONNX Runtime Android |
 | Output | `IDLE` / `VISIBLE_STUDY` |
-| 当前模型 | `assets/models/behavior/campusmate_visible_study_v31.onnx` |
-| 回退模型 | `assets/models/behavior/rgb_resnet18_v2.onnx`（历史 V2） |
+| 当前模型 | `assets/models/behavior/campusmate_visible_study_v32.onnx` |
+| 回退模型 | `assets/models/behavior/campusmate_visible_study_v31.onnx`、`assets/models/behavior/rgb_resnet18_v2.onnx`（历史 V2） |
 
 ### 4. 主要实现文件
 
-- `data/behavior/OnnxBehaviorRecognitionEngine.kt` — 模型加载、预处理、推理、softmax 与 V3.1 类别映射
+- `data/behavior/OnnxBehaviorRecognitionEngine.kt` — 模型加载、预处理、推理、softmax 与 V3.2-A 类别映射
 - `data/behavior/BehaviorAnalyzer.kt` — 帧缓冲、并发推理控制与 Bitmap 回收
 - `data/behavior/BehaviorSignalProcessor.kt` — 观察期、时间窗口与稳定状态输出
 - `data/behavior/LearningContinuityStateMachine.kt` — 会话级连续性状态
@@ -137,9 +137,20 @@ CameraX
 - `data/expression/ExpressionSessionManager.kt` — 在共享 CameraX pipeline 中接入表情和行为结果
 - `ui/focus/FocusScreen.kt` — 学习状态辅助产品 UI
 
-### 5. 调试采集与隐私
+### 5. Presence（在席）语义
 
-Debug 构建可在开发者工具中采集 `idle` 与 `visible_study` 目标域样本；该入口在 Release 中不可见。正常运行时：
+Presence 不属于行为模型类别，状态为 `PRESENT`、`OBSERVING`、`ABSENT`：
+
+- `PRESENT` 可以同时是 `VISIBLE_STUDY` 或 `IDLE`；`IDLE` 不表示离席。
+- 本地 EfficientDet-Lite0 int8 COCO person detector 是主要证据（阈值 `0.45`、约 2 FPS、最近 person evidence 保持 2 秒）。稳定 `VISIBLE_STUDY` 与 ML Kit `faceDetected` 是辅助正向证据。
+- 任意正向证据立即刷新 Presence；已经确认在席后，连续少于 12 秒没有证据仍保持 `PRESENT`，达到 12 秒才进入 `ABSENT`。`OBSERVING` 主要用于首次尚未确认的阶段。
+- `ABSENT` 仅表示持续没有本地在席证据，不代表用户停止学习。
+
+### 6. Debug 工具与隐私
+
+Debug 构建在摄像头构图提示下方提供折叠的“开发者工具”。它支持本地视觉测试（不创建或上传正式后端 Focus session）及 `idle`、`visible_study`、`visible_study_hard` 目标域采集；Release 中不显示入口。采集来自行为模型实际使用的 CameraFrame 链路，以约 1 FPS 保存，每个 session 最多 120 张。开始采集有 5 秒准备倒计时，倒计时阶段不保存图片；metadata 记录 `session_started_at`、`capture_started_at`、`capture_delay_ms` 和图片信息。
+
+正常运行时：
 
 - 摄像头图像仅设备端处理
 - 不上传服务器

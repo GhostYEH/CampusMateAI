@@ -8,6 +8,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentHashMap
@@ -21,14 +22,23 @@ enum class BehaviorDatasetLabel(
 ) {
     IDLE("idle", "暂无明确学习"),
     VISIBLE_STUDY("visible_study", "可见学习行为"),
+    /** Kept for reading and extending historical V3.1 collection sessions. */
+    ACTIVE_STUDY("active_study", "学习行为（历史）"),
+    // Debug-only V3.2 benchmark samples that are visibly studying but visually difficult.
+    VISIBLE_STUDY_HARD("visible_study_hard", "可见学习 Hard Case"),
 }
 
 data class BehaviorDatasetCaptureState(
     val active: Boolean = false,
+    val preparing: Boolean = false,
+    val preparationSecondsRemaining: Int = 0,
     val label: BehaviorDatasetLabel? = null,
     val sessionId: String? = null,
     val capturedCount: Int = 0,
 )
+
+val BehaviorDatasetCaptureState.isRunning: Boolean
+    get() = active || preparing
 
 /**
  * Debug-only capture of the exact bitmaps passed to behavior preprocessing.
@@ -38,8 +48,10 @@ object BehaviorInputDebugExporter {
     private const val EXPORT_INTERVAL_MS = 2_000L
     private const val MAX_SAVED_IMAGES = 24
     private const val DATASET_CAPTURE_INTERVAL_MS = 1_000L
-    private const val MAX_DATASET_IMAGES_PER_SESSION = 180
+    private const val MAX_DATASET_IMAGES_PER_SESSION = 120
+    private const val DATASET_CAPTURE_PREPARATION_MS = 5_000L
     private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val countdownExecutor = Executors.newSingleThreadScheduledExecutor()
     private val lastExportAt = AtomicLong(Long.MIN_VALUE)
     private val capturedImageFilenames = ConcurrentHashMap<Long, String>()
     private val sessionPrepared = AtomicBoolean(false)
@@ -115,13 +127,22 @@ object BehaviorInputDebugExporter {
             val sessionId = nextSessionId(labelDirectory)
             val directory = File(labelDirectory, sessionId)
             if (!directory.mkdirs()) return
-            val session = DatasetSession(label, sessionId, directory)
+            val sessionStartedAtMs = System.currentTimeMillis()
+            val session = DatasetSession(
+                label = label,
+                id = sessionId,
+                directory = directory,
+                sessionStartedAtMs = sessionStartedAtMs,
+                captureStartedAtMs = sessionStartedAtMs + DATASET_CAPTURE_PREPARATION_MS,
+            )
             activeDatasetSession = session
             _datasetCaptureState.value = BehaviorDatasetCaptureState(
-                active = true,
+                preparing = true,
+                preparationSecondsRemaining = secondsRemaining(session.captureStartedAtMs, sessionStartedAtMs),
                 label = label,
                 sessionId = sessionId,
             )
+            schedulePreparationUpdates(session)
         }
     }
 
@@ -130,6 +151,7 @@ object BehaviorInputDebugExporter {
         synchronized(datasetLock) {
             val session = activeDatasetSession ?: return
             activeDatasetSession = null
+            session.preparationTask?.cancel(false)
             _datasetCaptureState.value = BehaviorDatasetCaptureState(
                 label = session.label,
                 sessionId = session.id,
@@ -141,6 +163,8 @@ object BehaviorInputDebugExporter {
     private fun captureDatasetImage(context: Context, behaviorInput: Bitmap, timestampMs: Long) {
         val session = synchronized(datasetLock) {
             val current = activeDatasetSession ?: return
+            if (timestampMs < current.captureStartedAtMs) return
+            markCaptureStartedLocked(current, timestampMs)
             if (
                 current.reservedCount >= MAX_DATASET_IMAGES_PER_SESSION ||
                 (current.lastCaptureAt != Long.MIN_VALUE &&
@@ -305,14 +329,59 @@ object BehaviorInputDebugExporter {
         val file = File(session.directory, "session_metadata.csv")
         OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8).use { writer ->
             if (file.length() == 0L) {
-                writer.appendLine("label,session_id,timestamp,image_filename")
+                writer.appendLine(
+                    "label,session_id,session_started_at,capture_started_at,capture_delay_ms,timestamp,image_filename",
+                )
             }
             writer.appendLine(
-                listOf(session.label.directoryName, session.id, timestampMs.toString(), filename)
+                listOf(
+                    session.label.directoryName,
+                    session.id,
+                    session.sessionStartedAtMs.toString(),
+                    session.captureStartedAtMs.toString(),
+                    DATASET_CAPTURE_PREPARATION_MS.toString(),
+                    timestampMs.toString(),
+                    filename,
+                )
                     .joinToString(",") { csvValue(it) },
             )
         }
     }
+
+    private fun schedulePreparationUpdates(session: DatasetSession) {
+        session.preparationTask = countdownExecutor.scheduleAtFixedRate({
+            synchronized(datasetLock) {
+                if (activeDatasetSession !== session) {
+                    session.preparationTask?.cancel(false)
+                    return@scheduleAtFixedRate
+                }
+                markCaptureStartedLocked(session, System.currentTimeMillis())
+            }
+        }, 200L, 200L, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun markCaptureStartedLocked(session: DatasetSession, nowMs: Long) {
+        if (nowMs < session.captureStartedAtMs) {
+            _datasetCaptureState.value = BehaviorDatasetCaptureState(
+                preparing = true,
+                preparationSecondsRemaining = secondsRemaining(session.captureStartedAtMs, nowMs),
+                label = session.label,
+                sessionId = session.id,
+                capturedCount = session.reservedCount,
+            )
+            return
+        }
+        session.preparationTask?.cancel(false)
+        _datasetCaptureState.value = BehaviorDatasetCaptureState(
+            active = true,
+            label = session.label,
+            sessionId = session.id,
+            capturedCount = session.reservedCount,
+        )
+    }
+
+    private fun secondsRemaining(captureStartedAtMs: Long, nowMs: Long): Int =
+        ((captureStartedAtMs - nowMs + 999L) / 1_000L).coerceAtLeast(0L).toInt()
 
     private val UI_BEHAVIORS = setOf(
         StudyBehavior.IDLE,
@@ -323,7 +392,10 @@ object BehaviorInputDebugExporter {
         val label: BehaviorDatasetLabel,
         val id: String,
         val directory: File,
+        val sessionStartedAtMs: Long,
+        val captureStartedAtMs: Long,
         var lastCaptureAt: Long = Long.MIN_VALUE,
         var reservedCount: Int = 0,
+        var preparationTask: ScheduledFuture<*>? = null,
     )
 }

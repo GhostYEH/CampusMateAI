@@ -44,7 +44,11 @@ import com.example.campusai.data.behavior.BehaviorDisplayState
 import com.example.campusai.data.behavior.BehaviorInputDebugExporter
 import com.example.campusai.data.behavior.BehaviorObservationSummary
 import com.example.campusai.data.behavior.LearningContinuityState
+import com.example.campusai.data.behavior.PresenceSnapshot
+import com.example.campusai.data.behavior.PresenceState
+import com.example.campusai.data.behavior.PersonDetectionSnapshot
 import com.example.campusai.data.behavior.StudyBehavior
+import com.example.campusai.data.behavior.isRunning
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
@@ -86,6 +90,9 @@ fun FocusScreen(
     val behaviorDisplayState by manager.behaviorDisplayState.collectAsState()
     val behaviorObservation by manager.behaviorObservation.collectAsState()
     val learningContinuityState by manager.learningContinuityState.collectAsState()
+    val presence by manager.presence.collectAsState()
+    val personDetection by manager.personDetection.collectAsState()
+    val personDetectorConfig = manager.personDetectorConfig
     val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsState()
     val gentleReminder by manager.gentleReminder.collectAsState()
     val context = LocalContext.current
@@ -114,6 +121,8 @@ fun FocusScreen(
     var previewExpanded by remember { mutableStateOf(false) }
     var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
     var datasetLabel by remember { mutableStateOf(BehaviorDatasetLabel.IDLE) }
+    // Debug-only, in-memory context. It deliberately never creates a backend session.
+    var debugLocalVisualTestActive by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
 
     LaunchedEffect(backendOnline) {
@@ -125,15 +134,22 @@ fun FocusScreen(
             if (secondsLeft == FocusMode.FOCUS.totalSeconds || secondsLeft > mode.totalSeconds) secondsLeft = mode.totalSeconds
         }
     }
-    val running = activeSession?.status == "active"
+    val remoteRunning = activeSession?.status == "active"
+    val running = remoteRunning || (BuildConfig.DEBUG && debugLocalVisualTestActive)
     val paused = activeSession?.status == "paused"
     val analyzing = running && mode == FocusMode.FOCUS
-    LaunchedEffect(running, activeSession?.id) {
+    LaunchedEffect(running, activeSession?.id, debugLocalVisualTestActive) {
         while (running && secondsLeft > 0) {
             delay(1000)
             secondsLeft--
             if (secondsLeft == 0) {
-                repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }
+                if (debugLocalVisualTestActive) {
+                    debugLocalVisualTestActive = false
+                    BehaviorInputDebugExporter.stopDatasetSession()
+                    manager.finishFocusSession(mode.totalSeconds / 60)
+                } else {
+                    repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }
+                }
             }
         }
     }
@@ -178,12 +194,18 @@ fun FocusScreen(
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        (if (!backendOnline && remoteError == null) "专注自习需要连接真实后端后才能使用" else remoteError)?.let { message ->
+        (if (debugLocalVisualTestActive && !backendOnline) "Debug 本地视觉测试运行中：不会连接后端或写入专注记录" else if (!backendOnline && remoteError == null) "专注自习需要连接真实后端后才能使用" else remoteError)?.let { message ->
             item { Surface(color = AlertErrorBg, shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = AlertErrorText); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp); TextButton(onClick = { scope.launch { appRepository.refreshBackendStatus(); if (appRepository.backendOnline.value) repository.refresh() } }) { Text("重试", color = FocusBlue) } } } }
         }
         item {
             Column(Modifier.clip(RoundedCornerShape(28.dp)).background(Surface).padding(14.dp)) {
-                FocusModeTabs(selected = mode, enabled = activeSession == null, onSelect = { chosen -> mode = chosen; secondsLeft = chosen.totalSeconds })
+                FocusModeTabs(selected = mode, enabled = activeSession == null && !debugLocalVisualTestActive, onSelect = { chosen -> mode = chosen; secondsLeft = chosen.totalSeconds })
+                if (BuildConfig.DEBUG && debugLocalVisualTestActive) {
+                    Spacer(Modifier.height(10.dp))
+                    Surface(shape = RoundedCornerShape(12.dp), color = PrimarySoft) {
+                        Text("Debug 本地视觉测试 · 不创建或写入后端专注记录", color = FocusBlue, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                    }
+                }
                 Spacer(Modifier.height(22.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(258.dp)) {
@@ -192,7 +214,7 @@ fun FocusScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("$minutes:$seconds", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 55.sp)
                             Spacer(Modifier.height(9.dp))
-                            Text(if (running) "正在专注" else if (paused) "已暂停" else "✦ 准备开始 ✦", color = Muted, fontSize = 16.sp)
+                            Text(if (debugLocalVisualTestActive) "Debug 本地视觉测试" else if (running) "正在专注" else if (paused) "已暂停" else "✦ 准备开始 ✦", color = Muted, fontSize = 16.sp)
                         }
                     }
                 }
@@ -200,24 +222,30 @@ fun FocusScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            when (activeSession?.status) {
-                                null -> {
-                                    val startResult = repository.start(mode, null, relatedTaskId)
-                                    if (startResult.isSuccess) {
-                                        secondsLeft = mode.totalSeconds
-                                        manager.beginFocusSession()
+                            if (debugLocalVisualTestActive) {
+                                debugLocalVisualTestActive = false
+                                BehaviorInputDebugExporter.stopDatasetSession()
+                                manager.finishFocusSession(((mode.totalSeconds - secondsLeft).coerceAtLeast(0)) / 60)
+                            } else {
+                                when (activeSession?.status) {
+                                    null -> {
+                                        val startResult = repository.start(mode, null, relatedTaskId)
+                                        if (startResult.isSuccess) {
+                                            secondsLeft = mode.totalSeconds
+                                            manager.beginFocusSession()
+                                        }
                                     }
+                                    "active" -> repository.pause()
+                                    "paused" -> repository.resume()
                                 }
-                                "active" -> repository.pause()
-                                "paused" -> repository.resume()
                             }
                         }
                     },
                     modifier = Modifier.align(Alignment.CenterHorizontally).height(56.dp),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = FocusBlue),
-                ) { Icon(if (running) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (running) "暂停" else if (paused) "继续" else "开始", fontWeight = FontWeight.Bold, fontSize = 19.sp) }
-                if (activeSession != null) TextButton(onClick = { showFinishDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("结束本次${mode.label}", color = Muted) }
+                ) { Icon(if (running && !debugLocalVisualTestActive) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (debugLocalVisualTestActive) "结束本地测试" else if (running) "暂停" else if (paused) "继续" else "开始", fontWeight = FontWeight.Bold, fontSize = 19.sp) }
+                if (activeSession != null && !debugLocalVisualTestActive) TextButton(onClick = { showFinishDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("结束本次${mode.label}", color = Muted) }
             }
         }
         item {
@@ -306,10 +334,44 @@ fun FocusScreen(
                                 Text("完成调整", color = FocusBlue, fontWeight = FontWeight.Bold)
                             }
                         }
+                        if (BuildConfig.DEBUG) {
+                            Spacer(Modifier.height(12.dp))
+                            DeveloperTools(
+                                expanded = developerToolsExpanded,
+                                onExpandedChange = { developerToolsExpanded = it },
+                                selectedLabel = datasetLabel,
+                                onLabelSelected = { datasetLabel = it },
+                                captureState = datasetCaptureState,
+                                presence = presence,
+                                personDetection = personDetection,
+                                personInferenceIntervalMs = personDetectorConfig.inferenceIntervalMs,
+                                onStart = { BehaviorInputDebugExporter.startDatasetSession(context, datasetLabel) },
+                                onStop = { BehaviorInputDebugExporter.stopDatasetSession() },
+                                localVisualTestActive = debugLocalVisualTestActive,
+                                onStartLocalVisualTest = {
+                                    scope.launch {
+                                        mode = FocusMode.FOCUS
+                                        secondsLeft = FocusMode.FOCUS.totalSeconds
+                                        appRepository.setLearningAssistanceEnabled(true)
+                                        manager.beginFocusSession()
+                                        debugLocalVisualTestActive = true
+                                        if (!cameraPermissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                },
+                                onStopLocalVisualTest = {
+                                    scope.launch {
+                                        debugLocalVisualTestActive = false
+                                        BehaviorInputDebugExporter.stopDatasetSession()
+                                        manager.finishFocusSession(((mode.totalSeconds - secondsLeft).coerceAtLeast(0)) / 60)
+                                    }
+                                },
+                            )
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     LearningStateMainCard(
                         continuityState = learningContinuityState,
+                        presence = presence,
                         expressionResult = expressionResult,
                         expressionStatus = expressionStatus,
                         currentStudyMs = observationSummary.currentContinuousStudyMs,
@@ -321,18 +383,6 @@ fun FocusScreen(
                         focusElapsedSeconds = focusElapsedSeconds,
                         summary = observationSummary,
                     )
-                    if (BuildConfig.DEBUG) {
-                        Spacer(Modifier.height(12.dp))
-                        DeveloperTools(
-                            expanded = developerToolsExpanded,
-                            onExpandedChange = { developerToolsExpanded = it },
-                            selectedLabel = datasetLabel,
-                            onLabelSelected = { datasetLabel = it },
-                            captureState = datasetCaptureState,
-                            onStart = { BehaviorInputDebugExporter.startDatasetSession(context, datasetLabel) },
-                            onStop = { BehaviorInputDebugExporter.stopDatasetSession() },
-                        )
-                    }
                     if (permissionDenied) {
                         Spacer(Modifier.height(10.dp))
                         AssistLine(Icons.Default.Lock, "未授予相机权限，学习状态辅助未启动")
@@ -387,11 +437,20 @@ private fun AssistLine(icon: androidx.compose.ui.graphics.vector.ImageVector, te
 @Composable
 private fun LearningStateMainCard(
     continuityState: LearningContinuityState,
+    presence: PresenceSnapshot,
     expressionResult: ExpressionResult,
     expressionStatus: ExpressionServiceStatus,
     currentStudyMs: Long,
 ) {
-    val presentation = behaviorPresentation(continuityState)
+    val presentation = if (presence.state == PresenceState.ABSENT) {
+        BehaviorPresentation(
+            title = "暂未检测到人在画面中",
+            subtitle = "正在等待新的在场证据",
+            icon = Icons.Default.PersonOff,
+        )
+    } else {
+        behaviorPresentation(continuityState)
+    }
     val background = when (continuityState) {
         LearningContinuityState.STUDYING -> PrimarySoft
         LearningContinuityState.PAUSED -> Background
@@ -413,6 +472,7 @@ private fun LearningStateMainCard(
                 StatusChip(Icons.Default.SentimentSatisfied, formatExpressionChip(expressionResult))
                 StatusChip(Icons.Default.Lock, "本机处理")
             }
+            StatusChip(Icons.Default.Person, presenceLabel(presence.state))
             if (continuityState == LearningContinuityState.STUDYING && currentStudyMs >= 3_000L) {
                 Text("已持续观察到学习行为 ${formatDuration(currentStudyMs)}", color = Muted, fontSize = 12.sp)
             }
@@ -489,8 +549,14 @@ private fun DeveloperTools(
     selectedLabel: BehaviorDatasetLabel,
     onLabelSelected: (BehaviorDatasetLabel) -> Unit,
     captureState: BehaviorDatasetCaptureState,
+    presence: PresenceSnapshot,
+    personDetection: PersonDetectionSnapshot,
+    personInferenceIntervalMs: Long,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    localVisualTestActive: Boolean,
+    onStartLocalVisualTest: () -> Unit,
+    onStopLocalVisualTest: () -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxWidth().clickable { onExpandedChange(!expanded) }, shape = RoundedCornerShape(14.dp), color = Background) {
         Column(Modifier.padding(12.dp)) {
@@ -503,7 +569,37 @@ private fun DeveloperTools(
             }
             if (expanded) {
                 Spacer(Modifier.height(10.dp))
-                DebugBehaviorDatasetControls(selectedLabel, onLabelSelected, captureState, onStart, onStop)
+                DebugLocalVisualTestControls(
+                    active = localVisualTestActive,
+                    onStart = onStartLocalVisualTest,
+                    onStop = onStopLocalVisualTest,
+                )
+                Spacer(Modifier.height(8.dp))
+                DebugBehaviorDatasetControls(selectedLabel, onLabelSelected, captureState, presence, personDetection, personInferenceIntervalMs, onStart, onStop)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebugLocalVisualTestControls(
+    active: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("本地视觉测试", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("仅 Debug：不连接后端，不创建或写入专注记录。", color = Muted, fontSize = 11.sp)
+            if (active) {
+                Text("Debug 本地视觉测试运行中", color = FocusBlue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp)) {
+                    Text("结束本地测试", color = FocusOrange, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(onClick = onStart, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = FocusBlue)) {
+                    Text("开始本地视觉测试", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -514,31 +610,57 @@ private fun DebugBehaviorDatasetControls(
     selectedLabel: BehaviorDatasetLabel,
     onLabelSelected: (BehaviorDatasetLabel) -> Unit,
     captureState: BehaviorDatasetCaptureState,
+    presence: PresenceSnapshot,
+    personDetection: PersonDetectionSnapshot,
+    personInferenceIntervalMs: Long,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
     Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Debug · 目标域数据采集", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("行为模型：V3.2-A / campusmate_visible_study_v32", color = Muted, fontSize = 11.sp)
+            Text(
+                "Presence: ${presence.state} · evidence ${presence.lastPresenceEvidenceAgoMs(System.currentTimeMillis())?.let(::formatDuration) ?: "无"}前 · face=${presence.faceDetected} · behavior=${presence.behaviorEvidence}",
+                color = Muted,
+                fontSize = 11.sp,
+            )
+            Text(
+                "Person detector: ${personDetection.status} · detected=${personDetection.personDetected} · confidence=${personDetection.personConfidence?.let { "%.2f".format(it) } ?: "-"} · recent=${presence.recentPersonEvidence} · ${personInferenceIntervalMs}ms",
+                color = Muted,
+                fontSize = 11.sp,
+            )
+            personDetection.errorCategory?.let { category ->
+                Text(
+                    "Person error: $category · ${personDetection.error.orEmpty()}",
+                    color = Muted,
+                    fontSize = 11.sp,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BehaviorDatasetLabel.entries.forEach { label ->
                     FilterChip(
                         selected = selectedLabel == label,
                         onClick = { onLabelSelected(label) },
-                        enabled = !captureState.active,
+                        enabled = !captureState.isRunning,
                         label = { Text(label.displayName, fontSize = 12.sp) },
                     )
                 }
             }
-            val status = if (captureState.active) {
-                "采集中：${captureState.label?.displayName} · ${captureState.sessionId} · ${captureState.capturedCount}/180"
-            } else if (captureState.sessionId != null) {
+            val status = when {
+                captureState.preparing -> "准备中 ${captureState.preparationSecondsRemaining} · ${captureState.label?.directoryName} · ${captureState.sessionId}"
+                captureState.active -> {
+                "采集中：${captureState.label?.directoryName} · ${captureState.sessionId} · ${captureState.capturedCount}/120"
+                }
+                captureState.sessionId != null -> {
                 "已停止：${captureState.label?.displayName} · ${captureState.sessionId} · ${captureState.capturedCount} 张"
-            } else {
+                }
+                else -> {
                 "选择标签后开始采集（约 1 张/秒）"
+                }
             }
             Text(status, color = Muted, fontSize = 11.sp)
-            if (captureState.active) {
+            if (captureState.isRunning) {
                 OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp)) {
                     Text("停止采集", color = FocusOrange, fontWeight = FontWeight.Bold)
                 }
@@ -615,6 +737,12 @@ private fun formatExpressionChip(result: ExpressionResult): String {
         return "表情观察中"
     }
     return formatCurrentExpression(result)
+}
+
+private fun presenceLabel(state: PresenceState): String = when (state) {
+    PresenceState.PRESENT -> "人在画面中"
+    PresenceState.OBSERVING -> "正在确认是否在场"
+    PresenceState.ABSENT -> "暂未检测到人在画面中"
 }
 
 @Composable

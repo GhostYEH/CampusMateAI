@@ -4,28 +4,29 @@
 
 > 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + Vue 3 Web 前端 + 微信小程序 + FastAPI 真实后端(Mock 与 Real 双模式可切换) + 表情识别训练与 LiteRT 部署
 
-## V0.3.1 阶段更新
+## 学习状态辅助：V3.2-A 行为模型与 V3.3.1 Presence
 
-本阶段将原有的 `READING / WRITING / PHONE_USE` 细粒度动作识别方案，调整为更符合 CampusMate 使用场景的学习状态辅助方案。
-
-当前 V3.1 行为模型采用：
+原有的 `READING / WRITING / PHONE_USE` 细粒度动作识别方案已调整为更符合 CampusMate 使用场景的学习状态辅助方案。当前默认行为模型为 V3.2-A：
 
 - `VISIBLE_STUDY`：检测到明确可观察学习行为
 - `IDLE`：暂未检测到明确学习行为
 
 在模型输出之上新增学习连续性状态机，短暂思考、翻页、姿势调整或视觉遮挡不会立即中断学习状态。
 
-Focus 页面同步完成产品化升级，包括：
+Focus 页面已完成产品化升级，包括：
 
 - 4:5 前置摄像头观察窗口
 - 当前学习状态
 - 最近 5 分钟学习节奏
 - 本次观察摘要
 - 表情辅助信息
-- Debug-only 目标域数据采集工具
-- V2 模型回滚能力
+- Debug-only 目标域数据采集与本地视觉测试工具
+- V3.1、V2 模型回滚能力
+- 独立的 Presence（在席）状态：`PRESENT` / `OBSERVING` / `ABSENT`
 
-V3.1 在当前目标域、按 session 独立划分的测试中，Normal Test Macro-F1 为 `0.9804`。
+V3.2-A 在保持 V3.1 原始 validation / normal test 独立不变的前提下，以 V3.1 checkpoint 微调，并加入真实目标域的 hard-case visible-study 与 matched-idle 训练样本；normal test 的 accuracy / macro-F1 约为 `97.55%`。V3.1 曾在 588 张 hard-case 历史诊断集上的 visible-study recall 为 `29.59%`；该批样本后来已转入 V3.2-A 训练，因此不能作为 V3.2-A 的独立 benchmark。
+
+Presence 与学习行为是两个独立维度：`IDLE` 不等于离席，`VISIBLE_STUDY` 不等于正在学习，`ABSENT` 也不等于用户停止学习。Presence 优先使用本地 person detector 证据，并以稳定行为与 ML Kit 人脸检测作为辅助证据。
 
 ### 已知限制
 
@@ -34,7 +35,7 @@ V3.1 在当前目标域、按 session 独立划分的测试中，Normal Test Mac
 - 表情识别仍需进一步优化
 - 尚未完成多人、多环境泛化验证
 
-下一阶段将重点优化侧面 / 遮挡 hard cases、多用户多环境泛化和表情识别稳定性。
+下一阶段路线为：V4 Focus AI 语音助手、V4.1 Session Context、V4.2 专注结束摘要、V4.3 个性化学习陪伴；电脑学习等单帧语义模糊场景的进一步研究不阻塞上述产品路线。
 
 ## 核心功能
 
@@ -297,7 +298,7 @@ gradlew.bat :app:assembleDebug      # Windows
 ```
 
 - 默认连接本地后端:`http://10.0.2.2:8000`(Android 模拟器映射到本机)
-- 真机调试: 构建时传入电脑局域网地址，例如 `gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://192.168.1.20:8000/api/v1/`，并确保手机与电脑同网、端口可访问
+- 真机调试: 构建时传入电脑局域网地址，例如 `gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/`，并确保手机与电脑同网、端口可访问。使用 USB 调试时也可在本机 `local.properties` 配置 `API_BASE_URL=http://127.0.0.1:8000/api/v1/`，然后执行 `adb reverse tcp:8000 tcp:8000`；拔掉 USB 后 reverse 会失效，仅适用于开发调试。
 - 发布或跨网络使用: 将 `API_BASE_URL` 指向云服务器的 HTTPS API 地址；安卓端不需要把 FastAPI 打包进 APK
 - 后端不可用时使用本地缓存并明确提示服务状态;开发构建可通过环境配置启用 Mock 数据
 
@@ -549,19 +550,20 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 
 Android 的**专注自习（Focus）**是唯一正式入口，已接入 CameraX、ML Kit 本地人脸检测和 LiteRT 表情分类，保留 Mock/Real 双模式。只有用户主动开启“学习状态辅助”、明确授予相机权限、专注计时运行且页面在前台时，才在本机内存分析；暂停、关闭、离开页面或进入后台会立即暂停并解绑摄像头。画面不保存、不上传、不写日志。
 
-连续时间窗口仅生成谨慎的辅助观察：约 8 秒未见人脸才记录可能暂时离开，约 4 秒明显头部偏转才记录可能注意力偏离，约 2 秒双眼低睁开概率才给出“建议休息”，且提醒至少间隔 3 分钟。专注结束会把分钟数、事件计数、可能注意力偏离累计时长、休息建议次数、稳定表情分布和模型版本保存进本地学习记录。只有用户点击“让 AI 校园助手分析本次专注”后，才会发送这份结构化摘要；不会发送照片、视频、逐帧结果或自动高频请求。
+表情只作为视觉辅助信息，不用于精确情绪、心理或健康判断。Presence 由独立的 person / 稳定行为 / 人脸正向证据融合：任一证据可确认在席，已确认后连续 12 秒没有任何证据才显示 `ABSENT`，不会因单帧 `faceDetected=false` 直接改变在席状态。专注结束可保存本地学习记录；只有用户主动请求分析时才会发送结构化摘要，且不会发送照片、视频或逐帧结果。
 
 训练、审计、评估、导出复现命令和真实指标见 [`ml/expression_recognition/README.md`](ml/expression_recognition/README.md)。该能力仅描述画面中可观察到的面部表情，不用于推断心理状态、疲劳、疾病或危机，也不替代用户自述或专业咨询。低置信度与不稳定结果输出 `UNKNOWN`，不触发安慰。
 
-## Android 本地动作识别
+## Android 本地学习状态辅助与 Presence
 
-CampusMateAI Android 专注模式当前使用 V3.1「学习状态辅助」模型：
+CampusMateAI Android 专注模式当前默认使用 V3.2-A「学习状态辅助」模型：
 
 - **VISIBLE_STUDY（可见学习行为）**：画面中存在明确可观察的阅读、书写或操作学习材料等行为
 - **IDLE（暂未观察到明确学习行为）**：人在画面中，但当前单帧未观察到明确学习动作；这不等同于“不专注”或“没有学习”
-- 当前模型为 `campusmate_visible_study_v31.onnx`（RGB ResNet18，ONNX Runtime 本地推理）；`rgb_resnet18_v2.onnx` 保留为历史 V2 回退模型
+- 当前模型为 `campusmate_visible_study_v32.onnx`（RGB ResNet18，ONNX Runtime 本地推理）；`campusmate_visible_study_v31.onnx` 与 `rgb_resnet18_v2.onnx` 均保留为回退资产
 - 模型稳定结果还会经过会话级连续性处理：短暂的遮挡、思考或姿势调整不会立刻切换为“暂时停顿”
-- 表情识别与行为识别共享同一条 CameraX pipeline，摄像头原始画面**不上传、不保存**
+- V3.3.1 Presence 独立于学习行为：本地 EfficientDet-Lite0 int8 person detector 是主要 evidence，稳定 `VISIBLE_STUDY` 与 ML Kit 人脸检测为辅助；任一正向 evidence 会进入 `PRESENT`，已确认后连续 12 秒无 evidence 才进入 `ABSENT`
+- 表情识别、V3.2 行为识别与 person detector 共享同一条 CameraX pipeline，摄像头原始画面**不上传、不保存**
 
 相关文档：
 

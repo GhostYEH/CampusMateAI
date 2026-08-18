@@ -1,15 +1,17 @@
-# CampusMateAI Android 行为识别：V3.1 部署基线与历史研究
+# CampusMateAI Android 行为识别：V3.2-A 部署基线与历史研究
 
-本文档记录 CampusMateAI Android 专注模式下的本地行为识别研究、实验、模型与部署情况。文首说明当前 V3.1 部署基线，后续章节保留 V1/V2 历史研究记录，便于追溯实验结论。
+本文档记录 CampusMateAI Android 专注模式下的本地行为识别研究、实验、模型与部署情况。文首说明当前 V3.2-A 部署基线，后续章节保留 V1/V2 历史研究记录，便于追溯实验结论。
 
-## 当前部署状态：学习状态辅助 V3.1
+## 当前部署状态：学习状态辅助 V3.2-A
 
-当前 Android 部署模型为 `android/app/src/main/assets/models/behavior/campusmate_visible_study_v31.onnx`。它是 RGB ResNet18 的 ONNX 模型，输入为 `1×3×224×224` 的 RGB 图像（`/255` 后使用 ImageNet mean/std 标准化），输出类别顺序固定为：
+当前 Android 默认部署模型为 `android/app/src/main/assets/models/behavior/campusmate_visible_study_v32.onnx`。它是从 V3.1 best checkpoint 微调得到的 RGB ResNet18 ONNX 模型；输入为 `1×3×224×224` 的 RGB 图像（`/255` 后使用 ImageNet mean/std 标准化），输出类别顺序固定为：
 
 1. `idle` → `IDLE`：暂未观察到明确可见学习行为。
 2. `visible_study` → `VISIBLE_STUDY`：观察到阅读、书写或明显操作学习材料等明确学习动作。
 
-这不是“专注 vs 不专注”的判断：`IDLE` 只表示当前视觉帧没有足够明确的可观察学习动作。旧模型 `rgb_resnet18_v2.onnx` 保留在 assets 中，仅用于历史 V2 回退，不是当前默认模型。
+这不是“专注 vs 不专注”的判断：`IDLE` 只表示当前视觉帧没有足够明确的可观察学习动作。`VISIBLE_STUDY` 也只是检测到视觉证据，不是对用户心理学习状态的结论。`campusmate_visible_study_v31.onnx` 与 `rgb_resnet18_v2.onnx` 保留在 assets 中用于回退，不是当前默认模型。
+
+V3.2-A 保持 V3.1 原 validation 与 normal test 完全独立不变，并将 588 张 `visible_study_hard` 与 matched-idle 真实目标域样本加入训练。normal test 的 accuracy / macro-F1 约为 `97.55%`。V3.1 对这 588 张 hard-case 图片曾只有 `29.59%` visible-study recall；由于它们已经进入 V3.2-A 训练，这个结果仅是 V3.1 的历史诊断，不能作为 V3.2-A 独立泛化 benchmark。
 
 Android 的当前数据流为：
 
@@ -22,7 +24,11 @@ Android 的当前数据流为：
 → FocusScreen 学习状态辅助 UI
 ```
 
-行为识别和表情识别共享这同一条 CameraX pipeline，不会启动第二个摄像头。连续性状态将短暂的 `IDLE`、`UNKNOWN`、遮挡或姿势调整吸收在学习上下文中：学习后 0～8 秒的短暂 `IDLE` 保持 `STUDYING`，8～20 秒进入 `THINKING_OR_ADJUSTING`，超过 20 秒才进入 `PAUSED`。因此，最近节奏、累计学习时长和最长连续学习均基于产品连续性状态，而不是单次模型跳变。
+行为识别、表情识别和 Presence person detector 共享这同一条 CameraX pipeline，不会启动第二个摄像头。连续性状态将短暂的 `IDLE`、`UNKNOWN`、遮挡或姿势调整吸收在学习上下文中：学习后 0～8 秒的短暂 `IDLE` 保持 `STUDYING`，8～20 秒进入 `THINKING_OR_ADJUSTING`，超过 20 秒才进入 `PAUSED`。因此，最近节奏、累计学习时长和最长连续学习均基于产品连续性状态，而不是单次模型跳变。
+
+### Presence V3.3.1（独立于行为分类）
+
+Presence 状态为 `PRESENT`、`OBSERVING`、`ABSENT`，不是新的学习行为类别。EfficientDet-Lite0 int8 COCO person detector（320×320 TFLite Task Vision ObjectDetector）以约 2 FPS 运行，person confidence 阈值为 `0.45`，最近 person evidence 保持 2 秒；稳定 `VISIBLE_STUDY` 与 ML Kit 人脸检测为辅助正向证据。任一正向证据都会立即进入或保持 `PRESENT`；确认在席后，所有证据消失少于 12 秒仍保持 `PRESENT`，连续至少 12 秒才进入 `ABSENT`。因此 `PRESENT + IDLE` 是正常组合，`ABSENT` 也不表示用户停止学习。
 
 当前已知限制：侧面书写且手臂严重遮挡时可能不稳定；“坐在电脑前学习”这类单帧视觉语义模糊的场景不能可靠推断；多用户、多环境泛化尚未验证。表情识别是独立能力，仍需继续优化。
 
@@ -99,7 +105,7 @@ RGB 输入预处理：
 
 ## 5. Pose 对比实验
 
-> 本节属于历史研究阶段，Android 当前 V3.1 未部署 Pose 模型。
+> 本节属于历史研究阶段，Android 当前 V3.2-A 未部署 Pose 模型。
 
 MediaPipe Pose 在原始数据上的有效可用率：
 
@@ -170,7 +176,7 @@ Macro-F1：
 - Accuracy = **80.47%**
 - Macro-F1 = **76.29%**
 
-> 说明：这些阈值是在同一验证集上探索得到的，没有独立测试集验证，因此不能作为最终泛化性能结论。当前 V3.1 不部署 Rule B。
+> 说明：这些阈值是在同一验证集上探索得到的，没有独立测试集验证，因此不能作为最终泛化性能结论。当前 V3.2-A 不部署 Rule B。
 
 ## 8. 历史：为什么 V1 最终先部署 RGB Only
 
@@ -279,7 +285,7 @@ V1 为单帧推理：`BehaviorAnalyzer` 可提供时间窗口，但该引擎只�
 
 历史 V1 的 `FocusScreen`「学习状态辅助」卡片只显示固定文案（本机 LiteRT、当前辅助观察、稳定表情、本次专注时长等），**尚未直接渲染 READ / WRITE 的概率文本**。
 
-历史 V1 的行为预测已经接入 `ExpressionSessionManager`（暴露 `behaviorPrediction` StateFlow，并经 `FocusSupervisor` 更新 `focusState`），但当时该 `focusState` / `behaviorPrediction` 尚未被 `FocusScreen` 展示。当前 V3.1 已完成产品化 UI、稳定状态与会话级连续性展示，具体以本文开头的部署状态为准。
+历史 V1 的行为预测已经接入 `ExpressionSessionManager`（暴露 `behaviorPrediction` StateFlow，并经 `FocusSupervisor` 更新 `focusState`），但当时该 `focusState` / `behaviorPrediction` 尚未被 `FocusScreen` 展示。当前 V3.2-A 已完成产品化 UI、稳定状态与会话级连续性展示，具体以本文开头的部署状态为准。
 
 ## 11. 历史 V1 隐私与端侧推理
 
