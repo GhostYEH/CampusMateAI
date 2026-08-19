@@ -82,6 +82,10 @@ class BehaviorAnalyzer(
                 try {
                     executor.execute {
                         try {
+                            // shutdownNow() can return this task after dispose. In that
+                            // case it is run only to release its owned snapshot; never
+                            // call an engine that has already been closed.
+                            if (disposed.get()) return@execute
                             val prediction = try {
                                 engine.analyzeTemporalWindow(snapshot, timestamp)
                             } catch (_: Throwable) {
@@ -157,7 +161,9 @@ class BehaviorAnalyzer(
         synchronized(lifecycleLock) {
             if (!disposed.compareAndSet(false, true)) return
             frameBuffer.clear()
-            executor.shutdownNow()
+            // A task removed from the executor queue would otherwise never reach its
+            // finally block and would retain its inference-owned Bitmap snapshot.
+            executor.shutdownNow().forEach(Runnable::run)
             engine.close()
             initialized = false
         }
