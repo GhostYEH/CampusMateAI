@@ -45,6 +45,8 @@ import com.example.campusai.data.behavior.BehaviorInputDebugExporter
 import com.example.campusai.data.behavior.BehaviorObservationSummary
 import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.LearningContinuityState
+import com.example.campusai.data.behavior.PresenceSnapshot
+import com.example.campusai.data.behavior.PresenceState
 import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.model.ExpressionLabel
@@ -88,6 +90,7 @@ fun FocusScreen(
     val behaviorDisplayState by manager.behaviorDisplayState.collectAsState()
     val behaviorObservation by manager.behaviorObservation.collectAsState()
     val learningContinuityState by manager.learningContinuityState.collectAsState()
+    val presence by manager.presence.collectAsState()
     val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsState()
     val assistanceStatus by manager.status.collectAsState()
     val expressionResult by manager.result.collectAsState()
@@ -318,6 +321,7 @@ fun FocusScreen(
                     Spacer(Modifier.height(16.dp))
                     LearningStateMainCard(
                         continuityState = learningContinuityState,
+                        presence = presence,
                         expressionResult = expressionResult,
                         expressionStatus = assistanceStatus,
                         currentStudyMs = observationSummary.currentContinuousStudyMs,
@@ -401,7 +405,7 @@ private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
         "MODEL_NOT_AVAILABLE" -> "动作模型暂不可用"
         "INFERENCE_ERROR" -> "动作识别异常"
         "NO_FRAME" -> "动作识别等待画面"
-        "READY_RGB_V1" -> {
+        "READY_RGB_V1", "READY_VISIBLE_STUDY_V32", "READY_VISIBLE_STUDY_V31" -> {
             val readProb = prediction.probabilities[StudyBehavior.READING] ?: 0f
             val writeProb = prediction.probabilities[StudyBehavior.WRITING] ?: 0f
             when (prediction.stableBehavior) {
@@ -417,11 +421,20 @@ private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
 @Composable
 private fun LearningStateMainCard(
     continuityState: LearningContinuityState,
+    presence: PresenceSnapshot,
     expressionResult: ExpressionResult,
     expressionStatus: ExpressionServiceStatus,
     currentStudyMs: Long,
 ) {
-    val presentation = behaviorPresentation(continuityState)
+    val presentation = if (presence.state == PresenceState.ABSENT) {
+        BehaviorPresentation(
+            title = "暂未检测到人在画面中",
+            subtitle = "正在等待新的在场证据",
+            icon = Icons.Default.PersonOff,
+        )
+    } else {
+        behaviorPresentation(continuityState)
+    }
     val background = when (continuityState) {
         LearningContinuityState.STUDYING -> PrimarySoft
         LearningContinuityState.PAUSED -> Background
@@ -443,6 +456,7 @@ private fun LearningStateMainCard(
                 StatusChip(Icons.Default.SentimentSatisfied, formatExpressionChip(expressionResult))
                 StatusChip(Icons.Default.Lock, "本机处理")
             }
+            StatusChip(Icons.Default.Person, presenceLabel(presence.state))
             if (continuityState == LearningContinuityState.STUDYING && currentStudyMs >= 3_000L) {
                 Text("已持续观察到学习行为 ${formatDuration(currentStudyMs)}", color = Muted, fontSize = 12.sp)
             }
@@ -451,6 +465,12 @@ private fun LearningStateMainCard(
             }
         }
     }
+}
+
+private fun presenceLabel(state: PresenceState): String = when (state) {
+    PresenceState.PRESENT -> "人在画面中"
+    PresenceState.OBSERVING -> "正在确认是否在场"
+    PresenceState.ABSENT -> "暂未检测到人在画面中"
 }
 
 @Composable
