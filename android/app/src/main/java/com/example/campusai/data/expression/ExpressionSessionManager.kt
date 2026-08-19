@@ -16,6 +16,13 @@ import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.LearningContinuityStateMachine
 import com.example.campusai.data.behavior.NoOpBehaviorRecognitionEngine
 import com.example.campusai.data.behavior.OnnxBehaviorRecognitionEngine
+import com.example.campusai.data.behavior.PersonAnalyzer
+import com.example.campusai.data.behavior.PersonDetectorConfig
+import com.example.campusai.data.behavior.PersonDetectionSnapshot
+import com.example.campusai.data.behavior.PresenceConfig
+import com.example.campusai.data.behavior.PresenceSnapshot
+import com.example.campusai.data.behavior.PresenceStateMachine
+import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.camera.CameraErrorListener
 import com.example.campusai.data.focus.FocusObservation
 import com.example.campusai.data.focus.FocusObservationConfig
@@ -75,11 +82,17 @@ class ExpressionSessionManager(
     private val behaviorObservationHistory = BehaviorObservationHistory()
     private val learningContinuityStateMachine = LearningContinuityStateMachine()
     private val focusSupervisor = FocusSupervisor()
+    private val personAnalyzer = PersonAnalyzer(application)
+    private val presenceStateMachine = PresenceStateMachine(
+        PresenceConfig(personHoldMs = personAnalyzer.config.personHoldMs),
+    )
+    private val presenceLock = Any()
     private var latestResult = initialResult()
     private var releaseJob: kotlinx.coroutines.Job? = null
     private var serviceInitialized = false
 
     private var behaviorCollectorJob: Job? = null
+    private var personCollectorJob: Job? = null
     private var statusCollectorJob: Job? = null
     private var resultCollectorJob: Job? = null
 
@@ -99,6 +112,14 @@ class ExpressionSessionManager(
     val behaviorObservation: StateFlow<BehaviorObservationSnapshot> = _behaviorObservation.asStateFlow()
     private val _learningContinuityState = MutableStateFlow(LearningContinuityState.OBSERVING)
     val learningContinuityState: StateFlow<LearningContinuityState> = _learningContinuityState.asStateFlow()
+    private val _presence = MutableStateFlow(PresenceSnapshot())
+    val presence: StateFlow<PresenceSnapshot> = _presence.asStateFlow()
+    private val _personDetection = MutableStateFlow(PersonDetectionSnapshot())
+    val personDetection: StateFlow<PersonDetectionSnapshot> = _personDetection.asStateFlow()
+    val personDetectorConfig: PersonDetectorConfig get() = personAnalyzer.config
+    private var latestPersonDetected = false
+    private var latestFaceDetected = false
+    private var latestBehaviorEvidence = false
     private var behaviorObservationActive = false
 
     private val _gentleReminder = MutableStateFlow<String?>(null)
@@ -196,6 +217,14 @@ class ExpressionSessionManager(
             behaviorObservationHistory.reset(System.currentTimeMillis())
             _behaviorObservation.value = behaviorObservationHistory.snapshot()
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
+            synchronized(presenceLock) {
+                presenceStateMachine.reset()
+                latestPersonDetected = false
+                latestFaceDetected = false
+                latestBehaviorEvidence = false
+            }
+            _presence.value = PresenceSnapshot()
+            _personDetection.value = PersonDetectionSnapshot()
             behaviorObservationActive = false
             focusSupervisor.reset()
             _gentleReminder.value = null
@@ -227,6 +256,8 @@ class ExpressionSessionManager(
         service?.let { cameraPipeline.removeAnalyzer(it) }
         cameraPipeline.removeAnalyzer(behaviorAnalyzer)
         behaviorAnalyzer.dispose()
+        cameraPipeline.removeAnalyzer(personAnalyzer)
+        personAnalyzer.close()
         service?.dispose()
         service = null
         serviceInitialized = false
@@ -237,6 +268,8 @@ class ExpressionSessionManager(
     private fun cancelCollectors() {
         behaviorCollectorJob?.cancel()
         behaviorCollectorJob = null
+        personCollectorJob?.cancel()
+        personCollectorJob = null
         statusCollectorJob?.cancel()
         statusCollectorJob = null
         resultCollectorJob?.cancel()
@@ -250,6 +283,7 @@ class ExpressionSessionManager(
         if (!shouldRun) {
             cameraPipeline.pause()
             service?.pause()
+            personAnalyzer.pause()
             behaviorSignalProcessor.reset()
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
             behaviorObservationActive = false
@@ -280,6 +314,8 @@ class ExpressionSessionManager(
             cameraPipeline.addAnalyzer(created)
             behaviorAnalyzer.ensureInitialized()
             cameraPipeline.addAnalyzer(behaviorAnalyzer)
+            personAnalyzer.ensureInitialized()
+            cameraPipeline.addAnalyzer(personAnalyzer)
 
             cancelCollectors()
 
@@ -298,6 +334,11 @@ class ExpressionSessionManager(
                     }
                     val displayState = behaviorSignalProcessor.processDisplayState(prediction)
                     _behaviorDisplayState.value = displayState
+                    updatePresence(
+                        timestampMs = prediction.timestampMs,
+                        behaviorEvidence = displayState is BehaviorDisplayState.Stable &&
+                            displayState.behavior == StudyBehavior.VISIBLE_STUDY,
+                    )
                     val continuity = learningContinuityStateMachine.process(displayState, prediction.timestampMs)
                     _learningContinuityState.value = continuity.state
                     behaviorObservationHistory.record(continuity.state, prediction.timestampMs)
@@ -307,6 +348,18 @@ class ExpressionSessionManager(
                     focusSupervisor.processEvents(events, prediction.timestampMs)
                     // READ/WRITE is only V1 learning evidence. It must not
                     // override FER, head-pose, or eye-derived focus state.
+                }
+            }
+
+            personCollectorJob = scope.launch {
+                personAnalyzer.snapshot.collectLatest { detection ->
+                    _personDetection.value = detection
+                    if (detection.timestampMs > 0L) {
+                        updatePresence(
+                            timestampMs = detection.timestampMs,
+                            personDetected = detection.personDetected,
+                        )
+                    }
                 }
             }
 
@@ -320,6 +373,10 @@ class ExpressionSessionManager(
                 created.results().collectLatest { result ->
                     latestResult = result
                     _result.value = result
+                    updatePresence(
+                        timestampMs = result.timestamp,
+                        faceDetected = result.facePresent,
+                    )
                     val output = processor.process(
                         FocusObservation(
                             timestamp = result.timestamp,
@@ -353,6 +410,7 @@ class ExpressionSessionManager(
         }
         cameraPipeline.start()
         target.start()
+        personAnalyzer.start()
     }
 
     private fun initialResult() = ExpressionResult(
@@ -363,6 +421,25 @@ class ExpressionSessionManager(
         isStable = false,
         modelVersion = "not-loaded",
     )
+
+    private fun updatePresence(
+        timestampMs: Long,
+        personDetected: Boolean? = null,
+        faceDetected: Boolean? = null,
+        behaviorEvidence: Boolean? = null,
+    ) {
+        synchronized(presenceLock) {
+            personDetected?.let { latestPersonDetected = it }
+            faceDetected?.let { latestFaceDetected = it }
+            behaviorEvidence?.let { latestBehaviorEvidence = it }
+            _presence.value = presenceStateMachine.process(
+                timestampMs = timestampMs,
+                personDetected = latestPersonDetected,
+                faceDetected = latestFaceDetected,
+                behaviorEvidence = latestBehaviorEvidence,
+            )
+        }
+    }
 
     private companion object {
         private const val BEHAVIOR_UI_INTERVAL_MS = 500L
