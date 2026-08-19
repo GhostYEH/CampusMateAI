@@ -65,6 +65,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -92,6 +93,9 @@ data class NavItem(val route: String, val label: String, val icon: ImageVector)
  * should add this height to their own bottom insets.
  */
 val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
+
+internal fun floatingDockContentBottomPadding(navigationBarHeight: Dp): Dp =
+    navigationBarHeight + BottomDockReservedHeight
 
 val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),

@@ -35,6 +35,7 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.TypingIndicator
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.components.slideInAnimation
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -91,7 +92,16 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Background).padding(bottom = 88.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Background)
+            .padding(
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ),
+            ),
+    ) {
         LazyColumn(
             modifier = Modifier.weight(1f),
             state = listState,

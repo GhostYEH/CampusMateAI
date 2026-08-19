@@ -6,7 +6,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,8 +28,10 @@ class BehaviorAnalyzerTest {
         val frames = (0 until 17).map { frameAt(100L + it) }
 
         try {
+            // V3.1.1: every sampled frame returns true (triggers inference),
+            // not only the 16th. The rolling window is still capped at 16.
             frames.take(15).forEach { frame ->
-                assertFalse(buffer.addFrame(frame))
+                assertTrue(buffer.addFrame(frame))
                 frame.release()
             }
             val sixteenth = frames[15]
@@ -56,25 +58,19 @@ class BehaviorAnalyzerTest {
     }
 
     @Test
-    fun analyzerDoesNotInferBeforeSixteenFramesAndInfersAfterWindowIsReady() {
+    fun analyzerInfersOnFirstSampledFrameWithoutWaitingForFullWindow() {
         val engine = BlockingEngine()
         val analyzer = BehaviorAnalyzer(engine, testConfig())
-        val frames = (0 until 16).map { frameAt(100L + it) }
+        val firstFrame = frameAt(100L)
 
         try {
-            frames.take(15).forEach { frame ->
-                analyzer.analyze(frame)
-                frame.release()
-            }
-            assertEquals(0, engine.invocationCount.get())
-            assertFalse(engine.started.await(100, TimeUnit.MILLISECONDS))
-
-            analyzer.analyze(frames[15])
-            frames[15].release()
+            analyzer.analyze(firstFrame)
+            firstFrame.release()
 
             assertTrue(engine.started.await(2, TimeUnit.SECONDS))
             assertEquals(1, engine.invocationCount.get())
-            assertEquals(16, engine.lastFrameCount)
+            // V3.1.1: the first sampled frame triggers inference with a 1-frame window.
+            assertEquals(1, engine.lastFrameCount)
             engine.allowCompletion.countDown()
             assertTrue(engine.completed.await(2, TimeUnit.SECONDS))
             assertTrue(awaitAllRecycled(engine.lastSnapshot))
@@ -112,20 +108,20 @@ class BehaviorAnalyzerTest {
     fun analyzerRecoversAfterEngineExceptionAndCanInferAgain() {
         val engine = ThrowOnceEngine()
         val analyzer = BehaviorAnalyzer(engine, testConfig())
-        val frames = (0 until 17).map { frameAt(100L + it) }
+        val firstFrame = frameAt(100L)
+        val secondFrame = frameAt(101L)
 
         try {
-            frames.take(16).forEach { frame ->
-                analyzer.analyze(frame)
-                frame.release()
-            }
+            // V3.1.1: the first sampled frame triggers inference immediately.
+            analyzer.analyze(firstFrame)
+            firstFrame.release()
             assertTrue(engine.firstStarted.await(2, TimeUnit.SECONDS))
             assertTrue(engine.firstFinished.await(2, TimeUnit.SECONDS))
             assertEquals("INFERENCE_ERROR", analyzer.predictions.value.modelState)
             assertTrue(awaitAllRecycled(engine.firstSnapshot))
 
-            analyzer.analyze(frames[16])
-            frames[16].release()
+            analyzer.analyze(secondFrame)
+            secondFrame.release()
             assertTrue(engine.secondFinished.await(2, TimeUnit.SECONDS))
 
             assertEquals(2, engine.invocationCount.get())
@@ -139,32 +135,22 @@ class BehaviorAnalyzerTest {
     fun disposeReleasesResourcesAndIgnoresFramesAfterLifecycleEnd() {
         val engine = BlockingEngine()
         val analyzer = BehaviorAnalyzer(engine, testConfig())
-        val frames = (0 until 15).map { frameAt(100L + it) }
 
+        analyzer.dispose()
+        assertEquals(1, engine.closeCount.get())
+
+        val afterDispose = (0 until 16).map { frameAt(500L + it) }
         try {
-            frames.forEach { frame ->
+            afterDispose.forEach { frame ->
                 analyzer.analyze(frame)
                 frame.release()
             }
-            analyzer.dispose()
-            assertEquals(1, engine.closeCount.get())
-
-            val afterDispose = (0 until 16).map { frameAt(500L + it) }
-            try {
-                afterDispose.forEach { frame ->
-                    analyzer.analyze(frame)
-                    frame.release()
-                }
-            } finally {
-                afterDispose.forEach { frame ->
-                    if (!frame.bitmap.isRecycled) frame.release()
-                }
-            }
-            assertEquals(0, engine.invocationCount.get())
         } finally {
-            engine.allowCompletion.countDown()
-            analyzer.dispose()
+            afterDispose.forEach { frame ->
+                if (!frame.bitmap.isRecycled) frame.release()
+            }
         }
+        assertEquals(0, engine.invocationCount.get())
         assertEquals(1, engine.closeCount.get())
     }
 

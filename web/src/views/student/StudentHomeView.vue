@@ -4,9 +4,11 @@ import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import CampusHotPostsPanel from "../../components/CampusHotPostsPanel.vue";
 import HomeSchedulePanel from "../../components/home/HomeSchedulePanel.vue";
+import HomeFooter from "../../components/home/footer/HomeFooter.vue";
 import { useAppStore } from "../../stores/app";
 import { eduScheduleItems, getCommunityPosts, getPersonalTasks, getStudySessions, getStudentAssignments, getStudentCourses, getStudentDashboard, getStudentNotices } from "../../services/studentApi";
 import { resolveHomeOverviewMetrics } from "../../features/home/overviewMetrics";
+import { fetchHitokoto, formatHitokotoSource } from "../../services/hitokoto";
 
 const props = defineProps({ searchQuery: { type: String, default: "" } });
 const router = useRouter();
@@ -22,6 +24,9 @@ const scheduleItems = ref([]);
 const scheduleLoading = ref(false);
 const liveOverview = ref({ courses: null, pendingAssignments: null, pendingTasks: null, unreadNotices: null });
 const now = ref(Date.now());
+const hitokoto = ref({ uuid: "", hitokoto: "把今天过得更有把握", from: "", from_who: null });
+const hitokotoLoading = ref(false);
+const hitokotoKey = ref(0);
 let clockTimer;
 
 const today = computed(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date(now.value)));
@@ -61,6 +66,8 @@ const totalPending = computed(() => overviewMetrics.value.pendingCount);
 const urgentItems = computed(() => filteredDueItems.value.slice(0, 2));
 const summaryText = computed(() => totalPending.value ? `还有 ${totalPending.value} 项任务等待处理` : "今天暂无临近截止事项");
 const recentCourses = computed(() => filteredCourses.value.slice(0, 3));
+const hitokotoSource = computed(() => formatHitokotoSource(hitokoto.value));
+const hitokotoDetailUrl = computed(() => hitokoto.value.uuid ? `https://hitokoto.cn/?uuid=${encodeURIComponent(hitokoto.value.uuid)}` : "");
 
 const quickLinks = [
   { label: "考试安排", detail: "查看时间与地点", icon: "PhExam", path: "/exams", tone: "violet" },
@@ -91,6 +98,20 @@ function openDue(item) {
 
 function openHotPost(postId) {
   router.push(`/community/${postId}`);
+}
+
+async function loadHitokoto() {
+  if (hitokotoLoading.value) return;
+  hitokotoLoading.value = true;
+  try {
+    const data = await fetchHitokoto();
+    hitokoto.value = data;
+    hitokotoKey.value += 1;
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("Hitokoto unavailable; using the local fallback.", e);
+  } finally {
+    hitokotoLoading.value = false;
+  }
 }
 
 async function load(isRefresh = false) {
@@ -135,13 +156,14 @@ async function load(isRefresh = false) {
 
 onMounted(() => {
   load();
+  loadHitokoto();
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 60000);
 });
 onUnmounted(() => window.clearInterval(clockTimer));
 </script>
 
 <template>
-  <main class="student-page student-home page-enter">
+  <main class="student-page student-home">
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load()">重试</button></div>
 
     <section v-if="loading" class="student-home-skeleton" aria-label="正在加载首页">
@@ -150,12 +172,18 @@ onUnmounted(() => window.clearInterval(clockTimer));
     </section>
 
     <template v-else>
+      <HomeFooter>
       <section class="student-home-hero">
         <article class="student-focus-card">
           <div class="focus-card-copy">
             <span class="hero-date">{{ referenceWeek }} <span class="reference-hero-weather"><UiIcon name="PhSun" :size="17" weight="fill" />24°C 晴</span></span>
-            <h1>把今天过得更有把握</h1>
-            <p>课程、截止事项和校园消息，都在一个清晰的节奏里。</p>
+            <div class="hitokoto-quote" :class="{ 'is-loading': hitokotoLoading }" :aria-busy="hitokotoLoading" aria-live="polite">
+              <h1 :key="hitokotoKey" class="hitokoto-text"><a v-if="hitokotoDetailUrl" class="hitokoto-text-link" :href="hitokotoDetailUrl" target="_blank" rel="noopener noreferrer" aria-label="查看这条一言的详情">{{ hitokoto.hitokoto }}</a><span v-else>{{ hitokoto.hitokoto }}</span></h1>
+              <div v-if="hitokotoDetailUrl" class="hitokoto-meta">
+                <a class="hitokoto-source" :href="hitokotoDetailUrl" target="_blank" rel="noopener noreferrer" aria-label="查看这条一言的详情">{{ hitokotoSource }}</a>
+                <button class="hitokoto-refresh" type="button" :disabled="hitokotoLoading" aria-label="换一句" @click="loadHitokoto"><UiIcon name="PhArrowClockwise" :class="{ spinning: hitokotoLoading }" :size="14" />换一句</button>
+              </div>
+            </div>
             <span class="focus-card-actions"><button class="focus-primary" @click="router.push('/study')">开始专注<UiIcon name="PhArrowRight" :size="17" weight="bold" /></button><button class="focus-secondary" @click="router.push('/tasks')"><UiIcon name="PhListChecks" :size="18" />查看待办</button></span>
           </div>
           <img class="focus-hero-image" src="/assets/generated/home-reference-hero-calendar.png" alt="日历、时钟与书本的学习插画" />
@@ -230,6 +258,7 @@ onUnmounted(() => window.clearInterval(clockTimer));
           <button v-for="item in quickLinks" :key="item.path" @click="router.push(item.path)"><span class="quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="20" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhCaretRight" :size="15" /></button>
         </div>
       </section>
+      </HomeFooter>
     </template>
   </main>
 </template>

@@ -30,6 +30,7 @@ import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 
 @Composable
@@ -45,7 +46,11 @@ fun ProfileScreen(
     Box(Modifier.fillMaxSize().background(Background)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 26.dp),
+            contentPadding = PaddingValues(
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 26.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {

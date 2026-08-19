@@ -111,21 +111,18 @@ export class ApiClient {
 
   // ===== QR 扫码登录 =====
   async qrScan(sessionId: string, scanToken: string): Promise<QrScanResult> {
-    return this.request<QrScanResult>(http.RequestMethod.POST, 'auth/qr/scan', {
-      session_id: sessionId, scan_token: scanToken,
-    });
+    const body: QrScanRequest = { session_id: sessionId, scan_token: scanToken };
+    return this.request<QrScanResult>(http.RequestMethod.POST, 'auth/qr/scan', body);
   }
 
   async qrConfirm(sessionId: string, scanToken: string, trustDevice: boolean): Promise<QrConfirmResult> {
-    return this.request<QrConfirmResult>(http.RequestMethod.POST, 'auth/qr/confirm', {
-      session_id: sessionId, scan_token: scanToken, trust_device: trustDevice,
-    });
+    const body: QrConfirmRequest = { session_id: sessionId, scan_token: scanToken, trust_device: trustDevice };
+    return this.request<QrConfirmResult>(http.RequestMethod.POST, 'auth/qr/confirm', body);
   }
 
   async qrCancel(sessionId: string, scanToken: string): Promise<void> {
-    await this.requestVoid(http.RequestMethod.POST, 'auth/qr/cancel', {
-      session_id: sessionId, scan_token: scanToken,
-    });
+    const body: QrScanRequest = { session_id: sessionId, scan_token: scanToken };
+    await this.requestVoid(http.RequestMethod.POST, 'auth/qr/cancel', body);
   }
 
   async request<T>(method: http.RequestMethod, path: string, body?: object): Promise<T> {
@@ -582,5 +579,14 @@ export interface QrScanResult {
 export interface QrConfirmResult {
   session_id: string;
   status: string;
+  trust_device: boolean;
+}
+export interface QrScanRequest {
+  session_id: string;
+  scan_token: string;
+}
+export interface QrConfirmRequest {
+  session_id: string;
+  scan_token: string;
   trust_device: boolean;
 }

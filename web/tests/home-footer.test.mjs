@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { test } from "node:test";
+
+const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("student home footer is split into information and interactive brand components", async () => {
+  const [home, footer, info, brand] = await Promise.all([
+    readFile(path.join(webRoot, "src/views/student/StudentHomeView.vue"), "utf8"),
+    readFile(path.join(webRoot, "src/components/home/footer/HomeFooter.vue"), "utf8"),
+    readFile(path.join(webRoot, "src/components/home/footer/FooterInfo.vue"), "utf8"),
+    readFile(path.join(webRoot, "src/components/home/footer/InteractiveBrand.vue"), "utf8"),
+  ]);
+
+  assert.match(home, /<HomeFooter>/);
+  assert.match(home, /<\/HomeFooter>/);
+  assert.doesNotMatch(home, /student-home page-enter/);
+  assert.match(footer, /FooterInfo/);
+  assert.match(footer, /InteractiveBrand/);
+  assert.match(footer, /home-brand-underlay/);
+  assert.match(footer, /home-foreground/);
+  assert.match(footer, /margin-bottom/);
+  assert.match(footer, /width: calc\(100vw - var\(--home-sidebar-width\)\)/);
+  assert.match(footer, /left: var\(--home-sidebar-width\)/);
+  assert.match(footer, /right: 0/);
+  assert.match(info, /100vw - var\(--home-sidebar-width/);
+  assert.match(info, /clamp\(28px, 3vw, 48px\)/);
+  assert.match(info, /CampusMate/);
+  assert.match(info, /关注微信公众号/);
+  assert.match(info, /下载移动端 App/);
+  assert.match(info, /返回顶部/);
+  assert.match(info, /\/courses/);
+  assert.match(info, /\/community/);
+  assert.match(info, /scrollTo\(/);
+  assert.match(info, /y3288365856@gmail\.com/);
+  assert.match(info, /mailtoHref/);
+  assert.doesNotMatch(info, /support@campusmate\.cn|400-034-7888/);
+  assert.match(info, /navigator\.clipboard/);
+  assert.match(info, /execCommand\("copy"\)/);
+  assert.match(info, /邮箱已复制/);
+  assert.match(info, /复制邮箱地址/);
+  assert.match(brand, /canvas/);
+  assert.match(brand, /requestAnimationFrame/);
+  assert.match(brand, /ResizeObserver/);
+  assert.match(brand, /devicePixelRatio/);
+  assert.match(brand, /pointerVelocityX/);
+  assert.match(brand, /pointerVelocityY/);
+  assert.match(brand, /onBeforeUnmount/);
+  assert.match(brand, /prefers-reduced-motion/);
+  assert.match(brand, /coarse/);
+  assert.match(brand, /14, 48/);
+  assert.doesNotMatch(brand, /opacity:\s*0/);
+  assert.doesNotMatch(brand, /translateY\(32px\)/);
+});

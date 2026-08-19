@@ -72,7 +72,7 @@ export struct QrConfirmPage {
       if (this.success) {
         Column({ space: 16 }) {
           Stack({ alignContent: Alignment.Center }) {
-            SymbolGlyph($r('sys.symbol.desktopcomputer')).fontSize(36).fontColor([this.palette().success])
+            SymbolGlyph($r('sys.symbol.computer')).fontSize(36).fontColor([this.palette().success])
           }.width(72).height(72).backgroundColor('#1F31AE91').borderRadius(36)
           Text('已确认登录').fontColor(this.palette().text).fontSize(20).fontWeight(FontWeight.Bold)
           Text('请在 Web 端查看').fontColor(this.palette().muted).fontSize(14)
@@ -82,7 +82,7 @@ export struct QrConfirmPage {
           Blank().layoutWeight(1)
           // 中央电脑图标
           Stack({ alignContent: Alignment.Center }) {
-            SymbolGlyph($r('sys.symbol.desktopcomputer')).fontSize(44).fontColor(['#FFFFFFFF'])
+            SymbolGlyph($r('sys.symbol.computer')).fontSize(44).fontColor(['#FFFFFFFF'])
           }.width(88).height(88).borderRadius(44).linearGradient({ angle: 90, colors: [['#FF4E5EDB', 0], ['#FF5B68F2', 1]] })
 
           Text('登录 CampusMate Web').fontColor(this.palette().text).fontSize(22).fontWeight(FontWeight.Bold).margin({ top: 24 })
@@ -98,7 +98,7 @@ export struct QrConfirmPage {
               .selectedColor(this.palette().primary)
               .onChange((value: boolean) => { this.trustDevice = value; })
             Text('信任当前设备自动登录').fontColor(this.palette().text).fontSize(14).margin({ left: 8 })
-          }.width('100%').padding({ vertical: 8 }).onClick(() => { this.trustDevice = !this.trustDevice; })
+          }.width('100%').padding({ top: 8, bottom: 8 }).onClick(() => { this.trustDevice = !this.trustDevice; })
 
           if (this.errorMessage.length > 0) {
             Text(this.errorMessage).fontColor('#FFF2674F').fontSize(13).margin({ top: 4 })

@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -73,7 +73,14 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     Box(Modifier.fillMaxSize().background(ScreenLavender)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 22.dp, end = 16.dp, bottom = BottomDockReservedHeight + 86.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 22.dp,
+                end = 16.dp,
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 86.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -186,7 +193,12 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             containerColor = TaskBlue,
             contentColor = Color.White,
             shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = BottomDockReservedHeight + 14.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(
+                end = 20.dp,
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 14.dp,
+            ),
         )
     }
 
