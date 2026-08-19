@@ -13,7 +13,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * Current V3.1 RGB behavior recognition engine.
+ * Current V3.2 RGB behavior recognition engine.
  *
  * Model:
  *   ResNet18
@@ -378,6 +378,17 @@ class OnnxBehaviorRecognitionEngine(
             val outputClasses: Array<StudyBehavior>,
         )
 
+        private val V32_MODEL = BehaviorModelSpec(
+            assetPath = "models/behavior/campusmate_visible_study_v32.onnx",
+            internalFilename = "campusmate_visible_study_v32.onnx",
+            readyState = "READY_VISIBLE_STUDY_V32",
+            outputClasses = arrayOf(
+                StudyBehavior.IDLE,
+                StudyBehavior.VISIBLE_STUDY,
+            ),
+        )
+
+        // Preserved rollback configuration for the V3.1 model.
         private val V31_MODEL = BehaviorModelSpec(
             assetPath = "models/behavior/campusmate_visible_study_v31.onnx",
             internalFilename = "campusmate_visible_study_v31.onnx",
@@ -400,8 +411,8 @@ class OnnxBehaviorRecognitionEngine(
             ),
         )
 
-        // Change this one explicit selection to V2_MODEL to roll back.
-        private val CURRENT_BEHAVIOR_MODEL = V31_MODEL
+        // Change this one explicit selection to V31_MODEL or V2_MODEL to roll back.
+        private val CURRENT_BEHAVIOR_MODEL = V32_MODEL
         private val ASSET_PATH get() = CURRENT_BEHAVIOR_MODEL.assetPath
         private val INTERNAL_MODEL_FILENAME get() = CURRENT_BEHAVIOR_MODEL.internalFilename
         private val MODEL_STATE get() = CURRENT_BEHAVIOR_MODEL.readyState
