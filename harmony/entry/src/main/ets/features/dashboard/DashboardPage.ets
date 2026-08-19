@@ -308,36 +308,57 @@ export struct DashboardPage {
         SymbolGlyph($r('sys.symbol.eye')).fontSize(19).fontColor([this.palette().muted])
       }
       Row() {
-        Column({ space: 3 }) {
-          Text('本周进度').fontColor(this.palette().muted).fontSize(10)
-          Text('72%').fontColor(this.palette().text).fontSize(28).fontWeight(FontWeight.Bold)
-          Text('较上周 ↑12%').fontColor(this.palette().success).fontSize(10)
+        Column({ space: 4 }) {
+          Text('本周进度')
+            .fontColor(this.palette().muted)
+            .fontSize(10)
+            .maxLines(1)
+          Text('72%')
+            .fontColor(this.palette().text)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .maxLines(1)
+          Column({ space: 2 }) {
+            Text('较上周')
+              .fontColor(this.palette().success)
+              .fontSize(10)
+              .maxLines(1)
+            Text('↑12%')
+              .fontColor(this.palette().success)
+              .fontSize(10)
+              .maxLines(1)
+          }
+          .alignItems(HorizontalAlign.Start)
         }
         .layoutWeight(1)
+        .constraintSize({ minWidth: 68 })
         .alignItems(HorizontalAlign.Start)
+        .justifyContent(FlexAlign.Center)
+        
         Stack({ alignContent: Alignment.Center }) {
           Progress({ value: 72, total: 100, type: ProgressType.Ring })
-            .width(65)
-            .height(65)
+            .width(42)
+            .height(42)
             .color('#FF5368E8')
             .backgroundColor(this.palette().soft)
-            .style({ strokeWidth: 7 })
+            .style({ strokeWidth: 4.5 })
           SymbolGlyph($r('sys.symbol.histogram'))
-            .fontSize(22)
+            .fontSize(14)
             .fontColor(['#FF5368E8'])
         }
+        .margin({ left: 6 })
       }
       .width('100%')
       .layoutWeight(1)
-      .padding(12)
+      .padding({ left: 8, right: 8, top: 10, bottom: 10 })
       .alignItems(VerticalAlign.Center)
       .backgroundColor(this.palette().background)
       .borderRadius(16)
       .margin({ top: 12 })
     }
-    .layoutWeight(0.88)
+    .layoutWeight(1)
     .height(191)
-    .padding(15)
+    .padding(12)
     .backgroundColor(this.palette().surface)
     .borderRadius(22)
   }
@@ -378,9 +399,9 @@ export struct DashboardPage {
       Blank().height(9)
       this.DeadlineRow(this.pendingTasks().length > 0 ? this.pendingTasks()[0].title : '暂无近期截止', this.pendingTasks().length > 0 ? (this.pendingTasks()[0].deadline ?? this.pendingTasks()[0].due ?? '待设置') : '可以放松一下', true)
       Blank().height(7)
-      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '待设置') : '暂无', false)
+      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '暂无') : '暂无', false)
     }
-    .layoutWeight(1.12)
+    .layoutWeight(1)
     .height(191)
     .padding(15)
     .backgroundColor(this.palette().surface)

@@ -45,4 +45,8 @@ data class BehaviorPrediction(
      * not reliable enough to present as reading or writing.
      */
     val stableBehavior: StudyBehavior = StudyBehavior.UNCERTAIN,
+    
+    // Performance baseline metrics (V3.1.1)
+    val debugInferenceLatencyMs: Long = -1L,
+    val debugPreprocessingLatencyMs: Long = -1L,
 )

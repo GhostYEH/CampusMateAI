@@ -31,6 +31,14 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
+    fun rootPagesWithoutLocalStatusInsetReserveTheStatusBarInNavHostContent() {
+        assertEquals(24.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
+        assertEquals(24.dp, navigationDestinationLayout("tasks", 24.dp).contentTopPadding)
+        assertEquals(24.dp, navigationDestinationLayout("counselor", 24.dp).contentTopPadding)
+        assertEquals(0.dp, navigationDestinationLayout("home", 24.dp).contentTopPadding)
+    }
+
+    @Test
     fun lostFoundOwnsItsImmersiveHeroNavigation() {
         assertNull(secondaryDestinationSpec("lostfound"))
     }

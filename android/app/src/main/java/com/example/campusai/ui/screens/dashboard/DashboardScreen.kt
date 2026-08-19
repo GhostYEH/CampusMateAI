@@ -72,6 +72,7 @@ import com.example.campusai.ui.components.breathingFloat
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.screens.profile.ReferenceAvatar
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.DangerText
@@ -107,7 +108,9 @@ fun DashboardScreen(
         repository.refreshTasks()
     }
     val floatingDockScrollPadding =
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
+        floatingDockContentBottomPadding(
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        )
 
     LazyColumn(
         modifier = Modifier

@@ -9,7 +9,29 @@ data class BehaviorModelConfig(
     val inputHeight: Int = 192,
     val sampleIntervalMs: Long = 200L,
     val confidenceThreshold: Float = 0.5f
-)
+) {
+    companion object {
+        // Legacy production default: BehaviorModelConfig() resizes camera frames to
+        // 192x192 in BehaviorFrameBuffer, then OnnxBehaviorRecognitionEngine.preprocess
+        // upscales 192->224. This double resize does NOT match training preprocessing,
+        // which resizes the source image directly to 224x224.
+        //
+        // DIRECT_224 makes BehaviorFrameBuffer resize camera frames straight to
+        // 224x224, so the engine's 224x224 preprocess becomes a no-op and the
+        // runtime path matches training preprocessing exactly.
+        //
+        // NOT wired into production yet: BehaviorAnalyzer/ExpressionSessionManager
+        // still construct BehaviorModelConfig() (legacy 192->224). Switch the single
+        // construction site to DIRECT_224 only after real-device A/B confirms it.
+        val DIRECT_224 = BehaviorModelConfig(
+            frameCount = 16,
+            inputWidth = 224,
+            inputHeight = 224,
+            sampleIntervalMs = 200L,
+            confidenceThreshold = 0.5f,
+        )
+    }
+}
 
 class BehaviorFrameBuffer(
     val config: BehaviorModelConfig
@@ -38,12 +60,22 @@ class BehaviorFrameBuffer(
             removed.recycle()
         }
 
-        return frames.size == config.frameCount
+        // V3.1.1: trigger inference on the first sampled frame instead of
+        // waiting for the full frameCount window. The rolling window is still
+        // capped at frameCount for the temporal snapshot handed to the engine.
+        return frames.isNotEmpty()
     }
 
     @Synchronized
     fun getTemporalWindow(): List<Bitmap> {
         return frames.toList()
+    }
+
+    // V3.1.1 single-frame baseline: inference only needs the latest frame.
+    // Returns a reference (no copy); callers own copying if they hand it to another thread.
+    @Synchronized
+    fun lastFrame(): Bitmap? {
+        return frames.lastOrNull()
     }
 
     @Synchronized

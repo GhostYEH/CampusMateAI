@@ -78,6 +78,7 @@ import android.widget.Toast
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
@@ -118,7 +119,9 @@ fun CoursesScreen(repository: AppRepository) {
         }
     }
     val floatingDockScrollPadding =
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
+        floatingDockContentBottomPadding(
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        )
 
     LazyColumn(
         state = listState,

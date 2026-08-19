@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,7 +22,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.example.campusai.ui.components.StickySecondaryNavigation
-import com.example.campusai.ui.components.StickySecondaryNavigationContentHeight
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
@@ -101,21 +99,22 @@ fun AppNavHost(
         else -> secondaryDestination?.title
     }
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val destinationLayout = navigationDestinationLayout(
+        route = backStackEntry?.destination?.route,
+        statusBarHeight = statusBarHeight,
+    )
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
     Box(Modifier.fillMaxSize()) {
-    NavHost(
-        navController = navController,
-        startDestination = "home",
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                top = if (secondaryDestination != null) {
-                    statusBarHeight + StickySecondaryNavigationContentHeight
-                } else {
-                    0.dp
-                },
-            ),
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = destinationLayout.contentTopPadding),
+        ) {
+            NavHost(
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier.fillMaxSize(),
         enterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
@@ -166,7 +165,7 @@ fun AppNavHost(
                     )
             }
         },
-    ) {
+            ) {
         composable("home") {
             DashboardScreen(repository) { route ->
                 navController.navigate(route) {
@@ -566,7 +565,8 @@ fun AppNavHost(
                 onOpenDetail = { id -> go("lostfound_detail/$id") },
             )
         }
-    }
+            }
+        }
         secondaryDestination?.let { destination ->
             StickySecondaryNavigation(
                 title = secondaryTitle ?: destination.title,

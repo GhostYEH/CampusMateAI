@@ -22,7 +22,7 @@ export struct QrScannerPage {
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const options: scanBarcode.ScanOptions = {
-        scanTypes: [scanCore.ScanType.QRCODE],
+        scanTypes: [scanCore.ScanType.QR_CODE],
         enableMultiMode: false,
         enableAlbum: false,
       };
@@ -73,7 +73,7 @@ export struct QrScannerPage {
       Column({ space: 16 }) {
         if (this.errorMessage.length > 0) {
           Text(this.errorMessage).fontColor('#FFF2674F').fontSize(15).textAlign(TextAlign.Center)
-          Button('重新扫码') {
+          Button() {
             Text('重新扫码').fontColor(Color.White).fontSize(15)
           }.type(ButtonType.Capsule).backgroundColor(this.palette().primary).onClick(() => {
             this.errorMessage = '';

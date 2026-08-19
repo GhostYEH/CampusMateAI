@@ -1,4 +1,4 @@
-﻿package com.example.campusai.data.behavior
+package com.example.campusai.data.behavior
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -6,6 +6,7 @@ import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import com.example.campusai.BuildConfig
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -138,8 +139,11 @@ class OnnxBehaviorRecognitionEngine(
             ?: return unavailablePrediction(timestampMs)
 
         return try {
+            val preprocessStart = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
             preprocess(frame, timestampMs)
+            val preprocessLatency = if (BuildConfig.DEBUG) System.currentTimeMillis() - preprocessStart else -1L
 
+            val inferenceStart = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
             currentSession.run(
                 mapOf(INPUT_NAME to currentTensor),
             ).use { result ->
@@ -171,6 +175,8 @@ class OnnxBehaviorRecognitionEngine(
                     BehaviorModelMath.softmax(
                         logits
                     )
+                    
+                val inferenceLatency = if (BuildConfig.DEBUG) System.currentTimeMillis() - inferenceStart else -1L
 
                 BehaviorPrediction(
                     probabilities =
@@ -182,6 +188,8 @@ class OnnxBehaviorRecognitionEngine(
                             },
                     timestampMs = timestampMs,
                     modelState = MODEL_STATE,
+                    debugInferenceLatencyMs = inferenceLatency,
+                    debugPreprocessingLatencyMs = preprocessLatency,
                 )
             }
         } catch (error: Throwable) {
