@@ -127,6 +127,12 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.google.ai.edge.litert)
     implementation(libs.google.mlkit.face.detection)
+    implementation(libs.tensorflow.lite.task.vision) {
+        // The app already provides LiteRT 1.4.2 for expression inference.
+        // Task Vision's legacy TFLite API is binary-compatible, so avoid
+        // packaging its second runtime with the same org.tensorflow.lite classes.
+        exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+    }
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation(libs.androidx.room.runtime)
