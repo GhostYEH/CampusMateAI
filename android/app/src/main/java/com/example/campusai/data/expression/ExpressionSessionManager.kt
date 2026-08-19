@@ -369,6 +369,7 @@ class ExpressionSessionManager(
         private val SUPPORTED_BEHAVIOR_MODEL_STATES = setOf(
             "READY_RGB_V1",
             "READY_RGB_V2",
+            "READY_VISIBLE_STUDY_V32",
             "READY_VISIBLE_STUDY_V31",
         )
     }
