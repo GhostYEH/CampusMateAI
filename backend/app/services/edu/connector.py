@@ -481,6 +481,11 @@ class EduConnectorService:
     def get_binding(self, user_id: str):
         return self._edu_repo.get_binding_by_user(user_id)
 
+    @staticmethod
+    def get_provider_capabilities(provider: str) -> list[str]:
+        adapter = _ADAPTERS.get(provider)
+        return list(getattr(adapter, "supported_features", ()))
+
     async def bind(
         self,
         *,
@@ -818,6 +823,7 @@ class EduConnectorService:
             user_id=binding.user_id,
             university_id=binding.university_id,
             provider=binding.provider,
+            supported_features=EduConnectorService.get_provider_capabilities(binding.provider),
             system_type=binding.system_type,
             external_student_id=binding.external_student_id,
             external_student_name=binding.external_student_name,

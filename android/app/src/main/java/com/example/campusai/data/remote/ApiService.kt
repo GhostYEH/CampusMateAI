@@ -251,6 +251,7 @@ data class EduBindingDto(
     val edu_system_id: String? = null,
     val university_id: String,
     val provider: String,
+    val supported_features: List<String> = emptyList(),
     val system_type: String = "undergrad",
     val external_student_id: String? = null,
     val external_student_name: String? = null,

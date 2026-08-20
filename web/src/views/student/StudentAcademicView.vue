@@ -47,6 +47,7 @@ const polling = ref(false);
 let pollTimer = null;
 
 const isBound = computed(() => !!eduBinding.value && eduBinding.value.connection_status === "active");
+const supportsExam = computed(() => (eduBinding.value?.supported_features || []).includes("exam"));
 const hasUniversity = computed(() => status.value && status.value.status !== "unbound" || isBound.value);
 
 const connectionStateText = {
@@ -383,7 +384,7 @@ onUnmounted(stopPolling);
         <button class="redesign-button" :disabled="syncBusy" @click="submitSync('profile')"><UiIcon name="PhUser" />{{ syncBusy === 'profile' ? "同步中…" : "同步基本信息" }}</button>
         <button class="redesign-button" :disabled="syncBusy" @click="submitSync('schedule')"><UiIcon name="PhCalendar" />{{ syncBusy === 'schedule' ? "同步中…" : "同步课表" }}</button>
         <button class="redesign-button" :disabled="syncBusy" @click="submitSync('grade')"><UiIcon name="PhChartLine" />{{ syncBusy === 'grade' ? "同步中…" : "同步成绩" }}</button>
-        <button class="redesign-button" :disabled="syncBusy" @click="submitSync('exam')"><UiIcon name="PhClipboardText" />{{ syncBusy === 'exam' ? "同步中…" : "同步考试" }}</button>
+        <button v-if="supportsExam" class="redesign-button" :disabled="syncBusy" @click="submitSync('exam')"><UiIcon name="PhClipboardText" />{{ syncBusy === 'exam' ? "同步中…" : "同步考试" }}</button>
         <button class="redesign-button secondary" @click="submitUnbind"><UiIcon name="PhX" />解绑</button>
       </div>
     </section>

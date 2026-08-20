@@ -179,7 +179,7 @@ class EduConnectionContinue(BaseModel):
     """推进连接状态请求。
 
     支持两种登录路径：
-    1. server_credentials: username + password（后端代理登录）
+    1. backend_http: username + password（后端代理登录）
     2. client_webview: cookies + current_url + user_agent（客户端 WebView 登录完成后回传）
 
     action 可选值：
@@ -311,6 +311,7 @@ class EduBindingOut(BaseModel):
     edu_system_id: Optional[str] = None
     university_id: str
     provider: str
+    supported_features: List[str] = Field(default_factory=list)
     system_type: str
     external_student_id: Optional[str] = None
     external_student_name: Optional[str] = None

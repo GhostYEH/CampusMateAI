@@ -382,6 +382,7 @@ export interface EduBindingDto {
   edu_system_id?: string;
   university_id: string;
   provider: string;
+  supported_features?: string[];
   system_type: string;
   external_student_id?: string;
   external_student_name?: string;
