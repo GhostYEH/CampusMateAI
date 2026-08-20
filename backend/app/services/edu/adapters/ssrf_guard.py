@@ -34,7 +34,7 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
     - 拒绝 localhost / 127.0.0.1 / 0.0.0.0 / ::1
     - 拒绝 169.254.0.0/16（链路本地）
     - 默认拒绝 RFC1918 内网（除非 allow_private=True）
-    - 不解析 DNS（避免 DNS rebinding 复杂度），只校验字面 host
+    - 对域名解析出的地址逐个校验，避免域名指向 loopback/内网
     """
     if not url or not isinstance(url, str):
         return UrlSafetyReport(allowed=False, reason="empty url")
@@ -67,6 +67,36 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
             )
         if ip.is_private and allow_private:
             return UrlSafetyReport(allowed=True, final_host=host, is_private=True)
+    # DNS 解析必须在真正请求前完成；解析失败时保留域名校验结果，
+    # 让 HTTP 层返回可观测的网络错误，而不是把 NXDOMAIN 误报为 SSRF。
+    try:
+        addresses = socket.getaddrinfo(
+            host,
+            parsed.port or (443 if scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror:
+        addresses = []
+    for address in addresses:
+        resolved_host = address[4][0]
+        try:
+            resolved_ip = ipaddress.ip_address(resolved_host)
+        except ValueError:
+            continue
+        if resolved_ip.is_loopback:
+            return UrlSafetyReport(allowed=False, reason="DNS resolved to loopback", final_host=host)
+        if resolved_ip.is_link_local:
+            return UrlSafetyReport(allowed=False, reason="DNS resolved to link-local", final_host=host)
+        if resolved_ip.is_multicast or resolved_ip.is_reserved:
+            return UrlSafetyReport(allowed=False, reason="DNS resolved to reserved address", final_host=host)
+        if resolved_ip.is_private:
+            if not allow_private:
+                return UrlSafetyReport(
+                    allowed=False,
+                    reason="DNS resolved to private address",
+                    final_host=host,
+                    is_private=True,
+                )
     return UrlSafetyReport(allowed=True, final_host=host)
 
 

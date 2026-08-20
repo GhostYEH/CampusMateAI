@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 
 import pytest
 
 from app.services.edu.adapters.ssrf_guard import SSRFBlockedError, check_url_safety
+from app.services.edu.adapters import ssrf_guard
 from app.services.edu.adapters.zhengfang_parser import ZhengfangParser
 from app.services.edu.adapters.zhengfang_strategy import (
     SchoolConfig,
@@ -223,6 +225,19 @@ def test_ssrf_blocked(url):
 def test_ssrf_allowed(url):
     report = check_url_safety(url)
     assert report.allowed
+
+
+def test_ssrf_blocks_hostname_resolving_to_loopback(monkeypatch):
+    monkeypatch.setattr(
+        ssrf_guard.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))
+        ],
+    )
+    report = check_url_safety("https://evil.example.edu/")
+    assert not report.allowed
+    assert "DNS" in (report.reason or "")
 
 
 def test_ssrf_private_allowed_when_explicit():

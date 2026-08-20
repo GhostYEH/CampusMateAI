@@ -14,6 +14,9 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock
+
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -35,7 +38,10 @@ from app.models.edu import (
     URL_NOT_DISCOVERED,
 )
 from app.services.container import reset_container_for_tests
+from app.services.container import get_container
 from app.services.demo_seeder import seed_demo_data
+from app.services.edu.connector import EduConnectorService
+from app.services.edu import discovery_service
 
 
 def _client(app_env: str = "test") -> TestClient:
@@ -633,7 +639,7 @@ def _admin_headers_for(client: TestClient) -> dict[str, str]:
     return _headers(client, "admin_demo")
 
 
-def test_backend_http_flow_idle_to_auth_required_to_connected() -> None:
+def test_backend_http_first_credential_continue_connects() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
@@ -641,7 +647,7 @@ def test_backend_http_flow_idle_to_auth_required_to_connected() -> None:
     sys_resp = client.post(
         f"/api/v1/edu/systems/{university_id}",
         headers=admin_headers,
-        json={"system_key": "undergraduate-main", "provider": "mock"},
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
     )
     system_id = sys_resp.json()["id"]
     conn = client.post(
@@ -649,13 +655,7 @@ def test_backend_http_flow_idle_to_auth_required_to_connected() -> None:
         headers=headers,
         json={"edu_system_id": system_id},
     ).json()
-    assert conn["state"] == CONN_IDLE
-    cont_resp = client.post(
-        f"/api/v1/edu/connections/{conn['id']}/continue",
-        headers=headers,
-        json={},
-    )
-    assert cont_resp.json()["state"] == CONN_AUTH_REQUIRED
+    assert conn["state"] == CONN_AUTH_REQUIRED
     login_resp = client.post(
         f"/api/v1/edu/connections/{conn['id']}/continue",
         headers=headers,
@@ -670,7 +670,7 @@ def test_backend_http_flow_idle_to_auth_required_to_connected() -> None:
     assert sync_resp.json()["status"] == "success"
 
 
-def test_client_webview_flow_idle_to_waiting_to_connected() -> None:
+def test_client_webview_first_cookie_continue_connects() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
@@ -690,12 +690,7 @@ def test_client_webview_flow_idle_to_waiting_to_connected() -> None:
         headers=headers,
         json={"edu_system_id": system_id},
     ).json()
-    cont_resp = client.post(
-        f"/api/v1/edu/connections/{conn['id']}/continue",
-        headers=headers,
-        json={},
-    )
-    assert cont_resp.json()["state"] == CONN_WAITING_USER_LOGIN
+    assert conn["state"] == CONN_WAITING_USER_LOGIN
     complete_resp = client.post(
         f"/api/v1/edu/connections/{conn['id']}/continue",
         headers=headers,
@@ -733,11 +728,6 @@ def test_client_webview_complete_without_cookies_stays_waiting() -> None:
         headers=headers,
         json={"edu_system_id": system_id},
     ).json()
-    client.post(
-        f"/api/v1/edu/connections/{conn['id']}/continue",
-        headers=headers,
-        json={},
-    )
     resp = client.post(
         f"/api/v1/edu/connections/{conn['id']}/continue",
         headers=headers,
@@ -746,6 +736,108 @@ def test_client_webview_complete_without_cookies_stays_waiting() -> None:
     result = resp.json()
     assert result["state"] == CONN_WAITING_USER_LOGIN
     assert result["error_code"] == "NO_COOKIE"
+
+
+def test_connection_details_and_continue_are_owner_scoped() -> None:
+    client = _client()
+    owner_headers = _headers(client, "student_demo")
+    university_id = _select_demo_university(client, owner_headers)
+    admin_headers = _admin_headers_for(client)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections",
+        headers=owner_headers,
+        json={"edu_system_id": system["id"]},
+    ).json()
+
+    other_headers = _headers(client, "student_demo_01")
+    get_response = client.get(
+        f"/api/v1/edu/connections/{connection['id']}", headers=other_headers
+    )
+    continue_response = client.post(
+        f"/api/v1/edu/connections/{connection['id']}/continue",
+        headers=other_headers,
+        json={"action": "POLL"},
+    )
+    assert get_response.status_code == 403
+    assert continue_response.status_code == 403
+
+
+def test_from_url_does_not_overwrite_unverified_public_system(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    portal_url = "https://temporary.example.edu/jwglxt"
+    monkeypatch.setattr(
+        EduConnectorService,
+        "probe_portal",
+        AsyncMock(
+            return_value={
+                "portal_url": portal_url,
+                "provider": "zhengfang",
+                "provider_confidence": 0.9,
+                "reachable": True,
+                "http_status": 200,
+                "final_url": portal_url,
+                "title": "Fixture JWGL",
+                "is_edu_page": True,
+                "suggested_login_mode": "client_webview",
+                "evidence": [],
+                "error": None,
+            }
+        ),
+    )
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    )
+    assert response.status_code == 200, response.text
+    connection = response.json()
+    system = get_container().edu_connector.get_system_by_id(connection["edu_system_id"])
+    assert system is not None
+    assert system.base_url is None
+    assert system.login_url is None
+    assert connection["portal_url"] == portal_url
+
+
+def test_from_url_rejects_other_university(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    current_university_id = _select_demo_university(client, headers)
+    other_university_id = "uni_not_current"
+    monkeypatch.setattr(
+        EduConnectorService,
+        "probe_portal",
+        AsyncMock(return_value={"provider": "unknown", "suggested_login_mode": "unsupported"}),
+    )
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": "https://other.example.edu", "university_id": other_university_id},
+    )
+    assert response.status_code == 403
+
+
+def test_empty_or_whitespace_candidate_file_loads_as_empty(monkeypatch, tmp_path) -> None:
+    candidate_file = tmp_path / "edu_system_candidates.json"
+    monkeypatch.setattr(discovery_service, "_CANDIDATES_FILE", candidate_file)
+    assert discovery_service.load_candidates() == {"candidates": [], "_meta": {}}
+    candidate_file.write_text("  \n\t", encoding="utf-8")
+    assert discovery_service.load_candidates() == {"candidates": [], "_meta": {}}
+
+
+def test_corrupt_candidate_file_is_not_silently_overwritten(monkeypatch, tmp_path) -> None:
+    candidate_file = tmp_path / "edu_system_candidates.json"
+    candidate_file.write_text("{broken", encoding="utf-8")
+    monkeypatch.setattr(discovery_service, "_CANDIDATES_FILE", candidate_file)
+    with pytest.raises(json.JSONDecodeError):
+        discovery_service.load_candidates()
+    assert candidate_file.read_text(encoding="utf-8") == "{broken"
 
 
 # ===== 安全：cookies/password 不泄露 =====

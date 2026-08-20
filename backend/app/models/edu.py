@@ -342,6 +342,7 @@ class EduConnectionRow:
     state: str = CONN_IDLE
     provider: str = EDU_PROVIDER_UNKNOWN
     login_execution_mode: str = LOGIN_EXEC_UNSUPPORTED
+    portal_url: Optional[str] = None
     credential_ref: Optional[str] = None
     external_student_id: Optional[str] = None
     external_student_name: Optional[str] = None
@@ -360,6 +361,7 @@ class EduConnectionRow:
             state=row["state"],
             provider=row["provider"],
             login_execution_mode=row["login_execution_mode"],
+            portal_url=row["portal_url"] if "portal_url" in row.keys() else None,
             credential_ref=row["credential_ref"],
             external_student_id=row["external_student_id"],
             external_student_name=row["external_student_name"],
