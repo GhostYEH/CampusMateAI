@@ -9,10 +9,14 @@ import json
 import socket
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.services.edu.adapters.ssrf_guard import SSRFBlockedError, check_url_safety
 from app.services.edu.adapters import ssrf_guard
+from app.services.edu.adapters import zhengfang as zhengfang_module
+from app.services.edu.adapters.base import AdapterNotImplemented
+from app.services.edu.adapters.zhengfang_http import EduAdapterError, HttpResponse, ZhengfangHttpClient
 from app.services.edu.adapters.zhengfang_parser import ZhengfangParser
 from app.services.edu.adapters.zhengfang_strategy import (
     SchoolConfig,
@@ -181,6 +185,13 @@ def test_school_config_jw2005_uses_html_endpoints():
     assert cfg.endpoints.grade_format == "html"
 
 
+def test_parse_profile_html_jw2005():
+    profile = ZhengfangParser().parse_profile_html(_load("profile_jw2005.html"))
+    assert profile.external_student_id == "FIXTURE-2005-001"
+    assert profile.name == "旧版测试生"
+    assert profile.major == "软件工程"
+
+
 def test_school_config_unknown_version_falls_back_to_jwgl2():
     cfg = school_config_from_dict({
         "base_url": "https://jwxt.example.edu.cn",
@@ -188,6 +199,152 @@ def test_school_config_unknown_version_falls_back_to_jwgl2():
     })
     assert cfg is not None
     assert cfg.version == ZHENGFANG_VERSION_JWGL2
+
+
+def test_school_config_preserves_provider_strategy_fields():
+    cfg = school_config_from_dict({
+        "base_url": "https://jwxt.example.edu.cn",
+        "provider_version": ZHENGFANG_VERSION_JWGL2,
+        "requires_campus_network": True,
+        "encoding": "gbk",
+        "auth_type": "cas",
+        "captcha_type": "image",
+        "sso_url": "https://sso.example.edu.cn/login",
+        "vpn_url": "https://vpn.example.edu.cn",
+        "login_execution_mode": "client_webview",
+        "form_field_username": "username",
+        "form_field_password": "password",
+        "form_field_captcha": "captcha",
+        "semester_param_name": "semesterId",
+        "schedule_payload_extra": {"xnm": "2024"},
+        "grade_payload_extra": {"xqm": "3"},
+        "extra_headers": {"X-Fixture": "1"},
+        "endpoint_overrides": {
+            "profile_path": "/fixture/profile",
+            "profile_format": "json",
+        },
+    })
+    assert cfg is not None
+    assert cfg.requires_campus_network is True
+    assert cfg.encoding == "gbk"
+    assert cfg.auth_type == "cas"
+    assert cfg.sso_url.endswith("/login")
+    assert cfg.vpn_url.endswith(".cn")
+    assert cfg.login_execution_mode == "client_webview"
+    assert cfg.form_field_username == "username"
+    assert cfg.form_field_password == "password"
+    assert cfg.form_field_captcha == "captcha"
+    assert cfg.semester_param_name == "semesterId"
+    assert cfg.schedule_payload_extra == {"xnm": "2024"}
+    assert cfg.grade_payload_extra == {"xqm": "3"}
+    assert cfg.extra_headers == {"X-Fixture": "1"}
+    assert cfg.endpoints.profile_path == "/fixture/profile"
+
+
+def test_session_prepare_restores_full_adapter_config():
+    from app.services.edu.adapters.zhengfang import ZhengfangAdapter
+
+    adapter = ZhengfangAdapter()
+    school, client = adapter._prepare({
+        "adapter_config": {
+            "base_url": "https://jwxt.example.edu.cn",
+            "provider_version": ZHENGFANG_VERSION_JW2005,
+            "encoding": "gbk",
+            "form_field_username": "username",
+            "semester_param_name": "semesterId",
+            "schedule_payload_extra": {"xnm": "2024"},
+            "endpoint_overrides": {"profile_path": "/fixture/profile.html", "profile_format": "html"},
+        },
+        "cookies": {"JSESSIONID": "fixture"},
+    })
+    assert school.version == ZHENGFANG_VERSION_JW2005
+    assert school.encoding == "gbk"
+    assert school.form_field_username == "username"
+    assert school.semester_param_name == "semesterId"
+    assert school.schedule_payload_extra == {"xnm": "2024"}
+    assert school.endpoints.profile_path == "/fixture/profile.html"
+    assert client.cookies == {"JSESSIONID": "fixture"}
+
+
+class _FakeZhengfangClient:
+    response = HttpResponse(
+        status=200,
+        text="",
+        url="https://jwxt.example.edu.cn/jwglxt/xsxx/profile",
+        headers={},
+    )
+    error: Exception | None = None
+
+    def __init__(self, **kwargs):
+        self._cookies = {}
+
+    def set_cookies(self, cookies):
+        self._cookies = dict(cookies)
+
+    async def get(self, *args, **kwargs):
+        if self.error:
+            raise self.error
+        return self.response
+
+
+@pytest.mark.asyncio
+async def test_cookie_login_rejects_login_page_with_http_200(monkeypatch):
+    _FakeZhengfangClient.response = HttpResponse(
+        status=200,
+        text='<html><form><input type="password" name="mm"></form></html>',
+        url="https://jwxt.example.edu.cn/login",
+        headers={},
+    )
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", _FakeZhengfangClient)
+    with pytest.raises(PermissionError):
+        await zhengfang_module.ZhengfangAdapter().login_with_cookies(
+            cookies={"JSESSIONID": "fixture"},
+            config={"base_url": "https://jwxt.example.edu.cn"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_cookie_login_requires_authenticated_profile_probe(monkeypatch):
+    _FakeZhengfangClient.response = HttpResponse(
+        status=200,
+        text=_load("profile_jwgl2.json"),
+        url="https://jwxt.example.edu.cn/jwglxt/xsxx/profile",
+        headers={},
+    )
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", _FakeZhengfangClient)
+    internal = await zhengfang_module.ZhengfangAdapter().login_with_cookies(
+        cookies={"JSESSIONID": "fixture"},
+        config={"base_url": "https://jwxt.example.edu.cn"},
+    )
+    assert internal["external_student_id"] == "FIXTURE-S000000001"
+    assert "adapter_config" in internal
+
+
+@pytest.mark.asyncio
+async def test_verify_session_rejects_network_errors(monkeypatch):
+    _FakeZhengfangClient.error = EduAdapterError("NETWORK_ERROR", "fixture network error")
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", _FakeZhengfangClient)
+    assert await zhengfang_module.ZhengfangAdapter().verify_session({
+        "base_url": "https://jwxt.example.edu.cn",
+        "cookies": {"JSESSIONID": "fixture"},
+    }) is False
+    _FakeZhengfangClient.error = None
+
+
+@pytest.mark.asyncio
+async def test_exam_without_parser_is_explicitly_unsupported(monkeypatch):
+    adapter = zhengfang_module.ZhengfangAdapter()
+    with pytest.raises(AdapterNotImplemented):
+        await adapter.fetch_exam({"base_url": "https://jwxt.example.edu.cn", "cookies": {}})
+
+
+def test_provider_capabilities_do_not_claim_exam_support():
+    from app.services.edu.adapters.qiangzhi import QiangzhiAdapter
+    from app.services.edu.adapters.qingguo import QingguoAdapter
+
+    assert "exam" not in zhengfang_module.ZhengfangAdapter.supported_features
+    assert QiangzhiAdapter.supported_features == ()
+    assert QingguoAdapter.supported_features == ()
 
 
 # ===== SSRF 防护 =====
@@ -244,6 +401,16 @@ def test_ssrf_private_allowed_when_explicit():
     report = check_url_safety("http://10.0.0.1/", allow_private=True)
     assert report.allowed
     assert report.is_private
+
+
+def test_school_http_client_rejects_redirect_to_loopback():
+    response = httpx.Response(
+        302,
+        headers={"location": "http://127.0.0.1/admin"},
+        request=httpx.Request("GET", "https://public.example.edu/"),
+    )
+    with pytest.raises(SSRFBlockedError):
+        ZhengfangHttpClient._validate_redirect_target(response, "https://public.example.edu/")
 
 
 # ===== Adapter 行为：缺少 base_url 抛 AdapterNotImplemented =====

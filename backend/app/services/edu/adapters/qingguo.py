@@ -17,6 +17,8 @@ class QingguoAdapter(EduAdapter):
     """青果教务系统适配器（占位）。"""
 
     provider = "qingguo"
+    supported_features = ()
+    implementation_status = "unsupported"
 
     async def login(
         self,

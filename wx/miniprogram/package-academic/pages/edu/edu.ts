@@ -242,7 +242,7 @@ Page({
     let phase: Phase = 'connecting'
     if (state === 'connected' || state === 'synced') {
       phase = 'connected'
-    } else if (state === 'auth_required' || (state === 'idle' && mode === 'server_credentials')) {
+    } else if (state === 'auth_required' || (state === 'idle' && mode === 'backend_http')) {
       phase = 'need_credentials'
     } else if (state === 'waiting_user_login' || (state === 'idle' && mode === 'client_webview')) {
       phase = 'waiting_user_login'

@@ -237,8 +237,13 @@ class EduConnectorService:
             (
                 row
                 for row in self._registry.list_systems(university_id)
-                if row.verification_status in ("VERIFIED_OFFICIAL", "VERIFIED_LIVE")
-                and portal_url in (row.base_url, row.login_url)
+                if (row.verification_status or "").upper() in {
+                    "VERIFIED", "VERIFIED_OFFICIAL", "VERIFIED_LIVE"
+                }
+                and portal_url.rstrip("/") in {
+                    (row.base_url or "").rstrip("/"),
+                    (row.login_url or "").rstrip("/"),
+                }
             ),
             None,
         )
@@ -277,8 +282,8 @@ class EduConnectorService:
         """推进连接状态机。
 
         支持两条路径：
-        A. server_credentials: CONN_IDLE → CONN_AUTH_REQUIRED → (username+password) → login → CONN_CONNECTED
-        B. client_webview: CONN_IDLE → CONN_WAITING_USER_LOGIN → (cookies) → login_with_cookies → CONN_CONNECTED
+        A. backend_http: CONN_AUTH_REQUIRED → (username+password) → login → CONN_CONNECTED
+        B. client_webview: CONN_WAITING_USER_LOGIN → (cookies) → login_with_cookies → CONN_CONNECTED
 
         登录成功后创建 binding + session，使后续 sync 可用。
         """
@@ -436,16 +441,29 @@ class EduConnectorService:
         """从 EduSystemRow 构造 adapter config dict。"""
         if system is None:
             return {}
-        return {
+        config = {
             "base_url": portal_url or system.base_url,
             "login_url": portal_url or system.login_url,
+            "provider_version": system.provider_version,
             "sso_url": system.sso_url,
             "vpn_url": system.vpn_url,
             "auth_type": system.auth_type,
             "login_execution_mode": system.login_execution_mode,
             "captcha_type": system.captcha_type,
+            "requires_campus_network": system.requires_campus_network,
+            "requires_vpn": system.requires_vpn,
             "provider": system.provider,
         }
+        try:
+            stored = json.loads(system.adapter_config or "{}")
+        except (TypeError, ValueError):
+            stored = {}
+        if isinstance(stored, dict):
+            config.update(stored)
+        if portal_url:
+            config["base_url"] = portal_url
+            config["login_url"] = portal_url
+        return config
 
     # ===== 配置 =====
 

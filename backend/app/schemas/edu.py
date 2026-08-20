@@ -146,6 +146,7 @@ class EduSystemUpsert(BaseModel):
     status: Optional[str] = None
     verification_status: Optional[str] = None
     supported_features: Optional[List[str]] = None
+    adapter_config: Optional[Dict[str, Any]] = None
     source: Optional[str] = None
     notes: Optional[str] = None
     is_mock: Optional[bool] = None

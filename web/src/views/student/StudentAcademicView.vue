@@ -5,7 +5,6 @@ import {
   getAcademicProviders,
   getAcademicStatus,
   getEduBinding,
-  eduBind,
   eduUnbind,
   eduSync,
   getEduSyncRecords,
@@ -118,16 +117,11 @@ async function pickUniversity(id) {
 }
 
 async function submitBind() {
-  bindBusy.value = true;
-  bindError.value = "";
-  try {
-    eduBinding.value = await eduBind(bindForm.value.username, bindForm.value.password);
-    bindForm.value = { username: "", password: "" };
-  } catch (e) {
-    bindError.value = e.response?.data?.message || "绑定失败";
-  } finally {
-    bindBusy.value = false;
+  if (connection.value?.state === "auth_required") {
+    await submitCredentialConnect();
+    return;
   }
+  bindError.value = "请先输入并连接教务系统网址，再提交账号密码。";
 }
 
 async function submitUnbind() {
@@ -189,7 +183,7 @@ async function probeAndConnect() {
   }
 }
 
-// ===== server_credentials 路径：账密登录 =====
+// ===== backend_http 路径：账密登录 =====
 async function submitCredentialConnect() {
   if (!connection.value || !bindForm.value.username || !bindForm.value.password) return;
   bindBusy.value = true;
@@ -395,8 +389,8 @@ onUnmounted(stopPolling);
     </section>
 
     <section v-else class="redesign-panel">
-      <header><h3>绑定教务账号</h3></header>
-      <p class="edu-hint">输入教务系统账号密码进行一次认证。密码不会明文保存，也不会出现在 API 响应或日志中。</p>
+      <header><h3>完成当前连接认证</h3></header>
+      <p class="edu-hint">先输入教务系统网址创建连接，再提交账号密码。密码只用于本次认证，不会明文保存。</p>
       <div v-if="bindError" class="redesign-alert error">{{ bindError }}</div>
       <form class="edu-form" @submit.prevent="submitBind">
         <label>账号<input v-model="bindForm.username" type="text" autocomplete="username" required /></label>

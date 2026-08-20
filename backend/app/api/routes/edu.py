@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from ...core.exceptions import AppException, Forbidden, Unauthorized
 from ...models.edu import (
@@ -228,14 +228,20 @@ def get_binding(
 @router.post("/bind", response_model=EduBindingOut)
 async def bind(
     request: EduBindRequest,
+    response: Response,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduBindingOut:
-    """绑定教务账号。
+    """[deprecated] 兼容旧版一次性绑定接口。
+
+    新客户端应使用 EduConnection：创建连接后调用 continue，认证成功再生成 EduBinding。
+    本兼容端点仍委托同一个 EduConnector/Session/Binding 存储链路，并通过响应头提示迁移。
 
     需要先选择大学（PUT /profile/university）。
     username/password 仅用于一次认证，不会明文存储。
     """
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = '</api/v1/edu/connections/from-url>; rel="successor-version"'
     if not user.university_id:
         raise UniversityRequired()
     try:

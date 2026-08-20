@@ -94,6 +94,7 @@ class EduRepository:
         status: Optional[str] = None,
         verification_status: Optional[str] = None,
         supported_features: Optional[list[str]] = None,
+        adapter_config: Optional[dict] = None,
         source: Optional[str] = None,
         notes: Optional[str] = None,
         is_mock: Optional[bool] = None,
@@ -136,6 +137,10 @@ class EduRepository:
             features_json = existing.supported_features if existing else "[]"
         else:
             features_json = json.dumps(supported_features, ensure_ascii=False)
+        if adapter_config is None:
+            adapter_config_json = existing.adapter_config if existing else "{}"
+        else:
+            adapter_config_json = json.dumps(adapter_config, ensure_ascii=False)
 
         created_at = existing.created_at if existing else now
 
@@ -147,10 +152,10 @@ class EduRepository:
                     provider, provider_version, base_url, login_url, sso_url, vpn_url,
                     auth_type, login_execution_mode, captcha_type,
                     requires_campus_network, requires_vpn, status, verification_status,
-                    supported_features, last_verified_at, source, notes, is_mock,
+                    supported_features, adapter_config, last_verified_at, source, notes, is_mock,
                     created_at, updated_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?
                 )
                 ON CONFLICT(university_id, system_key) DO UPDATE SET
                     school_code = COALESCE(excluded.school_code, edu_systems.school_code),
@@ -170,6 +175,7 @@ class EduRepository:
                     status = excluded.status,
                     verification_status = excluded.verification_status,
                     supported_features = excluded.supported_features,
+                    adapter_config = excluded.adapter_config,
                     source = excluded.source,
                     notes = COALESCE(excluded.notes, edu_systems.notes),
                     is_mock = excluded.is_mock,
@@ -180,7 +186,7 @@ class EduRepository:
                     cur_provider, cur_pv, cur_base_url, cur_login_url, cur_sso_url, cur_vpn_url,
                     cur_auth_type, cur_exec_mode, cur_captcha,
                     cur_rcn, cur_vpn_req, cur_status, cur_verif,
-                    features_json, cur_source, cur_notes, cur_is_mock,
+                    features_json, adapter_config_json, cur_source, cur_notes, cur_is_mock,
                     created_at, now,
                 ),
             )

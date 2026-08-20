@@ -30,6 +30,8 @@ class EduAdapter(ABC):
     provider: str = "unknown"
     is_mock: bool = False
     supported_login_modes: tuple[str, ...] = ()
+    supported_features: tuple[str, ...] = ()
+    implementation_status: str = "unsupported"
 
     @abstractmethod
     async def login(

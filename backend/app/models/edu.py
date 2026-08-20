@@ -243,6 +243,7 @@ class EduSystemRow:
     status: str = EDU_SYSTEM_STATUS_ACTIVE
     verification_status: str = VERIFICATION_UNVERIFIED
     supported_features: str = "[]"
+    adapter_config: str = "{}"
     last_verified_at: Optional[str] = None
     source: str = "unknown"
     notes: Optional[str] = None
@@ -273,6 +274,7 @@ class EduSystemRow:
             status=row["status"],
             verification_status=row["verification_status"],
             supported_features=row["supported_features"],
+            adapter_config=row["adapter_config"] if "adapter_config" in row.keys() else "{}",
             last_verified_at=row["last_verified_at"],
             source=row["source"],
             notes=row["notes"],

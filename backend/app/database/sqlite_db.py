@@ -736,6 +736,7 @@ CREATE TABLE IF NOT EXISTS edu_systems (
     status TEXT NOT NULL DEFAULT 'active',
     verification_status TEXT NOT NULL DEFAULT 'unverified',
     supported_features TEXT NOT NULL DEFAULT '[]',
+    adapter_config TEXT NOT NULL DEFAULT '{}',
     last_verified_at TEXT,
     source TEXT NOT NULL DEFAULT 'unknown',
     notes TEXT,
@@ -1191,6 +1192,11 @@ class Database:
         connection_cols = {row["name"] for row in cur.fetchall()}
         if connection_cols and "portal_url" not in connection_cols:
             conn.execute("ALTER TABLE edu_connections ADD COLUMN portal_url TEXT")
+
+        cur = conn.execute("PRAGMA table_info(edu_systems)")
+        system_cols = {row["name"] for row in cur.fetchall()}
+        if system_cols and "adapter_config" not in system_cols:
+            conn.execute("ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'")
 
         # 1. edu_bindings 旧 schema → 新 schema
         cur = conn.execute("PRAGMA table_info(edu_bindings)")

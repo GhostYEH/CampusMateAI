@@ -17,6 +17,8 @@ class QiangzhiAdapter(EduAdapter):
     """强智教务系统适配器（占位）。"""
 
     provider = "qiangzhi"
+    supported_features = ()
+    implementation_status = "unsupported"
 
     async def login(
         self,
