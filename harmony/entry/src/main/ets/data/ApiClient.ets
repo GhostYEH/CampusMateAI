@@ -320,7 +320,7 @@ export class ApiClient {
     return this.request<EduSyncRecord[]>('GET' as http.RequestMethod, `edu/sync/records?limit=${limit}`);
   }
 
-  // ===== EduConnection 状态机（client_webview 登录流程） =====
+  // ===== EduConnection 状态机（backend_http / client_webview 登录流程） =====
   async eduProbe(portalUrl: string): Promise<EduProbeResult> {
     const body: EduProbeRequest = { portal_url: portalUrl };
     return this.request<EduProbeResult>('POST' as http.RequestMethod, 'edu/discovery/probe', body as object);
@@ -379,12 +379,16 @@ export interface EduBindRequest {
 export interface EduBindingDto {
   id: string;
   user_id: string;
+  edu_system_id?: string;
   university_id: string;
   provider: string;
   system_type: string;
   external_student_id?: string;
   external_student_name?: string;
-  status: string;
+  connection_status: string;
+  session_type?: string;
+  last_authenticated_at?: string;
+  session_expires_at?: string;
   last_synced_at?: string;
   last_sync_status?: string;
   last_error?: string;
@@ -467,6 +471,7 @@ export interface EduConnectionDto {
   state: string;
   provider: string;
   login_execution_mode: string;
+  portal_url?: string;
   external_student_id?: string;
   external_student_name?: string;
   error_code?: string;

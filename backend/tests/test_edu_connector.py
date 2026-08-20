@@ -552,7 +552,7 @@ def test_probe_requires_authentication() -> None:
     assert response.status_code == 401
 
 
-def test_create_connection_from_url_creates_idle_connection() -> None:
+def test_create_connection_from_url_requires_backend_authentication() -> None:
     client = _client()
     headers = _headers(client)
     _select_demo_university(client, headers)
@@ -563,7 +563,7 @@ def test_create_connection_from_url_creates_idle_connection() -> None:
     )
     assert response.status_code == 200, response.text
     conn = response.json()
-    assert conn["state"] == CONN_IDLE
+    assert conn["state"] == CONN_AUTH_REQUIRED
     assert conn["id"]
     assert conn["login_execution_mode"] in (LOGIN_EXEC_BACKEND_HTTP, LOGIN_EXEC_CLIENT_WEBVIEW)
 
@@ -803,6 +803,46 @@ def test_from_url_does_not_overwrite_unverified_public_system(monkeypatch) -> No
     assert system.base_url is None
     assert system.login_url is None
     assert connection["portal_url"] == portal_url
+
+
+def test_from_url_reuses_verified_public_system(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    admin_headers = _admin_headers(client)
+    portal_url = "https://verified.example.edu/jwglxt/"
+    system_response = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=admin_headers,
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "zhengfang",
+            "base_url": portal_url,
+            "login_url": portal_url,
+            "verification_status": "verified",
+            "login_execution_mode": "client_webview",
+        },
+    )
+    assert system_response.status_code == 200, system_response.text
+    system_id = system_response.json()["id"]
+    monkeypatch.setattr(
+        EduConnectorService,
+        "probe_portal",
+        AsyncMock(
+            return_value={
+                "portal_url": portal_url,
+                "provider": "zhengfang",
+                "suggested_login_mode": "client_webview",
+            }
+        ),
+    )
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["edu_system_id"] == system_id
 
 
 def test_from_url_rejects_other_university(monkeypatch) -> None:

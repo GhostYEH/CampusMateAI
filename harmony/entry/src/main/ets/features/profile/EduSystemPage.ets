@@ -7,7 +7,7 @@ import { promptAction } from '@kit.ArkUI';
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
- * 地址输入 → 探测 → 创建连接 → 分流（server_credentials / client_webview）→ 连接管理。
+ * 地址输入 → 探测 → 创建连接 → 分流（backend_http / client_webview）→ 连接管理。
  */
 @Component
 export struct EduSystemPage {
@@ -169,7 +169,7 @@ export struct EduSystemPage {
               Text('请先选择你的大学').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
               Text('教务系统连接需要先在个人中心选择所在大学。').fontSize(12).fontColor(this.palette().muted)
             }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
-          } else if (this.binding !== null && (this.binding.status === 'active' || this.binding.status === 'connected')) {
+          } else if (this.binding !== null && (this.binding.connection_status === 'active' || this.binding.connection_status === 'connected')) {
             this.ConnectedCard()
           } else {
             this.PortalInputCard()
@@ -262,7 +262,7 @@ export struct EduSystemPage {
     Column({ space: 6 }) {
       if (this.binding !== null) {
         Text(this.binding.provider).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-        Text('状态：' + eduStateText(this.binding.status)).fontSize(12).fontColor(this.palette().muted)
+        Text('状态：' + eduStateText(this.binding.connection_status)).fontSize(12).fontColor(this.palette().muted)
         if (this.binding.external_student_id !== undefined) {
           Text('学号：' + (this.binding.external_student_id || '')).fontSize(12).fontColor(this.palette().muted)
         }

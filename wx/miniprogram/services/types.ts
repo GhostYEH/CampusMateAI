@@ -232,6 +232,7 @@ export interface EduConnection {
   state: string
   provider: string
   login_execution_mode: string
+  portal_url: string | null
   external_student_id: string | null
   external_student_name: string | null
   error_code: string | null

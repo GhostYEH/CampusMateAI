@@ -26,15 +26,14 @@ from ....models.edu import (
     LOGIN_EXEC_BACKEND_HTTP,
     LOGIN_EXEC_CLIENT_WEBVIEW,
 )
-from ....schemas.edu import EduExam, EduExamItem, EduGrade, EduProfile, EduSchedule
+from ....schemas.edu import EduExam, EduGrade, EduProfile, EduSchedule
 from .base import AdapterNotImplemented, EduAdapter
 from .zhengfang_http import EduAdapterError, NeedUserAction, ZhengfangHttpClient
 from .zhengfang_parser import ZhengfangParser
 from .zhengfang_strategy import (
-    KNOWN_ZHENGFANG_VERSIONS,
     SchoolConfig,
-    ZHENGFANG_VERSION_JWGL2,
     school_config_from_dict,
+    school_config_to_dict,
 )
 
 
@@ -49,6 +48,8 @@ class ZhengfangAdapter(EduAdapter):
     provider = EDU_PROVIDER_ZHENGFANG
     is_mock = False
     supported_login_modes = (LOGIN_EXEC_BACKEND_HTTP, LOGIN_EXEC_CLIENT_WEBVIEW)
+    supported_features = ("profile", "schedule", "grade")
+    implementation_status = "implemented_pending_golden_school"
     adapter_version = "zhengfang-1.0.0"
 
     def __init__(self, *, parser: Optional[ZhengfangParser] = None) -> None:
@@ -133,6 +134,7 @@ class ZhengfangAdapter(EduAdapter):
             "cookies": client.cookies,
             "username": username,
             "external_student_id": username,
+            "adapter_config": school_config_to_dict(school),
         }
 
     async def login_with_cookies(
@@ -170,16 +172,7 @@ class ZhengfangAdapter(EduAdapter):
         )
         client.set_cookies(cookies)
 
-        # 验证 session 是否有效：尝试访问一个轻量页面
-        try:
-            await client.get(school.base_url, referer=school.base_url)
-        except EduAdapterError as e:
-            if e.code == "AUTH_FAILED":
-                raise PermissionError("回传的 cookies 已失效或未登录") from e
-            # 其他错误（如 404/超时）不阻断，信任客户端 cookie
-        except Exception:
-            # 网络异常不阻断 cookie 接受（后续 sync 时再失败）
-            pass
+        profile = await self._authenticated_probe(school, client)
 
         return {
             "provider": self.provider,
@@ -188,20 +181,37 @@ class ZhengfangAdapter(EduAdapter):
             "version": school.version,
             "cookies": dict(cookies),
             "via_cookies": True,
-            "external_student_id": None,
+            "external_student_id": profile.external_student_id,
+            "adapter_config": school_config_to_dict(school),
         }
 
     async def verify_session(self, session: dict) -> bool:
         try:
             school, client = self._prepare(session)
-            await client.get(school.base_url, referer=school.base_url)
-            return True
-        except EduAdapterError as e:
-            if e.code == "AUTH_FAILED":
-                return False
+            await self._authenticated_probe(school, client)
             return True
         except Exception:
-            return True
+            return False
+
+    async def _authenticated_probe(self, school: SchoolConfig, client: ZhengfangHttpClient) -> EduProfile:
+        """访问需要登录的学生信息端点，拒绝首页 200、登录页和网络异常。"""
+        try:
+            resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
+        except Exception as exc:
+            raise PermissionError("无法验证教务系统登录会话") from exc
+        location = (resp.headers.get("location") or "").lower()
+        lowered = (resp.text or "").lower()
+        if resp.status in (301, 302, 303, 307, 308) or "login" in location:
+            raise PermissionError("回传的 cookies 已失效或未登录")
+        if "type=\"password\"" in lowered or "name=\"password\"" in lowered or ("登录" in resp.text and "form" in lowered):
+            raise PermissionError("回传的 cookies 已失效或未登录")
+        if school.endpoints.profile_format == "html":
+            profile = self._parser.parse_profile_html(resp.text)
+        else:
+            profile = self._parser.parse_profile_json(resp.text)
+        if not profile.external_student_id:
+            raise PermissionError("教务系统未返回已登录学生身份")
+        return profile
 
     # ===== 数据获取 =====
 
@@ -209,7 +219,7 @@ class ZhengfangAdapter(EduAdapter):
         school, client = self._prepare(session)
         if school.endpoints.profile_format == "html":
             resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
-            return self._parser.parse_profile_json(resp.text)
+            return self._parser.parse_profile_html(resp.text)
         resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
         return self._parser.parse_profile_json(resp.text)
 
@@ -236,39 +246,23 @@ class ZhengfangAdapter(EduAdapter):
         return self._parser.parse_grade_json(resp.text, semester=semester)
 
     async def fetch_exam(self, session: dict, *, semester: Optional[str] = None) -> EduExam:
-        school, client = self._prepare(session)
-        params = {}
-        if semester:
-            params[school.semester_param_name] = semester
-        try:
-            resp = await client.post(
-                school.base_url.rstrip("/") + "/jwglxt/kwgl/kwgl_cxKwglIndex.do",
-                data=params or None,
-                referer=school.base_url,
-                form_post=True,
-            )
-        except EduAdapterError as e:
-            if e.code == "SYSTEM_UNAVAILABLE":
-                return EduExam(semester=semester, items=[])
-            raise
-        payload = resp.text
-        if not payload:
-            return EduExam(semester=semester, items=[])
-        return EduExam(semester=semester, items=[])
+        raise AdapterNotImplemented(self.provider, "fetch_exam")
 
     # ===== 内部 =====
 
     def _prepare(self, session: dict) -> tuple[SchoolConfig, ZhengfangHttpClient]:
         if not isinstance(session, dict):
             raise AdapterNotImplemented(self.provider, "session not dict")
-        base_url = session.get("base_url")
-        if not base_url:
+        config = session.get("adapter_config") if isinstance(session.get("adapter_config"), dict) else session
+        school = school_config_from_dict(config)
+        if school is None:
             raise AdapterNotImplemented(self.provider, "session missing base_url")
-        version = session.get("version") or ZHENGFANG_VERSION_JWGL2
-        if version not in KNOWN_ZHENGFANG_VERSIONS:
-            version = ZHENGFANG_VERSION_JWGL2
-        school = SchoolConfig(base_url=base_url, version=version)
-        client = ZhengfangHttpClient(base_url=base_url, encoding="utf-8", allow_private=False)
+        client = ZhengfangHttpClient(
+            base_url=school.base_url,
+            encoding=school.encoding,
+            allow_private=False,
+            extra_headers=school.extra_headers,
+        )
         cookies = session.get("cookies") or {}
         if isinstance(cookies, dict):
             client.set_cookies(cookies)

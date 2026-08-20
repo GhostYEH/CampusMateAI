@@ -14,6 +14,7 @@ Adapter 在运行时从 config dict 读取策略，按版本路由到不同 pars
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from dataclasses import asdict
 from typing import Optional
 
 
@@ -166,12 +167,24 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
     """
     if not config:
         return None
+    if isinstance(config.get("adapter_config"), dict):
+        config = config["adapter_config"]
     base_url = config.get("base_url") or config.get("academic_system_url") or config.get("undergrad_system_url")
     if not base_url:
         return None
     version = config.get("provider_version") or config.get("version") or ZHENGFANG_VERSION_JWGL2
     if version not in KNOWN_ZHENGFANG_VERSIONS:
         version = ZHENGFANG_VERSION_JWGL2
+    endpoint_values = config.get("endpoint_overrides") or config.get("endpoints_override")
+    endpoints_override = None
+    if isinstance(endpoint_values, dict) and endpoint_values:
+        allowed_endpoint_fields = {
+            "login_path", "schedule_path", "schedule_format", "grade_path",
+            "grade_format", "profile_path", "profile_format", "logout_path",
+        }
+        endpoints_override = ZhengfangEndpoints(
+            **{k: v for k, v in endpoint_values.items() if k in allowed_endpoint_fields}
+        )
     return SchoolConfig(
         base_url=base_url,
         login_url=config.get("login_url") or config.get("academic_login_url"),
@@ -182,7 +195,44 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         vpn_url=config.get("vpn_url") or config.get("webvpn_url"),
         requires_campus_network=bool(config.get("requires_campus_network", False)),
         login_execution_mode=config.get("login_execution_mode") or "backend_http",
+        encoding=config.get("encoding") or "utf-8",
+        use_referer=bool(config.get("use_referer", True)),
+        extra_headers=dict(config.get("extra_headers") or {}),
+        form_field_username=config.get("form_field_username") or "yhm",
+        form_field_password=config.get("form_field_password") or "mm",
+        form_field_captcha=config.get("form_field_captcha") or "yzm",
+        semester_param_name=config.get("semester_param_name") or "xnxq01id",
+        schedule_payload_extra=dict(config.get("schedule_payload_extra") or {}),
+        grade_payload_extra=dict(config.get("grade_payload_extra") or {}),
+        endpoints_override=endpoints_override,
     )
+
+
+def school_config_to_dict(school: SchoolConfig) -> dict:
+    """把完整 SchoolConfig 序列化到短期 adapter session，不包含密码或 Cookie。"""
+    data = {
+        "base_url": school.base_url,
+        "login_url": school.login_url,
+        "provider_version": school.version,
+        "auth_type": school.auth_type,
+        "captcha_type": school.captcha_type,
+        "encoding": school.encoding,
+        "use_referer": school.use_referer,
+        "extra_headers": dict(school.extra_headers),
+        "form_field_username": school.form_field_username,
+        "form_field_password": school.form_field_password,
+        "form_field_captcha": school.form_field_captcha,
+        "semester_param_name": school.semester_param_name,
+        "schedule_payload_extra": dict(school.schedule_payload_extra),
+        "grade_payload_extra": dict(school.grade_payload_extra),
+        "sso_url": school.sso_url,
+        "vpn_url": school.vpn_url,
+        "requires_campus_network": school.requires_campus_network,
+        "login_execution_mode": school.login_execution_mode,
+    }
+    if school.endpoints_override is not None:
+        data["endpoint_overrides"] = asdict(school.endpoints_override)
+    return {key: value for key, value in data.items() if value is not None}
 
 
 __all__ = [
@@ -195,4 +245,5 @@ __all__ = [
     "ZhengfangEndpoints",
     "SchoolConfig",
     "school_config_from_dict",
+    "school_config_to_dict",
 ]

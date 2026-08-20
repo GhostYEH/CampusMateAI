@@ -338,6 +338,30 @@ class ZhengfangParser:
             schooling_length=_clean(data.get("xz") or data.get("schooling_length")),
         )
 
+    def parse_profile_html(self, text: str) -> EduProfile:
+        """解析 JW2005 等旧版的学生信息表，不把 HTML 当 JSON 解码。"""
+        row_pattern = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+        cell_pattern = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.IGNORECASE | re.DOTALL)
+        tag_strip = re.compile(r"<[^>]+>")
+        values: dict[str, str] = {}
+        aliases = {
+            "学号": "external_student_id", "xh": "external_student_id",
+            "姓名": "name", "xm": "name", "性别": "gender", "xb": "gender",
+            "学院": "college", "院系": "college", "yxmc": "college",
+            "专业": "major", "zymc": "major", "年级": "grade", "nj": "grade",
+            "班级": "class_name", "班级名称": "class_name", "bjmc": "class_name",
+            "入学年份": "enrollment_year", "rxnf": "enrollment_year",
+            "学制": "schooling_length", "xz": "schooling_length",
+        }
+        for row_html in row_pattern.findall(text):
+            cells = [tag_strip.sub("", cell).strip() for cell in cell_pattern.findall(row_html)]
+            if len(cells) < 2:
+                continue
+            key = aliases.get(cells[0])
+            if key:
+                values[key] = cells[1]
+        return EduProfile(**{key: _clean(value) for key, value in values.items()})
+
     # ===== 登录响应识别 =====
 
     def parse_login_response(self, text: str) -> dict:
