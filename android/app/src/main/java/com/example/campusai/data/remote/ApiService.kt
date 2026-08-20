@@ -23,6 +23,18 @@ data class ChatRequest(
     val expression_signal: ExpressionSignalRequest? = null,
 )
 data class ChatResponse(val answer: String? = null, val message: String? = null)
+data class FocusAiAskRequest(val text: String)
+data class FocusAiAskResponse(val answer: String)
+data class FocusRealtimeVoiceSessionDto(
+    val session_id: String,
+    val app_id: String,
+    val room_id: String,
+    val user_id: String,
+    val agent_user_id: String,
+    val token: String,
+    val token_expires_at: Long,
+)
+data class FocusRealtimeVoiceStopDto(val session_id: String, val stopped: Boolean)
 data class ExpressionContributionResponse(
     val sample_id: String,
     val label: String,
@@ -235,6 +247,15 @@ interface ApiService {
 
     @POST("counselor/chat")
     suspend fun chat(@Body request: ChatRequest): Response<ChatResponse>
+
+    @POST("focus/ai/ask")
+    suspend fun askFocusAi(@Body request: FocusAiAskRequest): Response<FocusAiAskResponse>
+
+    @POST("focus/realtime-voice/sessions")
+    suspend fun createFocusRealtimeVoiceSession(): Response<FocusRealtimeVoiceSessionDto>
+
+    @DELETE("focus/realtime-voice/sessions/{sessionId}")
+    suspend fun stopFocusRealtimeVoiceSession(@Path("sessionId") sessionId: String): Response<FocusRealtimeVoiceStopDto>
 
     @POST("notices/extract-multi")
     suspend fun extractNotice(@Body request: ExtractRequest): Response<ExtractResult>

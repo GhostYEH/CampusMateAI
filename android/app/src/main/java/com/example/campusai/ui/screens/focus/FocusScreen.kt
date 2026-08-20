@@ -50,6 +50,14 @@ import com.example.campusai.data.behavior.PersonDetectionSnapshot
 import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.behavior.isRunning
 import com.example.campusai.data.expression.ExpressionServiceStatus
+import com.example.campusai.data.focus.voice.AndroidSpeechRecognizerTranscriber
+import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
+import com.example.campusai.data.focus.voice.FocusVoiceController
+import com.example.campusai.data.focus.voice.FocusVoicePhase
+import com.example.campusai.data.focus.voice.FocusVoiceState
+import com.example.campusai.data.focus.voice.RemoteFocusAiRepository
+import com.example.campusai.data.focus.voice.RemoteRealtimeVoiceRepository
+import com.example.campusai.data.focus.voice.VolcengineRtcRealtimeVoiceSession
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
@@ -58,6 +66,9 @@ import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -97,10 +108,27 @@ fun FocusScreen(
     val gentleReminder by manager.gentleReminder.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val voiceController = remember(context) {
+        FocusVoiceController(
+            transcriber = AndroidSpeechRecognizerTranscriber(context),
+            aiRepository = RemoteFocusAiRepository,
+            synthesizer = AndroidTextToSpeechSynthesizer(context),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+            realtimeRepository = RemoteRealtimeVoiceRepository,
+            realtimeSession = VolcengineRtcRealtimeVoiceSession(context),
+        )
+    }
+    val voiceState by voiceController.state.collectAsState()
 
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var microphonePermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED,
         )
     }
@@ -112,6 +140,12 @@ fun FocusScreen(
     ) { granted ->
         cameraPermissionGranted = granted
         permissionDenied = !granted
+    }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        microphonePermissionGranted = granted
+        if (granted) voiceController.connectRealtime() else voiceController.reportPermissionDenied()
     }
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var secondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
@@ -165,6 +199,9 @@ fun FocusScreen(
     LaunchedEffect(assistanceEnabled) {
         if (!assistanceEnabled) previewExpanded = false
     }
+    LaunchedEffect(running, microphonePermissionGranted) {
+        if (running && microphonePermissionGranted) voiceController.connectRealtime()
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -176,6 +213,7 @@ fun FocusScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            voiceController.release()
             manager.detachPreviewAsync()
         }
     }
@@ -247,6 +285,21 @@ fun FocusScreen(
                 ) { Icon(if (running && !debugLocalVisualTestActive) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (debugLocalVisualTestActive) "结束本地测试" else if (running) "暂停" else if (paused) "继续" else "开始", fontWeight = FontWeight.Bold, fontSize = 19.sp) }
                 if (activeSession != null && !debugLocalVisualTestActive) TextButton(onClick = { showFinishDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("结束本次${mode.label}", color = Muted) }
             }
+        }
+        item {
+            FocusVoiceAssistantCard(
+                state = voiceState,
+                onPrimaryAction = {
+                    when (voiceState.phase) {
+                        FocusVoicePhase.LISTENING, FocusVoicePhase.SPEAKING, FocusVoicePhase.THINKING -> voiceController.interruptRealtime()
+                        else -> {
+                            if (microphonePermissionGranted) voiceController.connectRealtime()
+                            else microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                },
+                onCancel = voiceController::cancel,
+            )
         }
         item {
             Surface(shape = RoundedCornerShape(25.dp), color = Surface) {
@@ -427,6 +480,49 @@ private fun FocusModeTabs(selected: FocusMode, enabled: Boolean, onSelect: (Focu
         listOf(FocusMode.FOCUS, FocusMode.SHORT_BREAK, FocusMode.LONG_BREAK).forEach { item ->
             val active = item == selected
             Surface(onClick = { if (enabled) onSelect(item) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(18.dp), color = if (active) FocusBlue else Color.Transparent, enabled = enabled) { Row(Modifier.padding(vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) { Icon(if (item == FocusMode.FOCUS) Icons.Default.Timer else Icons.Default.NightlightRound, null, modifier = Modifier.size(16.dp), tint = if (active) Color.White else Muted); Spacer(Modifier.width(4.dp)); Text("${item.label} ${item.minutes} 分钟", color = if (active) Color.White else TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) } }
+        }
+    }
+}
+
+@Composable
+private fun FocusVoiceAssistantCard(
+    state: FocusVoiceState,
+    onPrimaryAction: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val (label, icon) = when (state.phase) {
+        FocusVoicePhase.IDLE -> "开启实时陪伴" to Icons.Default.Mic
+        FocusVoicePhase.CONNECTING -> "正在连接…" to Icons.Default.Close
+        FocusVoicePhase.LISTENING -> "正在听你说…" to Icons.Default.Stop
+        FocusVoicePhase.THINKING -> "正在思考…" to Icons.Default.Close
+        FocusVoicePhase.SPEAKING -> "正在回答…" to Icons.Default.VolumeUp
+        FocusVoicePhase.RECONNECTING -> "正在重新连接…" to Icons.Default.Refresh
+        FocusVoicePhase.ERROR -> "重新提问" to Icons.Default.Refresh
+    }
+    Surface(shape = RoundedCornerShape(20.dp), color = Surface) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = PrimarySoft) {
+                    Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = FocusBlue)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("CampusMate AI", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("开启后静默等待你自然开口", color = Muted, fontSize = 12.sp)
+                }
+                Button(onClick = onPrimaryAction, shape = RoundedCornerShape(18.dp)) {
+                    Icon(icon, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(label, fontSize = 12.sp)
+                }
+            }
+            if (state.phase == FocusVoicePhase.LISTENING) Text("实时陪伴已开启；AI 回答时可直接开口打断", color = FocusBlue, fontSize = 12.sp)
+            state.transcript?.let { Text("我：$it", color = TextPrimary, fontSize = 13.sp) }
+            state.answer?.let { Text("CampusMate：$it", color = TextPrimary, fontSize = 13.sp) }
+            state.errorMessage?.let { Text(it, color = AlertErrorText, fontSize = 12.sp) }
+            if (state.phase == FocusVoicePhase.THINKING || state.phase == FocusVoicePhase.SPEAKING) {
+                TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text("取消", color = Muted) }
+            }
         }
     }
 }

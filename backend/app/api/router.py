@@ -13,6 +13,8 @@ from .routes import (
     contributions,
     courses,
     dashboards,
+    focus_ai,
+    focus_realtime_voice,
     health,
     knowledge,
     notices,
@@ -45,6 +47,8 @@ api_router.include_router(submissions.router, tags=["submissions"])
 
 # 学习陪伴
 api_router.include_router(study.router)
+api_router.include_router(focus_ai.router, tags=["focus-ai"])
+api_router.include_router(focus_realtime_voice.router, tags=["focus-realtime-voice"])
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
 # 个人中心(我的文件 / 收藏夹)
