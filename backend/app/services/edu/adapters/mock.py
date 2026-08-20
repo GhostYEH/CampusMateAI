@@ -41,6 +41,8 @@ class MockEduAdapter(EduAdapter):
 
     provider = EDU_PROVIDER_MOCK
     is_mock = True
+    supported_features = ("profile", "schedule", "grade", "exam")
+    implementation_status = "mock"
     supported_login_modes = (LOGIN_EXEC_BACKEND_HTTP, LOGIN_EXEC_CLIENT_WEBVIEW)
 
     async def login(

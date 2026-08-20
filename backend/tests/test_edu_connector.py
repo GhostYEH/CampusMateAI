@@ -323,6 +323,7 @@ def test_bind_with_mock_adapter_succeeds_in_test_env() -> None:
     binding = response.json()
     assert binding["connection_status"] == BINDING_ACTIVE
     assert binding["provider"] == "mock"
+    assert "exam" in binding["supported_features"]
     assert "password" not in json.dumps(binding)
     assert "credential_ref" not in binding
 

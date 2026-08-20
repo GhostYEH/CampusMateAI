@@ -115,13 +115,14 @@ def _config_to_out(row: EduSystemConfigRow) -> EduSystemConfigOut:
     )
 
 
-def _binding_to_out(binding) -> EduBindingOut:
+def _binding_to_out(binding, *, supported_features: Optional[list[str]] = None) -> EduBindingOut:
     return EduBindingOut(
         id=binding.id,
         user_id=binding.user_id,
         edu_system_id=binding.edu_system_id,
         university_id=binding.university_id,
         provider=binding.provider,
+        supported_features=supported_features or [],
         system_type=binding.system_type,
         external_student_id=binding.external_student_id,
         external_student_name=binding.external_student_name,
@@ -222,7 +223,14 @@ def get_binding(
 ) -> Optional[EduBindingOut]:
     """获取当前用户教务绑定（不含凭证）。"""
     binding = container.edu_connector.get_binding(user.id)
-    return _binding_to_out(binding) if binding else None
+    return (
+        _binding_to_out(
+            binding,
+            supported_features=container.edu_connector.get_provider_capabilities(binding.provider),
+        )
+        if binding
+        else None
+    )
 
 
 @router.post("/bind", response_model=EduBindingOut)
