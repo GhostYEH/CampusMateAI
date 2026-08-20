@@ -160,6 +160,7 @@ class EduConnectionOut(BaseModel):
     state: str
     provider: str
     login_execution_mode: str
+    portal_url: Optional[str] = None
     external_student_id: Optional[str] = None
     external_student_name: Optional[str] = None
     error_code: Optional[str] = None

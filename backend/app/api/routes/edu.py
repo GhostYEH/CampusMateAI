@@ -531,6 +531,10 @@ def create_connection(
             http_status=404,
             message="教务系统不存在",
         )
+    if user.university_id is None:
+        raise UniversityRequired()
+    if system.university_id != user.university_id:
+        raise Forbidden()
     detect = container.edu_connector.detect(system.university_id)
     conn = container.edu_connector.create_connection(
         user_id=user.id,
@@ -547,6 +551,7 @@ def create_connection(
         state=conn.state,
         provider=conn.provider,
         login_execution_mode=conn.login_execution_mode,
+        portal_url=conn.portal_url,
         external_student_id=conn.external_student_id,
         external_student_name=conn.external_student_name,
         error_code=conn.error_code,
@@ -569,6 +574,8 @@ def get_connection(
             http_status=404,
             message="连接不存在",
         )
+    if conn.user_id != user.id:
+        raise Forbidden()
     return EduConnectionOut(
         id=conn.id,
         user_id=conn.user_id,
@@ -577,6 +584,7 @@ def get_connection(
         state=conn.state,
         provider=conn.provider,
         login_execution_mode=conn.login_execution_mode,
+        portal_url=conn.portal_url,
         external_student_id=conn.external_student_id,
         external_student_name=conn.external_student_name,
         error_code=conn.error_code,
@@ -631,6 +639,7 @@ async def continue_connection(
         state=updated.state,
         provider=updated.provider,
         login_execution_mode=updated.login_execution_mode,
+        portal_url=updated.portal_url,
         external_student_id=updated.external_student_id,
         external_student_name=updated.external_student_name,
         error_code=updated.error_code,
@@ -653,9 +662,11 @@ async def create_connection_from_url(
     3. create_connection
     返回 connection（初始 state=idle），客户端再调 /continue 推进。
     """
-    university_id = request.university_id or user.university_id
-    if not university_id:
+    if not user.university_id:
         raise UniversityRequired()
+    if request.university_id and request.university_id != user.university_id:
+        raise Forbidden()
+    university_id = user.university_id
     conn, system, probe = await container.edu_connector.create_connection_from_url(
         user_id=user.id,
         portal_url=request.portal_url,
@@ -669,6 +680,7 @@ async def create_connection_from_url(
         state=conn.state,
         provider=conn.provider,
         login_execution_mode=conn.login_execution_mode,
+        portal_url=conn.portal_url,
         external_student_id=conn.external_student_id,
         external_student_name=conn.external_student_name,
         error_code=conn.error_code,

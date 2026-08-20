@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from .discovery_constants import (
     PROVIDER_UNKNOWN,
@@ -70,7 +70,10 @@ def _build_name_index() -> dict[str, dict]:
 def load_candidates() -> dict:
     if not _CANDIDATES_FILE.exists():
         return {"candidates": [], "_meta": {}}
-    return json.loads(_CANDIDATES_FILE.read_text(encoding="utf-8"))
+    raw = _CANDIDATES_FILE.read_text(encoding="utf-8")
+    if not raw.strip():
+        return {"candidates": [], "_meta": {}}
+    return json.loads(raw)
 
 
 def save_candidates(data: dict) -> None:
@@ -140,11 +143,13 @@ async def submit_url(
     try:
         import httpx
         from ...core.config import get_settings
+        from .adapters.ssrf_guard import assert_safe_url
         _settings = get_settings()
         allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
+        assert_safe_url(candidate_url)
         async with httpx.AsyncClient(
             timeout=15,
-            follow_redirects=True,
+            follow_redirects=False,
             verify=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
         ) as client:
@@ -157,7 +162,7 @@ async def submit_url(
                     raise
                 async with httpx.AsyncClient(
                     timeout=15,
-                    follow_redirects=True,
+                    follow_redirects=False,
                     verify=False,
                     headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
                 ) as client2:
@@ -168,40 +173,43 @@ async def submit_url(
                     except Exception:
                         resp = await client2.get(candidate_url)
 
-            result["reachable"] = True
-            result["http_status"] = resp.status_code
-            result["final_url"] = str(resp.url)
+        location = resp.headers.get("location")
+        if location:
+            assert_safe_url(urljoin(candidate_url, location))
+        result["reachable"] = True
+        result["http_status"] = resp.status_code
+        result["final_url"] = str(resp.url)
 
-            content = resp.text[:50000] if resp.text else ""
-            headers = dict(resp.headers)
+        content = resp.text[:50000] if resp.text else ""
+        headers = dict(resp.headers)
 
-            fp = detector.detect(
-                url=candidate_url,
-                html=content,
-                headers=headers,
-                final_url=str(resp.url),
-            )
-            result["provider"] = fp.provider
-            result["provider_confidence"] = fp.confidence
-            result["evidence"] = fp.evidence
-            result["is_edu_page"] = fp.is_edu_page
+        fp = detector.detect(
+            url=candidate_url,
+            html=content,
+            headers=headers,
+            final_url=str(resp.url),
+        )
+        result["provider"] = fp.provider
+        result["provider_confidence"] = fp.confidence
+        result["evidence"] = fp.evidence
+        result["is_edu_page"] = fp.is_edu_page
 
-            title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
-            if title_match:
-                result["title"] = title_match.group(1).strip()[:200]
+        title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            result["title"] = title_match.group(1).strip()[:200]
 
-            if fp.confidence >= 0.5 and fp.is_edu_page:
-                if official_domain:
-                    od = official_domain.lower().lstrip(".")
-                    host = (urlparse(candidate_url).hostname or "").lower()
-                    if od and (host == od or host.endswith("." + od)):
-                        result["verification_status"] = STATUS_VERIFIED_OFFICIAL
-                    else:
-                        result["verification_status"] = STATUS_VERIFIED_LIVE
+        if fp.confidence >= 0.5 and fp.is_edu_page:
+            if official_domain:
+                od = official_domain.lower().lstrip(".")
+                host = (urlparse(candidate_url).hostname or "").lower()
+                if od and (host == od or host.endswith("." + od)):
+                    result["verification_status"] = STATUS_VERIFIED_OFFICIAL
                 else:
                     result["verification_status"] = STATUS_VERIFIED_LIVE
             else:
-                result["verification_status"] = STATUS_CANDIDATE
+                result["verification_status"] = STATUS_VERIFIED_LIVE
+        else:
+            result["verification_status"] = STATUS_CANDIDATE
 
     except Exception as e:
         result["error"] = str(e)

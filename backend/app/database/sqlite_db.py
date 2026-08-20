@@ -783,6 +783,7 @@ CREATE TABLE IF NOT EXISTS edu_connections (
     state TEXT NOT NULL DEFAULT 'idle',
     provider TEXT NOT NULL DEFAULT 'unknown',
     login_execution_mode TEXT NOT NULL DEFAULT 'unsupported',
+    portal_url TEXT,
     credential_ref TEXT,
     external_student_id TEXT,
     external_student_name TEXT,
@@ -1186,6 +1187,11 @@ class Database:
 
     def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:
         """EduConnector 架构迁移：edu_bindings 升级 + edu_system_configs → edu_systems。"""
+        cur = conn.execute("PRAGMA table_info(edu_connections)")
+        connection_cols = {row["name"] for row in cur.fetchall()}
+        if connection_cols and "portal_url" not in connection_cols:
+            conn.execute("ALTER TABLE edu_connections ADD COLUMN portal_url TEXT")
+
         # 1. edu_bindings 旧 schema → 新 schema
         cur = conn.execute("PRAGMA table_info(edu_bindings)")
         bind_cols = {row["name"] for row in cur.fetchall()}

@@ -15,7 +15,9 @@ from ..database.sqlite_db import Database
 from ..models.edu import (
     BINDING_ACTIVE,
     BINDING_UNBOUND,
+    CONN_AUTH_REQUIRED,
     CONN_IDLE,
+    CONN_WAITING_USER_LOGIN,
     EDU_PROVIDER_UNKNOWN,
     EDU_SYSTEM_UNKNOWN,
     EduBindingRow,
@@ -486,18 +488,26 @@ class EduRepository:
         university_id: str,
         provider: str = EDU_PROVIDER_UNKNOWN,
         login_execution_mode: str = LOGIN_EXEC_UNSUPPORTED,
+        portal_url: Optional[str] = None,
     ) -> EduConnectionRow:
         now = _now_iso()
         conn_id = f"edu_conn_{hashlib.md5(f'{user_id}:{edu_system_id}:{now}'.encode()).hexdigest()[:16]}"
+        initial_state = (
+            CONN_WAITING_USER_LOGIN
+            if login_execution_mode == "client_webview"
+            else CONN_AUTH_REQUIRED
+            if login_execution_mode == "backend_http"
+            else CONN_IDLE
+        )
         with self._db.transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO edu_connections (
                     id, user_id, edu_system_id, university_id, state,
-                    provider, login_execution_mode, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    provider, login_execution_mode, portal_url, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (conn_id, user_id, edu_system_id, university_id, CONN_IDLE, provider, login_execution_mode, now, now),
+                (conn_id, user_id, edu_system_id, university_id, initial_state, provider, login_execution_mode, portal_url, now, now),
             )
         with self._db.query() as conn:
             row = conn.execute("SELECT * FROM edu_connections WHERE id = ?", (conn_id,)).fetchone()

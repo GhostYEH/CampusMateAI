@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urljoin
 
 import httpx
 
@@ -98,8 +99,9 @@ class ZhengfangHttpClient:
         url = safe_join_url(self._base_url, path_or_url) if not path_or_url.startswith(("http://", "https://")) else path_or_url
         assert_safe_url(url, allow_private=self._allow_private)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=True, cookies=self._cookies) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
                 resp = await client.get(url, params=params, headers=self._build_headers(referer=referer))
+                self._validate_redirect_target(resp, url)
                 self._cookies.update(dict(resp.cookies))
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
@@ -125,13 +127,14 @@ class ZhengfangHttpClient:
         url = safe_join_url(self._base_url, path_or_url) if not path_or_url.startswith(("http://", "https://")) else path_or_url
         assert_safe_url(url, allow_private=self._allow_private)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=True, cookies=self._cookies) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
                 resp = await client.post(
                     url,
                     data=data,
                     params=params,
                     headers=self._build_headers(referer=referer, form_post=form_post),
                 )
+                self._validate_redirect_target(resp, url)
                 self._cookies.update(dict(resp.cookies))
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
@@ -160,6 +163,12 @@ class ZhengfangHttpClient:
         except (LookupError, UnicodeDecodeError):
             text = resp.text
         return HttpResponse(status=status, text=text, url=str(resp.url), headers=dict(resp.headers))
+
+    @staticmethod
+    def _validate_redirect_target(resp: httpx.Response, request_url: str) -> None:
+        location = resp.headers.get("location")
+        if location:
+            assert_safe_url(urljoin(request_url, location))
 
 
 __all__ = [

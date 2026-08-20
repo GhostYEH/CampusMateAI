@@ -121,13 +121,14 @@ class EduConnectorService:
 
     # ===== edu_connections =====
 
-    def create_connection(self, *, user_id, edu_system_id, university_id, provider="unknown", login_execution_mode="unsupported"):
+    def create_connection(self, *, user_id, edu_system_id, university_id, provider="unknown", login_execution_mode="unsupported", portal_url=None):
         return self._edu_repo.create_connection(
             user_id=user_id,
             edu_system_id=edu_system_id,
             university_id=university_id,
             provider=provider,
             login_execution_mode=login_execution_mode,
+            portal_url=portal_url,
         )
 
     def get_connection(self, connection_id: str):
@@ -157,11 +158,13 @@ class EduConnectorService:
         try:
             import httpx
             from ...core.config import get_settings
+            from .adapters.ssrf_guard import assert_safe_url
             _settings = get_settings()
+            assert_safe_url(portal_url)
             allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
             async with httpx.AsyncClient(
                 timeout=15,
-                follow_redirects=True,
+                follow_redirects=False,
                 verify=True,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
             ) as client:
@@ -175,7 +178,7 @@ class EduConnectorService:
                     # 仅在显式允许时降级到不验证 SSL
                     async with httpx.AsyncClient(
                         timeout=15,
-                        follow_redirects=True,
+                        follow_redirects=False,
                         verify=False,
                         headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
                     ) as client2:
@@ -186,6 +189,10 @@ class EduConnectorService:
                         except Exception:
                             resp = await client2.get(portal_url)
             result["reachable"] = True
+            from urllib.parse import urljoin
+            location = resp.headers.get("location")
+            if location:
+                assert_safe_url(urljoin(portal_url, location))
             result["http_status"] = resp.status_code
             result["final_url"] = str(resp.url)
             content = resp.text[:50000] if resp.text else ""
@@ -218,25 +225,25 @@ class EduConnectorService:
         """从教务系统 URL 创建连接（便捷流程）。
 
         1. probe portal_url 拿 provider
-        2. ensure_default_system 拿 edu_system
-        3. 更新 edu_system 的 base_url/login_url/provider/login_execution_mode
-        4. create_connection
+        2. 复用已验证的 EduSystem，或创建不带公共 URL 的默认记录
+        3. 未验证 URL 只保存到本次用户连接
         返回 (connection, system, probe_result)
         """
         probe = await self.probe_portal(portal_url)
         provider = probe["provider"] if probe["provider"] != "unknown" else EDU_PROVIDER_UNKNOWN
         login_mode = probe["suggested_login_mode"]
 
-        edu_system = self._registry.ensure_default_system(university_id)
-        # 更新 edu_system 的 URL 与 provider 信息
-        edu_system = self._registry.upsert_system(
-            university_id,
-            system_key=edu_system.system_key,
-            provider=provider,
-            base_url=portal_url,
-            login_url=portal_url,
-            login_execution_mode=login_mode,
+        edu_system = next(
+            (
+                row
+                for row in self._registry.list_systems(university_id)
+                if row.verification_status in ("VERIFIED_OFFICIAL", "VERIFIED_LIVE")
+                and portal_url in (row.base_url, row.login_url)
+            ),
+            None,
         )
+        if edu_system is None:
+            edu_system = self._registry.ensure_default_system(university_id)
 
         # 防重复：如果已有活跃连接，复用而非新建
         existing = self._edu_repo.get_active_connection_by_user(user_id, edu_system.id)
@@ -249,6 +256,7 @@ class EduConnectorService:
             university_id=university_id,
             provider=provider,
             login_execution_mode=login_mode,
+            portal_url=portal_url,
         )
         return conn, edu_system, probe
 
@@ -287,21 +295,20 @@ class EduConnectorService:
             self._edu_repo.update_connection_state(connection_id, state=CONN_ERROR, error_code="CANCELLED", error_message="用户取消")
             return CONN_ERROR
 
-        # CONN_IDLE: 根据 login_execution_mode 分流
+        # 兼容旧数据库中的 idle 连接；新连接在创建时已经进入等待状态。
         if conn.state == CONN_IDLE:
             if conn.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
                 self._edu_repo.update_connection_state(connection_id, state=CONN_WAITING_USER_LOGIN)
-                return CONN_WAITING_USER_LOGIN
-            # backend_http 或默认
-            self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
-            return CONN_AUTH_REQUIRED
+            else:
+                self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
+            conn = self._edu_repo.get_connection(connection_id)
 
         # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
         if conn.state == CONN_AUTH_REQUIRED and username and password:
             self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
-            config = self._build_config_dict(system)
+            config = self._build_config_dict(system, portal_url=conn.portal_url)
             try:
                 internal = await adapter.login(username=username, password=password, config=config)
             except AdapterNotImplemented:
@@ -328,7 +335,7 @@ class EduConnectorService:
             self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
-            config = self._build_config_dict(system)
+            config = self._build_config_dict(system, portal_url=conn.portal_url)
             if current_url:
                 config = {**config, "current_url": current_url}
             try:
@@ -425,13 +432,13 @@ class EduConnectorService:
         # 更新 connection 为 connected
         self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTED)
 
-    def _build_config_dict(self, system) -> dict:
+    def _build_config_dict(self, system, *, portal_url: Optional[str] = None) -> dict:
         """从 EduSystemRow 构造 adapter config dict。"""
         if system is None:
             return {}
         return {
-            "base_url": system.base_url,
-            "login_url": system.login_url,
+            "base_url": portal_url or system.base_url,
+            "login_url": portal_url or system.login_url,
             "sso_url": system.sso_url,
             "vpn_url": system.vpn_url,
             "auth_type": system.auth_type,
