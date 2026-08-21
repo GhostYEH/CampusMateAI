@@ -25,6 +25,7 @@ from app.core.config import Settings
 from app.main import create_app
 from app.models.edu import (
     BINDING_ACTIVE,
+    CONN_AUTH_FAILED,
     CONN_AUTH_REQUIRED,
     CONN_CONNECTED,
     CONN_ERROR,
@@ -44,6 +45,46 @@ from app.services.demo_seeder import seed_demo_data
 from app.services.edu.connector import EduConnectorService
 from app.services.edu.adapters.zhengfang_http import NeedUserAction
 from app.services.edu import discovery_service
+
+
+class _ProbeResponse:
+    status_code = 200
+    headers: dict[str, str] = {}
+    url = "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+    text = '<title>教务管理系统</title><form action="/jwglxt/xtgl/login_slogin.html"></form>'
+
+
+class _ProbeHttpClient:
+    def __init__(self, **_kwargs) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args) -> None:
+        return None
+
+    async def head(self, _url: str):
+        return _ProbeResponse()
+
+    async def get(self, _url: str):
+        return _ProbeResponse()
+
+
+def test_probe_portal_identifies_zhengfang_when_response_is_reachable(monkeypatch) -> None:
+    """A detector API mismatch must not silently turn a Zhengfang portal into unknown."""
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _ProbeHttpClient)
+    connector = object.__new__(EduConnectorService)
+
+    result = asyncio.run(
+        connector.probe_portal("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
+    )
+
+    assert result["reachable"] is True
+    assert result["provider"] == EDU_PROVIDER_ZHENGFANG
+    assert result["suggested_login_mode"] == LOGIN_EXEC_CLIENT_WEBVIEW
 
 
 def _client(app_env: str = "test") -> TestClient:
@@ -839,6 +880,44 @@ def test_from_url_does_not_overwrite_unverified_public_system(monkeypatch) -> No
     assert system.base_url is None
     assert system.login_url is None
     assert connection["portal_url"] == portal_url
+
+
+def test_from_url_replaces_connected_connection_without_binding(monkeypatch) -> None:
+    """A stale connected row without a binding must never be reused for sync."""
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    portal_url = "https://temporary.example.edu/jwglxt"
+    monkeypatch.setattr(
+        EduConnectorService,
+        "probe_portal",
+        AsyncMock(
+            return_value={
+                "portal_url": portal_url,
+                "provider": EDU_PROVIDER_ZHENGFANG,
+                "suggested_login_mode": LOGIN_EXEC_CLIENT_WEBVIEW,
+            }
+        ),
+    )
+    first = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    ).json()
+    connector = get_container().edu_connector
+    connector._edu_repo.update_connection_state(first["id"], state=CONN_CONNECTED)
+
+    response = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] != first["id"]
+    stale = connector.get_connection(first["id"])
+    assert stale.state == CONN_AUTH_FAILED
+    assert stale.error_code == "BINDING_MISSING"
 
 
 def test_from_url_reuses_verified_public_system(monkeypatch) -> None:

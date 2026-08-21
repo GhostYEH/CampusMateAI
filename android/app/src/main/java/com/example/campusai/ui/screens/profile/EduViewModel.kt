@@ -33,6 +33,9 @@ fun isScheduleImported(result: EduSyncResult, stored: EduScheduleItemsResponse?)
     result.status == "success" && result.persisted && result.items_count > 0 &&
         (stored?.items_count ?: 0) > 0
 
+fun connectionNeedsWebLogin(connection: EduConnectionDto): Boolean =
+    connection.state == "waiting_user_login" && !connection.portal_url.isNullOrBlank()
+
 /** EduViewModel — 教务系统连接流程状态机。 */
 class EduViewModel(application: android.app.Application) : AndroidViewModel(application) {
 
@@ -114,6 +117,9 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
             _state.value = EduUiState.Verifying("正在验证登录…")
             repo.continueWithCredentials(connId, username, password).onSuccess { conn ->
                 if (conn.state == "connected") onConnected(conn)
+                else if (connectionNeedsWebLogin(conn)) {
+                    _state.value = EduUiState.WaitingUserLogin(conn, conn.portal_url!!)
+                }
                 else if (conn.state == "auth_failed") _state.value = EduUiState.Error(conn.error_message ?: "账号或密码错误")
                 else _state.value = EduUiState.Error(conn.error_message ?: "登录失败，状态: ${conn.state}")
             }.onFailure { _state.value = EduUiState.Error(it.message ?: "登录失败") }
