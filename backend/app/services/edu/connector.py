@@ -58,7 +58,7 @@ from .adapters.base import AdapterNotImplemented, EduAdapter
 from .adapters.mock import MockEduAdapter
 from .adapters.qingguo import QingguoAdapter
 from .adapters.qiangzhi import QiangzhiAdapter
-from .adapters.zhengfang import ZhengfangAdapter
+from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
 from .adapters.zhengfang_http import NeedUserAction
 from .detector import DetectResult, SystemDetector
 from .normalizer import DataNormalizer
@@ -223,8 +223,9 @@ class EduConnectorService:
             title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
             if title_match:
                 result["title"] = title_match.group(1).strip()[:200]
-            # 正方新版通常需要 client_webview（有验证码/滑块）
-            if provider in KNOWN_PROVIDERS and is_edu_page:
+            # 默认先走后端直登；仅当登录页已显示需要人工完成的验证时
+            # 才直接切到 WebView。登录后才出现的 MFA 由 adapter 再次检测。
+            if provider in KNOWN_PROVIDERS and is_edu_page and _user_action_from_login_page(content):
                 result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
         except Exception as e:
             result["error"] = str(e)[:200]
