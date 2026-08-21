@@ -56,6 +56,10 @@ fun EduSystemScreen(
     var showDisconnectDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.loadInitial() }
+    LaunchedEffect(state) {
+        val waiting = state as? EduUiState.WaitingUserLogin ?: return@LaunchedEffect
+        onNavigateToLogin(waiting.loginUrl, waiting.connection.id)
+    }
 
     if (showDisconnectDialog) {
         AlertDialog(
@@ -161,10 +165,7 @@ fun EduSystemScreen(
                         )
                     )
                     Text("该教务系统需要在客户端浏览器中由您本人完成登录。", style = MaterialTheme.typography.bodySmall)
-                    Button(
-                        onClick = { onNavigateToLogin(s.loginUrl, s.connection.id) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("打开教务登录页面") }
+                    Text("正在打开学校登录页面…", style = MaterialTheme.typography.bodySmall)
                 }
                 is EduUiState.Verifying -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -181,7 +182,7 @@ fun EduSystemScreen(
                     val schedOk = s.scheduleResult?.status == "success"
                     val gradeOk = s.gradeResult?.status == "success"
                     Text(
-                        "课表同步${if (schedOk) "成功" else "失败"}，成绩同步${if (gradeOk) "成功" else "失败"}",
+                        "课表同步${if (schedOk) "成功（已导入 ${s.scheduleResult?.items_count ?: 0} 门）" else "失败"}，成绩同步${if (gradeOk) "成功" else "失败"}",
                         color = if (schedOk && gradeOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                     )

@@ -29,6 +29,10 @@ sealed interface EduUiState {
     data class Error(val message: String) : EduUiState
 }
 
+fun isScheduleImported(result: EduSyncResult, stored: EduScheduleItemsResponse?): Boolean =
+    result.status == "success" && result.persisted && result.items_count > 0 &&
+        (stored?.items_count ?: 0) > 0
+
 /** EduViewModel — 教务系统连接流程状态机。 */
 class EduViewModel(application: android.app.Application) : AndroidViewModel(application) {
 
@@ -153,7 +157,13 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
     fun autoSync() {
         viewModelScope.launch {
             _state.value = EduUiState.Syncing("正在同步课表…", false, false)
-            val schedResult = repo.syncSchedule().getOrNull()
+            val rawSchedule = repo.syncSchedule().getOrNull()
+            val storedSchedule = rawSchedule?.takeIf { it.status == "success" }
+                ?.let { repo.listScheduleItems(it.schedule?.semester).getOrNull() }
+            val schedResult = rawSchedule?.let {
+                if (isScheduleImported(it, storedSchedule)) it
+                else it.copy(status = "failed", error_message = "课表未成功导入系统，请重新同步")
+            }
             _state.value = EduUiState.Syncing("正在同步成绩…", true, false)
             val gradeResult = repo.syncGrade().getOrNull()
             _state.value = EduUiState.Synced(schedResult, gradeResult)
@@ -165,7 +175,13 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
     fun manualSync() {
         viewModelScope.launch {
             _state.value = EduUiState.Syncing("正在同步课表…", false, false)
-            val schedResult = repo.syncSchedule().getOrNull()
+            val rawSchedule = repo.syncSchedule().getOrNull()
+            val storedSchedule = rawSchedule?.takeIf { it.status == "success" }
+                ?.let { repo.listScheduleItems(it.schedule?.semester).getOrNull() }
+            val schedResult = rawSchedule?.let {
+                if (isScheduleImported(it, storedSchedule)) it
+                else it.copy(status = "failed", error_message = "课表未成功导入系统，请重新同步")
+            }
             _state.value = EduUiState.Syncing("正在同步成绩…", true, false)
             val gradeResult = repo.syncGrade().getOrNull()
             _state.value = EduUiState.Synced(schedResult, gradeResult)
