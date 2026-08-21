@@ -208,19 +208,23 @@ class EduConnectorService:
             result["final_url"] = str(resp.url)
             content = resp.text[:50000] if resp.text else ""
             headers = dict(resp.headers)
-            fp = detector.detect(url=portal_url, html=content, headers=headers, final_url=str(resp.url))
-            result["provider"] = fp.provider
+            fp = detector.detect(url=portal_url, html=content, headers=headers)
+            # Discovery uses stable uppercase identifiers while the connector
+            # registry and adapters use lowercase keys.
+            provider = fp.provider.lower()
+            result["provider"] = provider
             result["provider_confidence"] = fp.confidence
             result["evidence"] = [
                 {"dimension": e.dimension, "provider": e.provider, "pattern": e.pattern, "matched": e.matched[:200], "weight": e.weight}
                 for e in fp.evidence
             ]
-            result["is_edu_page"] = fp.is_edu_page
+            is_edu_page = detector.is_edu_system_page(content, fp.title)
+            result["is_edu_page"] = is_edu_page
             title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
             if title_match:
                 result["title"] = title_match.group(1).strip()[:200]
             # 正方新版通常需要 client_webview（有验证码/滑块）
-            if fp.provider in KNOWN_PROVIDERS and fp.is_edu_page:
+            if provider in KNOWN_PROVIDERS and is_edu_page:
                 result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
         except Exception as e:
             result["error"] = str(e)[:200]
@@ -261,10 +265,21 @@ class EduConnectorService:
         if edu_system is None:
             edu_system = self._registry.ensure_default_system(university_id)
 
-        # 防重复：如果已有活跃连接，复用而非新建
+        # 防重复：如果已有活跃连接，复用而非新建。
+        # 旧版本可能遗留“connected 但没有 binding”的坏记录；这种记录没有
+        # 会话可供同步，必须作废后重新认证，不能继续复用。
         existing = self._edu_repo.get_active_connection_by_user(user_id, edu_system.id)
         if existing is not None:
-            return existing, edu_system, probe
+            binding = self._edu_repo.get_binding_by_user(user_id, edu_system.id)
+            if existing.state == CONN_CONNECTED and binding is None:
+                self._edu_repo.update_connection_state(
+                    existing.id,
+                    state=CONN_AUTH_FAILED,
+                    error_code="BINDING_MISSING",
+                    error_message="连接状态不完整，请重新完成教务登录",
+                )
+            else:
+                return existing, edu_system, probe
 
         conn = self.create_connection(
             user_id=user_id,
