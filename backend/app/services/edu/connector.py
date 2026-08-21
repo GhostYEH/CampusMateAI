@@ -59,6 +59,7 @@ from .adapters.mock import MockEduAdapter
 from .adapters.qingguo import QingguoAdapter
 from .adapters.qiangzhi import QiangzhiAdapter
 from .adapters.zhengfang import ZhengfangAdapter
+from .adapters.zhengfang_http import NeedUserAction
 from .detector import DetectResult, SystemDetector
 from .normalizer import DataNormalizer
 from .registry import SchoolRegistry
@@ -70,6 +71,16 @@ _ADAPTERS: dict[str, EduAdapter] = {
     "zhengfang": ZhengfangAdapter(),
     "qiangzhi": QiangzhiAdapter(),
     "qingguo": QingguoAdapter(),
+}
+
+
+_USER_ACTION_MESSAGES = {
+    "NEED_CAPTCHA": "学校要求完成图片验证码",
+    "NEED_SLIDER": "学校要求完成滑块验证",
+    "NEED_SMS": "学校要求完成短信验证",
+    "NEED_MFA": "学校要求完成多因素认证",
+    "CLIENT_WEBVIEW": "请在学校登录页面完成验证",
+    "NEED_CAMPUS_NETWORK": "请连接校园网或 VPN 后继续",
 }
 
 
@@ -310,22 +321,34 @@ class EduConnectorService:
 
         # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
         if conn.state == CONN_AUTH_REQUIRED and username and password:
+            if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
+                self._edu_repo.update_connection_state(
+                    connection_id,
+                    state=CONN_UNSUPPORTED,
+                    error_code="UNSUPPORTED",
+                    error_message=f"Provider[{conn.provider}] adapter not implemented",
+                )
+                return CONN_UNSUPPORTED
             self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
             config = self._build_config_dict(system, portal_url=conn.portal_url)
             try:
                 internal = await adapter.login(username=username, password=password, config=config)
+            except NeedUserAction as action_needed:
+                self._edu_repo.update_connection_state(
+                    connection_id,
+                    state=CONN_WAITING_USER_LOGIN,
+                    error_code=action_needed.action,
+                    error_message=_USER_ACTION_MESSAGES.get(action_needed.action, "需要在学校登录页面完成验证"),
+                )
+                return CONN_WAITING_USER_LOGIN
             except AdapterNotImplemented:
-                if self._is_mock_allowed():
-                    adapter = _ADAPTERS["mock"]
-                    internal = await adapter.login(username=username, password=password, config=config)
-                else:
-                    self._edu_repo.update_connection_state(
-                        connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
-                        error_message=f"Provider[{conn.provider}] adapter not implemented",
-                    )
-                    return CONN_UNSUPPORTED
+                self._edu_repo.update_connection_state(
+                    connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
+                    error_message=f"Provider[{conn.provider}] adapter not implemented",
+                )
+                return CONN_UNSUPPORTED
             except PermissionError:
                 self._edu_repo.update_connection_state(
                     connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
@@ -337,6 +360,14 @@ class EduConnectorService:
 
         # CONN_WAITING_USER_LOGIN + cookies (action=CLIENT_WEBVIEW_COMPLETE): 客户端 WebView 登录完成
         if conn.state == CONN_WAITING_USER_LOGIN and cookies and action == "CLIENT_WEBVIEW_COMPLETE":
+            if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
+                self._edu_repo.update_connection_state(
+                    connection_id,
+                    state=CONN_UNSUPPORTED,
+                    error_code="UNSUPPORTED",
+                    error_message=f"Provider[{conn.provider}] adapter not implemented",
+                )
+                return CONN_UNSUPPORTED
             self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
@@ -347,18 +378,20 @@ class EduConnectorService:
                 internal = await adapter.login_with_cookies(
                     cookies=cookies, current_url=current_url, user_agent=user_agent, config=config,
                 )
+            except NeedUserAction as action_needed:
+                self._edu_repo.update_connection_state(
+                    connection_id,
+                    state=CONN_WAITING_USER_LOGIN,
+                    error_code=action_needed.action,
+                    error_message=_USER_ACTION_MESSAGES.get(action_needed.action, "需要在学校登录页面完成验证"),
+                )
+                return CONN_WAITING_USER_LOGIN
             except AdapterNotImplemented:
-                if self._is_mock_allowed():
-                    adapter = _ADAPTERS["mock"]
-                    internal = await adapter.login_with_cookies(
-                        cookies=cookies, current_url=current_url, user_agent=user_agent, config=config,
-                    )
-                else:
-                    self._edu_repo.update_connection_state(
-                        connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
-                        error_message=f"Provider[{conn.provider}] login_with_cookies not implemented",
-                    )
-                    return CONN_UNSUPPORTED
+                self._edu_repo.update_connection_state(
+                    connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
+                    error_message=f"Provider[{conn.provider}] login_with_cookies not implemented",
+                )
+                return CONN_UNSUPPORTED
             except PermissionError as e:
                 self._edu_repo.update_connection_state(
                     connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
@@ -531,16 +564,7 @@ class EduConnectorService:
                 config=config_dict,
             )
         except AdapterNotImplemented:
-            if self._is_mock_allowed():
-                adapter = _ADAPTERS["mock"]
-                adapter_source = "mock_fallback"
-                internal = await adapter.login(
-                    username=username,
-                    password=password,
-                    config=config_dict,
-                )
-            else:
-                raise EduUnsupportedError(provider)
+            raise EduUnsupportedError(provider)
         except PermissionError:
             # 登录失败
             self._edu_repo.upsert_binding(

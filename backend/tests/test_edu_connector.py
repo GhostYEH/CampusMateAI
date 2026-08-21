@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -41,6 +42,7 @@ from app.services.container import reset_container_for_tests
 from app.services.container import get_container
 from app.services.demo_seeder import seed_demo_data
 from app.services.edu.connector import EduConnectorService
+from app.services.edu.adapters.zhengfang_http import NeedUserAction
 from app.services.edu import discovery_service
 
 
@@ -453,8 +455,8 @@ def test_sync_records_listed_after_sync() -> None:
 # ===== 真实 Adapter 占位 =====
 
 
-def test_real_adapter_not_implemented_falls_back_to_mock_in_test() -> None:
-    """test 环境下，真实 Adapter 未实现应降级到 mock。"""
+def test_real_adapter_not_implemented_never_falls_back_to_mock() -> None:
+    """真实系统未适配时必须明确失败，不得伪造 mock 绑定。"""
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
@@ -469,9 +471,8 @@ def test_real_adapter_not_implemented_falls_back_to_mock_in_test() -> None:
         headers=headers,
         json={"username": "S202401001", "password": "demo"},
     )
-    assert response.status_code == 200, response.text
-    binding = response.json()
-    assert binding["provider"] == "mock"
+    assert response.status_code == 503, response.text
+    assert client.get("/api/v1/edu/binding", headers=headers).json() is None
 
 
 # ===== Connection 状态机 =====
@@ -669,6 +670,40 @@ def test_backend_http_first_credential_continue_connects() -> None:
     assert binding["connection_status"] == BINDING_ACTIVE
     sync_resp = client.post("/api/v1/edu/sync/schedule", headers=headers)
     assert sync_resp.json()["status"] == "success"
+
+
+def test_real_credentials_needing_captcha_wait_for_client_webview(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "zhengfang",
+            "base_url": "https://jwxt.example.edu",
+            "login_execution_mode": "backend_http",
+        },
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+
+    async def need_captcha(**kwargs):
+        raise NeedUserAction("NEED_CAPTCHA", captcha_url="https://jwxt.example.edu/login")
+
+    connector = get_container().edu_connector
+    monkeypatch.setattr(connector._select_adapter("zhengfang")[0], "login", need_captcha)
+
+    state = asyncio.run(connector.continue_connection(
+        connection_id=connection["id"], username="fixture", password="fixture"
+    ))
+    updated = connector.get_connection(connection["id"])
+
+    assert state == CONN_WAITING_USER_LOGIN
+    assert updated.state == CONN_WAITING_USER_LOGIN
+    assert updated.error_code == "NEED_CAPTCHA"
 
 
 def test_client_webview_first_cookie_continue_connects() -> None:
