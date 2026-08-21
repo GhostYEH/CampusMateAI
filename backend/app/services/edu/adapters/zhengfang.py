@@ -19,7 +19,12 @@
 """
 from __future__ import annotations
 
+import base64
+import json
+import re
 from typing import Optional
+
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from ....models.edu import (
     EDU_PROVIDER_ZHENGFANG,
@@ -35,6 +40,55 @@ from .zhengfang_strategy import (
     school_config_from_dict,
     school_config_to_dict,
 )
+
+
+_JWGL2_PUBLIC_KEY_PATH = "/jwglxt/xtgl/login_getPublicKey.html"
+
+
+def _hidden_input_value(html: str, name: str) -> Optional[str]:
+    """Read one hidden form value without retaining the login page."""
+    name_pattern = re.escape(name)
+    patterns = (
+        rf'<input[^>]+name=["\']{name_pattern}["\'][^>]+value=["\']([^"\']*)',
+        rf'<input[^>]+value=["\']([^"\']*)["\'][^>]+name=["\']{name_pattern}["\']',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, html, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _encrypt_jwgl2_password(password: str, public_key_json: str) -> str:
+    """Match Zhengfang's browser-side RSA PKCS#1 v1.5 password encryption."""
+    try:
+        payload = json.loads(public_key_json)
+        modulus = base64.b64decode(payload["modulus"])
+        exponent = base64.b64decode(payload["exponent"])
+        public_key = rsa.RSAPublicNumbers(
+            int.from_bytes(exponent, "big"), int.from_bytes(modulus, "big")
+        ).public_key()
+        encrypted = public_key.encrypt(password.encode("utf-8"), padding.PKCS1v15())
+        return base64.b64encode(encrypted).decode("ascii")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统登录加密参数无效") from exc
+
+
+def _user_action_from_login_page(html: str) -> Optional[str]:
+    """Classify only visible user-verification controls; never solve them."""
+    visible_html = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", "", html, flags=re.IGNORECASE | re.DOTALL)
+    lowered = visible_html.lower()
+    if re.search(r'id=["\']yzmdiv["\'][^>]*style=["\'][^"\']*display\s*:\s*none', lowered):
+        return None
+    if "yzmdiv" in lowered or re.search(r'(id|name)=["\']yzm["\']', lowered):
+        return "NEED_CAPTCHA"
+    if "slider" in lowered or "滑块" in visible_html:
+        return "NEED_SLIDER"
+    if "短信验证码" in visible_html:
+        return "NEED_SMS"
+    if "多因素" in visible_html or "mfa" in lowered:
+        return "NEED_MFA"
+    return None
 
 
 class ZhengfangAdapter(EduAdapter):
@@ -99,15 +153,26 @@ class ZhengfangAdapter(EduAdapter):
                 captcha_url=school.effective_login_url,
             )
 
-        form = {
-            school.form_field_username: username,
-            school.form_field_password: password,
-        }
         try:
+            page = await client.get(school.effective_login_url, referer=school.base_url)
+            page_action = _user_action_from_login_page(page.text)
+            if page_action:
+                raise NeedUserAction(page_action, captcha_url=school.effective_login_url)
+
+            csrf_token = _hidden_input_value(page.text, "csrftoken")
+            if not csrf_token:
+                raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统未返回登录令牌")
+            public_key = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+            form = {
+                school.form_field_username: username,
+                school.form_field_password: _encrypt_jwgl2_password(password, public_key.text),
+                "csrftoken": csrf_token,
+                "language": "zh_CN",
+            }
             resp = await client.post(
                 school.effective_login_url,
                 data=form,
-                referer=school.base_url,
+                referer=school.effective_login_url,
                 form_post=True,
             )
         except EduAdapterError as e:
@@ -116,6 +181,8 @@ class ZhengfangAdapter(EduAdapter):
             raise
 
         result = self._parser.parse_login_response(resp.text)
+        if resp.status in (301, 302, 303, 307, 308):
+            result = {"success": True}
         if result.get("need_captcha"):
             raise NeedUserAction("NEED_CAPTCHA", detail=result.get("message"), captcha_url=school.effective_login_url)
         if result.get("auth_failed"):
@@ -126,6 +193,8 @@ class ZhengfangAdapter(EduAdapter):
                 raise NeedUserAction("NEED_CAPTCHA", detail=msg, captcha_url=school.effective_login_url)
             raise PermissionError(msg)
 
+        profile = await self._authenticated_probe(school, client)
+
         return {
             "provider": self.provider,
             "adapter_version": self.adapter_version,
@@ -133,7 +202,7 @@ class ZhengfangAdapter(EduAdapter):
             "version": school.version,
             "cookies": client.cookies,
             "username": username,
-            "external_student_id": username,
+            "external_student_id": profile.external_student_id,
             "adapter_config": school_config_to_dict(school),
         }
 

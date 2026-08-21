@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import socket
+import base64
 from pathlib import Path
 
 import httpx
@@ -153,6 +154,13 @@ def test_parse_login_response_captcha_error():
     assert result.get("need_captcha") is True
 
 
+def test_login_page_scripts_do_not_count_as_visible_sms_or_captcha():
+    page = '''
+        <script>var dxyz = "短信验证码"; function refreshCode() { return "yzmDiv"; }</script>
+    '''
+    assert zhengfang_module._user_action_from_login_page(page) is None
+
+
 # ===== SchoolConfig 装配 =====
 
 
@@ -285,6 +293,54 @@ class _FakeZhengfangClient:
         if self.error:
             raise self.error
         return self.response
+
+
+@pytest.mark.asyncio
+async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkeypatch):
+    """JWGL2 form login must follow the browser's CSRF + RSA protocol."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=1024).public_key().public_numbers()
+    modulus = base64.b64encode(key.n.to_bytes((key.n.bit_length() + 7) // 8, "big")).decode()
+    exponent = base64.b64encode(key.e.to_bytes((key.e.bit_length() + 7) // 8, "big")).decode()
+
+    class LoginFlowClient:
+        instance = None
+
+        def __init__(self, **kwargs):
+            self.cookies = {"JSESSIONID": "fixture-session"}
+            self.get_calls = []
+            self.post_calls = []
+            LoginFlowClient.instance = self
+
+        async def get(self, path, **kwargs):
+            self.get_calls.append(path)
+            if "login_getPublicKey" in path:
+                return HttpResponse(200, json.dumps({"modulus": modulus, "exponent": exponent}), "https://jwxt.example.edu/key", {})
+            if "xsxx" in path:
+                return HttpResponse(200, _load("profile_jwgl2.json"), "https://jwxt.example.edu/profile", {})
+            return HttpResponse(200, '<input type="hidden" name="csrftoken" value="fixture-csrf">', "https://jwxt.example.edu/login", {})
+
+        async def post(self, path, *, data=None, **kwargs):
+            self.post_calls.append((path, data or {}))
+            return HttpResponse(200, json.dumps({"success": True}), "https://jwxt.example.edu/login", {})
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginFlowClient)
+
+    internal = await zhengfang_module.ZhengfangAdapter().login(
+        username="fixture-user",
+        password="fixture-password",
+        config={"base_url": "https://jwxt.example.edu", "provider_version": "jwgl2"},
+    )
+
+    client = LoginFlowClient.instance
+    assert "fixture-csrf" in client.post_calls[0][1].values()
+    assert client.post_calls[0][1]["mm"] != "fixture-password"
+    assert any("login_getPublicKey" in path for path in client.get_calls)
+    assert internal["external_student_id"] == "FIXTURE-S000000001"
 
 
 @pytest.mark.asyncio
