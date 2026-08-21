@@ -71,6 +71,21 @@ class _ProbeHttpClient:
         return _ProbeResponse()
 
 
+class _CaptchaProbeResponse(_ProbeResponse):
+    text = (
+        '<title>教务管理系统</title>'
+        '<form action="/jwglxt/xtgl/login_slogin.html"><input id="yzm" /></form>'
+    )
+
+
+class _CaptchaProbeHttpClient(_ProbeHttpClient):
+    async def head(self, _url: str):
+        return _CaptchaProbeResponse()
+
+    async def get(self, _url: str):
+        return _CaptchaProbeResponse()
+
+
 def test_probe_portal_identifies_zhengfang_when_response_is_reachable(monkeypatch) -> None:
     """A detector API mismatch must not silently turn a Zhengfang portal into unknown."""
     import httpx
@@ -83,6 +98,20 @@ def test_probe_portal_identifies_zhengfang_when_response_is_reachable(monkeypatc
     )
 
     assert result["reachable"] is True
+    assert result["provider"] == EDU_PROVIDER_ZHENGFANG
+    assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
+
+
+def test_probe_portal_opens_webview_for_visible_captcha(monkeypatch) -> None:
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _CaptchaProbeHttpClient)
+    connector = object.__new__(EduConnectorService)
+
+    result = asyncio.run(
+        connector.probe_portal("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
+    )
+
     assert result["provider"] == EDU_PROVIDER_ZHENGFANG
     assert result["suggested_login_mode"] == LOGIN_EXEC_CLIENT_WEBVIEW
 
