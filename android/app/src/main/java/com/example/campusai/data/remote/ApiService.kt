@@ -321,6 +321,9 @@ data class EduSyncResult(
     val schedule: EduSchedule? = null,
     val grade: EduGrade? = null,
     val exam: EduExam? = null,
+    val persisted: Boolean = false,
+    val inserted: Int = 0,
+    val updated: Int = 0,
 )
 data class EduSyncRecord(
     val id: String,
