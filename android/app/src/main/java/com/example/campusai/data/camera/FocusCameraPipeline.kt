@@ -23,6 +23,10 @@ interface FrameAnalyzer {
     fun analyze(frame: CameraFrame)
 }
 
+interface FrameDropAwareAnalyzer {
+    fun onFrameDropped()
+}
+
 fun interface CameraErrorListener {
     fun onCameraError(message: String)
 }
@@ -168,6 +172,9 @@ class FocusCameraPipeline(
         if (!running || now - lastAnalyzedAt < ANALYSIS_INTERVAL_MS ||
             !analyzing.compareAndSet(false, true)
         ) {
+            if (running) {
+                analyzers.forEach { (it as? FrameDropAwareAnalyzer)?.onFrameDropped() }
+            }
             image.close()
             return
         }

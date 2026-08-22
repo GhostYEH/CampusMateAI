@@ -42,7 +42,7 @@ CameraX ImageAnalysis (KEEP_ONLY_LATEST, 640x480, 200 ms 节流)
 - `postprocess_ms`（softmax + EMA/结果整理）
 - `total_latency_ms`
 - `fps`
-- `dropped_frames`（表情服务节流或 busy 时丢弃的帧）
+- `dropped_frames`（CameraX KEEP_ONLY_LATEST 丢帧，以及表情服务节流或 busy 时丢弃的帧）
 - `NO_FACE` 比例
 - `UNKNOWN` 比例
 
