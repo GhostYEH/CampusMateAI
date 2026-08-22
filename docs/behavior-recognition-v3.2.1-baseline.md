@@ -1,8 +1,8 @@
 # CampusMateAI 行为识别 V3.2.1 基线测试报告
 
-日期：2026-08-22  
-基线对象：`campusmate_visible_study_v32.onnx`  ️
-测试范围：Android 端预处理、模型契约、Debug 可观测性和预处理 A/B  ️
+日期：2026-08-22
+基线对象：`campusmate_visible_study_v32.onnx`
+测试范围：Android 端预处理、模型契约、Debug 可观测性和预处理 A/B
 
 ## 1. 结论摘要
 
@@ -132,4 +132,3 @@ CSV 中的 `raw_*` 来自 ONNX 引擎原始输出；`stabilized_behavior` 和 `u
 - 真机内存、温度、耗电和丢帧率；
 - 人工标签准确率、混淆矩阵和置信度校准；
 - 训练侧原始行为数据处理脚本对 crop/resize 的最终签字确认。
-
