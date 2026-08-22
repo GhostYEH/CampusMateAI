@@ -1,0 +1,72 @@
+[
+  {
+    "school_name": "东北农业大学",
+    "school_code": "4123010224",
+    "province": "黑龙江省",
+    "candidate_url": "https://jwc.neau.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北农业大学教务处/本科生院"
+  },
+  {
+    "school_name": "东北农业大学",
+    "school_code": "4123010224",
+    "province": "黑龙江省",
+    "candidate_url": "https://graduate.neau.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北农业大学研究生院"
+  },
+  {
+    "school_name": "东北农业大学",
+    "school_code": "4123010224",
+    "province": "黑龙江省",
+    "candidate_url": "https://nshall.neau.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北农业大学融合门户"
+  },
+  {
+    "school_name": "东北林业大学",
+    "school_code": "4123010225",
+    "province": "黑龙江省",
+    "candidate_url": "https://jwcnew.nefu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北林业大学教务在线(强智系统)"
+  },
+  {
+    "school_name": "东北林业大学",
+    "school_code": "4123010225",
+    "province": "黑龙江省",
+    "candidate_url": "https://yjsglxt.nefu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北林业大学研究生系统"
+  },
+  {
+    "school_name": "东北林业大学",
+    "school_code": "4123010225",
+    "province": "黑龙江省",
+    "candidate_url": "https://bksy.nefu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北林业大学本科生教育"
+  },
+  {
+    "school_name": "东北林业大学",
+    "school_code": "4123010225",
+    "province": "黑龙江省",
+    "candidate_url": "https://gra.nefu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "东北林业大学研究生教育"
+  }
+]

@@ -2,8 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
+import CampusHotPostsPanel from "../../components/CampusHotPostsPanel.vue";
+import HomeSchedulePanel from "../../components/home/HomeSchedulePanel.vue";
+import HomeFooter from "../../components/home/footer/HomeFooter.vue";
 import { useAppStore } from "../../stores/app";
-import { getStudySessions, getStudentActivities, getStudentCourses, getStudentDashboard } from "../../services/studentApi";
+import { eduScheduleItems, getCommunityPosts, getPersonalTasks, getStudySessions, getStudentAssignments, getStudentCourses, getStudentDashboard, getStudentNotices } from "../../services/studentApi";
+import { resolveHomeOverviewMetrics } from "../../features/home/overviewMetrics";
+import { fetchHitokoto, formatHitokotoSource } from "../../services/hitokoto";
 
 const props = defineProps({ searchQuery: { type: String, default: "" } });
 const router = useRouter();
@@ -13,12 +18,19 @@ const refreshing = ref(false);
 const error = ref("");
 const dashboard = ref(null);
 const courses = ref([]);
-const activities = ref([]);
+const hotPosts = ref([]);
 const studySessions = ref([]);
+const scheduleItems = ref([]);
+const scheduleLoading = ref(false);
+const liveOverview = ref({ courses: null, pendingAssignments: null, pendingTasks: null, unreadNotices: null });
 const now = ref(Date.now());
+const hitokoto = ref({ uuid: "", hitokoto: "把今天过得更有把握", from: "", from_who: null });
+const hitokotoLoading = ref(false);
+const hitokotoKey = ref(0);
 let clockTimer;
 
 const today = computed(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date(now.value)));
+const referenceWeek = computed(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date(now.value)).replace("星期", "周"));
 const normalizedSearch = computed(() => props.searchQuery.trim().toLocaleLowerCase());
 const matches = (item, fields) => !normalizedSearch.value || fields.some((field) => String(item[field] || "").toLocaleLowerCase().includes(normalizedSearch.value));
 
@@ -29,10 +41,7 @@ const dueItems = computed(() => [
 const filteredDueItems = computed(() => dueItems.value.filter((item) => matches(item, ["title", "kind", "course_name", "source_name"])));
 const filteredCourses = computed(() => courses.value.filter((item) => matches(item, ["name", "code", "semester"])));
 
-const campusItems = computed(() => [
-  ...(dashboard.value?.recent_announcements || []).map((item) => ({ ...item, label: item.course_name || item.class_name || "课程通知", date: item.published_at || item.created_at, icon: "PhMegaphone", tone: "green", path: `/announcements/${item.id}`, query: { source: item.course_name || item.class_name || "" } })),
-  ...activities.value.map((item) => ({ ...item, label: item.category || "校园活动", date: item.start_at || item.start_time || item.date, icon: "PhCalendarStar", tone: "blue", path: `/campus-activities/${item.id}` })),
-].filter((item) => matches(item, ["title", "label", "category", "location"])).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 4));
+const visibleHotPosts = computed(() => hotPosts.value.filter((item) => matches(item, ["title", "category", "content"])).slice(0, 3));
 
 const todayFocusSeconds = computed(() => {
   const current = new Date(now.value);
@@ -50,12 +59,15 @@ const todayFocusSeconds = computed(() => {
 });
 const focusHours = computed(() => (todayFocusSeconds.value / 3600).toFixed(1));
 const focusProgress = computed(() => Math.min(100, Math.round(todayFocusSeconds.value / 108)));
-const pendingAssignments = computed(() => Number(dashboard.value?.pending_assignment_count || 0));
-const pendingPersonal = computed(() => Number(dashboard.value?.pending_personal_task_count || 0));
-const totalPending = computed(() => pendingAssignments.value + pendingPersonal.value);
+const overviewMetrics = computed(() => resolveHomeOverviewMetrics({ ...liveOverview.value, fallback: dashboard.value }));
+const pendingAssignments = computed(() => overviewMetrics.value.pendingAssignmentCount);
+const pendingPersonal = computed(() => overviewMetrics.value.pendingTaskCount);
+const totalPending = computed(() => overviewMetrics.value.pendingCount);
 const urgentItems = computed(() => filteredDueItems.value.slice(0, 2));
 const summaryText = computed(() => totalPending.value ? `还有 ${totalPending.value} 项任务等待处理` : "今天暂无临近截止事项");
 const recentCourses = computed(() => filteredCourses.value.slice(0, 3));
+const hitokotoSource = computed(() => formatHitokotoSource(hitokoto.value));
+const hitokotoDetailUrl = computed(() => hitokoto.value.uuid ? `https://hitokoto.cn/?uuid=${encodeURIComponent(hitokoto.value.uuid)}` : "");
 
 const quickLinks = [
   { label: "考试安排", detail: "查看时间与地点", icon: "PhExam", path: "/exams", tone: "violet" },
@@ -72,17 +84,6 @@ function dateText(value) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function relativeTime(value) {
-  if (!value) return "";
-  const time = new Date(value).getTime();
-  if (Number.isNaN(time)) return "";
-  const diff = Math.max(0, now.value - time);
-  if (diff < 3600000) return `${Math.max(1, Math.floor(diff / 60000))} 分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-  if (diff < 172800000) return "昨天";
-  return new Date(value).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-}
-
 function deadlineLabel(value) {
   if (!value) return "未设置截止";
   const date = new Date(value);
@@ -95,36 +96,74 @@ function openDue(item) {
   router.push(item.kind === "作业" ? `/tasks/assignment/${item.id}` : `/tasks/personal/${item.id}`);
 }
 
+function openHotPost(postId) {
+  router.push(`/community/${postId}`);
+}
+
+async function loadHitokoto() {
+  if (hitokotoLoading.value) return;
+  hitokotoLoading.value = true;
+  try {
+    const data = await fetchHitokoto();
+    hitokoto.value = data;
+    hitokotoKey.value += 1;
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("Hitokoto unavailable; using the local fallback.", e);
+  } finally {
+    hitokotoLoading.value = false;
+  }
+}
+
 async function load(isRefresh = false) {
   if (isRefresh) refreshing.value = true;
   else loading.value = true;
+  scheduleLoading.value = true;
   error.value = "";
   try {
-    const [dashboardData, courseData, activityData, sessionData] = await Promise.all([
-      getStudentDashboard(), getStudentCourses(), getStudentActivities(), getStudySessions(),
+    const results = await Promise.allSettled([
+      getStudentDashboard(),
+      getStudentCourses(),
+      getCommunityPosts({ sort: "hot", page: 1, page_size: 3 }),
+      getStudySessions(),
+      getStudentAssignments({ status: "pending" }),
+      getPersonalTasks({ status: "pending" }),
+      getStudentNotices({ unread_only: true }),
+      eduScheduleItems(),
     ]);
+    const valueAt = (index) => results[index].status === "fulfilled" ? results[index].value : null;
+    const [dashboardData, courseData, hotPostData, sessionData, assignmentData, personalTaskData, noticeData, scheduleData] = results.map((_, index) => valueAt(index));
+    if (!dashboardData && !courseData && !assignmentData && !personalTaskData) throw new Error("首页数据加载失败");
     dashboard.value = dashboardData;
-    store.setDashboardSummary(dashboardData);
-    courses.value = courseData.items || [];
-    activities.value = activityData.items || [];
+    if (dashboardData) store.setDashboardSummary(dashboardData);
+    courses.value = courseData?.items || [];
+    hotPosts.value = hotPostData?.items || [];
     studySessions.value = Array.isArray(sessionData) ? sessionData : [];
+    scheduleItems.value = scheduleData?.items || [];
+    liveOverview.value = {
+      courses: courseData,
+      pendingAssignments: assignmentData,
+      pendingTasks: personalTaskData,
+      unreadNotices: noticeData,
+    };
   } catch (e) {
     error.value = e.response?.data?.detail || "首页数据加载失败，请检查后端服务后重试。";
   } finally {
     loading.value = false;
     refreshing.value = false;
+    scheduleLoading.value = false;
   }
 }
 
 onMounted(() => {
   load();
+  loadHitokoto();
   clockTimer = window.setInterval(() => { now.value = Date.now(); }, 60000);
 });
 onUnmounted(() => window.clearInterval(clockTimer));
 </script>
 
 <template>
-  <main class="student-page student-home page-enter">
+  <main class="student-page student-home">
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load()">重试</button></div>
 
     <section v-if="loading" class="student-home-skeleton" aria-label="正在加载首页">
@@ -133,34 +172,35 @@ onUnmounted(() => window.clearInterval(clockTimer));
     </section>
 
     <template v-else>
+      <HomeFooter>
       <section class="student-home-hero">
         <article class="student-focus-card">
           <div class="focus-card-copy">
-            <span class="hero-date">{{ today }}</span>
-            <h1>把今天过得更有把握</h1>
-            <p>课程、截止事项和校园消息，都在一个清晰的节奏里。</p>
+            <span class="hero-date">{{ referenceWeek }} <span class="reference-hero-weather"><UiIcon name="PhSun" :size="17" weight="fill" />24°C 晴</span></span>
+            <div class="hitokoto-quote" :class="{ 'is-loading': hitokotoLoading }" :aria-busy="hitokotoLoading" aria-live="polite">
+              <h1 :key="hitokotoKey" class="hitokoto-text"><a v-if="hitokotoDetailUrl" class="hitokoto-text-link" :href="hitokotoDetailUrl" target="_blank" rel="noopener noreferrer" aria-label="查看这条一言的详情">{{ hitokoto.hitokoto }}</a><span v-else>{{ hitokoto.hitokoto }}</span></h1>
+              <div v-if="hitokotoDetailUrl" class="hitokoto-meta">
+                <a class="hitokoto-source" :href="hitokotoDetailUrl" target="_blank" rel="noopener noreferrer" aria-label="查看这条一言的详情">{{ hitokotoSource }}</a>
+                <button class="hitokoto-refresh" type="button" :disabled="hitokotoLoading" aria-label="换一句" @click="loadHitokoto"><UiIcon name="PhArrowClockwise" :class="{ spinning: hitokotoLoading }" :size="14" />换一句</button>
+              </div>
+            </div>
+            <span class="focus-card-actions"><button class="focus-primary" @click="router.push('/study')">开始专注<UiIcon name="PhArrowRight" :size="17" weight="bold" /></button><button class="focus-secondary" @click="router.push('/tasks')"><UiIcon name="PhListChecks" :size="18" />查看待办</button></span>
           </div>
-          <div class="focus-summary">
-            <span class="summary-icon"><UiIcon name="PhClipboardText" :size="19" /></span>
-            <span class="summary-copy"><small>今日任务概览</small><strong>{{ summaryText }}</strong><em>{{ totalPending ? "保持节奏，逐项完成吧！" : "保持节奏，继续加油！" }}</em></span>
-            <span class="focus-card-actions"><button class="focus-primary" @click="router.push('/study')">开始专注<UiIcon name="PhPlay" :size="15" weight="fill" /></button><button class="focus-secondary" @click="router.push('/tasks')"><UiIcon name="PhListChecks" :size="17" />查看待办</button></span>
-          </div>
-          <img class="focus-hero-image" src="/assets/generated/focus-hero.png" alt="蓝色勾选徽章专注插画" />
-          <div class="focus-progress" :style="{ '--focus-progress': `${focusProgress * 3.6}deg` }"><div><small>今日专注时长</small><strong>{{ focusHours }}<em>h</em></strong><span>来自专注记录</span></div></div>
+          <img class="focus-hero-image" src="/assets/generated/home-reference-hero-calendar.png" alt="日历、时钟与书本的学习插画" />
         </article>
 
         <article class="student-overview-card">
           <div class="overview-card-head"><h2>概览</h2><button @click="load(true)">{{ refreshing ? "刷新中" : "全部数据" }}<UiIcon name="PhCaretRight" :size="15" /></button></div>
           <div class="overview-stats">
-            <button @click="router.push('/courses')"><span class="overview-icon violet"><UiIcon name="PhBookOpen" :size="22" /></span><span><small>我的课程</small><strong>{{ dashboard?.enrolled_course_count ?? 0 }}</strong><em>本学期课程数</em></span></button>
-            <button @click="router.push('/tasks')"><span class="overview-icon green"><UiIcon name="PhCheckSquare" :size="22" /></span><span><small>待完成作业</small><strong>{{ pendingAssignments }}</strong><em>{{ dashboard?.overdue_assignment_count || 0 }} 项已逾期</em></span></button>
-            <button @click="router.push('/notifications')"><span class="overview-icon amber"><UiIcon name="PhBell" :size="22" /></span><span><small>未读通知</small><strong>{{ dashboard?.unread_announcement_count ?? 0 }}</strong><em>来自课程与班级</em></span></button>
+            <button @click="router.push('/courses')"><span class="overview-icon violet"><UiIcon name="PhBookOpen" :size="22" /></span><span><small>我的课程</small><strong>{{ overviewMetrics.courseCount }}</strong><em>已加入课程总数</em></span></button>
+            <button @click="router.push('/tasks')"><span class="overview-icon green"><UiIcon name="PhCheckSquare" :size="22" /></span><span><small>待完成事项</small><strong>{{ totalPending }}</strong><em>{{ pendingAssignments }} 项作业 · {{ pendingPersonal }} 项待办</em></span></button>
+            <button @click="router.push('/notifications')"><span class="overview-icon amber"><UiIcon name="PhBell" :size="22" /></span><span><small>未读通知</small><strong>{{ overviewMetrics.unreadNoticeCount }}</strong><em>来自课程与班级</em></span></button>
             <button @click="router.push('/study')"><span class="overview-icon blue"><UiIcon name="PhClock" :size="22" /></span><span><small>今日专注时长</small><strong>{{ focusHours }}<b>小时</b></strong><em>实时同步记录</em></span></button>
           </div>
         </article>
       </section>
 
-      <div v-if="normalizedSearch" class="home-search-note"><UiIcon name="PhMagnifyingGlass" :size="16" />正在筛选“{{ props.searchQuery }}”，当前首页有 {{ filteredDueItems.length + filteredCourses.length + campusItems.length }} 条相关内容</div>
+      <div v-if="normalizedSearch" class="home-search-note"><UiIcon name="PhMagnifyingGlass" :size="16" />正在筛选“{{ props.searchQuery }}”，当前首页有 {{ filteredDueItems.length + filteredCourses.length + visibleHotPosts.length }} 条相关内容</div>
 
       <section class="student-home-columns">
         <article class="student-home-panel task-panel">
@@ -174,35 +214,41 @@ onUnmounted(() => window.clearInterval(clockTimer));
           <button class="panel-footer red" @click="router.push('/tasks')">查看全部待办与作业<UiIcon name="PhArrowRight" :size="15" /></button>
         </article>
 
-        <article class="student-home-panel background-panel">
-          <div class="home-panel-head"><h2><UiIcon name="PhIdentificationCard" :size="19" />我的背景</h2><button @click="router.push('/profile')">完整资料<UiIcon name="PhArrowRight" :size="15" /></button></div>
-          <div class="background-id-card">
-            <span class="background-avatar">{{ store.session?.name?.slice(0, 1) || "同" }}</span>
-            <span class="background-id-copy"><strong>{{ store.session?.name || "同学" }}</strong><small>{{ store.session?.detail || "学生" }}</small></span>
-            <button class="background-edit" @click="router.push('/profile')" title="查看 / 编辑资料"><UiIcon name="PhPencilSimple" :size="14" /></button>
-          </div>
-          <dl class="background-info-list">
-            <div><dt>学院</dt><dd>{{ store.session?.college || "未填写" }}</dd></div>
-            <div><dt>专业</dt><dd>{{ store.session?.major || "未填写" }}</dd></div>
-            <div><dt>年级</dt><dd>{{ store.session?.grade || "未填写" }}</dd></div>
-            <div><dt>学号</dt><dd>{{ store.session?.student_number || "未填写" }}</dd></div>
-          </dl>
-          <div class="background-stats">
-            <button @click="router.push('/courses')"><strong>{{ dashboard?.enrolled_course_count ?? 0 }}</strong><small>在修课程</small></button>
-            <button @click="router.push('/tasks')"><strong>{{ totalPending }}</strong><small>待办事项</small></button>
-            <button @click="router.push('/study')"><strong>{{ focusHours }}h</strong><small>今日专注</small></button>
-          </div>
-          <div v-if="recentCourses.length" class="recent-courses"><span>最近学习：</span><button v-for="course in recentCourses" :key="course.id" @click="router.push(`/courses/${course.id}`)">{{ course.name }}</button></div>
-          <div v-else class="recent-courses"><span>暂无已加入课程</span></div>
-        </article>
+        <HomeSchedulePanel :items="scheduleItems" :loading="scheduleLoading" @open-academic="router.push('/academic')" />
 
-        <article class="student-home-panel campus-panel">
-          <div class="home-panel-head"><h2><UiIcon name="PhMegaphone" :size="19" />校园动态</h2><button @click="router.push('/campus-activities')">查看更多<UiIcon name="PhArrowRight" :size="15" /></button></div>
-          <div v-if="campusItems.length" class="campus-list">
-            <button v-for="item in campusItems.slice(0, 3)" :key="`${item.path}-${item.id}`" @click="router.push({ path: item.path, query: item.query || {} })"><span class="home-row-icon" :class="item.tone"><UiIcon :name="item.icon" :size="18" /></span><span><strong>{{ item.title }}</strong><small>{{ item.label }}</small></span><time>{{ relativeTime(item.date) }}</time></button>
-          </div>
-          <div v-else class="compact-empty"><UiIcon name="PhBell" :size="26" /><strong>暂无新的校园消息</strong><span>活动和课程通知会从后端同步到这里。</span></div>
-          <button class="panel-footer green" @click="router.push('/campus-activities')">查看全部活动与通知<UiIcon name="PhArrowRight" :size="15" /></button>
+          <article class="student-home-panel hot-posts-panel">
+            <div class="home-panel-head"><h2><UiIcon name="PhFire" :size="19" weight="fill" />今日热门话题</h2><button @click="router.push('/community')">查看更多<UiIcon name="PhArrowRight" :size="15" /></button></div>
+            <CampusHotPostsPanel v-if="visibleHotPosts.length" :posts="visibleHotPosts" @open-post="openHotPost" />
+            <div v-else class="compact-empty home-reference-hot-empty" role="status">
+              <div class="hot-empty-art" aria-hidden="true">
+                <svg viewBox="0 0 240 158" role="presentation">
+                  <defs>
+                    <radialGradient id="hot-glow" cx="50%" cy="48%" r="58%">
+                      <stop offset="0" stop-color="#efe8ff" stop-opacity=".98" />
+                      <stop offset=".72" stop-color="#f7f4ff" stop-opacity=".58" />
+                      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+                    </radialGradient>
+                    <linearGradient id="hot-bubble" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#b99af8" />
+                      <stop offset="1" stop-color="#7852e7" />
+                    </linearGradient>
+                    <filter id="hot-soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+                      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#815be1" flood-opacity=".18" />
+                    </filter>
+                  </defs>
+                  <ellipse cx="120" cy="80" rx="103" ry="66" fill="url(#hot-glow)" />
+                  <circle cx="51" cy="76" r="11" fill="#d9c9ff" opacity=".6" />
+                  <circle cx="191" cy="106" r="8" fill="#e4d9ff" opacity=".76" />
+                  <circle cx="207" cy="57" r="5" fill="#cbb4fb" opacity=".74" />
+                  <g filter="url(#hot-soft-shadow)">
+                    <path d="M73 47c0-19 20-34 47-34s47 15 47 34c0 13-9 24-23 30l-7 21-19-16c-26-1-45-15-45-35Z" fill="url(#hot-bubble)" />
+                    <text x="119" y="65" fill="#ffffff" font-family="Arial, sans-serif" font-size="47" font-weight="800" text-anchor="middle">#</text>
+                  </g>
+                </svg>
+              </div>
+              <strong>暂无热门话题</strong><span>快去社区看看，发现有趣的校园话题吧～</span><button class="reference-empty-action violet" @click="router.push('/community')">去社区逛逛</button>
+            </div>
+            <button v-if="visibleHotPosts.length" class="panel-footer violet" @click="router.push('/community')">查看完整热门榜单<UiIcon name="PhArrowRight" :size="15" /></button>
         </article>
       </section>
 
@@ -212,6 +258,7 @@ onUnmounted(() => window.clearInterval(clockTimer));
           <button v-for="item in quickLinks" :key="item.path" @click="router.push(item.path)"><span class="quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="20" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhCaretRight" :size="15" /></button>
         </div>
       </section>
+      </HomeFooter>
     </template>
   </main>
 </template>

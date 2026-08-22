@@ -1,5 +1,6 @@
 package com.example.campusai.ui.screens.tasks
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -71,7 +73,14 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     Box(Modifier.fillMaxSize().background(ScreenLavender)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 22.dp, end = 16.dp, bottom = BottomDockReservedHeight + 86.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 22.dp,
+                end = 16.dp,
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 86.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -136,7 +145,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             item {
                 SmartFocusCard(
                     task = visibleTasks.firstOrNull { !it.done },
-                    onFocus = { task -> onNavigate("focus?taskId=${task.id}") },
+                    onFocus = { task -> onNavigate("focus?taskId=${Uri.encode(task.id)}") },
                 )
             }
             item {
@@ -148,10 +157,13 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             if (visibleTasks.isEmpty()) {
                 item { EmptyTasks(backendOnline, onRetry = { scope.launch { repository.refreshTasks() } }) }
             } else {
-                items(visibleTasks, key = Task::id) { task ->
+                itemsIndexed(
+                    items = visibleTasks,
+                    key = { index, task -> task.listKey(index) },
+                ) { _, task ->
                     DashboardTaskRow(
                         task = task,
-                        onOpen = { onNavigate("task_detail/${task.id}") },
+                        onOpen = { onNavigate("task_detail/${Uri.encode(task.id)}") },
                         onToggle = { scope.launch { repository.toggleTask(task.id) } },
                         onDelete = { deletingTask = task },
                     )
@@ -181,7 +193,12 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             containerColor = TaskBlue,
             contentColor = Color.White,
             shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = BottomDockReservedHeight + 14.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(
+                end = 20.dp,
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 14.dp,
+            ),
         )
     }
 
@@ -199,6 +216,9 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
         )
     }
 }
+
+private fun Task.listKey(index: Int): String =
+    "task|${id.ifBlank { "$title|$due|$course" }}|$index"
 
 @Composable
 private fun TaskOverview(today: Int, near: Int, done: Int, all: Int, progress: Float) {

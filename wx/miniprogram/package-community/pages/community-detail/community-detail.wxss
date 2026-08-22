@@ -1,0 +1,28 @@
+@import "../community/community-forum.wxss";
+.community-detail-page .campus-page-body{padding-top:120px;padding:120px 16px 16px}
+.forum-detail-images{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.forum-detail-image{width:100%;height:200px;border-radius:10px;border:1px solid var(--campus-line)}
+.forum-card-foot .delete-btn{margin-left:auto;color:#c25450}
+.forum-comments{margin-top:18px;padding:18px;border:1px solid var(--campus-line);border-radius:18px;background:#fff}
+.forum-comments-title{font-size:16px;font-weight:700;margin-bottom:14px}
+.forum-comments-empty{color:var(--campus-muted);font-size:13px;text-align:center;padding:20px 0}
+.forum-comment-list{display:flex;flex-direction:column;gap:16px}
+.forum-comment{padding:12px 0;border-top:1px solid #edf0f2}
+.forum-comment.child{padding:8px 0 0;border-top:0}
+.forum-comment-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.forum-avatar.sm{width:30px;height:30px;font-size:12px}
+.forum-comment-meta{display:flex;flex-direction:column;gap:1px}
+.forum-comment-author{font-size:13px;font-weight:600}
+.forum-comment-time{font-size:11px;color:var(--campus-muted)}
+.forum-comment-content{font-size:14px;line-height:1.6;margin:0 0 6px 38px;white-space:pre-wrap;word-break:break-word}
+.forum-comment.child .forum-comment-content{margin-left:30px}
+.forum-comment-actions{margin-left:38px}
+.forum-comment-actions text{font-size:12px;color:var(--campus-muted);font-weight:600}
+.forum-comment-children{margin-left:38px;padding-left:14px;border-left:2px solid #edf0f2;margin-top:6px}
+.forum-comment-form{margin-top:18px;padding-top:14px;border-top:1px solid var(--campus-line)}
+.forum-reply-hint{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--campus-primary);background:#e8f1f7;padding:6px 10px;border-radius:8px;margin-bottom:8px}
+.forum-reply-hint .cancel-btn{font-size:16px}
+.comment-textarea{width:100%;box-sizing:border-box;height:90px;border:1px solid var(--campus-line);border-radius:10px;padding:10px;font-size:14px;line-height:1.6}
+.comment-form-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.send-btn{height:36px;padding:0 18px;border-radius:10px;background:var(--campus-primary);color:#fff;font-size:13px;line-height:36px}
+.send-btn[disabled]{opacity:.5}

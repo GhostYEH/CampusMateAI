@@ -271,6 +271,7 @@ fun FocusSessionScreen(
             running = observationEnabled && focusRunning,
             visible = observationEnabled,
             foreground = appForeground,
+            mode = com.example.campusai.data.model.FocusMode.FOCUS,
         )
     }
     DisposableEffect(lifecycleOwner, voiceController) {

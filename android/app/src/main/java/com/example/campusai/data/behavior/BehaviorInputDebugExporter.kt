@@ -39,7 +39,6 @@ data class BehaviorDatasetCaptureState(
 
 val BehaviorDatasetCaptureState.isRunning: Boolean
     get() = active || preparing
-
 /**
  * Debug-only capture of the exact bitmaps passed to behavior preprocessing.
  * Release builds return before allocating or writing any image data.
@@ -52,6 +51,9 @@ object BehaviorInputDebugExporter {
     private const val DATASET_CAPTURE_PREPARATION_MS = 5_000L
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val countdownExecutor = Executors.newSingleThreadScheduledExecutor()
+    private const val MAX_PENDING_PREDICTIONS = MAX_SAVED_IMAGES
+    private const val MAX_PREDICTION_CSV_BYTES = 512 * 1_024L
+    private const val MAX_DATASET_SESSIONS_PER_LABEL = 8
     private val lastExportAt = AtomicLong(Long.MIN_VALUE)
     private val capturedImageFilenames = ConcurrentHashMap<Long, String>()
     private val sessionPrepared = AtomicBoolean(false)
@@ -91,6 +93,13 @@ object BehaviorInputDebugExporter {
         val behaviorInputFilename =
             "${timestampMs}_behavior_input_${behaviorInputCopy.width}x${behaviorInputCopy.height}.png"
         capturedImageFilenames[timestampMs] = behaviorInputFilename
+        val pendingOverflow = capturedImageFilenames.size - MAX_PENDING_PREDICTIONS
+        if (pendingOverflow > 0) {
+            capturedImageFilenames.keys
+                .sorted()
+                .take(pendingOverflow)
+                .forEach(capturedImageFilenames::remove)
+        }
         ioExecutor.execute {
             try {
                 val directory = debugDirectory(context)
@@ -143,6 +152,7 @@ object BehaviorInputDebugExporter {
                 sessionId = sessionId,
             )
             schedulePreparationUpdates(session)
+            pruneDatasetSessions(labelDirectory, keep = directory)
         }
     }
 
@@ -269,6 +279,9 @@ object BehaviorInputDebugExporter {
         imageFilename: String,
         displayState: BehaviorDisplayState,
     ) {
+        if (file.length() >= MAX_PREDICTION_CSV_BYTES) {
+            file.delete()
+        }
         val probabilities = prediction.probabilities
         val top = probabilities
             .filterKeys { it in UI_BEHAVIORS }
@@ -325,6 +338,18 @@ object BehaviorInputDebugExporter {
         return "session_%03d".format(next)
     }
 
+    private fun pruneDatasetSessions(labelDirectory: File, keep: File) {
+        val sessions = labelDirectory.listFiles()
+            .orEmpty()
+            .filter { it.isDirectory && it.name.startsWith("session_") }
+            .sortedBy { it.lastModified() }
+        val overflow = sessions.size - MAX_DATASET_SESSIONS_PER_LABEL
+        if (overflow <= 0) return
+        sessions
+            .filter { it != keep }
+            .take(overflow)
+            .forEach { it.deleteRecursively() }
+    }
     private fun appendDatasetMetadata(session: DatasetSession, timestampMs: Long, filename: String) {
         val file = File(session.directory, "session_metadata.csv")
         OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8).use { writer ->
@@ -382,7 +407,6 @@ object BehaviorInputDebugExporter {
 
     private fun secondsRemaining(captureStartedAtMs: Long, nowMs: Long): Int =
         ((captureStartedAtMs - nowMs + 999L) / 1_000L).coerceAtLeast(0L).toInt()
-
     private val UI_BEHAVIORS = setOf(
         StudyBehavior.IDLE,
         StudyBehavior.VISIBLE_STUDY,

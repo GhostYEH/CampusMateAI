@@ -173,6 +173,7 @@ qa/
 harmony/.hvigor/
 harmony/build/
 harmony/entry/build/
+harmony/entry/.test/
 harmony/.appanalyzer/
 harmony/local.properties
 harmony/.cxx/
@@ -184,6 +185,23 @@ harmony/entry/src/main/ets/core/GeneratedApiEnv.ets
 # 本地测试凭据 / 临时产物（勿提交）
 backend/scripts/_test_*.json
 backend/data/*.db.bak_*
+backend/data/chaoxing_cache/
+backend/pytest-full.log
 android/build_log*.txt
 codex-harmony-screen.jpeg
+
+# 本地 QA 截图与对比图(不纳入版本控制)
+android/.gradle-v3/
+android/edge-*.png
+android/edge-*.xml
+android/qa-*.png
+android/qa-*.xml
+android/lostfound-*.png
+android/lostfound.xml
+android/window.xml
+web/counselor-*.png
+
+# Backend test temp artifacts (pytest tmpdir, jieba cache, legacy db snapshots)
+backend/.pytest_tmp/
+
 

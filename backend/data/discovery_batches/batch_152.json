@@ -1,0 +1,541 @@
+[
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://portal.wust.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://zhxxw.wust.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "http://mail.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://en.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://jwc.wust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://ysxy.wust.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://jxjyxy.wust.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://pgb.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://kjc.wust.edu.cn/kyzc.htm",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "http://zs.wust.edu.cn/#/index",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://wust.91wllm.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://wustyjs.91wllm.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://rsc.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://rsc.wust.edu.cn/cpyc/zpxx.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://xxgk.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://ehall.wust.edu.cn/taskcenter/workflow/index",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://oa.wust.edu.cn/seeyon/wust/sso.do",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "http://bkjx.wust.edu.cn/jsxsd/sso.jsp",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://wkdzcsp.wust.edu.cn/dlpt/login.aspx",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://news.wust.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "武汉科技大学",
+    "school_code": "4142010488",
+    "candidate_url": "https://xyh.wust.edu.cn/xyh/xyfc.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://i.upc.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://service.upc.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://library.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://xzxx.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://rsc.upc.edu.cn/2315/list.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://fund.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://mail.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://english.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://jwc.upc.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://gs.upc.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://cie.upc.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://jyfz.upc.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://kjc.upc.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://wkc.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://rsc.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://finance.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://zbb.upc.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://io.upc.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://hfc.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://zhaosheng.upc.edu.cn",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://yz.upc.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://career.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://cie.upc.edu.cn/admission_cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://upol.upc.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://sdlx.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://xyh.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://xxgk.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://jwxt.upc.edu.cn/jsxsd/sso.jsp",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://webvpn.upc.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://learn.upc.edu.cn/meol//index.do",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://sydxb.upc.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://news.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "https://journal.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中国石油大学（华东）",
+    "school_code": "4137010425",
+    "candidate_url": "http://dag.upc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://oa.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://ehall.hebau.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://mail.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://english.hebau.edu.cn/index.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://jiaowu.hebau.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://yanjiusheng.hebau.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://guojihezuo.hebau.edu.cn/index.htm",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://chengjiao.hebau.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://nongfa.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://xkxw.hebau.edu.cn/xkjs.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://zhaosheng.hebau.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://yanjiusheng.hebau.edu.cn/zsxx.htm",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://jiuye.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://urp.hebau.edu.cn:1009/jwapp/sys/homeapp/index.do",
+    "system_type": "edu_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://yjsh.hebau.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://lib.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://qks.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://wlzx.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://xczhx.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://xxgk.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "http://zhbcg.hebau.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河北农业大学",
+    "school_code": "4113010086",
+    "candidate_url": "https://www.hebau.edu.cn/xyh/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  }
+]

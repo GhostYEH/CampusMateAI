@@ -1,62 +1,74 @@
-<!--
-  Refactored WXML for the login page, featuring a video background and a layout aligned with the Android app's design.
--->
-<view class="login-page {{reduceMotion ? 'reduce-motion' : ''}}">
-  <!-- Video Background -->
-  <video
-    class="visual-video"
-    src="http://127.0.0.1:8000/login_campus.mp4"
+<view class="login-page">
+  <video wx:if="{{!reduceMotion && videoOk && videoSrc}}"
+    class="bg-video"
+    src="{{videoSrc}}"
     autoplay
     loop
     muted
-    show-play-btn="{{false}}"
     controls="{{false}}"
+    show-center-play-btn="{{false}}"
+    show-play-btn="{{false}}"
+    show-fullscreen-btn="{{false}}"
+    enable-progress-gesture="{{false}}"
     object-fit="cover"
+    binderror="onVideoError"
   ></video>
+  <image wx:if="{{reduceMotion || !videoOk || !videoSrc}}" class="bg-image" src="/assets/campus-login.jpg" mode="aspectFill"></image>
+  <view class="bg-shade"></view>
 
-  <view class="visual-shade"></view>
-
-  <view class="visual-content" style="padding-top: {{statusBarHeight + 48}}px;">
-    <image class="brand-icon" src="/assets/app-icon.png" mode="aspectFill"></image>
-    <view class="visual-title">欢迎使用<br/>Campus AI</view>
-    <view class="visual-copy">登录以继续</view>
-  </view>
-
-  <view class="panel enter">
-    <view class="panel-head">
-      <view class="title">登录</view>
-      <view class="mode-badge">
-        <text>{{mockMode ? 'Mock 模式' : '真实后端'}}</text>
+  <scroll-view class="content" scroll-y enhanced show-scrollbar="{{false}}">
+    <view class="hero" style="padding-top: {{statusBarHeight + 20}}px;">
+      <view class="brand">
+        <view class="brand-mark"><view class="brand-mark-icon"></view></view>
+        <view class="brand-text">
+          <view class="brand-name">CampusMate AI</view>
+          <view class="brand-tag">校园事务 · 温和陪伴</view>
+        </view>
       </view>
+      <view class="hero-title">欢迎回到校园</view>
+      <text class="hero-copy">课程、通知与每一个重要截止，
+都替你稳稳记着。</text>
     </view>
 
     <view class="form">
-      <input
-        class="field"
-        value="{{username}}"
-        placeholder="校园账号"
-        bindinput="onUsername"
-      />
-      <input
-        class="field"
-        value="{{password}}"
-        password="{{!showPassword}}"
-        placeholder="密码"
-        bindinput="onPassword"
-        bindconfirm="submit"
-      />
+      <view class="form-title">登录 CampusMate</view>
+      <view class="form-sub">使用学校统一身份账号继续。</view>
+
+      <view class="login-field">
+        <view class="login-field-label">账号</view>
+        <view class="login-field-control {{usernameFocused ? 'is-focused' : ''}}">
+          <view class="login-field-icon icon-person"></view>
+          <input class="login-field-input" value="{{username}}" placeholder="学号 / 工号 / 用户名" placeholder-class="login-field-placeholder" bindinput="onUsername" bindfocus="onUserFocus" bindblur="onUserBlur" confirm-type="next" />
+        </view>
+      </view>
+
+      <view class="login-field">
+        <view class="login-field-label">密码</view>
+        <view class="login-field-control {{passwordFocused ? 'is-focused' : ''}}">
+          <view class="login-field-icon icon-lock"></view>
+          <input class="login-field-input" value="{{password}}" password="{{!showPassword}}" placeholder="请输入密码" placeholder-class="login-field-placeholder" bindinput="onPassword" bindfocus="onPwdFocus" bindblur="onPwdBlur" bindconfirm="submit" confirm-type="done" />
+          <view class="login-field-eye icon-eye-{{showPassword ? 'off' : 'on'}}" bindtap="togglePassword"></view>
+        </view>
+      </view>
 
       <view wx:if="{{error}}" class="error-banner">{{error}}</view>
 
-      <button
-        class="primary-button submit"
-        loading="{{loading}}"
-        disabled="{{loading}}"
-        hover-class="button-pressed"
-        bindtap="submit"
-      >{{loading ? '正在登录…' : '登录'}}</button>
-    </view>
+      <view class="remember-row" bindtap="toggleRemember">
+        <view class="remember-box {{rememberMe ? 'checked' : ''}}">
+          <view wx:if="{{rememberMe}}" class="remember-check"></view>
+        </view>
+        <view class="remember-text">记住账号密码（下次自动登录）</view>
+      </view>
 
-    <view class="demo-note">演示账号: student_demo / 密码: Demo123456</view>
-  </view>
+      <view class="submit-btn {{loading ? 'is-loading' : ''}}" hover-class="submit-pressed" bindtap="submit">
+        <view wx:if="{{loading}}" class="submit-spinner"></view>
+        <block wx:else>
+          <view class="submit-text">进入校园空间</view>
+          <view class="submit-arrow"></view>
+        </block>
+      </view>
+
+      <view class="form-foot">登录即表示你已阅读并同意校园数据使用说明</view>
+    </view>
+  </scroll-view>
 </view>

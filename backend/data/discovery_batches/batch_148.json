@@ -1,0 +1,330 @@
+[
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://pcportal.guet.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "智慧校园/pcportal"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://iw.guet.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "校内主页"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/utsc/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科教育"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/gra/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生教育"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/zs/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "招生信息网"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/yjszs/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生招生"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://jy.guet.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "毕业生就业网"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/international/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "国际交流"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/gdkyc/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科学研究"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/rsc/88/list.htm",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "师资队伍"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/rsc/89/list.htm",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "诚聘英才"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://www.guet.edu.cn/pubinfo/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "http://mail.guet.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "邮箱登录"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://v.guet.edu.cn/login",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校外VPN"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "http://xb.guet.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学报"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://legalization.guet.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "软件正版化"
+  },
+  {
+    "school_name": "桂林电子科技大学",
+    "school_code": "4145010595",
+    "candidate_url": "https://mz.guet.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "媒资库"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://ehall.lzjtu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "网上办事大厅/ehall"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://eip.lzjtu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "EIP服务大厅"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://jiaowu.lzjtu.edu.cn/bkpg",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科教学审核评估"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://zsb.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生招生"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://yjsc.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生招生"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://dia.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "留学生招生"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://cjxy.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "成教招生"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://jyzx.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业指导中心"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://wjpt.lzjtu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "网教平台"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://lib.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书情报"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://xsc.lzjtu.edu.cn/jkxl",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生健康心理"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://mail.lzjtu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教师邮箱"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://mail.stu.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生邮箱"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://news.lzjtu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "新闻中心"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://faculty.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教师主页"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://journal.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "交大学报"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://cgzx.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "成果转化"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://rcgz.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人才招聘"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://xxgk.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://en.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "English"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://cxcy.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "创新创业"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://edata.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "数据平台"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "https://aichat.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "智能机器人"
+  },
+  {
+    "school_name": "兰州交通大学",
+    "school_code": "4162010732",
+    "candidate_url": "http://tdjs.lzjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "高职生教育"
+  }
+]

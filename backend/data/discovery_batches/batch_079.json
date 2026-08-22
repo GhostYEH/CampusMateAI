@@ -1,0 +1,66 @@
+[
+  {
+    "school_name": "广西医科大学",
+    "school_code": "4145010598",
+    "candidate_url": "https://jwc.gxmu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务在线"
+  },
+  {
+    "school_name": "广西医科大学",
+    "school_code": "4145010598",
+    "candidate_url": "https://zs.gxmu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本专科招生"
+  },
+  {
+    "school_name": "广西医科大学",
+    "school_code": "4145010598",
+    "candidate_url": "https://jcy.gxmu.edu.cn",
+    "system_type": "career-employment",
+    "source": "webfetch_official_site",
+    "notes": "就业信息网"
+  },
+  {
+    "school_name": "内蒙古农业大学",
+    "school_code": "4115010129",
+    "candidate_url": "https://i.imau.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "服务门户"
+  },
+  {
+    "school_name": "内蒙古农业大学",
+    "school_code": "4115010129",
+    "candidate_url": "https://jwc.imau.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务"
+  },
+  {
+    "school_name": "内蒙古农业大学",
+    "school_code": "4115010129",
+    "candidate_url": "https://yjsy.imau.edu.cn",
+    "system_type": "graduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生"
+  },
+  {
+    "school_name": "贵州财经大学",
+    "school_code": "4152010671",
+    "candidate_url": "https://jwc.gufe.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教务系统"
+  },
+  {
+    "school_name": "贵州财经大学",
+    "school_code": "4152010671",
+    "candidate_url": "https://zt.gufe.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "数字贵财"
+  }
+]

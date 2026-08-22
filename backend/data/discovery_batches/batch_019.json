@@ -1,0 +1,9 @@
+[
+  {"school_name": "长安大学", "candidate_url": "http://bkjw.chd.edu.cn/eams/", "source_url": "https://www.bing.com/search?q=长安大学+教务系统+site:edu.cn"},
+  {"school_name": "长安大学", "candidate_url": "http://bkjw.chd.edu.cn/eams/localLogin.action", "source_url": "https://www.bing.com/search?q=长安大学+教务系统+site:edu.cn"},
+  {"school_name": "长安大学", "candidate_url": "http://yjs.chd.edu.cn/", "source_url": "https://www.bing.com/search?q=长安大学+教务系统+site:edu.cn"},
+  {"school_name": "上海科技大学", "candidate_url": "https://eams.shanghaitech.edu.cn/eams/login.action", "source_url": "https://www.bing.com/search?q=eams+homeExt.action+edu.cn+教务+登录"},
+  {"school_name": "中央财经大学", "candidate_url": "http://xuanke.cufe.edu.cn/jwglxt/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=中央财经大学+教务系统+site:edu.cn"},
+  {"school_name": "中央财经大学", "candidate_url": "http://yjsjy.cufe.edu.cn/yjsxt/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=中央财经大学+教务系统+site:edu.cn"},
+  {"school_name": "沈阳工程学院", "candidate_url": "http://qgjw.suet.edu.cn/", "source_url": "https://www.bing.com/search?q=KINGOSOFT+青果+教务系统+登录+edu.cn"}
+]

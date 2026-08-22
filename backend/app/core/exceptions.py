@@ -268,6 +268,90 @@ class PersonalTaskConflict(AppException):
     message = "个人待办当前状态不允许该操作。"
 
 
+# ===== QR 扫码登录 =====
+
+
+class QrInvalid(AppException):
+    code = "QR_INVALID"
+    http_status = 400
+    message = "二维码无效。"
+
+
+class QrExpired(AppException):
+    code = "QR_EXPIRED"
+    http_status = 410
+    message = "二维码已过期。"
+
+
+class QrAlreadyScanned(AppException):
+    code = "QR_ALREADY_SCANNED"
+    http_status = 409
+    message = "二维码已被扫描。"
+
+
+class QrAlreadyConfirmed(AppException):
+    code = "QR_ALREADY_CONFIRMED"
+    http_status = 409
+    message = "二维码已确认。"
+
+
+class QrAlreadyConsumed(AppException):
+    code = "QR_ALREADY_CONSUMED"
+    http_status = 409
+    message = "二维码已使用，不能重复兑换。"
+
+
+class QrCancelled(AppException):
+    code = "QR_CANCELLED"
+    http_status = 409
+    message = "二维码已取消。"
+
+
+class QrUserMismatch(AppException):
+    code = "QR_USER_MISMATCH"
+    http_status = 403
+    message = "确认用户与扫描用户不一致。"
+
+
+class QrBrowserTokenInvalid(AppException):
+    code = "QR_BROWSER_TOKEN_INVALID"
+    http_status = 401
+    message = "浏览器凭据无效。"
+
+
+class QrNotConfirmed(AppException):
+    code = "QR_NOT_CONFIRMED"
+    http_status = 409
+    message = "二维码尚未确认，不能兑换。"
+
+
+class QrRateLimited(AppException):
+    code = "QR_RATE_LIMITED"
+    http_status = 429
+    message = "创建二维码过于频繁，请稍后再试。"
+
+
+# ===== Trusted Device（可信设备）=====
+
+
+class TrustedDeviceInvalid(AppException):
+    code = "TRUSTED_DEVICE_INVALID"
+    http_status = 401
+    message = "可信设备凭据无效。"
+
+
+class TrustedDeviceExpired(AppException):
+    code = "TRUSTED_DEVICE_EXPIRED"
+    http_status = 401
+    message = "可信设备凭据已过期。"
+
+
+class TrustedDeviceRevoked(AppException):
+    code = "TRUSTED_DEVICE_REVOKED"
+    http_status = 401
+    message = "可信设备已被撤销。"
+
+
 def _build_error_body(
     code: str,
     message: str,

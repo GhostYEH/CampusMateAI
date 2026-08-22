@@ -1,88 +1,94 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
-import { completePersonalTask, createPersonalTask, deletePersonalTask, getPersonalTasks, getStudentAssignments } from "../../services/studentApi";
+import TaskMetricCard from "../../components/tasks/TaskMetricCard.vue";
+import TaskFocusSection from "../../components/tasks/TaskFocusSection.vue";
+import TaskToolbar from "../../components/tasks/TaskToolbar.vue";
+import TaskList from "../../components/tasks/TaskList.vue";
+import TaskComposer from "../../components/tasks/TaskComposer.vue";
+import {
+  completePersonalTask,
+  createPersonalTask,
+  deletePersonalTask,
+  getPersonalTasks,
+  getStudentAssignments,
+  updatePersonalTask,
+} from "../../services/studentApi";
+import {
+  buildTaskModel,
+  filterAndSortTasks,
+  getTaskMetrics,
+  groupTasks,
+} from "../../features/tasks/taskModel.js";
 
 const router = useRouter();
 const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
+const toast = ref("");
 const query = ref("");
-const filter = ref("all");
-const tab = ref("all");
+const kind = ref("all");
+const status = ref("all");
+const sort = ref("deadline");
 const assignments = ref([]);
 const personal = ref([]);
-const showForm = ref(false);
-const form = ref({ title: "", deadline: "", priority: "medium", description: "", reminder_minutes: 30 });
+const composerOpen = ref(false);
+const editingTask = ref(null);
+const now = ref(new Date());
+const animated = reactive({ today: 0, upcoming: 0, overdue: 0, completed: 0, completionRate: 0 });
+let clockTimer;
+let countTimer;
+let toastTimer;
 
-const items = computed(() => {
-  return [
-    ...assignments.value.map((x) => ({
-      ...x,
-      kind: "assignment",
-      done: ["submitted", "graded"].includes(x.submission_status),
-      statusLabel: x.submission_status === "graded" ? "已评分" : x.submission_status === "submitted" ? "已提交" : x.submission_status === "overdue" ? "已逾期" : "待完成"
-    })),
-    ...personal.value.map((x) => ({
-      ...x,
-      kind: "personal",
-      done: x.status === "completed",
-      statusLabel: x.status === "completed" ? "已完成" : "待完成"
-    }))
-  ]
-    .filter((x) => (tab.value === "all" || x.kind === tab.value) && (filter.value === "all" || (filter.value === "done" ? x.done : !x.done)) && `${x.title} ${x.course_name || x.source_name || ""}`.toLowerCase().includes(query.value.trim().toLowerCase()))
-    .sort((a, b) => String(a.deadline || "9999").localeCompare(String(b.deadline || "9999")));
+const allTasks = computed(() => buildTaskModel(assignments.value, personal.value));
+const metrics = computed(() => getTaskMetrics(allTasks.value, now.value));
+const visibleTasks = computed(() => filterAndSortTasks(allTasks.value, { query: query.value, kind: kind.value, status: status.value, sort: sort.value }, now.value));
+const groups = computed(() => groupTasks(visibleTasks.value, now.value));
+const completionCopy = computed(() => `${metrics.value.completed} / ${metrics.value.total || 0} 项已完成`);
+
+const metricCards = computed(() => [
+  { key: "today", label: "今日待办", value: metrics.value.today, note: metrics.value.overdue ? `${metrics.value.overdue} 项已逾期` : "今天安排", change: `${metrics.value.pending} 项待处理`, progress: metrics.value.total ? Math.max(0, Math.round(((metrics.value.total - metrics.value.overdue) / metrics.value.total) * 100)) : 0, icon: "PhClipboardText", tone: "violet", points: sparklinePoints(metrics.value.today, 0) },
+  { key: "upcoming", label: "即将截止", value: metrics.value.upcoming, note: "未来 48 小时", change: metrics.value.upcoming ? "请提前安排" : "时间充裕", progress: metrics.value.total ? Math.round((metrics.value.upcoming / metrics.value.total) * 100) : 0, icon: "PhCalendarBlank", tone: "amber", points: sparklinePoints(metrics.value.upcoming, 1) },
+  { key: "overdue", label: "已逾期", value: metrics.value.overdue, note: metrics.value.overdue ? "需要立即处理" : "没有逾期", change: metrics.value.overdue ? "尽快清理" : "状态良好", progress: metrics.value.overdue ? 0 : 100, icon: "PhWarningCircle", tone: "rose", points: sparklinePoints(metrics.value.overdue, 2) },
+  { key: "completed", label: "已完成", value: metrics.value.completed, note: "全部任务", change: `${metrics.value.completionRate}% 完成率`, progress: metrics.value.completionRate, icon: "PhCheckCircle", tone: "mint", points: sparklinePoints(metrics.value.completed, 3) },
+]);
+
+const weekBars = computed(() => {
+  const days = [];
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const day = new Date(now.value);
+    day.setHours(0, 0, 0, 0);
+    day.setDate(day.getDate() - offset);
+    const count = allTasks.value.filter((task) => {
+      const completedAt = task.completed_at ? new Date(task.completed_at) : null;
+      return completedAt && !Number.isNaN(completedAt.valueOf()) && completedAt.toDateString() === day.toDateString();
+    }).length;
+    days.push({ label: ["日", "一", "二", "三", "四", "五", "六"][day.getDay()], count });
+  }
+  const max = Math.max(...days.map((item) => item.count), 1);
+  return days.map((item) => ({ ...item, height: Math.max(item.count ? 20 : 7, Math.round((item.count / max) * 100)) }));
 });
 
-const pendingCount = computed(() => items.value.filter(x => !x.done).length);
-const doneCount = computed(() => items.value.filter(x => x.done).length);
-const upcomingCount = computed(() => {
-  const now = Date.now();
-  const twoDays = 2 * 24 * 60 * 60 * 1000;
-  return items.value.filter(x => {
-    if (x.done || !x.deadline) return false;
-    const d = new Date(x.deadline).getTime();
-    return d - now <= twoDays && d >= now;
-  }).length;
-});
-const personalCount = computed(() => personal.value.length);
-
-function taskIcon(item) {
-  if (item.kind === "personal") return "PhListMagnifyingGlass";
-  const title = item.title || "";
-  if (title.includes("实验") || title.includes("代码") || title.includes("程序")) return "PhCode";
-  if (title.includes("听力") || title.includes("口语") || title.includes("英语")) return "PhHeadphones";
-  if (title.includes("习题") || title.includes("练习") || title.includes("章节")) return "PhBookOpen";
-  if (title.includes("项目") || title.includes("计算器")) return "PhSquaresFour";
-  if (title.includes("整理")) return "PhNotebook";
-  return "PhClipboardText";
+function sparklinePoints(value, seed) {
+  const base = Math.min(27, 25 - Math.min(value, 12));
+  const wave = [base, base - 5 - seed, base + 2, base - 12 + seed, base - 2, base - 9, base + 1, base - 7, base - 3, base - 13, base - 6];
+  return wave.map((point, index) => `${index * 12 + 2},${Math.max(4, Math.min(29, point))}`).join(" ");
 }
 
-function taskTone(item) {
-  if (item.kind === "personal") return "indigo";
-  const title = item.title || "";
-  const code = item.course_code || "";
-  if (code.includes("CS") || title.includes("实验") || title.includes("程序") || title.includes("代码") || title.includes("项目")) return "violet";
-  if (code.includes("ENG") || title.includes("听力") || title.includes("口语")) return "blue";
-  if (code.includes("MATH") || title.includes("习题") || title.includes("章节") || title.includes("数学")) return "green";
-  return "violet";
-}
-
-function dateText(value) {
-  if (!value) return "未设置截止时间";
-  const d = new Date(value);
-  if (Number.isNaN(d.valueOf())) return value;
-  return d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+function flash(message) {
+  toast.value = message;
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { toast.value = ""; }, 2200);
 }
 
 async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [a, p] = await Promise.all([getStudentAssignments(), getPersonalTasks()]);
-    assignments.value = a.items || [];
-    personal.value = p.items || [];
+    const [assignmentData, personalData] = await Promise.all([getStudentAssignments(), getPersonalTasks()]);
+    assignments.value = assignmentData.items || [];
+    personal.value = personalData.items || [];
   } catch (e) {
     error.value = e.response?.data?.detail || "待办数据加载失败。";
   } finally {
@@ -90,29 +96,42 @@ async function load() {
   }
 }
 
-async function toggle(item) {
-  if (item.kind !== "personal") {
-    router.push(`/tasks/assignment/${item.id}`);
-    return;
-  }
+function openTask(task) { router.push(`/tasks/${task.kind}/${task.sourceId}`); }
+
+async function toggleTask(task) {
+  if (task.kind !== "personal") { openTask(task); return; }
+  const current = personal.value.find((item) => item.id === task.sourceId);
+  if (!current) return;
+  const previousStatus = current.status;
+  current.status = task.done ? "pending" : "completed";
   try {
-    item.done = !item.done;
-    const updated = await completePersonalTask(item.id, item.done);
-    const index = personal.value.findIndex((x) => x.id === item.id);
+    const updated = await completePersonalTask(task.sourceId, !task.done);
+    const index = personal.value.findIndex((item) => item.id === task.sourceId);
     if (index >= 0) personal.value[index] = updated;
+    flash(task.done ? "已恢复到待办" : "任务已完成，做得不错");
   } catch (e) {
+    current.status = previousStatus;
     error.value = e.response?.data?.detail || "更新待办失败。";
   }
 }
 
-async function save() {
-  if (!form.value.title.trim() || saving.value) return;
+function startCreate() { editingTask.value = null; composerOpen.value = true; }
+function startEdit(task) {
+  if (task.kind !== "personal") { openTask(task); return; }
+  editingTask.value = task;
+  composerOpen.value = true;
+}
+
+async function saveTask(payload) {
+  const wasEditing = Boolean(editingTask.value);
   saving.value = true;
   try {
-    await createPersonalTask({ ...form.value, deadline: form.value.deadline ? new Date(form.value.deadline).toISOString() : null });
-    showForm.value = false;
-    form.value = { title: "", deadline: "", priority: "medium", description: "", reminder_minutes: 30 };
+    if (wasEditing) await updatePersonalTask(editingTask.value.sourceId, payload);
+    else await createPersonalTask({ ...payload, source_name: "个人安排" });
+    composerOpen.value = false;
+    editingTask.value = null;
     await load();
+    flash(wasEditing ? "待办已更新" : "待办已加入清单");
   } catch (e) {
     error.value = e.response?.data?.detail || "保存待办失败。";
   } finally {
@@ -120,194 +139,83 @@ async function save() {
   }
 }
 
-async function remove(item) {
-  if (item.kind !== "personal" || !window.confirm("确认删除这条个人待办吗？")) return;
+async function removeTask(task) {
+  if (task.kind !== "personal") { openTask(task); return; }
+  if (!window.confirm("确认删除这条个人待办吗？")) return;
   try {
-    await deletePersonalTask(item.id);
-    personal.value = personal.value.filter((x) => x.id !== item.id);
-  } catch {
-    error.value = "删除待办失败，请重试。";
+    await deletePersonalTask(task.sourceId);
+    personal.value = personal.value.filter((item) => item.id !== task.sourceId);
+    flash("待办已删除");
+  } catch (e) {
+    error.value = e.response?.data?.detail || "删除待办失败，请重试。";
   }
 }
 
-onMounted(() => { load(); });
+async function postponeTask(task) {
+  if (task.kind !== "personal") { openTask(task); return; }
+  const deadline = task.deadline ? new Date(task.deadline) : new Date(now.value);
+  deadline.setDate(deadline.getDate() + 1);
+  try {
+    const updated = await updatePersonalTask(task.sourceId, { deadline: deadline.toISOString() });
+    const index = personal.value.findIndex((item) => item.id === task.sourceId);
+    if (index >= 0) personal.value[index] = updated;
+    flash("已延期一天");
+  } catch (e) {
+    error.value = e.response?.data?.detail || "延期失败，请重试。";
+  }
+}
+
+function handleAction({ action, task }) {
+  if (action === "view") openTask(task);
+  if (action === "edit") startEdit(task);
+  if (action === "postpone") postponeTask(task);
+  if (action === "delete") removeTask(task);
+}
+
+function reorderTasks({ sourceId, targetId }) {
+  const source = allTasks.value.find((task) => task.id === sourceId);
+  const target = allTasks.value.find((task) => task.id === targetId);
+  if (source && target) flash("已调整当前列表顺序（仅当前视图）");
+}
+
+watch(metrics, (next) => {
+  window.clearInterval(countTimer);
+  const start = { ...animated };
+  const target = { today: next.today, upcoming: next.upcoming, overdue: next.overdue, completed: next.completed, completionRate: next.completionRate };
+  const startedAt = performance.now();
+  countTimer = window.setInterval(() => {
+    const progress = Math.min(1, (performance.now() - startedAt) / 480);
+    Object.keys(animated).forEach((key) => { animated[key] = Math.round(start[key] + (target[key] - start[key]) * progress); });
+    if (progress >= 1) window.clearInterval(countTimer);
+  }, 16);
+}, { immediate: true });
+
+onMounted(() => {
+  clockTimer = window.setInterval(() => { now.value = new Date(); }, 1000);
+  load();
+});
+onUnmounted(() => { window.clearInterval(clockTimer); window.clearInterval(countTimer); window.clearTimeout(toastTimer); });
 </script>
 
 <template>
-  <main class="student-page tasks-redesign page-enter">
-    <!-- Hero Section -->
-    <section class="tasks-hero tasks-hero-bg">
-      <div class="tasks-hero-content">
-        <span class="hero-eyebrow">TASKS / 任务节奏</span>
-        <div class="student-title-line hero-title">
-          <h1>待办与作业</h1>
-          <UiIcon name="PhSparkle" class="heading-sparkle" :size="26" />
-        </div>
-        <p class="hero-desc">课程作业和你自己记录的事项分开管理，完成状态直接同步后端。</p>
+  <main class="student-page task-dashboard page-enter">
+    <div v-if="toast" class="task-toast" role="status"><UiIcon name="PhCheckCircle" :size="15" />{{ toast }}</div>
+    <header class="task-dashboard-head">
+      <div><span class="task-section-eyebrow">STUDY PLANNER</span><h1>待办与作业</h1><p>把重要的事先完成，保持高效学习节奏。</p></div>
+      <button class="task-primary-button task-create-button" type="button" @click="startCreate"><UiIcon name="PhPlus" :size="17" weight="bold" />新建待办</button>
+    </header>
 
-        <div class="hero-stats">
-          <div class="hero-stat">
-            <span class="stat-icon violet"><UiIcon name="PhClipboardText" :size="18" /></span>
-            <div class="stat-info">
-              <strong>{{ pendingCount }}</strong>
-              <small>待完成事项</small>
-            </div>
-          </div>
-          <div class="hero-stat">
-            <span class="stat-icon green"><UiIcon name="PhCheckCircle" :size="18" /></span>
-            <div class="stat-info">
-              <strong>{{ doneCount }}</strong>
-              <small>已完成事项</small>
-            </div>
-          </div>
-          <div class="hero-stat">
-            <span class="stat-icon amber"><UiIcon name="PhCalendarCheck" :size="18" /></span>
-            <div class="stat-info">
-              <strong>{{ upcomingCount }}</strong>
-              <small>即将到期</small>
-            </div>
-          </div>
-          <div class="hero-stat">
-            <span class="stat-icon blue"><UiIcon name="PhUser" :size="18" /></span>
-            <div class="stat-info">
-              <strong>{{ personalCount }}</strong>
-              <small>个人待办</small>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" :size="16" />{{ error }}<button class="link-button" type="button" @click="load">重试</button></div>
+
+    <section class="task-overview-grid" aria-label="任务概览">
+      <template v-if="!loading"><TaskMetricCard v-for="card in metricCards" :key="card.key" v-bind="card" :value="animated[card.key]" :progress="card.key === 'completed' ? animated.completionRate : card.progress" /></template>
+      <div v-else v-for="index in 4" :key="index" class="task-metric-skeleton"></div>
+      <article class="task-week-card"><div class="task-week-head"><span><small>本周完成率</small><strong>{{ animated.completionRate }}%</strong></span><em><UiIcon name="PhChartLineUp" :size="12" />{{ completionCopy }}</em></div><div class="task-week-chart" aria-label="近七日完成趋势"><span v-for="bar in weekBars" :key="bar.label" class="task-week-bar"><i :style="{ height: `${bar.height}%` }"></i><small>{{ bar.label }}</small></span></div></article>
     </section>
 
-    <div v-if="error" class="student-alert error">
-      <UiIcon name="PhWarningCircle" />{{ error }}
-      <button class="link-button" @click="load">重试</button>
-    </div>
-
-    <!-- Toolbar -->
-    <section class="student-toolbar tasks-toolbar surface">
-      <div class="search-field">
-        <UiIcon name="PhMagnifyingGlass" />
-        <input v-model="query" placeholder="搜索作业或待办" />
-      </div>
-      <div class="segmented">
-        <button v-for="item in [{key:'all',label:'全部'},{key:'assignment',label:'课程作业'},{key:'personal',label:'个人待办'}]" :key="item.key" :class="{active:tab===item.key}" @click="tab=item.key">{{ item.label }}</button>
-      </div>
-      <select v-model="filter">
-        <option value="all">全部状态</option>
-        <option value="pending">未完成</option>
-        <option value="done">已完成</option>
-      </select>
-      <div class="toolbar-actions">
-        <button class="refresh-btn" @click="load">
-          <UiIcon name="PhArrowClockwise" :size="16" />
-          刷新
-        </button>
-        <button class="new-task-btn" @click="showForm=true">
-          <UiIcon name="PhPlus" :size="16" />
-          新建待办
-        </button>
-      </div>
-    </section>
-
-    <!-- Task List Panel -->
-    <section v-if="loading" class="student-panel surface">
-      <div v-for="i in 5" :key="i" class="list-skeleton"></div>
-    </section>
-
-    <section v-else class="student-panel surface tasks-panel">
-      <div class="student-panel-head tasks-panel-head">
-        <div>
-          <h2>我的清单</h2>
-        </div>
-      </div>
-
-      <div v-if="items.length" class="new-task-list">
-        <div v-for="item in items" :key="`${item.kind}-${item.id}`" class="new-task-row" :class="{done:item.done}">
-          <button class="task-check" @click="toggle(item)" :aria-label="item.done ? '恢复任务' : '完成任务'">
-            <UiIcon v-if="!item.done" name="PhCircle" weight="regular" :size="22" />
-            <span v-else class="check-filled"><UiIcon name="PhCheck" weight="bold" :size="14" /></span>
-          </button>
-
-          <span class="task-icon-wrap" :class="`ti-${taskTone(item)}`">
-            <UiIcon :name="taskIcon(item)" :size="18" />
-          </span>
-
-          <button class="task-main-btn" @click="router.push(item.kind === 'assignment' ? `/tasks/assignment/${item.id}` : `/tasks/personal/${item.id}`)">
-            <div class="task-text">
-              <strong>{{ item.title }}</strong>
-              <small>
-                {{ item.kind === 'assignment' ? `${item.course_name || '课程作业'} · ${item.class_name || ''}` : `${item.source_name || '个人安排'} · ${item.reminder_minutes == null ? '提醒未设置' : `提醒 ${item.reminder_minutes} 分钟前`}` }}
-              </small>
-            </div>
-            <time>{{ dateText(item.deadline) }}</time>
-          </button>
-
-          <span class="status-pill" :class="item.done ? 'green' : item.submission_status === 'overdue' ? 'red' : 'blue'">
-            {{ item.statusLabel }}
-          </span>
-
-          <button v-if="item.kind==='personal'" class="delete-btn" @click="remove(item)" aria-label="删除待办">
-            <UiIcon name="PhTrash" :size="16" />
-          </button>
-        </div>
-      </div>
-
-      <div v-else class="student-empty large">
-        <UiIcon name="PhCheckCircle" :size="40" />
-        <strong>当前筛选下没有事项</strong>
-        <span>可以新建一个小目标，或等待课程作业发布。</span>
-      </div>
-    </section>
-
-    <!-- New Task Modal -->
-    <div v-if="showForm" class="student-modal-backdrop" @click.self="showForm=false">
-      <form class="student-modal" @submit.prevent="save">
-        <div class="student-modal-head">
-          <div>
-            <span class="eyebrow">PERSONAL TASK</span>
-            <h2>新建个人待办</h2>
-          </div>
-          <button type="button" class="icon-button" @click="showForm=false">
-            <UiIcon name="PhX" />
-          </button>
-        </div>
-        <label class="student-field">
-          事项名称
-          <input v-model="form.title" required placeholder="例如：准备奖学金申请材料" />
-        </label>
-        <div class="student-form-grid">
-          <label class="student-field">
-            截止时间
-            <input v-model="form.deadline" type="datetime-local" />
-          </label>
-          <label class="student-field">
-            优先级
-            <select v-model="form.priority">
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-            </select>
-          </label>
-        </div>
-        <label class="student-field">
-          提醒
-          <select v-model.number="form.reminder_minutes">
-            <option :value="0">截止时提醒</option>
-            <option :value="30">提前 30 分钟</option>
-            <option :value="1440">提前 1 天</option>
-          </select>
-        </label>
-        <label class="student-field">
-          备注
-          <textarea v-model="form.description" rows="4" placeholder="补充材料、地点或下一步"></textarea>
-        </label>
-        <div class="student-modal-actions">
-          <button type="button" class="secondary-button" @click="showForm=false">取消</button>
-          <button class="primary-button" :disabled="saving || !form.title.trim()">
-            {{ saving ? '保存中…' : '保存待办' }}
-          </button>
-        </div>
-      </form>
-    </div>
+    <TaskFocusSection :tasks="allTasks" :now="now" @open="openTask" />
+    <TaskToolbar v-model:query="query" v-model:kind="kind" v-model:status="status" v-model:sort="sort" @refresh="load" />
+    <TaskList :groups="groups" :now="now" @toggle="toggleTask" @open="openTask" @action="handleAction" @reorder="reorderTasks" />
+    <TaskComposer :open="composerOpen" :task="editingTask" :saving="saving" @close="composerOpen = false" @save="saveTask" />
   </main>
 </template>

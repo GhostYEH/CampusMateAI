@@ -1,0 +1,18 @@
+[
+  {"school_name": "中山大学", "candidate_url": "https://jwxt.sysu.edu.cn/jwxt/", "source_url": "https://www.bing.com/search?q=中山大学+教务系统"},
+  {"school_name": "中山大学", "candidate_url": "https://jwb.sysu.edu.cn/portal", "source_url": "https://www.bing.com/search?q=中山大学+教务系统"},
+  {"school_name": "中山大学", "candidate_url": "https://jwb.sysu.edu.cn/", "source_url": "https://www.bing.com/search?q=中山大学+教务系统"},
+  {"school_name": "中山大学", "candidate_url": "https://portal.sysu.edu.cn/", "source_url": "https://www.bing.com/search?q=中山大学+教务系统"},
+  {"school_name": "中山大学", "candidate_url": "https://cms.sysu.edu.cn/", "source_url": "https://www.bing.com/search?q=中山大学+教务系统"},
+  {"school_name": "北京大学", "candidate_url": "https://dean.pku.edu.cn/", "source_url": "https://www.bing.com/search?q=北京大学教务部"},
+  {"school_name": "北京大学", "candidate_url": "https://dean.pku.edu.cn/web/student.php", "source_url": "https://www.bing.com/search?q=北京大学教务部"},
+  {"school_name": "北京大学", "candidate_url": "https://portal.pku.edu.cn/", "source_url": "https://www.bing.com/search?q=北京大学教务部"},
+  {"school_name": "沈阳师范大学", "candidate_url": "https://jwc.synu.edu.cn/jwglxt/", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "东北大学", "candidate_url": "https://jwxt.neu.edu.cn/", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "华南师范大学", "candidate_url": "https://jwxt.scnu.edu.cn/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "上海大学", "candidate_url": "http://jwxt.shu.edu.cn/sso/shulogin", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "北京信息科技大学", "candidate_url": "https://jxgl.bistu.edu.cn/", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "内蒙古大学", "candidate_url": "https://jwxt.imu.edu.cn/login", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "中国计量大学", "candidate_url": "https://jwxt.cjlu.edu.cn/xtgl/login_slogin.html", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"},
+  {"school_name": "集美大学", "candidate_url": "https://jwxt.jmu.edu.cn/student/sso/login", "source_url": "https://www.bing.com/search?q=jwxt.edu.cn+教务管理系统"}
+]

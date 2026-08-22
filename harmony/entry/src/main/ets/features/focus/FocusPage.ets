@@ -1,6 +1,8 @@
-import { StudySession } from '../../data/Models';
+import { StudySession, FocusMode } from '../../data/Models';
+import { FocusModeMapper } from '../../data/FocusModeMapper';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct FocusPage {
@@ -8,18 +10,21 @@ export struct FocusPage {
   @Prop activeSession?: StudySession = undefined;
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State mode: string = '专注';
   @State secondsLeft: number = 25 * 60;
   @State running: boolean = false;
+  @State startPressed: boolean = false;
   private timerId: number = -1;
   onBack: () => void = () => {};
-  onStart: () => void = () => {};
+  onStart: (mode: FocusMode) => void = () => {};
   onPause: () => void = () => {};
   onResume: () => void = () => {};
   onFinish: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   aboutToDisappear(): void { this.stopClock(); }
+  currentFocusMode(): FocusMode { return FocusModeMapper.fromLabel(this.mode); }
   totalSeconds(): number { return this.mode === '专注' ? 25 * 60 : this.mode === '短休息' ? 5 * 60 : 15 * 60; }
   timeText(): string {
     const minute = Math.floor(this.secondsLeft / 60).toString().padStart(2, '0');
@@ -31,7 +36,7 @@ export struct FocusPage {
     if (this.running) { this.running = false; this.stopClock(); this.onPause(); return; }
     this.stopClock();
     this.running = true;
-    if (this.secondsLeft === this.totalSeconds()) this.onStart(); else this.onResume();
+    if (this.secondsLeft === this.totalSeconds()) this.onStart(this.currentFocusMode()); else this.onResume();
     this.timerId = setInterval(() => {
       if (this.secondsLeft > 0) this.secondsLeft -= 1;
       else { this.running = false; this.stopClock(); this.onFinish(); }
@@ -46,6 +51,7 @@ export struct FocusPage {
           .fontColor(this.mode === item ? '#FFFFFFFF' : this.palette().muted)
           .backgroundColor(this.mode === item ? this.palette().primary : this.palette().surface)
           .border({ width: 1, color: this.mode === item ? this.palette().primary : this.palette().line }).borderRadius(18)
+          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
           .onClick(() => this.resetMode(item))
       })
     }.width('100%')
@@ -72,7 +78,10 @@ export struct FocusPage {
             }
             Text(this.running ? '暂停' : this.secondsLeft !== this.totalSeconds() ? '继续' : '开始专注').fontColor('#FFFFFFFF').fontSize(13).fontWeight(FontWeight.Bold)
           }
-        }.layoutWeight(1).height(48).backgroundColor(this.palette().primary).onClick(() => this.startClock())
+        }.layoutWeight(1).height(48).backgroundColor(this.palette().primary)
+          .scale({ x: this.startPressed ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0, y: this.startPressed ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0 })
+          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+          .onClick(() => { this.startPressed = true; setTimeout(() => { this.startPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.startClock(); })
         Button('结束').width(92).height(48).backgroundColor(this.palette().soft).fontColor(this.palette().primary)
           .onClick(() => { this.stopClock(); this.running = false; this.secondsLeft = this.totalSeconds(); this.onFinish(); })
       }.width('100%')
@@ -90,11 +99,12 @@ export struct FocusPage {
         Text(`${Math.max(1, Math.floor((item.duration_seconds ?? 0) / 60))} 分钟 · ${item.status === 'completed' ? '已完成' : '进行中'}`).fontColor(this.palette().muted).fontSize(10)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 10, bottom: 10 })
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 12) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: '专注自习', subtitle: '一次只做一件事，让注意力回到当下', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({ title: '专注自习', subtitle: '一次只做一件事，让注意力回到当下', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
       Scroll() {
         Column({ space: 13 }) {
           this.ModeTabs()

@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     expression_contribution_path: str = "./data/expression_contributions"
     max_expression_contribution_mb: int = 3
     max_upload_mb: int = 10
+    community_image_path: str = "./data/community_images"
+    community_image_max_mb: int = 5
+    chaoxing_cache_path: str = "./data/chaoxing_cache"
+    chaoxing_cache_max_mb: int = 1024
+    chaoxing_cache_file_max_mb: int = 256
     # 用字符串表示，逗号分隔；通过 allowed_extensions_list 属性获取列表
     allowed_extensions: str = "md,txt,pdf,docx"
     # 启动时是否自动导入内置测试环境资料(默认关闭;仅 dev/test 显式开启)
@@ -89,11 +94,36 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30  # access token 短有效期
     refresh_token_expire_days: int = 14   # refresh token 较长有效期
 
+    # ===== QR 扫码登录 =====
+    # 二维码有效期(秒)，默认 2 分钟
+    qr_login_expire_seconds: int = 120
+    # QR session 惰性清理：每次创建时清理过期记录的最大条数
+    qr_login_cleanup_batch: int = 50
+    # QR create 接口简单防刷：同一 device_id 在窗口期内最大创建次数
+    qr_create_rate_window_seconds: int = 10
+    qr_create_rate_max: int = 5
+
+    # ===== Trusted Device（可信设备自动登录）=====
+    # 可信设备有效期(天)，默认 30 天
+    trusted_device_expire_days: int = 30
+    # 可信设备 cookie 名称
+    trusted_device_cookie_name: str = "campus_trusted_device"
+    # 可信设备 cookie 是否启用 Secure
+    trusted_device_cookie_secure: bool = False
+
     # ===== 测试环境数据 seeding =====
     # 启动时是否自动 seed 测试账号
     # 默认关闭;仅 dev/test 显式开启
     # production 环境下强制为 False(见 _normalize 校验)
     auto_seed_demo_users: bool = False
+
+    # ===== EduConnector =====
+    # 教务会话 TTL（秒），默认 30 分钟
+    edu_session_ttl_seconds: int = 1800
+    # production 环境下是否允许使用 MockEduAdapter（默认禁止）
+    edu_allow_mock_in_production: bool = False
+    # 是否允许教务探测跳过 SSL 验证（仅非 production + 显式开启）
+    edu_allow_insecure_ssl: bool = False
 
     # ----- 派生属性 -----
     @property
@@ -126,6 +156,13 @@ class Settings(BaseSettings):
         p = Path(self.knowledge_base_path)
         if not p.is_absolute():
             # 相对 backend/ 根目录解析
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def chaoxing_cache_dir(self) -> Path:
+        p = Path(self.chaoxing_cache_path)
+        if not p.is_absolute():
             p = Path(__file__).resolve().parents[2] / p
         return p
 
@@ -164,6 +201,12 @@ class Settings(BaseSettings):
                     "production 环境禁止启用 AUTO_IMPORT_DEMO;"
                     "测试环境资料不得进入生产数据"
                 )
+            if self.edu_allow_insecure_ssl:
+                raise ValueError(
+                    "production 环境禁止启用 EDU_ALLOW_INSECURE_SSL;"
+                    "教务系统探测必须验证 SSL 证书"
+                )
+            self.trusted_device_cookie_secure = True
         return self
 
 

@@ -1,0 +1,6 @@
+{
+  "usingComponents": {
+    "secondary-nav": "/components/secondary-nav/secondary-nav",
+    "custom-tab-bar": "/custom-tab-bar/index"
+  }
+}

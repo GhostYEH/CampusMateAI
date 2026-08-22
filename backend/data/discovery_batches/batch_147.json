@@ -1,0 +1,418 @@
+[
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://jwglxt.zstu.edu.cn/sso/jasiglogin",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official",
+    "source_detail": "正方教务管理系统"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://yjsxt.zstu.edu.cn/user/login",
+    "system_type": "graduate-main",
+    "source": "webfetch_official",
+    "source_detail": "研究生管理系统"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://one.zstu.edu.cn/zjlg_portal/index.do",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "网上办事大厅"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://jwc.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教务处"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://gradschool.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生院"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://zs.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生招生"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://gradadmission.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生招生"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://admission.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "留学生招生"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://jyb.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业创业网"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://lib.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://nic.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息技术中心"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://mail.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "邮件服务"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://news.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "理工新闻网"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://s.zstu.edu.cn/#/home",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校内办公"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://xxgk.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://alumni.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校友总会"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://kyy.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科技处"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://rsc.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事处"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://kyxt.zstu.edu.cn/userAction!do_casLogin.action",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "科研管理系统"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://nttc.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "技术转移中心"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://fzzx.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教师教学发展中心"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "https://webvpn.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "WebVpn"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://xuebao.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学术刊物"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://gh.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校工会"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://tw.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "团委"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://cj.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育学院"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://zjc.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "招就处"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://jcc.zstu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "计财处"
+  },
+  {
+    "school_name": "浙江理工大学",
+    "school_code": "4133010338",
+    "candidate_url": "http://dag.zstu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "档案馆"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://i.kust.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official",
+    "source_detail": "师生信息服务平台"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://jwc.kmust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "本科生培养/教务处"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://yjs.kmust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "研究生培养"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://gjxy.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "留学生培养/孔子学院"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://kgcj.kmust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "继续教育"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://lib.kust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "图书馆"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://mail.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "教师邮件系统"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://mail.stu.kust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "学生邮件系统"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://rsc.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://ryzp.kust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人才招聘"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://hr.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "人事信息服务"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://bsh.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "博士后流动站"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://job.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "就业网"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://xyh.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "合作交流/校友"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://global.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "国际合作"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://tw.kust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "昆工青年/团委"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://sq.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "校园生活"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://oa.kust.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "网络办公OA"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://xxgk.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "信息公开"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://english.kmust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "English"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "http://dst.kmust.edu.cn/#/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "自然科学研究"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://rwsky.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "社会科学研究"
+  },
+  {
+    "school_name": "昆明理工大学",
+    "school_code": "4153010674",
+    "candidate_url": "https://metc.kust.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official",
+    "source_detail": "VPN虚拟网"
+  }
+]

@@ -19,7 +19,6 @@ class PresenceStateMachineTest {
         val machine = machine()
         machine.process(1_000L, true, false, false)
         val result = machine.process(2_999L, false, false, false)
-
         assertEquals(PresenceState.PRESENT, result.state)
         assertTrue(result.recentPersonEvidence)
     }

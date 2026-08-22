@@ -1,0 +1,10 @@
+[
+  {"school_code":"4131010271","school_name":"上海外国语大学","candidate_url":"https://portal.shisu.edu.cn","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"我的上外门户"},
+  {"school_code":"4131010271","school_name":"上海外国语大学","candidate_url":"https://cc.shisu.edu.cn","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"课程中心"},
+  {"school_code":"4111010033","school_name":"中国传媒大学","candidate_url":"https://i.cuc.edu.cn/","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"融合门户"},
+  {"school_code":"4111010033","school_name":"中国传媒大学","candidate_url":"https://jwc.cuc.edu.cn/cs/list.htm","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"教务处"},
+  {"school_code":"4111010033","school_name":"中国传媒大学","candidate_url":"https://dyjs.cuc.edu.cn/gsapp/sys/emaphome/portal/index.do","system_type":"graduate_main","provider":"KINGOSOFT","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"研究生管理服务金智eams"},
+  {"school_code":"4111010033","school_name":"中国传媒大学","candidate_url":"https://yjs.cuc.edu.cn/yjsxkapp/sys/xsxkapp/index.html","system_type":"graduate_main","provider":"KINGOSOFT","verification_status":"CANDIDATE","discovery_method":"webfetch_official_site","notes":"研究生选课金智eams"},
+  {"school_code":"4111010033","school_name":"中国传媒大学","candidate_url":"https://gs.cuc.edu.cn/","system_type":"academic_department_website","provider":"unknown","verification_status":"ACADEMIC_DEPARTMENT_WEBSITE","discovery_method":"webfetch_official_site","notes":"研究生院"},
+  {"school_code":"4111010052","school_name":"中央民族大学","candidate_url":"http://my.muc.edu.cn/","system_type":"unified_portal","provider":"unknown","verification_status":"VERIFIED_PORTAL","discovery_method":"webfetch_official_site","notes":"信息门户"}
+]

@@ -1,6 +1,34 @@
 package com.example.campusai.ui.navigation
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.example.campusai.ui.components.StickySecondaryNavigationContentHeight
+import com.example.campusai.ui.system.routeOwnsStatusBarInset
+
 internal data class SecondaryDestinationSpec(val title: String)
+
+/**
+ * Keeps the NavHost's bounds fixed while each destination reserves the space
+ * required by its own system and secondary-navigation chrome.
+ */
+internal data class NavigationDestinationLayout(
+    val navHostTopPadding: Dp = 0.dp,
+    val contentTopPadding: Dp,
+)
+
+internal fun navigationDestinationLayout(
+    route: String?,
+    statusBarHeight: Dp,
+): NavigationDestinationLayout {
+    val normalizedRoute = route?.substringBefore('?')?.substringBefore('/')
+    val contentTopPadding = when {
+        secondaryDestinationSpec(route) != null ->
+            statusBarHeight + StickySecondaryNavigationContentHeight
+        routeOwnsStatusBarInset(route) || normalizedRoute in profileFlowRoutes -> 0.dp
+        else -> statusBarHeight
+    }
+    return NavigationDestinationLayout(contentTopPadding = contentTopPadding)
+}
 
 internal fun secondaryDestinationSpec(route: String?): SecondaryDestinationSpec? {
     val normalizedRoute = route?.substringBefore('?') ?: return null
@@ -15,9 +43,9 @@ private fun dynamicDestinationTitle(route: String): String? = when {
     route.startsWith("campus-news-detail/") -> "通知详情"
     route.startsWith("exam_detail/") -> "考试详情"
     route.startsWith("exam_edit/") -> "编辑考试"
-    route.startsWith("service_form/") -> "办理事项"
-    route.startsWith("service_detail/") -> "申请详情"
+    route.startsWith("service_form/") -> "意见反馈"
     route.startsWith("lostfound_detail/") -> "失物招领详情"
+    route.startsWith("community_detail/") -> "帖子详情"
     else -> null
 }
 
@@ -28,6 +56,17 @@ private val rootRoutes = setOf(
     "tasks",
     "profile",
     "counselor",
+)
+
+private val profileFlowRoutes = setOf(
+    "profile",
+    "settings",
+    "account",
+    "files",
+    "favorites",
+    "help-feedback",
+    "university",
+    "academic",
 )
 
 private val staticDestinationTitles = mapOf(
@@ -43,6 +82,11 @@ private val staticDestinationTitles = mapOf(
     "files" to "我的文件",
     "activities" to "我的活动",
     "favorites" to "我的收藏",
+    "university" to "我的大学",
+    "community" to "校园论坛",
+    "community_hot" to "热门话题",
+    "community_publish" to "发布帖子",
+    "academic" to "教务系统",
     "exams" to "考试安排",
     "classrooms" to "空教室",
     "services" to "办事大厅",
@@ -50,6 +94,10 @@ private val staticDestinationTitles = mapOf(
     "service_repair" to "报修申请",
     "service_mine" to "我的申请",
     "lostfound" to "失物招领",
+    "focus" to "专注大厅",
+    "focus_session" to "专注空间",
+    "focus_summary" to "本次专注总结",
+    "focus_history" to "专注记录",
     "lostfound_publish" to "发布失物招领",
     "lostfound_mine" to "我的发布",
 )

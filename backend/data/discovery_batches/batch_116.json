@@ -1,0 +1,114 @@
+[
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://portal1.sdjtu.edu.cn/home",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://wwebvpn.sdjtu.edu.cn/",
+    "system_type": "vpn_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://jwc.sdjtu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://xkyyjsc.sdjtu.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://jxjy.sdjtu.edu.cn/",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "http://zsw.sdjtu.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "山东交通学院",
+    "school_code": "4137011510",
+    "candidate_url": "https://lib.sdjtu.edu.cn/",
+    "system_type": "library",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "https://ehall.nynu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "http://www2.nynu.edu.cn/xzbm/jwch/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "http://nysyjw.nynu.edu.cn/nysfjw/caslogin",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "http://www2.nynu.edu.cn/xzbm/zhaosheng/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "http://www2.nynu.edu.cn/xzbm/yjsc/",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "https://www2.nynu.edu.cn/xzbm/chjy/",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "http://www2.nynu.edu.cn/xzbm/jiuye/",
+    "system_type": "career_center",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "https://vpn.nynu.edu.cn",
+    "system_type": "vpn_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳师范学院",
+    "school_code": "4141010481",
+    "candidate_url": "https://lib.nynu.edu.cn/",
+    "system_type": "library",
+    "source": "webfetch_official"
+  }
+]

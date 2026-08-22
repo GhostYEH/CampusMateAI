@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +59,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -67,9 +70,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Course
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.remote.CourseContentItemDto
+import com.example.campusai.data.remote.CourseContentSummaryDto
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
@@ -110,7 +119,9 @@ fun CoursesScreen(repository: AppRepository) {
         }
     }
     val floatingDockScrollPadding =
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 92.dp
+        floatingDockContentBottomPadding(
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        )
 
     LazyColumn(
         state = listState,
@@ -161,7 +172,13 @@ fun CoursesScreen(repository: AppRepository) {
         if (visibleCourses.isEmpty()) {
             item { EmptyCourses() }
         } else {
-            items(visibleCourses, key = { it.code }) { course ->
+            itemsIndexed(
+                items = visibleCourses,
+                // Course codes are optional in the API and are not guaranteed to be
+                // unique. Include the position so Compose never receives duplicate
+                // keys (duplicate/blank codes previously crashed this screen).
+                key = { index, course -> course.listKey(index, "course") },
+            ) { _, course ->
                 CourseCard(
                     course = course,
                     reduceMotion = reduceMotion,
@@ -174,7 +191,7 @@ fun CoursesScreen(repository: AppRepository) {
     }
 
     selectedCourse?.let { course ->
-        CourseDetailSheet(course = course, onDismiss = { selectedCourse = null })
+        CourseDetailSheet(course = course, repository = repository, onDismiss = { selectedCourse = null })
     }
 }
 
@@ -354,7 +371,7 @@ private fun CourseFilters(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             contentPadding = PaddingValues(end = 5.dp),
         ) {
-            items(types) { type ->
+            itemsIndexed(types) { _, type ->
                 val selected = selectedType == type
                 Box(
                     modifier = Modifier.clip(RoundedCornerShape(20.dp))
@@ -436,7 +453,10 @@ private fun TodaySchedule(courses: List<Course>, onCourseClick: (Course) -> Unit
             Text("还有 ${courses.size.coerceAtMost(3)} 节", color = Muted, fontSize = 10.sp)
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(courses.take(3), key = { "today-${it.code}" }) { course ->
+            itemsIndexed(
+                items = courses.take(3),
+                key = { index, course -> course.listKey(index, "today") },
+            ) { _, course ->
                 Row(
                     modifier = Modifier.width(178.dp).clip(RoundedCornerShape(12.dp)).background(Surface)
                         .border(1.dp, Line.copy(alpha = .8f), RoundedCornerShape(12.dp))
@@ -458,6 +478,13 @@ private fun TodaySchedule(courses: List<Course>, onCourseClick: (Course) -> Unit
     }
 }
 
+private fun Course.listKey(index: Int, section: String): String {
+    val identity = id.ifBlank {
+        code.ifBlank { "$name|$teacher|$location" }
+    }
+    return "$section|$identity|$index"
+}
+
 @Composable
 private fun EmptyCourses() {
     Column(
@@ -473,17 +500,43 @@ private fun EmptyCourses() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CourseDetailSheet(course: Course, onDismiss: () -> Unit) {
+private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var summary by remember(course.id) { mutableStateOf<CourseContentSummaryDto?>(null) }
+    var content by remember(course.id) { mutableStateOf<List<CourseContentItemDto>>(emptyList()) }
+    var loading by remember(course.id) { mutableStateOf(true) }
+    var syncing by remember(course.id) { mutableStateOf(false) }
+    var error by remember(course.id) { mutableStateOf<String?>(null) }
+    var filter by remember(course.id) { mutableStateOf("全部") }
+    val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
+    val kinds = mapOf(
+        "章节" to setOf("chapter"),
+        "资料" to setOf("document", "video", "audio", "image", "material", "link"),
+        "作业" to setOf("assignment"), "通知" to setOf("notice"),
+        "考试" to setOf("exam"), "讨论" to setOf("discussion"),
+    )
+    val visible = kinds[filter]?.let { accepted -> content.filter { it.kind in accepted } } ?: content
+
+    androidx.compose.runtime.LaunchedEffect(course.id) {
+        try {
+            val loaded = repository.loadCourseContent(course.id)
+            summary = loaded.first
+            content = loaded.second
+        } catch (_: Exception) { error = "课程内容加载失败，已保留现有信息" }
+        finally { loading = false }
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Surface,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 34.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f),
+            contentPadding = PaddingValues(start = 22.dp, end = 22.dp, bottom = 34.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
+            item { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("课程详情", color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text(course.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
@@ -492,17 +545,82 @@ private fun CourseDetailSheet(course: Course, onDismiss: () -> Unit) {
                 Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.MenuBook, null, tint = Primary)
                 }
-            }
-            DetailRow(Icons.Default.Person, "授课教师", course.teacher)
-            DetailRow(Icons.Default.LocationOn, "上课地点", course.location)
-            DetailRow(Icons.Default.Schedule, "本周安排", "周一、周三 10:10–11:45")
-            DetailRow(Icons.Default.FolderOpen, "课程资料", "3 份资料待查看")
-            Button(
-                onClick = onDismiss,
+            } }
+            item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
+            summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
+            summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
+            item {
+                Button(
+                onClick = {
+                    syncing = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val loaded = repository.syncCourseContent(course.id)
+                            summary = loaded.first
+                            content = loaded.second
+                        } catch (_: Exception) { error = "同步失败，旧数据没有被清空" }
+                        finally { syncing = false }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
-            ) { Text("知道了", fontWeight = FontWeight.Bold) }
+                enabled = !syncing,
+            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "同步学习通课程内容", fontWeight = FontWeight.Bold) }
+            }
+            if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
+            error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
+            if (!loading) {
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        itemsIndexed(filters) { _, item ->
+                            Button(
+                                onClick = { filter = item },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (filter == item) Primary else PrimarySoft, contentColor = if (filter == item) Color.White else Primary),
+                            ) { Text(item, fontSize = 11.sp) }
+                        }
+                    }
+                }
+                if (visible.isEmpty()) item {
+                    val section = summary?.sections?.firstOrNull { it.section == mapOf("章节" to "chapters", "资料" to "materials", "作业" to "assignments", "通知" to "notices", "考试" to "exams", "讨论" to "discussions")[filter] }
+                    val text = when (section?.status) {
+                        "failed" -> "本次同步失败，正在保留上次数据"
+                        "unavailable" -> "学习通当前未开放此栏目"
+                        "complete" -> "学习通返回的列表为空"
+                        else -> "尚未同步此栏目"
+                    }
+                    Text(text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
+                }
+                itemsIndexed(visible, key = { _, item -> item.id }) { _, item ->
+                    val icon = when (item.kind) { "notice" -> Icons.Default.Notifications; "assignment" -> Icons.Default.TaskAlt; else -> Icons.Default.FolderOpen }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(PrimarySoft)
+                            .campusClickable {
+                                scope.launch {
+                                    if (item.can_download) {
+                                        val file = repository.downloadCourseResource(course.id, item)
+                                        Toast.makeText(context, if (file != null) "已缓存到应用临时目录" else "资料下载失败", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val url = repository.getCourseResourceUrl(course.id, item.id)
+                                        if (!url.isNullOrBlank()) context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    }
+                                }
+                            }.padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(icon, null, tint = Primary, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(listOf(item.kind, item.status, if (item.cached) "已缓存" else "").filter { it.isNotBlank() }.joinToString(" · "), color = Muted, fontSize = 10.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                    }
+                }
+            }
         }
     }
 }

@@ -10,7 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -287,7 +287,7 @@ private fun FileList(
         emptyTitle = "没有找到文件",
         emptyHint = "换个关键词，或添加一条文件记录",
     ) {
-        items(files, key = { it.id }) { file ->
+        itemsIndexed(files, key = { index, file -> "personal-file|${file.id}|$index" }) { _, file ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
                     .clip(RoundedCornerShape(18.dp)).background(Surface)
@@ -343,7 +343,7 @@ private fun ActivityList(
         emptyTitle = "没有找到活动",
         emptyHint = "换个关键词看看校园里还有什么",
     ) {
-        items(activities, key = { it.id }) { activity ->
+        itemsIndexed(activities, key = { index, activity -> "personal-activity|${activity.id}|$index" }) { _, activity ->
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
                     .clip(RoundedCornerShape(20.dp)).background(Surface)
@@ -405,7 +405,7 @@ private fun FavoriteList(
         emptyTitle = "还没有收藏",
         emptyHint = "收藏常用文件和活动，之后会更好找",
     ) {
-        items(favorites, key = { it.id }) { favorite ->
+        itemsIndexed(favorites, key = { index, favorite -> "favorite|${favorite.id}|$index" }) { _, favorite ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
                     .clip(RoundedCornerShape(18.dp)).background(Surface)

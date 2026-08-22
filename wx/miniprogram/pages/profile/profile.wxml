@@ -1,91 +1,32 @@
-<view class="page tab-page {{settings.darkMode ? 'dark' : ''}} {{settings.reduceMotion ? 'reduce-motion' : ''}}">
-  <campus-header
-    title="我的"
-    subtitle="账号、偏好与数据模式"
-    mode="{{settings.mockMode ? 'Mock 演示' : '真实后端'}}"
-  />
-
-  <view class="page-body">
-    <view class="profile-card enter">
-      <image class="avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image>
-      <view class="identity">
-        <view class="name">{{user.name}}</view>
-        <view class="detail">{{user.detail}}</view>
-        <view class="account">{{user.studentId}} · {{user.email}}</view>
-      </view>
+<view class="page tab-page profile-page {{settings.darkMode ? 'dark' : ''}} {{settings.reduceMotion ? 'reduce-motion' : ''}}">
+  <view class="profile-hero">
+    <view class="hero-safe"></view>
+    <view class="hero-top-row">
+      <view class="hero-title">我的</view>
+      <view class="hero-scan-btn" bindtap="openScanner"><image src="/assets/icons/qr-scan.svg" mode="aspectFit"></image></view>
+    </view>
+    <view class="identity"><image class="avatar" src="/assets/profile-avatar.png" mode="aspectFill"></image><view class="identity-copy"><view class="name">{{user.name}}</view><view class="detail">{{user.detail}} · {{user.studentId}}</view><view class="sync-state"><view></view>资料已同步</view></view><image class="identity-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></view>
+  </view>
+  <view class="page-body profile-body">
+    <view class="shortcut-card enter"><button data-kind="files" bindtap="openService"><view><image src="/assets/icons/quick-notice.svg" mode="aspectFit"></image></view><text>文件</text></button><button data-kind="activities" bindtap="openService"><view class="warm"><image src="/assets/icons/quick-calendar.svg" mode="aspectFit"></image></view><text>活动</text></button><button data-kind="favorites" bindtap="openService"><view><image src="/assets/icons/quick-counselor.svg" mode="aspectFit"></image></view><text>收藏</text></button><button data-kind="settings" bindtap="openService"><view><image src="/assets/icons/quick-task.svg" mode="aspectFit"></image></view><text>设置</text></button></view>
+    <view class="service-title">更多服务</view>
+    <view class="service-list enter enter-delay-1">
+      <button data-kind="university" bindtap="openService"><image class="service-icon" src="/assets/icons/service-university.svg" mode="aspectFit"></image><text>我的大学</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="community" bindtap="openService"><image class="service-icon" src="/assets/icons/service-community.svg" mode="aspectFit"></image><text>校园社区</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="academic" bindtap="openService"><image class="service-icon" src="/assets/icons/service-academic.svg" mode="aspectFit"></image><text>教务系统</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="study" bindtap="openService"><image class="service-icon" src="/assets/icons/service-study.svg" mode="aspectFit"></image><text>学习与专注</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="notices" bindtap="openService"><image class="service-icon" src="/assets/icons/service-notices.svg" mode="aspectFit"></image><text>通知与提醒</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="account" bindtap="openService"><image class="service-icon" src="/assets/icons/service-account.svg" mode="aspectFit"></image><text>账号与隐私</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="help" bindtap="openService"><image class="service-icon" src="/assets/icons/service-help.svg" mode="aspectFit"></image><text>帮助与反馈</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+      <button data-kind="about" bindtap="openService"><image class="service-icon" src="/assets/icons/service-about.svg" mode="aspectFit"></image><text>关于 CampusMate</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
     </view>
 
-    <view class="data-mode enter enter-delay-1">
-      <view>
-        <view class="mode-title">当前数据模式</view>
-        <view class="mode-value">{{settings.mockMode ? 'Mock 演示数据' : '真实校园后端'}}</view>
-        <view class="mode-copy">{{settings.mockMode ? '所有 AI 与知识库结果均明确标注为演示' : '请求将发送到你配置的后端地址'}}</view>
-      </view>
-      <switch checked="{{settings.mockMode}}" color="#2F6486" bindchange="toggleMock" />
+    <view wx:if="{{showSettings}}" id="settings-panel" class="settings-panel enter">
+      <view class="settings-title"><view><view class="settings-heading">系统设置</view></view><button bindtap="closeSettings">收起</button></view>
+      <view class="data-mode"><view><view class="mode-title">当前数据模式</view><view class="mode-value">{{settings.mockMode ? 'Mock 演示数据' : '真实校园后端'}}</view></view><switch checked="{{settings.mockMode}}" color="#5B68F2" bindchange="toggleMock" /></view>
+      <view class="setting-group surface"><view class="setting-row"><view class="setting-copy"><view class="setting-name">深色模式</view><view class="setting-subtitle">夜间使用</view></view><switch checked="{{settings.darkMode}}" color="#5B68F2" bindchange="toggleDark" /></view><view class="divider"></view><view class="setting-row"><view class="setting-copy"><view class="setting-name">减少动态效果</view><view class="setting-subtitle">减少动画</view></view><switch checked="{{settings.reduceMotion}}" color="#5B68F2" bindchange="toggleMotion" /></view><view class="divider"></view><view class="setting-row"><view class="setting-copy"><view class="setting-name">截止提醒</view><view class="setting-subtitle">临近截止时通知</view></view><switch checked="{{settings.remindersEnabled}}" color="#5B68F2" bindchange="toggleReminders" /></view></view>
+      <view class="backend-panel surface"><view wx:if="{{!editingUrl}}" class="backend-summary"><view class="setting-copy"><view class="setting-name">后端服务地址</view><view class="setting-subtitle">{{settings.apiBaseUrl || '未配置'}}</view></view><button class="edit-button" bindtap="editUrl">配置</button></view><view wx:else><input class="field" value="{{apiBaseUrlInput}}" placeholder="例如：https://api.example.edu" bindinput="onUrlInput" /><button class="primary-button save-url" bindtap="saveUrl">保存地址</button></view></view>
+      <button class="danger-button logout" bindtap="logout">退出登录</button>
     </view>
-
-    <view class="settings-section enter enter-delay-2">
-      <view class="section-label">显示与动效</view>
-      <view class="setting-group surface">
-        <view class="setting-row">
-          <view class="setting-copy">
-            <view class="setting-title">深色模式</view>
-            <view class="setting-subtitle">切换为更适合夜间的深色界面</view>
-          </view>
-          <switch checked="{{settings.darkMode}}" color="#2F6486" bindchange="toggleDark" />
-        </view>
-        <view class="divider"></view>
-        <view class="setting-row">
-          <view class="setting-copy">
-            <view class="setting-title">减少动态效果</view>
-            <view class="setting-subtitle">减少页面进入与状态切换动画</view>
-          </view>
-          <switch checked="{{settings.reduceMotion}}" color="#2F6486" bindchange="toggleMotion" />
-        </view>
-      </view>
-    </view>
-
-    <view class="settings-section enter enter-delay-2">
-      <view class="section-label">提醒与陪伴</view>
-      <view class="setting-group surface">
-        <view class="setting-row">
-          <view class="setting-copy">
-            <view class="setting-title">截止提醒</view>
-            <view class="setting-subtitle">待办临近截止时提醒</view>
-          </view>
-          <switch checked="{{settings.remindersEnabled}}" color="#2F6486" bindchange="toggleReminders" />
-        </view>
-        <view class="divider"></view>
-        <view class="setting-row">
-          <view class="setting-copy">
-            <view class="setting-title">比赛演示模式</view>
-            <view class="setting-subtitle">使用完整、自然的校园演示链路</view>
-          </view>
-          <switch checked="{{settings.demoMode}}" color="#2F6486" bindchange="toggleDemo" />
-        </view>
-      </view>
-    </view>
-
-    <view class="settings-section enter enter-delay-3">
-      <view class="section-label">真实后端</view>
-      <view class="backend-panel surface">
-        <view wx:if="{{!editingUrl}}" class="backend-summary">
-          <view class="setting-copy">
-            <view class="setting-title">服务地址</view>
-            <view class="setting-subtitle">{{settings.apiBaseUrl || '尚未配置，仅可使用 Mock 模式'}}</view>
-          </view>
-          <button class="edit-button" bindtap="editUrl">配置</button>
-        </view>
-        <view wx:else>
-          <input class="field" value="{{apiBaseUrlInput}}" placeholder="例如：https://api.example.edu" bindinput="onUrlInput" />
-          <button class="primary-button save-url" bindtap="saveUrl">保存地址</button>
-        </view>
-      </view>
-    </view>
-
-    <view class="privacy-note">
-      表情识别结果仅供辅助参考；情绪陪伴不进行疾病诊断，也不替代专业心理咨询。
-    </view>
-    <button class="danger-button logout" bindtap="logout">退出登录</button>
   </view>
 </view>

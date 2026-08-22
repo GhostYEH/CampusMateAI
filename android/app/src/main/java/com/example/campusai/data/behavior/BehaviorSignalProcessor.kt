@@ -108,7 +108,7 @@ class BehaviorSignalProcessor(
     fun process(prediction: BehaviorPrediction): List<StableBehaviorEvent> {
         val now = prediction.timestampMs
         val events = mutableListOf<StableBehaviorEvent>()
-        
+
         if (prediction.modelState == "MODEL_NOT_AVAILABLE" || prediction.probabilities.isEmpty()) {
             return events
         }
@@ -216,6 +216,10 @@ class BehaviorSignalProcessor(
             StudyBehavior.WRITING,
             StudyBehavior.PHONE_USE,
         )
-        val SUPPORTED_MODEL_STATES = setOf("READY_VISIBLE_STUDY_V32", "READY_VISIBLE_STUDY_V31", "READY_RGB_V2")
+        val SUPPORTED_MODEL_STATES = setOf(
+            "READY_VISIBLE_STUDY_V32",
+            "READY_VISIBLE_STUDY_V31",
+            "READY_RGB_V2",
+        )
     }
 }

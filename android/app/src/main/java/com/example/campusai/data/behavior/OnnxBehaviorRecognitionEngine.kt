@@ -1,4 +1,4 @@
-﻿package com.example.campusai.data.behavior
+package com.example.campusai.data.behavior
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -6,13 +6,14 @@ import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import com.example.campusai.BuildConfig
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
- * Current V3.2-A RGB behavior recognition engine.
+ * Current V3.2 RGB behavior recognition engine.
  *
  * Model:
  *   ResNet18
@@ -31,8 +32,7 @@ class OnnxBehaviorRecognitionEngine(
     private val context: Context,
 ) : BehaviorRecognitionEngine {
 
-    private val environment: OrtEnvironment =
-        OrtEnvironment.getEnvironment()
+    private var environment: OrtEnvironment? = null
 
     private var session: OrtSession? = null
     private var inputTensor: OnnxTensor? = null
@@ -57,9 +57,11 @@ class OnnxBehaviorRecognitionEngine(
 
         try {
             val modelFile = ensureModelFile()
+            val currentEnvironment = environment
+                ?: OrtEnvironment.getEnvironment().also { environment = it }
 
             createdSession =
-                environment.createSession(modelFile.absolutePath)
+                currentEnvironment.createSession(modelFile.absolutePath)
 
             val buffer = ByteBuffer
                 .allocateDirect(INPUT_FLOAT_COUNT * Float.SIZE_BYTES)
@@ -67,7 +69,7 @@ class OnnxBehaviorRecognitionEngine(
                 .asFloatBuffer()
 
             createdTensor = OnnxTensor.createTensor(
-                environment,
+                currentEnvironment,
                 buffer,
                 INPUT_SHAPE,
             )
@@ -138,8 +140,11 @@ class OnnxBehaviorRecognitionEngine(
             ?: return unavailablePrediction(timestampMs)
 
         return try {
+            val preprocessStart = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
             preprocess(frame, timestampMs)
+            val preprocessLatency = if (BuildConfig.DEBUG) System.currentTimeMillis() - preprocessStart else -1L
 
+            val inferenceStart = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
             currentSession.run(
                 mapOf(INPUT_NAME to currentTensor),
             ).use { result ->
@@ -171,6 +176,7 @@ class OnnxBehaviorRecognitionEngine(
                     BehaviorModelMath.softmax(
                         logits
                     )
+                val inferenceLatency = if (BuildConfig.DEBUG) System.currentTimeMillis() - inferenceStart else -1L
 
                 BehaviorPrediction(
                     probabilities =
@@ -182,6 +188,8 @@ class OnnxBehaviorRecognitionEngine(
                             },
                     timestampMs = timestampMs,
                     modelState = MODEL_STATE,
+                    debugInferenceLatencyMs = inferenceLatency,
+                    debugPreprocessingLatencyMs = preprocessLatency,
                 )
             }
         } catch (error: Throwable) {

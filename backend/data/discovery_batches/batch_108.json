@@ -1,0 +1,16 @@
+[
+  {"school_name": "吉首大学", "school_code": "4143010531", "candidate_url": "https://ehall.jsu.edu.cn", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "融合门户"},
+  {"school_name": "吉首大学", "school_code": "4143010531", "candidate_url": "https://jwc.jsu.edu.cn/bkjyjxshpgw/index.htm", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处"},
+  {"school_name": "吉首大学", "school_code": "4143010531", "candidate_url": "https://zs.jsu.edu.cn/", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "本科招生"},
+  {"school_name": "信阳师范大学", "school_code": "4141010477", "candidate_url": "http://jwc.xynu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处/本科生教育"},
+  {"school_name": "信阳师范大学", "school_code": "4141010477", "candidate_url": "http://210.43.24.144/jwglxt/", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务管理系统-正方jwglxt"},
+  {"school_name": "信阳师范大学", "school_code": "4141010477", "candidate_url": "http://yjs.xynu.edu.cn", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "信阳师范大学", "school_code": "4141010477", "candidate_url": "http://portal.xynu.edu.cn", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "中原工学院", "school_code": "4141010465", "candidate_url": "https://i.zut.edu.cn/new/index.html", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "门户"},
+  {"school_name": "中原工学院", "school_code": "4141010465", "candidate_url": "https://xsxk.zut.edu.cn", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务选课"},
+  {"school_name": "中原工学院", "school_code": "4141010465", "candidate_url": "http://yjsc.zut.edu.cn/", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生招生"},
+  {"school_name": "丽水学院", "school_code": "4133010352", "candidate_url": "https://jwgl.lsu.edu.cn", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "教务系统"},
+  {"school_name": "丽水学院", "school_code": "4133010352", "candidate_url": "https://my.lsu.edu.cn", "system_type": "unified-portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "丽水学院", "school_code": "4133010352", "candidate_url": "https://zsw.lsu.edu.cn/", "system_type": "undergraduate-main", "source": "webfetch_official_site", "notes": "本专科招生网"},
+  {"school_name": "丽水学院", "school_code": "4133010352", "candidate_url": "https://yzw.lsu.edu.cn", "system_type": "graduate-main", "source": "webfetch_official_site", "notes": "研究生招生网"}
+]

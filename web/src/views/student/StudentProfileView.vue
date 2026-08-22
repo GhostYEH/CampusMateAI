@@ -47,6 +47,9 @@ const details = computed(() => [
   { label: "邮箱", value: profile.value.email || "暂未填写", icon: "PhEnvelopeSimple" },
 ]);
 const quickTools = [
+  { label: "我的大学", detail: "选择或切换大学身份", icon: "PhBuildings", path: "/university", tone: "indigo" },
+  { label: "教务系统", detail: "查看绑定与同步状态", icon: "PhStudent", path: "/profile/academic", tone: "teal" },
+  { label: "学习通同步", detail: "连接账号并同步课程作业", icon: "PhGraduationCap", path: "/profile/chaoxing", tone: "blue" },
   { label: "学习陪伴", detail: "开始一段专注时光", icon: "PhChartLineUp", path: "/study", tone: "violet" },
   { label: "课程表", detail: "查看本周课程安排", icon: "PhCalendarBlank", path: "/courses", tone: "blue" },
   { label: "待办事项", detail: "管理待完成任务", icon: "PhCheckSquare", path: "/tasks", tone: "green" },

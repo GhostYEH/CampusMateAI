@@ -11,42 +11,29 @@ class NotificationFilter(private val campusMatePackage: String) {
         if (notification.packageName == campusMatePackage || notification.isGroupSummary) return false
         if (!settings.isEnabled(notification.source)) return false
 
-        if (notification.source == NotificationSource.WECHAT) {
-            if (wechatWhitelist.isEmpty()) return false
-            val candidateGroup = notification.conversationTitle ?: notification.title
-            if (candidateGroup == null || candidateGroup !in wechatWhitelist) return false
+        val sourceWhitelist = when (notification.source) {
+            NotificationSource.WECHAT -> wechatWhitelist
+            NotificationSource.WECOM -> wecomWhitelist
+            NotificationSource.QQ -> qqWhitelist
+            else -> null
         }
-
-        if (notification.source == NotificationSource.WECOM) {
-            if (wecomWhitelist.isEmpty()) return false
-            val candidateGroup = notification.conversationTitle ?: notification.title
-            if (candidateGroup == null || candidateGroup !in wecomWhitelist) return false
-        }
-
-        if (notification.source == NotificationSource.QQ) {
-            if (qqWhitelist.isEmpty()) return false
-            val candidateGroup = notification.conversationTitle ?: notification.title
-            if (candidateGroup == null || candidateGroup !in qqWhitelist) return false
-        }
+        if (sourceWhitelist != null && GroupIdentityResolver.matchingGroup(notification, sourceWhitelist) == null) return false
 
         val primaryText = NotificationTextSanitizer.primaryText(notification.bigText, notification.text)
         if (NotificationTextSanitizer.clean(primaryText) == null) return false
         if (NotificationContentClassifier.isHardExcluded(primaryText)) return false
 
-        if (!NotificationContentClassifier.isLikelyNonTask(primaryText)) return true
-
-        val heading = listOfNotNull(notification.conversationTitle, notification.title)
-            .distinct()
-            .joinToString("\n")
-        return !NotificationContentClassifier.isLikelyNonTask(heading) &&
+        val bodyResult = NotificationContentClassifier.classify(primaryText)
+        if (bodyResult.type != NotificationContentType.CHAT) return true
+        val heading = GroupIdentityResolver.candidates(notification).joinToString("\n")
+        val headingResult = NotificationContentClassifier.classify(heading)
+        return headingResult.type == NotificationContentType.NOTICE &&
             NotificationContentClassifier.hasActionSignal(primaryText)
     }
 
     fun classifyReason(notification: CapturedNotification): String {
         val primaryText = NotificationTextSanitizer.primaryText(notification.bigText, notification.text)
-        return when (val result = NotificationContentClassifier.classify(primaryText)) {
-            is Classification.ACCEPT -> "ACCEPT: ${result.reason}"
-            is Classification.IGNORE -> "IGNORE: ${result.reason}"
-        }
+        val result = NotificationContentClassifier.classify(primaryText)
+        return "${result.type}: ${result.reason}"
     }
 }

@@ -2,12 +2,15 @@ import { NoticeItem, LocalCapturedNotice, ExtractResult, TaskItem } from '../../
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { NotificationIngestService } from '../../data/notification/NotificationIngestService';
+import { NotificationCaptureCapability } from '../../data/notification/NotificationCaptureCapability';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct NotificationsPage {
   @Prop notices: NoticeItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop localNotices: LocalCapturedNotice[] = [];
   @Prop subscriberActive: boolean = false;
   @State unreadOnly: boolean = false;
@@ -34,6 +37,7 @@ export struct NotificationsPage {
   onTaskSaved: () => void = () => {};
   onLocalNoticesChanged: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  captureCapability(): NotificationCaptureCapability { return NotificationCaptureCapability.ordinaryPhoneBuild(); }
   visible(): NoticeItem[] { return this.unreadOnly ? this.notices.filter((item: NoticeItem) => item.unread === true) : this.notices; }
   selectedNotice(): NoticeItem | undefined { return this.notices.find((item: NoticeItem) => item.id === this.selectedId); }
 
@@ -103,7 +107,7 @@ export struct NotificationsPage {
         Text(`${item.source ?? '校园通知'} · ${(item.time ?? '').substring(0, Math.min(10, (item.time ?? '').length))}`).fontColor(this.palette().muted).fontSize(9)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 12, bottom: 12 })
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
     .onClick(() => this.selectedId = item.id)
   }
 
@@ -240,7 +244,7 @@ export struct NotificationsPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: this.selectedId.length > 0 ? '通知详情' : '通知整理', subtitle: this.selectedId.length > 0 ? '查看通知完整内容' : '集中接收并整理校园通知', darkMode: this.darkMode, onBack: () => { if (this.selectedId.length > 0) { this.selectedId = ''; } else { this.onBack(); } } })
+      SecondaryHeader({ title: this.selectedId.length > 0 ? '通知详情' : '通知整理', subtitle: this.selectedId.length > 0 ? '查看通知完整内容' : '集中接收并整理校园通知', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => { if (this.selectedId.length > 0) { this.selectedId = ''; } else { this.onBack(); } } })
       if (this.selectedNotice() !== undefined) {
         this.NoticeDetail(this.selectedNotice()!)
       } else {
@@ -257,10 +261,9 @@ export struct NotificationsPage {
                 .width(42).height(42).backgroundColor(this.palette().soft).borderRadius(13)
               Column({ space: 3 }) {
                 Text('系统通知监听').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
-                Text(this.subscriberActive ? '正在监听微信、QQ等应用通知' : '未开启，点击右侧开启监听').fontColor(this.palette().muted).fontSize(10).maxLines(1)
+                Text(this.captureCapability().detail).fontColor(this.palette().muted).fontSize(10).maxLines(2)
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-              Text(this.subscriberActive ? '已开启' : '开启').fontColor(this.subscriberActive ? this.palette().success : this.palette().primary).fontSize(10).fontWeight(FontWeight.Medium)
-                .onClick(() => this.onToggleSubscriber())
+              Text(this.captureCapability().status).fontColor(this.palette().muted).fontSize(9).fontWeight(FontWeight.Medium)
             }.width('100%').padding({ top: 10, bottom: 10 })
           }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
 

@@ -15,15 +15,21 @@ from .routes import (
     dashboards,
     focus_ai,
     focus_realtime_voice,
+    edu,
     health,
     knowledge,
     notices,
     personal_hub,
     personal_tasks,
+    qr_auth,
     study,
     submissions,
     student_tools,
     chaoxing,
+    course_content,
+    universities,
+    community,
+    academic,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -37,6 +43,7 @@ api_router.include_router(contributions.router, tags=["contributions"])
 # 认证与用户管理
 api_router.include_router(auth.router, tags=["auth"])
 api_router.include_router(activities.router, tags=["activities"])
+api_router.include_router(qr_auth.router, tags=["auth-qr"])
 api_router.include_router(dashboards.router)
 
 api_router.include_router(courses.router, tags=["courses"])
@@ -55,5 +62,12 @@ api_router.include_router(personal_tasks.router)
 api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
 api_router.include_router(chaoxing.router, tags=["chaoxing"])
+api_router.include_router(course_content.router)
+api_router.include_router(universities.router)
+api_router.include_router(community.router)
+api_router.include_router(community.admin_router)
+api_router.include_router(academic.router)
+# CampusMate EduConnector — 高校教务系统统一连接层
+api_router.include_router(edu.router)
 
 __all__ = ["api_router"]

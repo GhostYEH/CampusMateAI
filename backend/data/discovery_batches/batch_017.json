@@ -1,0 +1,5 @@
+[
+  {"school_name": "扬州大学", "candidate_url": "https://i.yzu.edu.cn/Login/CasLogin", "source_url": "https://www.bing.com/search?q=扬州大学+教务系统+site:edu.cn"},
+  {"school_name": "青岛大学", "candidate_url": "https://jw.qdu.edu.cn/academic/common/security/syslogin.jsp", "source_url": "https://www.bing.com/search?q=青岛大学+教务系统+site:edu.cn"},
+  {"school_name": "青岛大学", "candidate_url": "https://xjw.qdu.edu.cn/", "source_url": "https://www.bing.com/search?q=青岛大学+教务系统+site:edu.cn"}
+]

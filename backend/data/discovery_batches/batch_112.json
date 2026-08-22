@@ -1,0 +1,121 @@
+[
+  {
+    "school_name": "南京中医药大学",
+    "school_code": "4132010315",
+    "candidate_url": "http://jwc.njucm.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南京中医药大学",
+    "school_code": "4132010315",
+    "candidate_url": "http://gra.njucm.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南京中医药大学",
+    "school_code": "4132010315",
+    "candidate_url": "http://e.njucm.edu.cn/meol/index.do",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南京中医药大学",
+    "school_code": "4132010315",
+    "candidate_url": "https://my.njucm.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南京中医药大学",
+    "school_code": "4132010315",
+    "candidate_url": "http://zs.njucm.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://jxgl.smu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://yjs.smu.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://portal.smu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://webvpn.smu.edu.cn",
+    "system_type": "vpn_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://portal.smu.edu.cn/bkzs/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南方医科大学",
+    "school_code": "4144012121",
+    "candidate_url": "https://portal.smu.edu.cn/yzw/",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "http://jwc1.ecjtu.edu.cn",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "http://yjsy.ecjtu.edu.cn",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "http://portal.ecjtu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "https://jwxt.ecjtu.edu.cn/",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "http://jxjy.ecjtu.edu.cn",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "华东交通大学",
+    "school_code": "4136010404",
+    "candidate_url": "http://zjc.ecjtu.edu.cn",
+    "system_type": "admission_office",
+    "source": "webfetch_official"
+  }
+]

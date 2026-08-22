@@ -1,0 +1,74 @@
+[
+  {
+    "school_name": "内蒙古工业大学",
+    "school_code": "4115010128",
+    "candidate_url": "https://yjsch.imut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生/博士学科/硕士学科"
+  },
+  {
+    "school_name": "内蒙古工业大学",
+    "school_code": "4115010128",
+    "candidate_url": "https://yjsjygl.imut.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "导师队伍/gmis"
+  },
+  {
+    "school_name": "内蒙古工业大学",
+    "school_code": "4115010128",
+    "candidate_url": "https://zsb.imut.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "内蒙古工业大学",
+    "school_code": "4115010128",
+    "candidate_url": "https://i.imut.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "办事大厅"
+  },
+  {
+    "school_name": "广西师范大学",
+    "school_code": "4145010602",
+    "candidate_url": "https://eip.gxnu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "数字校园"
+  },
+  {
+    "school_name": "广西师范大学",
+    "school_code": "4145010602",
+    "candidate_url": "https://noa.gxnu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "公文收发"
+  },
+  {
+    "school_name": "贵州师范大学",
+    "school_code": "4152010663",
+    "candidate_url": "https://zjc.gznu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "贵州师范大学",
+    "school_code": "4152010663",
+    "candidate_url": "https://yjsc.gznu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生"
+  },
+  {
+    "school_name": "贵州师范大学",
+    "school_code": "4152010663",
+    "candidate_url": "https://sie.gznu.edu.cn",
+    "system_type": "international-education",
+    "source": "webfetch_official_site",
+    "notes": "国际学生招生"
+  }
+]

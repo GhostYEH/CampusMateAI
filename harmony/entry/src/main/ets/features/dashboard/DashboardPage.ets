@@ -1,5 +1,6 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { CourseItem, NoticeItem, TaskItem } from '../../data/Models';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 interface DashboardAction {
   title: string;
@@ -11,14 +12,34 @@ interface DashboardAction {
 @Component
 export struct DashboardPage {
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop userName: string = '林知夏';
   @Prop courses: CourseItem[] = [];
   @Prop tasks: TaskItem[] = [];
   @Prop notices: NoticeItem[] = [];
   onNavigate: (route: string) => void = () => {};
+  @State pressedRoute: string = '';
+  @State heroPressed: boolean = false;
+  @State profilePressed: boolean = false;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
+  }
+
+  triggerAction(route: string): void {
+    this.pressedRoute = route;
+    setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
+    this.onNavigate(route);
+  }
+  triggerHero(): void {
+    this.heroPressed = true;
+    setTimeout(() => { this.heroPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.STATE));
+    this.onNavigate('tasks');
+  }
+  triggerProfile(): void {
+    this.profilePressed = true;
+    setTimeout(() => { this.profilePressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
+    this.onNavigate('profile');
   }
 
   @Builder
@@ -64,7 +85,10 @@ export struct DashboardPage {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
-    .onClick(() => this.onNavigate('profile'))
+    .scale({ x: this.profilePressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.profilePressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 10) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
+    .onClick(() => this.triggerProfile())
   }
 
   @Builder
@@ -129,7 +153,10 @@ export struct DashboardPage {
     .height(188)
     .borderRadius(26)
     .clip(true)
-    .onClick(() => this.onNavigate('tasks'))
+    .scale({ x: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
+    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseOut })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
+    .onClick(() => this.triggerHero())
   }
 
   @Builder
@@ -138,7 +165,7 @@ export struct DashboardPage {
       ForEach([
         { title: '考试安排', route: 'exams', symbol: $r('sys.symbol.calendar'), color: '#5B68F2' },
         { title: '空教室', route: 'classrooms', symbol: $r('sys.symbol.doors_and_windows_open'), color: '#397CEF' },
-        { title: '办事大厅', route: 'services', symbol: $r('sys.symbol.building'), color: '#35B99A' },
+        { title: '校园社区', route: 'community', symbol: $r('sys.symbol.person_2'), color: '#35B99A' },
         { title: '专注自习', route: 'focus', symbol: $r('sys.symbol.timer'), color: '#FFA43A' },
         { title: '失物招领', route: 'lostfound', symbol: $r('sys.symbol.magnifyingglass'), color: '#7C6BE8' }
       ], (action: DashboardAction) => {
@@ -159,7 +186,9 @@ export struct DashboardPage {
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Center)
-        .onClick(() => this.onNavigate(action.route))
+        .scale({ x: this.pressedRoute === action.route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.pressedRoute === action.route ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
+        .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+        .onClick(() => this.triggerAction(action.route))
 
       })
     }
@@ -167,6 +196,7 @@ export struct DashboardPage {
     .padding({ left: 8, right: 8, top: 16, bottom: 16 })
     .backgroundColor(this.palette().surface)
     .borderRadius(24)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -240,7 +270,9 @@ export struct DashboardPage {
           colors: [['#FF4259E8', 0.0], ['#FF7B78F7', 1.0]]
         })
         .borderRadius(18)
-        .onClick(() => this.onNavigate('courses'))
+        .scale({ x: this.pressedRoute === 'courses' ? MotionSpec.scale(this.reduceMotion, 0.96) : 1.0, y: this.pressedRoute === 'courses' ? MotionSpec.scale(this.reduceMotion, 0.96) : 1.0 })
+        .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
+        .onClick(() => this.triggerAction('courses'))
 
         Column() {
           this.TimelineRow(this.courses.length > 1 ? this.courses[1].name : '高等数学', this.courses.length > 1 ? (this.courses[1].teacher_name ?? '教师待定') : '08:00 · B-301', '已结束', false)
@@ -261,6 +293,7 @@ export struct DashboardPage {
     .padding(16)
     .backgroundColor(this.palette().surface)
     .borderRadius(24)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 3), curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -275,36 +308,57 @@ export struct DashboardPage {
         SymbolGlyph($r('sys.symbol.eye')).fontSize(19).fontColor([this.palette().muted])
       }
       Row() {
-        Column({ space: 3 }) {
-          Text('本周进度').fontColor(this.palette().muted).fontSize(10)
-          Text('72%').fontColor(this.palette().text).fontSize(28).fontWeight(FontWeight.Bold)
-          Text('较上周 ↑12%').fontColor(this.palette().success).fontSize(10)
+        Column({ space: 4 }) {
+          Text('本周进度')
+            .fontColor(this.palette().muted)
+            .fontSize(10)
+            .maxLines(1)
+          Text('72%')
+            .fontColor(this.palette().text)
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .maxLines(1)
+          Column({ space: 2 }) {
+            Text('较上周')
+              .fontColor(this.palette().success)
+              .fontSize(10)
+              .maxLines(1)
+            Text('↑12%')
+              .fontColor(this.palette().success)
+              .fontSize(10)
+              .maxLines(1)
+          }
+          .alignItems(HorizontalAlign.Start)
         }
         .layoutWeight(1)
+        .constraintSize({ minWidth: 68 })
         .alignItems(HorizontalAlign.Start)
+        .justifyContent(FlexAlign.Center)
+        
         Stack({ alignContent: Alignment.Center }) {
           Progress({ value: 72, total: 100, type: ProgressType.Ring })
-            .width(65)
-            .height(65)
+            .width(42)
+            .height(42)
             .color('#FF5368E8')
             .backgroundColor(this.palette().soft)
-            .style({ strokeWidth: 7 })
+            .style({ strokeWidth: 4.5 })
           SymbolGlyph($r('sys.symbol.histogram'))
-            .fontSize(22)
+            .fontSize(14)
             .fontColor(['#FF5368E8'])
         }
+        .margin({ left: 6 })
       }
       .width('100%')
       .layoutWeight(1)
-      .padding(12)
+      .padding({ left: 8, right: 8, top: 10, bottom: 10 })
       .alignItems(VerticalAlign.Center)
       .backgroundColor(this.palette().background)
       .borderRadius(16)
       .margin({ top: 12 })
     }
-    .layoutWeight(0.88)
+    .layoutWeight(1)
     .height(191)
-    .padding(15)
+    .padding(12)
     .backgroundColor(this.palette().surface)
     .borderRadius(22)
   }
@@ -345,9 +399,9 @@ export struct DashboardPage {
       Blank().height(9)
       this.DeadlineRow(this.pendingTasks().length > 0 ? this.pendingTasks()[0].title : '暂无近期截止', this.pendingTasks().length > 0 ? (this.pendingTasks()[0].deadline ?? this.pendingTasks()[0].due ?? '待设置') : '可以放松一下', true)
       Blank().height(7)
-      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '待设置') : '暂无', false)
+      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '暂无') : '暂无', false)
     }
-    .layoutWeight(1.12)
+    .layoutWeight(1)
     .height(191)
     .padding(15)
     .backgroundColor(this.palette().surface)

@@ -1,4 +1,5 @@
 import { CampusPalette, darkPalette, lightPalette } from './Theme';
+import { MotionDuration, MotionSpec } from './MotionSpec';
 
 interface DockItem {
   label: string;
@@ -10,6 +11,7 @@ interface DockItem {
 export struct AppDock {
   @Link activeTab: number;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @Prop pendingCount: number = 0;
   onNavigate: (index: number) => void = () => {};
 
@@ -26,7 +28,7 @@ export struct AppDock {
       if (this.pressedIndex === index) {
         this.pressedIndex = -1;
       }
-    }, 180);
+    }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate(index);
   }
 
@@ -39,10 +41,10 @@ export struct AppDock {
           .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
           .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
           .scale({
-            x: this.activeTab === item.index ? 1.1 : (this.pressedIndex === item.index ? 0.88 : 1.0),
-            y: this.activeTab === item.index ? 1.1 : (this.pressedIndex === item.index ? 0.88 : 1.0)
+            x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
+            y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
           })
-          .animation({ duration: 180, curve: Curve.EaseOut })
+          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
         if (item.index === 2 && this.pendingCount > 0) {
           Text(this.pendingCount > 9 ? '9+' : this.pendingCount.toString())
             .fontColor('#FFFFFFFF')
@@ -70,12 +72,12 @@ export struct AppDock {
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(26)
-    .backgroundColor(this.activeTab === item.index ? (this.darkMode ? '#269CC7D0' : '#1A5B68F2') : Color.Transparent)
+    .backgroundColor(this.activeTab === item.index ? (this.darkMode ? '#336F78FF' : '#1F6C63FF') : Color.Transparent)
     .scale({
-      x: this.pressedIndex === item.index ? 0.94 : 1.0,
-      y: this.pressedIndex === item.index ? 0.94 : 1.0
+      x: this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.92) : 1.0,
+      y: this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.92) : 1.0
     })
-    .animation({ duration: 180, curve: Curve.EaseOut })
+    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
     .onClick(() => this.triggerPress(item.index))
   }
 
@@ -92,10 +94,10 @@ export struct AppDock {
       })
     }
     .width('100%')
-    .height(76)
+    .height(80)
     .padding({ left: 6, right: 6, top: 8, bottom: 8 })
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(this.darkMode ? '#CC0E1F26' : '#DDF6F8FA')
+    .backgroundColor(this.darkMode ? '#E6162236' : '#F2FFFFFF')
     .backdropBlur(32)
     .border({ width: 0.5, color: this.darkMode ? '#33FFFFFF' : '#22FFFFFF' })
     .borderRadius(40)

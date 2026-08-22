@@ -13,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -138,6 +139,16 @@ CREATE TABLE IF NOT EXISTS courses (
     semester TEXT,
     description TEXT,
     teacher_id TEXT,
+    owner_user_id TEXT,
+    remote_teacher_name TEXT,
+    remote_class_id TEXT,
+    remote_cpi TEXT,
+    remote_school_name TEXT,
+    remote_class_name TEXT,
+    remote_student_count INTEGER,
+    cover_url TEXT,
+    starts_at TEXT,
+    ends_at TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
     provider TEXT,
     external_id TEXT,
@@ -145,11 +156,12 @@ CREATE TABLE IF NOT EXISTS courses (
     last_synced_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT
+    FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE RESTRICT,
+    FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_courses_status ON courses(status);
--- idx_courses_external_id 在 _migrate() 中创建，兼容尚未包含 external_id 的旧 courses 表。
+-- idx_courses_external_id 和 idx_courses_owner_user_id 在 _migrate() 中创建，兼容旧 courses 表。
 
 CREATE TABLE IF NOT EXISTS class_groups (
     id TEXT PRIMARY KEY,
@@ -453,6 +465,525 @@ CREATE TABLE IF NOT EXISTS notices (
 );
 CREATE INDEX IF NOT EXISTS idx_notices_user_id ON notices(user_id);
 CREATE INDEX IF NOT EXISTS idx_notices_published_at ON notices(published_at);
+
+CREATE TABLE IF NOT EXISTS notice_ingest_results (
+    user_id TEXT NOT NULL,
+    client_fingerprint TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, client_fingerprint),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notice_ingest_claims (
+    user_id TEXT NOT NULL,
+    client_fingerprint TEXT NOT NULL,
+    claimed_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, client_fingerprint),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notice_ai_cache (
+    cache_key TEXT PRIMARY KEY,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS course_content_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'chaoxing',
+    external_id TEXT NOT NULL,
+    parent_external_id TEXT,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    author_name TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    depth INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    starts_at TEXT,
+    deadline TEXT,
+    published_at TEXT,
+    mime_type TEXT,
+    file_size INTEGER,
+    remote_object_id TEXT,
+    source_url TEXT,
+    metadata_json TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    UNIQUE(user_id, provider, course_id, kind, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_course_content_lookup
+ON course_content_items(user_id, course_id, kind, parent_external_id, position);
+
+CREATE TABLE IF NOT EXISTS course_sync_sections (
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    section TEXT NOT NULL,
+    status TEXT NOT NULL,
+    item_count INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT NOT NULL,
+    error_code TEXT,
+    error_message TEXT,
+    PRIMARY KEY(user_id, course_id, section),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_course_sync_sections_course
+ON course_sync_sections(user_id, course_id);
+
+CREATE TABLE IF NOT EXISTS course_resource_cache (
+    item_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    course_id TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    mime_type TEXT,
+    file_size INTEGER NOT NULL,
+    cached_at TEXT NOT NULL,
+    last_accessed_at TEXT NOT NULL,
+    expires_at TEXT,
+    PRIMARY KEY(item_id, user_id),
+    FOREIGN KEY(item_id) REFERENCES course_content_items(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_course_resource_cache_access
+ON course_resource_cache(last_accessed_at);
+"""
+
+UNIVERSITY_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS universities (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    short_name TEXT,
+    province TEXT,
+    city TEXT,
+    country TEXT NOT NULL DEFAULT 'China',
+    level TEXT,
+    school_code TEXT,
+    logo_url TEXT,
+    official_domain TEXT,
+    official_website TEXT,
+    academic_system_type TEXT NOT NULL DEFAULT 'unsupported',
+    academic_system_url TEXT,
+    academic_provider TEXT NOT NULL DEFAULT 'unsupported',
+    forum_enabled INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    is_demo INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_universities_status_name ON universities(status, name);
+CREATE INDEX IF NOT EXISTS idx_universities_location ON universities(province, city);
+
+"""
+
+COMMUNITY_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS forum_posts (
+    id TEXT PRIMARY KEY,
+    university_id TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL,
+    images_json TEXT NOT NULL DEFAULT '[]',
+    is_anonymous INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'published',
+    like_count INTEGER NOT NULL DEFAULT 0,
+    comment_count INTEGER NOT NULL DEFAULT 0,
+    favorite_count INTEGER NOT NULL DEFAULT 0,
+    extra_json TEXT NOT NULL DEFAULT '{}',
+    view_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_feed
+ON forum_posts(university_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_forum_posts_category
+ON forum_posts(university_id, status, category, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS forum_comments (
+    id TEXT PRIMARY KEY,
+    post_id TEXT NOT NULL,
+    university_id TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    parent_comment_id TEXT,
+    content TEXT NOT NULL,
+    is_anonymous INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'published',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(post_id) REFERENCES forum_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT,
+    FOREIGN KEY(author_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(parent_comment_id) REFERENCES forum_comments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_forum_comments_post ON forum_comments(post_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS forum_likes (
+    post_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(post_id, user_id),
+    FOREIGN KEY(post_id) REFERENCES forum_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS forum_favorites (
+    post_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(post_id, user_id),
+    FOREIGN KEY(post_id) REFERENCES forum_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS forum_reports (
+    id TEXT PRIMARY KEY,
+    university_id TEXT NOT NULL,
+    reporter_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT,
+    FOREIGN KEY(reporter_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_forum_reports_status ON forum_reports(status, created_at);
+"""
+
+ACADEMIC_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS academic_bindings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL UNIQUE,
+    university_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    external_student_id TEXT,
+    status TEXT NOT NULL,
+    last_synced_at TEXT,
+    credential_ref TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_academic_bindings_university ON academic_bindings(university_id, provider);
+"""
+
+
+# CampusMate EduConnector schema —— 高校教务系统统一连接层。
+# 架构：universities 1:N edu_systems（一所学校可有多个教务系统）。
+# 严禁编造教务系统 URL：未确认数据必须为 null，url_status 必须为 not_discovered。
+EDU_CONNECTOR_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS edu_system_configs (
+    id TEXT PRIMARY KEY,
+    university_id TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    system_type TEXT NOT NULL DEFAULT 'unknown',
+    academic_system_url TEXT,
+    academic_system_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    undergrad_system_url TEXT,
+    undergrad_system_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    postgrad_system_url TEXT,
+    postgrad_system_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    sso_url TEXT,
+    sso_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    cas_url TEXT,
+    cas_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    webvpn_url TEXT,
+    webvpn_url_status TEXT NOT NULL DEFAULT 'not_discovered',
+    login_method TEXT NOT NULL DEFAULT 'unknown',
+    captcha_type TEXT NOT NULL DEFAULT 'unknown',
+    requires_campus_network INTEGER,
+    supported_features TEXT NOT NULL DEFAULT '[]',
+    school_code TEXT,
+    notes TEXT,
+    data_source TEXT NOT NULL DEFAULT 'unknown',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_edu_system_configs_provider ON edu_system_configs(provider);
+
+CREATE TABLE IF NOT EXISTS edu_systems (
+    id TEXT PRIMARY KEY,
+    university_id TEXT NOT NULL,
+    school_code TEXT,
+    system_key TEXT NOT NULL,
+    name TEXT,
+    system_type TEXT NOT NULL DEFAULT 'unknown',
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    provider_version TEXT,
+    base_url TEXT,
+    login_url TEXT,
+    sso_url TEXT,
+    vpn_url TEXT,
+    auth_type TEXT NOT NULL DEFAULT 'unknown',
+    login_execution_mode TEXT NOT NULL DEFAULT 'unsupported',
+    captcha_type TEXT NOT NULL DEFAULT 'unknown',
+    requires_campus_network INTEGER NOT NULL DEFAULT 0,
+    requires_vpn INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    verification_status TEXT NOT NULL DEFAULT 'unverified',
+    supported_features TEXT NOT NULL DEFAULT '[]',
+    last_verified_at TEXT,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    notes TEXT,
+    is_mock INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_systems_uni_key ON edu_systems(university_id, system_key);
+CREATE INDEX IF NOT EXISTS idx_edu_systems_provider ON edu_systems(provider);
+CREATE INDEX IF NOT EXISTS idx_edu_systems_university ON edu_systems(university_id);
+
+CREATE TABLE IF NOT EXISTS edu_bindings (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    system_type TEXT NOT NULL DEFAULT 'undergrad',
+    external_student_id TEXT,
+    external_student_name TEXT,
+    connection_status TEXT NOT NULL DEFAULT 'unbound',
+    session_type TEXT,
+    credential_ref TEXT,
+    last_authenticated_at TEXT,
+    session_expires_at TEXT,
+    last_synced_at TEXT,
+    last_sync_status TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE CASCADE,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_bindings_user_system ON edu_bindings(user_id, edu_system_id);
+CREATE INDEX IF NOT EXISTS idx_edu_bindings_university ON edu_bindings(university_id, provider);
+CREATE INDEX IF NOT EXISTS idx_edu_bindings_status ON edu_bindings(connection_status);
+
+CREATE TABLE IF NOT EXISTS edu_connections (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT NOT NULL,
+    university_id TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'idle',
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    login_execution_mode TEXT NOT NULL DEFAULT 'unsupported',
+    credential_ref TEXT,
+    external_student_id TEXT,
+    external_student_name TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE CASCADE,
+    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_edu_connections_user ON edu_connections(user_id, state);
+
+CREATE TABLE IF NOT EXISTS edu_sync_records (
+    id TEXT PRIMARY KEY,
+    binding_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    sync_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    items_count INTEGER NOT NULL DEFAULT 0,
+    adapter TEXT,
+    adapter_version TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY(binding_id) REFERENCES edu_bindings(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_edu_sync_records_binding ON edu_sync_records(binding_id, sync_type);
+CREATE INDEX IF NOT EXISTS idx_edu_sync_records_user ON edu_sync_records(user_id, started_at);
+"""
+
+
+# CampusMate EduConnector 同步数据持久化 schema。
+# 把 Adapter 归一化后的 EduSchedule / EduGrade 落库，供三端真实展示。
+# 幂等同步：基于 (user_id, edu_system_id, semester, course_code, weekday, start_section, weeks) 唯一键。
+# 软删除：stale 行不物理删除，标记 is_stale=1 + last_seen_at，保留历史。
+EDU_DATA_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS edu_courses (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    external_course_id TEXT,
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_courses_unique ON edu_courses(
+    user_id, edu_system_id, semester, course_code
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_courses_user_semester ON edu_courses(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_courses_stale ON edu_courses(is_stale);
+
+CREATE TABLE IF NOT EXISTS edu_schedule_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    teacher TEXT,
+    teachers TEXT,
+    location TEXT,
+    campus TEXT,
+    building TEXT,
+    classroom TEXT,
+    weekday INTEGER,
+    start_section INTEGER,
+    end_section INTEGER,
+    start_time TEXT,
+    end_time TEXT,
+    weeks TEXT,
+    week_text TEXT,
+    credit REAL,
+    course_nature TEXT,
+    course_category TEXT,
+    course_type TEXT,
+    teaching_class TEXT,
+    class_name TEXT,
+    college TEXT,
+    department TEXT,
+    assessment_method TEXT,
+    exam_type TEXT,
+    total_hours REAL,
+    theory_hours REAL,
+    practice_hours REAL,
+    language TEXT,
+    note TEXT,
+    semester_id TEXT,
+    extra_info TEXT,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_schedule_items_unique ON edu_schedule_items(
+    user_id, edu_system_id, semester, course_code, weekday, start_section, weeks
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_user_semester ON edu_schedule_items(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_weekday ON edu_schedule_items(user_id, semester, weekday);
+CREATE INDEX IF NOT EXISTS idx_edu_schedule_items_stale ON edu_schedule_items(is_stale);
+
+CREATE TABLE IF NOT EXISTS edu_grades (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    credit REAL,
+    score TEXT,
+    grade_point REAL,
+    category TEXT,
+    status TEXT,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_grades_unique ON edu_grades(
+    user_id, edu_system_id, semester, course_code
+) WHERE course_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edu_grades_user_semester ON edu_grades(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_grades_stale ON edu_grades(is_stale);
+"""
+
+
+# QR 扫码登录 + 可信设备 schema
+# - qr_login_sessions: 二维码登录会话状态机
+# - trusted_devices: 可信设备自动登录凭据
+QR_AUTH_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS qr_login_sessions (
+    id TEXT PRIMARY KEY,
+    scan_token_hash TEXT NOT NULL,
+    browser_token_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    user_id TEXT,
+    device_id TEXT,
+    browser_name TEXT,
+    os_name TEXT,
+    device_label TEXT,
+    user_agent TEXT,
+    trust_device INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    scanned_at TEXT,
+    confirmed_at TEXT,
+    consumed_at TEXT,
+    cancelled_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_status ON qr_login_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_user ON qr_login_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_expires ON qr_login_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_qr_sessions_device ON qr_login_sessions(device_id);
+
+CREATE TABLE IF NOT EXISTS trusted_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL,
+    device_name TEXT,
+    browser_name TEXT,
+    os_name TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(token_hash);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_device ON trusted_devices(device_id);
+CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expires_at);
 """
 
 
@@ -502,11 +1033,17 @@ class Database:
             try:
                 conn.executescript(SCHEMA_SQL)
                 conn.executescript(MULTI_ROLE_SCHEMA_SQL)
+                conn.executescript(UNIVERSITY_SCHEMA_SQL)
+                conn.executescript(COMMUNITY_SCHEMA_SQL)
+                conn.executescript(ACADEMIC_SCHEMA_SQL)
+                conn.executescript(EDU_CONNECTOR_SCHEMA_SQL)
+                conn.executescript(EDU_DATA_SCHEMA_SQL)
                 conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
                 conn.executescript(STUDY_SCHEMA_SQL)
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
+                conn.executescript(QR_AUTH_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
@@ -556,7 +1093,24 @@ class Database:
             conn.execute("ALTER TABLE courses ADD COLUMN source_url TEXT")
         if "last_synced_at" not in course_cols:
             conn.execute("ALTER TABLE courses ADD COLUMN last_synced_at TEXT")
+        if "remote_teacher_name" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN remote_teacher_name TEXT")
+        if "owner_user_id" not in course_cols:
+            conn.execute("ALTER TABLE courses ADD COLUMN owner_user_id TEXT")
+        for column, column_type in (
+            ("remote_class_id", "TEXT"),
+            ("remote_cpi", "TEXT"),
+            ("remote_school_name", "TEXT"),
+            ("remote_class_name", "TEXT"),
+            ("remote_student_count", "INTEGER"),
+            ("cover_url", "TEXT"),
+            ("starts_at", "TEXT"),
+            ("ends_at", "TEXT"),
+        ):
+            if column not in course_cols:
+                conn.execute(f"ALTER TABLE courses ADD COLUMN {column} {column_type}")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)")
 
         # 检查 personal_tasks 表新增列
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
@@ -601,6 +1155,191 @@ class Database:
             )
 
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
+        cur = conn.execute("PRAGMA table_info(users)")
+        user_cols = {row["name"] for row in cur.fetchall()}
+        if "university_id" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN university_id TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)")
+
+        # universities 表新增 level 列(本科/专科)，旧库补齐
+        cur = conn.execute("PRAGMA table_info(universities)")
+        uni_cols = {row["name"] for row in cur.fetchall()}
+        if "level" not in uni_cols:
+            conn.execute("ALTER TABLE universities ADD COLUMN level TEXT")
+        if "school_code" not in uni_cols:
+            conn.execute("ALTER TABLE universities ADD COLUMN school_code TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_universities_level ON universities(level)")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_universities_school_code "
+            "ON universities(school_code) WHERE school_code IS NOT NULL"
+        )
+
+        # ---- forum_posts 表补齐 extra_json / view_count 列(旧库) ----
+        cur = conn.execute("PRAGMA table_info(forum_posts)")
+        post_cols = {row["name"] for row in cur.fetchall()}
+        if "extra_json" not in post_cols:
+            conn.execute("ALTER TABLE forum_posts ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}'")
+        if "view_count" not in post_cols:
+            conn.execute("ALTER TABLE forum_posts ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_forum_posts_category "
+            "ON forum_posts(university_id, status, category, created_at DESC)"
+        )
+
+        # ---- EduConnector 架构迁移 ----
+        self._migrate_edu_schema(conn)
+
+    def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:
+        """EduConnector 架构迁移：edu_bindings 升级 + edu_system_configs → edu_systems。"""
+        # 1. edu_bindings 旧 schema → 新 schema
+        cur = conn.execute("PRAGMA table_info(edu_bindings)")
+        bind_cols = {row["name"] for row in cur.fetchall()}
+        if bind_cols and "edu_system_id" not in bind_cols:
+            conn.execute("ALTER TABLE edu_bindings RENAME TO edu_bindings_legacy_v1")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS edu_bindings (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    edu_system_id TEXT,
+                    university_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    system_type TEXT NOT NULL DEFAULT 'undergrad',
+                    external_student_id TEXT,
+                    external_student_name TEXT,
+                    connection_status TEXT NOT NULL DEFAULT 'unbound',
+                    session_type TEXT,
+                    credential_ref TEXT,
+                    last_authenticated_at TEXT,
+                    session_expires_at TEXT,
+                    last_synced_at TEXT,
+                    last_sync_status TEXT,
+                    last_error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO edu_bindings (
+                    id, user_id, edu_system_id, university_id, provider, system_type,
+                    external_student_id, external_student_name, connection_status,
+                    credential_ref, last_synced_at, last_sync_status, last_error,
+                    created_at, updated_at
+                )
+                SELECT
+                    id, user_id, NULL, university_id, provider, system_type,
+                    external_student_id, external_student_name,
+                    COALESCE(status, 'unbound'),
+                    credential_ref, last_synced_at, last_sync_status, last_error,
+                    created_at, updated_at
+                FROM edu_bindings_legacy_v1
+                """
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_bindings_user_system "
+                "ON edu_bindings(user_id, edu_system_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_edu_bindings_university "
+                "ON edu_bindings(university_id, provider)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_edu_bindings_status "
+                "ON edu_bindings(connection_status)"
+            )
+
+        # 2. edu_sync_records 旧 schema → 新 schema (加 adapter/error_code)
+        cur = conn.execute("PRAGMA table_info(edu_sync_records)")
+        sync_cols = {row["name"] for row in cur.fetchall()}
+        if sync_cols and "adapter" not in sync_cols:
+            conn.execute("ALTER TABLE edu_sync_records ADD COLUMN adapter TEXT")
+        if sync_cols and "adapter_version" not in sync_cols:
+            conn.execute("ALTER TABLE edu_sync_records ADD COLUMN adapter_version TEXT")
+        if sync_cols and "error_code" not in sync_cols:
+            conn.execute("ALTER TABLE edu_sync_records ADD COLUMN error_code TEXT")
+
+        # 4. edu_schedule_items 扩展列迁移（课程详情完整字段 + extra_info）
+        cur = conn.execute("PRAGMA table_info(edu_schedule_items)")
+        sch_cols = {row["name"] for row in cur.fetchall()}
+        for column, column_type in (
+            ("teachers", "TEXT"),
+            ("campus", "TEXT"),
+            ("building", "TEXT"),
+            ("classroom", "TEXT"),
+            ("week_text", "TEXT"),
+            ("credit", "REAL"),
+            ("course_nature", "TEXT"),
+            ("course_category", "TEXT"),
+            ("course_type", "TEXT"),
+            ("teaching_class", "TEXT"),
+            ("class_name", "TEXT"),
+            ("college", "TEXT"),
+            ("department", "TEXT"),
+            ("assessment_method", "TEXT"),
+            ("exam_type", "TEXT"),
+            ("total_hours", "REAL"),
+            ("theory_hours", "REAL"),
+            ("practice_hours", "REAL"),
+            ("language", "TEXT"),
+            ("note", "TEXT"),
+            ("semester_id", "TEXT"),
+            ("extra_info", "TEXT"),
+        ):
+            if column not in sch_cols:
+                conn.execute(
+                    f"ALTER TABLE edu_schedule_items ADD COLUMN {column} {column_type}"
+                )
+
+        # 3. edu_system_configs → edu_systems 幂等迁移
+        cur = conn.execute("PRAGMA table_info(edu_systems)")
+        systems_cols = {row["name"] for row in cur.fetchall()}
+        if not systems_cols:
+            return
+        configs_exist = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='edu_system_configs'"
+        ).fetchone()[0]
+        if not configs_exist:
+            return
+        rows = conn.execute(
+            """
+            SELECT university_id, provider, system_type, school_code,
+                   academic_system_url, sso_url, cas_url, webvpn_url,
+                   login_method, captcha_type, requires_campus_network,
+                   supported_features, notes, data_source, created_at, updated_at
+            FROM edu_system_configs
+            WHERE university_id NOT IN (
+                SELECT university_id FROM edu_systems WHERE system_key = 'undergraduate-main'
+            )
+            """
+        ).fetchall()
+        now = datetime.now(timezone.utc).isoformat()
+        for r in rows:
+            import hashlib
+            sys_id = f"esys_{hashlib.md5(r['university_id'].encode()).hexdigest()[:16]}"
+            rcn = int(r["requires_campus_network"]) if r["requires_campus_network"] is not None else 0
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO edu_systems (
+                    id, university_id, school_code, system_key, name, system_type,
+                    provider, base_url, sso_url, vpn_url, auth_type,
+                    login_execution_mode, captcha_type, requires_campus_network,
+                    requires_vpn, status, verification_status, supported_features,
+                    source, notes, is_mock, created_at, updated_at
+                ) VALUES (?, ?, ?, 'undergraduate-main', NULL, ?, ?, ?, ?, ?, ?, 'unsupported', ?, ?, 0, 'active', 'unverified', ?, ?, ?, 0, ?, ?)
+                """,
+                (
+                    sys_id, r["university_id"], r["school_code"],
+                    r["system_type"], r["provider"],
+                    r["academic_system_url"], r["sso_url"], r["webvpn_url"],
+                    r["login_method"], r["captcha_type"], rcn,
+                    r["supported_features"], r["data_source"], r["notes"],
+                    r["created_at"] or now, r["updated_at"] or now,
+                ),
+            )
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

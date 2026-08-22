@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,7 +23,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.example.campusai.ui.components.StickySecondaryNavigation
-import com.example.campusai.ui.components.StickySecondaryNavigationContentHeight
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
@@ -52,18 +51,23 @@ import com.example.campusai.ui.screens.profile.ExpressionContributionScreen
 import com.example.campusai.ui.screens.profile.NotificationSettingsScreen
 import com.example.campusai.ui.screens.profile.PersonalHubScreen
 import com.example.campusai.ui.screens.profile.ProfileScreen
+import com.example.campusai.ui.screens.profile.QrScannerScreen
+import com.example.campusai.ui.screens.profile.QrConfirmScreen
+import com.example.campusai.ui.screens.profile.QrScanResultHolder
 import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
-import com.example.campusai.ui.screens.services.LeaveRequestScreen
-import com.example.campusai.ui.screens.services.MyRequestsScreen
-import com.example.campusai.ui.screens.services.RepairRequestScreen
-import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
-import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
+import com.example.campusai.ui.screens.v3.AcademicScreen
+import com.example.campusai.ui.screens.community.CommunityScreen
+import com.example.campusai.ui.screens.community.CommunityDetailScreen
+import com.example.campusai.ui.screens.community.CommunityPublishScreen
+import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
+import com.example.campusai.ui.screens.v3.UniversityScreen
+import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import java.net.URLEncoder
 
 private fun mainTabIndex(route: String?): Int = listOf("home", "courses", "tasks", "counselor", "profile")
@@ -99,21 +103,22 @@ fun AppNavHost(
         else -> secondaryDestination?.title
     }
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val destinationLayout = navigationDestinationLayout(
+        route = backStackEntry?.destination?.route,
+        statusBarHeight = statusBarHeight,
+    )
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
     Box(Modifier.fillMaxSize()) {
-    NavHost(
-        navController = navController,
-        startDestination = "home",
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                top = if (secondaryDestination != null) {
-                    statusBarHeight + StickySecondaryNavigationContentHeight
-                } else {
-                    0.dp
-                },
-            ),
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = destinationLayout.contentTopPadding),
+        ) {
+            NavHost(
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier.fillMaxSize(),
         enterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
@@ -164,7 +169,7 @@ fun AppNavHost(
                     )
             }
         },
-    ) {
+            ) {
         composable("home") {
             DashboardScreen(repository) { route ->
                 navController.navigate(route) {
@@ -236,6 +241,117 @@ fun AppNavHost(
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }
         }
+        composable("qr_scanner") {
+            QrScannerScreen(
+                onBack = { navController.popBackStack() },
+                onScanned = { sid, token, bName, oName, dLabel ->
+                    QrScanResultHolder.set(sid, token, bName, oName, dLabel)
+                    go("qr_confirm")
+                },
+            )
+        }
+        composable("qr_confirm") {
+            val holder = QrScanResultHolder
+            QrConfirmScreen(
+                sessionId = holder.sessionId ?: "",
+                scanToken = holder.scanToken ?: "",
+                browserName = holder.browserName,
+                osName = holder.osName,
+                deviceLabel = holder.deviceLabel,
+                onBack = {
+                    holder.clear()
+                    navController.popBackStack()
+                },
+                onSuccess = {
+                    holder.clear()
+                    navController.popBackStack("profile", inclusive = false)
+                },
+            )
+        }
+        composable("university") {
+            UniversityScreen(
+                repository = repository,
+                onNavigate = { route -> go(route) },
+            )
+        }
+        composable(
+            route = "community?sort={sort}&query={query}",
+            arguments = listOf(
+                navArgument("sort") { type = NavType.StringType; nullable = true; defaultValue = "time" },
+                navArgument("query") { type = NavType.StringType; nullable = true; defaultValue = "" },
+            ),
+        ) { backStackEntry ->
+            val sort = backStackEntry.arguments?.getString("sort") ?: "time"
+            val query = backStackEntry.arguments?.getString("query") ?: ""
+            CommunityScreen(
+                repository = modules.community,
+                onOpenDetail = { id -> go("community_detail/$id") },
+                onOpenPublish = { go("community_publish") },
+                onOpenHotTopics = { go("community_hot") },
+                initialSort = sort,
+                initialQuery = query,
+            )
+        }
+        composable("community_hot") {
+            CommunityHotTopicsScreen(
+                repository = modules.community,
+                onOpenDetail = { id -> go("community_detail/$id") },
+            )
+        }
+        composable("community_publish") {
+            CommunityPublishScreen(
+                repository = modules.community,
+                onBack = { navController.popBackStack() },
+                onPublished = { id ->
+                    navController.navigate("community_detail/$id") {
+                        popUpTo("community") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(
+            route = "community_detail/{postId}",
+            arguments = listOf(navArgument("postId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            CommunityDetailScreen(
+                postId = backStackEntry.arguments?.getString("postId") ?: "",
+                repository = modules.community,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable("academic") { AcademicScreen() }
+        composable("edu_system") {
+            com.example.campusai.ui.screens.profile.EduSystemScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToLogin = { loginUrl, connectionId ->
+                    val encodedUrl = URLEncoder.encode(loginUrl, "UTF-8")
+                    navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl")
+                },
+                onOpenSchedule = { go("edu_schedule") },
+            )
+        }
+        composable("edu_schedule") {
+            com.example.campusai.ui.screens.profile.EduScheduleScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = "edu_login/{connectionId}?loginUrl={loginUrl}",
+            arguments = listOf(
+                navArgument("connectionId") { type = NavType.StringType },
+                navArgument("loginUrl") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val connectionId = backStackEntry.arguments?.getString("connectionId") ?: ""
+            val loginUrl = backStackEntry.arguments?.getString("loginUrl") ?: ""
+            com.example.campusai.ui.screens.profile.EduLoginScreen(
+                loginUrl = java.net.URLDecoder.decode(loginUrl, "UTF-8"),
+                connectionId = connectionId,
+                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable("settings") {
             SettingsScreen(
                 repository = repository,
@@ -260,7 +376,36 @@ fun AppNavHost(
         composable("expression-contribution") {
             ExpressionContributionScreen(repository) { navController.popBackStack() }
         }
-        composable("account") { AccountScreen(repository) { navController.popBackStack() } }
+        composable("account") {
+            val accountEntry = remember { navController.getBackStackEntry("account") }
+            val pickedId by accountEntry.savedStateHandle
+                .getStateFlow<String?>("pickedUniversityId", null).collectAsState()
+            val pickedName by accountEntry.savedStateHandle
+                .getStateFlow<String?>("pickedUniversityName", null).collectAsState()
+            AccountScreen(
+                repository = repository,
+                onBack = { navController.popBackStack() },
+                onPickUniversity = { go("university_picker") },
+                pickedUniversityId = pickedId,
+                pickedUniversityName = pickedName,
+                onConsumePicked = {
+                    accountEntry.savedStateHandle.remove<String>("pickedUniversityId")
+                    accountEntry.savedStateHandle.remove<String>("pickedUniversityName")
+                },
+            )
+        }
+        composable("university_picker") {
+            UniversityPickerScreen(
+                repository = repository,
+                currentUniversityId = repository.session.value?.universityId.orEmpty(),
+                onSelected = { id, name ->
+                    navController.getBackStackEntry("account").savedStateHandle["pickedUniversityId"] = id
+                    navController.getBackStackEntry("account").savedStateHandle["pickedUniversityName"] = name
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
 
 
         composable("files") {
@@ -348,40 +493,7 @@ fun AppNavHost(
             )
         }
 
-        // ── 办事大厅 ──
-        composable("services") {
-            val reduceMotion by repository.reduceMotion.collectAsState()
-            ServicesScreen(
-                repository = modules.services,
-                reduceMotion = reduceMotion,
-                onBack = { navController.popBackStack() },
-                onNavigate = { route -> go(route) },
-            )
-        }
-        composable("service_leave") {
-            LeaveRequestScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable("service_repair") {
-            RepairRequestScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
+        // Feedback remains a direct support channel; approval-style service routes are removed in V3.
         composable(
             route = "service_form/{kind}",
             arguments = listOf(navArgument("kind") { type = NavType.StringType }),
@@ -390,33 +502,11 @@ fun AppNavHost(
                 kind = backStackEntry.arguments?.getString("kind") ?: "feedback",
                 repository = modules.services,
                 onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable("service_mine") {
-            MyRequestsScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onOpenDetail = { id -> go("service_detail/$id") },
-            )
-        }
-        composable(
-            route = "service_detail/{requestId}",
-            arguments = listOf(navArgument("requestId") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            ServiceRequestDetailScreen(
-                requestId = backStackEntry.arguments?.getLong("requestId") ?: 0L,
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
+                onSubmitted = { navController.popBackStack() },
             )
         }
 
-        // ── 专注自习 ──
+        // ── 专注大厅 / 专注空间 / 本次专注总结 ──
         composable(
             route = "focus?taskId={taskId}",
             arguments = listOf(navArgument("taskId") {
@@ -541,7 +631,8 @@ fun AppNavHost(
                 onOpenDetail = { id -> go("lostfound_detail/$id") },
             )
         }
-    }
+            }
+        }
         secondaryDestination?.let { destination ->
             StickySecondaryNavigation(
                 title = secondaryTitle ?: destination.title,

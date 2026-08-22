@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -55,12 +56,19 @@ def _ensure_tables(c: ServiceContainer) -> None:
             CREATE INDEX IF NOT EXISTS idx_service_requests_user ON service_requests(user_id, created_at);
             CREATE TABLE IF NOT EXISTS lost_found_items (
                 id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, kind TEXT NOT NULL,
-                title TEXT NOT NULL, content TEXT, location TEXT, contact TEXT,
+                university_id TEXT, title TEXT NOT NULL, content TEXT, location TEXT, contact TEXT,
+                contact_visibility TEXT NOT NULL DEFAULT 'private',
                 status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_lost_found_status ON lost_found_items(status, created_at);
             """
         )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(lost_found_items)")}
+        if "university_id" not in columns:
+            conn.execute("ALTER TABLE lost_found_items ADD COLUMN university_id TEXT")
+        if "contact_visibility" not in columns:
+            conn.execute("ALTER TABLE lost_found_items ADD COLUMN contact_visibility TEXT NOT NULL DEFAULT 'private'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lost_found_university ON lost_found_items(university_id,status,created_at)")
 
 
 def _student(user: UserRow) -> UserRow:
@@ -93,6 +101,21 @@ class LostFoundIn(BaseModel):
     content: Optional[str] = Field(None, max_length=5000)
     location: Optional[str] = Field(None, max_length=200)
     contact: Optional[str] = Field(None, max_length=200)
+    contact_visibility: str = Field("private", pattern="^(private|public)$")
+
+
+def _university_id(user: UserRow) -> str:
+    if not user.university_id:
+        from .community import UniversityRequired
+        raise UniversityRequired()
+    return user.university_id
+
+
+def _lost_found_out(row, viewer_id: str) -> dict:
+    result = dict(row)
+    if result.get("owner_id") != viewer_id and result.get("contact_visibility") != "public":
+        result["contact"] = None
+    return result
 
 
 def _activity_out(row, c: ServiceContainer, user_id: str) -> dict:
@@ -223,33 +246,67 @@ def get_service_request(request_id: str, user: UserRow = Depends(require_role("s
 
 @router.get("/student/lost-found")
 def list_lost_found(kind: Optional[str] = Query(None, pattern="^(lost|found)$"), mine: bool = Query(False), user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c); params = [user.id]; where = "owner_id = ?" if mine else "status = 'open' OR owner_id = ?"
-    if kind: where = f"kind = ? AND ({where})"; params.insert(0, kind)
-    with c.db.query() as conn: rows = conn.execute(f"SELECT * FROM lost_found_items WHERE {where} ORDER BY created_at DESC", params).fetchall()
-    return [dict(row) for row in rows]
+    _ensure_tables(c); university_id = _university_id(user)
+    rows, _ = c.community_repository.list_posts(university_id, q=None, page=1, page_size=200, category="lostfound", sort="time")
+    items = []
+    for post in rows:
+        extra = json.loads(post.get("extra_json", "{}") or "{}")
+        if kind and extra.get("kind") != kind:
+            continue
+        if mine and post["author_id"] != user.id:
+            continue
+        items.append(_lost_found_from_post(post, user.id))
+    return items
 
 
 @router.post("/student/lost-found", status_code=201)
 def create_lost_found(req: LostFoundIn, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c); now = _now(); item_id = _id("lost")
-    with c.db.transaction() as conn:
-        conn.execute("INSERT INTO lost_found_items (id,owner_id,kind,title,content,location,contact,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", (item_id,user.id,req.kind,req.title,req.content,req.location,req.contact,"open",now,now))
-        return dict(conn.execute("SELECT * FROM lost_found_items WHERE id = ?", (item_id,)).fetchone())
+    _ensure_tables(c); university_id = _university_id(user)
+    extra = {"kind": req.kind, "contact_visibility": req.contact_visibility}
+    if req.location:
+        extra["location"] = req.location
+    if req.contact:
+        extra["contact"] = req.contact
+    post = c.community_repository.create_post(
+        university_id=university_id, author_id=user.id, title=req.title,
+        content=req.content or "", category="lostfound", images=[], is_anonymous=False, extra=extra,
+    )
+    return _lost_found_from_post(post, user.id)
 
 
 @router.get("/student/lost-found/{item_id}")
 def get_lost_found(item_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
-    _ensure_tables(c)
-    with c.db.query() as conn: row = conn.execute("SELECT * FROM lost_found_items WHERE id = ? AND (status = 'open' OR owner_id = ?)", (item_id, user.id)).fetchone()
-    if row is None: raise HTTPException(status_code=404, detail="信息不存在")
-    return dict(row)
+    _ensure_tables(c); _university_id(user)
+    post = c.community_repository.get_post(item_id)
+    if post is None or post["category"] != "lostfound" or post["university_id"] != user.university_id:
+        raise HTTPException(status_code=404, detail="信息不存在")
+    if post["status"] != "published" and post["author_id"] != user.id:
+        raise HTTPException(status_code=404, detail="信息不存在")
+    return _lost_found_from_post(post, user.id)
 
 
 @router.delete("/student/lost-found/{item_id}")
 def delete_lost_found(item_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)):
     _ensure_tables(c)
-    with c.db.transaction() as conn: conn.execute("DELETE FROM lost_found_items WHERE id = ? AND owner_id = ?", (item_id, user.id))
+    post = c.community_repository.get_post(item_id)
+    if post is not None and post["author_id"] == user.id:
+        c.community_repository.set_post_status(item_id, "deleted")
     return {"ok": True}
+
+
+def _lost_found_from_post(post: dict, viewer_id: str) -> dict:
+    extra = json.loads(post.get("extra_json", "{}") or "{}")
+    is_owner = post["author_id"] == viewer_id
+    contact = extra.get("contact")
+    if not is_owner and extra.get("contact_visibility", "private") != "public":
+        contact = None
+    return {
+        "id": post["id"], "owner_id": post["author_id"], "kind": extra.get("kind", "lost"),
+        "university_id": post["university_id"], "title": post["title"], "content": post["content"],
+        "location": extra.get("location"), "contact": contact,
+        "contact_visibility": extra.get("contact_visibility", "private"),
+        "status": post["status"], "created_at": post["created_at"], "updated_at": post["updated_at"],
+    }
 
 
 __all__ = ["router"]

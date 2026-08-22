@@ -1,0 +1,135 @@
+[
+  {
+    "school_name": "南阳理工学院",
+    "school_code": "4141011653",
+    "candidate_url": "https://ngjw.nyist.edu.cn/admin/caslogin",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳理工学院",
+    "school_code": "4141011653",
+    "candidate_url": "https://portal.nyist.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳理工学院",
+    "school_code": "4141011653",
+    "candidate_url": "http://zsw.nyist.edu.cn",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳理工学院",
+    "school_code": "4141011653",
+    "candidate_url": "https://webvpn.nyist.edu.cn/",
+    "system_type": "vpn_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "南阳理工学院",
+    "school_code": "4141011653",
+    "candidate_url": "https://cas.nyist.edu.cn/cas/login",
+    "system_type": "sso_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "https://recruit.dmu.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "https://yjs.dmu.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "https://cce.dmu.edu.cn/",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "https://ehall.dmu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "https://rcd.dmu.edu.cn/",
+    "system_type": "admission_office",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连医科大学",
+    "school_code": "4121010161",
+    "candidate_url": "http://cas.dmu.edu.cn/authserver/login",
+    "system_type": "sso_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连外国语大学",
+    "school_code": "4121010172",
+    "candidate_url": "http://jiaowu.dlufl.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连外国语大学",
+    "school_code": "4121010172",
+    "candidate_url": "https://i.dlufl.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连外国语大学",
+    "school_code": "4121010172",
+    "candidate_url": "http://lib.dlufl.edu.cn/",
+    "system_type": "library",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连外国语大学",
+    "school_code": "4121010172",
+    "candidate_url": "http://ieo.dlufl.edu.cn/",
+    "system_type": "international_office",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连工业大学",
+    "school_code": "4121010152",
+    "candidate_url": "https://apps.dlpu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连工业大学",
+    "school_code": "4121010152",
+    "candidate_url": "https://apps.dlpu.edu.cn/gate_in",
+    "system_type": "sso_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连工业大学",
+    "school_code": "4121010152",
+    "candidate_url": "http://oa.dlpu.edu.cn/",
+    "system_type": "oa_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "大连工业大学",
+    "school_code": "4121010152",
+    "candidate_url": "http://gongkai.dlpu.edu.cn/",
+    "system_type": "information_disclosure",
+    "source": "webfetch_official"
+  }
+]

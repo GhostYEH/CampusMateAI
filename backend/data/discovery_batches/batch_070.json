@@ -1,0 +1,82 @@
+[
+  {
+    "school_name": "贵州师范大学",
+    "school_code": "4152010663",
+    "province": "贵州省",
+    "candidate_url": "https://jwc.gznu.edu.cn",
+    "system_type": "academic_department_website",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "贵州师范大学教务处"
+  },
+  {
+    "school_name": "贵州师范大学",
+    "school_code": "4152010663",
+    "province": "贵州省",
+    "candidate_url": "https://yjsc.gznu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "贵州师范大学研究生院"
+  },
+  {
+    "school_name": "海南师范大学",
+    "school_code": "4146011658",
+    "province": "海南省",
+    "candidate_url": "https://ehall.hainnu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南师范大学AI校园/统一门户"
+  },
+  {
+    "school_name": "海南师范大学",
+    "school_code": "4146011658",
+    "province": "海南省",
+    "candidate_url": "https://jwc.hainnu.edu.cn",
+    "system_type": "academic_department_website",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南师范大学教务处/本科生教育"
+  },
+  {
+    "school_name": "海南师范大学",
+    "school_code": "4146011658",
+    "province": "海南省",
+    "candidate_url": "https://yjsc.hainnu.edu.cn",
+    "system_type": "graduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "海南师范大学研究生学院"
+  },
+  {
+    "school_name": "青海大学",
+    "school_code": "4163010743",
+    "province": "青海省",
+    "candidate_url": "https://mh.qhu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "青海大学校内门户"
+  },
+  {
+    "school_name": "青海大学",
+    "school_code": "4163010743",
+    "province": "青海省",
+    "candidate_url": "https://eol.qhu.edu.cn",
+    "system_type": "undergraduate_main",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "青海大学教育在线(MEOL)"
+  },
+  {
+    "school_name": "宁夏医科大学",
+    "school_code": "4164010752",
+    "province": "宁夏回族自治区",
+    "candidate_url": "https://ehall.nxmu.edu.cn",
+    "system_type": "unified_portal",
+    "verification_status": "CANDIDATE",
+    "discovery_method": "webfetch_official_site",
+    "notes": "宁夏医科大学网上办事大厅"
+  }
+]

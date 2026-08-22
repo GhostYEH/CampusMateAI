@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 
 class SecondaryDestinationSpecTest {
     @Test
@@ -22,8 +23,24 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
-    fun lostFoundUsesSharedSecondaryNavigation() {
-        assertEquals("失物招领", secondaryDestinationSpec("lostfound")?.title)
+    fun secondaryDestinationKeepsNavHostAtTopAndPadsOnlyItsOwnContent() {
+        val layout = navigationDestinationLayout("settings", statusBarHeight = 24.dp)
+
+        assertEquals(0.dp, layout.navHostTopPadding)
+        assertEquals(84.dp, layout.contentTopPadding)
+    }
+
+    @Test
+    fun rootPagesWithoutLocalStatusInsetReserveTheStatusBarInNavHostContent() {
+        assertEquals(24.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
+        assertEquals(24.dp, navigationDestinationLayout("tasks", 24.dp).contentTopPadding)
+        assertEquals(24.dp, navigationDestinationLayout("counselor", 24.dp).contentTopPadding)
+        assertEquals(0.dp, navigationDestinationLayout("home", 24.dp).contentTopPadding)
+    }
+
+    @Test
+    fun lostFoundOwnsItsImmersiveHeroNavigation() {
+        assertNull(secondaryDestinationSpec("lostfound"))
     }
 
     @Test
@@ -45,18 +62,17 @@ class SecondaryDestinationSpecTest {
             "files",
             "activities",
             "favorites",
+            "university",
+            "community",
+            "community_hot",
+            "community_publish",
+            "academic",
             "campus-news-detail/{newsId}",
             "task_detail/{taskId}",
             "exams",
             "exam_detail/{examId}",
             "exam_edit/{examId}",
             "classrooms",
-            "services",
-            "service_leave",
-            "service_repair",
-            "service_form/{kind}",
-            "service_mine",
-            "service_detail/{requestId}",
             "focus",
             "lostfound_publish",
             "lostfound_detail/{itemId}",
@@ -64,5 +80,10 @@ class SecondaryDestinationSpecTest {
         ).forEach { route ->
             assertFalse("Route $route needs a fixed navigation title", secondaryDestinationSpec(route)?.title.isNullOrBlank())
         }
+    }
+
+    @Test
+    fun communityHotRouteHasRankingTitle() {
+        assertEquals("热门话题", secondaryDestinationSpec("community_hot")?.title)
     }
 }

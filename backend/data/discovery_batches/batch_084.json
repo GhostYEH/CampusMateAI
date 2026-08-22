@@ -1,0 +1,50 @@
+[
+  {
+    "school_name": "西藏大学",
+    "school_code": "4154010694",
+    "candidate_url": "https://jwc.xzu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "教育教学"
+  },
+  {
+    "school_name": "西藏大学",
+    "school_code": "4154010694",
+    "candidate_url": "https://eportal.xzu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "统一身份认证"
+  },
+  {
+    "school_name": "西藏大学",
+    "school_code": "4154010694",
+    "candidate_url": "https://yjszs.xzu.edu.cn",
+    "system_type": "graduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "研究生招生信息/招生就业"
+  },
+  {
+    "school_name": "西藏大学",
+    "school_code": "4154010694",
+    "candidate_url": "https://zjc.xzu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科招生信息"
+  },
+  {
+    "school_name": "福州大学",
+    "school_code": "4135010386",
+    "candidate_url": "https://oce.fzu.edu.cn",
+    "system_type": "international-education",
+    "source": "webfetch_official_site",
+    "notes": "留学生教育"
+  },
+  {
+    "school_name": "福州大学",
+    "school_code": "4135010386",
+    "candidate_url": "https://news.fzu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "新闻网"
+  }
+]

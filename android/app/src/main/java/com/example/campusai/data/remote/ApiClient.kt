@@ -65,7 +65,8 @@ object ApiClient {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = if (BuildConfig.DEBUG) {
-            HttpLoggingInterceptor.Level.BODY
+            // Request/response bodies can contain chat text, passwords and tokens.
+            HttpLoggingInterceptor.Level.BASIC
         } else {
             HttpLoggingInterceptor.Level.NONE
         }
@@ -136,6 +137,21 @@ object ApiClient {
         .build()
     val chaoxingApi: ApiService = chaoxingRetrofit.create(ApiService::class.java)
 
+    private val staticOrigin: String = run {
+        val idx = BASE_URL.indexOf("://")
+        val afterScheme = if (idx >= 0) BASE_URL.substring(idx + 3) else BASE_URL
+        val scheme = if (idx >= 0) BASE_URL.substring(0, idx) else "http"
+        val slash = afterScheme.indexOf('/')
+        val host = if (slash >= 0) afterScheme.substring(0, slash) else afterScheme
+        "$scheme://$host"
+    }
+
+    fun resolveStaticUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        return if (url.startsWith("/")) "$staticOrigin$url" else "$staticOrigin/$url"
+    }
+
     suspend fun streamCounselor(request: ChatRequest, onChunk: suspend (String) -> Unit) = withContext(Dispatchers.IO) {
         val payload = moshi.adapter(ChatRequest::class.java).toJson(request.copy(stream = true))
         val httpRequest = Request.Builder()
@@ -153,7 +169,13 @@ object ApiClient {
                 val line = source.readUtf8Line() ?: break
                 when {
                     line.startsWith("event:") -> event = line.removePrefix("event:").trim()
-                    line.startsWith("data:") -> data.append(line.removePrefix("data:").trim())
+                    line.startsWith("data:") -> {
+                        // SSE permits one optional space after the colon. Preserve all
+                        // remaining whitespace because a streamed text chunk may begin
+                        // or end with meaningful spacing.
+                        if (data.isNotEmpty()) data.append('\n')
+                        data.append(line.removePrefix("data:").removePrefix(" "))
+                    }
                     line.isEmpty() -> {
                         if (event == "chunk" && data.isNotEmpty()) {
                             val text = org.json.JSONObject(data.toString()).optString("text")

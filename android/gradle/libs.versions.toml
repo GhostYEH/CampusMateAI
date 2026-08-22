@@ -26,6 +26,7 @@ hilt = "2.50"
 hiltNavigationCompose = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
 volcRtc = "3.60.104.300"
+coil = "2.6.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -70,6 +71,7 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 volcengine-rtc = { group = "com.volcengine", name = "VolcEngineRTC", version.ref = "volcRtc" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

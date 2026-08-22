@@ -14,12 +14,14 @@ import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.RefreshRequest
 import com.example.campusai.data.remote.ChatRequest
 import com.example.campusai.data.remote.ExpressionSignalRequest
-import com.example.campusai.data.remote.ExtractRequest
+import com.example.campusai.data.remote.NoticeExtractRequest
 import com.example.campusai.data.remote.PersonalTaskCreateRequest
 import com.example.campusai.data.remote.PersonalTaskUpdateRequest
 import com.example.campusai.data.remote.PersonalFileCreateRequest
 import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
+import com.example.campusai.data.remote.CourseContentItemDto
+import com.example.campusai.data.remote.CourseContentSummaryDto
 import com.example.campusai.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -262,6 +264,7 @@ class AppRepository(
                 role = meUser?.role?.takeIf { it.isNotBlank() } ?: "student",
                 detail = detail,
                 accountId = meUser?.id.orEmpty(),
+                universityId = meUser?.university_id.orEmpty(),
             )
         } else {
             throw Exception("无法连接到后端服务器，请检查网络或后端是否运行")
@@ -482,6 +485,10 @@ class AppRepository(
                             type = dto.semester ?: "本学期",
                             teacher = dto.teacher_name ?: "待定",
                             location = dto.description ?: "",
+                            provider = dto.provider,
+                            external_id = dto.external_id,
+                            source_url = dto.source_url,
+                            last_synced_at = dto.last_synced_at,
                         )
                     }
                 }
@@ -490,11 +497,14 @@ class AppRepository(
     }
 
     /** 拉取云端任务并合并到本地缓存。 */
-    suspend fun refreshTasks() {
+    suspend fun refreshTasks() = taskMutex.withLock {
         if (!_backendOnline.value || _mockMode.value) {
-            _tasks.value = emptyList()
-            _taskError.value = "待办需要连接真实后端后才能使用"
-            return
+            _taskError.value = if (_tasks.value.isEmpty()) {
+                "待办需要连接真实后端后才能使用"
+            } else {
+                "暂时无法刷新，正在显示上次加载的待办"
+            }
+            return@withLock
         }
         try {
             val resp = ApiClient.api.listTasks(page = 1, pageSize = 200)
@@ -518,7 +528,42 @@ class AppRepository(
                     "待办数据加载失败，请稍后重试"
                 }
             }
-        } catch (_: Exception) { /* 保留现有数据 */ }
+        } catch (_: Exception) {
+            // Keep the current snapshot. A transient refresh failure must not blank
+            // the screen or race a successful add/update operation.
+            _taskError.value = "待办数据加载失败，请稍后重试"
+        }
+    }
+
+    suspend fun loadCourseContent(courseId: String): Pair<CourseContentSummaryDto?, List<CourseContentItemDto>> {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null to emptyList()
+        val summary = ApiClient.api.getCourseContentSummary(courseId)
+        val content = ApiClient.api.getCourseContent(courseId, pageSize = 500)
+        if (!content.isSuccessful) throw IllegalStateException("course_content_load_failed_${content.code()}")
+        return summary.body() to content.body()?.items.orEmpty()
+    }
+
+    suspend fun syncCourseContent(courseId: String): Pair<CourseContentSummaryDto?, List<CourseContentItemDto>> {
+        val response = ApiClient.api.syncCourseContent(courseId)
+        if (!response.isSuccessful) throw IllegalStateException("course_content_sync_failed_${response.code()}")
+        return loadCourseContent(courseId)
+    }
+
+    suspend fun getCourseResourceUrl(courseId: String, itemId: String): String? {
+        val response = ApiClient.api.openCourseResource(courseId, itemId)
+        if (!response.isSuccessful) return null
+        return response.body()?.url
+    }
+
+    suspend fun downloadCourseResource(courseId: String, item: CourseContentItemDto): File? {
+        val response = ApiClient.chaoxingApi.downloadCourseResource(courseId, item.id)
+        val body = response.body()
+        if (!response.isSuccessful || body == null) return null
+        val safeName = item.title.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { item.id }
+        val targetDir = File(application.cacheDir, "chaoxing-resources").apply { mkdirs() }
+        val target = File(targetDir, safeName.take(160))
+        body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+        return target
     }
 
     /** 拉取个人中心数据（文件 / 收藏 / 活动）。 */
@@ -973,6 +1018,53 @@ class AppRepository(
         dataStore.saveSession(updated)
     }
 
+    /**
+     * 搜索大学列表（复用现有 GET /universities 接口）。
+     * 用于个人资料编辑页的「所在大学」选择器。
+     */
+    suspend fun loadUniversities(query: String? = null): List<com.example.campusai.data.remote.UniversityDto> {
+        val response = ApiClient.api.listUniversities(query?.takeIf(String::isNotBlank))
+        if (!response.isSuccessful) throw Exception("大学列表加载失败 (${response.code()})")
+        return response.body()?.items.orEmpty()
+    }
+
+    /**
+     * 切换当前用户所属大学（复用现有 PUT /profile/university 接口）。
+     * 成功后同步更新本地 session 中的 universityId / universityName 并持久化，
+     * 保证「我的」页面、首页等订阅 session 的地方立即显示新学校，
+     * 且重新进入 App / 重新登录后仍能从后端 me() 读到正确 university_id。
+     */
+    suspend fun updateUniversity(universityId: String, universityName: String) {
+        val response = ApiClient.api.selectUniversity(
+            com.example.campusai.data.remote.UniversitySelectionRequest(universityId),
+        )
+        if (!response.isSuccessful) throw Exception("切换大学失败 (${response.code()})")
+        val current = _session.value ?: throw IllegalStateException("当前未登录")
+        val updated = current.copy(
+            universityId = universityId,
+            universityName = universityName,
+        )
+        _session.value = updated
+        dataStore.saveSession(updated)
+    }
+
+    /**
+     * 若 session 中已有 universityId 但缺 universityName（例如登录时只拿到 id），
+     * 通过 listUniversities 拉取并在列表中匹配 id 补全名称，写回 session。
+     * 找不到则保持空，不影响主流程。
+     */
+    suspend fun ensureUniversityNameLoaded() {
+        val current = _session.value ?: return
+        if (current.universityId.isBlank() || current.universityName.isNotBlank()) return
+        val matched = runCatching { loadUniversities(null) }
+            .getOrNull()
+            ?.firstOrNull { it.id == current.universityId }
+            ?: return
+        val updated = current.copy(universityName = matched.name)
+        _session.value = updated
+        dataStore.saveSession(updated)
+    }
+
     suspend fun updateUser(user: User) {
         _session.value = user
         dataStore.saveSession(user)
@@ -1052,83 +1144,11 @@ class AppRepository(
 
     suspend fun extractNotice(text: String): ExtractResult {
         if (_backendOnline.value && !_mockMode.value) {
-            val resp = ApiClient.api.extractNotice(ExtractRequest(text))
-            if (resp.isSuccessful) return resp.body() ?: ExtractResult(error = "提取失败")
+            val resp = ApiClient.api.extractNotice(NoticeExtractRequest(content = text))
+            if (resp.isSuccessful) return resp.body()?.toExtractResult() ?: ExtractResult(error = "提取失败")
         }
         return ExtractResult(error = "提取服务暂时不可用，请稍后重试。")
     }
-
-    suspend fun enqueueNoticeIngestion(content: String, sourceName: String, publishedAt: String) {
-        val id = java.util.UUID.randomUUID().toString()
-        val notice = PendingNotice(
-            id = id,
-            content = content,
-            sourceName = sourceName,
-            publishedAt = publishedAt,
-            retryCount = 0,
-            status = "pending"
-        )
-        dataStore.enqueuePendingNotice(notice)
-
-        // Trigger WorkManager
-        val constraints = androidx.work.Constraints.Builder()
-            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-            .build()
-            
-        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.campusai.workers.NoticeUploadWorker>()
-            .setConstraints(constraints)
-            .build()
-            
-        androidx.work.WorkManager.getInstance(application).enqueueUniqueWork(
-            "NoticeUploadWorker",
-            androidx.work.ExistingWorkPolicy.REPLACE,
-            workRequest
-        )
-    }
-
-    suspend fun scheduleNoticeUploadWorker() {
-        val constraints = androidx.work.Constraints.Builder()
-            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
-            .build()
-            
-        val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.example.campusai.workers.NoticeUploadWorker>()
-            .setConstraints(constraints)
-            .build()
-            
-        androidx.work.WorkManager.getInstance(application).enqueueUniqueWork(
-            "NoticeUploadWorker",
-            androidx.work.ExistingWorkPolicy.REPLACE,
-            workRequest
-        )
-    }
-
-    suspend fun getPendingNotices(): List<PendingNotice> = dataStore.pendingNotices.first()
-
-    suspend fun updatePendingNotices(notices: List<PendingNotice>) {
-        dataStore.savePendingNotices(notices)
-    }
-
-    suspend fun ingestNoticeDirectly(notice: PendingNotice): Boolean {
-        if (!_backendOnline.value || _mockMode.value) return false
-        return try {
-            val response = ApiClient.api.ingestNotice(
-                com.example.campusai.data.remote.NoticeIngestRequest(
-                    content = notice.content,
-                    source_name = notice.sourceName,
-                    published_at = notice.publishedAt
-                )
-            )
-            response.isSuccessful
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    suspend fun ingestNotice(content: String, sourceName: String, publishedAt: String) {
-        // Obsolete, use enqueueNoticeIngestion instead
-    }
-
-
 
     private fun defaultTasks() = listOf(
         Task("demo-1", "《数据结构》作业三：链表与栈", "今天 23:59", "课程作业", false, "实现单链表和双向链表的增删改查操作，并用链表模拟栈的 push/pop。\n\n要求：\n1. 使用 C++ 或 Java 实现\n2. 提交源代码和实验报告\n3. 需要通过 OJ 平台测试"),

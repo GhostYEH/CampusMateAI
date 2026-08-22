@@ -87,12 +87,7 @@ class PersonAnalyzer(
         } catch (error: Throwable) {
             val category = error.category()
             val summary = error.safeSummary()
-            Log.e(
-                TAG,
-                "Person detector initialization failed [$category]: " +
-                    "${error.javaClass.name}: $summary",
-                error,
-            )
+            safeLogError("Person detector initialization failed [$category]: ${error.javaClass.name}: $summary", error)
             detector = null
             _snapshot.value = PersonDetectionSnapshot(
                 status = PersonDetectorStatus.ERROR,
@@ -148,12 +143,7 @@ class PersonAnalyzer(
             } catch (error: Throwable) {
                 val category = error.category()
                 val summary = error.safeSummary()
-                Log.e(
-                    TAG,
-                    "Person detector inference failed [$category]: " +
-                        "${error.javaClass.name}: $summary",
-                    error,
-                )
+                safeLogError("Person detector inference failed [$category]: ${error.javaClass.name}: $summary", error)
                 _snapshot.value = _snapshot.value.copy(
                     status = PersonDetectorStatus.ERROR,
                     personDetected = false,
@@ -204,6 +194,13 @@ class PersonAnalyzer(
     private fun Throwable.safeSummary(): String =
         (message ?: javaClass.simpleName).replace(Regex("[\\r\\n]+"), " ").take(180)
 
+    private fun safeLogError(message: String, error: Throwable) {
+        try {
+            Log.e(TAG, message, error)
+        } catch (_: RuntimeException) {
+            // Local JVM tests do not provide Android's Log implementation.
+        }
+    }
     private companion object {
         const val TAG = "PersonAnalyzer"
         const val MODEL_ASSET_PATH = "models/person/efficientdet_lite0_int8.tflite"

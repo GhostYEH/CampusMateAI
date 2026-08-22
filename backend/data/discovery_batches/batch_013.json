@@ -1,0 +1,5 @@
+[
+  {"school_name": "南京航空航天大学", "candidate_url": "http://aao-eas.nuaa.edu.cn/eams/login.action", "source_url": "https://www.bing.com/search?q=南京航空航天大学+教务系统+site:edu.cn"},
+  {"school_name": "暨南大学", "candidate_url": "https://jw.jnu.edu.cn/new/index.html", "source_url": "https://www.bing.com/search?q=暨南大学+教务系统+site:edu.cn"},
+  {"school_name": "暨南大学", "candidate_url": "https://jwxk.jnu.edu.cn/xsxkapp/sys/xsxkapp/*default/index.do", "source_url": "https://www.bing.com/search?q=暨南大学+教务系统+site:edu.cn"}
+]

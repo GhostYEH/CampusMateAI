@@ -1,0 +1,20 @@
+[
+  {"school_name": "东北财经大学", "school_code": "4121010173", "candidate_url": "https://portal.dufe.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "信息门户"},
+  {"school_name": "东北财经大学", "school_code": "4121010173", "candidate_url": "https://ehall.dufe.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "办事大厅"},
+  {"school_name": "中国医科大学", "school_code": "4121010159", "candidate_url": "https://www.cmu.edu.cn/jw", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处"},
+  {"school_name": "中国医科大学", "school_code": "4121010159", "candidate_url": "http://s.cmu.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "智慧校园服务平台"},
+  {"school_name": "中国医科大学", "school_code": "4121010159", "candidate_url": "https://www.cmu.edu.cn/cmuyjs/index.htm", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "山东中医药大学", "school_code": "4137010441", "candidate_url": "https://jwc.sdutcm.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务处/本科生教育"},
+  {"school_name": "山东中医药大学", "school_code": "4137010441", "candidate_url": "https://yjs.sdutcm.edu.cn/", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "山东中医药大学", "school_code": "4137010441", "candidate_url": "https://sso.sdutcm.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "信息门户入口"},
+  {"school_name": "中国民用航空飞行学院", "school_code": "4151010624", "candidate_url": "https://grs.cafuc.edu.cn/", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生招生"},
+  {"school_name": "中国民用航空飞行学院", "school_code": "4151010624", "candidate_url": "https://zsc.cafuc.edu.cn/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "本专科招生"},
+  {"school_name": "东北电力大学", "school_code": "4122010188", "candidate_url": "http://jwc.neepu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "教务在线"},
+  {"school_name": "东北电力大学", "school_code": "4122010188", "candidate_url": "https://my.neepu.edu.cn", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "智慧校园融合门户"},
+  {"school_name": "东北电力大学", "school_code": "4122010188", "candidate_url": "http://grad.neepu.edu.cn", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生招生"},
+  {"school_name": "临沂大学", "school_code": "4137010452", "candidate_url": "https://jwc.lyu.edu.cn/", "system_type": "academic_department_website", "source": "webfetch_official_site", "notes": "本专科生教育/教务处"},
+  {"school_name": "临沂大学", "school_code": "4137010452", "candidate_url": "https://yjsc.lyu.edu.cn/", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生教育"},
+  {"school_name": "临沂大学", "school_code": "4137010452", "candidate_url": "http://ehall.lyu.edu.cn/", "system_type": "unified_portal", "source": "webfetch_official_site", "notes": "网上办事大厅"},
+  {"school_name": "北京工业大学", "school_code": "4111010009", "candidate_url": "http://admissions.bjut.edu.cn/", "system_type": "undergraduate_main", "source": "webfetch_official_site", "notes": "本科生招生"},
+  {"school_name": "北京工业大学", "school_code": "4111010009", "candidate_url": "http://yanzhao.bjut.edu.cn/", "system_type": "graduate_main", "source": "webfetch_official_site", "notes": "研究生招生"}
+]

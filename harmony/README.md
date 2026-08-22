@@ -16,6 +16,12 @@ $env:DEVECO_SDK_HOME='D:\DevEco Studio\sdk'
 & 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleApp --no-daemon
 ```
 
+单元测试：
+
+```powershell
+& 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat' test --no-daemon
+```
+
 构建产物：`entry/build/default/outputs/default/app/entry-default.hap`。
 
 ## 已接入页面
@@ -52,8 +58,14 @@ HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` �
 
 这些资源均复制到鸿蒙目录，未修改 Android 原文件。
 
-## 平台差异
+## 已验证能力与平台差异
 
-Android 的第三方通知监听服务在 HarmonyOS NEXT 没有可直接照搬的等价能力，因此通知页使用真实后端/站内通知作为安全替代。专注页保留计时和真实会话同步，不上传相机画面。
+认证已保存 access/refresh 双 token，并支持并发 401 的单航班刷新、刷新后原请求重放一次以及会话失效清理。敏感 token 由独立 TokenStore 使用 AssetStoreKit 保存，不写入普通 Preferences 或日志。
+
+本轮在本机 API 24 SDK 中确认：`ohos.permission.SUBSCRIBE_NOTIFICATION` 是 `system_basic`、`system_grant` 权限；普通 CampusMateAI 手机应用无法把 `NotificationSubscriberExtensionAbility` 当作 Android `NotificationListenerService` 使用，也不能据此读取本机微信、企业微信、QQ/TIM 通知。因此普通应用构建的通知自动采集状态明确为 **UNAVAILABLE**，页面不得显示“已开启”。订阅代码保留给将来具备合规系统授权/适用设备形态的构建；当前真实 fallback 是后端站内通知、学习通账号同步和用户手动粘贴。已实现的来源解析、三个 IM 独立白名单、群名精确匹配与本地分类均采用 fail-closed，但 Harmony 第三方 bundleName alias 必须用真实设备数据验证后才能登记。
+
+通知可靠队列尚未完成：当前本地记录仍使用 Preferences，不是 ArkData/RDB Outbox，失败重试与 App 重启恢复不能视为已对齐。完整状态见 `PARITY_AUDIT.md`。
+
+Android 表情模型当前没有已验证可在 HarmonyOS API 24 运行的等价推理 runtime/模型产物。Harmony 使用 `UnavailableFocusAssistProvider`，不会生成随机表情、不会伪装为真实识别，也不会上传相机画面；AI 对话在没有稳定信号时不发送 `expression_signal`。
 
 HAP 当前未配置项目签名；连接模拟器或真机后，可在 DevEco Studio 的 Signing Configs 中使用开发者调试证书签名运行。

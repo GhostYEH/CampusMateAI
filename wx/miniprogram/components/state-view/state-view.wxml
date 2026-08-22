@@ -1,12 +1,7 @@
-<view class="state {{state}}">
-  <view wx:if="{{state === 'loading'}}" class="state-skeleton" aria-label="正在加载">
-    <view class="skeleton-line skeleton-icon"></view>
-    <view class="skeleton-line skeleton-title"></view>
-    <view class="skeleton-line skeleton-copy"></view>
-  </view>
-  <view wx:elif="{{state === 'error'}}" class="mark error">需要重试</view>
-  <view wx:else class="mark">暂无内容</view>
-  <view class="title">{{title}}</view>
-  <view class="description">{{description}}</view>
-  <button wx:if="{{actionText}}" class="action" bindtap="onAction">{{actionText}}</button>
+<view class="state-view state-view--{{state}}">
+  <progress wx:if="{{state === 'loading'}}" class="state-view__progress" percent="68" active stroke-width="3" color="#596AF0" backgroundColor="#EFF0FF" />
+  <image wx:else class="state-view__icon" src="/assets/icons/quick-counselor.svg" mode="aspectFit"></image>
+  <view class="state-view__message state-view__message--title">{{message || title || (state === 'loading' ? '正在加载…' : state === 'error' ? '暂时无法加载' : '这里还没有内容')}}</view>
+  <view wx:if="{{description}}" class="state-view__description">{{description}}</view>
+  <button wx:if="{{action || actionText}}" class="state-view__action" bindtap="onAction">{{action || actionText}}</button>
 </view>

@@ -1,0 +1,64 @@
+<view class="campus-page community-page">
+  <secondary-nav title="校园论坛"></secondary-nav>
+  <view class="campus-page-body community-body">
+    <view class="community-heading campus-enter">
+      <view><view class="community-title">校园论坛</view><view class="community-subtitle">提问 / 招募 / 带价帮忙 / 失物招领，一站刷到</view></view>
+      <button class="publish-entry" hover-class="button-pressed" bindtap="openPublish">＋ 发布</button>
+    </view>
+
+    <view class="today-hot-card campus-enter" bindtap="openHotTopics" aria-label="查看今日热门话题">
+      <view class="today-hot-head"><view><text class="today-hot-fire">🔥</text><text>今日热门话题</text></view><text class="today-hot-more">更多 ›</text></view>
+      <view class="today-hot-list">
+        <view wx:for="{{hotPosts}}" wx:key="id" class="today-hot-item" data-id="{{item.id}}" catchtap="onOpen">
+          <text class="hot-rank-pill">TOP{{index + 1}}</text><text class="today-hot-title">{{item.title}}</text>
+        </view>
+        <view wx:if="{{!hotPosts.length}}" class="today-hot-empty">热度正在汇总中，先来发布第一条话题吧</view>
+      </view>
+    </view>
+
+    <view class="forum-toolbar">
+      <scroll-view scroll-x class="forum-cats-scroll">
+        <view class="forum-cats">
+          <view class="forum-cat-item {{!category ? 'active' : ''}}" data-cat="" bindtap="switchCategory">全部</view>
+          <view wx:for="{{categories}}" wx:key="key" class="forum-cat-item {{category === item.key ? 'active' : ''}}" data-cat="{{item.key}}" bindtap="switchCategory">{{item.label}}</view>
+        </view>
+      </scroll-view>
+      <view class="forum-toolbar-right">
+        <view class="forum-search">
+          <icon type="search" size="14"></icon>
+          <input value="{{query}}" placeholder="搜索标题或内容" bindinput="onQuery" bindconfirm="onSearch"></input>
+        </view>
+        <view class="forum-sort">
+          <view class="forum-sort-item {{sort === 'time' ? 'active' : ''}}" data-sort="time" bindtap="switchSort">最新</view>
+          <view class="forum-sort-item {{sort === 'hot' ? 'active' : ''}}" data-sort="hot" bindtap="switchSort">热门</view>
+        </view>
+      </view>
+    </view>
+
+    <state-view wx:if="{{loading && !posts.length}}" state="loading" title="正在加载论坛"></state-view>
+    <state-view wx:elif="{{error}}" state="error" title="暂时无法进入论坛" description="{{error}}" actionText="重试" bindaction="load"></state-view>
+    <state-view wx:elif="{{!posts.length}}" state="empty" title="论坛还很安静" description="成为第一个发帖的同学"></state-view>
+    <view wx:else class="post-list">
+      <view wx:for="{{posts}}" wx:key="id" class="forum-card campus-enter" data-id="{{item.id}}" bindtap="onOpen">
+        <view class="forum-card-head">
+          <view class="forum-avatar">{{item.avatar}}</view>
+          <view class="forum-card-meta"><view class="forum-author">{{item.author_name}}</view><view class="forum-time">{{item.catLabel}} · {{item.timeText}}</view></view>
+        </view>
+        <view class="forum-card-title">{{item.title}}</view>
+        <view class="forum-card-content">{{item.excerpt}}</view>
+        <view wx:if="{{item.extraTags.length}}" class="forum-extra-tags">
+          <text wx:for="{{item.extraTags}}" wx:for-item="tag" wx:key="*this" class="forum-extra-tag">{{tag}}</text>
+        </view>
+        <image wx:if="{{item.previewImage}}" class="forum-card-image" src="{{item.previewImage}}" mode="aspectFill"></image>
+        <view class="forum-card-foot">
+          <view class="forum-foot-btn {{item.liked ? 'active' : ''}}" data-idx="{{index}}" catchtap="onLike">♥ {{item.like_count}}</view>
+          <view class="forum-foot-btn">💬 {{item.comment_count}}</view>
+          <view class="forum-foot-btn {{item.favorited ? 'active' : ''}}" data-idx="{{index}}" catchtap="onFav">★ {{item.favorite_count}}</view>
+        </view>
+      </view>
+    </view>
+    <view wx:if="{{posts.length < total && !loading}}" class="forum-load-more">
+      <button bindtap="loadMore">加载更多</button>
+    </view>
+  </view>
+</view>

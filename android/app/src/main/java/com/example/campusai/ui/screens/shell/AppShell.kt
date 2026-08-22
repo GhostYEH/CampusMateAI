@@ -1,5 +1,8 @@
 package com.example.campusai.ui.screens.shell
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
@@ -41,6 +45,7 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -55,17 +60,21 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.core.view.WindowCompat
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.navigation.secondaryDestinationSpec
+import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
@@ -86,15 +95,27 @@ data class NavItem(val route: String, val label: String, val icon: ImageVector)
  */
 val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
 
+internal fun floatingDockContentBottomPadding(navigationBarHeight: Dp): Dp =
+    navigationBarHeight + BottomDockReservedHeight
+
 val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
-    NavItem("tasks", "待办", Icons.Default.CheckCircle),
-    NavItem("counselor", "AI 校园助手", Icons.Default.SmartToy),
+    NavItem("tasks", "待办", Icons.Default.AssignmentTurnedIn),
+    NavItem("counselor", "AI校园助手", Icons.Default.SmartToy),
     NavItem("profile", "我的", Icons.Default.Person),
 )
 
+private val studentProfileRoutes = setOf(
+    "profile", "settings", "account", "files", "favorites", "university", "academic", "help-feedback",
+)
 
+internal fun selectedStudentDockRoute(route: String): String = when {
+    route == "community" -> "home"
+    route == "lostfound" -> "counselor"
+    route in studentProfileRoutes -> "profile"
+    else -> route
+}
 
 @Composable
 fun AppShell(
@@ -105,6 +126,7 @@ fun AppShell(
     val session by repository.session.collectAsState()
     val pendingCount by repository.pendingCount.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val darkMode by repository.darkMode.collectAsState()
     val navItems = studentNavItems.take(5)
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route 可能是带参数的模式串（如 "counselor?prompt={prompt}"），取基础路径比较
@@ -113,6 +135,17 @@ fun AppShell(
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
     val isProfileFlow = route in profileRoutes
     val isFocus = route == "focus" || route == "focus_session" || route == "focus_summary"
+    val view = LocalView.current
+    val barPolicy = systemBarPolicy(route = route, darkTheme = darkMode, authenticated = true)
+
+    SideEffect {
+        view.context.findActivity()?.let { activity ->
+            WindowCompat.getInsetsController(activity.window, view).apply {
+                isAppearanceLightStatusBars = barPolicy.darkStatusBarIcons
+                isAppearanceLightNavigationBars = barPolicy.darkNavigationBarIcons
+            }
+        }
+    }
 
     Box(
         Modifier.fillMaxSize().background(Background),
@@ -158,6 +191,12 @@ fun AppShell(
             )
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
@@ -243,7 +282,7 @@ private fun CampusDock(
     reduceMotion: Boolean,
     onNavigate: (String) -> Unit,
 ) {
-    val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
+    val selectedRoute = selectedStudentDockRoute(route)
     val primaryColor = Primary
     val dockSurface = Surface
     val dockLine = Line
@@ -290,8 +329,7 @@ private fun CampusDock(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
-                val selected = route == item.route ||
-                    (item.route == "profile" && route in profileRoutes)
+                val selected = selectedRoute == item.route
                 LiquidGlassNavItem(
                     item = item,
                     isSelected = selected,

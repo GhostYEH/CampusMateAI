@@ -1,0 +1,128 @@
+[
+  {
+    "school_name": "四川美术学院",
+    "school_code": "4150010170",
+    "candidate_url": "https://www.scfai.edu.cn/jwc/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川美术学院",
+    "school_code": "4150010170",
+    "candidate_url": "https://www.scfai.edu.cn/yjsc/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川美术学院",
+    "school_code": "4150010170",
+    "candidate_url": "https://www.scfai.edu.cn/zsb/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川美术学院",
+    "school_code": "4150010170",
+    "candidate_url": "http://ids.scfai.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川美术学院",
+    "school_code": "4150010170",
+    "candidate_url": "https://www.scfai.edu.cn/lib/",
+    "system_type": "library",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "http://jwc.cqmu.edu.cn/index/jxgl.htm",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://jwc.cqmu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://yjsy.cqmu.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://bzkzs.cqmu.edu.cn/",
+    "system_type": "undergraduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://yjszs.cqmu.edu.cn/",
+    "system_type": "graduate_admission",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://jxjy.cqmu.edu.cn/",
+    "system_type": "continuing_education",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://portal.paas.cqmu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://cas.cqmu.edu.cn/cas/login",
+    "system_type": "sso_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "重庆医科大学",
+    "school_code": "4150010160",
+    "candidate_url": "https://e-learning.cqmu.edu.cn/meol/index.do",
+    "system_type": "undergraduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川外国语大学",
+    "school_code": "4150010133",
+    "candidate_url": "http://jwc.sisu.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川外国语大学",
+    "school_code": "4150010133",
+    "candidate_url": "http://graduate.sisu.edu.cn/",
+    "system_type": "graduate_main",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川外国语大学",
+    "school_code": "4150010133",
+    "candidate_url": "http://ehall.sisu.edu.cn/",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "四川外国语大学",
+    "school_code": "4150010133",
+    "candidate_url": "https://cgpt.sisu.edu.cn/",
+    "system_type": "procurement_platform",
+    "source": "webfetch_official"
+  }
+]

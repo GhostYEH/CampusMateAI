@@ -1,0 +1,53 @@
+.focus-body{padding-top:16px;padding-bottom:calc(126px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px}
+.focus-timer-card,.assist-card,.feeling-card,.goal-card,.recent-card{box-sizing:border-box;border-radius:28px;background:#fff}
+.focus-timer-card{padding:14px;display:flex;flex-direction:column;align-items:center}
+.focus-mode-tabs{width:100%;padding:5px;display:flex;box-sizing:border-box;border-radius:22px;background:#eff0ff}
+.focus-mode{height:50px;margin:0;padding:0 8px;display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;flex:1;border-radius:18px;color:#1b2730;background:transparent;font-size:13px;font-weight:650;line-height:50px;white-space:nowrap}
+.focus-mode image{width:18px;height:18px}
+.focus-mode--active{color:#fff;background:#5b68f2}
+.focus-ring{width:232px;height:232px;margin-top:18px;padding:11px;box-sizing:border-box;border-radius:50%}
+.focus-ring__inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:5px solid #fff;border-radius:50%;box-sizing:border-box;background:#fff;box-shadow:inset 0 0 0 2px #e2e7ec}
+.focus-time{color:#1b2730;font-size:55px;line-height:1;font-weight:800;letter-spacing:-2px}
+.focus-status{margin-top:24px;color:#667784;font-size:19px}
+.focus-actions{min-height:52px;margin-top:18px;display:flex;justify-content:center;gap:10px}
+.focus-primary,.focus-reset{height:52px;margin:0;padding:0 18px;box-sizing:border-box;border-radius:24px;font-size:18px;font-weight:760;line-height:52px}
+.focus-primary{width:142px;display:flex;align-items:center;justify-content:center;gap:9px;flex:0 0 142px;color:#fff;background:#5b68f2}
+.focus-primary image{width:22px;height:22px}
+.focus-reset{color:#5b68f2;background:#eff0ff}
+.assist-card{padding:18px}
+.assist-head{display:flex;align-items:center;gap:12px}
+.assist-icon{width:54px;height:54px;display:flex;align-items:center;justify-content:center;flex:none;border-radius:27px;background:#eff0ff}
+.assist-icon image{width:29px;height:29px}
+.assist-title-wrap{min-width:0;flex:1}
+.assist-title,.section-title{color:#1b2730;font-size:22px;line-height:1.25;font-weight:800}
+.assist-subtitle,.section-subtitle{margin-top:5px;color:#667784;font-size:13px;line-height:1.5}
+.assist-head switch{transform:scale(.84);transform-origin:right center}
+.assist-state{margin-top:18px;padding:14px;border:1px solid #e2e7ec;border-radius:18px;background:#f6f8fa}
+.assist-state view{min-height:38px;display:flex;align-items:center;gap:12px;color:#667784;font-size:14px}
+.assist-state image{width:22px;height:22px;flex:none}
+.feeling-card{padding:18px}
+.feeling-row{margin-top:14px;display:flex;gap:8px}
+.feeling{height:42px;margin:0;padding:0 4px;min-width:0;flex:1;border:1px solid #e2e7ec;border-radius:12px;color:#667784;background:#fff;font-size:12px;line-height:42px}
+.feeling.selected{border-color:#5b68f2;color:#5b68f2;background:#eff0ff;font-weight:700}
+.goal-card{min-height:164px;padding:20px;display:flex;align-items:center;overflow:hidden}
+.goal-copy{min-width:0;flex:1}
+.goal-value{margin-top:17px;color:#1b2730;font-size:26px;font-weight:800}
+.goal-track{height:8px;margin-top:14px;overflow:hidden;border-radius:4px;background:#eff0ff}
+.goal-track view{height:100%;border-radius:4px;background:#5b68f2}
+.goal-action{margin-top:12px;color:#5b68f2;font-size:13px}
+.goal-art{width:142px;height:142px;margin-right:-13px;flex:none}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);overflow:hidden;border-radius:24px;background:#fff}
+.summary-grid view{padding:20px 8px;text-align:center;border-left:1px solid #e2e7ec}
+.summary-grid view:first-child{border-left:0}
+.summary-grid text{display:block;color:#1b2730;font-size:29px;font-weight:800}
+.summary-grid label{display:block;margin-top:5px;color:#667784;font-size:12px}
+.recent-card{padding:20px}
+.recent-row{padding:14px 0;display:flex;justify-content:space-between;border-bottom:1px solid #e2e7ec;color:#667784;font-size:14px}
+.recent-row:last-child{border-bottom:0}
+.dark .focus-timer-card,.dark .assist-card,.dark .feeling-card,.dark .goal-card,.dark .summary-grid,.dark .recent-card{background:#17252e}
+.dark .focus-ring__inner{border-color:#17252e;background:#17252e}
+.dark .focus-time,.dark .assist-title,.dark .section-title,.dark .goal-value,.dark .summary-grid text{color:#f4f8fa}
+@media (max-width:360px){.focus-mode{padding:0 4px;font-size:12px}
+.focus-ring{width:238px;height:238px}
+.focus-time{font-size:50px}
+}

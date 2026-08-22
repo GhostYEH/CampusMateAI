@@ -1,0 +1,24 @@
+{
+  "kbList": [
+    {
+      "kch": null,
+      "kcmc": null,
+      "jsxm": "Fixture教师",
+      "xqj": "1",
+      "jc1": "1",
+      "zcd": "1-16"
+    },
+    {
+      "kch": "FIXTURE-X",
+      "kcmc": "  ",
+      "xqj": "2"
+    },
+    {
+      "kch": "FIXTURE-GOOD",
+      "kcmc": "有效课程",
+      "xqj": "3",
+      "jc1": "1"
+    }
+  ],
+  "_fixture_note": "malformed fixture，含 null/空字符串 course_name，应被 parser 跳过"
+}

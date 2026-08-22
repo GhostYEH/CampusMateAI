@@ -3,13 +3,22 @@
   "version": "1.0.0",
   "description": "大学生校园事务智能陪伴助手微信小程序端",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audit:size": "node scripts/audit-package-size.js",
+    "check:backend": "node scripts/check_real_backend.js",
+    "check:budget": "node scripts/check_package_budget.js",
+    "check:devtools": "node scripts/check_devtools_compat.js",
+    "check:shell": "node scripts/check_shell_parity.js",
+    "check:layout": "node scripts/check_layout_tokens.js",
+    "check:student-tools": "node scripts/check_student_tools_contracts.js",
+    "check:primary-routes": "node scripts/check_primary_routes.js",
+    "check:parity": "node scripts/check_android_parity.js",
+    "check:contracts": "node scripts/check_backend_contracts.js && node scripts/check_date_utils.js",
+    "check": "npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:layout && npm run check:student-tools && npm run check:primary-routes && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
   },
   "keywords": [],
   "author": "",
   "license": "",
-  "dependencies": {
-  },
   "devDependencies": {
     "miniprogram-api-typings": "^2.8.3-1",
     "typescript": "4.9.5"

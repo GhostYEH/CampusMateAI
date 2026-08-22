@@ -1,0 +1,74 @@
+[
+  {
+    "school_name": "安徽师范大学",
+    "candidate_url": "https://jw.ahnu.edu.cn",
+    "system_type": "undergraduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "本科教务系统"
+  },
+  {
+    "school_name": "安徽师范大学",
+    "candidate_url": "https://gs.ahnu.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "安徽师范大学",
+    "candidate_url": "http://ehall.ahnu.edu.cn/login",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "信息门户/办事大厅"
+  },
+  {
+    "school_name": "中北大学",
+    "candidate_url": "https://xmh.nuc.edu.cn",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "数字校园"
+  },
+  {
+    "school_name": "中北大学",
+    "candidate_url": "http://jwc.nuc.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "中北大学",
+    "candidate_url": "http://grs.nuc.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  },
+  {
+    "school_name": "山西农业大学",
+    "candidate_url": "https://ehall.sxau.edu.cn/",
+    "system_type": "unified-portal",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "一站式服务大厅"
+  },
+  {
+    "school_name": "山西农业大学",
+    "candidate_url": "http://jwc.sxau.edu.cn/",
+    "system_type": "academic_department_website",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "教务处"
+  },
+  {
+    "school_name": "山西农业大学",
+    "candidate_url": "http://grs.sxau.edu.cn/",
+    "system_type": "graduate-main",
+    "provider": "UNKNOWN",
+    "source": "webfetch_official_website",
+    "notes": "研究生院"
+  }
+]

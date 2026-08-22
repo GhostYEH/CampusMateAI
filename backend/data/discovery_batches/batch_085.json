@@ -1,0 +1,130 @@
+[
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://jiaowu.hebeu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本专科教育"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://yanjs.hebeu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://jwglxxfwpt.hebeu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "综合教务"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://portal.hebeu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "融合门户"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://bsdt.hebeu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "河北工程大学",
+    "school_code": "4113010076",
+    "candidate_url": "https://zhaosheng.hebeu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科招生"
+  },
+  {
+    "school_name": "山西农业大学",
+    "school_code": "4114010113",
+    "candidate_url": "https://jwc.sxau.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本科生教育"
+  },
+  {
+    "school_name": "山西农业大学",
+    "school_code": "4114010113",
+    "candidate_url": "https://grs.sxau.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育/研究生招生"
+  },
+  {
+    "school_name": "山西农业大学",
+    "school_code": "4114010113",
+    "candidate_url": "https://ehall.sxau.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "一站式服务大厅"
+  },
+  {
+    "school_name": "山西农业大学",
+    "school_code": "4114010113",
+    "candidate_url": "https://portal.sxau.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "服务大厅"
+  },
+  {
+    "school_name": "山西农业大学",
+    "school_code": "4114010113",
+    "candidate_url": "https://zsb.sxau.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本科生招生"
+  },
+  {
+    "school_name": "内蒙古医科大学",
+    "school_code": "4115010132",
+    "candidate_url": "https://jwc.immu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_official_site",
+    "notes": "本专科教育"
+  },
+  {
+    "school_name": "内蒙古医科大学",
+    "school_code": "4115010132",
+    "candidate_url": "https://yjsy.immu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_official_site",
+    "notes": "研究生教育/研究生招生"
+  },
+  {
+    "school_name": "内蒙古医科大学",
+    "school_code": "4115010132",
+    "candidate_url": "https://i.immu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "i医大"
+  },
+  {
+    "school_name": "内蒙古医科大学",
+    "school_code": "4115010132",
+    "candidate_url": "https://yun.immu.edu.cn",
+    "system_type": "unified-portal",
+    "source": "webfetch_official_site",
+    "notes": "智慧医大"
+  },
+  {
+    "school_name": "内蒙古医科大学",
+    "school_code": "4115010132",
+    "candidate_url": "https://pgzs.immu.edu.cn",
+    "system_type": "undergraduate-admission",
+    "source": "webfetch_official_site",
+    "notes": "本专科生招生"
+  }
+]

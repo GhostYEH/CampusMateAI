@@ -6,14 +6,51 @@
     "pages/tasks/tasks",
     "pages/counselor/counselor",
     "pages/profile/profile",
-    "pages/notices/notices",
-    "pages/study/study"
+    "pages/hub/hub",
+    "pages/qr-confirm/qr-confirm"
   ],
+  "subPackages": [
+    {
+      "root": "package-campus",
+      "pages": [
+        "pages/notices/notices",
+        "pages/classrooms/classrooms",
+        "pages/exams/exams"
+      ]
+    },
+    {
+      "root": "package-community",
+      "pages": [
+        "pages/community/community",
+        "pages/community-detail/community-detail",
+        "pages/hot-topics/hot-topics",
+        "pages/community-publish/community-publish",
+        "pages/lostfound/lostfound"
+      ]
+    },
+    {
+      "root": "package-study",
+      "pages": [
+        "pages/study/study"
+      ]
+    },
+    {
+      "root": "package-academic",
+      "pages": [
+        "pages/edu/edu"
+      ]
+    }
+  ],
+  "preloadRule": {},
   "window": {
     "navigationStyle": "custom",
     "backgroundColor": "#F6F8FA",
     "backgroundTextStyle": "dark",
     "enablePullDownRefresh": false
+  },
+  "usingComponents": {
+    "secondary-nav": "/components/secondary-nav/secondary-nav",
+    "state-view": "/components/state-view/state-view"
   },
   "tabBar": {
     "custom": true,

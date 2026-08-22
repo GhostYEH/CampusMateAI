@@ -1,0 +1,13 @@
+# CampusMateAI - AI Agent Rules
+
+## Project Skills
+
+Skills are stored in `.agents/skills/`. When a task matches a skill, read `.agents/skills/<skill-name>/SKILL.md` first.
+
+Full mapping: see `AGENTS.md` → "通用工程 Skills" section.
+Sources: `.agents/skills/SOURCES.md`
+
+## JDK (Mandatory)
+
+Use bundled JDK 21: `F:\demo1\android\.tools\jdk21-full\jdk-21.0.12+8`
+Never use system `java`. Set `JAVA_HOME` and `PATH` before any JVM command.

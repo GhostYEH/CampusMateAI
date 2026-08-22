@@ -1,12 +1,14 @@
 import { ExamItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { promptAction } from '@kit.ArkUI';
+import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 @Component
 export struct ExamsPage {
   @Prop exams: ExamItem[] = [];
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State filter: string = '全部';
   @State selectedId: string = '';
   @State showEdit: boolean = false;
@@ -154,7 +156,7 @@ export struct ExamsPage {
     }.width('100%').padding(13).backgroundColor(this.palette().surface)
       .border({ width: 1, color: this.palette().line }).borderRadius(18)
       .onClick(() => this.selectedId = exam.id)
-      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 20 })))
+      .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
 
   }
 

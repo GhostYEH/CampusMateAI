@@ -77,6 +77,7 @@ class UserPublic(BaseModel):
     major: Optional[str] = None
     grade: Optional[str] = None
     avatar_url: Optional[str] = None
+    university_id: Optional[str] = None
     is_active: bool = True
     created_at: str = ""
     updated_at: str = ""
@@ -177,9 +178,14 @@ class CourseOut(BaseModel):
     description: Optional[str] = None
     teacher_id: Optional[str] = None
     teacher_name: Optional[str] = None
+    provider: Optional[str] = None
+    external_id: Optional[str] = None
+    source_url: Optional[str] = None
+    last_synced_at: Optional[str] = None
     status: str
     created_at: str
     updated_at: str
+    owner_user_id: Optional[str] = None
 
 
 # ===== 班级 =====

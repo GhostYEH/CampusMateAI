@@ -31,6 +31,17 @@ from ..repositories.study_session_repository import StudySessionRepository
 from ..repositories.study_goal_repository import StudyGoalRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
+from ..repositories.university_repository import UniversityRepository
+from ..repositories.community_repository import CommunityRepository
+from ..repositories.academic_repository import AcademicRepository
+from ..repositories.notice_automation_repository import NoticeAutomationRepository
+from ..repositories.course_content_repository import CourseContentRepository
+from ..repositories.edu_data_repository import EduDataRepository
+from ..repositories.edu_repository import EduRepository
+from ..repositories.qr_auth_repository import (
+    QrLoginSessionRepository,
+    TrustedDeviceRepository,
+)
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
@@ -38,6 +49,7 @@ from ..services.notice_extraction_service import NoticeExtractionService
 from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
 from ..services.task_breakdown_service import TaskBreakdownService
+from ..services.edu import EduConnectorService, SchoolRegistry, SystemDetector, SessionManager
 
 
 @dataclass
@@ -70,7 +82,18 @@ class ServiceContainer:
     study_goal_repository: StudyGoalRepository
     chaoxing_repository: ChaoxingRepository
     notice_repository: NoticeRepository
+    university_repository: UniversityRepository
+    community_repository: CommunityRepository
+    academic_repository: AcademicRepository
+    notice_automation_repository: NoticeAutomationRepository
+    course_content_repository: CourseContentRepository
     task_breakdown_service: TaskBreakdownService
+    # QR 扫码登录与可信设备
+    qr_login_session_repository: QrLoginSessionRepository
+    trusted_device_repository: TrustedDeviceRepository
+    # EduConnector
+    edu_repository: EduRepository
+    edu_connector: EduConnectorService
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def ensure_index(self) -> int:
@@ -102,6 +125,21 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         llm=llm,
         settings=settings,
     )
+    course_content_repository = CourseContentRepository(db)
+    # EduConnector
+    edu_repo = EduRepository(db)
+    edu_data_repo = EduDataRepository(db)
+    school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
+    system_detector = SystemDetector(registry=school_registry)
+    session_manager = SessionManager(session_ttl_seconds=settings.edu_session_ttl_seconds)
+    edu_connector = EduConnectorService(
+        settings=settings,
+        registry=school_registry,
+        detector=system_detector,
+        session_manager=session_manager,
+        edu_repo=edu_repo,
+        edu_data_repo=edu_data_repo,
+    )
     container = ServiceContainer(
         settings=settings,
         db=db,
@@ -127,7 +165,16 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         study_goal_repository=study_goal_repo,
         chaoxing_repository=ChaoxingRepository(db),
         notice_repository=NoticeRepository(db),
+        university_repository=UniversityRepository(db),
+        community_repository=CommunityRepository(db),
+        academic_repository=AcademicRepository(db),
+        notice_automation_repository=NoticeAutomationRepository(db),
+        course_content_repository=CourseContentRepository(db),
         task_breakdown_service=task_breakdown,
+        qr_login_session_repository=QrLoginSessionRepository(db),
+        trusted_device_repository=TrustedDeviceRepository(db),
+        edu_repository=edu_repo,
+        edu_connector=edu_connector,
     )
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)
     try:

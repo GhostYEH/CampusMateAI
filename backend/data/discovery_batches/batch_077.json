@@ -1,0 +1,82 @@
+[
+  {
+    "school_name": "燕山大学",
+    "school_code": "4113010216",
+    "candidate_url": "https://ehall.ysu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_ysu_official",
+    "notes": "一网通办"
+  },
+  {
+    "school_name": "燕山大学",
+    "school_code": "4113010216",
+    "candidate_url": "https://jwc.ysu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_ysu_official",
+    "notes": "教务处/本科生教育"
+  },
+  {
+    "school_name": "燕山大学",
+    "school_code": "4113010216",
+    "candidate_url": "https://gs.ysu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_ysu_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://uaa.imu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_imu_official",
+    "notes": "本科生教育/统一认证"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://gs.imu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_imu_official",
+    "notes": "研究生教育"
+  },
+  {
+    "school_name": "内蒙古大学",
+    "school_code": "4115010126",
+    "candidate_url": "https://ehall.imu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_imu_official",
+    "notes": "校内门户"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://one.gxu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_gxu_official",
+    "notes": "一件事门户"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://bsdt.gxu.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_gxu_official",
+    "notes": "办事大厅"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://jwc.gxu.edu.cn",
+    "system_type": "undergraduate-main",
+    "source": "webfetch_gxu_official",
+    "notes": "本科教务管理"
+  },
+  {
+    "school_name": "广西大学",
+    "school_code": "4145010593",
+    "candidate_url": "https://yjsc.gxu.edu.cn",
+    "system_type": "graduate-main",
+    "source": "webfetch_gxu_official",
+    "notes": "研究生管理/研究生教育"
+  }
+]

@@ -1,0 +1,62 @@
+<view class="qr-page">
+  <view class="qr-safe" style="height:{{statusBarHeight + 8}}px"></view>
+  <view class="qr-header">
+    <view class="qr-back" bindtap="back"><view class="qr-back-arrow"></view></view>
+    <view class="qr-title">确认 Web 登录</view>
+    <view class="qr-placeholder"></view>
+  </view>
+
+  <view class="qr-body">
+    <block wx:if="{{scanning}}">
+      <view class="qr-state">
+        <view class="qr-spinner"></view>
+        <view class="qr-state-title">正在绑定扫码信息</view>
+        <view class="qr-state-sub">请稍候，正在与 Web 端建立连接</view>
+      </view>
+    </block>
+
+    <block wx:elif="{{scanError}}">
+      <view class="qr-state qr-state-error">
+        <view class="qr-icon-warning">!</view>
+        <view class="qr-state-title">无法完成扫码</view>
+        <view class="qr-state-sub">{{scanError}}</view>
+        <view class="qr-actions">
+          <button class="qr-btn qr-btn-primary" bindtap="retryScan">重试</button>
+          <button class="qr-btn qr-btn-ghost" bindtap="back">返回</button>
+        </view>
+      </view>
+    </block>
+
+    <block wx:elif="{{confirmed}}">
+      <view class="qr-state qr-state-success">
+        <view class="qr-icon-success">✓</view>
+        <view class="qr-state-title">已确认登录</view>
+        <view class="qr-state-sub">Web 端即将自动登录，可以关闭此页面</view>
+      </view>
+    </block>
+
+    <block wx:else>
+      <view class="qr-card">
+        <view class="qr-card-icon">
+          <view class="qr-card-icon-inner">Web</view>
+        </view>
+        <view class="qr-card-title">是否确认登录以下设备</view>
+        <view class="qr-card-sub">请确认这是你本人发起的 Web 登录请求</view>
+        <view class="qr-meta">
+          <view class="qr-meta-row"><view class="qr-meta-key">浏览器</view><view class="qr-meta-val">{{browserName}}</view></view>
+          <view class="qr-meta-row"><view class="qr-meta-key">操作系统</view><view class="qr-meta-val">{{osName}}</view></view>
+          <view wx:if="{{deviceLabel}}" class="qr-meta-row"><view class="qr-meta-key">设备</view><view class="qr-meta-val">{{deviceLabel}}</view></view>
+        </view>
+        <view class="qr-trust" bindtap="toggleTrust">
+          <view class="qr-checkbox {{trustDevice ? 'checked' : ''}}"><view wx:if="{{trustDevice}}" class="qr-checkbox-tick">✓</view></view>
+          <view class="qr-trust-copy"><view class="qr-trust-title">信任此设备</view><view class="qr-trust-sub">30 天内免再次扫码</view></view>
+        </view>
+        <view wx:if="{{confirmError}}" class="qr-error">{{confirmError}}</view>
+        <view class="qr-actions">
+          <button class="qr-btn qr-btn-primary" loading="{{confirming}}" disabled="{{confirming}}" bindtap="confirm">确认登录</button>
+          <button class="qr-btn qr-btn-danger" loading="{{cancelling}}" disabled="{{cancelling}}" bindtap="cancel">取消</button>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

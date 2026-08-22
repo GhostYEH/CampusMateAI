@@ -1,6 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.DangerText
@@ -35,22 +37,37 @@ import kotlinx.coroutines.launch
 fun AccountScreen(
     repository: AppRepository,
     onBack: () -> Unit,
+    onPickUniversity: () -> Unit = {},
+    pickedUniversityId: String? = null,
+    pickedUniversityName: String? = null,
+    onConsumePicked: () -> Unit = {},
 ) {
     val user by repository.session.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val darkMode by repository.darkMode.collectAsState()
     var name by remember(user) { mutableStateOf(user?.name.orEmpty()) }
     var detail by remember(user) { mutableStateOf(user?.detail.orEmpty()) }
     var studentId by remember(user) { mutableStateOf(user?.studentId.orEmpty()) }
     var email by remember(user) { mutableStateOf(user?.email.orEmpty()) }
     var phone by remember(user) { mutableStateOf(user?.phone.orEmpty()) }
+    var universityId by remember(user) { mutableStateOf(user?.universityId.orEmpty()) }
+    var universityName by remember(user) { mutableStateOf(user?.universityName.orEmpty()) }
     var saving by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    ReferenceSystemBars(darkMode)
+
+    LaunchedEffect(Unit) {
+        runCatching { repository.ensureUniversityNameLoaded() }
+    }
+    LaunchedEffect(pickedUniversityId, pickedUniversityName) {
+        if (pickedUniversityId != null && pickedUniversityName != null) {
+            universityId = pickedUniversityId
+            universityName = pickedUniversityName
+            onConsumePicked()
+        }
+    }
 
     fun save() {
         nameError = if (name.trim().length < 2) "姓名至少需要 2 个字" else null
@@ -62,6 +79,10 @@ fun AccountScreen(
         focusManager.clearFocus()
         scope.launch {
             runCatching {
+                val current = repository.session.value
+                if (universityId.isNotBlank() && current?.universityId != universityId) {
+                    repository.updateUniversity(universityId, universityName)
+                }
                 repository.updateProfile(name, detail, email, phone, studentId)
             }.onSuccess {
                 snackbar.showSnackbar("账号资料已保存")
@@ -126,6 +147,10 @@ fun AccountScreen(
                     supporting = "例如：计算机学院 · 大三",
                     imeAction = ImeAction.Next,
                     onIme = { focusManager.moveFocus(FocusDirection.Down) },
+                )
+                UniversityField(
+                    value = universityName,
+                    onClick = onPickUniversity,
                 )
             }
 
@@ -252,4 +277,49 @@ private fun AccountField(
             unfocusedLabelColor = ReferenceMuted,
         ),
     )
+}
+
+/**
+ * 「所在大学」表单项。风格与 [AccountField]（OutlinedTextField）统一：
+ * 同样的圆角边框、leadingIcon、label 占位、容器色与边框色。
+ * 点击后进入 [UniversityPickerScreen]，不直接编辑。
+ */
+@Composable
+private fun UniversityField(
+    value: String,
+    onClick: () -> Unit,
+) {
+    val hasValue = value.isNotBlank()
+    Column {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(14.dp))
+                .background(ReferenceSurface).border(1.dp, ReferenceDivider, RoundedCornerShape(14.dp))
+                .campusClickable(onClick = onClick).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.School, null, tint = ReferencePrimary, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "所在大学",
+                    color = if (hasValue) ReferenceMuted else ReferencePrimary,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (hasValue) value else "点击选择所在大学",
+                    color = if (hasValue) ReferenceText else ReferenceMuted,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                )
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = ReferenceMuted, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "选择后保存才会生效，社区与教务数据将按大学隔离",
+            color = ReferenceMuted,
+            fontSize = 10.5.sp,
+        )
+    }
 }

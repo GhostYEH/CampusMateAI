@@ -3,8 +3,10 @@ package com.example.campusai.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -119,6 +121,11 @@ fun AnimatedCounter(
 
 /**
  * 带百分比的数字动画（用于进度百分比）。
+ *
+ * 数字与百分号作为一个不可拆开的视觉整体渲染：用 [Row] + [Alignment.Bottom]
+ * 让 `%` 紧贴数字右侧并基线对齐，`%` 字号略小。两个 [Text] 均锁定单行、禁止换行，
+ * 避免外层 [Column] 在 [Row] 的 weight 测量约束下把 `Text` 的默认 lineHeight 撑大，
+ * 进而挤压下方「较上周」文字（曾导致 72% 上下错位、% 换行到下一行）。
  */
 @Composable
 fun AnimatedPercent(
@@ -134,13 +141,30 @@ fun AnimatedPercent(
         animationSpec = if (reduceMotion) snap() else tween(800, easing = CubicBezierEasing(0.22f, 0.82f, 0.2f, 1f)),
         label = "percent",
     )
-    androidx.compose.material3.Text(
-        text = "${displayValue}%",
-        fontSize = fontSize,
-        fontWeight = fontWeight,
-        color = color,
+    Row(
         modifier = modifier,
-    )
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        androidx.compose.material3.Text(
+            text = displayValue.toString(),
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            color = color,
+            maxLines = 1,
+            softWrap = false,
+            lineHeight = fontSize,
+        )
+        androidx.compose.material3.Text(
+            text = "%",
+            fontSize = (fontSize.value * 0.55f).sp,
+            fontWeight = fontWeight,
+            color = color,
+            maxLines = 1,
+            softWrap = false,
+            lineHeight = (fontSize.value * 0.55f).sp,
+        )
+    }
 }
 
 // ──────────────────────────────────────────────

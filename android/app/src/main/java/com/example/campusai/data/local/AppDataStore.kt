@@ -71,7 +71,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
                     phone = obj.optString("phone", ""),
                     studentId = obj.optString("studentId", ""),
                     accountId = obj.optString("accountId", ""),
-
+                    universityId = obj.optString("universityId", ""),
+                    universityName = obj.optString("universityName", ""),
                 )
             } catch (_: Exception) { null }
         }
@@ -108,97 +109,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             qqEnabled = prefs[KEY_NOTIFICATION_QQ] ?: true,
             otherEnabled = prefs[KEY_NOTIFICATION_OTHER] ?: false,
         )
-    }
-
-    val pendingNotices: Flow<List<com.example.campusai.data.model.PendingNotice>> = context.dataStore.data.map { prefs ->
-        val jsonStr = prefs[stringPreferencesKey("pending_notices")]
-        if (jsonStr.isNullOrBlank()) {
-            emptyList()
-        } else {
-            try {
-                val array = JSONArray(jsonStr)
-                List(array.length()) { i ->
-                    val obj = array.getJSONObject(i)
-                    com.example.campusai.data.model.PendingNotice(
-                        id = obj.getString("id"),
-                        content = obj.getString("content"),
-                        sourceName = obj.getString("sourceName"),
-                        publishedAt = obj.getString("publishedAt"),
-                        retryCount = obj.optInt("retryCount", 0),
-                        status = obj.optString("status", "pending")
-                    )
-                }
-            } catch (e: Exception) {
-                emptyList()
-            }
-        }
-    }
-
-    suspend fun savePendingNotices(notices: List<com.example.campusai.data.model.PendingNotice>) {
-        context.dataStore.edit { prefs ->
-            val array = JSONArray()
-            notices.forEach { n ->
-                val obj = JSONObject()
-                obj.put("id", n.id)
-                obj.put("content", n.content)
-                obj.put("sourceName", n.sourceName)
-                obj.put("publishedAt", n.publishedAt)
-                obj.put("retryCount", n.retryCount)
-                obj.put("status", n.status)
-                array.put(obj)
-            }
-            prefs[stringPreferencesKey("pending_notices")] = array.toString()
-        }
-    }
-
-    suspend fun enqueuePendingNotice(notice: com.example.campusai.data.model.PendingNotice) {
-        context.dataStore.edit { prefs ->
-            val key = stringPreferencesKey("pending_notices")
-            val jsonStr = prefs[key]
-            val array = if (jsonStr.isNullOrBlank()) JSONArray() else {
-                try { JSONArray(jsonStr) } catch (e: Exception) { JSONArray() }
-            }
-            val obj = JSONObject()
-            obj.put("id", notice.id)
-            obj.put("content", notice.content)
-            obj.put("sourceName", notice.sourceName)
-            obj.put("publishedAt", notice.publishedAt)
-            obj.put("retryCount", notice.retryCount)
-            obj.put("status", notice.status)
-            array.put(obj)
-            prefs[key] = array.toString()
-        }
-    }
-
-    suspend fun updateNoticeStatus(updatedNotices: List<com.example.campusai.data.model.PendingNotice>) {
-        context.dataStore.edit { prefs ->
-            val key = stringPreferencesKey("pending_notices")
-            val jsonStr = prefs[key]
-            if (jsonStr.isNullOrBlank()) return@edit
-            val array = try { JSONArray(jsonStr) } catch (e: Exception) { JSONArray() }
-            
-            val updatedMap = updatedNotices.associateBy { it.id }
-            val newArray = JSONArray()
-            
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val id = obj.getString("id")
-                if (updatedMap.containsKey(id)) {
-                    val n = updatedMap[id]!!
-                    val newObj = JSONObject()
-                    newObj.put("id", n.id)
-                    newObj.put("content", n.content)
-                    newObj.put("sourceName", n.sourceName)
-                    newObj.put("publishedAt", n.publishedAt)
-                    newObj.put("retryCount", n.retryCount)
-                    newObj.put("status", n.status)
-                    newArray.put(newObj)
-                } else {
-                    newArray.put(obj)
-                }
-            }
-            prefs[key] = newArray.toString()
-        }
     }
 
     val monitoredGroupChats: Flow<Set<String>> = context.dataStore.data.map {
@@ -265,7 +175,8 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
             json.put("phone", user.phone)
             json.put("studentId", user.studentId)
             json.put("accountId", user.accountId)
-
+            json.put("universityId", user.universityId)
+            json.put("universityName", user.universityName)
             prefs[KEY_SESSION] = json.toString()
         }
     }

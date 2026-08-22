@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-const client = axios.create({ baseURL: BASE_URL, timeout: 8000 });
+const client = axios.create({ baseURL: BASE_URL, timeout: 8000, withCredentials: true });
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("campus_access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -12,6 +12,15 @@ client.interceptors.request.use((config) => {
 // access token 有效期仅 30 分钟;遇到 401 时用 localStorage 中的 refresh token
 // 调用 /auth/refresh 换取新 token,然后重放原请求。refresh token 失效则回到登录页。
 let _refreshingPromise = null;
+
+function _isDownstreamChaoxingAuthError(error) {
+  const detail = error.response?.data?.detail;
+  return error.config?.url?.includes("/chaoxing/") && (
+    detail === "reauth_required" ||
+    detail === "Chaoxing credentials not found" ||
+    (typeof detail === "string" && detail.startsWith("Chaoxing login failed:"))
+  );
+}
 
 function _clearSessionAndRedirect() {
   localStorage.removeItem("campus_access_token");
@@ -48,7 +57,8 @@ client.interceptors.response.use(
       original &&
       !original._retried &&
       !original.url?.includes("/auth/login") &&
-      !original.url?.includes("/auth/refresh")
+      !original.url?.includes("/auth/refresh") &&
+      !_isDownstreamChaoxingAuthError(error)
     ) {
       original._retried = true;
       try {
@@ -71,10 +81,67 @@ export async function probeBackend() { try { await client.get("/health"); return
 
 export async function realLogin(username, password) {
   const { data } = await client.post("/auth/login", { username, password });
-  localStorage.setItem("campus_access_token", data.access_token);
-  localStorage.setItem("campus_refresh_token", data.refresh_token);
+  applyTokenPair(data);
   const me = await client.get("/auth/me");
   return me.data.user || me.data;
+}
+
+/** 将 TokenPair 写入 localStorage（复用于账号登录和扫码 exchange）。 */
+export function applyTokenPair(data) {
+  localStorage.setItem("campus_access_token", data.access_token);
+  localStorage.setItem("campus_refresh_token", data.refresh_token);
+}
+
+// ===== QR 扫码登录 =====
+
+/** 生成或读取浏览器持久化的 device_id（用于 QR session 和 trusted device）。 */
+export function getDeviceId() {
+  let id = localStorage.getItem("campus_device_id");
+  if (!id) {
+    id = "web_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("campus_device_id", id);
+  }
+  return id;
+}
+
+/** Web 创建 QR Login Session。 */
+export async function qrCreate() {
+  const { data } = await client.post("/auth/qr/create", {
+    device_id: getDeviceId(),
+  });
+  return data;
+}
+
+/** Web 用 browser_token 查询 QR 状态（polling）。 */
+export async function qrStatus(sessionId, browserToken) {
+  const { data } = await client.get(`/auth/qr/${sessionId}/status`, {
+    headers: { "x-browser-token": browserToken },
+  });
+  return data;
+}
+
+/** Web 用 browser_token 兑换登录态。 */
+export async function qrExchange(sessionId, browserToken) {
+  const { data } = await client.post("/auth/qr/exchange", {
+    session_id: sessionId,
+    browser_token: browserToken,
+  });
+  return data;
+}
+
+/** 可信设备自动登录（依赖 HttpOnly Cookie）。 */
+export async function trustedDeviceAutoLogin() {
+  const { data } = await client.post("/auth/trusted-device/auto-login", {
+    device_id: getDeviceId(),
+  });
+  return data;
+}
+
+/** 退出登录时撤销可信设备。 */
+export async function revokeTrustedDevice() {
+  try {
+    await client.post("/auth/trusted-device/revoke", {});
+  } catch { /* 忽略：无 cookie 时正常 */ }
 }
 
 /** 非流式聊天（向后兼容） */
@@ -94,7 +161,7 @@ export async function chat(message) {
  * @param {(err: Error) => void}      callbacks.onError    - 错误/异常
  * @param {AbortSignal}               [callbacks.signal]   - 可取消信号
  */
-export async function chatStream(message, { onSources, onChunk, onDone, onError, signal } = {}) {
+export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null } = {}) {
   const token = localStorage.getItem("campus_access_token");
   try {
     const resp = await fetch(`${BASE_URL}/counselor/chat`, {
@@ -103,7 +170,7 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message, stream: true }),
+      body: JSON.stringify({ message, stream: true, web_search: webSearch, attachment }),
       signal,
     });
 

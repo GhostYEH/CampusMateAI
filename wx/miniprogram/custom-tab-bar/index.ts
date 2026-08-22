@@ -30,16 +30,25 @@ Component({
     },
   },
   methods: {
-    sync() {
+    async sync() {
       const pages = getCurrentPages()
       const route = pages.length ? pages[pages.length - 1].route : ''
       const currentRoute = route.startsWith('/') ? route : `/${route}`
       const selected = this.data.list.findIndex((item) => item.pagePath === currentRoute)
       this.setData({
-        selected: selected < 0 ? 0 : selected,
+        selected,
         darkMode: repository.getSettings().darkMode,
-        taskCount: repository.getTasks().filter((task) => !task.done).length,
       })
+      if (!repository.getSession()) {
+        this.setData({ taskCount: 0 })
+        return
+      }
+      try {
+        const tasks = await repository.getTasksAsync()
+        this.setData({ taskCount: tasks.filter((task) => !task.done).length })
+      } catch {
+        this.setData({ taskCount: 0 })
+      }
     },
     switchTab(event: WechatMiniprogram.TouchEvent) {
       const pagePath = event.currentTarget.dataset.path as string

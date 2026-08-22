@@ -1,0 +1,387 @@
+[
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://xmh.nuc.edu.cn",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://atrust.nuc.edu.cn:10443/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://jwc.nuc.edu.cn/",
+    "system_type": "academic_department_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://grs.nuc.edu.cn/",
+    "system_type": "graduate_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://international.nuc.edu.cn/",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://jxjy.nuc.edu.cn/",
+    "system_type": "continuing_education_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://std.nuc.edu.cn/",
+    "system_type": "research_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://fzgh.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://rlzyglc.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://zbzs.nuc.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://zbjy.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://gnjlhzb.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://xyb.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://fund.nuc.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://kjy.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://nuc.publish.founderss.cn/homeNav?lang=zh",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://zbxxgk.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://library.nuc.edu.cn/page/934997/show",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://zbcg.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://dxyq.nuc.edu.cn/build/#/web/apply/list",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://nuc.fanya.chaoxing.com/portal",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://hqfw.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://rlzyglc.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "https://xsxztjy.nuc.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "中北大学",
+    "school_code": "4114010110",
+    "candidate_url": "http://shpg.nuc.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://portal.haut.edu.cn/portal-pc/index.html",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://ehall.haut.edu.cn/main.html#/ServiceCenter",
+    "system_type": "unified_portal",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://oa.haut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://webmail.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://vpn.haut.edu.cn/portal/#!/login",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://zs.haut.edu.cn/",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://yjszs.haut.edu.cn",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://mba.haut.edu.cn",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://jxjy.haut.edu.cn/zxks/crxlzs.htm",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://sie.haut.edu.cn/index2.jsp?urltype=tree.TreeTempUrl&wbtreeid=1178",
+    "system_type": "admission_website",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://job.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://sie.haut.edu.cn",
+    "system_type": "international_system",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://lib.haut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://lib.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://dag.haut.edu.cn/zxfw.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://xxb.haut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://software.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://zyzx.haut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://xgxt.haut.edu.cn/xsxt/sys/xggzptapp/*default/index.do",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://xiaoyou.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://mapp.haut.edu.cn/haut/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://old.haut.edu.cn",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://dx.haut.edu.cn/pdy_wmw.jsp?urltype=tree.TreeTempUrl&wbtreeid=1006",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://70.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://chat.haut.edu.cn/ai-capability-center",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://xb.haut.edu.cn/info/1046/1789.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://xuebaozk.haut.edu.cn/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "http://haut.ihwrm.com/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://jwc.haut.edu.cn/jxpg/pgsy.htm",
+    "system_type": "other",
+    "source": "webfetch_official"
+  },
+  {
+    "school_name": "河南工业大学",
+    "school_code": "4141010463",
+    "candidate_url": "https://www.haut.edu.cn/ddhcs/",
+    "system_type": "other",
+    "source": "webfetch_official"
+  }
+]

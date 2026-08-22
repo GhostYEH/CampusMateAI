@@ -1,0 +1,140 @@
+<view class="campus-page edu-page">
+  <secondary-nav title="教务系统"></secondary-nav>
+  <view class="campus-page-body edu-body">
+
+    <view wx:if="{{phase === 'idle' || phase === 'probing' || phase === 'error' && !connection}}" class="edu-card campus-enter">
+      <view class="card-title">连接教务系统</view>
+      <view class="card-subtitle">输入学校教务系统地址，自动识别系统类型</view>
+      <input class="field" value="{{portalUrl}}" placeholder="例如：https://jwxt.school.edu.cn" bindinput="onPortalInput"></input>
+      <button class="primary-button" loading="{{phase === 'probing'}}" bindtap="probeAndConnect">检测教务系统</button>
+      <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+    </view>
+
+    <state-view wx:if="{{phase === 'probing'}}" state="loading" title="正在检测教务系统"></state-view>
+
+    <view wx:if="{{phase === 'connecting'}}" class="edu-card campus-enter">
+      <view class="card-title">正在创建连接</view>
+      <view class="card-subtitle">{{probe.title || probe.portal_url}}</view>
+      <view class="meta-row"><text>系统类型</text><label>{{probe.provider}}</label></view>
+      <view class="meta-row"><text>登录方式</text><label>{{probe.suggested_login_mode === 'client_webview' ? '内嵌浏览器登录' : '账号密码登录'}}</label></view>
+      <button class="ghost-button" bindtap="refreshConnection">刷新状态</button>
+    </view>
+
+    <view wx:if="{{phase === 'need_credentials'}}" class="edu-card campus-enter">
+      <view class="card-title">账号密码登录</view>
+      <view class="card-subtitle">{{probe.title || probe.portal_url}}</view>
+      <input class="field" value="{{username}}" placeholder="教务系统账号" bindinput="onUsernameInput"></input>
+      <input class="field" password value="{{password}}" placeholder="教务系统密码" bindinput="onPasswordInput"></input>
+      <input class="field" value="{{captcha}}" placeholder="验证码（如需）" bindinput="onCaptchaInput"></input>
+      <button class="primary-button" loading="{{busy}}" bindtap="submitCredentials">连接</button>
+      <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+    </view>
+
+    <view wx:if="{{phase === 'waiting_user_login'}}" class="edu-card campus-enter">
+      <view class="card-title">内嵌浏览器登录</view>
+      <view class="card-subtitle">小程序暂不支持直接打开第三方教务系统登录页</view>
+      <view class="notice-box">
+        <view class="notice-title">请在浏览器中完成登录</view>
+        <view class="notice-step">1. 复制下方链接到手机浏览器</view>
+        <view class="notice-step">2. 在浏览器中完成教务系统登录</view>
+        <view class="notice-step">3. 返回小程序点击"我已完成登录"</view>
+      </view>
+      <view class="url-box">{{probe.final_url || portalUrl}}</view>
+      <button class="ghost-button" bindtap="copyLoginUrl">复制链接</button>
+      <button class="primary-button" bindtap="refreshConnection">我已完成登录</button>
+      <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+    </view>
+
+    <state-view wx:if="{{phase === 'verifying'}}" state="loading" title="正在验证登录" description="请稍候，正在与教务系统确认登录状态"></state-view>
+
+    <view wx:if="{{phase === 'connected' || phase === 'syncing' || phase === 'synced'}}" class="edu-connected">
+      <view class="edu-card campus-enter">
+        <view class="card-title">连接成功</view>
+        <view class="card-subtitle">{{probe.title || probe.portal_url}}</view>
+        <view class="meta-row"><text>系统类型</text><label>{{connection.provider}}</label></view>
+        <view class="meta-row"><text>登录方式</text><label>{{connection.login_execution_mode === 'client_webview' ? '内嵌浏览器' : '账号密码'}}</label></view>
+        <view wx:if="{{connection.external_student_name}}" class="meta-row"><text>学生姓名</text><label>{{connection.external_student_name}}</label></view>
+        <view wx:if="{{connection.external_student_id}}" class="meta-row"><text>学号</text><label>{{connection.external_student_id}}</label></view>
+        <view class="action-row">
+          <button class="ghost-button" bindtap="reconnect">重新登录</button>
+          <button class="ghost-button" loading="{{phase === 'syncing'}}" bindtap="manualSync">立即同步</button>
+          <button class="danger-button" bindtap="disconnect">断开连接</button>
+        </view>
+        <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+      </view>
+
+      <view class="tab-bar">
+        <view class="tab-item {{activeTab === 'schedule' ? 'active' : ''}}" data-tab="schedule" bindtap="onTabChange">课表</view>
+        <view class="tab-item {{activeTab === 'grade' ? 'active' : ''}}" data-tab="grade" bindtap="onTabChange">成绩</view>
+      </view>
+
+      <view wx:if="{{activeTab === 'schedule'}}" class="edu-list">
+        <view wx:if="{{scheduleSemesters.length > 1}}" class="semester-picker">
+          <picker mode="selector" range="{{scheduleSemesters}}" value="{{selectedScheduleSemester}}" bindchange="onScheduleSemesterChange">
+            <view class="picker-display">{{selectedScheduleSemester || '选择学期'}} ▾</view>
+          </picker>
+        </view>
+        <view class="week-switcher">
+          <button class="week-btn" bindtap="onWeekPrev">上一周</button>
+          <text class="week-label">第 {{currentWeek}} 周</text>
+          <button class="week-btn" bindtap="onWeekNext">下一周</button>
+        </view>
+        <state-view wx:if="{{phase === 'syncing'}}" state="loading" title="正在同步课表"></state-view>
+        <state-view wx:elif="{{scheduleEmpty}}" state="empty" title="暂无课表" description="连接成功后会自动同步课表"></state-view>
+        <state-view wx:elif="{{!scheduleGroups.length}}" state="empty" title="本周没有课程"></state-view>
+        <view wx:else class="schedule-groups">
+          <view wx:for="{{scheduleGroups}}" wx:for-item="group" wx:for-index="gi" wx:key="weekday" class="schedule-group">
+            <view class="schedule-day-title">{{group.label}}</view>
+            <view wx:for="{{group.items}}" wx:for-item="card" wx:for-index="ii" wx:key="id" class="schedule-card" data-group="{{gi}}" data-index="{{ii}}" bindtap="onCourseTap">
+              <view class="schedule-card-name">{{card.course_name}}</view>
+              <view wx:if="{{card.location}}" class="schedule-card-loc">{{card.location}}</view>
+              <view wx:if="{{card.section_label}}" class="schedule-card-sec">{{card.section_label}}</view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{activeTab === 'grade'}}" class="edu-list">
+        <view wx:if="{{gradeSemesters.length > 1}}" class="semester-picker">
+          <picker mode="selector" range="{{gradeSemesters}}" value="{{selectedGradeSemester}}" bindchange="onGradeSemesterChange">
+            <view class="picker-display">{{selectedGradeSemester || '选择学期'}} ▾</view>
+          </picker>
+        </view>
+        <state-view wx:if="{{phase === 'syncing'}}" state="loading" title="正在同步成绩"></state-view>
+        <state-view wx:elif="{{!gradeRows.length}}" state="empty" title="暂无成绩" description="连接成功后会自动同步成绩"></state-view>
+        <view wx:else class="data-list">
+          <view wx:for="{{gradeRows}}" wx:key="course_name" class="data-item">
+            <view class="data-main">
+              <view class="data-title">{{item.course_name}}</view>
+              <text class="data-sub">{{item.category}} · {{item.credit}}学分</text>
+            </view>
+            <label class="data-meta">{{item.score}} / {{item.grade_point}}</label>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{detailVisible}}" class="detail-overlay" bindtap="onCloseDetail">
+      <view class="detail-modal" catchtap="">
+        <view class="detail-close" bindtap="onCloseDetail">×</view>
+        <view class="detail-title">{{detailCourseName}}</view>
+        <view wx:if="{{detailCourseCode}}" class="detail-code">{{detailCourseCode}}</view>
+        <view class="detail-rows">
+          <view wx:for="{{detailRows}}" wx:key="label" class="detail-row">
+            <text class="detail-row-label">{{item.label}}</text>
+            <text class="detail-row-value">{{item.value}}</text>
+          </view>
+        </view>
+        <view wx:if="{{detailExtraRows.length}}" class="detail-extra-title">更多信息</view>
+        <view wx:if="{{detailExtraRows.length}}" class="detail-rows">
+          <view wx:for="{{detailExtraRows}}" wx:key="label" class="detail-row">
+            <text class="detail-row-label">{{item.label}}</text>
+            <text class="detail-row-value">{{item.value}}</text>
+          </view>
+        </view>
+        <view class="detail-source">数据来源：学校教务系统</view>
+      </view>
+    </view>
+
+  </view>
+</view>

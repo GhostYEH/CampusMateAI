@@ -99,7 +99,9 @@ V3.2-A 是「是否观察到明确可见学习行为」的二分类，而不是�
 
 UI 会将模型稳定状态进一步映射为 `OBSERVING`、`STUDYING`、`THINKING_OR_ADJUSTING` 和 `PAUSED`。学习中短暂出现 `IDLE` 时，前 8 秒仍保留学习状态，8～20 秒显示“短暂思考或调整中”，超过 20 秒才进入“暂时停顿”。
 
-### 2. Android 数据流
+### 2. Android 数据流与生命周期
+
+`ExpressionSessionManager` 协调表情、行为与 Presence 的同一条 `FocusCameraPipeline`。仅在辅助开启、权限授予、计时运行、页面可见、应用前台且模式为 `FOCUS` 时运行；暂停或离开页面会暂停相机 use case，`release()` 会取消 collector 并释放模型资源。
 
 ```
 CameraX
@@ -163,7 +165,7 @@ Debug 构建在摄像头构图提示下方提供折叠的“开发者工具”�
 ## 运行要求
 
 - Android Studio Hedgehog (2023.1.1) 或更高版本
-- JDK 17
+- JDK 21（项目使用 `android/.tools/jdk21-full/jdk-21.0.12+8`；JVM target 仍为 17）
 - Android SDK 34
 - 模拟器或 Android 8.0+ 真机
 
