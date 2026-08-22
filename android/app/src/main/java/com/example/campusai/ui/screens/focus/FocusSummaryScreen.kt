@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,32 +52,34 @@ fun FocusSummaryScreen(
     val minutes = actualSeconds.coerceAtLeast(0) / 60
     val seconds = actualSeconds.coerceAtLeast(0) % 60
     val duration = if (minutes > 0) "$minutes 分 ${seconds.toString().padStart(2, '0')} 秒" else "$seconds 秒"
-    Column(
-        modifier = Modifier.fillMaxSize().padding(PaddingValues(20.dp)).padding(top = 28.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 48.dp, end = 20.dp, bottom = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Surface(shape = CircleShape, color = PrimarySoft) {
-            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Primary, modifier = Modifier.padding(16.dp))
-        }
-        Text("本次专注总结", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-        Text("本次专注已完成 · CampusMate AI 已为你整理这段学习", color = Muted, fontSize = 14.sp)
-
-        Surface(shape = RoundedCornerShape(28.dp), color = PrimarySoft.copy(alpha = .72f), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(duration, color = TextPrimary, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
-                Text("本次学习 · $taskName", color = Muted, fontSize = 14.sp)
-                Text("✓ 已完成", color = Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        item { Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.CheckCircle, null, tint = Primary, modifier = Modifier.padding(16.dp)) } }
+        item { Text("本次专注总结", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold) }
+        item { Text("本次专注已完成 · CampusMate AI 已为你整理这段学习", color = Muted, fontSize = 14.sp) }
+        item {
+            Surface(shape = RoundedCornerShape(28.dp), color = PrimarySoft.copy(alpha = .72f), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(duration, color = TextPrimary, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("本次学习 · $taskName", color = Muted, fontSize = 14.sp)
+                    Text("✓ 已完成", color = Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
             }
         }
-
-        SummaryNote(Icons.Default.AutoAwesome, "AI 学习总结", aiSummary)
-        SummaryNote(Icons.Default.ChatBubbleOutline, "AI 交流", "本次共交流 $conversationCount 次。")
-        SummaryNote(Icons.Default.Timer, "学习状态", observationSummary)
-
-        Spacer(Modifier.weight(1f))
-        Button(onClick = onStartNext, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("开始下一次专注") }
-        OutlinedButton(onClick = onReturnHome, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) { Text("返回专注大厅") }
+        item { SummaryNote(Icons.Default.AutoAwesome, "AI 学习总结", aiSummary) }
+        item { SummaryNote(Icons.Default.ChatBubbleOutline, "AI 交流", "本次共交流 $conversationCount 次。") }
+        item { SummaryNote(Icons.Default.Timer, "学习状态", observationSummary) }
+        item {
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onStartNext, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("开始下一次专注") }
+        }
+        item {
+            OutlinedButton(onClick = onReturnHome, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) { Text("返回专注大厅") }
+        }
     }
 }
 
