@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import com.example.campusai.data.camera.CameraFrame
+import com.example.campusai.data.camera.FrameDropAwareAnalyzer
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.google.mlkit.vision.common.InputImage
@@ -23,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class RealExpressionRecognitionService(
     private val application: Application,
-) : ObservableExpressionRecognitionService {
+) : ObservableExpressionRecognitionService, FrameDropAwareAnalyzer {
     private var analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var processor: ExpressionSignalProcessor? = null
     private var runner: ExpressionModelRunner? = null
@@ -61,6 +62,10 @@ class RealExpressionRecognitionService(
     override val modeLabel = "本机 LiteRT"
 
     override fun results(): Flow<ExpressionResult> = _results
+
+    override fun onFrameDropped() {
+        if (running) performanceStats.recordDroppedFrame()
+    }
 
     fun performanceSnapshot(nowMs: Long = SystemClock.elapsedRealtime()): ExpressionPerformanceSnapshot =
         performanceStats.snapshot(nowMs)
