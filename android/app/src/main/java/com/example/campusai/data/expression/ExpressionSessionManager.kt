@@ -9,6 +9,7 @@ import com.example.campusai.data.behavior.BehaviorInputDebugExporter
 import com.example.campusai.data.behavior.BehaviorObservationHistory
 import com.example.campusai.data.behavior.BehaviorObservationSnapshot
 import com.example.campusai.data.behavior.BehaviorPrediction
+import com.example.campusai.data.behavior.BehaviorPredictionTemporalSmoother
 import com.example.campusai.data.behavior.BehaviorRecognitionEngine
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.FocusSupervisor
@@ -78,6 +79,7 @@ class ExpressionSessionManager(
     private val behaviorAnalyzer = BehaviorAnalyzer(
         createBehaviorEngine?.invoke(application) ?: OnnxBehaviorRecognitionEngine(application),
     )
+    private val behaviorTemporalSmoother = BehaviorPredictionTemporalSmoother()
     private val behaviorSignalProcessor = BehaviorSignalProcessor()
     private val behaviorObservationHistory = BehaviorObservationHistory()
     private val learningContinuityStateMachine = LearningContinuityStateMachine()
@@ -211,6 +213,7 @@ class ExpressionSessionManager(
         releaseJob?.cancel()
         mutex.withLock {
             processor = FocusStateProcessor(observationConfig)
+            behaviorTemporalSmoother.reset()
             behaviorSignalProcessor.reset()
             learningContinuityStateMachine.reset()
             _learningContinuityState.value = LearningContinuityState.OBSERVING
@@ -256,6 +259,7 @@ class ExpressionSessionManager(
         service?.let { cameraPipeline.removeAnalyzer(it) }
         cameraPipeline.removeAnalyzer(behaviorAnalyzer)
         behaviorAnalyzer.dispose()
+        behaviorTemporalSmoother.reset()
         cameraPipeline.removeAnalyzer(personAnalyzer)
         personAnalyzer.close()
         service?.dispose()
@@ -284,6 +288,7 @@ class ExpressionSessionManager(
             cameraPipeline.pause()
             service?.pause()
             personAnalyzer.pause()
+            behaviorTemporalSmoother.reset()
             behaviorSignalProcessor.reset()
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
             behaviorObservationActive = false
@@ -322,30 +327,31 @@ class ExpressionSessionManager(
             behaviorCollectorJob = scope.launch {
                 var lastUiBehaviorUpdateMs = 0L
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
+                    val smoothedPrediction = behaviorTemporalSmoother.smooth(prediction)
                     // Inference may complete at the camera cadence. Keep the
                     // visible status calm while the signal processor receives
                     // every stabilized prediction.
                     if (
-                        prediction.modelState !in SUPPORTED_BEHAVIOR_MODEL_STATES ||
-                        prediction.timestampMs - lastUiBehaviorUpdateMs >= BEHAVIOR_UI_INTERVAL_MS
+                        smoothedPrediction.modelState !in SUPPORTED_BEHAVIOR_MODEL_STATES ||
+                        smoothedPrediction.timestampMs - lastUiBehaviorUpdateMs >= BEHAVIOR_UI_INTERVAL_MS
                     ) {
-                        _behaviorPrediction.value = prediction
-                        lastUiBehaviorUpdateMs = prediction.timestampMs
+                        _behaviorPrediction.value = smoothedPrediction
+                        lastUiBehaviorUpdateMs = smoothedPrediction.timestampMs
                     }
-                    val displayState = behaviorSignalProcessor.processDisplayState(prediction)
+                    val displayState = behaviorSignalProcessor.processDisplayState(smoothedPrediction)
                     _behaviorDisplayState.value = displayState
                     updatePresence(
-                        timestampMs = prediction.timestampMs,
+                        timestampMs = smoothedPrediction.timestampMs,
                         behaviorEvidence = displayState is BehaviorDisplayState.Stable &&
                             displayState.behavior == StudyBehavior.VISIBLE_STUDY,
                     )
-                    val continuity = learningContinuityStateMachine.process(displayState, prediction.timestampMs)
+                    val continuity = learningContinuityStateMachine.process(displayState, smoothedPrediction.timestampMs)
                     _learningContinuityState.value = continuity.state
-                    behaviorObservationHistory.record(continuity.state, prediction.timestampMs)
+                    behaviorObservationHistory.record(continuity.state, smoothedPrediction.timestampMs)
                     _behaviorObservation.value = behaviorObservationHistory.snapshot()
-                    BehaviorInputDebugExporter.recordPrediction(application, prediction, displayState)
-                    val events = behaviorSignalProcessor.process(prediction)
-                    focusSupervisor.processEvents(events, prediction.timestampMs)
+                    BehaviorInputDebugExporter.recordPrediction(application, smoothedPrediction, displayState)
+                    val events = behaviorSignalProcessor.process(smoothedPrediction)
+                    focusSupervisor.processEvents(events, smoothedPrediction.timestampMs)
                     // READ/WRITE is only V1 learning evidence. It must not
                     // override FER, head-pose, or eye-derived focus state.
                 }

@@ -124,6 +124,7 @@ CameraX
 → OnnxBehaviorRecognitionEngine
 → campusmate_visible_study_v32.onnx（本地 ONNX 推理）
 → BehaviorPrediction（IDLE / VISIBLE_STUDY 概率）
+→ BehaviorPredictionTemporalSmoother（EMA 概率平滑）
 → BehaviorSignalProcessor（启动观察、稳定判定）
 → LearningContinuityStateMachine（会话级连续性）
 → BehaviorObservationHistory（最近 5 分钟节奏统计）
