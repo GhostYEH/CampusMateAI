@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("student home footer is split into information and interactive brand components", async () => {
+test("student home footer keeps the foreground inside the page gutter", async () => {
   const [home, footer, info, brand] = await Promise.all([
     readFile(path.join(webRoot, "src/views/student/StudentHomeView.vue"), "utf8"),
     readFile(path.join(webRoot, "src/components/home/footer/HomeFooter.vue"), "utf8"),
@@ -22,7 +22,11 @@ test("student home footer is split into information and interactive brand compon
   assert.match(footer, /home-brand-underlay/);
   assert.match(footer, /home-foreground/);
   assert.match(footer, /margin-bottom/);
-  assert.match(footer, /width: calc\(100vw - var\(--home-sidebar-width\)\)/);
+  assert.match(footer, /\.home-foreground[\s\S]*width: 100%/);
+  assert.match(footer, /\.home-foreground[\s\S]*margin-left: 0/);
+  assert.match(footer, /\.home-reveal-shell::before,[\s\S]*\.home-reveal-shell::after/);
+  assert.match(footer, /width: var\(--student-page-gutter, 36px\)/);
+  assert.match(footer, /background: #f8faff/);
   assert.match(footer, /left: var\(--home-sidebar-width\)/);
   assert.match(footer, /right: 0/);
   assert.match(info, /100vw - var\(--home-sidebar-width/);

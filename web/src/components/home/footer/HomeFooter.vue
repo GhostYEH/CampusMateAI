@@ -42,13 +42,33 @@ import InteractiveBrand from "./InteractiveBrand.vue";
 }
 
 .home-foreground {
-  width: calc(100vw - var(--home-sidebar-width));
-  margin-left: calc((100% - (100vw - var(--home-sidebar-width))) / 2);
+  width: 100%;
+  margin-left: 0;
   position: relative;
   z-index: 1;
   min-width: 0;
   margin-bottom: var(--home-brand-stage-height);
   background: #f8faff;
+}
+
+.home-reveal-shell::before,
+.home-reveal-shell::after {
+  position: fixed;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: var(--student-page-gutter, 36px);
+  background: #f8faff;
+  content: "";
+  pointer-events: none;
+}
+
+.home-reveal-shell::before {
+  left: var(--home-sidebar-width);
+}
+
+.home-reveal-shell::after {
+  right: 0;
 }
 
 @media (max-width: 900px) {
