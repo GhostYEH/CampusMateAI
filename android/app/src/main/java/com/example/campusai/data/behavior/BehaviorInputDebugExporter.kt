@@ -270,6 +270,8 @@ object BehaviorInputDebugExporter {
             (probabilities[StudyBehavior.VISIBLE_STUDY] ?: 0f).toString(),
             top?.key?.name.orEmpty(),
             (top?.value ?: 0f).toString(),
+            prediction.debugPreprocessingLatencyMs.toString(),
+            prediction.debugInferenceLatencyMs.toString(),
             stabilizedBehavior(displayState),
             uiBehaviorState(displayState),
         )
@@ -278,6 +280,7 @@ object BehaviorInputDebugExporter {
                 writer.appendLine(
                     "timestamp,image_filename,raw_idle_probability,raw_visible_study_probability," +
                         "raw_top1_class,raw_top1_confidence," +
+                        "preprocessing_latency_ms,inference_latency_ms," +
                         "stabilized_behavior,ui_behavior_state",
                 )
             }

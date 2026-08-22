@@ -97,6 +97,35 @@ class BehaviorPreprocessingPathComparisonTest {
     }
 
     @Test
+    fun currentProductionPathMatchesDirect224Ablation() {
+        val source = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+        val timestampMs = 2000L
+        val productionBuffer = BehaviorFrameBuffer(BehaviorModelConfig())
+        val directBuffer = BehaviorFrameBuffer(BehaviorModelConfig.DIRECT_224)
+        val frame = CameraFrame(source, timestampMs)
+
+        try {
+            assertTrue(productionBuffer.addFrame(frame))
+            assertTrue(directBuffer.addFrame(frame))
+
+            val production = productionBuffer.getTemporalWindow().single()
+            val direct = directBuffer.getTemporalWindow().single()
+            assertEquals(direct.width, production.width)
+            assertEquals(direct.height, production.height)
+
+            val productionPixels = IntArray(production.width * production.height)
+            val directPixels = IntArray(direct.width * direct.height)
+            production.getPixels(productionPixels, 0, production.width, 0, 0, production.width, production.height)
+            direct.getPixels(directPixels, 0, direct.width, 0, 0, direct.width, direct.height)
+            assertEquals(directPixels.toList(), productionPixels.toList())
+        } finally {
+            productionBuffer.clear()
+            directBuffer.clear()
+            frame.release()
+        }
+    }
+
+    @Test
     fun legacyConfigStillDoubleResizesThrough192() {
         val legacy = BehaviorModelConfig.LEGACY_192
         val buffer = BehaviorFrameBuffer(legacy)

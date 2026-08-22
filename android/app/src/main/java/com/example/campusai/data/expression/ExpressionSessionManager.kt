@@ -349,7 +349,9 @@ class ExpressionSessionManager(
                     _learningContinuityState.value = continuity.state
                     behaviorObservationHistory.record(continuity.state, smoothedPrediction.timestampMs)
                     _behaviorObservation.value = behaviorObservationHistory.snapshot()
-                    BehaviorInputDebugExporter.recordPrediction(application, smoothedPrediction, displayState)
+                    // Keep CSV raw_* fields tied to the engine output; displayState remains
+                    // the product-layer result after V3.3 smoothing.
+                    BehaviorInputDebugExporter.recordPrediction(application, prediction, displayState)
                     val events = behaviorSignalProcessor.process(smoothedPrediction)
                     focusSupervisor.processEvents(events, smoothedPrediction.timestampMs)
                     // READ/WRITE is only V1 learning evidence. It must not
