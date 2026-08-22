@@ -4,32 +4,17 @@ from app.core.config import Settings
 from app.main import create_app
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
-from app.services.focus_realtime_voice_service import (
-    FocusRealtimeVoiceService,
-    RealtimeVoiceProviderError,
-    VolcengineVoiceChatClient,
-    reset_focus_realtime_voice_service_for_tests,
-)
+from app.services.focus_realtime_voice_service import FocusRealtimeVoiceService, reset_focus_realtime_voice_service_for_tests
 
 
-class StubVoiceChat:
-    def __init__(self, fail_start=False): self.fail_start, self.started, self.stopped = fail_start, [], []
-    def start(self, body):
-        if self.fail_start: raise RealtimeVoiceProviderError()
-        self.started.append(body)
-    def stop(self, body): self.stopped.append(body)
-
-
-def make_client(voice_chat):
+def make_client(api_key="test-seeduplex-key"):
     settings = Settings(
         app_env="test", database_url="sqlite:///:memory:", auto_seed_demo_users=True,
-        volc_rtc_app_id="123456789012345678901234", volc_rtc_app_key="test-app-key",
-        volc_access_key_id="test-ak", volc_secret_access_key="test-sk",
-        volc_rtc_voicechat_config_json='{"Config":{"LLMConfig":{}}}',
+        volc_seeduplex_api_key=api_key,
     )
     container = reset_container_for_tests(settings)
     seed_demo_data(container, force=True)
-    reset_focus_realtime_voice_service_for_tests(FocusRealtimeVoiceService(settings, voice_chat))
+    reset_focus_realtime_voice_service_for_tests(FocusRealtimeVoiceService(settings))
     return TestClient(create_app())
 
 
@@ -39,25 +24,27 @@ def auth(client, username="student_demo"):
 
 
 def test_realtime_voice_requires_authentication():
-    assert make_client(StubVoiceChat()).post("/api/v1/focus/realtime-voice/sessions").status_code == 401
+    assert make_client().post("/api/v1/focus/realtime-voice/sessions").status_code == 401
 
 
-def test_realtime_voice_creates_bound_token_and_stops_owner_session():
-    voice_chat = StubVoiceChat()
-    client = make_client(voice_chat)
+def test_realtime_voice_creates_backend_owned_websocket_session_and_stops_owner_session():
+    client = make_client()
     response = client.post("/api/v1/focus/realtime-voice/sessions", headers=auth(client))
     assert response.status_code == 201
     body = response.json()
-    assert body["app_id"] == "123456789012345678901234"
-    assert body["token"].startswith("001123456789012345678901234")
-    assert "test-app-key" not in str(body)
-    assert voice_chat.started[0]["AgentConfig"]["TargetUserId"] == [body["user_id"]]
+    assert body["websocket_path"].endswith(body["session_id"])
+    assert "key" not in str(body).lower()
     assert client.delete(f"/api/v1/focus/realtime-voice/sessions/{body['session_id']}", headers=auth(client)).status_code == 200
-    assert voice_chat.stopped
 
 
-def test_realtime_voice_hides_provider_failure():
-    client = make_client(StubVoiceChat(fail_start=True))
+def test_realtime_voice_does_not_create_when_api_key_is_missing():
+    client = make_client(api_key="")
     response = client.post("/api/v1/focus/realtime-voice/sessions", headers=auth(client))
-    assert response.status_code == 502
-    assert "secret" not in response.json()["message"].lower()
+    assert response.status_code == 503
+    assert "key" not in response.text.lower()
+
+
+def test_session_create_event_keeps_api_key_out_of_upstream_payload():
+    event = FocusRealtimeVoiceService(Settings(volc_seeduplex_api_key="x")).session_create_event()
+    assert event["session"]["model"] == "1.2.6.1"
+    assert "key" not in str(event).lower()

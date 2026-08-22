@@ -356,6 +356,7 @@ CREATE TABLE IF NOT EXISTS study_sessions (
     started_at TEXT NOT NULL,
     paused_at TEXT,
     ended_at TEXT,
+    planned_duration_seconds INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     pause_seconds INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
@@ -593,6 +594,10 @@ class Database:
         if "mode" not in study_cols:
             conn.execute(
                 "ALTER TABLE study_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'focus'"
+            )
+        if "planned_duration_seconds" not in study_cols:
+            conn.execute(
+                "ALTER TABLE study_sessions ADD COLUMN planned_duration_seconds INTEGER NOT NULL DEFAULT 0"
             )
 
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。

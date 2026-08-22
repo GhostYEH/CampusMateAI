@@ -5,13 +5,28 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,7 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,20 +74,23 @@ import com.example.campusai.data.focus.voice.FocusVoicePhase
 import com.example.campusai.data.focus.voice.FocusVoiceState
 import com.example.campusai.data.focus.voice.RemoteFocusAiRepository
 import com.example.campusai.data.focus.voice.RemoteRealtimeVoiceRepository
-import com.example.campusai.data.focus.voice.VolcengineRtcRealtimeVoiceSession
+import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
+import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
+import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import java.time.Instant
 
 private val FocusBlue: Color @Composable get() = Primary
 private val FocusViolet: Color @Composable get() = PrimaryHover
@@ -78,7 +98,10 @@ private val FocusOrange: Color @Composable get() = Accent
 private val FocusGreen: Color @Composable get() = Success
 private val FocusBg: Color @Composable get() = Background
 
-/** A backend-session-first focus timer. The device never creates a local focus record. */
+private enum class GuideDialogueState { GREETING, ASK_DURATION, ASK_MODE, CONFIRM, ENTER_SESSION }
+private enum class GuideNpcState { IDLE, LISTENING, THINKING, HAPPY }
+
+/** Focus home: configure a session and review focus progress. */
 @Composable
 fun FocusScreen(
     repository: ApiFocusRepository,
@@ -87,391 +110,418 @@ fun FocusScreen(
     onBack: () -> Unit,
     relatedTaskId: String? = null,
     onOpenCounselorPlan: (String) -> Unit,
+    onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode) -> Unit,
+    onOpenHistory: () -> Unit,
 ) {
     val stats by repository.stats.collectAsState()
     val records by repository.records.collectAsState()
     val activeSession by repository.activeSession.collectAsState()
     val remoteError by repository.error.collectAsState()
     val backendOnline by appRepository.backendOnline.collectAsState()
-    val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
     val scope = rememberCoroutineScope()
     val manager = appRepository.expressionSessionManager
-    val expressionStatus by manager.status.collectAsState()
-    val expressionResult by manager.result.collectAsState()
-    val behaviorDisplayState by manager.behaviorDisplayState.collectAsState()
-    val behaviorObservation by manager.behaviorObservation.collectAsState()
-    val learningContinuityState by manager.learningContinuityState.collectAsState()
-    val presence by manager.presence.collectAsState()
-    val personDetection by manager.personDetection.collectAsState()
-    val personDetectorConfig = manager.personDetectorConfig
-    val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsState()
-    val gentleReminder by manager.gentleReminder.collectAsState()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val voiceController = remember(context) {
-        FocusVoiceController(
-            transcriber = AndroidSpeechRecognizerTranscriber(context),
-            aiRepository = RemoteFocusAiRepository,
-            synthesizer = AndroidTextToSpeechSynthesizer(context),
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-            realtimeRepository = RemoteRealtimeVoiceRepository,
-            realtimeSession = VolcengineRtcRealtimeVoiceSession(context),
-        )
-    }
-    val voiceState by voiceController.state.collectAsState()
-
-    var cameraPermissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var microphonePermissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var permissionDenied by remember { mutableStateOf(false) }
-    var appForeground by remember { mutableStateOf(true) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        cameraPermissionGranted = granted
-        permissionDenied = !granted
-    }
-    val microphonePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        microphonePermissionGranted = granted
-        if (granted) voiceController.connectRealtime() else voiceController.reportPermissionDenied()
-    }
+    val taskName = relatedTaskId?.let(appRepository::getTaskById)?.title ?: "本次专注"
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
-    var secondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
-    var showFinishDialog by remember { mutableStateOf(false) }
+    var sessionMode by remember { mutableStateOf(FocusSessionMode.QUIET) }
+    var selectedSecondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
+    var selectedDurationMinutes by remember { mutableIntStateOf(25) }
+    var customDurationInput by remember { mutableStateOf("60") }
+    var showCustomDurationDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
-    var showCompletedDialog by remember { mutableStateOf(false) }
-    var previewExpanded by remember { mutableStateOf(false) }
-    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
-    var datasetLabel by remember { mutableStateOf(BehaviorDatasetLabel.IDLE) }
-    // Debug-only, in-memory context. It deliberately never creates a backend session.
-    var debugLocalVisualTestActive by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
+    var guideState by rememberSaveable { mutableStateOf(GuideDialogueState.GREETING) }
+    var arranging by rememberSaveable { mutableStateOf(false) }
+    var countdown by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(backendOnline) {
         if (backendOnline) repository.refresh()
     }
-    LaunchedEffect(activeSession?.id, activeSession?.status) {
-        activeSession?.let { session ->
-            mode = session.mode
-            if (secondsLeft == FocusMode.FOCUS.totalSeconds || secondsLeft > mode.totalSeconds) secondsLeft = mode.totalSeconds
-        }
-    }
-    val remoteRunning = activeSession?.status == "active"
-    val running = remoteRunning || (BuildConfig.DEBUG && debugLocalVisualTestActive)
-    val paused = activeSession?.status == "paused"
-    val analyzing = running && mode == FocusMode.FOCUS
-    LaunchedEffect(running, activeSession?.id, debugLocalVisualTestActive) {
-        while (running && secondsLeft > 0) {
-            delay(1000)
-            secondsLeft--
-            if (secondsLeft == 0) {
-                if (debugLocalVisualTestActive) {
-                    debugLocalVisualTestActive = false
-                    BehaviorInputDebugExporter.stopDatasetSession()
-                    manager.finishFocusSession(mode.totalSeconds / 60)
-                } else {
-                    repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }
+    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 26.dp
+    val listState = rememberLazyListState()
+    val startFocus: () -> Unit = {
+        scope.launch {
+            when (activeSession?.status) {
+                null -> {
+                    val startResult = repository.start(mode, null, relatedTaskId, selectedDurationMinutes * 60)
+                    if (startResult.isSuccess) {
+                        selectedSecondsLeft = mode.totalSeconds
+                        manager.beginFocusSession()
+                        onOpenAssistant(selectedDurationMinutes * 60, taskName, sessionMode)
+                    }
                 }
+                else -> onOpenAssistant(activeSession?.plannedDurationSeconds?.takeIf { it > 0 } ?: mode.totalSeconds, taskName, sessionMode)
             }
         }
+        Unit
     }
-    LaunchedEffect(assistanceEnabled, cameraPermissionGranted, analyzing, appForeground) {
-        manager.updateEligibility(
-            enabled = assistanceEnabled,
-            permissionGranted = cameraPermissionGranted,
-            running = analyzing,
-            visible = true,
-            foreground = appForeground,
-        )
+    LaunchedEffect(arranging) {
+        if (arranging) {
+            delay(500)
+            arranging = false
+            guideState = GuideDialogueState.ASK_DURATION
+        }
     }
-    LaunchedEffect(assistanceEnabled) {
-        if (!assistanceEnabled) previewExpanded = false
-    }
-    LaunchedEffect(running, microphonePermissionGranted) {
-        if (running && microphonePermissionGranted) voiceController.connectRealtime()
-    }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> appForeground = true
-                Lifecycle.Event.ON_STOP -> appForeground = false
-                else -> Unit
+    LaunchedEffect(guideState) {
+        if (guideState == GuideDialogueState.CONFIRM) {
+            delay(900)
+            for (number in 3 downTo 1) {
+                countdown = number
+                delay(700)
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            voiceController.release()
-            manager.detachPreviewAsync()
+            guideState = GuideDialogueState.ENTER_SESSION
+            startFocus()
         }
     }
-    val minutes = (secondsLeft / 60).toString().padStart(2, '0')
-    val seconds = (secondsLeft % 60).toString().padStart(2, '0')
-    val ringProgress = secondsLeft.toFloat() / mode.totalSeconds
-    val observationNowMs = remember(secondsLeft, behaviorObservation) { System.currentTimeMillis() }
-    val observationSummary = remember(behaviorObservation, observationNowMs) {
-        behaviorObservation.summary(observationNowMs)
-    }
-    val focusElapsedSeconds = (mode.totalSeconds - secondsLeft).coerceAtLeast(0)
-    val bottomContentPadding = BottomDockReservedHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 26.dp
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(FocusBg),
+        state = listState,
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        (if (debugLocalVisualTestActive && !backendOnline) "Debug 本地视觉测试运行中：不会连接后端或写入专注记录" else if (!backendOnline && remoteError == null) "专注自习需要连接真实后端后才能使用" else remoteError)?.let { message ->
+        (if (!backendOnline && remoteError == null) "专注大厅需要连接真实后端后才能使用" else remoteError)?.let { message ->
             item { Surface(color = AlertErrorBg, shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = AlertErrorText); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp); TextButton(onClick = { scope.launch { appRepository.refreshBackendStatus(); if (appRepository.backendOnline.value) repository.refresh() } }) { Text("重试", color = FocusBlue) } } } }
         }
         item {
-            Column(Modifier.clip(RoundedCornerShape(28.dp)).background(Surface).padding(14.dp)) {
-                FocusModeTabs(selected = mode, enabled = activeSession == null && !debugLocalVisualTestActive, onSelect = { chosen -> mode = chosen; secondsLeft = chosen.totalSeconds })
-                if (BuildConfig.DEBUG && debugLocalVisualTestActive) {
-                    Spacer(Modifier.height(10.dp))
-                    Surface(shape = RoundedCornerShape(12.dp), color = PrimarySoft) {
-                        Text("Debug 本地视觉测试 · 不创建或写入后端专注记录", color = FocusBlue, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-                    }
-                }
-                Spacer(Modifier.height(22.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(258.dp)) {
-                        CircularProgressIndicator(progress = { ringProgress }, modifier = Modifier.fillMaxSize(), color = FocusBlue, trackColor = PrimarySoft, strokeWidth = 12.dp)
-                        CircularProgressIndicator(progress = { .82f }, modifier = Modifier.size(224.dp), color = Line, trackColor = Color.Transparent, strokeWidth = 2.dp)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$minutes:$seconds", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 55.sp)
-                            Spacer(Modifier.height(9.dp))
-                            Text(if (debugLocalVisualTestActive) "Debug 本地视觉测试" else if (running) "正在专注" else if (paused) "已暂停" else "✦ 准备开始 ✦", color = Muted, fontSize = 16.sp)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(22.dp))
-                Button(
-                    onClick = {
-                        scope.launch {
-                            if (debugLocalVisualTestActive) {
-                                debugLocalVisualTestActive = false
-                                BehaviorInputDebugExporter.stopDatasetSession()
-                                manager.finishFocusSession(((mode.totalSeconds - secondsLeft).coerceAtLeast(0)) / 60)
-                            } else {
-                                when (activeSession?.status) {
-                                    null -> {
-                                        val startResult = repository.start(mode, null, relatedTaskId)
-                                        if (startResult.isSuccess) {
-                                            secondsLeft = mode.totalSeconds
-                                            manager.beginFocusSession()
-                                        }
-                                    }
-                                    "active" -> repository.pause()
-                                    "paused" -> repository.resume()
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.CenterHorizontally).height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = FocusBlue),
-                ) { Icon(if (running && !debugLocalVisualTestActive) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (debugLocalVisualTestActive) "结束本地测试" else if (running) "暂停" else if (paused) "继续" else "开始", fontWeight = FontWeight.Bold, fontSize = 19.sp) }
-                if (activeSession != null && !debugLocalVisualTestActive) TextButton(onClick = { showFinishDialog = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("结束本次${mode.label}", color = Muted) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("专注大厅", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
+                Text("CampusMate AI 导员", color = FocusViolet, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         item {
-            FocusVoiceAssistantCard(
-                state = voiceState,
-                onPrimaryAction = {
-                    when (voiceState.phase) {
-                        FocusVoicePhase.LISTENING, FocusVoicePhase.SPEAKING, FocusVoicePhase.THINKING -> voiceController.interruptRealtime()
-                        else -> {
-                            if (microphonePermissionGranted) voiceController.connectRealtime()
-                            else microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    }
-                },
-                onCancel = voiceController::cancel,
+            FocusHallDialogue(
+                state = guideState,
+                arranging = arranging,
+                countdown = countdown,
+                selectedMinutes = selectedDurationMinutes,
+                selectedMode = sessionMode,
+                onReady = { arranging = true },
+                onOpenHistory = onOpenHistory,
+                onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
+                onCustom = { showCustomDurationDialog = true },
+                onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
             )
         }
         item {
-            Surface(shape = RoundedCornerShape(25.dp), color = Surface) {
-                Column(Modifier.padding(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = FocusBlue) }
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) { Text("学习状态辅助", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp); Text("画面仅在本机处理，不保存，不上传", color = Muted, fontSize = 12.sp) }
-                        Switch(checked = assistanceEnabled, onCheckedChange = { enabled ->
-                            scope.launch { appRepository.setLearningAssistanceEnabled(enabled) }
-                            if (enabled && !cameraPermissionGranted) {
-                                permissionLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                        })
-                    }
+            Surface(shape = RoundedCornerShape(24.dp), color = Surface, border = BorderStroke(1.dp, Line)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("今日学习数据 ✦", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                     Spacer(Modifier.height(14.dp))
-                    if (assistanceEnabled && cameraPermissionGranted) {
-                        if (previewExpanded) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                IconButton(onClick = { previewExpanded = false }) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "收起观察画面", tint = FocusBlue)
-                                }
-                                Text("调整观察画面", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            }
-                            Spacer(Modifier.height(6.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(if (previewExpanded) 1f else .78f)
-                                .align(Alignment.CenterHorizontally)
-                                .aspectRatio(4f / 5f)
-                                .clip(RoundedCornerShape(14.dp)),
-                            contentAlignment = Alignment.TopEnd,
-                        ) {
-                            key("focus-camera-preview") {
-                                AndroidView(
-                                    factory = { viewContext ->
-                                        PreviewView(viewContext).apply {
-                                            scaleType = PreviewView.ScaleType.FILL_CENTER
-                                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                                            setOnClickListener { previewExpanded = !previewExpanded }
-                                            manager.attachPreview(lifecycleOwner, this)
-                                        }
-                                    },
-                                    update = { view ->
-                                        view.setOnClickListener { previewExpanded = !previewExpanded }
-                                    },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                            Surface(
-                                onClick = { previewExpanded = !previewExpanded },
-                                modifier = Modifier.padding(8.dp),
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = .42f),
-                            ) {
-                                Icon(
-                                    imageVector = if (previewExpanded) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                    contentDescription = if (previewExpanded) "收起观察画面" else "放大调整画面",
-                                    modifier = Modifier.padding(8.dp).size(18.dp),
-                                    tint = Color.White,
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.TipsAndUpdates, contentDescription = null, tint = Muted, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(5.dp))
-                            Text("请保持头部、上半身和双手在画面内", color = Muted, fontSize = 11.sp)
-                        }
-                        if (previewExpanded) {
-                            Spacer(Modifier.height(12.dp))
-                            OutlinedButton(
-                                onClick = { previewExpanded = false },
-                                modifier = Modifier.align(Alignment.CenterHorizontally),
-                                shape = RoundedCornerShape(14.dp),
-                            ) {
-                                Text("完成调整", color = FocusBlue, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        if (BuildConfig.DEBUG) {
-                            Spacer(Modifier.height(12.dp))
-                            DeveloperTools(
-                                expanded = developerToolsExpanded,
-                                onExpandedChange = { developerToolsExpanded = it },
-                                selectedLabel = datasetLabel,
-                                onLabelSelected = { datasetLabel = it },
-                                captureState = datasetCaptureState,
-                                presence = presence,
-                                personDetection = personDetection,
-                                personInferenceIntervalMs = personDetectorConfig.inferenceIntervalMs,
-                                onStart = { BehaviorInputDebugExporter.startDatasetSession(context, datasetLabel) },
-                                onStop = { BehaviorInputDebugExporter.stopDatasetSession() },
-                                localVisualTestActive = debugLocalVisualTestActive,
-                                onStartLocalVisualTest = {
-                                    scope.launch {
-                                        mode = FocusMode.FOCUS
-                                        secondsLeft = FocusMode.FOCUS.totalSeconds
-                                        appRepository.setLearningAssistanceEnabled(true)
-                                        manager.beginFocusSession()
-                                        debugLocalVisualTestActive = true
-                                        if (!cameraPermissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA)
-                                    }
-                                },
-                                onStopLocalVisualTest = {
-                                    scope.launch {
-                                        debugLocalVisualTestActive = false
-                                        BehaviorInputDebugExporter.stopDatasetSession()
-                                        manager.finishFocusSession(((mode.totalSeconds - secondsLeft).coerceAtLeast(0)) / 60)
-                                    }
-                                },
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    LearningStateMainCard(
-                        continuityState = learningContinuityState,
-                        presence = presence,
-                        expressionResult = expressionResult,
-                        expressionStatus = expressionStatus,
-                        currentStudyMs = observationSummary.currentContinuousStudyMs,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    LearningRhythmCard(observationSummary)
-                    Spacer(Modifier.height(14.dp))
-                    ObservationSummaryCard(
-                        focusElapsedSeconds = focusElapsedSeconds,
-                        summary = observationSummary,
-                    )
-                    if (permissionDenied) {
-                        Spacer(Modifier.height(10.dp))
-                        AssistLine(Icons.Default.Lock, "未授予相机权限，学习状态辅助未启动")
-                    }
-                    gentleReminder?.let {
-                        Spacer(Modifier.height(8.dp))
-                        AssistLine(Icons.Default.Notifications, it)
-                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Accent.copy(alpha = .14f)); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Background) }
                 }
             }
-        }
-        item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Surface); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Accent.copy(alpha = .14f)) } }
-        item {
-            Surface(shape = RoundedCornerShape(26.dp), color = Surface) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 164.dp).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("自习目标", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Text("每日 ${stats.goalMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-                        Text("设定目标，保持专注，见证成长", color = Muted, fontSize = 12.sp)
-                        Spacer(Modifier.height(13.dp))
-                        OutlinedButton(onClick = { selectedGoal = stats.goalMinutes; showGoalDialog = true }, shape = RoundedCornerShape(14.dp)) { Text("设定目标", color = FocusBlue, fontWeight = FontWeight.Bold) }
-                    }
-                    androidx.compose.foundation.Image(painter = painterResource(R.drawable.focus_goal_illustration), contentDescription = "学习目标插画", modifier = Modifier.size(142.dp), contentScale = ContentScale.Fit)
-                }
-            }
-        }
-        item { Text("最近记录", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp) }
-        if (records.isEmpty()) item { Text("完成一次专注后，记录会从后端同步到这里。", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp)) }
-        else items(records.take(8), key = { it.id }) { record ->
-            Surface(shape = RoundedCornerShape(18.dp), color = Surface) { Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CheckCircle, null, tint = FocusBlue); Spacer(Modifier.width(11.dp)); Column(Modifier.weight(1f)) { Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.SemiBold); Text(record.endedAt, color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }; Text("已完成", color = FocusGreen, fontSize = 12.sp) } }
         }
     }
-    if (showFinishDialog) AlertDialog(onDismissRequest = { showFinishDialog = false }, title = { Text("结束本次专注？") }, text = { Text("结束时间和时长由后端服务记录。", color = Muted) }, confirmButton = { TextButton(onClick = { scope.launch { repository.finish().onSuccess { showCompletedDialog = true; secondsLeft = mode.totalSeconds }; showFinishDialog = false } }) { Text("结束", color = FocusOrange) } }, dismissButton = { TextButton(onClick = { showFinishDialog = false }) { Text("继续专注") } })
-    if (showGoalDialog) AlertDialog(onDismissRequest = { showGoalDialog = false }, title = { Text("设置每日自习目标") }, text = { Column { Text("目标将保存到后端数据库，并在不同设备间同步。", color = Muted, fontSize = 12.sp); Spacer(Modifier.height(12.dp)); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(30, 60, 90, 120).forEach { goal -> FilterChip(selected = selectedGoal == goal, onClick = { selectedGoal = goal }, label = { Text("$goal 分钟") }) } } } }, confirmButton = { TextButton(onClick = { scope.launch { repository.updateGoal(selectedGoal).onSuccess { showGoalDialog = false } } }) { Text("保存", color = FocusBlue) } }, dismissButton = { TextButton(onClick = { showGoalDialog = false }) { Text("取消") } })
-    if (showCompletedDialog) AlertDialog(onDismissRequest = { showCompletedDialog = false }, icon = { Icon(Icons.Default.Celebration, null, tint = FocusOrange) }, title = { Text("本次专注已完成！") }, text = { Text("记录已保存到后端数据库。", color = Muted) }, confirmButton = { TextButton(onClick = { showCompletedDialog = false }) { Text("知道了", color = FocusBlue) } })
+    if (showCustomDurationDialog) AlertDialog(
+        onDismissRequest = { showCustomDurationDialog = false },
+        title = { Text("自定义专注时长") },
+        text = { OutlinedTextField(value = customDurationInput, onValueChange = { customDurationInput = it.filter(Char::isDigit) }, label = { Text("分钟（5–240）") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
+        dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
+    )
+}
+
+@Composable
+private fun FocusDurationPicker(
+    selectedMinutes: Int,
+    enabled: Boolean,
+    onSelectMinutes: (Int) -> Unit,
+    onCustom: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("专注时间", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(25, 45).forEach { minutes ->
+                FilterChip(selected = selectedMinutes == minutes, onClick = { onSelectMinutes(minutes) }, enabled = enabled, label = { Text("$minutes 分钟") })
+            }
+            FilterChip(selected = selectedMinutes !in listOf(25, 45), onClick = onCustom, enabled = enabled, label = { Text(if (selectedMinutes !in listOf(25, 45)) "$selectedMinutes 分钟" else "自定义") })
+        }
+    }
+}
+
+@Composable
+private fun FocusSessionModePicker(
+    selected: FocusSessionMode,
+    enabled: Boolean,
+    onSelect: (FocusSessionMode) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("专注方式", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        FocusSessionMode.entries.forEach { option ->
+            val selectedOption = option == selected
+            Surface(
+                onClick = { if (enabled) onSelect(option) },
+                shape = RoundedCornerShape(16.dp),
+                color = if (selectedOption) PrimarySoft else Background,
+                border = if (selectedOption) BorderStroke(1.dp, FocusBlue) else null,
+                enabled = enabled,
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        when (option) {
+                            FocusSessionMode.QUIET -> Icons.Default.Timer
+                            FocusSessionMode.AI_COMPANION -> Icons.Default.SmartToy
+                            FocusSessionMode.SMART_GUARD -> Icons.Default.Visibility
+                        },
+                        contentDescription = null,
+                        tint = if (selectedOption) FocusBlue else Muted,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(option.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(option.description, color = Muted, fontSize = 11.sp)
+                    }
+                    if (selectedOption) Icon(Icons.Default.CheckCircle, contentDescription = null, tint = FocusBlue, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FocusHallHero(message: String, npcState: GuideNpcState, onTextComplete: () -> Unit = {}) {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(292.dp)
+                .padding(18.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.focus_hall_scene),
+                contentDescription = "CampusMate AI 导员的学习空间",
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(28.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            Text("✦", color = Color.White.copy(alpha = .82f), fontSize = 28.sp, modifier = Modifier.align(Alignment.TopEnd))
+            Text("✦", color = FocusBlue.copy(alpha = .50f), fontSize = 18.sp, modifier = Modifier.align(Alignment.CenterStart))
+            AnimatedContent(targetState = message, transitionSpec = { (fadeIn() + slideInVertically { it / 3 }) togetherWith (fadeOut() + slideOutVertically { -it / 4 }) }, label = "guide-bubble", modifier = Modifier.align(Alignment.TopStart).padding(end = 30.dp)) { currentMessage ->
+                Surface(shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(2.dp, FocusViolet.copy(alpha = .55f)), shadowElevation = 3.dp) { TypewriterBubble(currentMessage, onTextComplete) }
+            }
+            GuideSceneStatus(npcState, Modifier.align(Alignment.CenterEnd).padding(top = 34.dp, end = 2.dp))
+            Text("FOCUS · LEARN · GROW", color = Color.White.copy(alpha = .82f), fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp))
+        }
+    }
+}
+
+/** A small live indicator sits beside the unchanged guide artwork. */
+@Composable
+private fun GuideSceneStatus(state: GuideNpcState, modifier: Modifier = Modifier) {
+    when (state) {
+        GuideNpcState.IDLE -> Unit
+        GuideNpcState.LISTENING -> Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), color = Color(0xFF192952).copy(alpha = .88f)) {
+            Row(Modifier.padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(9.dp, 18.dp, 12.dp).forEach { height -> Box(Modifier.width(3.dp).height(height).background(Color(0xFF70E5F8), RoundedCornerShape(2.dp))) }
+            }
+        }
+        GuideNpcState.THINKING -> Surface(modifier = modifier, shape = CircleShape, color = Color.White.copy(alpha = .92f), border = BorderStroke(1.dp, FocusViolet.copy(alpha = .55f))) {
+            Text("…", modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp), color = FocusViolet, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        }
+        GuideNpcState.HAPPY -> Text("✦", modifier = modifier, color = Color(0xFFFFD76A), fontSize = 30.sp)
+    }
+}
+
+@Composable
+private fun PixelCounselor(modifier: Modifier = Modifier, eyeScale: Float = 1f, state: GuideNpcState = GuideNpcState.IDLE) {
+    Box(modifier = modifier.size(width = 190.dp, height = 172.dp), contentAlignment = Alignment.BottomCenter) {
+        if (state == GuideNpcState.THINKING) Surface(modifier = Modifier.align(Alignment.TopEnd), shape = CircleShape, color = Color.White, border = BorderStroke(2.dp, FocusViolet.copy(alpha = .6f))) { Text("…", modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp), color = FocusViolet, fontWeight = FontWeight.Bold) }
+        if (state == GuideNpcState.LISTENING) Row(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) { listOf(10.dp, 22.dp, 14.dp).forEach { height -> Box(Modifier.width(3.dp).height(height).background(Color(0xFF70E5F8), RoundedCornerShape(2.dp))) } }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.BottomCenter)) {
+            Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.offset(y = (-8).dp).size(14.dp).background(FocusViolet, CircleShape).border(2.dp, FocusBlue, CircleShape))
+            Surface(
+                modifier = Modifier.padding(top = 5.dp).size(width = 150.dp, height = 88.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                border = BorderStroke(4.dp, FocusViolet.copy(alpha = .7f)),
+                shadowElevation = 5.dp,
+            ) {
+                Box(Modifier.padding(12.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF26315B)), contentAlignment = Alignment.Center) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (state == GuideNpcState.HAPPY) { Text("^", color = Color(0xFF70E5F8), fontWeight = FontWeight.Black, fontSize = 28.sp); Spacer(Modifier.width(20.dp)); Text("^", color = Color(0xFF70E5F8), fontWeight = FontWeight.Black, fontSize = 28.sp) } else { Box(Modifier.size(width = 10.dp, height = (20 * eyeScale).dp).background(Color(0xFF70E5F8), RoundedCornerShape(5.dp))); Box(Modifier.size(width = 10.dp, height = (20 * eyeScale).dp).background(Color(0xFF70E5F8), RoundedCornerShape(5.dp))) }
+                    }
+                }
+            }
+        }
+        Row(modifier = Modifier.offset(y = (-8).dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = Color(0xFFE9E8FF), border = BorderStroke(2.dp, FocusViolet.copy(alpha = .45f))) { Box(Modifier.size(22.dp)) }
+            Surface(
+            modifier = Modifier.size(width = 106.dp, height = 48.dp),
+            shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp),
+            color = Color(0xFFFCFCFF),
+            border = BorderStroke(3.dp, FocusViolet.copy(alpha = .55f)),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(shape = CircleShape, color = FocusViolet.copy(alpha = .20f)) { Icon(Icons.Default.Bolt, null, tint = FocusViolet, modifier = Modifier.padding(6.dp).size(16.dp)) }
+            }
+            }
+            Surface(shape = CircleShape, color = Color(0xFFE9E8FF), border = BorderStroke(2.dp, FocusViolet.copy(alpha = .45f))) { Box(Modifier.size(22.dp)) }
+        }
+        Row(modifier = Modifier.offset(y = (-15).dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) { Box(Modifier.size(18.dp, 13.dp).background(FocusViolet, RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))); Box(Modifier.size(18.dp, 13.dp).background(FocusViolet, RoundedCornerShape(bottomStart = 5.dp, bottomEnd = 5.dp))) }
+        }
+    }
+}
+
+@Composable
+private fun FocusHallAction(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = Surface,
+        border = BorderStroke(1.dp, accent.copy(alpha = .16f)),
+        shadowElevation = 2.dp,
+    ) {
+        Column(Modifier.padding(horizontal = 11.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(shape = CircleShape, color = accent.copy(alpha = .14f)) { Icon(icon, null, tint = accent, modifier = Modifier.padding(8.dp).size(20.dp)) }
+            Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun FocusHallDialogue(
+    state: GuideDialogueState,
+    arranging: Boolean,
+    countdown: Int,
+    selectedMinutes: Int,
+    selectedMode: FocusSessionMode,
+    onReady: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onSelectMinutes: (Int) -> Unit,
+    onCustom: () -> Unit,
+    onSelectMode: (FocusSessionMode) -> Unit,
+) {
+    val message = when {
+        arranging -> "好的！\n让我帮你安排一下。"
+        state == GuideDialogueState.GREETING -> "你好呀！\n今天准备开始专注学习了吗？"
+        state == GuideDialogueState.ASK_DURATION -> "你想专注多久？"
+        state == GuideDialogueState.ASK_MODE -> "不错！\n接下来选择你的专注方式吧。"
+        else -> "准备好了！"
+    }
+    val npcState = when {
+        arranging -> GuideNpcState.THINKING
+        state == GuideDialogueState.ASK_DURATION -> GuideNpcState.LISTENING
+        state == GuideDialogueState.ASK_MODE -> GuideNpcState.THINKING
+        state == GuideDialogueState.CONFIRM || state == GuideDialogueState.ENTER_SESSION -> GuideNpcState.HAPPY
+        else -> GuideNpcState.IDLE
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        var typingComplete by remember(message) { mutableStateOf(false) }
+        FocusHallHero(message, npcState) { typingComplete = true }
+        if (typingComplete) when (state) {
+            GuideDialogueState.GREETING -> if (!arranging) {
+                HallDialogueChoice(Icons.Default.PlayArrow, "准备好了", "让我开始安排吧", onReady)
+                HallDialogueChoice(Icons.Default.Assessment, "查看成长记录", "回顾我的专注", onOpenHistory)
+            }
+            GuideDialogueState.ASK_DURATION -> {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf(25, 45, 60).forEach { minutes ->
+                        OutlinedButton(onClick = { onSelectMinutes(minutes) }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(16.dp)) { Text("$minutes 分钟") }
+                    }
+                }
+                OutlinedButton(onClick = onCustom, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { Text("自定义时长") }
+            }
+            GuideDialogueState.ASK_MODE -> FocusSessionMode.entries.forEach { option ->
+                HallDialogueChoice(
+                    icon = when (option) {
+                        FocusSessionMode.QUIET -> Icons.Default.Timer
+                        FocusSessionMode.AI_COMPANION -> Icons.Default.SmartToy
+                        FocusSessionMode.SMART_GUARD -> Icons.Default.Visibility
+                    },
+                    title = option.title,
+                    subtitle = option.description,
+                    onClick = { onSelectMode(option) },
+                    selected = option == selectedMode,
+                )
+            }
+            GuideDialogueState.CONFIRM, GuideDialogueState.ENTER_SESSION -> Text(
+                if (countdown > 0) countdown.toString() else "正在进入专注空间…",
+                modifier = Modifier.fillMaxWidth(), color = FocusBlue, fontSize = 42.sp,
+                fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TypewriterBubble(message: String, onComplete: () -> Unit) {
+    var shown by remember(message) { mutableStateOf("") }
+    LaunchedEffect(message) {
+        shown = ""
+        message.forEach { character ->
+            shown += character
+            delay(65)
+        }
+        onComplete()
+    }
+    Text(shown, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, lineHeight = 23.sp)
+}
+
+@Composable
+private fun HallDialogueChoice(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    selected: Boolean = false,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) PrimarySoft else Surface,
+        border = BorderStroke(1.dp, if (selected) FocusBlue else Line),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = FocusBlue.copy(alpha = .13f)) { Icon(icon, null, tint = FocusBlue, modifier = Modifier.padding(9.dp).size(21.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) { Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp); Text(subtitle, color = Muted, fontSize = 12.sp) }
+            Icon(Icons.Default.ChevronRight, null, tint = FocusViolet)
+        }
+    }
+}
+
+@Composable
+fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
+    val records by repository.records.collectAsState()
+    LaunchedEffect(Unit) { repository.refresh() }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(FocusBg),
+        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = TextPrimary) }
+                Text("专注记录", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+        if (records.isEmpty()) item { Text("还没有专注记录，完成第一次专注后会显示在这里。", color = Muted, fontSize = 14.sp) }
+        else items(records, key = { it.id }) { record ->
+            Surface(shape = RoundedCornerShape(20.dp), color = Surface, border = BorderStroke(1.dp, Line)) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.Check, null, tint = FocusBlue, modifier = Modifier.padding(9.dp)) }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) { Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(record.endedAt, color = Muted, fontSize = 13.sp) }
+                    Text("已完成", color = FocusGreen, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -487,20 +537,20 @@ private fun FocusModeTabs(selected: FocusMode, enabled: Boolean, onSelect: (Focu
 @Composable
 private fun FocusVoiceAssistantCard(
     state: FocusVoiceState,
-    onPrimaryAction: () -> Unit,
-    onCancel: () -> Unit,
+    onEnable: () -> Unit,
+    onInterrupt: () -> Unit,
 ) {
-    val (label, icon) = when (state.phase) {
-        FocusVoicePhase.IDLE -> "开启实时陪伴" to Icons.Default.Mic
-        FocusVoicePhase.CONNECTING -> "正在连接…" to Icons.Default.Close
-        FocusVoicePhase.LISTENING -> "正在听你说…" to Icons.Default.Stop
-        FocusVoicePhase.THINKING -> "正在思考…" to Icons.Default.Close
-        FocusVoicePhase.SPEAKING -> "正在回答…" to Icons.Default.VolumeUp
-        FocusVoicePhase.RECONNECTING -> "正在重新连接…" to Icons.Default.Refresh
-        FocusVoicePhase.ERROR -> "重新提问" to Icons.Default.Refresh
+    val status = when (state.phase) {
+        FocusVoicePhase.IDLE -> "未开启"
+        FocusVoicePhase.CONNECTING -> "正在连接"
+        FocusVoicePhase.LISTENING -> "正在聆听"
+        FocusVoicePhase.THINKING -> "正在思考"
+        FocusVoicePhase.SPEAKING -> "正在回答"
+        FocusVoicePhase.RECONNECTING -> "正在重新连接"
+        FocusVoicePhase.ERROR -> "连接失败"
     }
     Surface(shape = RoundedCornerShape(20.dp), color = Surface) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = CircleShape, color = PrimarySoft) {
                     Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = FocusBlue)
@@ -508,20 +558,22 @@ private fun FocusVoiceAssistantCard(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("CampusMate AI", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("开启后静默等待你自然开口", color = Muted, fontSize = 12.sp)
+                    Text(status, color = Muted, fontSize = 12.sp)
                 }
-                Button(onClick = onPrimaryAction, shape = RoundedCornerShape(18.dp)) {
-                    Icon(icon, null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text(label, fontSize = 12.sp)
+                if (state.phase == FocusVoicePhase.IDLE || state.phase == FocusVoicePhase.ERROR) {
+                    Button(onClick = onEnable, shape = RoundedCornerShape(18.dp)) {
+                        Icon(Icons.Default.Mic, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("开启陪伴", fontSize = 12.sp)
+                    }
+                } else {
+                    StatusChip(Icons.Default.GraphicEq, "已连接")
                 }
             }
-            if (state.phase == FocusVoicePhase.LISTENING) Text("实时陪伴已开启；AI 回答时可直接开口打断", color = FocusBlue, fontSize = 12.sp)
-            state.transcript?.let { Text("我：$it", color = TextPrimary, fontSize = 13.sp) }
-            state.answer?.let { Text("CampusMate：$it", color = TextPrimary, fontSize = 13.sp) }
+            Text("开启后静默等待你自然开口；本页仅显示陪伴状态。", color = Muted, fontSize = 12.sp)
             state.errorMessage?.let { Text(it, color = AlertErrorText, fontSize = 12.sp) }
             if (state.phase == FocusVoicePhase.THINKING || state.phase == FocusVoicePhase.SPEAKING) {
-                TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text("取消", color = Muted) }
+                TextButton(onClick = onInterrupt, modifier = Modifier.align(Alignment.End)) { Text("打断回答", color = Muted) }
             }
         }
     }

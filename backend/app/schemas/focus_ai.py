@@ -24,12 +24,7 @@ class FocusAiAskResponse(BaseModel):
 
 class FocusRealtimeVoiceSessionResponse(BaseModel):
     session_id: str
-    app_id: str
-    room_id: str
-    user_id: str
-    agent_user_id: str
-    token: str
-    token_expires_at: int
+    websocket_path: str
 
 
 class FocusRealtimeVoiceStopResponse(BaseModel):

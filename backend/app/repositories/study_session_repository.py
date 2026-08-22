@@ -60,6 +60,10 @@ def _seconds_between(start_iso: str, end_iso: str) -> int:
     return int(delta)
 
 
+def _default_planned_seconds(mode: str) -> int:
+    return {"focus": 25 * 60, "short_break": 5 * 60, "long_break": 15 * 60}.get(mode, 25 * 60)
+
+
 class StudySessionRepository:
     def __init__(self, db: Database, personal_task_repo: Optional[Any] = None) -> None:
         self._db = db
@@ -106,6 +110,7 @@ class StudySessionRepository:
         mode: str = "focus",
         goal: Optional[str] = None,
         related_task_id: Optional[str] = None,
+        planned_duration_seconds: Optional[int] = None,
     ) -> StudySessionRow:
         sid = _new_id("stdy")
         now = _now_iso()
@@ -115,10 +120,10 @@ class StudySessionRepository:
             conn.execute(
                 """INSERT INTO study_sessions
                    (id, user_id, mode, goal, related_task_id, started_at, paused_at, ended_at,
-                    duration_seconds, pause_seconds, status, self_report, self_report_tags,
+                    planned_duration_seconds, duration_seconds, pause_seconds, status, self_report, self_report_tags,
                     expression_signal, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,0,0,'active',NULL,NULL,NULL,?,?)""",
-                (sid, user_id, mode, goal, related_task_id, now, None, None, now, now),
+                   VALUES (?,?,?,?,?,?,?,?,?,0,0,'active',NULL,NULL,NULL,?,?)""",
+                (sid, user_id, mode, goal, related_task_id, now, None, None, planned_duration_seconds or _default_planned_seconds(mode), now, now),
             )
         # 重新读取(transaction 已关闭,需用 get_session 自带 query 连接)
         result = self.get_session(sid, user_id=user_id)

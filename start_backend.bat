@@ -19,11 +19,11 @@ if not exist ".env" (
 
 :: 2. activate venv
 echo [2/4] Activating Python venv ...
-if exist "venv\Scripts\activate.bat" (
-    call "venv\Scripts\activate.bat"
+if exist ".venv\Scripts\activate.bat" (
+    call ".venv\Scripts\activate.bat"
 ) else (
-    echo [ERROR] venv\Scripts\activate.bat not found!
-    echo         Please run in backend\: python -m venv venv
+    echo [ERROR] .venv\Scripts\activate.bat not found!
+    echo         Please run in backend\: python -m venv .venv
     pause
     exit /b 1
 )

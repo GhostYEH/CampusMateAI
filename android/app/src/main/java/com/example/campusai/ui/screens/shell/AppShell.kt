@@ -112,6 +112,7 @@ fun AppShell(
     val hasSharedSecondaryNavigation = secondaryDestinationSpec(backStack?.destination?.route) != null
     val profileRoutes = setOf("profile", "settings", "account", "files", "activities", "favorites", "help-feedback")
     val isProfileFlow = route in profileRoutes
+    val isFocus = route == "focus" || route == "focus_session" || route == "focus_summary"
 
     Box(
         Modifier.fillMaxSize().background(Background),
@@ -140,20 +141,22 @@ fun AppShell(
                 },
             ),
         ) { content() }
-        CampusDock(
-            modifier = Modifier
-                .align(Alignment.BottomCenter),
-            items = navItems,
-            route = route,
-            pendingCount = pendingCount,
-            reduceMotion = reduceMotion,
-            onNavigate = { target ->
-                navController.navigate(target) {
-                    popUpTo("home") { inclusive = false }
-                    launchSingleTop = true
-                }
-            },
-        )
+        if (!isFocus) {
+            CampusDock(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter),
+                items = navItems,
+                route = route,
+                pendingCount = pendingCount,
+                reduceMotion = reduceMotion,
+                onNavigate = { target ->
+                    navController.navigate(target) {
+                        popUpTo("home") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
     }
 }
 

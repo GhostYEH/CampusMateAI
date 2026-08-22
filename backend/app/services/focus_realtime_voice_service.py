@@ -1,14 +1,11 @@
-"""Focus 实时语音会话：后端生成 RTC Token 并控制 VoiceChat 生命周期。"""
+"""Focus Seeduplex realtime session control plane.
+
+The Android client never receives the upstream API key: it connects only to the
+CampusMate relay WebSocket after an authenticated REST session creation.
+"""
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
-import json
 import logging
-import secrets
-import struct
-import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -35,156 +32,69 @@ class RealtimeVoiceSessionNotFoundError(Exception):
 class RealtimeVoiceSession:
     session_id: str
     owner_user_id: str
-    app_id: str
-    room_id: str
-    user_id: str
-    agent_user_id: str
-    token: str
-    token_expires_at: int
-
-
-class VolcRtcTokenIssuer:
-    """官方 RTC AccessToken v001 的小型后端实现；AppKey 永不返回客户端。"""
-
-    _VERSION = "001"
-    _PUBLISH_STREAM = 0
-    _PUBLISH_AUDIO = 1
-    _PUBLISH_VIDEO = 2
-    _PUBLISH_DATA = 3
-    _SUBSCRIBE_STREAM = 4
-
-    @staticmethod
-    def _string(value: str) -> bytes:
-        encoded = value.encode("utf-8")
-        return struct.pack("<H", len(encoded)) + encoded
-
-    def issue(self, *, app_id: str, app_key: str, room_id: str, user_id: str, expires_at: int) -> str:
-        if len(app_id) != 24:
-            raise RealtimeVoiceUnavailableError("RTC AppId 配置无效")
-        privileges = {
-            self._PUBLISH_STREAM: expires_at,
-            self._PUBLISH_AUDIO: expires_at,
-            self._PUBLISH_VIDEO: expires_at,
-            self._PUBLISH_DATA: expires_at,
-            self._SUBSCRIBE_STREAM: expires_at,
-        }
-        message = b"".join(
-            (
-                struct.pack("<I", secrets.randbits(32)),
-                struct.pack("<I", int(time.time())),
-                struct.pack("<I", expires_at),
-                self._string(room_id),
-                self._string(user_id),
-                struct.pack("<H", len(privileges)),
-                b"".join(struct.pack("<HI", key, value) for key, value in sorted(privileges.items())),
-            )
-        )
-        signature = hmac.new(app_key.encode("utf-8"), message, hashlib.sha256).digest()
-        packed = struct.pack("<H", len(message)) + message + struct.pack("<H", len(signature)) + signature
-        return f"{self._VERSION}{app_id}{base64.b64encode(packed).decode('ascii')}"
-
-
-class VolcengineVoiceChatClient:
-    """通过官方 volcengine Python SDK 调用 RTC OpenAPI，便于在测试中替换。"""
-
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-
-    def _call(self, action: str, body: dict[str, Any]) -> None:
-        try:
-            from volcengine.ApiInfo import ApiInfo
-            from volcengine.Credentials import Credentials
-            from volcengine.ServiceInfo import ServiceInfo
-            from volcengine.base.Service import Service
-        except ImportError as exc:
-            raise RealtimeVoiceUnavailableError("缺少火山引擎服务端 SDK") from exc
-        credentials = Credentials(
-            self._settings.volc_access_key_id,
-            self._settings.volc_secret_access_key,
-            "rtc",
-            "cn-north-1",
-        )
-        service = Service(
-            ServiceInfo("rtc.volcengineapi.com", {}, credentials, 5, 15, scheme="https"),
-            {action: ApiInfo("POST", "/", {"Action": action, "Version": "2025-06-01"}, {}, {})},
-        )
-        try:
-            raw = service.json(action, {}, json.dumps(body, ensure_ascii=False, separators=(",", ":")))
-            response = json.loads(raw)
-        except Exception as exc:  # SDK only exposes provider text; never send it to Android.
-            raise RealtimeVoiceProviderError() from exc
-        if response.get("ResponseMetadata", {}).get("Error"):
-            raise RealtimeVoiceProviderError()
-
-    def start(self, body: dict[str, Any]) -> None:
-        self._call("StartVoiceChat", body)
-
-    def stop(self, body: dict[str, Any]) -> None:
-        self._call("StopVoiceChat", body)
 
 
 class FocusRealtimeVoiceService:
-    def __init__(self, settings: Settings, voice_chat: VolcengineVoiceChatClient | None = None) -> None:
-        self._settings = settings
-        self._voice_chat = voice_chat or VolcengineVoiceChatClient(settings)
-        self._token_issuer = VolcRtcTokenIssuer()
-        self._sessions: dict[str, RealtimeVoiceSession] = {}
+    """In-memory, per-process session ownership for the Seeduplex relay."""
 
-    def _voice_chat_body(self, session: RealtimeVoiceSession) -> dict[str, Any]:
-        try:
-            config = json.loads(self._settings.volc_rtc_voicechat_config_json)
-        except json.JSONDecodeError as exc:
-            raise RealtimeVoiceUnavailableError("VoiceChat 配置不是有效 JSON") from exc
-        if not isinstance(config, dict):
-            raise RealtimeVoiceUnavailableError("VoiceChat 配置格式无效")
-        config = json.loads(json.dumps(config))
-        config.setdefault("AgentConfig", {})
-        config["AgentConfig"].setdefault("UserId", session.agent_user_id)
-        config["AgentConfig"]["TargetUserId"] = [session.user_id]
-        config.setdefault("Config", {})
-        config["Config"].setdefault("InterruptMode", 0)
-        config["Config"].setdefault("LLMConfig", {})
-        config["Config"]["LLMConfig"].setdefault("SystemPrompt", FOCUS_AI_SYSTEM_PROMPT)
-        config.update({"AppId": session.app_id, "RoomId": session.room_id, "TaskId": session.session_id})
-        return config
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._sessions: dict[str, RealtimeVoiceSession] = {}
 
     def create(self, owner_user_id: str) -> RealtimeVoiceSession:
         if not self._settings.realtime_voice_available:
             raise RealtimeVoiceUnavailableError("实时语音尚未配置")
-        now = int(time.time())
-        expires_at = now + max(300, self._settings.volc_rtc_token_ttl_seconds)
-        session_id = f"focus_voice_{uuid.uuid4().hex}"
-        room_id = f"focus_{uuid.uuid4().hex}"
-        user_id = f"u_{owner_user_id.replace('-', '')[:48]}"
         session = RealtimeVoiceSession(
-            session_id=session_id,
+            session_id=f"focus_voice_{uuid.uuid4().hex}",
             owner_user_id=owner_user_id,
-            app_id=self._settings.volc_rtc_app_id,
-            room_id=room_id,
-            user_id=user_id,
-            agent_user_id=self._settings.volc_rtc_agent_user_id,
-            token=self._token_issuer.issue(
-                app_id=self._settings.volc_rtc_app_id,
-                app_key=self._settings.volc_rtc_app_key,
-                room_id=room_id,
-                user_id=user_id,
-                expires_at=expires_at,
-            ),
-            token_expires_at=expires_at,
         )
-        self._voice_chat.start(self._voice_chat_body(session))
         self._sessions[session.session_id] = session
+        logger.info("seeduplex_session_create session=%s", session.session_id)
         return session
 
     def stop(self, session_id: str, owner_user_id: str) -> bool:
-        session = self._sessions.get(session_id)
-        if session is None or session.owner_user_id != owner_user_id:
+        if not self.owns(session_id, owner_user_id):
             raise RealtimeVoiceSessionNotFoundError()
-        try:
-            self._voice_chat.stop({"AppId": session.app_id, "RoomId": session.room_id, "TaskId": session.session_id})
-        finally:
-            self._sessions.pop(session_id, None)
+        self._sessions.pop(session_id, None)
         return True
+
+    def owns(self, session_id: str, owner_user_id: str) -> bool:
+        session = self._sessions.get(session_id)
+        return session is not None and session.owner_user_id == owner_user_id
+
+    @property
+    def seeduplex_url(self) -> str:
+        return self._settings.volc_seeduplex_ws_url
+
+    @property
+    def seeduplex_api_key(self) -> str:
+        return self._settings.volc_seeduplex_api_key
+
+    @staticmethod
+    def session_create_event() -> dict[str, Any]:
+        """Request raw PCM output so the Android relay can play each binary frame directly."""
+        return {
+            "type": "session.create",
+            "session": {
+                "type": "realtime",
+                "model": "1.2.6.1",
+                "instructions": FOCUS_AI_SYSTEM_PROMPT,
+                "audio": {
+                    "input": {
+                        "format": "pcm",
+                        "sample_rate": 16000,
+                        "channels": 1,
+                        "bits": 16,
+                    },
+                    "output": {
+                        "format": "pcm",
+                        "sample_rate": 24000,
+                        "channels": 1,
+                        "bits": 16,
+                    },
+                },
+            },
+        }
 
 
 _service: FocusRealtimeVoiceService | None = None

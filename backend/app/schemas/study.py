@@ -24,6 +24,7 @@ class StudyGoalOut(BaseModel):
 
 class StudySessionCreate(BaseModel):
     mode: Literal["focus", "short_break", "long_break"] = "focus"
+    planned_duration_seconds: Optional[int] = Field(None, ge=300, le=14400)
     goal: Optional[str] = Field(None, max_length=500, description="本次学习目标(自由文本)")
     related_task_id: Optional[str] = Field(
         None, max_length=128,
@@ -77,6 +78,7 @@ class StudySessionOut(BaseModel):
     started_at: str
     paused_at: Optional[str] = None
     ended_at: Optional[str] = None
+    planned_duration_seconds: int = 0
     duration_seconds: int = 0
     pause_seconds: int = 0
     status: str

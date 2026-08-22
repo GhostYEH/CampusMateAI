@@ -49,7 +49,6 @@ private val staticDestinationTitles = mapOf(
     "service_leave" to "请假申请",
     "service_repair" to "报修申请",
     "service_mine" to "我的申请",
-    "focus" to "专注自习",
     "lostfound" to "失物招领",
     "lostfound_publish" to "发布失物招领",
     "lostfound_mine" to "我的发布",

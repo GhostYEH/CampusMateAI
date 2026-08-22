@@ -8,17 +8,38 @@ enum class RealtimeVoicePhase { IDLE, CONNECTING, LISTENING, THINKING, SPEAKING,
 
 data class RealtimeVoiceSessionConfig(
     val sessionId: String,
-    val appId: String,
-    val roomId: String,
-    val userId: String,
-    val agentUserId: String,
-    val token: String,
-    val tokenExpiresAt: Long,
+    val websocketUrl: String,
+    val accessToken: String,
+    // Retained only for the historical RTC fallback; Seeduplex does not use them.
+    val appId: String = "",
+    val roomId: String = "",
+    val userId: String = "",
+    val agentUserId: String = "",
+    val token: String = "",
+    val tokenExpiresAt: Long = 0,
 )
 
 data class RealtimeVoiceSessionState(
     val phase: RealtimeVoicePhase = RealtimeVoicePhase.IDLE,
     val message: String? = null,
+    val transcriptDelta: String? = null,
+    val transcriptDone: String? = null,
+    val transcriptDoneEventId: Long = 0L,
+    val transcriptDoneUpstreamEventId: String? = null,
+    val transcriptDoneItemId: String? = null,
+    val answerDelta: String? = null,
+    val answerDeltaEventId: Long = 0L,
+    val answerDeltaUpstreamEventId: String? = null,
+    val answerDeltaResponseId: String? = null,
+    val answerDeltaItemId: String? = null,
+    val answerDone: String? = null,
+    val answerDoneEventId: Long = 0L,
+    val answerDoneUpstreamEventId: String? = null,
+    val answerDoneResponseId: String? = null,
+    val answerDoneItemId: String? = null,
+    /** Incremented when upstream VAD hears the user while AI output is active. */
+    val bargeInEventId: Long = 0L,
+    val bargeInResponseId: String? = null,
 )
 
 /** Provider boundary: Focus UI and controller never talk to an RTC SDK directly. */

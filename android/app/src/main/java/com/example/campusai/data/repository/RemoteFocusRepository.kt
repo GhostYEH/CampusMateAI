@@ -4,6 +4,7 @@ import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusStats
 import java.time.Instant
+import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -12,10 +13,30 @@ data class StudySessionSnapshot(
     val id: String,
     val startedAt: String,
     val endedAt: String?,
+    val plannedDurationSeconds: Int = 0,
     val durationSeconds: Int,
     val status: String,
     val mode: FocusMode,
+    val pausedAt: String? = null,
+    val pauseSeconds: Int = 0,
 )
+
+/**
+ * The backend session is the single source of truth for the countdown.  This
+ * lets the timer continue correctly when the user switches between screens.
+ */
+fun StudySessionSnapshot.remainingSeconds(now: Instant = Instant.now()): Int {
+    if (status == "completed") return 0
+    val started = runCatching { Instant.parse(startedAt) }.getOrNull() ?: return mode.totalSeconds
+    val openPauseSeconds = if (status == "paused") {
+        pausedAt?.let { paused ->
+            runCatching { Duration.between(Instant.parse(paused), now).seconds }.getOrDefault(0)
+        } ?: 0
+    } else 0
+    val elapsedSeconds = Duration.between(started, now).seconds - pauseSeconds - openPauseSeconds
+    val plannedSeconds = plannedDurationSeconds.takeIf { it > 0 } ?: mode.totalSeconds
+    return (plannedSeconds.toLong() - elapsedSeconds).coerceIn(0, plannedSeconds.toLong()).toInt()
+}
 
 class RemoteFocusRepository(
     sessions: List<StudySessionSnapshot>,

@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     volc_rtc_voicechat_config_json: str = ""
     volc_rtc_token_ttl_seconds: int = 1800
     volc_rtc_agent_user_id: str = "campusmate_focus_ai"
+    # ===== Focus Realtime Voice / Seeduplex 3.0 =====
+    # Long-lived API key stays exclusively on the backend.
+    volc_seeduplex_api_key: str = ""
+    volc_seeduplex_ws_url: str = "wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue"
 
     # ===== CORS =====
     # 用字符串表示，逗号分隔；通过 cors_origins_list 属性解析为 List[str]
@@ -115,13 +119,7 @@ class Settings(BaseSettings):
 
     @property
     def realtime_voice_available(self) -> bool:
-        return bool(
-            self.volc_rtc_app_id
-            and self.volc_rtc_app_key
-            and self.volc_access_key_id
-            and self.volc_secret_access_key
-            and self.volc_rtc_voicechat_config_json
-        )
+        return bool(self.volc_seeduplex_api_key)
 
     @property
     def knowledge_base_dir(self) -> Path:

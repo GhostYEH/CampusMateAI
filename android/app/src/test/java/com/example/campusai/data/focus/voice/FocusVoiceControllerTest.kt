@@ -7,7 +7,10 @@ import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class FocusVoiceControllerTest {
     @Test fun `listening result processes then speaks then idles`() {
         val transcriber = FakeTranscriber()
@@ -18,8 +21,8 @@ class FocusVoiceControllerTest {
         assertEquals(FocusVoicePhase.LISTENING, controller.state.value.phase)
         transcriber.result("这道题怎么做")
         assertEquals(FocusVoicePhase.SPEAKING, controller.state.value.phase)
-        assertEquals("这道题怎么做", controller.state.value.transcript)
-        assertEquals("简短回答", controller.state.value.answer)
+        assertEquals("这道题怎么做", controller.state.value.messages[0].text)
+        assertEquals("简短回答", controller.state.value.messages[1].text)
         speaker.done()
         assertEquals(FocusVoicePhase.IDLE, controller.state.value.phase)
     }
@@ -71,6 +74,64 @@ class FocusVoiceControllerTest {
         assertTrue(realtime.released)
     }
 
+    @Test fun `realtime completion events create ten independent turns`() {
+        val realtime = FakeRealtimeSession()
+        val controller = FocusVoiceController(
+            transcriber = FakeTranscriber(),
+            aiRepository = object : FocusAiRepository { override suspend fun ask(text: String) = Result.success("回答") },
+            synthesizer = FakeSpeaker(),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            realtimeRepository = object : RealtimeVoiceRepository {
+                override suspend fun create() = Result.success(realtime.config)
+                override suspend fun stop(sessionId: String) = Result.success(Unit)
+            },
+            realtimeSession = realtime,
+        )
+
+        (1..10).forEach { turn ->
+            realtime.emitState(
+                RealtimeVoiceSessionState(
+                    phase = RealtimeVoicePhase.THINKING,
+                    transcriptDone = "问题$turn",
+                    transcriptDoneEventId = turn.toLong(),
+                    transcriptDoneUpstreamEventId = "transcript_$turn",
+                    transcriptDoneItemId = "input_$turn",
+                ),
+            )
+            realtime.emitState(
+                RealtimeVoiceSessionState(
+                    phase = RealtimeVoicePhase.SPEAKING,
+                    answerDelta = "回答$turn",
+                    answerDeltaEventId = turn.toLong(),
+                    answerDeltaUpstreamEventId = "delta_$turn",
+                    answerDeltaResponseId = "response_$turn",
+                    answerDeltaItemId = "output_$turn",
+                ),
+            )
+            realtime.emitState(
+                RealtimeVoiceSessionState(
+                    phase = RealtimeVoicePhase.SPEAKING,
+                    answerDone = "回答$turn",
+                    answerDoneEventId = turn.toLong(),
+                    answerDoneUpstreamEventId = "done_$turn",
+                    answerDoneResponseId = "response_$turn",
+                    answerDoneItemId = "output_$turn",
+                ),
+            )
+        }
+
+        val messages = controller.state.value.messages
+        assertEquals(20, messages.size)
+        messages.chunked(2).forEachIndexed { index, pair ->
+            val turn = index + 1
+            assertEquals(FocusVoiceMessageRole.USER, pair[0].role)
+            assertEquals("问题$turn", pair[0].text)
+            assertEquals(FocusVoiceMessageRole.ASSISTANT, pair[1].role)
+            assertEquals("回答$turn", pair[1].text)
+            assertEquals(pair[0].turnId, pair[1].turnId)
+        }
+    }
+
     private fun controller(transcriber: FakeTranscriber, speaker: FakeSpeaker) = FocusVoiceController(
         transcriber = transcriber,
         aiRepository = object : FocusAiRepository { override suspend fun ask(text: String) = Result.success("简短回答") },
@@ -103,7 +164,7 @@ class FocusVoiceControllerTest {
         override val state: StateFlow<RealtimeVoiceSessionState> = mutableState
         var interrupted = false
         var released = false
-        val config = RealtimeVoiceSessionConfig("s", "123456789012345678901234", "r", "u", "ai", "t", 1)
+        val config = RealtimeVoiceSessionConfig("s", "ws://example.test/api/v1/focus/realtime-voice/ws/s", "token")
         override suspend fun connect(config: RealtimeVoiceSessionConfig) { emit(RealtimeVoicePhase.LISTENING) }
         override fun interrupt() { interrupted = true; emit(RealtimeVoicePhase.LISTENING) }
         override fun mute() = Unit
@@ -111,5 +172,6 @@ class FocusVoiceControllerTest {
         override suspend fun stop() = Unit
         override fun release() { released = true; emit(RealtimeVoicePhase.IDLE) }
         fun emit(phase: RealtimeVoicePhase) { mutableState.value = RealtimeVoiceSessionState(phase) }
+        fun emitState(state: RealtimeVoiceSessionState) { mutableState.value = state }
     }
 }

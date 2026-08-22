@@ -27,12 +27,7 @@ data class FocusAiAskRequest(val text: String)
 data class FocusAiAskResponse(val answer: String)
 data class FocusRealtimeVoiceSessionDto(
     val session_id: String,
-    val app_id: String,
-    val room_id: String,
-    val user_id: String,
-    val agent_user_id: String,
-    val token: String,
-    val token_expires_at: Long,
+    val websocket_path: String,
 )
 data class FocusRealtimeVoiceStopDto(val session_id: String, val stopped: Boolean)
 data class ExpressionContributionResponse(
@@ -172,6 +167,7 @@ data class StudySessionDto(
     val started_at: String,
     val paused_at: String? = null,
     val ended_at: String? = null,
+    val planned_duration_seconds: Int = 0,
     val duration_seconds: Int = 0,
     val pause_seconds: Int = 0,
     val status: String,
@@ -179,6 +175,7 @@ data class StudySessionDto(
 
 data class StudySessionCreateRequest(
     val mode: String,
+    val planned_duration_seconds: Int? = null,
     val goal: String? = null,
     val related_task_id: String? = null,
 )

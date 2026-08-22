@@ -1,5 +1,6 @@
 package com.example.campusai.ui.navigation
 
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -35,6 +36,9 @@ import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
 import com.example.campusai.ui.screens.exams.ExamsScreen
 import com.example.campusai.ui.screens.focus.FocusScreen
+import com.example.campusai.ui.screens.focus.FocusSessionScreen
+import com.example.campusai.ui.screens.focus.FocusHistoryScreen
+import com.example.campusai.ui.screens.focus.FocusSummaryScreen
 
 import com.example.campusai.ui.screens.lostfound.LostFoundDetailScreen
 import com.example.campusai.ui.screens.lostfound.LostFoundPublishScreen
@@ -432,6 +436,68 @@ fun AppNavHost(
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")
                 },
+                onOpenAssistant = { durationSeconds, taskName, sessionMode ->
+                    val encodedTaskName = URLEncoder.encode(taskName, Charsets.UTF_8.name())
+                    go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}")
+                },
+                onOpenHistory = { go("focus_history") },
+            )
+        }
+        composable("focus_history") {
+            FocusHistoryScreen(repository = modules.focus, onBack = { navController.popBackStack() })
+        }
+        composable(
+            route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}",
+            arguments = listOf(
+                navArgument("durationSeconds") { type = NavType.IntType; defaultValue = 0 },
+                navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
+                navArgument("sessionMode") { type = NavType.StringType; defaultValue = "QUIET" },
+            ),
+        ) { backStackEntry ->
+            FocusSessionScreen(
+                appRepository = repository,
+                focusRepository = modules.focus,
+                plannedDurationSeconds = backStackEntry.arguments?.getInt("durationSeconds") ?: 0,
+                taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
+                sessionMode = com.example.campusai.data.model.FocusSessionMode.entries.firstOrNull {
+                    it.name == backStackEntry.arguments?.getString("sessionMode")
+                } ?: com.example.campusai.data.model.FocusSessionMode.QUIET,
+                onSessionCompleted = { completion ->
+                    // Uri.encode keeps spaces as %20.  URLEncoder uses '+', which Navigation
+                    // treats as literal text and previously produced strings such as "+4+次".
+                    val task = Uri.encode(completion.taskName)
+                    val summary = Uri.encode(completion.aiSummary)
+                    val observation = Uri.encode(completion.observationSummary)
+                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation")
+                },
+            )
+        }
+        composable(
+            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}",
+            arguments = listOf(
+                navArgument("actualSeconds") { type = NavType.IntType; defaultValue = 0 },
+                navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
+                navArgument("conversationCount") { type = NavType.IntType; defaultValue = 0 },
+                navArgument("aiSummary") { type = NavType.StringType; defaultValue = "你完成了这段专注。" },
+                navArgument("observationSummary") { type = NavType.StringType; defaultValue = "你的学习状态整体稳定。" },
+            ),
+        ) { backStackEntry ->
+            val returnToFocusHome = {
+                navController.navigate("focus") {
+                    // Remove the original home entry too.  It may otherwise restore its
+                    // rememberSaveable dialogue/countdown state from the just-finished visit.
+                    popUpTo("focus") { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+            FocusSummaryScreen(
+                actualSeconds = backStackEntry.arguments?.getInt("actualSeconds") ?: 0,
+                taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
+                conversationCount = backStackEntry.arguments?.getInt("conversationCount") ?: 0,
+                aiSummary = backStackEntry.arguments?.getString("aiSummary") ?: "你完成了这段专注。",
+                observationSummary = backStackEntry.arguments?.getString("observationSummary") ?: "你的学习状态整体稳定。",
+                onReturnHome = returnToFocusHome,
+                onStartNext = returnToFocusHome,
             )
         }
 

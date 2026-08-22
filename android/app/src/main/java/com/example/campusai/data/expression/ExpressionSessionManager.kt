@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -122,7 +123,7 @@ class ExpressionSessionManager(
         running: Boolean = timerRunning,
         visible: Boolean = pageVisible,
         foreground: Boolean = appForeground,
-    ) {
+    ) = withContext(Dispatchers.Main.immediate) {
         releaseJob?.cancel()
         mutex.withLock {
             assistanceEnabled = enabled
@@ -140,7 +141,7 @@ class ExpressionSessionManager(
         cameraPipeline.bindCamera(owner, view)
     }
 
-    suspend fun detachPreview() {
+    suspend fun detachPreview() = withContext(Dispatchers.Main.immediate) {
         releaseJob?.cancel()
         mutex.withLock {
             cameraPipeline.unbindCamera()
@@ -203,18 +204,20 @@ class ExpressionSessionManager(
         releaseJob = scope.launch { release() }
     }
 
-    suspend fun release() = mutex.withLock {
-        cameraPipeline.unbindCamera()
-        cameraPipeline.dispose()
-        service?.let { cameraPipeline.removeAnalyzer(it) }
-        cameraPipeline.removeAnalyzer(behaviorAnalyzer)
-        behaviorAnalyzer.dispose()
-        cameraPipeline.removeAnalyzer(personAnalyzer)
-        personAnalyzer.close()
-        service?.dispose()
-        service = null
-        _status.value = ExpressionServiceStatus.Off
-        _focusState.value = FocusState.UNAVAILABLE
+    suspend fun release() = withContext(Dispatchers.Main.immediate) {
+        mutex.withLock {
+            cameraPipeline.unbindCamera()
+            cameraPipeline.dispose()
+            service?.let { cameraPipeline.removeAnalyzer(it) }
+            cameraPipeline.removeAnalyzer(behaviorAnalyzer)
+            behaviorAnalyzer.dispose()
+            cameraPipeline.removeAnalyzer(personAnalyzer)
+            personAnalyzer.close()
+            service?.dispose()
+            service = null
+            _status.value = ExpressionServiceStatus.Off
+            _focusState.value = FocusState.UNAVAILABLE
+        }
     }
 
     private suspend fun syncLocked() {
