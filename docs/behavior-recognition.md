@@ -1,15 +1,15 @@
-# CampusMateAI Android 行为识别：V3.1 部署基线与历史研究
+# CampusMateAI Android 行为识别：V3.2 部署基线与历史研究
 
-本文档记录 CampusMateAI Android 专注模式下的本地行为识别研究、实验、模型与部署情况。文首说明当前 V3.1 部署基线，后续章节保留 V1/V2 历史研究记录，便于追溯实验结论。
+本文档记录 CampusMateAI Android 专注模式下的本地行为识别研究、实验、模型与部署情况。文首说明当前 V3.2 部署基线，后续章节保留 V1/V2 历史研究记录，便于追溯实验结论。
 
-## 当前部署状态：学习状态辅助 V3.1
+## 当前部署状态：学习状态辅助 V3.2
 
-当前 Android 部署模型为 `android/app/src/main/assets/models/behavior/campusmate_visible_study_v31.onnx`。它是 RGB ResNet18 的 ONNX 模型，输入为 `1×3×224×224` 的 RGB 图像（`/255` 后使用 ImageNet mean/std 标准化），输出类别顺序固定为：
+当前 Android 默认模型为 `android/app/src/main/assets/models/behavior/campusmate_visible_study_v32.onnx`。它是 RGB ResNet18 的 ONNX 模型，输入为 `1×3×224×224` 的 RGB 图像（`/255` 后使用 ImageNet mean/std 标准化），输出类别顺序固定为：
 
 1. `idle` → `IDLE`：暂未观察到明确可见学习行为。
 2. `visible_study` → `VISIBLE_STUDY`：观察到阅读、书写或明显操作学习材料等明确学习动作。
 
-这不是“专注 vs 不专注”的判断：`IDLE` 只表示当前视觉帧没有足够明确的可观察学习动作。旧模型 `rgb_resnet18_v2.onnx` 保留在 assets 中，仅用于历史 V2 回退，不是当前默认模型。
+这不是“专注 vs 不专注”的判断：`IDLE` 只表示当前视觉帧没有足够明确的可观察学习动作。旧模型 `campusmate_visible_study_v31.onnx` 和 `rgb_resnet18_v2.onnx` 保留在 assets 中，仅用于回退或历史对照，不是当前默认模型。
 
 Android 的当前数据流为：
 
@@ -25,6 +25,22 @@ Android 的当前数据流为：
 行为识别和表情识别共享这同一条 CameraX pipeline，不会启动第二个摄像头。连续性状态将短暂的 `IDLE`、`UNKNOWN`、遮挡或姿势调整吸收在学习上下文中：学习后 0～8 秒的短暂 `IDLE` 保持 `STUDYING`，8～20 秒进入 `THINKING_OR_ADJUSTING`，超过 20 秒才进入 `PAUSED`。因此，最近节奏、累计学习时长和最长连续学习均基于产品连续性状态，而不是单次模型跳变。
 
 当前已知限制：侧面书写且手臂严重遮挡时可能不稳定；“坐在电脑前学习”这类单帧视觉语义模糊的场景不能可靠推断；多用户、多环境泛化尚未验证。表情识别是独立能力，仍需继续优化。
+
+### V3.2.1 基线收口状态
+
+生产默认的 `BehaviorModelConfig()` 已直接将相机帧缩放至 `224×224`，与训练预处理一致，避免旧的 `192×192 → 224×224` 双重缩放。旧路径保留为 `BehaviorModelConfig.LEGACY_192`，只用于上线前 A/B 对照，不应作为新的生产配置。
+
+当前已完成：
+
+- 生产默认输入尺寸与训练尺寸一致；
+- 直连路径和旧双重缩放路径均有单元测试；
+- 模型版本、标签顺序和 Android 推理路径已在本文档固定。
+
+仍待真实设备完成：
+
+- 直连路径与旧路径的真实前置摄像头 A/B；
+- 人工标签一致率、混淆矩阵与置信度校准对比；
+- 目标机上的推理 P50/P95、内存、温度、耗电和帧丢弃率记录。
 
 ## 历史 V1/V2 研究记录（非当前部署）
 

@@ -5,28 +5,29 @@ import com.example.campusai.data.camera.CameraFrame
 
 data class BehaviorModelConfig(
     val frameCount: Int = 16,
-    val inputWidth: Int = 192,
-    val inputHeight: Int = 192,
+    val inputWidth: Int = 224,
+    val inputHeight: Int = 224,
     val sampleIntervalMs: Long = 200L,
     val confidenceThreshold: Float = 0.5f
 ) {
     companion object {
-        // Legacy production default: BehaviorModelConfig() resizes camera frames to
-        // 192x192 in BehaviorFrameBuffer, then OnnxBehaviorRecognitionEngine.preprocess
-        // upscales 192->224. This double resize does NOT match training preprocessing,
-        // which resizes the source image directly to 224x224.
-        //
-        // DIRECT_224 makes BehaviorFrameBuffer resize camera frames straight to
-        // 224x224, so the engine's 224x224 preprocess becomes a no-op and the
-        // runtime path matches training preprocessing exactly.
-        //
-        // NOT wired into production yet: BehaviorAnalyzer/ExpressionSessionManager
-        // still construct BehaviorModelConfig() (legacy 192->224). Switch the single
-        // construction site to DIRECT_224 only after real-device A/B confirms it.
+        // Production default and DIRECT_224 resize camera frames straight to 224x224,
+        // so the engine's 224x224 preprocess becomes a no-op and the runtime path
+        // matches training preprocessing exactly.
         val DIRECT_224 = BehaviorModelConfig(
             frameCount = 16,
             inputWidth = 224,
             inputHeight = 224,
+            sampleIntervalMs = 200L,
+            confidenceThreshold = 0.5f,
+        )
+
+        // Kept only for the pre-launch A/B comparison against the old production path.
+        // Do not use this configuration for new production analyzers.
+        val LEGACY_192 = BehaviorModelConfig(
+            frameCount = 16,
+            inputWidth = 192,
+            inputHeight = 192,
             sampleIntervalMs = 200L,
             confidenceThreshold = 0.5f,
         )

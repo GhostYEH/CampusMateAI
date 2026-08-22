@@ -66,14 +66,18 @@ class BehaviorPreprocessingPathComparisonTest {
     }
 
     @Test
-    fun direct224ConfigReachesFrameBufferWhileLegacyDefaultStays192() {
-        val legacyDefault = BehaviorModelConfig()
-        assertEquals(192, legacyDefault.inputWidth)
-        assertEquals(192, legacyDefault.inputHeight)
+    fun productionDefaultUsesDirect224AndLegacyPathRemainsExplicit() {
+        val productionDefault = BehaviorModelConfig()
+        assertEquals(224, productionDefault.inputWidth)
+        assertEquals(224, productionDefault.inputHeight)
 
         val direct = BehaviorModelConfig.DIRECT_224
         assertEquals(224, direct.inputWidth)
         assertEquals(224, direct.inputHeight)
+
+        val legacy = BehaviorModelConfig.LEGACY_192
+        assertEquals(192, legacy.inputWidth)
+        assertEquals(192, legacy.inputHeight)
 
         val buffer = BehaviorFrameBuffer(direct)
         val frame = CameraFrame(
@@ -94,7 +98,7 @@ class BehaviorPreprocessingPathComparisonTest {
 
     @Test
     fun legacyConfigStillDoubleResizesThrough192() {
-        val legacy = BehaviorModelConfig()
+        val legacy = BehaviorModelConfig.LEGACY_192
         val buffer = BehaviorFrameBuffer(legacy)
         val frame = CameraFrame(
             Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888),
@@ -122,7 +126,7 @@ class BehaviorPreprocessingPathComparisonTest {
         // Pre-launch A/B procedure:
         // 1. Capture N real front-camera frames (balanced idle / visible_study).
         // 2. For each frame run OnnxBehaviorRecognitionEngine twice:
-        //    - BehaviorModelConfig()        (legacy 192 -> 224)
+        //    - BehaviorModelConfig.LEGACY_192 (legacy 192 -> 224)
         //    - BehaviorModelConfig.DIRECT_224 (direct 224)
         // 3. Record per-frame: logits[0..1], softmax(idle, visible_study), argmax class.
         // 4. Compare: top-1 flip count, mean probability shift, agreement with human labels,
