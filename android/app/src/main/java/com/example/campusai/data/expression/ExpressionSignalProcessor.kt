@@ -6,6 +6,7 @@ import com.example.campusai.data.model.ExpressionResult
 data class ExpressionSignalConfig(
     val emaAlpha: Double = 0.35,
     val minimumConfidence: Double,
+    val classThresholds: Map<ExpressionLabel, Double> = emptyMap(),
     val minimumStableFrames: Int = 4,
     val minimumStableDurationMs: Long = 700,
     val suggestionCooldownMs: Long = 10 * 60 * 1000L,
@@ -45,7 +46,8 @@ class ExpressionSignalProcessor(
         }.normalizeProbabilities()
         ema = smoothed
         val (topLabel, confidence) = smoothed.maxBy { it.value }
-        if (confidence < config.minimumConfidence) {
+        val threshold = config.classThresholds[topLabel] ?: config.minimumConfidence
+        if (confidence < threshold) {
             resetStability()
             return ExpressionResult(
                 label = ExpressionLabel.UNKNOWN,

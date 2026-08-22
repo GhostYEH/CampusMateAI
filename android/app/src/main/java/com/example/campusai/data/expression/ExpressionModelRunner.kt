@@ -2,6 +2,7 @@ package com.example.campusai.data.expression
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
 import com.example.campusai.data.model.ExpressionLabel
 import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
@@ -17,8 +18,28 @@ data class ExpressionPreprocessing(
     val mean: DoubleArray,
     val std: DoubleArray,
     val confidenceThreshold: Double,
+    val classThresholds: Map<ExpressionLabel, Double>,
     val modelVersion: String,
 )
+
+data class ExpressionModelRun(
+    val probabilities: Map<ExpressionLabel, Double>,
+    val preprocessMs: Long,
+    val inferenceMs: Long,
+    val postprocessMs: Long,
+)
+
+internal fun parseExpressionClassThresholds(root: JSONObject): Map<ExpressionLabel, Double> {
+    val json = root.optJSONObject("class_thresholds") ?: return emptyMap()
+    return ExpressionMath.modelLabels.mapNotNull { label ->
+        val key = label.name.lowercase(java.util.Locale.US)
+        if (!json.has(key)) {
+            null
+        } else {
+            label to json.getDouble(key).coerceIn(0.0, 1.0)
+        }
+    }.toMap()
+}
 
 class ExpressionModelRunner(
     private val context: Context,
@@ -28,6 +49,9 @@ class ExpressionModelRunner(
     lateinit var preprocessing: ExpressionPreprocessing
         private set
     private var interpreter: Interpreter? = null
+    private var inputBuffer: ByteBuffer? = null
+    private var pixelsBuffer: IntArray? = null
+    private var outputBuffer: Array<FloatArray>? = null
 
     fun initialize() {
         if (interpreter != null) return
@@ -42,17 +66,23 @@ class ExpressionModelRunner(
     }
 
     fun run(faceBitmap: Bitmap): Map<ExpressionLabel, Double> {
+        return runTimed(faceBitmap).probabilities
+    }
+
+    fun runTimed(faceBitmap: Bitmap): ExpressionModelRun {
         val config = preprocessing
+        val preprocessStartedAt = SystemClock.elapsedRealtimeNanos()
         val resized = Bitmap.createScaledBitmap(
             faceBitmap,
             config.inputSize,
             config.inputSize,
             true,
         )
-        val input = ByteBuffer.allocateDirect(
+        val input = inputBuffer ?: ByteBuffer.allocateDirect(
             4 * config.inputSize * config.inputSize * config.inputChannels,
-        ).order(ByteOrder.nativeOrder())
-        val pixels = IntArray(config.inputSize * config.inputSize)
+        ).order(ByteOrder.nativeOrder()).also { inputBuffer = it }
+        input.clear()
+        val pixels = pixelsBuffer ?: IntArray(config.inputSize * config.inputSize).also { pixelsBuffer = it }
         resized.getPixels(pixels, 0, config.inputSize, 0, 0, config.inputSize, config.inputSize)
         for (pixel in pixels) {
             val red = pixel shr 16 and 0xFF
@@ -66,15 +96,19 @@ class ExpressionModelRunner(
                 // to 3 identical channels before ImageNet normalization. Keep the
                 // camera path identical instead of leaking RGB information that
                 // was never seen during training.
-                val values = if (config.inputColorMode == "grayscale_replicated") {
-                    IntArray(config.inputChannels) { grayscale }
-                } else {
-                    intArrayOf(red, green, blue)
-                }
                 repeat(config.inputChannels) { channel ->
+                    val value = if (config.inputColorMode == "grayscale_replicated") {
+                        grayscale
+                    } else {
+                        when (channel) {
+                            0 -> red
+                            1 -> green
+                            else -> blue
+                        }
+                    }
                     input.putFloat(
                         ExpressionMath.normalizePixel(
-                            values[channel],
+                            value,
                             config.mean[channel],
                             config.std[channel],
                         ),
@@ -84,14 +118,31 @@ class ExpressionModelRunner(
         }
         if (resized !== faceBitmap) resized.recycle()
         input.rewind()
-        val output = Array(1) { FloatArray(ExpressionMath.modelLabels.size) }
+        val preprocessMs = elapsedMs(preprocessStartedAt)
+
+        val inferenceStartedAt = SystemClock.elapsedRealtimeNanos()
+        val output = outputBuffer ?: Array(1) { FloatArray(ExpressionMath.modelLabels.size) }
+            .also { outputBuffer = it }
+        output[0].fill(0f)
         checkNotNull(interpreter) { "Expression model is not initialized" }.run(input, output)
-        return ExpressionMath.toProbabilityMap(ExpressionMath.softmax(output[0]))
+        val inferenceMs = elapsedMs(inferenceStartedAt)
+
+        val postprocessStartedAt = SystemClock.elapsedRealtimeNanos()
+        val probabilities = ExpressionMath.toProbabilityMap(ExpressionMath.softmax(output[0]))
+        return ExpressionModelRun(
+            probabilities = probabilities,
+            preprocessMs = preprocessMs,
+            inferenceMs = inferenceMs,
+            postprocessMs = elapsedMs(postprocessStartedAt),
+        )
     }
 
     override fun close() {
         interpreter?.close()
         interpreter = null
+        inputBuffer = null
+        pixelsBuffer = null
+        outputBuffer = null
     }
 
     private fun readPreprocessing(): ExpressionPreprocessing {
@@ -99,6 +150,7 @@ class ExpressionModelRunner(
         val root = JSONObject(json)
         val meanJson = root.getJSONArray("mean")
         val stdJson = root.getJSONArray("std")
+        val classThresholds = parseExpressionClassThresholds(root)
         return ExpressionPreprocessing(
             inputSize = root.getInt("input_size"),
             inputChannels = root.getInt("input_channels"),
@@ -109,6 +161,7 @@ class ExpressionModelRunner(
             mean = DoubleArray(meanJson.length()) { meanJson.getDouble(it) },
             std = DoubleArray(stdJson.length()) { stdJson.getDouble(it) },
             confidenceThreshold = root.getDouble("confidence_threshold"),
+            classThresholds = classThresholds,
             modelVersion = root.getString("model_version"),
         )
     }
@@ -134,4 +187,7 @@ class ExpressionModelRunner(
             "Preprocessing mean/std length does not match input channels"
         }
     }
+
+    private fun elapsedMs(startedAtNanos: Long): Long =
+        ((SystemClock.elapsedRealtimeNanos() - startedAtNanos) / 1_000_000L).coerceAtLeast(0L)
 }

@@ -70,4 +70,39 @@ class ExpressionSignalProcessorTest {
         assertEquals(ExpressionLabel.NO_FACE, noFace.label)
         assertFalse(noFace.isStable)
     }
+
+    @Test
+    fun classSpecificThresholdOverridesGlobalFallback() {
+        val processor = ExpressionSignalProcessor(
+            ExpressionSignalConfig(
+                emaAlpha = 1.0,
+                minimumConfidence = 0.7,
+                classThresholds = mapOf(
+                    ExpressionLabel.HAPPY to 0.3,
+                    ExpressionLabel.FEAR to 0.93,
+                ),
+            ),
+            "test",
+        )
+
+        val happy = processor.process(probabilities(ExpressionLabel.HAPPY, 0.5), 1000L)
+        assertEquals(ExpressionLabel.HAPPY, happy.label)
+
+        processor.reset()
+        val fear = processor.process(probabilities(ExpressionLabel.FEAR, 0.8), 1000L)
+        assertEquals(ExpressionLabel.UNKNOWN, fear.label)
+    }
+
+    @Test
+    fun missingClassThresholdsKeepLegacyGlobalThresholdBehavior() {
+        val processor = ExpressionSignalProcessor(
+            ExpressionSignalConfig(emaAlpha = 1.0, minimumConfidence = 0.7),
+            "legacy",
+        )
+
+        assertEquals(
+            ExpressionLabel.UNKNOWN,
+            processor.process(probabilities(ExpressionLabel.HAPPY, 0.6), 1000L).label,
+        )
+    }
 }
