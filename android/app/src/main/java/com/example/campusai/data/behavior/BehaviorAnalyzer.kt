@@ -105,14 +105,19 @@ class BehaviorAnalyzer(
                                     }
                                     
                                     val avgInterval = if (inferenceCount > 1) totalInferenceIntervals / (inferenceCount - 1) else 0
-                                    
+                                    val topPrediction = prediction.probabilities
+                                        .maxByOrNull { it.value }
+
                                     if (inferenceCount % 10 == 0) {
                                         Log.d("BehaviorPerf", """
-                                            [V3.1.1 Baseline]
+                                            [V3.2.1 Baseline]
                                             Inference Count: $inferenceCount
                                             Dropped/Busy Count: $inferenceDroppedCount
                                             Avg Interval: ${avgInterval}ms
                                             First Prediction Time: ${firstPredictionTimeMs}ms
+                                            Frame Timestamp: ${prediction.timestampMs}
+                                            Prediction: ${topPrediction?.key?.name ?: "NONE"}
+                                            Prediction Confidence: ${topPrediction?.value ?: 0f}
                                             Pre-process Latency: ${prediction.debugPreprocessingLatencyMs}ms
                                             Inference Latency: ${prediction.debugInferenceLatencyMs}ms
                                         """.trimIndent())
