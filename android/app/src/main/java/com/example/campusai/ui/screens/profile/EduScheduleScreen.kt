@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,7 +58,6 @@ private val COURSE_COLORS = listOf(
 
 @Composable
 fun EduScheduleScreen(
-    onBack: () -> Unit,
     viewModel: EduViewModel = viewModel(),
 ) {
     val scheduleItems by viewModel.scheduleItems.collectAsState()
@@ -79,19 +77,6 @@ fun EduScheduleScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(Background)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "返回") }
-                Text("教务课表", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
-            IconButton(onClick = { viewModel.loadScheduleItems(null) }) {
-                Icon(Icons.Default.Refresh, "刷新")
-            }
-        }
-        Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -100,6 +85,9 @@ fun EduScheduleScreen(
             OutlinedButton(onClick = { if (currentWeek > 1) currentWeek-- }) { Text("上一周") }
             Text("第 $currentWeek 周", fontWeight = FontWeight.Bold)
             OutlinedButton(onClick = { if (currentWeek < 25) currentWeek++ }) { Text("下一周") }
+            IconButton(onClick = { viewModel.loadScheduleItems(null) }) {
+                Icon(Icons.Default.Refresh, "刷新")
+            }
         }
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

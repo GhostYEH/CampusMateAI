@@ -103,18 +103,6 @@ fun EduLoginScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onBack) { Text("返回") }
-            Text("教务系统登录", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = {
-                viewModel.reset()
-                onBack()
-            }) { Text("取消") }
-        }
         Text(
             "请在下方页面中完成学校教务系统的登录。CampusMate 不保存您的密码，仅在校验后使用登录会话同步课表和成绩。",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

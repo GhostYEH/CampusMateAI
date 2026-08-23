@@ -80,15 +80,6 @@ fun EduSystemScreen(
         modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("教务系统", style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = onBack) { Text("返回") }
-        }
-
         if (universityId.isNullOrBlank()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

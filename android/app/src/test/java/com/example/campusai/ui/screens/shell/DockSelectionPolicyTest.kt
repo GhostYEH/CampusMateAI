@@ -14,6 +14,9 @@ class DockSelectionPolicyTest {
         assertEquals("profile", selectedStudentDockRoute("settings"))
         assertEquals("profile", selectedStudentDockRoute("university"))
         assertEquals("profile", selectedStudentDockRoute("academic"))
+        assertEquals("profile", selectedStudentDockRoute("edu_system"))
+        assertEquals("profile", selectedStudentDockRoute("edu_schedule"))
+        assertEquals("profile", selectedStudentDockRoute("edu_login"))
     }
 
     @Test

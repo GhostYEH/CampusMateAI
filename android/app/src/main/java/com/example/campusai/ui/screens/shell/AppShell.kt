@@ -113,6 +113,9 @@ private val studentProfileRoutes = setOf(
     "favorites",
     "university",
     "academic",
+    "edu_system",
+    "edu_schedule",
+    "edu_login",
     "help-feedback",
 )
 

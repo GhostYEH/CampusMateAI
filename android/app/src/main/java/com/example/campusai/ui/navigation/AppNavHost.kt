@@ -7,6 +7,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,11 +16,14 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.composable as navigationComposable
 import androidx.navigation.navArgument
 import com.example.campusai.ui.components.StickySecondaryNavigation
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -64,10 +68,49 @@ import com.example.campusai.ui.screens.community.CommunityPublishScreen
 import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
 import com.example.campusai.ui.screens.v3.UniversityScreen
 import com.example.campusai.ui.screens.profile.UniversityPickerScreen
+import com.example.campusai.ui.theme.Background
 import java.net.URLEncoder
 
-private fun mainTabIndex(route: String?): Int = listOf("home", "courses", "tasks", "counselor", "profile")
-    .indexOf(route?.substringBefore('?')?.substringBefore('/'))
+@Composable
+private fun NavigationDestinationFrame(
+    backStackEntry: NavBackStackEntry,
+    statusBarHeight: Dp,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val route = backStackEntry.destination.route
+    val destination = secondaryDestinationSpec(route)
+    val title = when (route?.substringBefore('?')) {
+        "exam_edit/{examId}" -> {
+            if (backStackEntry.arguments?.getLong("examId") == 0L) "新增考试" else "编辑考试"
+        }
+        "service_form/{kind}" -> when (backStackEntry.arguments?.getString("kind")) {
+            "certificate" -> "证明申请"
+            "venue" -> "场地申请"
+            "feedback" -> "意见反馈"
+            else -> destination?.title
+        }
+        else -> destination?.title
+    }
+    val layout = navigationDestinationLayout(route, statusBarHeight)
+
+    Box(Modifier.fillMaxSize().background(Background)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = layout.contentTopPadding),
+        ) {
+            content()
+        }
+        destination?.let {
+            StickySecondaryNavigation(
+                title = title ?: it.title,
+                onBack = onBack,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+    }
+}
 
 @Composable
 fun AppNavHost(
@@ -84,34 +127,29 @@ fun AppNavHost(
         }
     }
     val reduceMotion by repository.reduceMotion.collectAsState()
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val secondaryDestination = secondaryDestinationSpec(backStackEntry?.destination?.route)
-    val secondaryTitle = when (backStackEntry?.destination?.route?.substringBefore('?')) {
-        "exam_edit/{examId}" -> {
-            if (backStackEntry?.arguments?.getLong("examId") == 0L) "新增考试" else "编辑考试"
-        }
-        "service_form/{kind}" -> when (backStackEntry?.arguments?.getString("kind")) {
-            "certificate" -> "证明申请"
-            "venue" -> "场地申请"
-            "feedback" -> "意见反馈"
-            else -> secondaryDestination?.title
-        }
-        else -> secondaryDestination?.title
-    }
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val destinationLayout = navigationDestinationLayout(
-        route = backStackEntry?.destination?.route,
-        statusBarHeight = statusBarHeight,
-    )
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
-    Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(top = destinationLayout.contentTopPadding),
-        ) {
-            NavHost(
+    fun NavGraphBuilder.composable(
+        route: String,
+        arguments: List<NamedNavArgument> = emptyList(),
+        content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
+    ) {
+        navigationComposable(route = route, arguments = arguments) { backStackEntry ->
+            val transitionScope = this
+            NavigationDestinationFrame(
+                backStackEntry = backStackEntry,
+                statusBarHeight = statusBarHeight,
+                onBack = {
+                    backDispatcher?.onBackPressed() ?: navController.popBackStack()
+                },
+            ) {
+                content(transitionScope, backStackEntry)
+            }
+        }
+    }
+
+    NavHost(
                 navController = navController,
                 startDestination = "home",
                 modifier = Modifier.fillMaxSize(),
@@ -119,50 +157,48 @@ fun AppNavHost(
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                val from = mainTabIndex(initialState.destination.route)
-                val to = mainTabIndex(targetState.destination.route)
-                val tabDirection = if (from >= 0 && to >= 0 && from != to) if (to > from) 1 else -1 else 0
-                fadeIn(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                    slideInHorizontally(
-                        animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialOffsetX = { width -> if (tabDirection == 0) width / 10 else width * tabDirection },
-                    )
+                val motion = forwardNavigationMotion(
+                    initialRoute = initialState.destination.route,
+                    targetRoute = targetState.destination.route,
+                )
+                slideInHorizontally(
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    initialOffsetX = { width -> width * motion.enterDirection },
+                )
             }
         },
         exitTransition = {
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                val from = mainTabIndex(initialState.destination.route)
-                val to = mainTabIndex(targetState.destination.route)
-                val tabDirection = if (from >= 0 && to >= 0 && from != to) if (to > from) 1 else -1 else 0
-                fadeOut(tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                    slideOutHorizontally(
-                        animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        targetOffsetX = { width -> if (tabDirection == 0) -width / 16 else -width * tabDirection },
-                    )
+                val motion = forwardNavigationMotion(
+                    initialRoute = initialState.destination.route,
+                    targetRoute = targetState.destination.route,
+                )
+                slideOutHorizontally(
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    targetOffsetX = { width -> width * motion.exitDirection },
+                )
             }
         },
         popEnterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                fadeIn(tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                    slideInHorizontally(
-                        animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        initialOffsetX = { -it / 5 },
-                    )
+                slideInHorizontally(
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    initialOffsetX = { -it },
+                )
             }
         },
         popExitTransition = {
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                fadeOut(tween(210, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                    slideOutHorizontally(
-                        animationSpec = tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                        targetOffsetX = { it / 5 },
-                    )
+                slideOutHorizontally(
+                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    targetOffsetX = { it },
+                )
             }
         },
             ) {
@@ -328,9 +364,7 @@ fun AppNavHost(
             )
         }
         composable("edu_schedule") {
-            com.example.campusai.ui.screens.profile.EduScheduleScreen(
-                onBack = { navController.popBackStack() },
-            )
+            com.example.campusai.ui.screens.profile.EduScheduleScreen()
         }
         composable(
             route = "edu_login/{connectionId}?loginUrl={loginUrl}",
@@ -566,15 +600,4 @@ fun AppNavHost(
             )
         }
             }
-        }
-        secondaryDestination?.let { destination ->
-            StickySecondaryNavigation(
-                title = secondaryTitle ?: destination.title,
-                onBack = {
-                    backDispatcher?.onBackPressed() ?: navController.popBackStack()
-                },
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
-    }
 }
