@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 import torch
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 
 from .calibrate import search_rejection_thresholds
@@ -31,6 +31,20 @@ def collect_logits(model, dataset, device: torch.device, batch_size: int = 64):
 
 def expected_v32_label(target_index: int) -> int:
     return 1 if target_index in (0, 1) else 0
+
+
+def collapsed_binary_report(labels: np.ndarray, probabilities: np.ndarray) -> dict:
+    expected = np.asarray([expected_v32_label(int(value)) for value in labels], dtype=np.int64)
+    top1 = np.asarray(probabilities).argmax(axis=1)
+    predicted = np.asarray([expected_v32_label(int(value)) for value in top1], dtype=np.int64)
+    return {
+        "output_space": ["IDLE", "VISIBLE_STUDY"],
+        "accuracy": float(accuracy_score(expected, predicted)),
+        "macro_f1": float(f1_score(expected, predicted, average="macro", zero_division=0)),
+        "confusion_matrix": confusion_matrix(expected, predicted, labels=[0, 1]).tolist(),
+        "sample_count": int(len(expected)),
+        "note": "Candidate Top-1 collapsed to the packaged V3.2 binary semantics.",
+    }
 
 
 def evaluate_v32(model_path: Path, dataset, batch_size: int = 64) -> dict:
@@ -128,6 +142,7 @@ def evaluate_checkpoint(
         "rejection": rejection,
         "test_uncalibrated": classification_report(test_labels, uncalibrated, CLASS_NAMES),
         "test_calibrated": classification_report(test_labels, calibrated, CLASS_NAMES),
+        "candidate_binary_diagnostic": collapsed_binary_report(test_labels, calibrated),
         "test_rejected": rejected_report,
     }
     if compare_v32 is not None:

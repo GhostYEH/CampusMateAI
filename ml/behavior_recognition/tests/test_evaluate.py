@@ -4,7 +4,14 @@ from torch.utils.data import TensorDataset
 
 from pathlib import Path
 
-from behavior_recognition.evaluate import collect_logits, evaluate_v32, expected_v32_label
+import numpy as np
+
+from behavior_recognition.evaluate import (
+    collapsed_binary_report,
+    collect_logits,
+    evaluate_v32,
+    expected_v32_label,
+)
 
 
 def test_collect_logits_preserves_dataset_order():
@@ -33,3 +40,15 @@ def test_v32_evaluation_respects_fixed_batch_one_contract():
     dataset = TensorDataset(torch.zeros(2, 3, 224, 224), torch.tensor([0, 2]))
     report = evaluate_v32(model_path, dataset, batch_size=2)
     assert report["sample_count"] == 2
+
+
+def test_candidate_binary_collapse_matches_v32_semantics():
+    """Catches four-class improvements being compared with a different binary target."""
+    labels = np.array([0, 1, 2, 3])
+    probabilities = np.array(
+        [[0.8, 0.1, 0.05, 0.05], [0.1, 0.7, 0.1, 0.1], [0.1, 0.1, 0.7, 0.1], [0.1, 0.1, 0.2, 0.6]],
+        dtype=np.float32,
+    )
+    report = collapsed_binary_report(labels, probabilities)
+    assert report["accuracy"] == 1.0
+    assert report["macro_f1"] == 1.0

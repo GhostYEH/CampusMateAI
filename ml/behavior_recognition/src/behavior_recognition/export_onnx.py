@@ -27,6 +27,7 @@ def export_candidate(
     config_path: Path,
     output_dir: Path,
     parity_samples: int = 32,
+    evaluation_path: Path | None = None,
 ) -> Path:
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -95,6 +96,10 @@ def export_candidate(
             "PHONE_INTERACTION does not establish non-learning intent.",
         ],
     }
+    if evaluation_path is not None:
+        model_card["offline_evaluation"] = json.loads(
+            evaluation_path.read_text(encoding="utf-8")
+        )
     (output_dir / "model_card.json").write_text(
         json.dumps(model_card, ensure_ascii=False, indent=2), encoding="utf-8"
     )
