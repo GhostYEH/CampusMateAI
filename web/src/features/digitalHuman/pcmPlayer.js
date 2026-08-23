@@ -38,7 +38,14 @@ export class Pcm16Decoder {
 }
 
 export class PcmStreamPlayer {
-  constructor({ sampleRate = 24_000, onLevel = () => {}, onState = () => {}, audioContextFactory } = {}) {
+  constructor({
+    sampleRate = 24_000,
+    onLevel = () => {},
+    onState = () => {},
+    audioContextFactory,
+    requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
+    cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
+  } = {}) {
     this.sampleRate = sampleRate;
     this.onLevel = onLevel;
     this.onState = onState;
@@ -47,7 +54,12 @@ export class PcmStreamPlayer {
       if (!Context) throw new Error("当前浏览器不支持 Web Audio");
       return new Context();
     });
+    this.requestFrame = requestFrame || ((callback) => globalThis.setTimeout(callback, 16));
+    this.cancelFrame = cancelFrame || globalThis.clearTimeout?.bind(globalThis);
     this.context = null;
+    this.analyser = null;
+    this.levelSamples = null;
+    this.levelFrame = null;
     this.decoder = new Pcm16Decoder();
     this.sources = new Set();
     this.nextStartTime = 0;
@@ -59,14 +71,20 @@ export class PcmStreamPlayer {
   async append(chunk) {
     const samples = this.decoder.push(chunk);
     if (!samples.length) return;
-    if (!this.context) this.context = this.audioContextFactory();
+    if (!this.context) {
+      this.context = this.audioContextFactory();
+      this.analyser = this.context.createAnalyser();
+      this.analyser.fftSize = 256;
+      this.analyser.connect(this.context.destination);
+      this.levelSamples = new Float32Array(this.analyser.fftSize);
+    }
     if (this.context.state === "suspended") await this.context.resume();
 
     const buffer = this.context.createBuffer(1, samples.length, this.sampleRate);
     buffer.copyToChannel(samples, 0);
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.context.destination);
+    source.connect(this.analyser);
     this.nextStartTime = Math.max(this.context.currentTime + 0.025, this.nextStartTime);
     source.start(this.nextStartTime);
     this.nextStartTime += buffer.duration;
@@ -76,9 +94,8 @@ export class PcmStreamPlayer {
     if (!this.speaking) {
       this.speaking = true;
       this.onState(true);
+      this._samplePlaybackLevel();
     }
-    this.smoothedLevel = this.smoothedLevel * 0.72 + rmsLevel(samples) * 0.28;
-    this.onLevel(Math.min(1, this.smoothedLevel * 2.4));
 
     source.onended = () => {
       this.sources.delete(source);
@@ -104,11 +121,24 @@ export class PcmStreamPlayer {
   }
 
   _markStopped() {
+    if (this.levelFrame != null) this.cancelFrame?.(this.levelFrame);
+    this.levelFrame = null;
     this.smoothedLevel = 0;
     this.onLevel(0);
     if (this.speaking) {
       this.speaking = false;
       this.onState(false);
     }
+  }
+
+  _samplePlaybackLevel() {
+    if (!this.speaking || !this.analyser || !this.levelSamples) return;
+    this.analyser.getFloatTimeDomainData(this.levelSamples);
+    const rawLevel = rmsLevel(this.levelSamples);
+    const audibleLevel = rawLevel < 0.008 ? 0 : Math.min(1, rawLevel * 3.2);
+    const smoothing = audibleLevel > this.smoothedLevel ? 0.48 : 0.24;
+    this.smoothedLevel += (audibleLevel - this.smoothedLevel) * smoothing;
+    this.onLevel(this.smoothedLevel);
+    this.levelFrame = this.requestFrame(() => this._samplePlaybackLevel());
   }
 }
