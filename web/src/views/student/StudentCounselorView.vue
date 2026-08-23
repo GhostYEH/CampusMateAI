@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import DigitalHumanPanel from "../../components/counselor/DigitalHumanPanel.vue";
 import { useDigitalHumanSpeech } from "../../composables/useDigitalHumanSpeech";
@@ -9,7 +9,6 @@ import { createPersonalTask } from "../../services/studentApi";
 import { marked } from "marked";
 
 const route = useRoute();
-const router = useRouter();
 const input = ref("");
 const sending = ref(false);
 const messages = ref([]);
@@ -33,13 +32,6 @@ const suggestionSets = [
   ["校园卡丢失了，怎么挂失补办？", "如何申请奖学金？", "宿舍断电了找谁报修？", "图书馆借阅规则是什么？"],
 ];
 const suggestions = computed(() => suggestionSets[suggestionPage.value]);
-const quickServices = [
-  { label: "学籍与成绩", hint: "学籍异动、成绩查询、证明开具", icon: "PhShieldCheck", path: "/profile" },
-  { label: "奖助与资助", hint: "奖学金、助学金申请", icon: "PhThumbsUp", path: "/services" },
-  { label: "住宿与生活", hint: "宿舍申请、报修服务", icon: "PhHouse", path: "/services" },
-  { label: "教材与选课", hint: "教材预订、选课指南", icon: "PhBookOpen", path: "/courses" },
-  { label: "校园卡与消费", hint: "校园卡挂失、充值查询", icon: "PhTag", path: "/services" },
-];
 const actionSuggestions = [
   { label: "生成个性化复习计划", icon: "PhCalendarBlank" },
   { label: "制定每日任务清单", icon: "PhClipboardText" },
@@ -121,10 +113,6 @@ function sessionTime(item) {
   return Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 function rotateSuggestions() { suggestionPage.value = (suggestionPage.value + 1) % suggestionSets.length; }
-function openService(item) {
-  if (item.path) router.push(item.path);
-}
-
 async function send(text = input.value) {
   const value = text.trim();
   if (!value || sending.value) return;
@@ -249,12 +237,6 @@ onBeforeUnmount(() => { aborter.value?.abort(); digitalHuman.stop(); });
       </section>
 
       <aside class="counselor-reference-right">
-        <section class="counselor-panel services-panel">
-          <div class="counselor-panel-head"><h2>校园办事帮助</h2><button class="more-link" @click="router.push('/services')">更多 <UiIcon name="PhArrowRight" :size="15" /></button></div>
-          <div class="reference-service-list">
-            <button v-for="item in quickServices" :key="item.label" @click="openService(item)"><span class="service-reference-icon"><UiIcon :name="item.icon" :size="20" /></span><span><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span><UiIcon name="PhCaretRight" :size="15" /></button>
-          </div>
-        </section>
         <DigitalHumanPanel
           :speaking="digitalHuman.speaking.value"
           :muted="digitalHuman.muted.value"
