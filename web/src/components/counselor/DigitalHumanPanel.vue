@@ -78,7 +78,7 @@ onBeforeUnmount(() => window.removeEventListener("message", handleUnityMessage))
 .digital-human-state { display: inline-flex; align-items: center; gap: 6px; color: #7180a7; font-size: 11px; white-space: nowrap; }
 .digital-human-state i { width: 7px; height: 7px; border-radius: 50%; background: #98a5c7; }
 .speaking .digital-human-state i { background: #5368ef; box-shadow: 0 0 0 4px rgba(83, 104, 239, 0.12); }
-.digital-human-stage { position: relative; height: 254px; margin: 0 10px; overflow: hidden; border-radius: 12px; background: radial-gradient(circle at 50% 35%, #fafdff 0, #e4e9fb 72%); }
+.digital-human-stage { position: relative; height: 430px; margin: 0 10px; overflow: hidden; border-radius: 12px; background: radial-gradient(circle at 50% 35%, #fafdff 0, #e4e9fb 72%); }
 .digital-human-frame { width: 100%; height: 100%; border: 0; background: transparent; }
 .digital-human-loading, .digital-human-fallback { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 10px; padding: 18px; color: #7180a7; font-size: 12px; text-align: center; }
 .digital-human-loading span { width: 24px; height: 24px; border: 2px solid #c9d1ed; border-top-color: #5368ef; border-radius: 50%; animation: digital-human-spin 0.9s linear infinite; }
@@ -91,5 +91,6 @@ onBeforeUnmount(() => window.removeEventListener("message", handleUnityMessage))
 .digital-human-controls button:disabled { cursor: not-allowed; opacity: 0.45; }
 @keyframes digital-human-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .digital-human-loading span { animation: none; } }
-@media (max-width: 1180px) { .digital-human-stage { height: 220px; } .digital-human-controls { grid-template-columns: 1fr; } }
+@media (max-width: 1180px) { .digital-human-stage { height: 360px; } }
+@media (max-width: 720px) { .digital-human-stage { height: 390px; } .digital-human-controls { grid-template-columns: 1fr; } }
 </style>
