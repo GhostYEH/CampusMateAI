@@ -17,6 +17,7 @@ from .api.router import api_router
 from .core.config import get_settings
 from .core.exceptions import register_exception_handlers
 from .core.logging import configure_logging, logger
+from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human_assets_dir
 from .services.container import build_container, get_container
 from .services.demo_seeder import seed_demo_data
 
@@ -120,6 +121,16 @@ def create_app() -> FastAPI:
     images_dir = Path(__file__).resolve().parent.parent / "data" / "community_images"
     images_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static/community_images", StaticFiles(directory=str(images_dir)), name="community-images")
+
+    digital_human_dir = resolve_digital_human_assets_dir()
+    if digital_human_dir.is_dir():
+        app.mount(
+            "/digital-human",
+            DigitalHumanStaticFiles(directory=str(digital_human_dir), html=True),
+            name="digital-human",
+        )
+    else:
+        logger.warning("数字人静态资源目录不存在: {}", digital_human_dir)
 
     # 健康检查根(无前缀，便于简单 ping)
     @app.get("/")

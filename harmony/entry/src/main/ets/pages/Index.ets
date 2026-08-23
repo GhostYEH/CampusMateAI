@@ -72,6 +72,8 @@ struct Index {
   @State chatMessages: ChatMessage[] = [];
   @State chatInput: string = '';
   @State chatSending: boolean = false;
+  @State digitalHumanSpeechText: string = '';
+  @State digitalHumanSpeechRequestId: number = 0;
   @State displayName: string = '林知夏';
   @State profileDetail: string = '计算机科学与技术 · 大三';
   @State secondaryLoading: boolean = false;
@@ -321,6 +323,11 @@ struct Index {
         });
       }
       if (!receivedChunk && completedAnswer.length === 0) throw new Error('AI 流式响应为空');
+      const finalAssistant = this.chatMessages.find((item: ChatMessage) => item.id === assistantMessage.id);
+      if (finalAssistant !== undefined && finalAssistant.content.trim().length > 0) {
+        this.digitalHumanSpeechText = finalAssistant.content;
+        this.digitalHumanSpeechRequestId += 1;
+      }
     } catch (error) {
       const latest = this.chatMessages[this.chatMessages.length - 1];
       if (latest !== undefined && latest.role === 'assistant' && latest.content.length === 0) {
@@ -781,6 +788,10 @@ struct Index {
       messages: this.chatMessages,
       sending: this.chatSending,
       darkMode: this.darkMode,
+      apiBaseUrl: API_BASE_URL,
+      authToken: this.appState.getAccessToken(),
+      speechText: this.digitalHumanSpeechText,
+      speechRequestId: this.digitalHumanSpeechRequestId,
       input: $chatInput,
       onSend: () => this.sendChat()
     })
