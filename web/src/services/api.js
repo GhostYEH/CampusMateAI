@@ -1,4 +1,5 @@
 import axios from "axios";
+import { streamAssistantSpeech as streamSpeechResponse } from "../features/digitalHuman/speechStream";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 const client = axios.create({ baseURL: BASE_URL, timeout: 8000, withCredentials: true });
@@ -245,6 +246,14 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
     if (err.name === "AbortError") return;
     onError?.(err);
   }
+}
+
+export function streamAssistantSpeech(text, options = {}) {
+  return streamSpeechResponse(text, {
+    ...options,
+    baseUrl: BASE_URL,
+    accessToken: localStorage.getItem("campus_access_token") || "",
+  });
 }
 
 export async function extractNotice(text) {
