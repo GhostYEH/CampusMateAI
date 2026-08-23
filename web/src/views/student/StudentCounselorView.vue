@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
+import DigitalHumanPanel from "../../components/counselor/DigitalHumanPanel.vue";
+import { useDigitalHumanSpeech } from "../../composables/useDigitalHumanSpeech";
 import { chatStream } from "../../services/api";
 import { createPersonalTask } from "../../services/studentApi";
 import { marked } from "marked";
@@ -23,6 +25,7 @@ const attachment = ref(null);
 const webSearchEnabled = ref(false);
 const policyDialog = ref(null);
 const showAllSessions = ref(false);
+const digitalHuman = useDigitalHumanSpeech({ onNotice: (message) => { notice.value = message; } });
 const supportedTextTypes = new Set(["text/plain", "text/markdown", "application/json", "text/csv"]);
 
 const suggestionSets = [
@@ -81,6 +84,7 @@ function seedSample() {
   notice.value = "";
 }
 function newSession() {
+  digitalHuman.stop();
   conversationId.value = `web-${Date.now()}`;
   messages.value = [];
   sources.value = [];
@@ -100,6 +104,7 @@ function saveSession() {
   localStorage.setItem("campus_counselor_sessions", JSON.stringify(sessions.value));
 }
 function restoreSession(item) {
+  digitalHuman.stop();
   if (item.id === "sample-main") { seedSample(); return; }
   if (item.messages?.length) {
     conversationId.value = item.id; messages.value = item.messages; sources.value = item.sources || []; notice.value = "";
@@ -123,6 +128,7 @@ function openService(item) {
 async function send(text = input.value) {
   const value = text.trim();
   if (!value || sending.value) return;
+  digitalHuman.stop();
   if (!conversationId.value || conversationId.value.startsWith("sample-")) conversationId.value = `web-${Date.now()}`;
   messages.value.push({ role: "user", text: value });
   input.value = ""; sending.value = true; sources.value = []; notice.value = "";
@@ -135,7 +141,7 @@ async function send(text = input.value) {
       signal: aborter.value.signal,
       onSources: (items) => { sources.value = items || []; },
       onChunk: (chunk) => { pending.text += chunk; messages.value = [...messages.value]; scroll(); },
-      onDone: (meta) => { conversationId.value = meta?.conversation_id || conversationId.value; pending.streaming = false; messages.value = [...messages.value]; saveSession(); },
+      onDone: (meta) => { conversationId.value = meta?.conversation_id || conversationId.value; pending.streaming = false; messages.value = [...messages.value]; saveSession(); digitalHuman.speak(pending.text); },
       onError: () => { pending.streaming = false; pending.text = pending.text || "校园知识库暂时未连接，我已记录你的问题，请稍后再试。"; messages.value = [...messages.value]; saveSession(); },
     });
   } finally { sending.value = false; aborter.value = null; scroll(); }
@@ -178,7 +184,7 @@ function openPolicy(type) { policyDialog.value = type; }
 function closePolicy() { policyDialog.value = null; }
 
 onMounted(() => { loadSessions(); seedSample(); if (route.query.prompt) send(String(route.query.prompt)); });
-onBeforeUnmount(() => aborter.value?.abort());
+onBeforeUnmount(() => { aborter.value?.abort(); digitalHuman.stop(); });
 </script>
 
 <template>
@@ -249,10 +255,17 @@ onBeforeUnmount(() => aborter.value?.abort());
             <button v-for="item in quickServices" :key="item.label" @click="openService(item)"><span class="service-reference-icon"><UiIcon :name="item.icon" :size="20" /></span><span><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span><UiIcon name="PhCaretRight" :size="15" /></button>
           </div>
         </section>
-        <section class="reference-promo-card">
-          <div><span>你的学习小帮手</span><h2>我是 CampusMate AI</h2><p>学习疑问、校园事务、生活指南<br />随时问我，我在这里帮你！</p><button @click="newSession">立即体验 <UiIcon name="PhArrowRight" :size="16" /></button></div>
-          <img src="/assets/campusmate-counselor-hero.png" alt="CampusMate AI 机器人" />
-        </section>
+        <DigitalHumanPanel
+          :speaking="digitalHuman.speaking.value"
+          :muted="digitalHuman.muted.value"
+          :status="digitalHuman.unityStatus.value"
+          :can-replay="Boolean(digitalHuman.lastText.value)"
+          @ready="digitalHuman.setUnityReady"
+          @error="digitalHuman.setUnityError"
+          @toggle-muted="digitalHuman.toggleMuted"
+          @stop="digitalHuman.stop"
+          @replay="digitalHuman.replay"
+        />
       </aside>
     </section>
 
