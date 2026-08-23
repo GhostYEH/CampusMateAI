@@ -147,6 +147,15 @@ ml/expression_recognition/.torch-cache/
 ml/expression_recognition/.uv-cache/
 ml/expression_recognition/.tmp/
 
+# Student behavior recognition local data and training artifacts
+ml/behavior_recognition/artifacts/
+ml/behavior_recognition/manifests/
+ml/behavior_recognition/reports/generated/
+ml/behavior_recognition/runs/
+ml/behavior_recognition/exports/
+ml/behavior_recognition/.torch-cache/
+ml/behavior_recognition/.venv/
+
 # 构建产物
 artifacts/
 
