@@ -1,6 +1,7 @@
 import { ChatMessage, MarkdownLine } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+import { DigitalHumanStage } from './DigitalHumanStage';
 
 interface QuickQuestion {
   label: string;
@@ -15,6 +16,10 @@ export struct CounselorPage {
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;
   @Prop mockMode: boolean = false;
+  @Prop apiBaseUrl: string = '';
+  @Prop authToken: string = '';
+  @Prop speechText: string = '';
+  @Prop speechRequestId: number = 0;
   @Link input: string;
   onSend: () => void = () => {};
   private scroller: Scroller = new Scroller();
@@ -203,7 +208,13 @@ export struct CounselorPage {
       this.Header()
       Scroll(this.scroller) {
         Column({ space: 13 }) {
-          this.HeroCard()
+          DigitalHumanStage({
+            apiBaseUrl: this.apiBaseUrl,
+            authToken: this.authToken,
+            speechText: this.speechText,
+            speechRequestId: this.speechRequestId,
+            darkMode: this.darkMode
+          })
           Text('你可以这样问').fontColor(this.palette().text).fontSize(18).fontWeight(FontWeight.Bold)
           this.QuestionGrid()
           ForEach(this.messages, (message: ChatMessage) => { this.MessageBubble(message) }, (message: ChatMessage) => message.id)

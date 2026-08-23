@@ -63,6 +63,12 @@ class AppRepository(
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
 
+    val accessToken: StateFlow<String?> = dataStore.accessToken.stateIn(
+        scope,
+        SharingStarted.Eagerly,
+        null,
+    )
+
     private val _backendOnline = MutableStateFlow(false)
     val backendOnline: StateFlow<Boolean> = _backendOnline.asStateFlow()
 

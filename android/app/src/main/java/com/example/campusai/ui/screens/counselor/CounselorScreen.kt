@@ -29,6 +29,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campusai.BuildConfig
 import com.example.campusai.R
 import com.example.campusai.data.model.ChatMessage
 import com.example.campusai.data.repository.AppRepository
@@ -49,11 +50,14 @@ private data class QuickQuestion(
 fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val accessToken by repository.accessToken.collectAsState()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var speechText by remember { mutableStateOf("") }
+    var speechRequestId by remember { mutableIntStateOf(0) }
     var messages by remember(mockMode) {
         mutableStateOf(listOf(ChatMessage("assistant", "你好，我是 AI 校园助手小灵。课程流程、奖助政策、校园服务，都可以来问我。\n\n我会结合校园知识库与后端配置给你整理清晰步骤。")))
     }
@@ -76,6 +80,10 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
                     }
                 }
                 if (!receivedChunk) throw IllegalStateException("empty AI stream")
+                messages.lastOrNull()?.takeIf { it.role == "assistant" && it.text.isNotBlank() }?.let { answer ->
+                    speechText = answer.text
+                    speechRequestId += 1
+                }
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
                 messages = messages.dropLastWhile { it.role == "assistant" && it.text.isEmpty() }
@@ -109,7 +117,14 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             item { AssistantHeader(mockMode) }
-            item { AssistantHero(mockMode, reduceMotion) }
+            item {
+                DigitalHumanStage(
+                    apiBaseUrl = BuildConfig.API_BASE_URL,
+                    accessToken = accessToken.orEmpty(),
+                    speechText = speechText,
+                    speechRequestId = speechRequestId,
+                )
+            }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("你可以这样问", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
