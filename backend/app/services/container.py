@@ -49,6 +49,7 @@ from ..services.notice_extraction_service import NoticeExtractionService
 from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
 from ..services.task_breakdown_service import TaskBreakdownService
+from ..services.tts import MiMoTtsClient
 from ..services.edu import EduConnectorService, SchoolRegistry, SystemDetector, SessionManager
 
 
@@ -62,6 +63,7 @@ class ServiceContainer:
     notice_extraction: NoticeExtractionService
     rag: RagService
     llm: Optional[LLMClient]
+    tts: Optional[MiMoTtsClient]
     # 多角色仓库
     user_repository: UserRepository
     refresh_token_repository: RefreshTokenRepository
@@ -109,6 +111,17 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     retrieval = RetrievalService(repo)
     ingestion = KnowledgeIngestionService(repo, retrieval, settings)
     llm = build_llm_client(settings)
+    tts = (
+        MiMoTtsClient(
+            base_url=settings.mimo_base_url,
+            api_key=settings.mimo_api_key,
+            model=settings.mimo_tts_model,
+            voice=settings.mimo_tts_voice,
+            timeout=float(settings.mimo_tts_timeout_seconds),
+        )
+        if settings.mimo_tts_available
+        else None
+    )
     notice = NoticeExtractionService(llm, settings)
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
@@ -149,6 +162,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         notice_extraction=notice,
         rag=rag,
         llm=llm,
+        tts=tts,
         user_repository=UserRepository(db),
         refresh_token_repository=RefreshTokenRepository(db),
         course_repository=CourseRepository(db),

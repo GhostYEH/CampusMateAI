@@ -67,6 +67,11 @@ async def lifespan(app: FastAPI):
             await container.llm.aclose()  # type: ignore[attr-defined]
         except Exception:
             pass
+    if container.tts is not None:
+        try:
+            await container.tts.aclose()
+        except Exception:
+            pass
     logger.info("后端已关闭")
 
 
