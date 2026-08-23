@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { Pcm16Decoder, pcm16ToFloat32, rmsLevel } from "./pcmPlayer.js";
 import { normalizeSpeechText } from "./speechText.js";
+import { DigitalHumanSpeechController } from "./speechController.js";
+import { streamAssistantSpeech } from "./speechStream.js";
 import { createUnityBridge } from "./unityBridge.js";
 
 
@@ -53,4 +55,58 @@ test("unity bridge clamps speech level and uses the current origin", () => {
     { message: { source: "campusmate", type: "speech-state", value: true }, origin: "https://campus.example" },
     { message: { source: "campusmate", type: "speech-stop", value: true }, origin: "https://campus.example" },
   ]);
+});
+
+
+test("speech stream posts authenticated text and yields every PCM chunk", async () => {
+  const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4])];
+  const received = [];
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    let index = 0;
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ "x-audio-sample-rate": "24000" }),
+      body: { getReader: () => ({ read: async () => index < chunks.length ? { done: false, value: chunks[index++] } : { done: true } }) },
+    };
+  };
+
+  await streamAssistantSpeech("你好", {
+    baseUrl: "/api/v1",
+    accessToken: "token-value",
+    fetchImpl,
+    onChunk: (chunk) => received.push([...chunk]),
+  });
+
+  assert.deepEqual(received, [[1, 2], [3, 4]]);
+  assert.equal(calls[0].url, "/api/v1/assistant/tts");
+  assert.equal(calls[0].options.headers.Authorization, "Bearer token-value");
+  assert.equal(calls[0].options.body, JSON.stringify({ text: "你好" }));
+});
+
+
+test("speech controller finishes playback and reports non-abort failures", async () => {
+  const events = [];
+  const player = {
+    append: async (chunk) => events.push(["append", ...chunk]),
+    finish: () => events.push(["finish"]),
+    stop: () => events.push(["stop"]),
+  };
+  const errors = [];
+  const controller = new DigitalHumanSpeechController({
+    player,
+    streamSpeech: async (_text, { onChunk }) => onChunk(new Uint8Array([8, 9])),
+    onError: (error) => errors.push(error.message),
+  });
+
+  assert.equal(await controller.speak("欢迎"), true);
+  assert.deepEqual(events, [["stop"], ["append", 8, 9], ["finish"]]);
+  assert.deepEqual(errors, []);
+
+  controller.streamSpeech = async () => { throw new Error("provider unavailable"); };
+  assert.equal(await controller.speak("重试"), false);
+  assert.equal(errors.at(-1), "provider unavailable");
+  assert.deepEqual(events.at(-1), ["stop"]);
 });
