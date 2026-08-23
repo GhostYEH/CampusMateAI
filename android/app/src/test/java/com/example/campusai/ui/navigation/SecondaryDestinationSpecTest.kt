@@ -86,4 +86,14 @@ class SecondaryDestinationSpecTest {
     fun communityHotRouteHasRankingTitle() {
         assertEquals("热门话题", secondaryDestinationSpec("community_hot")?.title)
     }
+
+    @Test
+    fun eduConnectionFlowUsesSharedSecondaryNavigation() {
+        assertEquals("教务系统", secondaryDestinationSpec("edu_system")?.title)
+        assertEquals("教务课表", secondaryDestinationSpec("edu_schedule")?.title)
+        assertEquals(
+            "教务系统登录",
+            secondaryDestinationSpec("edu_login/{connectionId}?loginUrl={loginUrl}")?.title,
+        )
+    }
 }
