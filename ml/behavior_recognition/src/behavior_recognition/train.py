@@ -17,7 +17,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from .constants import CLASS_NAMES
-from .data import BehaviorDataset
+from .data import BehaviorDataset, materialize_roi_cache
 from .models import build_model
 
 
@@ -115,8 +115,12 @@ def train_model(
     if not train_rows or not val_rows:
         raise ValueError("Train and validation manifests must both contain samples")
     mode = str(config.get("input_mode", "roi"))
-    train_dataset = BehaviorDataset(manifest_dir / "train.csv", mode, True, train_rows)
-    val_dataset = BehaviorDataset(manifest_dir / "val.csv", mode, False, val_rows)
+    cache_dir = manifest_dir.parent / "artifacts" / "roi-cache" if mode == "roi" else None
+    if cache_dir is not None:
+        created = materialize_roi_cache(train_rows + val_rows, cache_dir)
+        print(f"roi_cache created={created} path={cache_dir}", flush=True)
+    train_dataset = BehaviorDataset(manifest_dir / "train.csv", mode, True, train_rows, cache_dir)
+    val_dataset = BehaviorDataset(manifest_dir / "val.csv", mode, False, val_rows, cache_dir)
     generator = torch.Generator().manual_seed(seed)
     loader_kwargs = {
         "batch_size": int(config.get("batch_size", 64)),

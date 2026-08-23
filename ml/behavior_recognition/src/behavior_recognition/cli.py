@@ -7,6 +7,7 @@ from .audit import audit_sources, load_source_specs
 from .constants import DEFAULT_SEED
 from .manifest import build_manifest
 from .train import train_model
+from .evaluate import evaluate_checkpoint
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--run-dir", type=Path, required=True)
     train.add_argument("--max-epochs", type=int)
     train.add_argument("--limit-per-class", type=int)
+    evaluate = subparsers.add_parser("evaluate", help="evaluate and calibrate a checkpoint")
+    evaluate.add_argument("--checkpoint", type=Path, required=True)
+    evaluate.add_argument("--manifests", type=Path, required=True)
+    evaluate.add_argument("--output", type=Path, required=True)
+    evaluate.add_argument("--compare-v32", type=Path)
+    evaluate.add_argument("--input-mode", choices=("roi", "full"))
     return parser
 
 
@@ -58,6 +65,19 @@ def main(argv: list[str] | None = None) -> int:
             limit_per_class=args.limit_per_class,
         )
         print(f"training complete: {checkpoint}")
+        return 0
+    if args.command == "evaluate":
+        report = evaluate_checkpoint(
+            args.checkpoint,
+            args.manifests,
+            args.output,
+            compare_v32=args.compare_v32,
+            input_mode=args.input_mode,
+        )
+        print(
+            f"evaluation complete: macro_f1={report['test_calibrated']['macro_f1']:.4f} "
+            f"balanced_accuracy={report['test_calibrated']['balanced_accuracy']:.4f}"
+        )
         return 0
     parser.print_help()
     return 2
