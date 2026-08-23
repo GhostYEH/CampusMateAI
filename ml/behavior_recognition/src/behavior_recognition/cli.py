@@ -8,6 +8,7 @@ from .constants import DEFAULT_SEED
 from .manifest import build_manifest
 from .train import train_model
 from .evaluate import evaluate_checkpoint
+from .export_onnx import export_candidate
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--output", type=Path, required=True)
     evaluate.add_argument("--compare-v32", type=Path)
     evaluate.add_argument("--input-mode", choices=("roi", "full"))
+    export = subparsers.add_parser("export", help="export a candidate ONNX model")
+    export.add_argument("--checkpoint", type=Path, required=True)
+    export.add_argument("--config", type=Path, required=True)
+    export.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -78,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
             f"evaluation complete: macro_f1={report['test_calibrated']['macro_f1']:.4f} "
             f"balanced_accuracy={report['test_calibrated']['balanced_accuracy']:.4f}"
         )
+        return 0
+    if args.command == "export":
+        onnx_path = export_candidate(args.checkpoint, args.config, args.output)
+        print(f"export complete: {onnx_path}")
         return 0
     parser.print_help()
     return 2
