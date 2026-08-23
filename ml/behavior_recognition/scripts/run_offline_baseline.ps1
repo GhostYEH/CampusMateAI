@@ -53,7 +53,7 @@ try {
 
     python -m behavior_recognition.cli evaluate --checkpoint "runs/$RunName/best.pt" --manifests manifests --output "reports/generated/$RunName.json" --compare-v32 $v32Model
     if ($LASTEXITCODE -ne 0) { throw "Evaluation failed" }
-    python -m behavior_recognition.cli export --checkpoint "runs/$RunName/best.pt" --config configs/mobilenet_v3_small_roi.yaml --output "exports/$RunName"
+    python -m behavior_recognition.cli export --checkpoint "runs/$RunName/best.pt" --config configs/mobilenet_v3_small_roi.yaml --output "exports/$RunName" --evaluation "reports/generated/$RunName.json"
     if ($LASTEXITCODE -ne 0) { throw "ONNX export failed" }
 
     Write-Output "offline baseline complete: $RunName"
