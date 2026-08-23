@@ -1,0 +1,18 @@
+university_0671:
+  root: 'F:\数据集\0.671k_university_yolo_Dataset'
+  required_for_training: true
+  labels:
+    0: null
+    1: READ
+    2: WRITE
+    3: PHONE_INTERACTION
+    4: null
+    5: NO_VISIBLE_STUDY
+handrise_read_write:
+  root: 'F:\数据集\SCB5-Handrise-Read-write-2024-9-17'
+  required_for_training: false
+  labels: {0: null, 1: null, 2: null}
+bow_turn_head:
+  root: 'F:\数据集\SCB_BowTurnHead_20250509\SCB5-Turn-Bow-Head-2024-9-17'
+  required_for_training: false
+  labels: {0: null, 1: null}
