@@ -21,8 +21,20 @@ def test_exported_onnx_matches_pytorch(tmp_path: Path):
     )
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
-    onnx_path = export_candidate(checkpoint, config_path, tmp_path / "export", parity_samples=2)
+    evaluation_path = tmp_path / "evaluation.json"
+    evaluation_path.write_text(
+        json.dumps({"test_calibrated": {"macro_f1": 0.5}}), encoding="utf-8"
+    )
+    onnx_path = export_candidate(
+        checkpoint,
+        config_path,
+        tmp_path / "export",
+        parity_samples=2,
+        evaluation_path=evaluation_path,
+    )
     parity = json.loads((tmp_path / "export" / "parity.json").read_text(encoding="utf-8"))
     assert onnx_path.exists()
     assert parity["top1_match"] is True
     assert parity["max_abs_error"] <= 1e-4
+    model_card = json.loads((tmp_path / "export" / "model_card.json").read_text(encoding="utf-8"))
+    assert model_card["offline_evaluation"]["test_calibrated"]["macro_f1"] == 0.5

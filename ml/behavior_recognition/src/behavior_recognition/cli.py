@@ -40,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--checkpoint", type=Path, required=True)
     export.add_argument("--config", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
+    export.add_argument("--evaluation", type=Path)
     return parser
 
 
@@ -85,7 +86,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "export":
-        onnx_path = export_candidate(args.checkpoint, args.config, args.output)
+        onnx_path = export_candidate(
+            args.checkpoint, args.config, args.output, evaluation_path=args.evaluation
+        )
         print(f"export complete: {onnx_path}")
         return 0
     parser.print_help()
