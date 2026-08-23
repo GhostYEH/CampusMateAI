@@ -1,0 +1,17 @@
+model: mobilenet_v3_small
+seed: 20260823
+input_size: 224
+input_mode: roi
+pretrained: true
+pretrained_weights: IMAGENET1K_V1
+batch_size: 64
+num_workers: 4
+max_epochs: 30
+early_stopping_patience: 6
+learning_rate: 0.0005
+weight_decay: 0.0001
+label_smoothing: 0.05
+loss: weighted_cross_entropy
+gradient_clip_norm: 1.0
+amp: true
+selection_metric: macro_f1
