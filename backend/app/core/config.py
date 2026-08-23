@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 30
     enable_fallback_mode: bool = True
 
+    # ===== MiMo TTS =====
+    mimo_base_url: str = "https://api.xiaomimimo.com/v1"
+    mimo_api_key: str = ""
+    mimo_tts_model: str = "mimo-v2.5-tts"
+    mimo_tts_voice: str = "冰糖"
+    mimo_tts_timeout_seconds: int = 60
+    mimo_tts_max_chars: int = 4000
+    mimo_tts_sample_rate: int = 24000
+
     # ===== CORS =====
     # 用字符串表示，逗号分隔；通过 cors_origins_list 属性解析为 List[str]
     # (避免 pydantic-settings 把 List[str] 当复杂类型尝试 JSON 解析)
@@ -132,6 +141,11 @@ class Settings(BaseSettings):
             and bool(self.llm_api_key)
             and bool(self.llm_model)
         )
+
+    @property
+    def mimo_tts_available(self) -> bool:
+        """MiMo TTS 是否已配置并可尝试调用。"""
+        return bool(self.mimo_base_url and self.mimo_api_key and self.mimo_tts_model)
 
     @property
     def knowledge_base_dir(self) -> Path:
