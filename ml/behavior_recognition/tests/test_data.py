@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from behavior_recognition.data import BehaviorDataset, crop_normalized_box
+from behavior_recognition.data import BehaviorDataset, crop_normalized_box, materialize_roi_cache
 
 
 def test_expanded_roi_is_nonempty_and_clipped():
@@ -42,3 +42,23 @@ def test_validation_dataset_is_deterministic(tmp_path: Path):
     assert first.shape == (3, 224, 224)
     assert torch.equal(first, second)
     assert first_label == second_label == 0
+
+
+def test_materialized_roi_cache_is_used_without_reopening_changed_source(tmp_path: Path):
+    """Catches training repeatedly decoding large source frames instead of cached ROIs."""
+    image_path = tmp_path / "sample.jpg"
+    Image.new("RGB", (100, 80), color=(30, 60, 90)).save(image_path)
+    record = {
+        "sample_id": "tiny:scene:0", "image_path": str(image_path), "target_index": "0",
+        "center_x": "0.5", "center_y": "0.5", "width": "0.5", "height": "0.5",
+    }
+    cache_dir = tmp_path / "cache"
+    created = materialize_roi_cache([record], cache_dir)
+    assert created == 1
+    cached_dataset = BehaviorDataset(
+        tmp_path / "unused.csv", mode="roi", training=False, records=[record], cache_dir=cache_dir
+    )
+    before, _ = cached_dataset[0]
+    Image.new("RGB", (100, 80), color=(220, 10, 10)).save(image_path)
+    after, _ = cached_dataset[0]
+    assert torch.equal(before, after)
