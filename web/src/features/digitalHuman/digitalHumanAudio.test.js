@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { Pcm16Decoder, pcm16ToFloat32, rmsLevel } from "./pcmPlayer.js";
+import { Pcm16Decoder, PcmStreamPlayer, pcm16ToFloat32, rmsLevel } from "./pcmPlayer.js";
 import { normalizeSpeechText } from "./speechText.js";
 import { DigitalHumanSpeechController } from "./speechController.js";
 import { streamAssistantSpeech } from "./speechStream.js";
@@ -32,6 +32,45 @@ test("preserves a split PCM sample between network chunks", () => {
   const decoded = decoder.push(new Uint8Array([0x40, 0x00, 0xc0]));
 
   assert.deepEqual([...decoded], [0.5, -0.5]);
+});
+
+
+test("samples the live audio graph every animation frame while speech is playing", async () => {
+  let frameCallback = null;
+  const levels = [];
+  const analyser = {
+    fftSize: 0,
+    connect() {},
+    getFloatTimeDomainData(output) {
+      for (let index = 0; index < output.length; index += 1) output[index] = index % 2 ? -0.5 : 0.5;
+    },
+  };
+  const source = {
+    connect() {},
+    start() {},
+    stop() {},
+    onended: null,
+  };
+  const context = {
+    state: "running",
+    currentTime: 0,
+    destination: {},
+    createAnalyser: () => analyser,
+    createBuffer: () => ({ duration: 0.1, copyToChannel() {} }),
+    createBufferSource: () => source,
+  };
+  const player = new PcmStreamPlayer({
+    onLevel: (level) => levels.push(level),
+    audioContextFactory: () => context,
+    requestFrame: (callback) => { frameCallback = callback; return 1; },
+    cancelFrame: () => {},
+  });
+
+  await player.append(new Uint8Array([0xff, 0x7f, 0x00, 0x80]));
+  assert.equal(typeof frameCallback, "function");
+  frameCallback();
+
+  assert.ok(levels.at(-1) > 0.45, "mouth level should come from the live playback graph");
 });
 
 
