@@ -102,7 +102,7 @@ def test_probe_portal_identifies_zhengfang_when_response_is_reachable(monkeypatc
     assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
 
 
-def test_probe_portal_opens_webview_for_visible_captcha(monkeypatch) -> None:
+def test_probe_portal_keeps_visible_image_captcha_on_backend_challenge(monkeypatch) -> None:
     import httpx
 
     monkeypatch.setattr(httpx, "AsyncClient", _CaptchaProbeHttpClient)
@@ -113,7 +113,8 @@ def test_probe_portal_opens_webview_for_visible_captcha(monkeypatch) -> None:
     )
 
     assert result["provider"] == EDU_PROVIDER_ZHENGFANG
-    assert result["suggested_login_mode"] == LOGIN_EXEC_CLIENT_WEBVIEW
+    assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
+    assert result["challenge_type"] == "image"
 
 
 def _client(app_env: str = "test") -> TestClient:

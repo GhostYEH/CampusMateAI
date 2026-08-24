@@ -43,6 +43,7 @@ from ...schemas.edu import (
     EduDiscoveryStatsOut,
     EduDiscoverySubmitUrlRequest,
     EduDiscoverySubmitUrlResult,
+    EduPreLoginResult,
     EduProbeRequest,
     EduProbeResult,
     EduSyncRecordOut,
@@ -608,6 +609,43 @@ def get_connection(
     )
 
 
+@router.post("/connections/{connection_id}/pre-login", response_model=EduPreLoginResult)
+async def pre_login(
+    connection_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> EduPreLoginResult:
+    """预登录：获取验证码图片等预登录数据。
+
+    流程：
+    1. 后端 GET 教务登录页，提取验证码图片
+    2. 返回 pre_login_token + captcha_image_base64
+    3. 客户端展示验证码图片，用户输入验证码
+    4. 客户端调用 /continue(action=SUBMIT_WITH_CAPTCHA, pre_login_token, username, password, captcha)
+    """
+    conn = container.edu_connector.get_connection(connection_id)
+    if conn is None:
+        raise AppException(
+            code="EDU_CONNECTION_NOT_FOUND",
+            http_status=404,
+            message="连接不存在",
+        )
+    if conn.user_id != user.id:
+        raise Forbidden()
+    result = await container.edu_connector.pre_login(connection_id=connection_id, user_id=user.id)
+    return EduPreLoginResult(
+        pre_login_token=result.get("pre_login_token") or "",
+        verification_session_id=result.get("verification_session_id"),
+        captcha_required=result.get("captcha_required", False),
+        captcha_type=result.get("captcha_type", "none"),
+        challenge_type=result.get("challenge_type", "none"),
+        captcha_image_base64=result.get("captcha_image_base64"),
+        captcha_mime_type=result.get("captcha_mime_type"),
+        captcha_image_url=result.get("captcha_image_url"),
+        expires_at=result.get("expires_at") or "",
+    )
+
+
 @router.post("/connections/{connection_id}/continue", response_model=EduConnectionOut)
 async def continue_connection(
     connection_id: str,
@@ -622,6 +660,7 @@ async def continue_connection(
     - client_webview: action=CLIENT_WEBVIEW_COMPLETE + cookies + current_url + user_agent
     - action=POLL: 轮询当前状态
     - action=CANCEL: 取消连接
+    - action=SUBMIT_WITH_CAPTCHA: 携带验证码提交登录（需配合 pre_login_token + captcha）
     """
     conn = container.edu_connector.get_connection(connection_id)
     if conn is None:
@@ -643,6 +682,8 @@ async def continue_connection(
         cookies=request.cookies,
         current_url=request.current_url,
         user_agent=request.user_agent,
+        pre_login_token=request.pre_login_token,
+        verification_session_id=request.verification_session_id,
     )
     updated = container.edu_connector.get_connection(connection_id)
     return EduConnectionOut(

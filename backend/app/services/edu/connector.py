@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ...core.config import Settings
-from ...core.exceptions import AppException
+from ...core.exceptions import AppException, Forbidden
 from ...models.edu import (
     BINDING_ACTIVE,
     BINDING_ERROR,
@@ -61,9 +61,8 @@ from .adapters.qiangzhi import QiangzhiAdapter
 from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
 from .adapters.zhengfang_http import NeedUserAction
 from .detector import DetectResult, SystemDetector
-from .normalizer import DataNormalizer
 from .registry import SchoolRegistry
-from .session import EduSessionStore, InMemorySessionStore, SessionManager
+from .session import EduSessionStore, InMemorySessionStore, PreLoginSessionStore, SessionManager
 
 
 _ADAPTERS: dict[str, EduAdapter] = {
@@ -82,6 +81,14 @@ _USER_ACTION_MESSAGES = {
     "CLIENT_WEBVIEW": "请在学校登录页面完成验证",
     "NEED_CAMPUS_NETWORK": "请连接校园网或 VPN 后继续",
 }
+
+
+def _challenge_type_for_user_action(action: Optional[str]) -> str:
+    if action == "NEED_CAPTCHA":
+        return "image"
+    if action:
+        return "interactive"
+    return "none"
 
 
 class EduUnsupportedError(Exception):
@@ -104,7 +111,7 @@ class EduConnectorService:
         session_manager: EduSessionStore,
         edu_repo: EduRepository,
         edu_data_repo: Optional[EduDataRepository] = None,
-        normalizer: Optional[DataNormalizer] = None,
+        pre_login_store: Optional[PreLoginSessionStore] = None,
     ) -> None:
         self._settings = settings
         self._registry = registry
@@ -112,7 +119,7 @@ class EduConnectorService:
         self._sessions = session_manager
         self._edu_repo = edu_repo
         self._edu_data_repo = edu_data_repo
-        self._normalizer = normalizer or DataNormalizer()
+        self._pre_login_store = pre_login_store or PreLoginSessionStore()
 
     # ===== 探测 =====
 
@@ -163,6 +170,7 @@ class EduConnectorService:
             "title": None,
             "is_edu_page": False,
             "suggested_login_mode": LOGIN_EXEC_BACKEND_HTTP,
+            "challenge_type": "none",
             "evidence": [],
             "error": None,
         }
@@ -223,10 +231,12 @@ class EduConnectorService:
             title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
             if title_match:
                 result["title"] = title_match.group(1).strip()[:200]
-            # 默认先走后端直登；仅当登录页已显示需要人工完成的验证时
-            # 才直接切到 WebView。登录后才出现的 MFA 由 adapter 再次检测。
-            if provider in KNOWN_PROVIDERS and is_edu_page and _user_action_from_login_page(content):
-                result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
+            # 图片验证码由后端挑战流程提供图片字节；只有交互挑战才使用 WebView。
+            page_action = _user_action_from_login_page(content)
+            if provider in KNOWN_PROVIDERS and is_edu_page and page_action:
+                result["challenge_type"] = _challenge_type_for_user_action(page_action)
+                if result["challenge_type"] == "interactive":
+                    result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
         except Exception as e:
             result["error"] = str(e)[:200]
         return result
@@ -292,6 +302,71 @@ class EduConnectorService:
         )
         return conn, edu_system, probe
 
+    async def pre_login(self, *, connection_id: str, user_id: str) -> dict:
+        """预登录：获取验证码图片等预登录数据。
+
+        流程：
+        1. 取 connection → edu_system → config
+        2. adapter.prepare_login(config) → GET 登录页 + 验证码图片
+        3. 存入 PreLoginSessionStore，返回 pre_login_token + 图片 base64
+        """
+        conn = self._edu_repo.get_connection(connection_id)
+        if conn is None:
+            raise AppException(code="EDU_CONNECTION_NOT_FOUND", http_status=404, message="连接不存在")
+        if conn.user_id != user_id:
+            raise Forbidden()
+
+        if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
+            raise AppException(code="UNSUPPORTED", http_status=400, message=f"Provider[{conn.provider}] adapter not implemented")
+
+        adapter, _ = self._select_adapter(conn.provider)
+        system = self._registry.get_system_by_id(conn.edu_system_id)
+        config = self._build_config_dict(system, portal_url=conn.portal_url)
+
+        try:
+            pre_login_data = await adapter.prepare_login(config=config)
+        except NeedUserAction as action_needed:
+            self._edu_repo.update_connection_state(
+                connection_id,
+                state=CONN_WAITING_USER_LOGIN,
+                error_code=action_needed.action,
+                error_message=_USER_ACTION_MESSAGES.get(action_needed.action, "需要在学校登录页面完成验证"),
+            )
+            return {
+                "pre_login_token": None,
+                "verification_session_id": None,
+                "captcha_required": True,
+                "captcha_type": "none",
+                "challenge_type": _challenge_type_for_user_action(action_needed.action),
+                "captcha_image_base64": None,
+                "captcha_mime_type": None,
+                "captcha_image_url": action_needed.captcha_url,
+                "need_user_action": action_needed.action,
+                "expires_at": None,
+            }
+
+        pre_login_session = self._pre_login_store.create(
+            connection_id=connection_id,
+            user_id=user_id,
+            cookies=pre_login_data.get("cookies") or {},
+            csrftoken=pre_login_data.get("csrftoken"),
+            captcha_image_url=pre_login_data.get("captcha_image_url"),
+            captcha_type=pre_login_data.get("captcha_type", "none"),
+        )
+
+        from datetime import datetime, timezone
+        return {
+            "pre_login_token": pre_login_session.pre_login_token,
+            "verification_session_id": pre_login_session.pre_login_token,
+            "captcha_required": pre_login_data.get("captcha_required", False),
+            "captcha_type": pre_login_data.get("captcha_type", "none"),
+            "challenge_type": "image" if pre_login_data.get("captcha_type") == "image" else "none",
+            "captcha_image_base64": pre_login_data.get("captcha_image_base64"),
+            "captcha_mime_type": pre_login_data.get("captcha_mime_type"),
+            "captcha_image_url": pre_login_data.get("captcha_image_url"),
+            "expires_at": pre_login_session.expires_at or datetime.now(timezone.utc).isoformat(),
+        }
+
     async def continue_connection(
         self,
         *,
@@ -305,6 +380,8 @@ class EduConnectorService:
         cookies: Optional[dict] = None,
         current_url: Optional[str] = None,
         user_agent: Optional[str] = None,
+        pre_login_token: Optional[str] = None,
+        verification_session_id: Optional[str] = None,
     ) -> str:
         """推进连接状态机。
 
@@ -336,7 +413,10 @@ class EduConnectorService:
             conn = self._edu_repo.get_connection(connection_id)
 
         # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
-        if conn.state == CONN_AUTH_REQUIRED and username and password:
+        # 也支持 CONN_WAITING_USER_LOGIN + action=SUBMIT_WITH_CAPTCHA（验证码重试）
+        token = verification_session_id or pre_login_token
+        submit_with_captcha = action == "SUBMIT_WITH_CAPTCHA" and token and captcha
+        if (conn.state == CONN_AUTH_REQUIRED and username and password) or submit_with_captcha:
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
                 self._edu_repo.update_connection_state(
                     connection_id,

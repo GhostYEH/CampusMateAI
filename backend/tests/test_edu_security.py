@@ -7,10 +7,13 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
+from app.services.edu.session import PreLoginSessionStore
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.edu.adapters.mock import MockEduAdapter
@@ -75,6 +78,50 @@ def test_production_does_not_fallback_to_mock() -> None:
     )
     container = reset_container_for_tests(settings)
     assert container.edu_connector._is_mock_allowed() is False
+
+def test_pre_login_token_is_owner_bound_expires_and_is_single_use() -> None:
+    store = PreLoginSessionStore()
+    session = store.create(
+        connection_id="connection-owner",
+        user_id="user-owner",
+        cookies={"JSESSIONID": "fixture-only"},
+    )
+
+    assert callable(getattr(store, "consume", None))
+    assert store.consume(
+        session.pre_login_token,
+        user_id="user-owner",
+        connection_id="connection-other",
+    ) is None
+    assert store.consume(
+        session.pre_login_token,
+        user_id="user-other",
+        connection_id="connection-owner",
+    ) is None
+    assert store.consume(
+        session.pre_login_token,
+        user_id="user-owner",
+        connection_id="connection-owner",
+    ) is session
+    assert store.consume(
+        session.pre_login_token,
+        user_id="user-owner",
+        connection_id="connection-owner",
+    ) is None
+
+    expired = store.create(
+        connection_id="connection-expired",
+        user_id="user-owner",
+        cookies={},
+    )
+    expired.expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    assert store.consume(
+        expired.pre_login_token,
+        user_id="user-owner",
+        connection_id="connection-expired",
+    ) is None
+
+
 
 
 # ===== 安全：不返回敏感信息 =====

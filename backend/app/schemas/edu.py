@@ -186,6 +186,7 @@ class EduConnectionContinue(BaseModel):
     - CLIENT_WEBVIEW_COMPLETE: 客户端 WebView 登录完成，回传 cookies
     - POLL: 客户端轮询当前状态（不推进）
     - CANCEL: 取消连接
+    - SUBMIT_WITH_CAPTCHA: 携带验证码提交登录（需配合 pre_login_token + captcha）
     """
     username: Optional[str] = None
     password: Optional[SecretStr] = None
@@ -196,6 +197,29 @@ class EduConnectionContinue(BaseModel):
     cookies: Optional[dict] = None
     current_url: Optional[str] = None
     user_agent: Optional[str] = None
+    pre_login_token: Optional[str] = None
+    verification_session_id: Optional[str] = None
+
+
+class EduPreLoginResult(BaseModel):
+    """预登录结果（获取验证码图片等预登录数据）。
+
+    流程：
+    1. 客户端调用 pre-login，后端 GET 登录页并提取验证码图片
+    2. 后端将 cookie + csrftoken 绑定到 pre_login_token，返回图片 base64
+    3. 客户端展示图片，用户输入验证码
+    4. 客户端调用 continue(action=SUBMIT_WITH_CAPTCHA, pre_login_token, username, password, captcha)
+    5. 后端复用预登录 cookie + csrftoken + 验证码完成登录 POST
+    """
+    pre_login_token: str
+    verification_session_id: Optional[str] = None
+    captcha_required: bool
+    captcha_type: str = "none"
+    challenge_type: str = "none"
+    captcha_image_base64: Optional[str] = None
+    captcha_mime_type: Optional[str] = None
+    captcha_image_url: Optional[str] = None
+    expires_at: str
 
 
 class EduProbeRequest(BaseModel):
@@ -214,6 +238,7 @@ class EduProbeResult(BaseModel):
     title: Optional[str] = None
     is_edu_page: bool = False
     suggested_login_mode: str = "backend_http"
+    challenge_type: str = "none"
     evidence: List[dict] = Field(default_factory=list)
     error: Optional[str] = None
 
@@ -573,6 +598,7 @@ __all__ = [
     "EduDiscoveryReviewRequest",
     "EduDiscoveryStatsOut",
     "EduConnectionContinue",
+    "EduPreLoginResult",
     "EduConnectionCreate",
     "EduConnectionOut",
     "EduProbeRequest",

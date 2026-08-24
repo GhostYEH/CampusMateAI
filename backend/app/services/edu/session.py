@@ -14,6 +14,7 @@ import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from threading import RLock
 from typing import Optional
 
 from ...models.edu import (
@@ -158,9 +159,129 @@ class SessionManager(InMemorySessionStore):
     pass
 
 
+# ===== 预登录会话（验证码图片获取与登录提交之间的 cookie 绑定）=====
+
+
+@dataclass
+class PreLoginSession:
+    """预登录会话。
+
+    用于图片验证码前端化流程：
+    1. pre_login: GET 登录页 → 提取验证码图片 → 存入本 session（cookie + csrftoken）
+    2. continue(action=SUBMIT_WITH_CAPTCHA): 取出本 session → 复用 cookie + csrftoken + captcha → POST 登录
+
+    TTL 较短（默认 3 分钟），因为验证码图片通常有效期很短。
+    """
+    pre_login_token: str
+    connection_id: str
+    user_id: str
+    cookies: dict = field(default_factory=dict, repr=False)
+    csrftoken: Optional[str] = None
+    captcha_image_url: Optional[str] = None
+    captcha_type: str = "none"
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    expires_at: Optional[str] = None
+
+    def is_expired(self, now: Optional[datetime] = None) -> bool:
+        if not self.expires_at:
+            return False
+        n = now or datetime.now(timezone.utc)
+        try:
+            return datetime.fromisoformat(self.expires_at) < n
+        except Exception:
+            return False
+
+
+class PreLoginSessionStore:
+    """预登录会话内存存储，短 TTL（默认 180 秒）。"""
+
+    def __init__(self, ttl_seconds: int = 180) -> None:
+        self._sessions: dict[str, PreLoginSession] = {}
+        self._ttl = ttl_seconds
+        self._lock = RLock()
+
+    def create(
+        self,
+        *,
+        connection_id: str,
+        user_id: str,
+        cookies: dict,
+        csrftoken: Optional[str] = None,
+        captcha_image_url: Optional[str] = None,
+        captcha_type: str = "none",
+    ) -> PreLoginSession:
+        token = secrets.token_urlsafe(24)
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(seconds=self._ttl)
+        session = PreLoginSession(
+            pre_login_token=token,
+            connection_id=connection_id,
+            user_id=user_id,
+            cookies=dict(cookies),
+            csrftoken=csrftoken,
+            captcha_image_url=captcha_image_url,
+            captcha_type=captcha_type,
+            expires_at=expires.isoformat(),
+        )
+        with self._lock:
+            self._sessions[token] = session
+        return session
+
+    def get(
+        self,
+        pre_login_token: str,
+        *,
+        user_id: Optional[str] = None,
+        connection_id: Optional[str] = None,
+    ) -> Optional[PreLoginSession]:
+        with self._lock:
+            session = self._sessions.get(pre_login_token)
+            if session is None:
+                return None
+            if session.is_expired():
+                self._sessions.pop(pre_login_token, None)
+                return None
+            if user_id is not None and session.user_id != user_id:
+                return None
+            if connection_id is not None and session.connection_id != connection_id:
+                return None
+            return session
+
+    def consume(
+        self,
+        pre_login_token: str,
+        *,
+        user_id: str,
+        connection_id: str,
+    ) -> Optional[PreLoginSession]:
+        """Return one valid owner-bound session and remove it atomically."""
+        with self._lock:
+            session = self._sessions.get(pre_login_token)
+            if session is None:
+                return None
+            if session.is_expired():
+                self._sessions.pop(pre_login_token, None)
+                return None
+            if session.user_id != user_id or session.connection_id != connection_id:
+                return None
+            return self._sessions.pop(pre_login_token, None)
+
+    def destroy(self, pre_login_token: str) -> None:
+        with self._lock:
+            self._sessions.pop(pre_login_token, None)
+
+    def destroy_by_connection(self, connection_id: str) -> None:
+        with self._lock:
+            for token in list(self._sessions.keys()):
+                if self._sessions[token].connection_id == connection_id:
+                    self._sessions.pop(token, None)
+
+
 __all__ = [
     "EduSession",
     "EduSessionStore",
     "InMemorySessionStore",
     "SessionManager",
+    "PreLoginSession",
+    "PreLoginSessionStore",
 ]
