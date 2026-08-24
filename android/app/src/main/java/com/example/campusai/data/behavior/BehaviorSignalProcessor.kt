@@ -18,6 +18,7 @@ data class BehaviorSignalConfig(
     val penFidgetingThresholdMs: Long = 10000L,
     val absentThresholdMs: Long = 10000L,
     val learningRecoveryThresholdMs: Long = 5000L,
+    val noVisibleStudyThresholdMs: Long = 20_000L,
     val confidenceThreshold: Float = 0.5f,
     val startupWarmupMs: Long = 1500L,
     val stableBehaviorWindowMs: Long = 2000L,
@@ -42,11 +43,14 @@ class BehaviorSignalProcessor(
     private var lastPenFidgetingStart = 0L
     private var lastAbsentStart = 0L
     private var lastLearningStart = 0L
+    private var lastNoVisibleStudyStart = 0L
+    private var lastNoVisibleRecoveryStart = 0L
 
     private var currentlyAbsent = false
     private var currentlyPhoneDistracted = false
     private var currentlyFidgeting = false
     private var currentlyLookingAway = false
+    private var currentlyNoVisibleDistracted = false
     private var behaviorObservationStartedAt = 0L
     private val behaviorSamples = ArrayDeque<BehaviorSample>()
 
@@ -114,6 +118,10 @@ class BehaviorSignalProcessor(
         }
 
         val probs = prediction.probabilities
+
+        if (prediction.modelState == BehaviorV34Contract.MODEL_STATE) {
+            processNoVisibleStudy(prediction, events)
+        }
 
         // Check Absent
         if (probs[StudyBehavior.ABSENT] ?: 0f > config.confidenceThreshold) {
@@ -194,12 +202,55 @@ class BehaviorSignalProcessor(
         lastPenFidgetingStart = 0L
         lastAbsentStart = 0L
         lastLearningStart = 0L
+        lastNoVisibleStudyStart = 0L
+        lastNoVisibleRecoveryStart = 0L
         currentlyAbsent = false
         currentlyPhoneDistracted = false
         currentlyFidgeting = false
         currentlyLookingAway = false
+        currentlyNoVisibleDistracted = false
         behaviorObservationStartedAt = 0L
         behaviorSamples.clear()
+    }
+
+    private fun processNoVisibleStudy(
+        prediction: BehaviorPrediction,
+        events: MutableList<StableBehaviorEvent>,
+    ) {
+        if (prediction.stableBehavior == StudyBehavior.UNCERTAIN) return
+
+        val now = prediction.timestampMs
+        when (prediction.stableBehavior) {
+            StudyBehavior.IDLE -> {
+                lastNoVisibleRecoveryStart = 0L
+                if (lastNoVisibleStudyStart == 0L) lastNoVisibleStudyStart = now
+                if (
+                    !currentlyNoVisibleDistracted &&
+                    now - lastNoVisibleStudyStart >= config.noVisibleStudyThresholdMs
+                ) {
+                    currentlyNoVisibleDistracted = true
+                    events.add(StableBehaviorEvent.POSSIBLE_DISTRACTION)
+                }
+            }
+
+            StudyBehavior.READING,
+            StudyBehavior.WRITING -> {
+                lastNoVisibleStudyStart = 0L
+                if (currentlyNoVisibleDistracted) {
+                    if (lastNoVisibleRecoveryStart == 0L) lastNoVisibleRecoveryStart = now
+                    if (now - lastNoVisibleRecoveryStart >= config.learningRecoveryThresholdMs) {
+                        currentlyNoVisibleDistracted = false
+                        lastNoVisibleRecoveryStart = 0L
+                        events.add(StableBehaviorEvent.FOCUS_RECOVERED)
+                    }
+                }
+            }
+
+            else -> {
+                lastNoVisibleStudyStart = 0L
+                lastNoVisibleRecoveryStart = 0L
+            }
+        }
     }
 
     private data class BehaviorSample(
@@ -217,6 +268,7 @@ class BehaviorSignalProcessor(
             StudyBehavior.PHONE_USE,
         )
         val SUPPORTED_MODEL_STATES = setOf(
+            BehaviorV34Contract.MODEL_STATE,
             "READY_VISIBLE_STUDY_V32",
             "READY_VISIBLE_STUDY_V31",
             "READY_RGB_V2",
