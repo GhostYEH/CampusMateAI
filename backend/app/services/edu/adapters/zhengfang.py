@@ -234,6 +234,8 @@ class ZhengfangAdapter(EduAdapter):
         username: str,
         password: str,
         config: Optional[dict] = None,
+        captcha: Optional[str] = None,
+        pre_login_session: Optional[dict] = None,
     ) -> dict:
         if not username or not password:
             raise PermissionError("登录需要非空 username/password")
@@ -262,30 +264,49 @@ class ZhengfangAdapter(EduAdapter):
             extra_headers=school.extra_headers,
         )
 
-        if school.captcha_type in ("image", "slide", "sms"):
+        # 滑块/短信/MFA 仍然必须由用户在 WebView 中完成，不前端化
+        if school.captcha_type in ("slide", "sms") or (school.captcha_type == "image" and not captcha and not pre_login_session):
             raise NeedUserAction(
-                "NEED_CAPTCHA" if school.captcha_type == "image" else
-                "NEED_SLIDER" if school.captcha_type == "slide" else "NEED_SMS",
+                "NEED_SLIDER" if school.captcha_type == "slide" else
+                "NEED_SMS" if school.captcha_type == "sms" else "NEED_CAPTCHA",
                 detail=f"该学校登录需要 {school.captcha_type}，请由用户本人完成",
                 captcha_url=school.effective_login_url,
             )
 
         try:
-            page = await client.get(school.effective_login_url, referer=school.base_url)
-            page_action = _user_action_from_login_page(page.text)
-            if page_action:
-                raise NeedUserAction(page_action, captcha_url=school.effective_login_url)
+            if pre_login_session:
+                # 复用预登录 session（cookies + csrftoken + public_key）
+                client.set_cookies(pre_login_session.get("cookies") or {})
+                csrf_token = pre_login_session.get("csrftoken")
+                public_key_text = pre_login_session.get("public_key_text")
+                if not csrf_token:
+                    raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "预登录 session 缺少 csrftoken")
+                if not public_key_text:
+                    pk_resp = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+                    public_key_text = pk_resp.text
+            else:
+                # 正常流程：GET 登录页
+                page = await client.get(school.effective_login_url, referer=school.base_url)
+                page_action = _user_action_from_login_page(page.text)
+                if page_action and page_action != "NEED_CAPTCHA":
+                    raise NeedUserAction(page_action, captcha_url=school.effective_login_url)
+                if page_action == "NEED_CAPTCHA" and not captcha:
+                    raise NeedUserAction("NEED_CAPTCHA", captcha_url=school.effective_login_url)
 
-            csrf_token = _hidden_input_value(page.text, "csrftoken")
-            if not csrf_token:
-                raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统未返回登录令牌")
-            public_key = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+                csrf_token = _hidden_input_value(page.text, "csrftoken")
+                if not csrf_token:
+                    raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统未返回登录令牌")
+                public_key = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+                public_key_text = public_key.text
+
             form = {
                 school.form_field_username: username,
-                school.form_field_password: _encrypt_jwgl2_password(password, public_key.text),
+                school.form_field_password: _encrypt_jwgl2_password(password, public_key_text),
                 "csrftoken": csrf_token,
                 "language": "zh_CN",
             }
+            if captcha:
+                form[school.form_field_captcha] = captcha
             resp = await client.post(
                 school.effective_login_url,
                 data=form,

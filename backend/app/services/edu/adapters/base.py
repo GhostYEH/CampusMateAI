@@ -40,9 +40,33 @@ class EduAdapter(ABC):
         username: str,
         password: str,
         config: Optional[dict] = None,
+        captcha: Optional[str] = None,
+        pre_login_session: Optional[dict] = None,
     ) -> dict:
-        """登录教务系统，返回 adapter 内部会话状态（如 cookies）。"""
+        """登录教务系统，返回 adapter 内部会话状态（如 cookies）。
+
+        captcha + pre_login_session 用于图片验证码前端化流程：
+        - pre_login_session 包含 prepare_login 返回的预登录数据（cookies + csrftoken）
+        - captcha 为用户在前端输入的验证码
+        """
         raise NotImplementedError
+
+    async def prepare_login(self, *, config: Optional[dict] = None) -> dict:
+        """预登录：GET 登录页，检测验证码，获取验证码图片。
+
+        返回:
+            {
+                "captcha_required": bool,
+                "captcha_type": str,  # "image" / "none"
+                "captcha_image_base64": Optional[str],
+                "captcha_image_url": Optional[str],
+                "cookies": dict,
+                "csrftoken": Optional[str],
+            }
+
+        默认抛 AdapterNotImplemented；支持图片验证码前端化的 adapter 覆盖此方法。
+        """
+        raise AdapterNotImplemented(self.provider, "prepare_login")
 
     async def login_with_cookies(
         self,

@@ -344,6 +344,12 @@ class EduConnectorService:
                 "need_user_action": action_needed.action,
                 "expires_at": None,
             }
+        except AdapterNotImplemented as exc:
+            raise AppException(
+                code="UNSUPPORTED",
+                http_status=400,
+                message=f"Provider[{conn.provider}] does not support pre-login verification",
+            ) from exc
 
         pre_login_session = self._pre_login_store.create(
             connection_id=connection_id,
@@ -412,10 +418,47 @@ class EduConnectorService:
                 self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
             conn = self._edu_repo.get_connection(connection_id)
 
-        # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
-        # 也支持 CONN_WAITING_USER_LOGIN + action=SUBMIT_WITH_CAPTCHA（验证码重试）
+        # CONN_AUTH_REQUIRED + username + password: 服务端代理登录。
+        # 图片验证码提交先校验全部输入和连接状态，随后原子消费令牌；消费失败不改变连接状态。
+        if pre_login_token and verification_session_id and pre_login_token != verification_session_id:
+            raise AppException(
+                code="VERIFICATION_TOKEN_MISMATCH",
+                http_status=400,
+                message="验证码会话令牌不一致",
+            )
         token = verification_session_id or pre_login_token
-        submit_with_captcha = action == "SUBMIT_WITH_CAPTCHA" and token and captcha
+        submit_with_captcha = action == "SUBMIT_WITH_CAPTCHA"
+        pre_login_data = None
+        if submit_with_captcha:
+            if conn.state not in (CONN_AUTH_REQUIRED, CONN_WAITING_USER_LOGIN):
+                raise AppException(
+                    code="VERIFICATION_STATE_CONFLICT",
+                    http_status=409,
+                    message="当前连接状态不能提交验证码",
+                )
+            if not all((username, password, captcha, token)):
+                raise AppException(
+                    code="VERIFICATION_INPUT_REQUIRED",
+                    http_status=400,
+                    message="提交验证码需要账号、密码、验证码和会话令牌",
+                )
+            pl_session = self._pre_login_store.consume(
+                token,
+                user_id=conn.user_id,
+                connection_id=connection_id,
+            )
+            if pl_session is None:
+                raise AppException(
+                    code="VERIFICATION_TOKEN_CONFLICT",
+                    http_status=409,
+                    message="验证码会话已过期或已被使用，请重新获取",
+                )
+            pre_login_data = {
+                "cookies": pl_session.cookies,
+                "csrftoken": pl_session.csrftoken,
+                "public_key_text": None,
+            }
+
         if (conn.state == CONN_AUTH_REQUIRED and username and password) or submit_with_captcha:
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
                 self._edu_repo.update_connection_state(

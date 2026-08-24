@@ -22,6 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.core.exceptions import AppException
 from app.main import create_app
 from app.models.edu import (
     BINDING_ACTIVE,
@@ -775,6 +776,179 @@ def test_real_credentials_needing_captcha_wait_for_client_webview(monkeypatch) -
     assert state == CONN_WAITING_USER_LOGIN
     assert updated.state == CONN_WAITING_USER_LOGIN
     assert updated.error_code == "NEED_CAPTCHA"
+
+
+def test_pre_login_submit_passes_server_session_to_adapter(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "zhengfang",
+            "base_url": "https://jwxt.example.edu",
+            "login_execution_mode": "backend_http",
+        },
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    adapter = connector._select_adapter("zhengfang")[0]
+    captured: dict = {}
+
+    async def prepare_login(**_kwargs):
+        return {
+            "captcha_required": True,
+            "captcha_type": "image",
+            "captcha_image_base64": "ZmFrZS1pbWFnZQ==",
+            "captcha_mime_type": "image/png",
+            "cookies": {"fixture": "cookie"},
+            "csrftoken": "fixture-csrf",
+        }
+
+    async def login(**kwargs):
+        captured.update(kwargs)
+        return {"provider": "zhengfang", "cookies": {"fixture": "authenticated"}}
+
+    monkeypatch.setattr(adapter, "prepare_login", prepare_login)
+    monkeypatch.setattr(adapter, "login", login)
+    owner = connector.get_connection(connection["id"])
+    pre_login = asyncio.run(connector.pre_login(connection_id=connection["id"], user_id=owner.user_id))
+
+    assert pre_login["verification_session_id"] == pre_login["pre_login_token"]
+    state = asyncio.run(connector.continue_connection(
+        connection_id=connection["id"],
+        action="SUBMIT_WITH_CAPTCHA",
+        username="fixture-user",
+        password="fixture-password",
+        captcha="fixture-captcha",
+        verification_session_id=pre_login["verification_session_id"],
+    ))
+
+    assert state == CONN_CONNECTED
+    assert captured["captcha"] == "fixture-captcha"
+    assert captured["pre_login_session"] == {
+        "cookies": {"fixture": "cookie"},
+        "csrftoken": "fixture-csrf",
+        "public_key_text": None,
+    }
+
+
+def test_pre_login_returns_explicit_unsupported_for_default_adapter() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    owner = connector.get_connection(connection["id"])
+
+    with pytest.raises(AppException) as exc_info:
+        asyncio.run(connector.pre_login(connection_id=connection["id"], user_id=owner.user_id))
+
+    assert exc_info.value.code == "UNSUPPORTED"
+
+
+def test_submit_with_captcha_requires_valid_state_and_all_fields() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    owner = connector.get_connection(connection["id"])
+    token = connector._pre_login_store.create(
+        connection_id=connection["id"], user_id=owner.user_id, cookies={}
+    ).pre_login_token
+
+    with pytest.raises(AppException) as missing_fields:
+        asyncio.run(connector.continue_connection(
+            connection_id=connection["id"],
+            action="SUBMIT_WITH_CAPTCHA",
+            verification_session_id=token,
+            captcha="fixture-captcha",
+        ))
+
+    assert missing_fields.value.code == "VERIFICATION_INPUT_REQUIRED"
+    assert connector.get_connection(connection["id"]).state == CONN_AUTH_REQUIRED
+    assert connector._pre_login_store.get(token, user_id=owner.user_id, connection_id=connection["id"]) is not None
+
+    connector._edu_repo.update_connection_state(connection["id"], state=CONN_CONNECTED)
+    with pytest.raises(AppException) as invalid_state:
+        asyncio.run(connector.continue_connection(
+            connection_id=connection["id"],
+            action="SUBMIT_WITH_CAPTCHA",
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            verification_session_id=token,
+        ))
+
+    assert invalid_state.value.code == "VERIFICATION_STATE_CONFLICT"
+    assert connector._pre_login_store.get(token, user_id=owner.user_id, connection_id=connection["id"]) is not None
+
+
+def test_submit_rejects_token_conflicts_without_clobbering_connection_state() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    owner = connector.get_connection(connection["id"])
+    token = connector._pre_login_store.create(
+        connection_id=connection["id"], user_id=owner.user_id, cookies={}
+    ).pre_login_token
+
+    with pytest.raises(AppException) as mismatch:
+        asyncio.run(connector.continue_connection(
+            connection_id=connection["id"],
+            action="SUBMIT_WITH_CAPTCHA",
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            pre_login_token=token,
+            verification_session_id="different-token",
+        ))
+
+    assert mismatch.value.code == "VERIFICATION_TOKEN_MISMATCH"
+    assert connector.get_connection(connection["id"]).state == CONN_AUTH_REQUIRED
+    assert connector._pre_login_store.get(token, user_id=owner.user_id, connection_id=connection["id"]) is not None
+
+    connector._pre_login_store.consume(token, user_id=owner.user_id, connection_id=connection["id"])
+    with pytest.raises(AppException) as replay:
+        asyncio.run(connector.continue_connection(
+            connection_id=connection["id"],
+            action="SUBMIT_WITH_CAPTCHA",
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            verification_session_id=token,
+        ))
+
+    assert replay.value.code == "VERIFICATION_TOKEN_CONFLICT"
+    assert connector.get_connection(connection["id"]).state == CONN_AUTH_REQUIRED
 
 
 def test_client_webview_first_cookie_continue_connects() -> None:
