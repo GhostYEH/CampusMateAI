@@ -35,10 +35,10 @@
 - Consumes: detector candidates `{ labels, score, boundingBox }` and frame timestamps.
 - Produces: `PersonRoiSelector.select(candidates, width, height): PersonBox | undefined` and `FrameAnalysisGate.tryAcquire(timestamp): boolean`/`release(): void`.
 
-- [ ] Write literal, behavior-focused tests for person-label filtering, confidence threshold, highest-score selection, boundary clamping, one-second throttling, and in-flight frame dropping.
-- [ ] Run the focused test/build command and record the expected missing-contract failure.
-- [ ] Implement the smallest pure ArkTS contract that passes those cases.
-- [ ] Compile and commit this increment.
+- [x] Write literal, behavior-focused tests for person-label filtering, confidence threshold, highest-score selection, boundary clamping, one-second throttling, and in-flight frame dropping.
+- [x] Run the focused test/build command and record the expected missing-contract failure.
+- [x] Implement the smallest pure ArkTS contract that passes those cases.
+- [x] Compile and commit this increment.
 
 ### Task 2: CameraKit to CoreVision to V3.4 pipeline
 
@@ -50,10 +50,10 @@
 - Consumes: `common.UIAbilityContext`, `FocusAssistProvider`, and pipeline-state callback.
 - Produces: `start(): Promise<void>`, `stop(): Promise<void>`, `detail(): string`, and provider signal updates from valid RGBA/person-ROI frames.
 
-- [ ] Add a failing contract test for no-person status preserving reminder state and provider readiness.
-- [ ] Request camera permission, choose the front camera, create a NORMAL_VIDEO processing preview stream backed by `ImageReceiver`, and subscribe to `imageArrival`.
-- [ ] Decode JPEG frames to RGBA PixelMap, run one reusable CoreVision `ObjectDetector`, select the best person, read RGBA bytes, and call `provider.analyze`.
-- [ ] Release every per-frame and lifecycle resource in `finally`/`stop`, expose safe Chinese status text, compile, and commit this increment.
+- [x] Add a failing contract test for no-person status preserving reminder state and provider readiness.
+- [x] Request camera permission, choose the front camera, create a NORMAL_VIDEO processing preview stream backed by `ImageReceiver`, and subscribe to `imageArrival`.
+- [x] Decode JPEG frames to RGBA PixelMap, run one reusable CoreVision `ObjectDetector`, select the best person, read RGBA bytes, and call `provider.analyze`.
+- [x] Release every per-frame and lifecycle resource in `finally`/`stop`, expose safe Chinese status text, compile, and commit this increment.
 
 ### Task 3: Focus-session lifecycle and UI integration
 
@@ -67,7 +67,7 @@
 - `FocusPage` invokes `onAssistStart` after start/resume and `onAssistStop` on pause/finish/back/disappear.
 - `Index` owns one pipeline and refreshes provider/UI state after every analyzed frame or pipeline-state transition.
 
-- [ ] Wire start/resume/pause/finish/back/disappear without changing timer semantics.
-- [ ] Show whether the camera pipeline is running, waiting for a person, permission denied, or unavailable; keep reminder copy unchanged.
-- [ ] Build the default HAP, inspect it for the V3.4 MindIR Lite resource, and review the complete diff for privacy/fallback/resource leaks.
-- [ ] Record build-only verification and the remaining real-device validation boundary, then commit the final increment.
+- [x] Wire start/resume/pause/finish/back/disappear without changing timer semantics.
+- [x] Show whether the camera pipeline is running, waiting for a person, permission denied, or unavailable; keep reminder copy unchanged.
+- [x] Build the default HAP, inspect it for the V3.4 MindIR Lite resource, and review the complete diff for privacy/fallback/resource leaks.
+- [x] Record build-only verification and the remaining real-device validation boundary, then commit the final increment.
