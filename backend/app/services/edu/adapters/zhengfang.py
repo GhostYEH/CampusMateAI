@@ -98,6 +98,59 @@ def _user_action_from_login_page(html: str) -> Optional[str]:
     return None
 
 
+def _extract_captcha_image_url(html: str) -> Optional[str]:
+    """从登录页 HTML 中提取验证码图片 URL（不猜测，只解析已存在的 <img> src）。
+
+    查找策略（按优先级）：
+    1. <img> 的 id 包含 yzm/captcha/verifycode/code 且有 src
+    2. <img> 的 onclick 包含刷新验证码的函数名（refreshCode/changeCode/getCheckCode）且有 src
+    3. id="yzmDiv" 容器内的 <img> 的 src
+    """
+    img_pattern = re.compile(
+        r'<img\s+([^>]*?)\s*/?>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    candidates = []
+    for match in img_pattern.finditer(html):
+        attrs = match.group(1)
+        src_match = re.search(r'src=["\']([^"\']+)["\']', attrs, re.IGNORECASE)
+        if not src_match:
+            continue
+        src = src_match.group(1).strip()
+        if not src or src.startswith("data:"):
+            continue
+        id_match = re.search(r'id=["\']([^"\']+)["\']', attrs, re.IGNORECASE)
+        onclick_match = re.search(r'onclick=["\']([^"\']+)["\']', attrs, re.IGNORECASE)
+        img_id = (id_match.group(1) if id_match else "").lower()
+        onclick = (onclick_match.group(1) if onclick_match else "").lower()
+        is_captcha = (
+            any(kw in img_id for kw in ("yzm", "captcha", "verifycode", "vcode", "checkcode", "randcode"))
+            or any(kw in onclick for kw in ("refreshcode", "changecode", "getcheckcode", "refreshyzm", "changeyzm"))
+        )
+        if is_captcha:
+            candidates.append((0, src))
+        elif "yzm" in html.lower() and len(candidates) == 0:
+            candidates.append((1, src))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1]
+
+
+def _captcha_url_for_version(version: str, base_url: str) -> Optional[str]:
+    """根据正方版本推断默认验证码图片 URL（仅作为 fallback，优先用 HTML 解析结果）。"""
+    from urllib.parse import urljoin
+    defaults = {
+        "jwgl2": "/jwglxt/xtgl/login_getCaptcha.html",
+        "jw2017": "/jsxsd/sso/verifyCode",
+        "jw2005": "/verifycode.jsp",
+    }
+    path = defaults.get(version)
+    if not path:
+        return None
+    return urljoin(base_url.rstrip("/") + "/", path)
+
+
 class ZhengfangAdapter(EduAdapter):
     """正方教务系统适配器（真实实现）。
 
@@ -117,6 +170,79 @@ class ZhengfangAdapter(EduAdapter):
         self._parser = parser or ZhengfangParser()
 
     # ===== 登录 =====
+
+    async def prepare_login(self, *, config: Optional[dict] = None) -> dict:
+        """预登录：GET 登录页，检测验证码，获取验证码图片。
+
+        返回预登录数据（cookies + csrftoken + 验证码图片 base64），
+        供 connector 存入 PreLoginSessionStore，并在前端展示验证码图片。
+        """
+        school = school_config_from_dict(config)
+        if school is None:
+            raise AdapterNotImplemented(self.provider, "prepare_login: missing base_url in config")
+
+        if school.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
+            raise NeedUserAction(
+                "CLIENT_WEBVIEW",
+                detail="该学校教务系统需要在客户端 WebView 中由用户本人完成登录",
+                captcha_url=school.effective_login_url,
+            )
+
+        client = ZhengfangHttpClient(
+            base_url=school.base_url,
+            encoding=school.encoding,
+            allow_private=False,
+            extra_headers=school.extra_headers,
+        )
+
+        page = await client.get(school.effective_login_url, referer=school.base_url)
+        page_action = _user_action_from_login_page(page.text)
+        captcha_required = page_action == "NEED_CAPTCHA" or school.captcha_type == "image"
+
+        csrf_token = _hidden_input_value(page.text, "csrftoken")
+
+        captcha_image_base64: Optional[str] = None
+        captcha_mime_type: Optional[str] = None
+        captcha_image_url: Optional[str] = None
+        if captcha_required:
+            img_url = _extract_captcha_image_url(page.text)
+            if not img_url:
+                img_url = _captcha_url_for_version(school.version, school.base_url)
+            if img_url:
+                from urllib.parse import urljoin
+                full_url = img_url if img_url.startswith(("http://", "https://")) else urljoin(school.base_url.rstrip("/") + "/", img_url)
+                captcha_image_url = full_url
+                try:
+                    img_resp = await client.get(full_url, referer=school.effective_login_url)
+                    mime_type = img_resp.content_type
+                    raw = img_resp.content
+                    if (
+                        img_resp.status == 200
+                        and mime_type in _ALLOWED_CAPTCHA_MIME_TYPES
+                        and 0 < len(raw) <= _CAPTCHA_IMAGE_MAX_BYTES
+                    ):
+                        captcha_image_base64 = base64.b64encode(raw).decode("ascii")
+                        captcha_mime_type = mime_type
+                except EduAdapterError:
+                    pass
+
+        public_key_text: Optional[str] = None
+        try:
+            pk_resp = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+            public_key_text = pk_resp.text
+        except EduAdapterError:
+            pass
+
+        return {
+            "captcha_required": captcha_required,
+            "captcha_type": "image" if captcha_required else "none",
+            "captcha_image_base64": captcha_image_base64,
+            "captcha_mime_type": captcha_mime_type,
+            "captcha_image_url": captcha_image_url,
+            "cookies": client.cookies,
+            "csrftoken": csrf_token,
+            "public_key_text": public_key_text,
+        }
 
     async def login(
         self,

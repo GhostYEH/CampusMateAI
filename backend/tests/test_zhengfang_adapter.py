@@ -33,6 +33,24 @@ def _load(name: str) -> str:
     return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
+def test_http_wrap_preserves_binary_response_content():
+    png_bytes = b"\x89PNG\r\n\x1a\n\x00\xff\x10\x80"
+    response = httpx.Response(
+        200,
+        content=png_bytes,
+        headers={"Content-Type": "image/png; charset=binary"},
+        request=httpx.Request("GET", "https://jwxt.example.edu.cn/captcha"),
+    )
+
+    wrapped = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")._wrap(
+        response,
+        str(response.url),
+    )
+
+    assert wrapped.content == png_bytes
+    assert wrapped.content_type == "image/png"
+
+
 # ===== 课表 JSON 解析 =====
 
 
