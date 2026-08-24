@@ -26,6 +26,8 @@ class QiangzhiAdapter(EduAdapter):
         username: str,
         password: str,
         config: Optional[dict] = None,
+        captcha: Optional[str] = None,
+        pre_login_session: Optional[dict] = None,
     ) -> dict:
         raise AdapterNotImplemented(self.provider, "login")
 

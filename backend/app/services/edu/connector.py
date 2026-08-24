@@ -472,24 +472,6 @@ class EduConnectorService:
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
             config = self._build_config_dict(system, portal_url=conn.portal_url)
-            pre_login_data = None
-            if token:
-                pl_session = self._pre_login_store.consume(
-                    token,
-                    user_id=conn.user_id,
-                    connection_id=connection_id,
-                )
-                if pl_session is None:
-                    self._edu_repo.update_connection_state(
-                        connection_id, state=CONN_AUTH_FAILED, error_code="PRE_LOGIN_EXPIRED",
-                        error_message="验证码已过期，请重新获取",
-                    )
-                    return CONN_AUTH_FAILED
-                pre_login_data = {
-                    "cookies": pl_session.cookies,
-                    "csrftoken": pl_session.csrftoken,
-                    "public_key_text": None,
-                }
             try:
                 internal = await adapter.login(
                     username=username, password=password, config=config,

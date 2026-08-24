@@ -43,6 +43,10 @@ from app.models.edu import (
 from app.services.container import reset_container_for_tests
 from app.services.container import get_container
 from app.services.demo_seeder import seed_demo_data
+from app.services.edu.adapters.base import AdapterNotImplemented
+from app.services.edu.adapters.mock import MockEduAdapter
+from app.services.edu.adapters.qiangzhi import QiangzhiAdapter
+from app.services.edu.adapters.qingguo import QingguoAdapter
 from app.services.edu.connector import EduConnectorService
 from app.services.edu.adapters.zhengfang_http import NeedUserAction
 from app.services.edu import discovery_service
@@ -798,6 +802,8 @@ def test_pre_login_submit_passes_server_session_to_adapter(monkeypatch) -> None:
     connector = get_container().edu_connector
     adapter = connector._select_adapter("zhengfang")[0]
     captured: dict = {}
+    consumed_tokens: list[str] = []
+    original_consume = connector._pre_login_store.consume
 
     async def prepare_login(**_kwargs):
         return {
@@ -813,8 +819,13 @@ def test_pre_login_submit_passes_server_session_to_adapter(monkeypatch) -> None:
         captured.update(kwargs)
         return {"provider": "zhengfang", "cookies": {"fixture": "authenticated"}}
 
+    def consume_once(token, *, user_id, connection_id):
+        consumed_tokens.append(token)
+        return original_consume(token, user_id=user_id, connection_id=connection_id)
+
     monkeypatch.setattr(adapter, "prepare_login", prepare_login)
     monkeypatch.setattr(adapter, "login", login)
+    monkeypatch.setattr(connector._pre_login_store, "consume", consume_once)
     owner = connector.get_connection(connection["id"])
     pre_login = asyncio.run(connector.pre_login(connection_id=connection["id"], user_id=owner.user_id))
 
@@ -835,6 +846,68 @@ def test_pre_login_submit_passes_server_session_to_adapter(monkeypatch) -> None:
         "csrftoken": "fixture-csrf",
         "public_key_text": None,
     }
+    assert consumed_tokens == [pre_login["verification_session_id"]]
+
+
+def test_successful_captcha_replay_keeps_winner_connected() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"},
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    owner = connector.get_connection(connection["id"])
+    token = connector._pre_login_store.create(
+        connection_id=connection["id"], user_id=owner.user_id, cookies={}
+    ).pre_login_token
+
+    state = asyncio.run(connector.continue_connection(
+        connection_id=connection["id"],
+        action="SUBMIT_WITH_CAPTCHA",
+        username="fixture-user",
+        password="fixture-password",
+        captcha="fixture-captcha",
+        verification_session_id=token,
+    ))
+
+    assert state == CONN_CONNECTED
+    with pytest.raises(AppException) as replay:
+        asyncio.run(connector.continue_connection(
+            connection_id=connection["id"],
+            action="SUBMIT_WITH_CAPTCHA",
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            verification_session_id=token,
+        ))
+
+    assert replay.value.code == "VERIFICATION_STATE_CONFLICT"
+    assert connector.get_connection(connection["id"]).state == CONN_CONNECTED
+
+
+def test_all_concrete_adapters_accept_captcha_login_contract() -> None:
+    mock_session = asyncio.run(MockEduAdapter().login(
+        username="fixture-user",
+        password="fixture-password",
+        captcha="fixture-captcha",
+        pre_login_session={"cookies": {}},
+    ))
+
+    assert mock_session["mock"] is True
+    for adapter in (QiangzhiAdapter(), QingguoAdapter()):
+        with pytest.raises(AdapterNotImplemented):
+            asyncio.run(adapter.login(
+                username="fixture-user",
+                password="fixture-password",
+                captcha="fixture-captcha",
+                pre_login_session={"cookies": {}},
+            ))
 
 
 def test_pre_login_returns_explicit_unsupported_for_default_adapter() -> None:

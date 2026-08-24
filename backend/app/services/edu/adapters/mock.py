@@ -51,6 +51,8 @@ class MockEduAdapter(EduAdapter):
         username: str,
         password: str,
         config: Optional[dict] = None,
+        captcha: Optional[str] = None,
+        pre_login_session: Optional[dict] = None,
     ) -> dict:
         # Mock 登录：任何非空 username/password 都成功
         if not username or not password:
