@@ -1,6 +1,7 @@
 package com.example.campusai.data.behavior
 
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.util.Log
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.camera.CameraFrame
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class BehaviorAnalyzer(
     private val engine: BehaviorRecognitionEngine,
     config: BehaviorModelConfig = BehaviorModelConfig(),
+    private val personBoundingBoxProvider: () -> RectF? = { null },
 ) : FrameAnalyzer {
 
     private val frameBuffer = BehaviorFrameBuffer(config)
@@ -87,7 +89,11 @@ class BehaviorAnalyzer(
                             // call an engine that has already been closed.
                             if (disposed.get()) return@execute
                             val prediction = try {
-                                engine.analyzeTemporalWindow(snapshot, timestamp)
+                                engine.analyzeTemporalWindow(
+                                    snapshot,
+                                    timestamp,
+                                    personBoundingBoxProvider()?.let(::RectF),
+                                )
                             } catch (_: Throwable) {
                                 BehaviorPrediction(
                                     emptyMap(),
