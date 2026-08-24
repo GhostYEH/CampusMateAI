@@ -137,20 +137,6 @@ def _extract_captcha_image_url(html: str) -> Optional[str]:
     return candidates[0][1]
 
 
-def _captcha_url_for_version(version: str, base_url: str) -> Optional[str]:
-    """根据正方版本推断默认验证码图片 URL（仅作为 fallback，优先用 HTML 解析结果）。"""
-    from urllib.parse import urljoin
-    defaults = {
-        "jwgl2": "/jwglxt/xtgl/login_getCaptcha.html",
-        "jw2017": "/jsxsd/sso/verifyCode",
-        "jw2005": "/verifycode.jsp",
-    }
-    path = defaults.get(version)
-    if not path:
-        return None
-    return urljoin(base_url.rstrip("/") + "/", path)
-
-
 class ZhengfangAdapter(EduAdapter):
     """正方教务系统适配器（真实实现）。
 
@@ -206,8 +192,6 @@ class ZhengfangAdapter(EduAdapter):
         captcha_image_url: Optional[str] = None
         if captcha_required:
             img_url = _extract_captcha_image_url(page.text)
-            if not img_url:
-                img_url = _captcha_url_for_version(school.version, school.base_url)
             if img_url:
                 from urllib.parse import urljoin
                 full_url = img_url if img_url.startswith(("http://", "https://")) else urljoin(school.base_url.rstrip("/") + "/", img_url)

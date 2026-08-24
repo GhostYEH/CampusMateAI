@@ -320,26 +320,34 @@ async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkey
     class BinaryCaptchaClient:
         def __init__(self, **_kwargs):
             self.cookies = {}
+            self._http_wrapper = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+
+        def _wrap(self, body, url, content_type):
+            response = httpx.Response(
+                200,
+                content=body,
+                headers={"Content-Type": content_type},
+                request=httpx.Request("GET", url),
+            )
+            return self._http_wrapper._wrap(response, url)
 
         async def get(self, path, **_kwargs):
             if path.endswith("/login"):
-                return HttpResponse(
-                    200,
-                    '<input type="hidden" name="csrftoken" value="fixture-csrf">'
-                    '<img id="yzm" src="/captcha">',
+                return self._wrap(
+                    (
+                        '<input type="hidden" name="csrftoken" value="fixture-csrf">'
+                        '<img id="yzm" src="/captcha">'
+                    ).encode("utf-8"),
                     "https://jwxt.example.edu.cn/login",
-                    {"Content-Type": "text/html; charset=utf-8"},
+                    "text/html; charset=utf-8",
                 )
             if path.endswith("/captcha"):
-                response = HttpResponse(
-                    200,
-                    captcha_bytes.decode("latin-1"),
+                return self._wrap(
+                    captcha_bytes,
                     "https://jwxt.example.edu.cn/captcha",
-                    {"Content-Type": "image/png; charset=binary"},
-                    content=captcha_bytes,
+                    "image/png; charset=binary",
                 )
-                return response
-            return HttpResponse(200, "{}", "https://jwxt.example.edu.cn/key", {})
+            return self._wrap(b"{}", "https://jwxt.example.edu.cn/key", "application/json")
 
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
@@ -355,6 +363,44 @@ async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkey
 
     assert result["captcha_image_base64"] == base64.b64encode(captcha_bytes).decode("ascii")
     assert result["captcha_mime_type"] == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_prepare_login_does_not_guess_captcha_url(monkeypatch):
+    class NoCaptchaUrlClient:
+        instance = None
+
+        def __init__(self, **_kwargs):
+            self.calls = []
+            NoCaptchaUrlClient.instance = self
+
+        async def get(self, path, **_kwargs):
+            self.calls.append(path)
+            if path.endswith("/login"):
+                return HttpResponse(
+                    200,
+                    '<input type="hidden" name="csrftoken" value="fixture-csrf">',
+                    "https://jwxt.example.edu.cn/login",
+                    {"Content-Type": "text/html; charset=utf-8"},
+                )
+            return HttpResponse(200, "{}", "https://jwxt.example.edu.cn/key", {})
+
+        @property
+        def cookies(self):
+            return {}
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", NoCaptchaUrlClient)
+    result = await zhengfang_module.ZhengfangAdapter().prepare_login(
+        config={
+            "base_url": "https://jwxt.example.edu.cn",
+            "login_url": "/login",
+            "captcha_type": "image",
+        }
+    )
+
+    assert result["captcha_image_base64"] is None
+    assert all("login_getCaptcha" not in path for path in NoCaptchaUrlClient.instance.calls)
+
 
 @pytest.mark.asyncio
 async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkeypatch):
