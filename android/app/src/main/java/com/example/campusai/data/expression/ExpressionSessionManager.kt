@@ -25,6 +25,7 @@ import com.example.campusai.data.behavior.PresenceConfig
 import com.example.campusai.data.behavior.PresenceSnapshot
 import com.example.campusai.data.behavior.PresenceStateMachine
 import com.example.campusai.data.behavior.StudyBehavior
+import com.example.campusai.data.behavior.StableBehaviorEvent
 import com.example.campusai.data.camera.CameraErrorListener
 import com.example.campusai.data.focus.FocusObservation
 import com.example.campusai.data.focus.FocusObservationConfig
@@ -87,6 +88,7 @@ class ExpressionSessionManager(
     private val behaviorObservationHistory = BehaviorObservationHistory()
     private val learningContinuityStateMachine = LearningContinuityStateMachine()
     private val focusSupervisor = FocusSupervisor()
+    private val reminderState = FocusReminderState()
     private val presenceStateMachine = PresenceStateMachine(
         PresenceConfig(personHoldMs = personAnalyzer.config.personHoldMs),
     )
@@ -232,6 +234,7 @@ class ExpressionSessionManager(
             _personDetection.value = PersonDetectionSnapshot()
             behaviorObservationActive = false
             focusSupervisor.reset()
+            reminderState.clearAll()
             _gentleReminder.value = null
         }
     }
@@ -245,6 +248,7 @@ class ExpressionSessionManager(
                 modelVersion = latestResult.modelVersion,
             )
             _gentleReminder.value = null
+            reminderState.clearAll()
             summary
         }
     }
@@ -356,6 +360,15 @@ class ExpressionSessionManager(
                     BehaviorInputDebugExporter.recordPrediction(application, prediction, displayState)
                     val events = behaviorSignalProcessor.process(smoothedPrediction)
                     focusSupervisor.processEvents(events, smoothedPrediction.timestampMs)
+                    when {
+                        StableBehaviorEvent.PHONE_DISTRACTION in events ->
+                            reminderState.setBehavior("检测到持续手机交互，请确认它是否与当前学习任务有关。")
+                        StableBehaviorEvent.POSSIBLE_DISTRACTION in events ->
+                            reminderState.setBehavior("暂时未观察到明确学习行为，可以把注意力拉回当前任务。")
+                        StableBehaviorEvent.FOCUS_RECOVERED in events ||
+                            StableBehaviorEvent.STABLE_LEARNING in events -> reminderState.clearBehavior()
+                    }
+                    _gentleReminder.value = reminderState.message()
                     // READ/WRITE is only V1 learning evidence. It must not
                     // override FER, head-pose, or eye-derived focus state.
                 }
@@ -409,8 +422,11 @@ class ExpressionSessionManager(
                     }
 
                     if (output.events.any { it is com.example.campusai.data.focus.FocusEvent.BreakSuggested }) {
-                        _gentleReminder.value = "这是辅助观察结果，建议休息片刻，再继续学习。"
+                        reminderState.setExpression("这是辅助观察结果，建议休息片刻，再继续学习。")
+                    } else if (output.state == FocusState.FOCUSED) {
+                        reminderState.clearExpression()
                     }
+                    _gentleReminder.value = reminderState.message()
                 }
             }
         }
