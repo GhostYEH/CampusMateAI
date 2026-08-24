@@ -22,7 +22,7 @@
 | 失物招领基础能力 | 列表/搜索/发布/详情 | LostFoundPage | lost-found/community | PARTIAL | 分类、地点、排序、我的发布不完整 | 无 | 补筛选与 owner 视图 |
 | 专注会话 | FocusScreen 完整状态机 | FocusPage + start/pause/resume/finish | study/sessions | PARTIAL | mode、goal、relatedTaskId、计时恢复仍不完整 | 无 | 引入 StudyRepository 并恢复 active session |
 | 每日专注目标/统计 | 目标、今日分钟、次数、连续天数 | 未完整展示/编辑 | `study/goals/daily`, sessions | MISSING | 缺 UI 与派生统计 | 无 | 新增目标卡与统计 |
-| 学习状态辅助 | CameraX + 本地 TFLite/LiteRT | 无可运行 provider | 无需后端推理 | PLATFORM_LIMITED | 缺 Harmony 可执行模型与摄像头管线 | 当前模型/runtime 未经 API24 真机验证 | 提供 Unavailable provider，禁止 Mock 冒充 |
+| 学习状态辅助 | CameraX + 本地 TFLite/LiteRT | CameraKit + ImageReceiver + CoreVision 人体框 + MindSpore Lite V3.4 | 无需后端推理 | PARTIAL | 构建链路已闭合，尚未完成 API24 真机时延、方向和人体框对齐验证 | CoreVision 多目标识别不支持模拟器；相机与端侧模型需真机 | 真机验证后再标记 ALIGNED，失败时继续 fail-closed |
 | CNN/表情模型共建 | ExpressionContributionScreen | 无 | contributions/expression-samples | MISSING | 缺主动拍摄、同意、上传、删除 | Camera Kit 需真机验证 | 验证能力后实现 |
 | 校园通知 | NotificationsScreen | NotificationsPage，后端站内通知 | notices | ALIGNED | 无已知核心缺口 | 无 | 保持回归 |
 | 本机第三方通知自动采集 | NotificationListenerService | 能力探测与订阅代码保留，但普通手机构建禁用 | notices/ingest(-batch) | PLATFORM_LIMITED | 普通应用无法取得所需系统级权限 | `SUBSCRIBE_NOTIFICATION` 为 system_basic；该扩展面向特定订阅场景，不等价于 Android 监听器 | UI 明示不可用，使用后端/学习通/手动粘贴 fallback |
