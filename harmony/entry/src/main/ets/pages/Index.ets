@@ -32,8 +32,9 @@ import { StudyRepository } from '../repository/StudyRepository';
 import { http } from '@kit.NetworkKit';
 import { promptAction, window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
+import { FocusAssistProvider, FocusAssistSignal, FocusAssistStatus, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
 import { MindSporeBehaviorProvider } from '../service/MindSporeBehaviorProvider';
+import { FocusCameraPipeline } from '../service/FocusCameraPipeline';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
@@ -53,6 +54,7 @@ struct Index {
   private requestedTab: number = -1;
   private ingestService: NotificationIngestService | null = null;
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
+  private focusCameraPipeline: FocusCameraPipeline | null = null;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
   @State reduceMotion: boolean = false;
@@ -113,7 +115,7 @@ struct Index {
     this.reduceMotion = this.appState.reduceMotion;
     this.rememberUsername = this.appState.rememberUsername;
     this.applySystemBarStyle();
-    this.initializeFocusAssist();
+    await this.initializeFocusAssist();
     if (this.rememberUsername && this.appState.savedUsername.length > 0) {
       this.username = this.appState.savedUsername;
     }
@@ -129,18 +131,33 @@ struct Index {
       const provider: MindSporeBehaviorProvider = new MindSporeBehaviorProvider(context.resourceManager);
       this.focusAssistProvider = provider;
       await provider.start();
+      if (provider.status() !== FocusAssistStatus.ERROR) {
+        this.focusCameraPipeline = new FocusCameraPipeline(context, provider, () => this.refreshFocusAssistState());
+      }
     } catch (error) {
       this.focusAssistProvider = new UnavailableFocusAssistProvider();
+      this.focusCameraPipeline = null;
     }
     this.refreshFocusAssistState();
   }
 
   refreshFocusAssistState(): void {
     const signal: FocusAssistSignal | undefined = this.focusAssistProvider.latestSignal();
-    this.focusAssistDetail = this.focusAssistProvider.detail();
+    this.focusAssistDetail = this.focusAssistProvider.status() === FocusAssistStatus.ERROR ?
+      this.focusAssistProvider.detail() : this.focusCameraPipeline?.detail() ?? this.focusAssistProvider.detail();
     this.focusAssistLabel = signal?.label ?? '';
     this.focusAssistConfidence = signal?.confidence ?? 0;
     this.focusBehaviorReminder = this.focusAssistProvider.currentReminder();
+  }
+
+  async startFocusCamera(): Promise<void> {
+    if (this.focusCameraPipeline !== null) await this.focusCameraPipeline.start();
+    this.refreshFocusAssistState();
+  }
+
+  async stopFocusCamera(): Promise<void> {
+    if (this.focusCameraPipeline !== null) await this.focusCameraPipeline.stop();
+    this.refreshFocusAssistState();
   }
 
   initNotificationService(): void {
@@ -514,7 +531,6 @@ struct Index {
       const repository = new StudyRepository(this.createApiClient());
       const goal: string = mode === 'short_break' ? '短暂休息' : mode === 'long_break' ? '长休息调整' : '完成一段专注学习';
       this.activeStudySession = await repository.start(mode, goal);
-      await this.focusAssistProvider.start();
       this.refreshFocusAssistState();
     } catch (error) {
       toastError('无法开始专注，请检查网络');
@@ -673,7 +689,23 @@ struct Index {
     } else if (this.route === 'university' || this.route === 'community' || this.route === 'academic') {
       V3CorePage({ route: this.route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, universities: this.universities, posts: this.communityPosts, academicStatus: this.academicStatus, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean) => this.publishCommunityPost(title, content, anonymous), onLike: (id: string) => this.likeCommunityPost(id) })
     } else if (this.route === 'focus') {
-      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => this.route = '', onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
+      FocusPage({
+        sessions: this.studySessions,
+        activeSession: this.activeStudySession,
+        loading: this.secondaryLoading,
+        darkMode: this.darkMode,
+        focusAssistDetail: this.focusAssistDetail,
+        focusAssistLabel: this.focusAssistLabel,
+        focusAssistConfidence: this.focusAssistConfidence,
+        behaviorReminder: this.focusBehaviorReminder,
+        onBack: () => { this.stopFocusCamera(); this.route = ''; },
+        onStart: (mode: FocusMode) => this.startFocusSession(mode),
+        onPause: () => this.updateFocusSession('pause'),
+        onResume: () => this.updateFocusSession('resume'),
+        onFinish: () => this.updateFocusSession('finish'),
+        onAssistStart: () => this.startFocusCamera(),
+        onAssistStop: () => this.stopFocusCamera()
+      })
     } else if (this.route === 'lostfound') {
       LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onFilter: (kind: string) => this.refreshSecondaryData('lostfound'), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact) })
     } else if (this.route === 'notifications') {

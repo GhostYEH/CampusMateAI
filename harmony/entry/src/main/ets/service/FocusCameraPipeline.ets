@@ -2,12 +2,15 @@ import { abilityAccessCtrl, common, PermissionRequestResult, Permissions } from 
 import { camera } from '@kit.CameraKit';
 import { image } from '@kit.ImageKit';
 import { objectDetection, visionBase } from '@kit.CoreVisionKit';
-import { FocusAssistProvider, FocusAssistStatus, PersonBox, RgbaBehaviorFrame } from './FocusAssistProvider';
+import { FocusAssistProvider, FocusAssistStatus, RgbaBehaviorFrame } from './FocusAssistProvider';
 import {
   DetectionCandidate,
+  DetectionBoundingBox,
   FocusCameraState,
   FocusCameraStateText,
+  FocusCameraRunToken,
   FrameAnalysisGate,
+  PersonBox,
   PersonRoiSelector
 } from './FocusCameraContract';
 
@@ -16,15 +19,17 @@ export class FocusCameraPipeline {
   private readonly provider: FocusAssistProvider;
   private readonly onUpdate: () => void;
   private readonly frameGate: FrameAnalysisGate = new FrameAnalysisGate(1000);
+  private readonly runToken: FocusCameraRunToken = new FocusCameraRunToken();
   private pipelineState: string = FocusCameraState.STOPPED;
   private running: boolean = false;
-  private starting: boolean = false;
   private cameraInput: camera.CameraInput | undefined = undefined;
   private previewOutput: camera.PreviewOutput | undefined = undefined;
   private session: camera.VideoSession | undefined = undefined;
   private receiver: image.ImageReceiver | undefined = undefined;
   private detector: objectDetection.ObjectDetector | undefined = undefined;
   private analysisTask: Promise<void> | undefined = undefined;
+  private startTask: Promise<void> | undefined = undefined;
+  private stopTask: Promise<void> | undefined = undefined;
 
   constructor(context: common.UIAbilityContext, provider: FocusAssistProvider, onUpdate: () => void) {
     this.context = context;
@@ -45,21 +50,41 @@ export class FocusCameraPipeline {
   }
 
   async start(): Promise<void> {
-    if (this.running || this.starting) return;
-    this.starting = true;
+    if (this.running) return;
+    const stopping: Promise<void> | undefined = this.stopTask;
+    if (stopping !== undefined) await stopping;
+    const existing: Promise<void> | undefined = this.startTask;
+    if (existing !== undefined) {
+      await existing;
+      return;
+    }
+    const version: number = this.runToken.beginStart();
+    const task: Promise<void> = this.startInternal(version);
+    this.startTask = task;
+    try {
+      await task;
+    } finally {
+      if (this.startTask === task) this.startTask = undefined;
+    }
+  }
+
+  private async startInternal(version: number): Promise<void> {
     this.setState(FocusCameraState.STARTING);
     try {
       const granted: boolean = await this.requestCameraPermission();
+      this.ensureCurrent(version);
       if (!granted) {
         this.setState(FocusCameraState.PERMISSION_DENIED);
         return;
       }
       await this.provider.start();
+      this.ensureCurrent(version);
       if (this.provider.status() === FocusAssistStatus.ERROR) {
         this.setState(FocusCameraState.UNAVAILABLE);
         return;
       }
       this.detector = await objectDetection.ObjectDetector.create();
+      this.ensureCurrent(version);
       const manager: camera.CameraManager = camera.getCameraManager(this.context);
       const devices: camera.CameraDevice[] = manager.getSupportedCameras();
       const device: camera.CameraDevice | undefined = this.selectCamera(devices);
@@ -80,6 +105,7 @@ export class FocusCameraPipeline {
       }
       this.cameraInput = manager.createCameraInput(device);
       await this.cameraInput.open();
+      this.ensureCurrent(version);
       this.session = manager.createSession(camera.SceneMode.NORMAL_VIDEO) as camera.VideoSession;
       this.session.beginConfig();
       if (!this.session.canAddInput(this.cameraInput)) throw new Error('Camera input rejected');
@@ -87,25 +113,47 @@ export class FocusCameraPipeline {
       if (!this.session.canAddOutput(this.previewOutput)) throw new Error('Preview output rejected');
       this.session.addOutput(this.previewOutput);
       await this.session.commitConfig();
+      this.ensureCurrent(version);
       this.receiver.on('imageArrival', () => this.onImageArrival());
       await this.session.start();
+      this.ensureCurrent(version);
       this.running = true;
       this.frameGate.reset();
       this.setState(FocusCameraState.WAITING_FOR_PERSON);
     } catch (_) {
       await this.releaseResources();
-      this.setState(FocusCameraState.UNAVAILABLE);
-    } finally {
-      this.starting = false;
+      if (this.runToken.isCurrent(version)) this.setState(FocusCameraState.UNAVAILABLE);
     }
   }
 
   async stop(): Promise<void> {
+    this.runToken.stop();
     this.running = false;
+    const existing: Promise<void> | undefined = this.stopTask;
+    if (existing !== undefined) {
+      await existing;
+      return;
+    }
+    const task: Promise<void> = this.stopInternal();
+    this.stopTask = task;
+    try {
+      await task;
+    } finally {
+      if (this.stopTask === task) this.stopTask = undefined;
+    }
+  }
+
+  private async stopInternal(): Promise<void> {
+    const starting: Promise<void> | undefined = this.startTask;
+    if (starting !== undefined) await starting.catch(() => {});
     await this.releaseResources();
     await this.provider.stop();
     this.frameGate.reset();
     this.setState(FocusCameraState.STOPPED);
+  }
+
+  private ensureCurrent(version: number): void {
+    if (!this.runToken.isCurrent(version)) throw new Error('Camera start cancelled');
   }
 
   private async requestCameraPermission(): Promise<boolean> {
@@ -173,16 +221,21 @@ export class FocusCameraPipeline {
         scene: visionBase.SceneMode.FOREGROUND
       };
       const response: objectDetection.ObjectDetectionResponse = await detector.process(request);
-      const candidates: DetectionCandidate[] = response.objects.map((item: objectDetection.VisionObject) => ({
-        labels: item.labels,
-        score: item.score,
-        boundingBox: {
+      const candidates: DetectionCandidate[] = [];
+      for (const item of response.objects) {
+        const boundingBox: DetectionBoundingBox = {
           left: item.boundingBox.left,
           top: item.boundingBox.top,
           width: item.boundingBox.width,
           height: item.boundingBox.height
-        }
-      }));
+        };
+        const candidate: DetectionCandidate = {
+          labels: item.labels,
+          score: item.score,
+          boundingBox: boundingBox
+        };
+        candidates.push(candidate);
+      }
       const personBox: PersonBox | undefined = PersonRoiSelector.select(
         candidates, info.size.width, info.size.height);
       if (personBox === undefined) {
@@ -217,7 +270,9 @@ export class FocusCameraPipeline {
   }
 
   private async releaseResources(): Promise<void> {
-    if (this.receiver !== undefined) this.receiver.off('imageArrival');
+    if (this.receiver !== undefined) {
+      try { this.receiver.off('imageArrival'); } catch (_) {}
+    }
     const task: Promise<void> | undefined = this.analysisTask;
     if (task !== undefined) await task.catch(() => {});
     if (this.session !== undefined) await this.session.stop().catch(() => {});

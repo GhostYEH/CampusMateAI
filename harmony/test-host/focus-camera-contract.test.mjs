@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   FocusCameraState,
   FocusCameraStateText,
+  FocusCameraRunToken,
+  FocusCameraActivationPolicy,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../entry/src/main/ets/service/FocusCameraContract.ts';
@@ -26,6 +28,16 @@ test('rejects non-person, low-confidence, and degenerate detections', () => {
     candidate(13, 0.49, 0, 0, 90, 70),
     candidate(13, 0.90, 20, 20, 0, 10)
   ], 100, 80), undefined);
+  assert.equal(PersonRoiSelector.select([
+    candidate(13, Number.NaN, 0, 0, 90, 70),
+    candidate(13, 0.90, Number.NaN, 0, 90, 70)
+  ], 100, 80), undefined);
+});
+
+test('enables the camera only for a study focus interval', () => {
+  assert.equal(FocusCameraActivationPolicy.shouldRun('focus'), true);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('short_break'), false);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('long_break'), false);
 });
 
 test('drops frames while analysis is running and before the next interval', () => {
@@ -44,4 +56,15 @@ test('reports safe user-facing states when a frame cannot be analyzed', () => {
     '未获得相机权限，行为提醒已停用');
   assert.equal(FocusCameraStateText.describe(FocusCameraState.STOPPED),
     '开始专注后启用本地学习状态辅助');
+});
+
+test('invalidates an in-progress start when stop is requested', () => {
+  const token = new FocusCameraRunToken();
+  const firstStart = token.beginStart();
+  assert.equal(token.isCurrent(firstStart), true);
+  token.stop();
+  assert.equal(token.isCurrent(firstStart), false);
+  const resumedStart = token.beginStart();
+  assert.equal(token.isCurrent(resumedStart), true);
+  assert.equal(token.desired(), true);
 });
