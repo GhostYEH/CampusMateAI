@@ -1,3 +1,5 @@
+import { BehaviorV34Label } from './BehaviorV34Decision';
+
 export enum FocusAssistStatus {
   AVAILABLE = 'AVAILABLE',
   RUNNING = 'RUNNING',
@@ -6,11 +8,26 @@ export enum FocusAssistStatus {
 }
 
 export interface FocusAssistSignal {
-  label: string;
+  label: BehaviorV34Label;
   confidence: number;
   isStable: boolean;
   timestamp: number;
   modelVersion: string;
+}
+
+export interface PersonBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface RgbaBehaviorFrame {
+  pixels: Uint8Array;
+  width: number;
+  height: number;
+  personBox: PersonBox;
+  timestamp: number;
 }
 
 export interface FocusAssistProvider {
@@ -18,19 +35,23 @@ export interface FocusAssistProvider {
   status(): FocusAssistStatus;
   start(): Promise<void>;
   stop(): Promise<void>;
+  analyze(frame: RgbaBehaviorFrame): Promise<FocusAssistSignal | undefined>;
   latestSignal(): FocusAssistSignal | undefined;
+  currentReminder(): string;
   detail(): string;
 }
 
 /**
- * Safe production fallback until the Android expression model and its exact
- * preprocessing/output contract are proven on a HarmonyOS API 24 inference runtime.
+ * Safe behavior-recognition fallback when the local model or person-ROI frame
+ * pipeline is unavailable. It never fabricates an inference result.
  */
 export class UnavailableFocusAssistProvider implements FocusAssistProvider {
   available(): boolean { return false; }
   status(): FocusAssistStatus { return FocusAssistStatus.UNAVAILABLE; }
   async start(): Promise<void> { return; }
   async stop(): Promise<void> { return; }
+  async analyze(_frame: RgbaBehaviorFrame): Promise<FocusAssistSignal | undefined> { return undefined; }
   latestSignal(): FocusAssistSignal | undefined { return undefined; }
+  currentReminder(): string { return ''; }
   detail(): string { return '当前设备暂不支持本地学习状态辅助'; }
 }
