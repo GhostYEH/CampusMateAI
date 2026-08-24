@@ -35,11 +35,18 @@ struct CpmMessageRow {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   aboutToAppear(): void {
+    this.dataSource.onChanged = () => {
+      setTimeout(() => this.scroller.scrollEdge(Edge.Bottom), 0);
+    };
     this.cursorTimer = setInterval(() => {
       animateTo({ duration: 480, curve: Curve.EaseInOut }, () => {
         this.cursorOpacity = this.cursorOpacity > 0.5 ? 0.15 : 1;
       });
     }, 520);
+  }
+
+  aboutToDisappear(): void {
+    this.dataSource.onChanged = () => {};
   }
 
   aboutToDisappear(): void {
