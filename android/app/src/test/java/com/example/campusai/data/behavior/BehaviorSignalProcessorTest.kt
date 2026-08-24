@@ -158,6 +158,24 @@ class BehaviorSignalProcessorTest {
     }
 
     @Test
+    fun rejectedV34PredictionRemainsNoStableBehaviorEvenWithHighRawTopProbability() {
+        val processor = BehaviorSignalProcessor(BehaviorSignalConfig(startupWarmupMs = 0L))
+        processor.beginBehaviorObservation(100L)
+
+        assertEquals(
+            BehaviorDisplayState.NoStableBehavior,
+            processor.processDisplayState(
+                BehaviorPrediction(
+                    probabilities = mapOf(StudyBehavior.PHONE_USE to 0.8f),
+                    timestampMs = 200L,
+                    modelState = BehaviorV34Contract.MODEL_STATE,
+                    stableBehavior = StudyBehavior.UNCERTAIN,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun noVisibleStudyForTwentySecondsEmitsPossibleDistraction() {
         val processor = BehaviorSignalProcessor(
             BehaviorSignalConfig(noVisibleStudyThresholdMs = 20_000L),

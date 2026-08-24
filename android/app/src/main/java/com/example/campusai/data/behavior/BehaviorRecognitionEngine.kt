@@ -1,6 +1,7 @@
 package com.example.campusai.data.behavior
 
 import android.graphics.Bitmap
+import android.graphics.RectF
 
 interface BehaviorRecognitionEngine {
     val isAvailable: Boolean
@@ -10,6 +11,13 @@ interface BehaviorRecognitionEngine {
 
     /** Analyze a temporal window of frames. Caller retains ownership of the bitmap list. */
     fun analyzeTemporalWindow(frames: List<Bitmap>, timestampMs: Long): BehaviorPrediction
+
+    /** ROI-aware path used by V3.4. Existing engines keep the legacy full-frame behavior. */
+    fun analyzeTemporalWindow(
+        frames: List<Bitmap>,
+        timestampMs: Long,
+        personBoundingBox: RectF?,
+    ): BehaviorPrediction = analyzeTemporalWindow(frames, timestampMs)
 
     fun close()
 }

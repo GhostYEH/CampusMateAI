@@ -1,6 +1,7 @@
 package com.example.campusai.data.behavior
 
 import android.graphics.Bitmap
+import android.graphics.RectF
 import com.example.campusai.data.camera.CameraFrame
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -15,6 +16,27 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class BehaviorAnalyzerTest {
+    @Test
+    fun analyzerPassesCurrentPersonBoxToRoiAwareEngine() {
+        val expected = RectF(1f, 2f, 7f, 8f)
+        val engine = RoiCapturingEngine()
+        val analyzer = BehaviorAnalyzer(
+            engine = engine,
+            config = testConfig(),
+            personBoundingBoxProvider = { expected },
+        )
+        val frame = frameAt(100L)
+
+        try {
+            analyzer.analyze(frame)
+            frame.release()
+            assertTrue(engine.completed.await(2, TimeUnit.SECONDS))
+            assertEquals(expected, engine.personBoundingBox)
+        } finally {
+            analyzer.dispose()
+        }
+    }
+
     @Test
     fun frameBufferKeepsSixteenFrameWindowAndRecyclesEvictedFrame() {
         val buffer = BehaviorFrameBuffer(
@@ -237,6 +259,33 @@ class BehaviorAnalyzerTest {
                 probabilities = mapOf(StudyBehavior.VISIBLE_STUDY to 1f),
                 timestampMs = timestampMs,
                 modelState = "READY_VISIBLE_STUDY_V31",
+            )
+        }
+
+        override fun close() = Unit
+    }
+
+    private class RoiCapturingEngine : BehaviorRecognitionEngine {
+        override val isAvailable = true
+        val completed = CountDownLatch(1)
+        @Volatile var personBoundingBox: RectF? = null
+
+        override fun initialize() = Unit
+
+        override fun analyzeTemporalWindow(frames: List<Bitmap>, timestampMs: Long): BehaviorPrediction =
+            error("ROI-aware overload was not used")
+
+        override fun analyzeTemporalWindow(
+            frames: List<Bitmap>,
+            timestampMs: Long,
+            personBoundingBox: RectF?,
+        ): BehaviorPrediction {
+            this.personBoundingBox = personBoundingBox
+            completed.countDown()
+            return BehaviorPrediction(
+                probabilities = mapOf(StudyBehavior.VISIBLE_STUDY to 1f),
+                timestampMs = timestampMs,
+                modelState = "READY_VISIBLE_STUDY_V32",
             )
         }
 
