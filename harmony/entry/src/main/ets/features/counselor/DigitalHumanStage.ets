@@ -52,13 +52,11 @@ export struct DigitalHumanStage {
 
   onCommandChanged(): void {
     if (!this.ready || this.commandRequestId <= 0 || this.commandRequestId === this.lastCommandRequestId) return;
-    const scripts: Record<string, string> = {
-      mute: 'window.CampusMateDigitalHuman.toggleMuted();',
-      pause: 'window.CampusMateDigitalHuman.togglePaused();',
-      replay: 'window.CampusMateDigitalHuman.replay();'
-    };
-    const script = scripts[this.command];
-    if (script !== undefined) {
+    let script: string = '';
+    if (this.command === 'mute') script = 'window.CampusMateDigitalHuman.toggleMuted();';
+    if (this.command === 'pause') script = 'window.CampusMateDigitalHuman.togglePaused();';
+    if (this.command === 'replay') script = 'window.CampusMateDigitalHuman.replay();';
+    if (script.length > 0) {
       this.lastCommandRequestId = this.commandRequestId;
       this.run(script);
     }
