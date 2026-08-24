@@ -296,6 +296,49 @@ class _FakeZhengfangClient:
 
 
 @pytest.mark.asyncio
+async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkeypatch):
+    captcha_bytes = b"\x89PNG\r\n\x1a\n\x00\xff\x10\x80"
+
+    class BinaryCaptchaClient:
+        def __init__(self, **_kwargs):
+            self.cookies = {}
+
+        async def get(self, path, **_kwargs):
+            if path.endswith("/login"):
+                return HttpResponse(
+                    200,
+                    '<input type="hidden" name="csrftoken" value="fixture-csrf">'
+                    '<img id="yzm" src="/captcha">',
+                    "https://jwxt.example.edu.cn/login",
+                    {"Content-Type": "text/html; charset=utf-8"},
+                )
+            if path.endswith("/captcha"):
+                response = HttpResponse(
+                    200,
+                    captcha_bytes.decode("latin-1"),
+                    "https://jwxt.example.edu.cn/captcha",
+                    {"Content-Type": "image/png; charset=binary"},
+                    content=captcha_bytes,
+                )
+                return response
+            return HttpResponse(200, "{}", "https://jwxt.example.edu.cn/key", {})
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", BinaryCaptchaClient)
+    result = await zhengfang_module.ZhengfangAdapter().prepare_login(
+        config={
+            "base_url": "https://jwxt.example.edu.cn",
+            "login_url": "/login",
+            "captcha_type": "image",
+        }
+    )
+
+    assert result["captcha_image_base64"] == base64.b64encode(captcha_bytes).decode("ascii")
+    assert result["captcha_mime_type"] == "image/png"
+
+@pytest.mark.asyncio
 async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkeypatch):
     """JWGL2 form login must follow the browser's CSRF + RSA protocol."""
     from cryptography.hazmat.primitives.asymmetric import rsa

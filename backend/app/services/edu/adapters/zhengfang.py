@@ -43,6 +43,13 @@ from .zhengfang_strategy import (
 
 
 _JWGL2_PUBLIC_KEY_PATH = "/jwglxt/xtgl/login_getPublicKey.html"
+_CAPTCHA_IMAGE_MAX_BYTES = 1 * 1024 * 1024
+_ALLOWED_CAPTCHA_MIME_TYPES = frozenset({
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+})
 
 
 def _hidden_input_value(html: str, name: str) -> Optional[str]:

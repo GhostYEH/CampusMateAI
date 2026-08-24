@@ -48,6 +48,27 @@ class HttpResponse:
     text: str
     url: str
     headers: dict
+    content: bytes = b""
+
+    @property
+    def content_type(self) -> Optional[str]:
+        """Return a normalized media type without untrusted parameters."""
+        value = next(
+            (
+                candidate
+                for key, candidate in self.headers.items()
+                if isinstance(key, str) and key.lower() == "content-type"
+            ),
+            None,
+        )
+        if not isinstance(value, str):
+            return None
+        media_type = value.split(";", 1)[0].strip().lower()
+        if media_type.count("/") != 1 or any(
+            not (char.isalnum() or char in "!#$&^_.+-/") for char in media_type
+        ):
+            return None
+        return media_type
 
 
 class ZhengfangHttpClient:
@@ -158,11 +179,18 @@ class ZhengfangHttpClient:
             raise EduAdapterError("RATE_LIMITED", "请求过于频繁，已被限流", http_status=status)
         if status >= 500:
             raise EduAdapterError("SYSTEM_UNAVAILABLE", f"教务系统异常 (HTTP {status})", http_status=status)
+        content = bytes(resp.content)
         try:
-            text = resp.content.decode(self._encoding or "utf-8", errors="replace")
+            text = content.decode(self._encoding or "utf-8", errors="replace")
         except (LookupError, UnicodeDecodeError):
             text = resp.text
-        return HttpResponse(status=status, text=text, url=str(resp.url), headers=dict(resp.headers))
+        return HttpResponse(
+            status=status,
+            text=text,
+            url=str(resp.url),
+            headers=dict(resp.headers),
+            content=content,
+        )
 
     @staticmethod
     def _validate_redirect_target(resp: httpx.Response, request_url: str) -> None:
