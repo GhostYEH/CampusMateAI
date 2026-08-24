@@ -11,6 +11,7 @@ import notificationCapabilityTest from './ets/notification/NotificationCapabilit
 import v3CoreContractTest from './ets/data/V3CoreContract.test';
 import motionSpecTest from './ets/ui/MotionSpec.test';
 import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
+import focusCameraContractTest from './ets/data/FocusCameraContract.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -26,4 +27,5 @@ export default function testsuite(): void {
   v3CoreContractTest();
   motionSpecTest();
   behaviorV34DecisionTest();
+  focusCameraContractTest();
 }
