@@ -696,7 +696,7 @@ struct Index {
             SymbolGlyph($r('sys.symbol.school')).fontSize(46).fontColor([this.primaryColor()])
             Text('CampusMate AI').fontColor(this.textColor()).fontSize(22).fontWeight(FontWeight.Bold)
             Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(14).textAlign(TextAlign.Center).lineHeight(22)
-            Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
+            Text('CPM 的回答仅作辅助建议，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
           }.width('100%').padding(24).alignItems(HorizontalAlign.Center)
         }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
       }.width('100%').height('100%').backgroundColor(this.pageBackground())
@@ -706,7 +706,7 @@ struct Index {
         Column({ space: 12 }) {
           SymbolGlyph($r('sys.symbol.info_circle')).fontSize(38).fontColor([this.primaryColor()])
           Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(15).textAlign(TextAlign.Center)
-          Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center)
+          Text('CPM 的回答仅作辅助建议，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center)
         }.width('100%').padding(28).alignItems(HorizontalAlign.Center)
       }.width('100%').height('100%').backgroundColor(this.pageBackground())
     }

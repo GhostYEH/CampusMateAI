@@ -26,6 +26,7 @@ export class CpmChatMessage {
 export class CpmChatDataSource implements IDataSource {
   private messages: CpmChatMessage[] = [];
   private listeners: DataChangeListener[] = [];
+  onChanged: () => void = () => {};
 
   totalCount(): number {
     return this.messages.length;
@@ -93,9 +94,11 @@ export class CpmChatDataSource implements IDataSource {
     this.messages.push(message);
     const index = this.messages.length - 1;
     this.listeners.forEach((listener: DataChangeListener) => listener.onDataAdd(index));
+    this.onChanged();
   }
 
   private notifyChange(index: number): void {
     this.listeners.forEach((listener: DataChangeListener) => listener.onDataChange(index));
+    this.onChanged();
   }
 }

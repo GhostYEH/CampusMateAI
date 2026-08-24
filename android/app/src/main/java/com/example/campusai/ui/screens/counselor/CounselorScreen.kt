@@ -64,7 +64,9 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val accessToken by repository.accessToken.collectAsStateWithLifecycle()
 
-    LaunchedEffect(initialPrompt) { initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send) }
+    LaunchedEffect(initialPrompt) {
+        if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
+    }
     CpmCounselorContent(
         state = state,
         reduceMotion = reduceMotion,
