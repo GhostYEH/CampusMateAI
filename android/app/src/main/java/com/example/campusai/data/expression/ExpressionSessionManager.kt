@@ -12,6 +12,7 @@ import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.BehaviorPredictionTemporalSmoother
 import com.example.campusai.data.behavior.BehaviorRecognitionEngine
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
+import com.example.campusai.data.behavior.BehaviorV34Contract
 import com.example.campusai.data.behavior.FocusSupervisor
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.LearningContinuityStateMachine
@@ -76,15 +77,16 @@ class ExpressionSessionManager(
     private var appForeground = true
     private var focusMode: FocusMode? = null
     private var processor = FocusStateProcessor(observationConfig)
+    private val personAnalyzer = PersonAnalyzer(application)
     private val behaviorAnalyzer = BehaviorAnalyzer(
-        createBehaviorEngine?.invoke(application) ?: OnnxBehaviorRecognitionEngine(application),
+        engine = createBehaviorEngine?.invoke(application) ?: OnnxBehaviorRecognitionEngine(application),
+        personBoundingBoxProvider = { personAnalyzer.snapshot.value.boundingBox },
     )
     private val behaviorTemporalSmoother = BehaviorPredictionTemporalSmoother()
     private val behaviorSignalProcessor = BehaviorSignalProcessor()
     private val behaviorObservationHistory = BehaviorObservationHistory()
     private val learningContinuityStateMachine = LearningContinuityStateMachine()
     private val focusSupervisor = FocusSupervisor()
-    private val personAnalyzer = PersonAnalyzer(application)
     private val presenceStateMachine = PresenceStateMachine(
         PresenceConfig(personHoldMs = personAnalyzer.config.personHoldMs),
     )
@@ -343,7 +345,7 @@ class ExpressionSessionManager(
                     updatePresence(
                         timestampMs = smoothedPrediction.timestampMs,
                         behaviorEvidence = displayState is BehaviorDisplayState.Stable &&
-                            displayState.behavior == StudyBehavior.VISIBLE_STUDY,
+                            displayState.behavior in STUDY_EVIDENCE_BEHAVIORS,
                     )
                     val continuity = learningContinuityStateMachine.process(displayState, smoothedPrediction.timestampMs)
                     _learningContinuityState.value = continuity.state
@@ -452,10 +454,16 @@ class ExpressionSessionManager(
     private companion object {
         private const val BEHAVIOR_UI_INTERVAL_MS = 500L
         private val SUPPORTED_BEHAVIOR_MODEL_STATES = setOf(
+            BehaviorV34Contract.MODEL_STATE,
             "READY_RGB_V1",
             "READY_RGB_V2",
             "READY_VISIBLE_STUDY_V32",
             "READY_VISIBLE_STUDY_V31",
+        )
+        private val STUDY_EVIDENCE_BEHAVIORS = setOf(
+            StudyBehavior.VISIBLE_STUDY,
+            StudyBehavior.READING,
+            StudyBehavior.WRITING,
         )
     }
 }

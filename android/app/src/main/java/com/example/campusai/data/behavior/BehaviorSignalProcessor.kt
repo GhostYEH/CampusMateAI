@@ -67,6 +67,12 @@ class BehaviorSignalProcessor(
         if (prediction.modelState !in SUPPORTED_MODEL_STATES || prediction.probabilities.isEmpty()) {
             return BehaviorDisplayState.Observing
         }
+        if (
+            prediction.modelState == BehaviorV34Contract.MODEL_STATE &&
+            prediction.stableBehavior == StudyBehavior.UNCERTAIN
+        ) {
+            return BehaviorDisplayState.NoStableBehavior
+        }
 
         if (behaviorObservationStartedAt == 0L) {
             beginBehaviorObservation(prediction.timestampMs)
