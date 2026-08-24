@@ -151,13 +151,20 @@ class BehaviorSignalProcessor(
 
         // Check Phone Use
         val phoneProb = (probs[StudyBehavior.PHONE_USE] ?: 0f) + (probs[StudyBehavior.PHONE_PICKUP] ?: 0f)
-        if (phoneProb > config.confidenceThreshold) {
+        val isV34 = prediction.modelState == BehaviorV34Contract.MODEL_STATE
+        val rejectedV34PhoneEvidence = isV34 && prediction.stableBehavior == StudyBehavior.UNCERTAIN
+        val acceptedPhoneEvidence = if (isV34) {
+            prediction.stableBehavior == StudyBehavior.PHONE_USE
+        } else {
+            phoneProb > config.confidenceThreshold
+        }
+        if (acceptedPhoneEvidence) {
             if (lastPhoneUseStart == 0L) lastPhoneUseStart = now
             if (!currentlyPhoneDistracted && now - lastPhoneUseStart >= config.phoneUseThresholdMs) {
                 currentlyPhoneDistracted = true
                 events.add(StableBehaviorEvent.PHONE_DISTRACTION)
             }
-        } else {
+        } else if (!rejectedV34PhoneEvidence) {
             lastPhoneUseStart = 0L
             currentlyPhoneDistracted = false
         }
@@ -194,7 +201,12 @@ class BehaviorSignalProcessor(
 
         // Check Learning
         val learningProb = (probs[StudyBehavior.READING] ?: 0f) + (probs[StudyBehavior.WRITING] ?: 0f) + (probs[StudyBehavior.TYPING] ?: 0f)
-        if (learningProb > config.confidenceThreshold && !currentlyAbsent && !currentlyPhoneDistracted) {
+        val acceptedLearningEvidence = if (isV34) {
+            prediction.stableBehavior == StudyBehavior.READING || prediction.stableBehavior == StudyBehavior.WRITING
+        } else {
+            learningProb > config.confidenceThreshold
+        }
+        if (acceptedLearningEvidence && !currentlyAbsent && !currentlyPhoneDistracted) {
             events.add(StableBehaviorEvent.STABLE_LEARNING)
             lastLearningStart = now
         }
