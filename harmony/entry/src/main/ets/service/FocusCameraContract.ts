@@ -1,4 +1,9 @@
-import type { PersonBox } from './FocusAssistProvider';
+export interface PersonBox {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
 export interface DetectionBoundingBox {
   left: number;
@@ -35,6 +40,36 @@ export class FocusCameraStateText {
   }
 }
 
+export class FocusCameraRunToken {
+  private version: number = 0;
+  private shouldRun: boolean = false;
+
+  beginStart(): number {
+    this.shouldRun = true;
+    this.version += 1;
+    return this.version;
+  }
+
+  stop(): void {
+    this.shouldRun = false;
+    this.version += 1;
+  }
+
+  isCurrent(version: number): boolean {
+    return this.shouldRun && this.version === version;
+  }
+
+  desired(): boolean {
+    return this.shouldRun;
+  }
+}
+
+export class FocusCameraActivationPolicy {
+  static shouldRun(focusMode: string): boolean {
+    return focusMode === 'focus';
+  }
+}
+
 export class PersonRoiSelector {
   static readonly PERSON_LABEL: number = 13;
   static readonly MIN_SCORE: number = 0.50;
@@ -46,7 +81,10 @@ export class PersonRoiSelector {
     }
     let best: DetectionCandidate | undefined = undefined;
     for (const candidate of candidates) {
-      if (candidate.score < PersonRoiSelector.MIN_SCORE ||
+      const box: DetectionBoundingBox = candidate.boundingBox;
+      if (!Number.isFinite(candidate.score) || !Number.isFinite(box.left) ||
+        !Number.isFinite(box.top) || !Number.isFinite(box.width) || !Number.isFinite(box.height) ||
+        candidate.score < PersonRoiSelector.MIN_SCORE ||
         !candidate.labels.includes(PersonRoiSelector.PERSON_LABEL)) {
         continue;
       }

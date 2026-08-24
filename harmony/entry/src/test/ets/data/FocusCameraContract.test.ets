@@ -3,6 +3,8 @@ import {
   DetectionCandidate,
   FocusCameraState,
   FocusCameraStateText,
+  FocusCameraRunToken,
+  FocusCameraActivationPolicy,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../../../main/ets/service/FocusCameraContract';
@@ -31,6 +33,16 @@ export default function focusCameraContractTest(): void {
         candidate(8, 0.95, 0, 0, 90, 70),
         candidate(13, 0.49, 0, 0, 90, 70)
       ], 100, 80)).assertUndefined();
+      expect(PersonRoiSelector.select([
+        candidate(13, Number.NaN, 0, 0, 90, 70),
+        candidate(13, 0.90, Number.NaN, 0, 90, 70)
+      ], 100, 80)).assertUndefined();
+    });
+
+    it('runs camera assistance only during a study focus interval', 0, () => {
+      expect(FocusCameraActivationPolicy.shouldRun('focus')).assertTrue();
+      expect(FocusCameraActivationPolicy.shouldRun('short_break')).assertFalse();
+      expect(FocusCameraActivationPolicy.shouldRun('long_break')).assertFalse();
     });
 
     it('drops throttled and in-flight frames', 0, () => {
@@ -47,6 +59,14 @@ export default function focusCameraContractTest(): void {
         .assertEqual('相机已启用，等待检测到学生人体');
       expect(FocusCameraStateText.describe(FocusCameraState.PERMISSION_DENIED))
         .assertEqual('未获得相机权限，行为提醒已停用');
+    });
+
+    it('cancels a pending camera start when focus stops', 0, () => {
+      const token = new FocusCameraRunToken();
+      const pending: number = token.beginStart();
+      expect(token.isCurrent(pending)).assertTrue();
+      token.stop();
+      expect(token.isCurrent(pending)).assertFalse();
     });
   });
 }

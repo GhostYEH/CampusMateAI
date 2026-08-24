@@ -3,6 +3,7 @@ import { FocusModeMapper } from '../../data/FocusModeMapper';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+import { FocusCameraActivationPolicy } from '../../service/FocusCameraContract';
 
 @Component
 export struct FocusPage {
@@ -25,9 +26,11 @@ export struct FocusPage {
   onPause: () => void = () => {};
   onResume: () => void = () => {};
   onFinish: () => void = () => {};
+  onAssistStart: () => void = () => {};
+  onAssistStop: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
-  aboutToDisappear(): void { this.stopClock(); }
+  aboutToDisappear(): void { this.stopClock(); this.onAssistStop(); }
   currentFocusMode(): FocusMode { return FocusModeMapper.fromLabel(this.mode); }
   totalSeconds(): number { return this.mode === '专注' ? 25 * 60 : this.mode === '短休息' ? 5 * 60 : 15 * 60; }
   timeText(): string {
@@ -37,16 +40,30 @@ export struct FocusPage {
   }
   stopClock(): void { if (this.timerId >= 0) { clearInterval(this.timerId); this.timerId = -1; } }
   startClock(): void {
-    if (this.running) { this.running = false; this.stopClock(); this.onPause(); return; }
+    if (this.running) {
+      this.running = false;
+      this.stopClock();
+      this.onAssistStop();
+      this.onPause();
+      return;
+    }
     this.stopClock();
     this.running = true;
-    if (this.secondsLeft === this.totalSeconds()) this.onStart(this.currentFocusMode()); else this.onResume();
+    const focusMode: FocusMode = this.currentFocusMode();
+    if (FocusCameraActivationPolicy.shouldRun(focusMode)) this.onAssistStart(); else this.onAssistStop();
+    if (this.secondsLeft === this.totalSeconds()) this.onStart(focusMode); else this.onResume();
     this.timerId = setInterval(() => {
       if (this.secondsLeft > 0) this.secondsLeft -= 1;
-      else { this.running = false; this.stopClock(); this.onFinish(); }
+      else { this.running = false; this.stopClock(); this.onAssistStop(); this.onFinish(); }
     }, 1000);
   }
-  resetMode(mode: string): void { this.stopClock(); this.running = false; this.mode = mode; this.secondsLeft = this.totalSeconds(); }
+  resetMode(mode: string): void {
+    this.stopClock();
+    this.running = false;
+    this.onAssistStop();
+    this.mode = mode;
+    this.secondsLeft = this.totalSeconds();
+  }
   behaviorLabelText(): string {
     if (this.focusAssistLabel === 'READ') return '阅读';
     if (this.focusAssistLabel === 'WRITE') return '书写';
@@ -95,7 +112,13 @@ export struct FocusPage {
           .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
           .onClick(() => { this.startPressed = true; setTimeout(() => { this.startPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.startClock(); })
         Button('结束').width(92).height(48).backgroundColor(this.palette().soft).fontColor(this.palette().primary)
-          .onClick(() => { this.stopClock(); this.running = false; this.secondsLeft = this.totalSeconds(); this.onFinish(); })
+          .onClick(() => {
+            this.stopClock();
+            this.running = false;
+            this.onAssistStop();
+            this.secondsLeft = this.totalSeconds();
+            this.onFinish();
+          })
       }.width('100%')
     }.width('100%').padding({ top: 20, left: 16, right: 16, bottom: 18 }).backgroundColor(this.palette().surface).borderRadius(22)
 
@@ -116,7 +139,13 @@ export struct FocusPage {
 
   build() {
     Column() {
-      SecondaryHeader({ title: '专注自习', subtitle: '一次只做一件事，让注意力回到当下', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
+      SecondaryHeader({
+        title: '专注自习',
+        subtitle: '一次只做一件事，让注意力回到当下',
+        darkMode: this.darkMode,
+        reduceMotion: this.reduceMotion,
+        onBack: () => { this.onAssistStop(); this.onBack(); }
+      })
       Scroll() {
         Column({ space: 13 }) {
           this.ModeTabs()
@@ -126,6 +155,7 @@ export struct FocusPage {
             Column({ space: 2 }) {
               Text('学习状态辅助').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
               Text(this.focusAssistDetail).fontColor(this.palette().muted).fontSize(10)
+              Text('画面仅在本机处理，不保存、不上传').fontColor(this.palette().muted).fontSize(9)
               if (this.behaviorLabelText().length > 0) {
                 Text(`${this.behaviorLabelText()} · ${Math.round(this.focusAssistConfidence * 100)}%`).fontColor(this.palette().primary).fontSize(10)
               }
