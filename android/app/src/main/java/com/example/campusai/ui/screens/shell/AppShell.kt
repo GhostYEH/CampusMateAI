@@ -101,7 +101,7 @@ val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
     NavItem("tasks", "待办", Icons.Default.AssignmentTurnedIn),
-    NavItem("counselor", "AI校园助手", Icons.Default.SmartToy),
+    NavItem("counselor", "CPM", Icons.Default.SmartToy),
     NavItem("profile", "我的", Icons.Default.Person),
 )
 
