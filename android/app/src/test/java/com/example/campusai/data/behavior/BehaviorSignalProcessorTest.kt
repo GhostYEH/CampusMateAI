@@ -156,4 +156,67 @@ class BehaviorSignalProcessorTest {
         val events2 = processor.process(BehaviorPrediction(mapOf(StudyBehavior.WRITING to 0.8f), 21000L, "READY"))
         assertTrue(events2.contains(StableBehaviorEvent.FOCUS_RECOVERED))
     }
+
+    @Test
+    fun noVisibleStudyForTwentySecondsEmitsPossibleDistraction() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(noVisibleStudyThresholdMs = 20_000L),
+        )
+
+        assertTrue(processor.process(v34(StudyBehavior.IDLE, 1_000L)).isEmpty())
+        assertTrue(processor.process(v34(StudyBehavior.IDLE, 20_000L)).isEmpty())
+
+        assertEquals(
+            listOf(StableBehaviorEvent.POSSIBLE_DISTRACTION),
+            processor.process(v34(StudyBehavior.IDLE, 21_000L)),
+        )
+    }
+
+    @Test
+    fun uncertainEvidenceDoesNotStartOrResetNoVisibleStudyTimer() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(noVisibleStudyThresholdMs = 20_000L),
+        )
+
+        processor.process(v34(StudyBehavior.IDLE, 1_000L))
+        processor.process(v34(StudyBehavior.UNCERTAIN, 10_000L))
+
+        assertEquals(
+            listOf(StableBehaviorEvent.POSSIBLE_DISTRACTION),
+            processor.process(v34(StudyBehavior.IDLE, 21_000L)),
+        )
+    }
+
+    @Test
+    fun readingAfterNoVisibleStudyEmitsRecoveryAndClearsDistraction() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(
+                noVisibleStudyThresholdMs = 20_000L,
+                learningRecoveryThresholdMs = 5_000L,
+            ),
+        )
+        processor.process(v34(StudyBehavior.IDLE, 1_000L))
+        processor.process(v34(StudyBehavior.IDLE, 21_000L))
+
+        assertTrue(
+            processor.process(v34(StudyBehavior.READING, 22_000L))
+                .none { it == StableBehaviorEvent.FOCUS_RECOVERED },
+        )
+        assertTrue(
+            processor.process(v34(StudyBehavior.READING, 27_000L))
+                .contains(StableBehaviorEvent.FOCUS_RECOVERED),
+        )
+    }
+
+    private fun v34(behavior: StudyBehavior, timestampMs: Long): BehaviorPrediction =
+        BehaviorPrediction(
+            probabilities = if (behavior == StudyBehavior.UNCERTAIN) {
+                mapOf(StudyBehavior.UNCERTAIN to 1f)
+            } else {
+                mapOf(behavior to 0.9f)
+            },
+            timestampMs = timestampMs,
+            modelState = "READY_BEHAVIOR_V34",
+            stableBehavior = behavior,
+        )
 }
