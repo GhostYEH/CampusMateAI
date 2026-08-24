@@ -158,6 +158,37 @@ class BehaviorSignalProcessorTest {
     }
 
     @Test
+    fun acceptedV34PhoneEvidenceUsesModelCardDecisionBelowLegacyThreshold() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(phoneUseThresholdMs = 3000L),
+        )
+        val first = BehaviorPrediction(
+            probabilities = mapOf(StudyBehavior.PHONE_USE to 0.40f),
+            timestampMs = 1000L,
+            modelState = BehaviorV34Contract.MODEL_STATE,
+            stableBehavior = StudyBehavior.PHONE_USE,
+        )
+        val sustained = first.copy(timestampMs = 4000L)
+
+        assertTrue(processor.process(first).isEmpty())
+        assertTrue(processor.process(sustained).contains(StableBehaviorEvent.PHONE_DISTRACTION))
+    }
+
+    @Test
+    fun rejectedV34FrameDoesNotResetAcceptedPhoneTimer() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(phoneUseThresholdMs = 3000L),
+        )
+        processor.process(v34WithProbability(StudyBehavior.PHONE_USE, 0.40f, 1000L))
+        processor.process(v34WithProbability(StudyBehavior.UNCERTAIN, 0.40f, 2500L))
+
+        assertTrue(
+            processor.process(v34WithProbability(StudyBehavior.PHONE_USE, 0.40f, 4000L))
+                .contains(StableBehaviorEvent.PHONE_DISTRACTION),
+        )
+    }
+
+    @Test
     fun rejectedV34PredictionRemainsNoStableBehaviorEvenWithHighRawTopProbability() {
         val processor = BehaviorSignalProcessor(BehaviorSignalConfig(startupWarmupMs = 0L))
         processor.beginBehaviorObservation(100L)
@@ -237,4 +268,15 @@ class BehaviorSignalProcessorTest {
             modelState = "READY_BEHAVIOR_V34",
             stableBehavior = behavior,
         )
+
+    private fun v34WithProbability(
+        behavior: StudyBehavior,
+        probability: Float,
+        timestampMs: Long,
+    ): BehaviorPrediction = BehaviorPrediction(
+        probabilities = mapOf(StudyBehavior.PHONE_USE to probability),
+        timestampMs = timestampMs,
+        modelState = BehaviorV34Contract.MODEL_STATE,
+        stableBehavior = behavior,
+    )
 }

@@ -11,6 +11,10 @@ export struct FocusPage {
   @Prop loading: boolean = false;
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;
+  @Prop focusAssistDetail: string = '正在准备本地模型';
+  @Prop focusAssistLabel: string = '';
+  @Prop focusAssistConfidence: number = 0;
+  @Prop behaviorReminder: string = '';
   @State mode: string = '专注';
   @State secondsLeft: number = 25 * 60;
   @State running: boolean = false;
@@ -43,6 +47,14 @@ export struct FocusPage {
     }, 1000);
   }
   resetMode(mode: string): void { this.stopClock(); this.running = false; this.mode = mode; this.secondsLeft = this.totalSeconds(); }
+  behaviorLabelText(): string {
+    if (this.focusAssistLabel === 'READ') return '阅读';
+    if (this.focusAssistLabel === 'WRITE') return '书写';
+    if (this.focusAssistLabel === 'PHONE_INTERACTION') return '使用手机';
+    if (this.focusAssistLabel === 'NO_VISIBLE_STUDY') return '未观察到学习行为';
+    if (this.focusAssistLabel === 'CONTINUE_OBSERVING') return '继续观察';
+    return '';
+  }
 
   @Builder ModeTabs() {
     Row({ space: 7 }) {
@@ -113,9 +125,18 @@ export struct FocusPage {
             SymbolGlyph($r('sys.symbol.shield_checkered')).fontSize(17).fontColor([this.palette().success])
             Column({ space: 2 }) {
               Text('学习状态辅助').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
-              Text('鸿蒙端不上传画面，专注记录已真实同步后端').fontColor(this.palette().muted).fontSize(10)
+              Text(this.focusAssistDetail).fontColor(this.palette().muted).fontSize(10)
+              if (this.behaviorLabelText().length > 0) {
+                Text(`${this.behaviorLabelText()} · ${Math.round(this.focusAssistConfidence * 100)}%`).fontColor(this.palette().primary).fontSize(10)
+              }
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(16)
+          if (this.behaviorReminder.length > 0) {
+            Row({ space: 8 }) {
+              SymbolGlyph($r('sys.symbol.bell')).fontSize(17).fontColor([this.palette().primary])
+              Text(this.behaviorReminder).fontColor(this.palette().text).fontSize(12).layoutWeight(1)
+            }.width('100%').padding(13).backgroundColor(this.palette().soft).borderRadius(16)
+          }
           Text('专注记录').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold).width('100%')
           Column() {
             if (this.loading) { LoadingProgress().width(32).height(32).color(this.palette().primary).margin(28) }
