@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  FocusCameraState,
+  FocusCameraStateText,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../entry/src/main/ets/service/FocusCameraContract.ts';
@@ -33,4 +35,13 @@ test('drops frames while analysis is running and before the next interval', () =
   gate.release();
   assert.equal(gate.tryAcquire(1999), false);
   assert.equal(gate.tryAcquire(2000), true);
+});
+
+test('reports safe user-facing states when a frame cannot be analyzed', () => {
+  assert.equal(FocusCameraStateText.describe(FocusCameraState.WAITING_FOR_PERSON),
+    '相机已启用，等待检测到学生人体');
+  assert.equal(FocusCameraStateText.describe(FocusCameraState.PERMISSION_DENIED),
+    '未获得相机权限，行为提醒已停用');
+  assert.equal(FocusCameraStateText.describe(FocusCameraState.STOPPED),
+    '开始专注后启用本地学习状态辅助');
 });

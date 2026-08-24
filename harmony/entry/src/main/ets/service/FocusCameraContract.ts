@@ -13,6 +13,28 @@ export interface DetectionCandidate {
   boundingBox: DetectionBoundingBox;
 }
 
+export class FocusCameraState {
+  static readonly STOPPED: string = 'STOPPED';
+  static readonly STARTING: string = 'STARTING';
+  static readonly RUNNING: string = 'RUNNING';
+  static readonly WAITING_FOR_PERSON: string = 'WAITING_FOR_PERSON';
+  static readonly PERMISSION_DENIED: string = 'PERMISSION_DENIED';
+  static readonly UNAVAILABLE: string = 'UNAVAILABLE';
+  static readonly ERROR: string = 'ERROR';
+}
+
+export class FocusCameraStateText {
+  static describe(state: string): string {
+    if (state === FocusCameraState.STARTING) return '正在启动本地相机与人体检测';
+    if (state === FocusCameraState.RUNNING) return 'V3.4 正在本地识别学习状态';
+    if (state === FocusCameraState.WAITING_FOR_PERSON) return '相机已启用，等待检测到学生人体';
+    if (state === FocusCameraState.PERMISSION_DENIED) return '未获得相机权限，行为提醒已停用';
+    if (state === FocusCameraState.ERROR) return '本帧处理失败，行为提醒未触发';
+    if (state === FocusCameraState.UNAVAILABLE) return '当前设备不支持本地相机行为识别';
+    return '开始专注后启用本地学习状态辅助';
+  }
+}
+
 export class PersonRoiSelector {
   static readonly PERSON_LABEL: number = 13;
   static readonly MIN_SCORE: number = 0.50;

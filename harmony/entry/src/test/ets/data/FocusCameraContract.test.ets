@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   DetectionCandidate,
+  FocusCameraState,
+  FocusCameraStateText,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../../../main/ets/service/FocusCameraContract';
@@ -38,6 +40,13 @@ export default function focusCameraContractTest(): void {
       gate.release();
       expect(gate.tryAcquire(1999)).assertFalse();
       expect(gate.tryAcquire(2000)).assertTrue();
+    });
+
+    it('keeps unavailable camera states explicit and non-punitive', 0, () => {
+      expect(FocusCameraStateText.describe(FocusCameraState.WAITING_FOR_PERSON))
+        .assertEqual('相机已启用，等待检测到学生人体');
+      expect(FocusCameraStateText.describe(FocusCameraState.PERMISSION_DENIED))
+        .assertEqual('未获得相机权限，行为提醒已停用');
     });
   });
 }
