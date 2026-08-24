@@ -6,9 +6,7 @@ import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -17,20 +15,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 object DigitalHumanBridge {
     fun stageUrl(apiBaseUrl: String): String =
-        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") + "/digital-human/mobile.html"
+        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") + "/digital-human/mobile.html?embed=1"
 
     fun configureScript(apiBaseUrl: String, accessToken: String): String =
         "window.CampusMateDigitalHuman.configure({apiBaseUrl:${jsString(apiBaseUrl)},accessToken:${jsString(accessToken)}});"
 
     fun speakScript(text: String): String =
         "window.CampusMateDigitalHuman.speak(${jsString(text)});"
+
+    fun commandScript(command: DigitalHumanCommand): String = when (command) {
+        DigitalHumanCommand.TOGGLE_MUTE -> "window.CampusMateDigitalHuman.toggleMuted();"
+        DigitalHumanCommand.TOGGLE_PAUSE -> "window.CampusMateDigitalHuman.togglePaused();"
+        DigitalHumanCommand.REPLAY -> "window.CampusMateDigitalHuman.replay();"
+        DigitalHumanCommand.NONE -> ""
+    }
 
     private fun jsString(value: String): String = buildString {
         append('"')
@@ -58,11 +61,14 @@ fun DigitalHumanStage(
     accessToken: String,
     speechText: String,
     speechRequestId: Int,
+    command: DigitalHumanCommand = DigitalHumanCommand.NONE,
+    commandRequestId: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     var pageReady by remember { mutableStateOf(false) }
     var lastSpokenRequestId by remember { mutableIntStateOf(0) }
+    var lastCommandRequestId by remember { mutableIntStateOf(0) }
     val webView = remember {
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
@@ -99,7 +105,11 @@ fun DigitalHumanStage(
                 lastSpokenRequestId = speechRequestId
                 view.evaluateJavascript(DigitalHumanBridge.speakScript(speechText), null)
             }
+            if (commandRequestId > 0 && commandRequestId != lastCommandRequestId && command != DigitalHumanCommand.NONE) {
+                lastCommandRequestId = commandRequestId
+                view.evaluateJavascript(DigitalHumanBridge.commandScript(command), null)
+            }
         },
-        modifier = modifier.fillMaxWidth().height(470.dp).clip(RoundedCornerShape(25.dp)),
+        modifier = modifier.fillMaxSize(),
     )
 }

@@ -10,10 +10,14 @@ export struct DigitalHumanStage {
   @Prop speechText: string = '';
   @Prop @Watch('onSpeechRequestChanged') speechRequestId: number = 0;
   @Prop darkMode: boolean = false;
+  @Prop stageHeight: number = 470;
+  @Prop @Watch('onCommandChanged') command: string = '';
+  @Prop @Watch('onCommandChanged') commandRequestId: number = 0;
   @State ready: boolean = false;
   @State errorMessage: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
   private lastSpokenRequestId: number = 0;
+  private lastCommandRequestId: number = 0;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
@@ -21,7 +25,7 @@ export struct DigitalHumanStage {
 
   stageUrl(): string {
     const normalized = this.apiBaseUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
-    return `${normalized}/digital-human/mobile.html`;
+    return `${normalized}/digital-human/mobile.html?embed=1`;
   }
 
   run(script: string): void {
@@ -46,6 +50,20 @@ export struct DigitalHumanStage {
     this.speakIfNeeded();
   }
 
+  onCommandChanged(): void {
+    if (!this.ready || this.commandRequestId <= 0 || this.commandRequestId === this.lastCommandRequestId) return;
+    const scripts: Record<string, string> = {
+      mute: 'window.CampusMateDigitalHuman.toggleMuted();',
+      pause: 'window.CampusMateDigitalHuman.togglePaused();',
+      replay: 'window.CampusMateDigitalHuman.replay();'
+    };
+    const script = scripts[this.command];
+    if (script !== undefined) {
+      this.lastCommandRequestId = this.commandRequestId;
+      this.run(script);
+    }
+  }
+
   aboutToDisappear(): void {
     if (this.ready) this.run('window.CampusMateDigitalHuman.stop();');
   }
@@ -62,6 +80,7 @@ export struct DigitalHumanStage {
           this.errorMessage = '';
           this.configure();
           this.speakIfNeeded();
+          this.onCommandChanged();
         })
         .onErrorReceive(() => {
           this.errorMessage = '数字人画面加载失败，文字聊天仍可使用';
@@ -82,7 +101,7 @@ export struct DigitalHumanStage {
       }
     }
     .width('100%')
-    .height(470)
+    .height(this.stageHeight)
     .backgroundColor(this.darkMode ? '#FF1B2436' : '#FFE8EDFB')
     .border({ width: 1, color: this.palette().line })
     .borderRadius(25)
