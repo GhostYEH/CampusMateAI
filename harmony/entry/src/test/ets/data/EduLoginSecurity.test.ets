@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@ohos/hypium';
+import { EduConnectionDto } from '../../../main/ets/data/ApiClient';
 import {
   allowedOriginsFromEduResponse,
   cookieDtosForUrl,
@@ -51,9 +52,17 @@ export default function eduLoginSecurityTest(): void {
     });
 
     it('preserves allowed origins from the backend connection response', 0, () => {
-      expect(allowedOriginsFromEduResponse({ allowed_origins: ['https://sso.huel.edu.cn'] })[0])
+      const connection: EduConnectionDto = {
+        id: 'connection-1', state: 'waiting_user_login', provider: 'zhengfang',
+        login_execution_mode: 'client_webview', allowed_origins: ['https://sso.huel.edu.cn']
+      };
+      const legacyConnection: EduConnectionDto = {
+        id: 'connection-2', state: 'waiting_user_login', provider: 'zhengfang',
+        login_execution_mode: 'client_webview'
+      };
+      expect(allowedOriginsFromEduResponse(connection)[0])
         .assertEqual('https://sso.huel.edu.cn');
-      expect(allowedOriginsFromEduResponse({}).length).assertEqual(0);
+      expect(allowedOriginsFromEduResponse(legacyConnection).length).assertEqual(0);
     });
 
     it('allows only exact HTTPS login and backend-listed origins', 0, () => {
