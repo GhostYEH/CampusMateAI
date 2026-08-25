@@ -38,6 +38,7 @@ from .zhengfang_http import EduAdapterError, NeedUserAction, ZhengfangHttpClient
 from .zhengfang_parser import ZhengfangParser
 from .zhengfang_strategy import (
     SchoolConfig,
+    school_allowed_origins,
     school_config_from_dict,
     school_config_to_dict,
 )
@@ -444,7 +445,7 @@ class ZhengfangAdapter(EduAdapter):
             extra_headers=extra_headers,
         )
         if cookie_jar:
-            client.set_cookie_jar(cookie_jar, allowed_origins=[school.allowed_origin or school.base_url])
+            client.set_cookie_jar(cookie_jar, allowed_origins=school_allowed_origins(school))
         else:
             client.set_cookies(cookies)
 
@@ -556,7 +557,7 @@ class ZhengfangAdapter(EduAdapter):
         cookie_jar = session.get("cookie_jar") or []
         cookies = session.get("cookies") or {}
         if isinstance(cookie_jar, list) and cookie_jar:
-            client.set_cookie_jar(cookie_jar, allowed_origins=[school.allowed_origin or school.base_url])
+            client.set_cookie_jar(cookie_jar, allowed_origins=school_allowed_origins(school))
         elif isinstance(cookies, dict):
             client.set_cookies(cookies)
         return school, client

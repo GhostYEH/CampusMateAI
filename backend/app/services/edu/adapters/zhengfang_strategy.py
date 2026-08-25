@@ -14,6 +14,7 @@ Adapter 在运行时从 config dict 读取策略，按版本路由到不同 pars
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 from dataclasses import asdict
 from typing import Optional
 
@@ -162,6 +163,24 @@ class SchoolConfig:
     @property
     def profile_url(self) -> str:
         return self.base_url.rstrip("/") + self.endpoints.profile_path
+
+
+def school_allowed_origins(school: SchoolConfig, *, limit: int = 8) -> list[str]:
+    """Canonical, explicit HTTPS origins only; SSO is included only when configured."""
+    result: list[str] = []
+    for value in (school.base_url, school.login_url, school.allowed_origin, school.sso_url):
+        if not isinstance(value, str):
+            continue
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            continue
+        port = "" if parsed.port in (None, 443) else f":{parsed.port}"
+        origin = f"https://{parsed.hostname.lower()}{port}"
+        if origin not in result:
+            result.append(origin)
+        if len(result) == limit:
+            break
+    return result
 
 
 def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
