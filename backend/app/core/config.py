@@ -1,6 +1,8 @@
 """应用配置 — 全部通过环境变量读取，禁止硬编码密钥。"""
 from __future__ import annotations
 
+import base64
+import binascii
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -115,6 +117,11 @@ class Settings(BaseSettings):
     # ===== EduConnector =====
     # 教务会话 TTL（秒），默认 30 分钟
     edu_session_ttl_seconds: int = 1800
+    # auto: production 使用加密 SQLite；其他环境使用内存存储
+    edu_session_store: str = "auto"
+    # 仅接受 base64 编码的 32-byte AES-256 key；不得自动生成或使用默认 key
+    edu_session_encryption_key: str = ""
+    edu_session_encryption_key_id: str = "primary"
     # production 环境下是否允许使用 MockEduAdapter（默认禁止）
     edu_allow_mock_in_production: bool = False
     # 是否允许教务探测跳过 SSL 验证（仅非 production + 显式开启）
@@ -124,6 +131,12 @@ class Settings(BaseSettings):
     @property
     def is_dev(self) -> bool:
         return self.app_env == "development"
+
+    @property
+    def effective_edu_session_store(self) -> str:
+        if self.edu_session_store == "auto":
+            return "encrypted_sqlite" if self.app_env == "production" else "memory"
+        return self.edu_session_store
 
     @property
     def cors_origins_list(self) -> List[str]:
@@ -183,6 +196,28 @@ class Settings(BaseSettings):
         if self.llm_provider == "none" and not self.enable_fallback_mode:
             # 强制开启降级模式，否则功能不可用
             self.enable_fallback_mode = True
+        if self.edu_session_store not in {"auto", "memory", "encrypted_sqlite"}:
+            raise ValueError(
+                "EDU_SESSION_STORE must be auto, memory, or encrypted_sqlite"
+            )
+        session_store = self.effective_edu_session_store
+        if self.app_env == "production" and session_store != "encrypted_sqlite":
+            raise ValueError(
+                "EDU_SESSION_STORE must use encrypted_sqlite in production"
+            )
+        if session_store == "encrypted_sqlite":
+            try:
+                session_key = base64.b64decode(
+                    self.edu_session_encryption_key, validate=True
+                )
+            except (binascii.Error, ValueError):
+                session_key = b""
+            if len(session_key) != 32:
+                raise ValueError(
+                    "EDU_SESSION_ENCRYPTION_KEY must be base64-encoded 32 bytes"
+                )
+            if not self.edu_session_encryption_key_id:
+                raise ValueError("EDU_SESSION_ENCRYPTION_KEY_ID must not be empty")
         # ===== production 强约束 =====
         # 正式 Release 不得启用测试环境数据 seeding / 测试环境资料自动导入
         # 不得依赖 DEMO_MODE / USE_MOCK_BACKEND 等开关返回模拟业务数据

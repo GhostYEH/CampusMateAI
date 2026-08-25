@@ -988,6 +988,22 @@ CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expire
 """
 
 
+EDU_SESSION_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS edu_sessions (
+    connection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    envelope_version INTEGER NOT NULL,
+    key_id TEXT NOT NULL,
+    nonce BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_edu_sessions_user ON edu_sessions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_edu_sessions_expires ON edu_sessions(expires_at);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1045,6 +1061,7 @@ class Database:
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
+                conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

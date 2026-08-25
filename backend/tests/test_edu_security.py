@@ -7,17 +7,35 @@
 """
 from __future__ import annotations
 
+import base64
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.database.sqlite_db import Database
 from app.main import create_app
 from app.services.edu.session import PreLoginSessionStore
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.edu.adapters.mock import MockEduAdapter
 from app.services.edu.adapters.zhengfang import ZhengfangAdapter
+
+
+_TEST_EDU_SESSION_KEY = base64.b64encode(b"test-only-edu-session-key-32byte").decode("ascii")
+
+
+def _encrypted_session_store(db: Database, *, ttl_seconds: int = 1800):
+    from app.services.edu.encrypted_session_store import EncryptedSqliteEduSessionStore
+
+    return EncryptedSqliteEduSessionStore(
+        db=db,
+        encryption_key_base64=_TEST_EDU_SESSION_KEY,
+        key_id="test-key-v1",
+        session_ttl_seconds=ttl_seconds,
+    )
 
 
 def _client(app_env: str = "test") -> TestClient:
@@ -75,9 +93,302 @@ def test_production_does_not_fallback_to_mock() -> None:
         database_url="sqlite:///:memory:",
         auto_seed_demo_users=False,
         auto_import_demo=False,
+        edu_session_encryption_key=_TEST_EDU_SESSION_KEY,
     )
     container = reset_container_for_tests(settings)
     assert container.edu_connector._is_mock_allowed() is False
+
+def test_production_requires_edu_session_encryption_key() -> None:
+    with pytest.raises(ValueError, match="EDU_SESSION_ENCRYPTION_KEY"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            database_url="sqlite:///:memory:",
+            auto_seed_demo_users=False,
+            auto_import_demo=False,
+            jwt_secret="production-test-secret-that-is-long-enough-1234567890",
+        )
+
+
+@pytest.mark.parametrize("invalid_key", ["not-base64", base64.b64encode(b"too-short").decode("ascii")])
+def test_production_rejects_invalid_edu_session_encryption_key(invalid_key: str) -> None:
+    with pytest.raises(ValueError, match="EDU_SESSION_ENCRYPTION_KEY"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            database_url="sqlite:///:memory:",
+            auto_seed_demo_users=False,
+            auto_import_demo=False,
+            jwt_secret="production-test-secret-that-is-long-enough-1234567890",
+            edu_session_encryption_key=invalid_key,
+        )
+
+
+def test_production_rejects_memory_edu_session_store() -> None:
+    with pytest.raises(ValueError, match="EDU_SESSION_STORE"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            database_url="sqlite:///:memory:",
+            auto_seed_demo_users=False,
+            auto_import_demo=False,
+            jwt_secret="production-test-secret-that-is-long-enough-1234567890",
+            edu_session_store="memory",
+            edu_session_encryption_key=_TEST_EDU_SESSION_KEY,
+        )
+
+
+def test_edu_session_schema_is_idempotent(tmp_path) -> None:
+    db_path = tmp_path / "edu-sessions.db"
+    first = Database(db_path)
+    with first.query() as conn:
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(edu_sessions)")
+        }
+    first.dispose()
+
+    second = Database(db_path)
+    second.dispose()
+
+    assert {
+        "connection_id",
+        "user_id",
+        "envelope_version",
+        "key_id",
+        "nonce",
+        "ciphertext",
+        "expires_at",
+        "created_at",
+    }.issubset(columns)
+
+
+def test_encrypted_edu_session_recovers_after_store_restart(tmp_path) -> None:
+    db_path = tmp_path / "recoverable-sessions.db"
+    first_db = Database(db_path)
+    first_store = _encrypted_session_store(first_db)
+    created = first_store.create_session(
+        user_id="owner-a",
+        university_id="university-a",
+        provider="zhengfang",
+        system_type="undergrad",
+        external_student_id="student-a",
+        internal={"cookies": {"JSESSIONID": "recoverable-cookie"}, "csrftoken": "csrf-a"},
+    )
+    first_db.dispose()
+
+    restarted_db = Database(db_path)
+    recovered = _encrypted_session_store(restarted_db).get_session(created.session_id)
+    restarted_db.dispose()
+
+    assert recovered is not None
+    assert recovered.user_id == "owner-a"
+    assert recovered.external_student_id == "student-a"
+    assert recovered._internal == {
+        "cookies": {"JSESSIONID": "recoverable-cookie"},
+        "csrftoken": "csrf-a",
+    }
+
+
+def test_encrypted_edu_session_sqlite_has_no_plaintext_session_markers(tmp_path) -> None:
+    db_path = tmp_path / "opaque-sessions.db"
+    db = Database(db_path)
+    store = _encrypted_session_store(db)
+    markers = {
+        "cookie": "raw-cookie-marker-7c62",
+        "csrf": "raw-csrf-marker-b840",
+        "user_agent": "raw-user-agent-marker-25d1",
+        "current_url": "https://raw-current-url-marker.invalid/session",
+    }
+    store.create_session(
+        user_id="owner-raw",
+        university_id="university-raw",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={
+            "cookies": {"JSESSIONID": markers["cookie"]},
+            "csrftoken": markers["csrf"],
+            "user_agent": markers["user_agent"],
+            "current_url": markers["current_url"],
+        },
+    )
+    db.dispose()
+
+    raw_sqlite = b"".join(
+        path.read_bytes() for path in db_path.parent.glob(f"{db_path.name}*")
+    )
+    for marker in markers.values():
+        assert marker.encode("utf-8") not in raw_sqlite
+
+
+def test_encrypted_edu_session_tamper_is_deleted_on_restart(tmp_path) -> None:
+    db = Database(tmp_path / "tampered-sessions.db")
+    store = _encrypted_session_store(db)
+    session = store.create_session(
+        user_id="tamper-owner",
+        university_id="university-a",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={"cookies": {"JSESSIONID": "tamper-cookie"}},
+    )
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT ciphertext FROM edu_sessions WHERE connection_id = ?",
+            (session.session_id,),
+        ).fetchone()
+        tampered = bytearray(row["ciphertext"])
+        tampered[-1] ^= 1
+        conn.execute(
+            "UPDATE edu_sessions SET ciphertext = ? WHERE connection_id = ?",
+            (bytes(tampered), session.session_id),
+        )
+
+    restarted = _encrypted_session_store(db)
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM edu_sessions").fetchone()[0] == 0
+    assert restarted.get_session(session.session_id) is None
+    db.dispose()
+
+
+def test_encrypted_edu_session_aad_swap_is_rejected(tmp_path) -> None:
+    db = Database(tmp_path / "aad-swap-sessions.db")
+    store = _encrypted_session_store(db)
+    first = store.create_session(
+        user_id="owner-first",
+        university_id="university-a",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={"cookies": {"JSESSIONID": "first-cookie"}},
+    )
+    second = store.create_session(
+        user_id="owner-second",
+        university_id="university-b",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={"cookies": {"JSESSIONID": "second-cookie"}},
+    )
+    with db.transaction() as conn:
+        rows = conn.execute(
+            "SELECT connection_id, nonce, ciphertext FROM edu_sessions"
+        ).fetchall()
+        envelopes = {row["connection_id"]: row for row in rows}
+        conn.execute(
+            "UPDATE edu_sessions SET nonce = ?, ciphertext = ? WHERE connection_id = ?",
+            (
+                envelopes[second.session_id]["nonce"],
+                envelopes[second.session_id]["ciphertext"],
+                first.session_id,
+            ),
+        )
+        conn.execute(
+            "UPDATE edu_sessions SET nonce = ?, ciphertext = ? WHERE connection_id = ?",
+            (
+                envelopes[first.session_id]["nonce"],
+                envelopes[first.session_id]["ciphertext"],
+                second.session_id,
+            ),
+        )
+
+    assert store.get_session(first.session_id) is None
+    assert store.get_session(second.session_id) is None
+    db.dispose()
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("envelope_version", 999), ("key_id", "unknown-key")],
+)
+def test_encrypted_edu_session_unknown_envelope_is_deleted(
+    tmp_path, column: str, value
+) -> None:
+    db = Database(tmp_path / f"unknown-{column}.db")
+    store = _encrypted_session_store(db)
+    session = store.create_session(
+        user_id="unknown-owner",
+        university_id="university-a",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={},
+    )
+    with db.transaction() as conn:
+        conn.execute(
+            f"UPDATE edu_sessions SET {column} = ? WHERE connection_id = ?",
+            (value, session.session_id),
+        )
+
+    assert store.get_session(session.session_id) is None
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM edu_sessions").fetchone()[0] == 0
+    db.dispose()
+
+
+def test_encrypted_edu_session_startup_cleans_expired_records(tmp_path) -> None:
+    db = Database(tmp_path / "expired-sessions.db")
+    store = _encrypted_session_store(db)
+    expired = store.create_session(
+        user_id="expired-owner",
+        university_id="university-a",
+        provider="zhengfang",
+        system_type="undergrad",
+        internal={},
+        ttl_seconds=-1,
+    )
+
+    restarted = _encrypted_session_store(db)
+    assert restarted.get_session(expired.session_id) is None
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM edu_sessions").fetchone()[0] == 0
+    db.dispose()
+
+
+def test_encrypted_edu_session_rejects_password_fields(tmp_path) -> None:
+    db = Database(tmp_path / "password-sessions.db")
+    store = _encrypted_session_store(db)
+    with pytest.raises(ValueError, match="password"):
+        store.create_session(
+            user_id="password-owner",
+            university_id="university-a",
+            provider="zhengfang",
+            system_type="undergrad",
+            internal={"nested": {"password": "must-never-be-persisted"}},
+        )
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM edu_sessions").fetchone()[0] == 0
+    db.dispose()
+
+
+def test_encrypted_edu_session_concurrent_operations_keep_owner_isolation(
+    tmp_path,
+) -> None:
+    db = Database(tmp_path / "concurrent-sessions.db")
+    store = _encrypted_session_store(db)
+
+    def create(owner_index: int):
+        return store.create_session(
+            user_id=f"owner-{owner_index}",
+            university_id="university-a",
+            provider="zhengfang",
+            system_type="undergrad",
+            internal={"cookies": {"JSESSIONID": f"cookie-{owner_index}"}},
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        sessions = list(executor.map(create, range(24)))
+        recovered = list(executor.map(store.get_session, [s.session_id for s in sessions]))
+
+    assert {session.user_id for session in recovered if session is not None} == {
+        f"owner-{index}" for index in range(24)
+    }
+    for index, session in enumerate(sessions):
+        owner_session = store.get_session_by_user(f"owner-{index}")
+        assert owner_session is not None
+        assert owner_session.session_id == session.session_id
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(store.destroy_session, [s.session_id for s in sessions]))
+    with db.query() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM edu_sessions").fetchone()[0] == 0
+    db.dispose()
+
 
 def test_pre_login_token_is_owner_bound_expires_and_is_single_use() -> None:
     store = PreLoginSessionStore()
