@@ -3,6 +3,11 @@ export interface EduConnectionRequestToken {
   connectionId: string;
 }
 
+export interface EduPostConnectRequestToken {
+  generation: number;
+  connectionId?: string;
+}
+
 /** Keeps asynchronous connection responses scoped to the connection that started them. */
 export class EduConnectionRequestGuard {
   private generation: number = 0;
@@ -31,6 +36,15 @@ export class EduConnectionRequestGuard {
   capture(connectionId: string): EduConnectionRequestToken | undefined {
     if (this.expectedConnectionId !== connectionId) return undefined;
     return { generation: this.generation, connectionId: connectionId };
+  }
+
+  capturePostConnect(connectionId?: string): EduPostConnectRequestToken | undefined {
+    if (connectionId !== this.expectedConnectionId) return undefined;
+    return { generation: this.generation, connectionId: connectionId };
+  }
+
+  isPostConnectCurrent(token: EduPostConnectRequestToken): boolean {
+    return token.generation === this.generation && token.connectionId === this.expectedConnectionId;
   }
 
   isCurrent(token: EduConnectionRequestToken, resultConnectionId: string): boolean {

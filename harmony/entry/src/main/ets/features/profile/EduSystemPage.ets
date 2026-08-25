@@ -13,9 +13,64 @@ import {
 } from '../edu/EduLoginSensitiveState';
 import {
   EduConnectionRequestGuard,
-  EduConnectionRequestToken
+  EduConnectionRequestToken,
+  EduPostConnectRequestToken
 } from '../edu/EduConnectionRequestGuard';
 import { EduLoginSurface, selectEduLoginSurface } from '../edu/EduLoginSurface';
+import {
+  EduPostConnectController,
+  EduPostConnectOperations,
+  EduPostConnectStateWriter,
+  invalidateEduConnectionLifecycle
+} from '../edu/EduPostConnectController';
+
+class EduRepositoryPostConnectOperations implements EduPostConnectOperations {
+  private repository: EduRepository;
+
+  constructor(repository: EduRepository) {
+    this.repository = repository;
+  }
+
+  getBinding(): Promise<EduBindingDto | undefined> {
+    return this.repository.getBinding();
+  }
+
+  syncSchedule(): Promise<EduSyncResult> {
+    return this.repository.syncSchedule();
+  }
+
+  syncGrade(): Promise<EduSyncResult> {
+    return this.repository.syncGrade();
+  }
+}
+
+class EduPagePostConnectStateWriter implements EduPostConnectStateWriter {
+  private bindingWriter: (binding: EduBindingDto | null) => void;
+  private syncingWriter: (syncing: boolean) => void;
+  private messageWriter: (message: string) => void;
+
+  constructor(
+    bindingWriter: (binding: EduBindingDto | null) => void,
+    syncingWriter: (syncing: boolean) => void,
+    messageWriter: (message: string) => void
+  ) {
+    this.bindingWriter = bindingWriter;
+    this.syncingWriter = syncingWriter;
+    this.messageWriter = messageWriter;
+  }
+
+  setBinding(binding: EduBindingDto | null): void {
+    this.bindingWriter(binding);
+  }
+
+  setSyncing(syncing: boolean): void {
+    this.syncingWriter(syncing);
+  }
+
+  setSyncMessage(message: string): void {
+    this.messageWriter(message);
+  }
+}
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
@@ -62,13 +117,23 @@ export struct EduSystemPage {
   }
 
   aboutToDisappear() {
-    this.invalidateConnectionRequests();
-    this.resetSensitiveState(EduLoginSensitiveEvent.DISPOSE);
+    this.invalidateConnectionRequests(EduLoginSensitiveEvent.DISPOSE);
   }
 
-  invalidateConnectionRequests(): number {
-    this.stopPolling();
-    return this.connectionGuard.invalidate();
+  invalidateConnectionRequests(event: EduLoginSensitiveEvent): number {
+    return invalidateEduConnectionLifecycle(
+      this.connectionGuard,
+      (): void => this.stopPolling(),
+      (): void => {
+        this.resetSensitiveState(event);
+        this.binding = null;
+        this.connection = null;
+        this.probe = null;
+        this.syncing = false;
+        this.syncMsg = '';
+        this.loading = false;
+      }
+    );
   }
 
   resetSensitiveState(event: EduLoginSensitiveEvent) {
@@ -86,22 +151,32 @@ export struct EduSystemPage {
     this.preLoginResult = null;
   }
 
-  async loadBinding() {
-    try {
-      const client = this.buildClient();
-      const repo = new EduRepository(client);
-      this.binding = await repo.getBinding() || null;
-    } catch (e) {
-      // 忽略初始加载错误
-    }
+  buildPostConnectController(): EduPostConnectController {
+    const repository: EduRepository = new EduRepository(this.buildClient());
+    const operations: EduPostConnectOperations = new EduRepositoryPostConnectOperations(repository);
+    const writer: EduPostConnectStateWriter = new EduPagePostConnectStateWriter(
+      (binding: EduBindingDto | null): void => { this.binding = binding; },
+      (syncing: boolean): void => { this.syncing = syncing; },
+      (message: string): void => { this.syncMsg = message; }
+    );
+    return new EduPostConnectController(this.connectionGuard, operations, writer);
+  }
+
+  captureCurrentPostConnectRequest(): EduPostConnectRequestToken | undefined {
+    return this.connectionGuard.capturePostConnect(this.connection?.id);
+  }
+
+  async loadBinding(request?: EduPostConnectRequestToken): Promise<void> {
+    const currentRequest: EduPostConnectRequestToken | undefined =
+      request || this.captureCurrentPostConnectRequest();
+    if (currentRequest === undefined) return;
+    await this.buildPostConnectController().loadBinding(currentRequest);
   }
 
   async probeAndConnect() {
     const url = this.portalUrl.trim();
     if (url.length === 0) return;
-    this.stopPolling();
-    const generation: number = this.connectionGuard.beginReplacement();
-    this.resetSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED);
+    const generation: number = this.invalidateConnectionRequests(EduLoginSensitiveEvent.CONNECTION_REPLACED);
     this.loading = true;
     this.errorMsg = '';
     this.infoMsg = '';
@@ -279,36 +354,25 @@ export struct EduSystemPage {
     if (this.pollTimer !== -1) { clearInterval(this.pollTimer); this.pollTimer = -1; }
   }
 
-  async onConnected() {
+  async onConnected(): Promise<void> {
+    const request: EduPostConnectRequestToken | undefined = this.captureCurrentPostConnectRequest();
+    if (request === undefined || !this.connectionGuard.isPostConnectCurrent(request)) return;
     this.resetSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED);
+    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
     this.infoMsg = '教务系统连接成功';
-    await this.loadBinding();
-    await this.autoSync();
+    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
+    await this.buildPostConnectController().onConnected(request);
+    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
   }
 
-  async autoSync() {
-    this.syncing = true;
-    this.syncMsg = '正在同步课表…';
-    try {
-      const client = this.buildClient();
-      const repo = new EduRepository(client);
-      const schedResult = await repo.syncSchedule();
-      this.syncMsg = '正在同步成绩…';
-      const gradeResult = await repo.syncGrade();
-      const schedOk = schedResult.status === 'success';
-      const gradeOk = gradeResult.status === 'success';
-      this.syncMsg = `课表同步${schedOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}`;
-      await this.loadBinding();
-    } catch (e) {
-      this.syncMsg = '同步失败: ' + String(e).substring(0, 100);
-    } finally {
-      this.syncing = false;
-    }
+  async autoSync(): Promise<void> {
+    const request: EduPostConnectRequestToken | undefined = this.captureCurrentPostConnectRequest();
+    if (request === undefined) return;
+    await this.buildPostConnectController().autoSync(request);
   }
 
   async disconnect() {
-    const generation: number = this.invalidateConnectionRequests();
-    this.resetSensitiveState(EduLoginSensitiveEvent.DISCONNECT);
+    const generation: number = this.invalidateConnectionRequests(EduLoginSensitiveEvent.DISCONNECT);
     this.loading = true;
     try {
       const client = this.buildClient();
@@ -349,8 +413,7 @@ export struct EduSystemPage {
         subtitle: '连接教务系统，同步课表与成绩',
         darkMode: this.darkMode,
         onBack: () => {
-          this.invalidateConnectionRequests();
-          this.resetSensitiveState(EduLoginSensitiveEvent.CANCEL);
+          this.invalidateConnectionRequests(EduLoginSensitiveEvent.CANCEL);
           this.onBack();
         }
       })
@@ -517,10 +580,7 @@ export struct EduSystemPage {
         Row({ space: 8 }) {
           Button('立即同步').backgroundColor(this.palette().primary).fontColor(Color.White).onClick(() => this.autoSync())
           Button('重新登录').backgroundColor(this.palette().surface).fontColor(this.palette().text).onClick(() => {
-            this.resetSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED);
-            this.binding = null;
-            this.connection = null;
-            this.probe = null;
+            this.invalidateConnectionRequests(EduLoginSensitiveEvent.CONNECTION_REPLACED);
             this.portalUrl = '';
           })
           Button('断开').backgroundColor(this.palette().surface).fontColor(this.palette().danger).onClick(() => {
