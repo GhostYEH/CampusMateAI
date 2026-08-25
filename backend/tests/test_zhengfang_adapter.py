@@ -101,7 +101,7 @@ def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
             "value": "sso-session",
             "domain": "sso.example.edu.cn",
                 "source_url": "https://sso.example.edu.cn/auth/login",
-                "host_only": None,
+                "host_only": False,
                 "path": "/auth",
             "secure": True,
             "http_only": True,

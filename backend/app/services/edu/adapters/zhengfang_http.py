@@ -91,13 +91,45 @@ class ZhengfangHttpClient:
         self._timeout = timeout
         self._allow_private = allow_private
         self._extra_headers = extra_headers or {}
-        self._cookies = httpx.Cookies()
+        if any(str(name).lower() == "cookie" for name in self._extra_headers):
+            raise ValueError("Cookie header cannot be supplied through extra_headers")
+        base_origin = self._exact_https_origin(base_url)
+        if base_origin is None:
+            raise ValueError("base_url must use an exact https origin")
+        self._allowed_origins: set[str] = {base_origin}
+        self._cookies = self._new_cookie_jar()
+        self._observed_cookies: list[dict] = []
+
+    @staticmethod
+    def _new_cookie_jar() -> httpx.Cookies:
+        jar = httpx.Cookies()
+        jar.jar.set_policy(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain))
+        return jar
+
+    @staticmethod
+    def _exact_https_origin(value: str) -> Optional[str]:
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except (TypeError, ValueError):
+            return None
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return None
+        suffix = "" if port in (None, 443) else f":{port}"
+        return f"https://{parsed.hostname.lower()}{suffix}"
+
+    @staticmethod
+    def _domain_matches(host: str, domain: str) -> bool:
+        normalized = domain.lower().lstrip(".")
+        return host == normalized or host.endswith(f".{normalized}")
 
     @property
     def cookies(self) -> dict:
         result: dict[str, str] = {}
         for cookie in self._cookies.jar:
             result.setdefault(cookie.name, cookie.value)
+        for cookie in self._observed_cookies:
+            result.setdefault(cookie["name"], cookie["value"])
         return result
 
     @property
@@ -111,13 +143,14 @@ class ZhengfangHttpClient:
                 "value": cookie.value,
                 "domain": None if rest.get("_campusmate_domain_unknown") else cookie.domain,
                 "source_url": rest.get("_campusmate_source_url"),
-                "host_only": True if rest.get("_campusmate_host_only") else None,
+                "host_only": not cookie.domain_specified,
                 "path": None if rest.get("_campusmate_path_unknown") else cookie.path,
                 "secure": None if rest.get("_campusmate_secure_unknown") else cookie.secure,
                 "http_only": True if "httponly" in rest else None,
                 "same_site": rest.get("samesite"),
                 "expires": cookie.expires,
             })
+        result.extend(dict(item) for item in self._observed_cookies)
         return result
 
     def set_cookies(self, cookies: dict) -> None:
@@ -142,15 +175,16 @@ class ZhengfangHttpClient:
     def set_cookie_jar(self, cookies: list[dict], *, allowed_origins: Optional[list[str]] = None) -> None:
         if not isinstance(cookies, list):
             raise ValueError("cookie_jar must be a list")
-        jar = httpx.Cookies()
-        jar.jar.set_policy(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain))
+        jar = self._new_cookie_jar()
+        observed: list[dict] = []
         allowed = allowed_origins or [self._base_url]
-        allowed_hosts: set[str] = set()
+        canonical_origins: set[str] = set()
         for origin in allowed:
-            parsed = urlsplit(origin)
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            canonical = self._exact_https_origin(origin)
+            if canonical is None:
                 raise ValueError("allowed cookie origin must be exact https origin")
-            allowed_hosts.add(parsed.hostname.lower())
+            canonical_origins.add(canonical)
+        allowed_hosts = {urlsplit(origin).hostname or "" for origin in canonical_origins}
         for item in cookies:
             if not isinstance(item, dict):
                 raise ValueError("cookie entry must be an object")
@@ -172,42 +206,63 @@ class ZhengfangHttpClient:
                 raise ValueError("cookie source_url must be a string or null")
             if host_only is not None and not isinstance(host_only, bool):
                 raise ValueError("cookie host_only must be a boolean or null")
+            for boolean_field in ("secure", "http_only"):
+                boolean_value = item.get(boolean_field)
+                if boolean_value is not None and not isinstance(boolean_value, bool):
+                    raise ValueError(f"cookie {boolean_field} must be a boolean or null")
             source_host: Optional[str] = None
+            source_origin: Optional[str] = None
             if source_url is not None:
-                source = urlsplit(source_url)
-                if source.scheme != "https" or not source.hostname or source.username or source.password:
+                source_origin = self._exact_https_origin(source_url)
+                if source_origin is None:
                     raise ValueError("cookie source_url must be exact https")
-                source_host = source.hostname.lower()
-                if source_host not in allowed_hosts:
+                source_host = urlsplit(source_origin).hostname or ""
+                if source_origin not in canonical_origins:
                     raise ValueError("cookie source_url is outside allowed origins")
-            elif domain is not None and domain.lower().lstrip(".") in allowed_hosts:
+            elif domain is not None and any(self._domain_matches(host, domain) for host in allowed_hosts):
                 # Old structured clients lacked source metadata: keep the scope host-only.
-                source_host = domain.lower().lstrip(".")
-                host_only = True
+                matching_hosts = [host for host in allowed_hosts if self._domain_matches(host, domain)]
+                if host_only is None:
+                    host_only = True
+                source_host = matching_hosts[0]
             else:
                 raise ValueError("cookie source_url is required for unknown scope")
-            normalized_domain = (domain or source_host).lower().lstrip(".")
-            if normalized_domain not in allowed_hosts or normalized_domain != source_host:
-                raise ValueError("cookie domain is outside the source origin")
+            normalized_domain = (domain or source_host).lower()
+            domain_host = normalized_domain.lstrip(".")
             if host_only is None:
                 host_only = domain is None
+            if host_only and domain_host != source_host:
+                raise ValueError("cookie domain is outside the source origin")
+            if not host_only and not self._domain_matches(source_host, domain_host):
+                raise ValueError("cookie domain is outside the source origin")
+            expires = item.get("expires")
+            if expires is not None and (not isinstance(expires, int) or isinstance(expires, bool) or expires < 0):
+                raise ValueError("cookie expires must be a non-negative integer or null")
+            if path is None:
+                if source_url is None:
+                    raise ValueError("cookie source_url is required for unknown path")
+                observed.append({
+                    "name": name,
+                    "value": value,
+                    "domain": domain,
+                    "source_url": source_url,
+                    "host_only": host_only,
+                    "path": None,
+                    "secure": item.get("secure"),
+                    "http_only": item.get("http_only"),
+                    "same_site": item.get("same_site"),
+                    "expires": expires,
+                })
+                continue
             rest: dict[str, object] = {}
             if item.get("http_only") is True:
                 rest["HttpOnly"] = None
             if item.get("same_site") is not None:
                 rest["SameSite"] = item["same_site"]
-            if host_only:
-                rest["_campusmate_host_only"] = "1"
             if source_url is not None:
                 rest["_campusmate_source_url"] = source_url
-            if path is None:
-                rest["_campusmate_path_unknown"] = "1"
             if item.get("secure") is None:
                 rest["_campusmate_secure_unknown"] = "1"
-            normalized_path = path or "/"
-            expires = item.get("expires")
-            if expires is not None and (not isinstance(expires, int) or isinstance(expires, bool) or expires < 0):
-                raise ValueError("cookie expires must be a non-negative integer or null")
             jar.jar.set_cookie(Cookie(
                 version=0,
                 name=name,
@@ -216,9 +271,9 @@ class ZhengfangHttpClient:
                 port_specified=False,
                 domain=normalized_domain,
                 domain_specified=not host_only,
-                domain_initial_dot=False,
-                path=normalized_path,
-                path_specified=path is not None,
+                domain_initial_dot=normalized_domain.startswith("."),
+                path=path,
+                path_specified=True,
                 secure=True if item.get("secure") is None else bool(item.get("secure")),
                 expires=expires,
                 discard=expires is None,
@@ -228,6 +283,36 @@ class ZhengfangHttpClient:
                 rfc2109=False,
             ))
         self._cookies = jar
+        self._observed_cookies = observed
+        self._allowed_origins = canonical_origins
+
+    def _request_headers(self, url: str, *, referer: Optional[str] = None, form_post: bool = False) -> dict:
+        headers = self._build_headers(referer=referer, form_post=form_post)
+        if any(str(name).lower() == "cookie" for name in headers):
+            return headers
+        probe = httpx.Request("GET", url)
+        self._cookies.set_cookie_header(probe)
+        known_header = probe.headers.get("cookie", "")
+        known_names = {
+            part.split("=", 1)[0].strip()
+            for part in known_header.split(";")
+            if "=" in part
+        }
+        target_origin = self._exact_https_origin(url)
+        observed_pairs = [
+            f"{item['name']}={item['value']}"
+            for item in self._observed_cookies
+            if self._exact_https_origin(item["source_url"]) == target_origin
+            and item["name"] not in known_names
+        ]
+        cookie_header = "; ".join(([known_header] if known_header else []) + observed_pairs)
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+        return headers
+
+    def _validate_request_origin(self, url: str) -> None:
+        if self._exact_https_origin(url) not in self._allowed_origins:
+            raise SSRFBlockedError("request URL is outside the exact allowed origin")
 
     def _build_headers(self, *, referer: Optional[str] = None, form_post: bool = False) -> dict:
         headers = {
@@ -249,9 +334,10 @@ class ZhengfangHttpClient:
     async def get(self, path_or_url: str, *, params: Optional[dict] = None, referer: Optional[str] = None) -> HttpResponse:
         url = safe_join_url(self._base_url, path_or_url) if not path_or_url.startswith(("http://", "https://")) else path_or_url
         assert_safe_url(url, allow_private=self._allow_private)
+        self._validate_request_origin(url)
         try:
             async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
-                resp = await client.get(url, params=params, headers=self._build_headers(referer=referer))
+                resp = await client.get(url, params=params, headers=self._request_headers(url, referer=referer))
                 self._validate_redirect_target(resp, url)
                 self._cookies.update(resp.cookies)
                 return self._wrap(resp, url)
@@ -277,13 +363,14 @@ class ZhengfangHttpClient:
     ) -> HttpResponse:
         url = safe_join_url(self._base_url, path_or_url) if not path_or_url.startswith(("http://", "https://")) else path_or_url
         assert_safe_url(url, allow_private=self._allow_private)
+        self._validate_request_origin(url)
         try:
             async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
                 resp = await client.post(
                     url,
                     data=data,
                     params=params,
-                    headers=self._build_headers(referer=referer, form_post=form_post),
+                    headers=self._request_headers(url, referer=referer, form_post=form_post),
                 )
                 self._validate_redirect_target(resp, url)
                 self._cookies.update(resp.cookies)
