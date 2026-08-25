@@ -2,10 +2,10 @@ package com.example.campusai.ui.screens.counselor
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Balance
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.outlined.Balance
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.WorkOutline
 
 enum class CpmMessageStatus { GENERATING, COMPLETED, ERROR }
 
@@ -28,14 +28,14 @@ data class CpmPrompt(
 
 object CpmPromptCatalog {
     val all: List<CpmPrompt> = listOf(
-        CpmPrompt("freshman", "大一应该\n怎么规划", "大一应该怎么规划？", Icons.Default.School),
-        CpmPrompt("graduate", "我应该读研\n还是就业", "我应该读研还是就业？", Icons.Default.Work),
-        CpmPrompt("club", "社团应该\n怎么选", "社团应该怎么选？", Icons.Default.Groups),
-        CpmPrompt("balance", "怎么平衡\n学习和生活", "怎么平衡学习和生活？", Icons.Default.Balance),
-        CpmPrompt("internship", "大学期间如何\n准备实习", "大学期间应该如何准备实习？", Icons.Default.Work),
-        CpmPrompt("direction", "找不到方向\n怎么办", "大学里暂时找不到方向怎么办？", Icons.Default.School),
-        CpmPrompt("friendship", "怎样建立健康的\n同学关系", "怎样建立健康的同学关系？", Icons.Default.Groups),
-        CpmPrompt("habits", "如何养成稳定的\n学习习惯", "如何养成稳定的学习习惯？", Icons.Default.Balance),
+        CpmPrompt("freshman", "大一应该\n怎么规划", "大一应该怎么规划？", Icons.Outlined.School),
+        CpmPrompt("graduate", "我应该读研\n还是就业", "我应该读研还是就业？", Icons.Outlined.WorkOutline),
+        CpmPrompt("club", "社团应该\n怎么选", "社团应该怎么选？", Icons.Outlined.Groups),
+        CpmPrompt("balance", "怎么平衡\n学习和生活", "怎么平衡学习和生活？", Icons.Outlined.Balance),
+        CpmPrompt("internship", "大学期间如何\n准备实习", "大学期间应该如何准备实习？", Icons.Outlined.WorkOutline),
+        CpmPrompt("direction", "找不到方向\n怎么办", "大学里暂时找不到方向怎么办？", Icons.Outlined.School),
+        CpmPrompt("friendship", "怎样建立健康的\n同学关系", "怎样建立健康的同学关系？", Icons.Outlined.Groups),
+        CpmPrompt("habits", "如何养成稳定的\n学习习惯", "如何养成稳定的学习习惯？", Icons.Outlined.Balance),
     )
 
     fun batch(offset: Int, size: Int = 4): List<CpmPrompt> =

@@ -1,6 +1,10 @@
 package com.example.campusai.ui.screens.counselor
 
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Build
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -17,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,7 +29,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,9 +40,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -56,6 +64,7 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.yield
+import java.util.Locale
 
 private val CpmBlue = Color(0xFF385AF6)
 private val CpmViolet = Color(0xFF8152F6)
@@ -68,6 +77,17 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val accessToken by repository.accessToken.collectAsStateWithLifecycle()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val renderMode = remember(context) {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        selectDigitalHumanRenderMode(
+            fingerprint = Build.FINGERPRINT,
+            model = Build.MODEL,
+            supportedAbis = Build.SUPPORTED_ABIS.toList(),
+            lowRamDevice = activityManager.isLowRamDevice,
+        )
+    }
 
     LaunchedEffect(initialPrompt) {
         if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
@@ -76,6 +96,8 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
         state = state,
         reduceMotion = reduceMotion,
         accessToken = accessToken.orEmpty(),
+        mockMode = mockMode,
+        renderMode = renderMode,
         onInputChange = viewModel::updateInput,
         onSend = viewModel::send,
         onAsk = viewModel::send,
@@ -90,6 +112,8 @@ private fun CpmCounselorContent(
     state: CpmCounselorUiState,
     reduceMotion: Boolean,
     accessToken: String,
+    mockMode: Boolean,
+    renderMode: DigitalHumanRenderMode,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onAsk: (String) -> Unit,
@@ -119,7 +143,7 @@ private fun CpmCounselorContent(
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 state = listState,
-                contentPadding = PaddingValues(18.dp, 18.dp, 18.dp, 16.dp),
+                contentPadding = PaddingValues(18.dp, 14.dp, 18.dp, 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item("brand") {
@@ -127,10 +151,20 @@ private fun CpmCounselorContent(
                         visible = !state.chatActive,
                         enter = fadeIn(),
                         exit = fadeOut(tween(if (reduceMotion) 0 else 180)) + shrinkVertically(),
-                    ) { CpmHeader() }
+                    ) { CpmHeader(mockMode) }
                 }
                 item("digital-human") {
-                    CpmDigitalHumanCard(state, accessToken, reduceMotion, onPlayback)
+                    CpmDigitalHumanCard(
+                        sending = state.sending,
+                        speechText = state.speechText,
+                        speechRequestId = state.speechRequestId,
+                        playbackCommand = state.playbackCommand,
+                        playbackCommandId = state.playbackCommandId,
+                        accessToken = accessToken,
+                        renderMode = renderMode,
+                        reduceMotion = reduceMotion,
+                        onPlayback = onPlayback,
+                    )
                 }
                 item("recommendations") {
                     AnimatedVisibility(
@@ -150,18 +184,37 @@ private fun CpmCounselorContent(
 }
 
 @Composable
-private fun CpmHeader() = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Row(verticalAlignment = Alignment.Top) {
-        Text("CPM", color = TextPrimary, fontSize = 38.sp, fontWeight = FontWeight.Black)
-        Text("✦", color = CpmBlue, fontSize = 24.sp, modifier = Modifier.padding(start = 7.dp, top = 1.dp))
+private fun CpmHeader(mockMode: Boolean) = Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+        Row(verticalAlignment = Alignment.Top) {
+            Text("CPM", color = TextPrimary, fontSize = 36.sp, fontWeight = FontWeight.Black)
+            Text("✦", color = CpmBlue, fontSize = 23.sp, modifier = Modifier.padding(start = 7.dp, top = 1.dp))
+        }
+        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(8.dp).clip(CircleShape)
+                    .background(if (mockMode) CpmViolet else Color(0xFFFF5B36)),
+            )
+            Text(
+                if (mockMode) "演示模式" else "真实后端",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 7.dp),
+            )
+        }
     }
-    Text("校园问题，随时来聊一聊", color = Muted, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+    Text("校园问题，随时来聊一聊", color = Muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
 }
 
 @Composable
 private fun CpmDigitalHumanCard(
-    state: CpmCounselorUiState,
+    sending: Boolean,
+    speechText: String,
+    speechRequestId: Int,
+    playbackCommand: DigitalHumanCommand,
+    playbackCommandId: Int,
     accessToken: String,
+    renderMode: DigitalHumanRenderMode,
     reduceMotion: Boolean,
     onPlayback: (DigitalHumanCommand) -> Unit,
 ) {
@@ -169,57 +222,89 @@ private fun CpmDigitalHumanCard(
     // leave, but the avatar and all three playback controls remain full-size.
     val compact = false
     val duration = if (reduceMotion) 0 else 280
-    val cardHeight by animateDpAsState(if (compact) 78.dp else 250.dp, tween(duration), label = "cardHeight")
-    val avatarSize by animateDpAsState(if (compact) 58.dp else 160.dp, tween(duration), label = "avatarSize")
-    val cardRadius by animateDpAsState(if (compact) 24.dp else 31.dp, tween(duration), label = "cardRadius")
     BoxWithConstraints(
-        Modifier.fillMaxWidth().height(cardHeight)
-            .shadow(20.dp, RoundedCornerShape(cardRadius), ambientColor = Color(0x1A4B5DAC), spotColor = Color(0x144B5DAC))
-            .clip(RoundedCornerShape(cardRadius))
-            .background(Brush.linearGradient(listOf(Color(0xF8FFFFFF), Color(0xFFF2F2FF), Color(0xF8FFFFFF))))
-            .border(1.dp, Color.White, RoundedCornerShape(cardRadius)),
+        Modifier.fillMaxWidth(),
     ) {
+        val metrics = cpmHeroMetrics(maxWidth.value.toInt())
+        val cardHeight by animateDpAsState(if (compact) 78.dp else metrics.cardHeightDp.dp, tween(duration), label = "cardHeight")
+        val avatarSize by animateDpAsState(if (compact) 58.dp else metrics.avatarSizeDp.dp, tween(duration), label = "avatarSize")
+        val cardRadius by animateDpAsState(if (compact) 24.dp else 28.dp, tween(duration), label = "cardRadius")
+        val avatarOverflow = avatarSize * ((metrics.avatarContainerScale - 1f) / 2f)
         Row(
-            Modifier.fillMaxSize().padding(if (compact) 10.dp else 18.dp),
+            Modifier.fillMaxWidth().height(cardHeight)
+                .shadow(20.dp, RoundedCornerShape(cardRadius), ambientColor = Color(0x1A4B5DAC), spotColor = Color(0x144B5DAC))
+                .clip(RoundedCornerShape(cardRadius))
+                .background(Brush.linearGradient(listOf(Color(0xF8FFFFFF), Color(0xFFF2F2FF), Color(0xF8FFFFFF))))
+                .border(1.dp, Color.White, RoundedCornerShape(cardRadius))
+                .padding(if (compact) 10.dp else metrics.contentPaddingDp.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else metrics.itemGapDp.dp),
         ) {
             Box(
-                Modifier.size(avatarSize).graphicsLayer { shape = CircleShape; clip = true }
-                    .background(Brush.radialGradient(listOf(Color.White, Color(0xFFE3E7FF))))
-                    .border(2.dp, Color.White, CircleShape),
+                Modifier.size(avatarSize),
             ) {
-                DigitalHumanStage(
-                    apiBaseUrl = BuildConfig.API_BASE_URL,
-                    accessToken = accessToken,
-                    speechText = state.speechText,
-                    speechRequestId = state.speechRequestId,
-                    command = state.playbackCommand,
-                    commandRequestId = state.playbackCommandId,
-                )
-                val needsNativeAvatar = Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
-                    Build.MODEL.contains("sdk_gphone", ignoreCase = true) ||
-                    Build.MODEL.contains("Emulator", ignoreCase = true)
-                if (needsNativeAvatar) {
-                    Image(
-                        painter = painterResource(R.drawable.cpm_avatar_fallback),
-                        contentDescription = "CPM 数字人",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = 1.04f
-                            scaleY = 1.04f
-                            // Keep the ears and face high in frame while retaining both sleeves.
-                            translationY = size.height * 0.10f
-                        },
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = metrics.avatarContainerScale
+                        scaleY = metrics.avatarContainerScale
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        shape = CircleShape
+                        clip = true
+                    }
+                        .background(Brush.radialGradient(listOf(Color.White, Color(0xFFE3E7FF))))
+                        .border(2.dp, Color.White, CircleShape),
+                ) {
+                    if (shouldCreateEmbeddedDigitalHuman(renderMode)) {
+                        DigitalHumanStage(
+                            apiBaseUrl = BuildConfig.API_BASE_URL,
+                            accessToken = accessToken,
+                            speechText = speechText,
+                            speechRequestId = speechRequestId,
+                            command = playbackCommand,
+                            commandRequestId = playbackCommandId,
+                        )
+                    } else {
+                        NativeDigitalHumanPlayback(
+                            speechText = speechText,
+                            speechRequestId = speechRequestId,
+                            command = playbackCommand,
+                            commandRequestId = playbackCommandId,
+                        )
+                    }
+                    if (renderMode == DigitalHumanRenderMode.NATIVE_COMPAT) {
+                        Image(
+                            painter = painterResource(R.drawable.cpm_avatar_fallback),
+                            contentDescription = "CPM 数字人",
+                            contentScale = ContentScale.Crop,
+                            alignment = if (metrics.alignAvatarToTop) Alignment.TopCenter else Alignment.Center,
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                scaleX = metrics.avatarScale
+                                scaleY = metrics.avatarScale
+                                translationY = size.height * metrics.avatarVerticalOffsetFraction
+                            },
+                        )
+                    }
+                }
+                Box(
+                    Modifier.align(Alignment.BottomStart).offset(x = -avatarOverflow - 2.dp, y = 2.dp)
+                        .size(metrics.sparkleBadgeSizeDp.dp).shadow(8.dp, CircleShape)
+                        .clip(CircleShape).background(Color.White).border(1.dp, Color(0xFFF1F3FF), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = CpmBlue,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
             if (compact) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("你好，我是CPM", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(if (state.sending) "正在生成回答…" else "尽管提问！", color = if (state.sending) CpmBlue else Muted, fontSize = 12.sp)
+                    Text(if (sending) "正在生成回答…" else "尽管提问！", color = if (sending) CpmBlue else Muted, fontSize = 12.sp)
                 }
-                CpmMiniControl(Icons.Default.VolumeOff, "静音") { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
+                CpmMiniControl(Icons.AutoMirrored.Filled.VolumeOff, "静音") { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
                 CpmMiniControl(Icons.Default.PauseCircleOutline, "暂停") { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
             } else {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
@@ -227,16 +312,16 @@ private fun CpmDigitalHumanCard(
                         "你好，我是CPM",
                         style = TextStyle(
                             brush = Brush.horizontalGradient(listOf(CpmBlue, CpmViolet)),
-                            fontSize = 23.sp,
+                            fontSize = 21.sp,
                             fontWeight = FontWeight.Black,
                         ),
                         maxLines = 1,
                     )
-                    Text("尽管提问！", color = Muted, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp, bottom = 18.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CpmControl(Icons.Default.VolumeOff, "静音", Modifier.weight(1f)) { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
-                        CpmControl(Icons.Default.PauseCircleOutline, "暂停", Modifier.weight(1f)) { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
-                        CpmControl(Icons.Default.Replay, "重播", Modifier.weight(1f)) { onPlayback(DigitalHumanCommand.REPLAY) }
+                    Text("尽管提问！", color = Muted, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CpmControl(Icons.AutoMirrored.Filled.VolumeOff, "静音", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
+                        CpmControl(Icons.Default.PauseCircleOutline, "暂停", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
+                        CpmControl(Icons.Default.Replay, "重播", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.REPLAY) }
                     }
                 }
             }
@@ -245,15 +330,82 @@ private fun CpmDigitalHumanCard(
 }
 
 @Composable
-private fun CpmControl(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+private fun CpmControl(icon: ImageVector, label: String, modifier: Modifier, heightDp: Int, onClick: () -> Unit) {
     Column(
-        modifier.height(72.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xA6FFFFFF))
-            .border(1.dp, CpmLine, RoundedCornerShape(18.dp)).clickable(onClick = onClick),
+        modifier.height(heightDp.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xA6FFFFFF))
+            .border(1.dp, CpmLine, RoundedCornerShape(16.dp)).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, label, tint = CpmBlue, modifier = Modifier.size(25.dp))
-        Text(label, color = Color(0xFF596785), fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
+        Icon(icon, label, tint = CpmBlue, modifier = Modifier.size(23.dp))
+        Text(label, color = Color(0xFF596785), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun NativeDigitalHumanPlayback(
+    speechText: String,
+    speechRequestId: Int,
+    command: DigitalHumanCommand,
+    commandRequestId: Int,
+) {
+    // Keep the initial hero allocation-free on compatibility devices. The system
+    // speech engine is created only when there is actually something to play.
+    if (speechRequestId <= 0 && commandRequestId <= 0) return
+
+    val context = LocalContext.current.applicationContext
+    var ready by remember { mutableStateOf(false) }
+    var muted by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var lastSpeechText by remember { mutableStateOf("") }
+    val textToSpeech = remember(context) {
+        TextToSpeech(context) { status -> ready = status == TextToSpeech.SUCCESS }
+    }
+
+    fun speak(text: String) {
+        if (!ready || muted || text.isBlank()) return
+        val params = Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f)
+        }
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, "cpm-$speechRequestId")
+    }
+
+    LaunchedEffect(ready) {
+        if (ready) {
+            textToSpeech.language = Locale.SIMPLIFIED_CHINESE
+            textToSpeech.setSpeechRate(0.96f)
+        }
+    }
+    LaunchedEffect(ready, speechRequestId) {
+        if (ready && speechRequestId > 0 && speechText.isNotBlank()) {
+            lastSpeechText = speechText
+            paused = false
+            speak(speechText)
+        }
+    }
+    LaunchedEffect(ready, commandRequestId) {
+        if (!ready || commandRequestId <= 0) return@LaunchedEffect
+        when (command) {
+            DigitalHumanCommand.TOGGLE_MUTE -> {
+                muted = !muted
+                if (muted) textToSpeech.stop() else if (!paused) speak(lastSpeechText)
+            }
+            DigitalHumanCommand.TOGGLE_PAUSE -> {
+                paused = !paused
+                if (paused) textToSpeech.stop() else speak(lastSpeechText)
+            }
+            DigitalHumanCommand.REPLAY -> {
+                paused = false
+                speak(lastSpeechText)
+            }
+            DigitalHumanCommand.NONE -> Unit
+        }
+    }
+    DisposableEffect(textToSpeech) {
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
     }
 }
 
@@ -271,7 +423,11 @@ private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Un
             Text("你可以这样问", color = TextPrimary, fontSize = 21.sp, fontWeight = FontWeight.Black)
             Text("✦", color = CpmViolet, fontSize = 16.sp, modifier = Modifier.padding(start = 5.dp, bottom = 7.dp))
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onShuffle) {
+            Row(
+                Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onShuffle)
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text("换一批", color = Muted, fontSize = 13.sp)
                 Icon(Icons.Default.Refresh, null, tint = Muted, modifier = Modifier.padding(start = 4.dp).size(17.dp))
             }
@@ -280,7 +436,7 @@ private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Un
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { question ->
                     Row(
-                        Modifier.weight(1f).heightIn(min = 88.dp)
+                        Modifier.weight(1f).height(CPM_RECOMMENDATION_CARD_HEIGHT_DP.dp)
                             .shadow(10.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x0F41518C), spotColor = Color(0x0F41518C))
                             .clip(RoundedCornerShape(22.dp)).background(Color(0xEFFFFFFF))
                             .border(1.dp, CpmLine, RoundedCornerShape(22.dp)).clickable { onAsk(question.prompt) }.padding(12.dp),
@@ -290,6 +446,7 @@ private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Un
                             Icon(question.icon, null, tint = CpmBlue, modifier = Modifier.size(23.dp))
                         }
                         Text(question.label, Modifier.padding(start = 10.dp).weight(1f), color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -357,27 +514,50 @@ private fun CpmStreamingCursor() {
 @Composable
 private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().background(Color(0xEFFFFFFF), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .border(1.dp, Color.White, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).imePadding().padding(horizontal = 14.dp, vertical = 11.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            OutlinedTextField(
-                value, onValueChange, Modifier.weight(1f),
-                placeholder = { Text("✦ 输入你想聊的问题…", color = Muted, fontSize = 14.sp) }, maxLines = 3, shape = RoundedCornerShape(22.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = CpmBlue, unfocusedBorderColor = CpmLine,
-                    focusedContainerColor = Color.White, unfocusedContainerColor = Color(0xEFFFFFFF), cursorColor = CpmBlue,
-                ),
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = CPM_COMPOSER_MIN_HEIGHT_DP.dp)
+                .shadow(12.dp, RoundedCornerShape(34.dp), ambientColor = Color(0x10415A9A), spotColor = Color(0x10415A9A))
+                .clip(RoundedCornerShape(34.dp)).background(Color(0xF8FFFFFF))
+                .border(1.dp, CpmLine, RoundedCornerShape(34.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(38.dp).clip(CircleShape).background(Color(0xFFF8F9FF))
+                    .border(1.dp, CpmLine, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.AutoAwesome, null, tint = CpmViolet, modifier = Modifier.size(20.dp))
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp, lineHeight = 20.sp),
+                cursorBrush = SolidColor(CpmBlue),
+                maxLines = 3,
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) Text("输入你的校园事务问题…", color = Muted, fontSize = 14.sp)
+                        innerTextField()
+                    }
+                },
             )
             FilledIconButton(
-                onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(54.dp), shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = CpmBlue, contentColor = Color.White, disabledContainerColor = PrimarySoft),
-            ) { Icon(Icons.AutoMirrored.Filled.Send, "发送", Modifier.size(23.dp)) }
+                onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(44.dp), shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = CpmBlue,
+                    contentColor = Color.White,
+                    disabledContainerColor = CpmBlue,
+                    disabledContentColor = Color.White,
+                ),
+            ) { Icon(Icons.Default.NearMe, "发送", Modifier.size(23.dp)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Shield, null, tint = Muted, modifier = Modifier.size(13.dp))
-            Text(" 仅提供成长建议，不替代学校正式通知或专业咨询", color = Muted, fontSize = 10.sp, maxLines = 1)
+            Text(" 仅提供校园事务辅助，不替代学校正式通知或专业咨询", color = Muted, fontSize = 10.sp, maxLines = 1)
         }
     }
 }
