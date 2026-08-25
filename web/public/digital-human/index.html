@@ -8,16 +8,62 @@
     html, body, #unity-container, #unity-canvas { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body { background: #e8edfb; }
     #unity-canvas { display: block; background: #e8edfb; }
+    #fallback-avatar { position: fixed; inset: 0; width: 100%; height: 100%; background: #e8edfb; }
+    #fallback-avatar[hidden] { display: none; }
     #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #65739a; font: 13px system-ui, sans-serif; background: #e8edfb; }
     #loading[hidden] { display: none; }
   </style>
 </head>
 <body>
   <div id="unity-container"><canvas id="unity-canvas" tabindex="-1"></canvas></div>
+  <canvas id="fallback-avatar" hidden aria-label="CPM 数字人兼容画面"></canvas>
   <div id="loading">正在载入数字人…</div>
   <script>
     const canvas = document.querySelector("#unity-canvas");
+    const fallbackCanvas = document.querySelector("#fallback-avatar");
+    const fallbackContext = fallbackCanvas.getContext("2d");
     const loading = document.querySelector("#loading");
+    const fallbackImage = new Image();
+    const forceFallback = new URLSearchParams(window.location.search).get("fallback") === "1";
+    let fallbackVisible = false;
+    let fallbackLevel = 0;
+
+    fallbackImage.src = "./fallback-avatar.png";
+
+    function drawFallback() {
+      if (!fallbackVisible || !fallbackImage.complete || !fallbackImage.naturalWidth) return;
+      const ratio = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(1, Math.round(fallbackCanvas.clientWidth * ratio));
+      const height = Math.max(1, Math.round(fallbackCanvas.clientHeight * ratio));
+      if (fallbackCanvas.width !== width || fallbackCanvas.height !== height) {
+        fallbackCanvas.width = width;
+        fallbackCanvas.height = height;
+      }
+      const sourceSize = Math.min(fallbackImage.naturalWidth, fallbackImage.naturalHeight);
+      const sourceX = (fallbackImage.naturalWidth - sourceSize) / 2;
+      const sourceY = fallbackImage.naturalHeight * 0.02;
+      fallbackContext.clearRect(0, 0, width, height);
+      fallbackContext.drawImage(fallbackImage, sourceX, sourceY, sourceSize, sourceSize, 0, 0, width, height);
+
+      // Audio-driven mouth for WebViews whose GPU cannot render the Unity URP shaders.
+      const mouthOpen = Math.max(0, Math.min(1, fallbackLevel));
+      fallbackContext.save();
+      fallbackContext.fillStyle = "rgba(116, 52, 72, 0.82)";
+      fallbackContext.beginPath();
+      fallbackContext.ellipse(width * 0.50, height * 0.32, width * 0.018, height * (0.004 + mouthOpen * 0.018), 0, 0, Math.PI * 2);
+      fallbackContext.fill();
+      fallbackContext.restore();
+    }
+
+    function showFallback() {
+      fallbackVisible = true;
+      fallbackCanvas.hidden = false;
+      canvas.style.visibility = "hidden";
+      drawFallback();
+    }
+
+    fallbackImage.addEventListener("load", drawFallback);
+    window.addEventListener("resize", drawFallback);
     const buildUrl = "Build";
     const config = {
       dataUrl: buildUrl + "/digital-human.data",
@@ -31,24 +77,59 @@
 
     const script = document.createElement("script");
     script.src = buildUrl + "/digital-human.loader.js";
+    const parentOrigin = window.location.origin;
+
+    function handleSpeechMessage(event, instance = null) {
+      if (event.origin !== parentOrigin || event.data?.source !== "campusmate") return;
+      const { type, value } = event.data;
+      if (type === "speech-level") {
+        fallbackLevel = Number(value) || 0;
+        drawFallback();
+        instance?.SendMessage("Rusk", "SetSpeechLevel", String(value));
+      }
+      if (type === "speech-state") instance?.SendMessage("Rusk", "SetSpeaking", value ? "1" : "0");
+      if (type === "speech-stop") {
+        fallbackLevel = 0;
+        drawFallback();
+        instance?.SendMessage("Rusk", "StopSpeech");
+      }
+    }
+
     script.onload = () => createUnityInstance(canvas, config, progress => {
       loading.textContent = `正在载入数字人… ${Math.round(progress * 100)}%`;
     }).then(instance => {
       loading.hidden = true;
-      const parentOrigin = window.location.origin;
-      window.addEventListener("message", event => {
-        if (event.origin !== parentOrigin || event.data?.source !== "campusmate") return;
-        const { type, value } = event.data;
-        if (type === "speech-level") instance.SendMessage("Rusk", "SetSpeechLevel", String(value));
-        if (type === "speech-state") instance.SendMessage("Rusk", "SetSpeaking", value ? "1" : "0");
-        if (type === "speech-stop") instance.SendMessage("Rusk", "StopSpeech");
-      });
+      window.addEventListener("message", event => handleSpeechMessage(event, instance));
       window.parent.postMessage({ source: "campusmate-unity", type: "ready" }, parentOrigin);
+
+      // Some Android/HarmonyOS WebViews create WebGL successfully but cannot
+      // render URP shaders. Unity then keeps running against an empty frame.
+      // A pending GL error is a reliable signal for that device class.
+      window.setTimeout(() => {
+        const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+        if (!gl) {
+          showFallback();
+          return;
+        }
+        const rendererInfo = gl.getExtension("WEBGL_debug_renderer_info");
+        const renderer = rendererInfo
+          ? String(gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL) || "")
+          : "";
+        const softwareRenderer = /swiftshader|llvmpipe|software/i.test(renderer);
+        if (softwareRenderer || gl.getError() !== gl.NO_ERROR) showFallback();
+      }, 1200);
     }).catch(error => {
       loading.textContent = "数字人载入失败";
       window.parent.postMessage({ source: "campusmate-unity", type: "error", message: String(error) }, window.location.origin);
     });
-    document.body.appendChild(script);
+    if (forceFallback) {
+      showFallback();
+      loading.hidden = true;
+      window.addEventListener("message", handleSpeechMessage);
+      window.parent.postMessage({ source: "campusmate-unity", type: "ready" }, parentOrigin);
+    } else {
+      document.body.appendChild(script);
+    }
   </script>
 </body>
 </html>

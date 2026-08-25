@@ -1,5 +1,6 @@
 package com.example.campusai.ui.screens.counselor
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -15,6 +16,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,7 +36,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.campusai.BuildConfig
+import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
@@ -160,10 +165,12 @@ private fun CpmDigitalHumanCard(
     reduceMotion: Boolean,
     onPlayback: (DigitalHumanCommand) -> Unit,
 ) {
-    val compact = state.chatActive
+    // Keep the live character visible while chatting. The recommendations may
+    // leave, but the avatar and all three playback controls remain full-size.
+    val compact = false
     val duration = if (reduceMotion) 0 else 280
-    val cardHeight by animateDpAsState(if (compact) 78.dp else 236.dp, tween(duration), label = "cardHeight")
-    val avatarSize by animateDpAsState(if (compact) 58.dp else 166.dp, tween(duration), label = "avatarSize")
+    val cardHeight by animateDpAsState(if (compact) 78.dp else 250.dp, tween(duration), label = "cardHeight")
+    val avatarSize by animateDpAsState(if (compact) 58.dp else 160.dp, tween(duration), label = "avatarSize")
     val cardRadius by animateDpAsState(if (compact) 24.dp else 31.dp, tween(duration), label = "cardRadius")
     BoxWithConstraints(
         Modifier.fillMaxWidth().height(cardHeight)
@@ -190,6 +197,22 @@ private fun CpmDigitalHumanCard(
                     command = state.playbackCommand,
                     commandRequestId = state.playbackCommandId,
                 )
+                val needsNativeAvatar = Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+                    Build.MODEL.contains("sdk_gphone", ignoreCase = true) ||
+                    Build.MODEL.contains("Emulator", ignoreCase = true)
+                if (needsNativeAvatar) {
+                    Image(
+                        painter = painterResource(R.drawable.cpm_avatar_fallback),
+                        contentDescription = "CPM 数字人",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            scaleX = 1.04f
+                            scaleY = 1.04f
+                            // Keep the ears and face high in frame while retaining both sleeves.
+                            translationY = size.height * 0.10f
+                        },
+                    )
+                }
             }
             if (compact) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
