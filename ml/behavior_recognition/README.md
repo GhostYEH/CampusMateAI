@@ -93,3 +93,18 @@ Interrupted training can be restarted safely. Existing ROI cache files and downl
 - Validation selects checkpoints, temperature, and rejection thresholds. Test is reserved for the locked candidate.
 - The public dataset contains distant multi-student classroom views. Offline gains do not establish front-camera or real-device gains.
 - Do not copy the candidate ONNX into Android assets until real front-camera evaluation, device latency, temperature, power, and reminder replay all pass the project route criteria.
+
+## Target front-camera event workflow
+
+New front-camera annotations use `configs/target_front_camera.yaml` and
+`event_manifest.build_event_manifest`. The builder requires explicit consent,
+keeps each subject in one split, rejects duplicated videos attributed to
+different subjects, and excludes overlapping contradictory labels.
+
+Product evaluation folds READ/WRITE into `STUDY_ACTIVITY`; `UNCERTAIN` remains
+an abstention state and is never a trainable class. Frame outputs pass through
+`temporal.BehaviorEventAggregator`, which applies phone-entry duration, exit
+hysteresis, and reminder cooldown. Promotion is decided by
+`promotion_gate.evaluate_promotion`, using event Macro-F1, PHONE event
+Precision/Recall, false reminders per hour, p95 detection latency, coverage,
+and per-device precision. Frame Accuracy alone cannot approve a candidate.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import random
 from collections import Counter
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Any
 
 import torch
 from PIL import Image
-from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler, WeightedRandomSampler
+from torch.utils.data import BatchSampler, ConcatDataset, DataLoader, Dataset, Sampler, WeightedRandomSampler
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
@@ -50,7 +51,10 @@ class ManifestDataset(Dataset):
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
         row = self.rows[index]
-        with Image.open(row["source_path"]) as image:
+        sample_path = row.get("source_path") or row.get("path")
+        if not sample_path:
+            raise ValueError("Manifest row has no source_path or path")
+        with Image.open(sample_path) as image:
             image.load()
             tensor = self.transform(image)
         return tensor, int(row["label_index"])
@@ -90,6 +94,85 @@ class BalancedBatchSampler(BatchSampler):
 
     def __len__(self) -> int:
         return self.batches
+
+
+class DomainBalancedBatchSampler(BatchSampler):
+    """Mix public and target-domain samples at a fixed ratio per batch."""
+
+    def __init__(
+        self,
+        public_count: int,
+        target_count: int,
+        target_ratio: float,
+        batch_size: int,
+        seed: int = 20260825,
+    ):
+        if public_count <= 0 or target_count <= 0:
+            raise ValueError("Both public and target domains must contain samples")
+        if batch_size < 2 or not 0.0 < target_ratio < 1.0:
+            raise ValueError("Domain-balanced batches need batch_size >= 2 and 0 < target_ratio < 1")
+        self.public_count = public_count
+        self.target_count = target_count
+        self.batch_size = batch_size
+        self.seed = seed
+        self.target_per_batch = min(batch_size - 1, max(1, round(batch_size * target_ratio)))
+        self.public_per_batch = batch_size - self.target_per_batch
+        self.batches = max(
+            math.ceil(public_count / self.public_per_batch),
+            math.ceil(target_count / self.target_per_batch),
+        )
+
+    def __iter__(self):
+        generator = torch.Generator().manual_seed(self.seed)
+        for _ in range(self.batches):
+            public = torch.randint(self.public_count, (self.public_per_batch,), generator=generator).tolist()
+            target = (
+                torch.randint(self.target_count, (self.target_per_batch,), generator=generator)
+                + self.public_count
+            ).tolist()
+            batch = public + target
+            order = torch.randperm(len(batch), generator=generator).tolist()
+            yield [batch[index] for index in order]
+
+    def __len__(self) -> int:
+        return self.batches
+
+
+class MixedDomainDataset(ConcatDataset):
+    @property
+    def targets(self) -> list[int]:
+        return [target for dataset in self.datasets for target in dataset.targets]
+
+
+def create_mixed_domain_loader(
+    public_manifest_path: str | Path,
+    target_manifest_path: str | Path,
+    split: str,
+    config: dict,
+    training: bool,
+    batch_size_override: int | None = None,
+) -> tuple[MixedDomainDataset, DataLoader]:
+    transform = build_transforms(config, training=training)
+    public_dataset = ManifestDataset(public_manifest_path, split, transform)
+    target_dataset = ManifestDataset(target_manifest_path, split, transform)
+    dataset = MixedDomainDataset([public_dataset, target_dataset])
+    batch_size = batch_size_override or int(config["batch_size"])
+    sampler = DomainBalancedBatchSampler(
+        public_count=len(public_dataset),
+        target_count=len(target_dataset),
+        target_ratio=float(config.get("target_domain_ratio", 0.5)),
+        batch_size=batch_size,
+        seed=int(config.get("seed", 20260825)),
+    )
+    workers = int(config.get("num_workers", 0))
+    loader = DataLoader(
+        dataset,
+        batch_sampler=sampler,
+        num_workers=workers,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=workers > 0,
+    )
+    return dataset, loader
 
 
 def build_transforms(config: dict, training: bool):

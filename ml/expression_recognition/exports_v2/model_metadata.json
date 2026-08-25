@@ -24,13 +24,13 @@
   "model_size_bytes": 11263264,
   "confidence_threshold": 0.7,
   "class_thresholds": {
-    "angry": 0.78,
+    "angry": 0.81,
     "disgust": 0.91,
-    "fear": 0.93,
+    "fear": 0.8,
     "happy": 0.3,
-    "neutral": 0.58,
+    "neutral": 0.83,
     "sad": 0.68,
-    "surprise": 0.75
+    "surprise": 0.78
   },
   "unknown_policy": "below threshold, diffuse probability, or unstable sequence",
   "no_face_policy": "produced by ML Kit face detection, not by classifier",

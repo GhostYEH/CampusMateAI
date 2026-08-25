@@ -17,7 +17,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
-from .data import class_weights, create_loader
+from .data import class_weights, create_loader, create_mixed_domain_loader
 from .models import build_model, parameter_count
 from .utils import load_config, save_json, seed_everything
 
@@ -220,6 +220,10 @@ def train(args: argparse.Namespace) -> Path:
     resolved_config = dict(config)
     resolved_config.update({
         "manifest": str(Path(args.manifest).resolve()),
+        "target_manifest": (
+            str(Path(args.target_manifest).resolve())
+            if getattr(args, "target_manifest", None) is not None else None
+        ),
         "device": str(device),
         "smoke": smoke,
         "batch_size": effective_batch_size,
@@ -230,11 +234,26 @@ def train(args: argparse.Namespace) -> Path:
 
     def build_loaders(batch_size: int):
         config["batch_size"] = batch_size
-        train_dataset, train_loader = create_loader(
-            args.manifest, "train", config, True, batch_size_override=batch_size,
-        )
+        target_manifest = getattr(args, "target_manifest", None)
+        if target_manifest is not None:
+            train_dataset, train_loader = create_mixed_domain_loader(
+                args.manifest,
+                target_manifest,
+                "train",
+                config,
+                True,
+                batch_size_override=batch_size,
+            )
+        else:
+            train_dataset, train_loader = create_loader(
+                args.manifest, "train", config, True, batch_size_override=batch_size,
+            )
         _, validation_loader = create_loader(
-            args.manifest, "validation", config, False, batch_size_override=batch_size,
+            target_manifest or args.manifest,
+            "validation",
+            config,
+            False,
+            batch_size_override=batch_size,
         )
         return train_dataset, train_loader, validation_loader
 
@@ -353,6 +372,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train an expression model.")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--target-manifest", type=Path,
+                        help="Optional consented target-domain manifest mixed into training; validation uses target only.")
     parser.add_argument("--output-root", type=Path, default=Path("runs"))
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--resume", type=Path)

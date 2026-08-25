@@ -10,7 +10,18 @@ from scipy.optimize import minimize_scalar
 from sklearn.metrics import accuracy_score, precision_recall_curve
 
 from .constants import CLASS_NAMES
-from .metrics import expected_calibration_error, multiclass_brier_score
+from .metrics import calibrate_class_thresholds, expected_calibration_error, multiclass_brier_score
+
+
+PER_CLASS_PRECISION_TARGETS = {
+    "angry": 0.90,
+    "disgust": 0.90,
+    "fear": 0.90,
+    "happy": 0.85,
+    "neutral": 0.85,
+    "sad": 0.90,
+    "surprise": 0.85,
+}
 
 
 def softmax(logits: np.ndarray) -> np.ndarray:
@@ -77,14 +88,26 @@ def calibrate(args: argparse.Namespace) -> None:
     val_calibrated = softmax(np.log(np.clip(val_probabilities, 1e-8, 1.0)) / temperature)
     test_calibrated = softmax(np.log(np.clip(test_probabilities, 1e-8, 1.0)) / temperature)
     threshold = choose_threshold(val_calibrated, val_targets)
+    class_thresholds, class_diagnostics = calibrate_class_thresholds(
+        val_calibrated,
+        val_targets,
+        target_precision=PER_CLASS_PRECISION_TARGETS,
+        minimum_accepted=int(getattr(args, "minimum_accepted_per_class", 25)),
+    )
     thresholds = {
         "selection_split": "validation",
         "strategy": "temperature_scaled_confidence",
         "temperature": temperature,
         "uniform_confidence_threshold": threshold,
         "class_order": CLASS_NAMES,
-        "per_class_thresholds": {name: threshold for name in CLASS_NAMES},
-        "unknown_policy": "abstain when calibrated top-1 confidence is below threshold",
+        "per_class_thresholds": class_thresholds,
+        "per_class_precision_targets": PER_CLASS_PRECISION_TARGETS,
+        "per_class_enabled": {
+            name: bool(class_diagnostics[name]["enabled"])
+            for name in CLASS_NAMES
+        },
+        "per_class_diagnostics": class_diagnostics,
+        "unknown_policy": "abstain when top-1 confidence is below its class threshold or the class is disabled",
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "thresholds.json").write_text(json.dumps(thresholds, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -98,7 +121,10 @@ def calibrate(args: argparse.Namespace) -> None:
 
     pr_rows = []
     for index, name in enumerate(CLASS_NAMES):
-        precision, recall, thresholds_pr = precision_recall_curve((val_targets == index).astype(int), val_calibrated[:, index])
+        binary_targets = (val_targets == index).astype(int)
+        if not binary_targets.any():
+            continue
+        precision, recall, thresholds_pr = precision_recall_curve(binary_targets, val_calibrated[:, index])
         for precision_value, recall_value, threshold_value in zip(precision[:-1], recall[:-1], thresholds_pr):
             pr_rows.append({"class": name, "precision": float(precision_value), "recall": float(recall_value), "threshold": float(threshold_value)})
     with (args.output_dir / "per_class_precision_recall.csv").open("w", newline="", encoding="utf-8-sig") as handle:
@@ -109,7 +135,8 @@ def calibrate(args: argparse.Namespace) -> None:
     def locked_metrics(probabilities: np.ndarray, targets: np.ndarray) -> dict:
         confidence = probabilities.max(axis=1)
         predictions = probabilities.argmax(axis=1)
-        accepted = confidence >= threshold
+        required = np.asarray([class_thresholds[CLASS_NAMES[index]] for index in predictions])
+        accepted = confidence >= required
         return {
             "coverage": float(accepted.mean()),
             "accuracy_when_covered": float((predictions[accepted] == targets[accepted]).mean()) if accepted.any() else None,
@@ -155,6 +182,7 @@ def main() -> None:
     parser.add_argument("--test-predictions", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model", default="resnet18")
+    parser.add_argument("--minimum-accepted-per-class", type=int, default=25)
     calibrate(parser.parse_args())
 
 

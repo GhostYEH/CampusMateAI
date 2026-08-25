@@ -19,13 +19,13 @@
   ],
   "confidence_threshold": 0.7,
   "class_thresholds": {
-    "angry": 0.78,
+    "angry": 0.81,
     "disgust": 0.91,
-    "fear": 0.93,
+    "fear": 0.8,
     "happy": 0.3,
-    "neutral": 0.58,
+    "neutral": 0.83,
     "sad": 0.68,
-    "surprise": 0.75
+    "surprise": 0.78
   },
   "threshold_basis": "per-class validation abstention calibration targeting 0.80 precision",
   "face_crop": {

@@ -1,0 +1,19 @@
+seed: 20260825
+labels:
+  - STUDY_ACTIVITY
+  - PHONE_INTERACTION
+  - NO_VISIBLE_STUDY
+  - UNCERTAIN
+split:
+  train_fraction: 0.65
+  validation_fraction: 0.15
+  test_fraction: 0.20
+  group_key: subject_id
+  nested_sequence_keys: [session_id, video_path]
+annotation:
+  phone_requires_visible_interaction: true
+  second_review_phone_events: true
+  uncertain_on_disagreement: true
+privacy:
+  require_explicit_consent: true
+  raw_video_upload: false

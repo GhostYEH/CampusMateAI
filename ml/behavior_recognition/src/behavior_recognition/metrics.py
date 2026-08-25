@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
@@ -9,6 +12,78 @@ from sklearn.metrics import (
     f1_score,
     precision_recall_fscore_support,
 )
+
+
+@dataclass(frozen=True)
+class EventInterval:
+    label: str
+    start_ms: int
+    end_ms: int
+
+
+def _event_iou(left: EventInterval, right: EventInterval) -> float:
+    intersection = max(0, min(left.end_ms, right.end_ms) - max(left.start_ms, right.start_ms))
+    union = max(left.end_ms, right.end_ms) - min(left.start_ms, right.start_ms)
+    return intersection / union if union > 0 else 0.0
+
+
+def event_classification_report(
+    reference: list[EventInterval],
+    predicted: list[EventInterval],
+    *,
+    observed_duration_ms: int,
+    minimum_iou: float = 0.30,
+) -> dict[str, Any]:
+    """Greedily match same-label events and report product-level outcomes."""
+    matched_reference: set[int] = set()
+    matched_prediction: set[int] = set()
+    phone_latencies: list[int] = []
+    candidates: list[tuple[float, int, int]] = []
+    for reference_index, expected in enumerate(reference):
+        for prediction_index, actual in enumerate(predicted):
+            if expected.label != actual.label:
+                continue
+            overlap = _event_iou(expected, actual)
+            if overlap >= minimum_iou:
+                candidates.append((overlap, reference_index, prediction_index))
+    for _, reference_index, prediction_index in sorted(candidates, reverse=True):
+        if reference_index in matched_reference or prediction_index in matched_prediction:
+            continue
+        matched_reference.add(reference_index)
+        matched_prediction.add(prediction_index)
+        if reference[reference_index].label == "PHONE_INTERACTION":
+            phone_latencies.append(max(0, predicted[prediction_index].start_ms - reference[reference_index].start_ms))
+
+    labels = sorted({event.label for event in reference + predicted})
+    per_class: dict[str, dict[str, float | int]] = {}
+    f1_values: list[float] = []
+    for label in labels:
+        true_positive = sum(reference[index].label == label for index in matched_reference)
+        predicted_count = sum(event.label == label for event in predicted)
+        reference_count = sum(event.label == label for event in reference)
+        precision = true_positive / predicted_count if predicted_count else 0.0
+        recall = true_positive / reference_count if reference_count else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        f1_values.append(f1)
+        per_class[label] = {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "support": reference_count,
+        }
+
+    unmatched_phone = sum(
+        event.label == "PHONE_INTERACTION" and index not in matched_prediction
+        for index, event in enumerate(predicted)
+    )
+    observed_hours = observed_duration_ms / 3_600_000 if observed_duration_ms > 0 else 0.0
+    return {
+        "event_macro_f1": float(np.mean(f1_values)) if f1_values else 0.0,
+        "per_class": per_class,
+        "false_reminders_per_hour": unmatched_phone / observed_hours if observed_hours else float("inf"),
+        "phone_detection_p95_ms": float(np.percentile(phone_latencies, 95)) if phone_latencies else None,
+        "matched_event_count": len(matched_reference),
+    }
 
 
 def softmax(logits: np.ndarray, temperature: float = 1.0) -> np.ndarray:

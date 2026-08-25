@@ -17,9 +17,10 @@ from .constants import CLASS_NAMES
 def calibrate_class_thresholds(
     probabilities: np.ndarray,
     targets: np.ndarray,
-    target_precision: float = 0.80,
+    target_precision: float | dict[str, float] = 0.80,
     thresholds: list[float] | None = None,
-) -> tuple[dict[str, float], dict[str, dict[str, float]]]:
+    minimum_accepted: int = 1,
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
     """Calibrate abstention thresholds on validation data only.
 
     A prediction is accepted only when its top class also clears that class's
@@ -29,8 +30,13 @@ def calibrate_class_thresholds(
     thresholds = thresholds or [round(value, 2) for value in np.arange(0.30, 0.96, 0.01)]
     predictions = probabilities.argmax(axis=1)
     result: dict[str, float] = {}
-    diagnostics: dict[str, dict[str, float]] = {}
+    diagnostics: dict[str, dict[str, Any]] = {}
     for index, label in enumerate(CLASS_NAMES):
+        required_precision = (
+            float(target_precision.get(label, 0.80))
+            if isinstance(target_precision, dict)
+            else float(target_precision)
+        )
         candidates = []
         for threshold in thresholds:
             accepted = (predictions == index) & (probabilities[:, index] >= threshold)
@@ -44,21 +50,27 @@ def calibrate_class_thresholds(
                 "precision": precision,
                 "recall": recall,
             })
-        feasible = [row for row in candidates if row["accepted_count"] > 0 and row["precision"] >= target_precision]
-        pool = feasible or candidates
-        chosen = max(
-            pool,
-            key=lambda row: (
-                row["accepted_count"] if feasible else row["precision"],
-                row["precision"],
-                -row["threshold"],
-            ),
-        )
-        result[label] = chosen["threshold"]
+        feasible = [
+            row for row in candidates
+            if row["accepted_count"] >= minimum_accepted and row["precision"] >= required_precision
+        ]
+        if feasible:
+            chosen = max(
+                feasible,
+                key=lambda row: (row["accepted_count"], row["precision"], -row["threshold"]),
+            )
+            enabled = True
+            result[label] = chosen["threshold"]
+        else:
+            chosen = max(candidates, key=lambda row: (row["precision"], row["accepted_count"], -row["threshold"]))
+            enabled = False
+            result[label] = 1.01
         diagnostics[label] = {
             **chosen,
-            "target_precision": float(target_precision),
-            "met_target_precision": float(chosen["precision"] >= target_precision),
+            "target_precision": required_precision,
+            "minimum_accepted": minimum_accepted,
+            "met_target_precision": enabled,
+            "enabled": enabled,
         }
     return result, diagnostics
 

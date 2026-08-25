@@ -1,0 +1,19 @@
+seed: 20260825
+split:
+  train_fraction: 0.65
+  validation_fraction: 0.15
+  test_fraction: 0.20
+  group_keys: [subject_id]
+  nested_sequence_key: session_id
+required_metadata:
+  - subject_id
+  - session_id
+  - device
+  - platform
+  - lighting
+  - pose
+  - occlusion
+privacy:
+  require_explicit_consent: true
+  upload_images: false
+  retain_frames_on_device: false
