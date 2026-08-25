@@ -1,4 +1,5 @@
 import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduSyncResult } from '../data/ApiClient';
+import { EduCookieDto } from '../data/EduCookieDto';
 
 /** EduRepository — 教务系统连接层仓库。 */
 export class EduRepository {
@@ -33,8 +34,8 @@ export class EduRepository {
     return this.client.eduContinueConnection(connectionId, body);
   }
 
-  async continueWithCookies(connectionId: string, cookies: Record<string, string>, currentUrl?: string, userAgent?: string): Promise<EduConnectionDto> {
-    const body: EduConnectionContinueRequest = { action: 'CLIENT_WEBVIEW_COMPLETE', cookies, current_url: currentUrl, user_agent: userAgent };
+  async continueWithCookies(connectionId: string, cookieJar: EduCookieDto[], currentUrl?: string, userAgent?: string): Promise<EduConnectionDto> {
+    const body: EduConnectionContinueRequest = { action: 'CLIENT_WEBVIEW_COMPLETE', cookie_jar: cookieJar, current_url: currentUrl, user_agent: userAgent };
     return this.client.eduContinueConnection(connectionId, body);
   }
 

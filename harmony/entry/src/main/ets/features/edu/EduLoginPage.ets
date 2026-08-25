@@ -1,8 +1,9 @@
 import { webview } from '@kit.ArkWeb';
-import { EduRepository, parseCookieString } from '../../repository/EduRepository';
-import { EduConnectionDto } from '../../data/ApiClient';
+import { EduRepository } from '../../repository/EduRepository';
+import { EduCookieDto } from '../../data/EduCookieDto';
 import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
 import { ApiClient } from '../../data/ApiClient';
+import { cookieDtosForUrl, isAllowedEduNavigation } from './EduLoginSecurity';
 
 interface PageEndEvent { url: string }
 
@@ -19,6 +20,7 @@ export struct EduLoginPage {
   @Prop connectionId: string = '';
   @Prop apiBaseUrl: string = '';
   @Prop authToken: string = '';
+  @Prop backendAllowedOrigins: string[] = [];
   @State currentUrl: string = '';
   @State verifying: boolean = false;
   @State errorMsg: string = '';
@@ -27,6 +29,20 @@ export struct EduLoginPage {
   private controller: webview.WebviewController = new webview.WebviewController();
   onBack: () => void = () => {};
   onConnected: () => void = () => {};
+
+  private clearSensitiveLoginState(): void {
+    this.currentUrl = '';
+    this.errorMsg = '';
+    this.verifying = false;
+    try { webview.WebCookieManager.deleteAllCookies(); } catch (_) {}
+    try { this.controller.clearHistory(); } catch (_) {}
+    try { this.controller.clearCache(); } catch (_) {}
+    try { this.controller.loadUrl('about:blank'); } catch (_) {}
+  }
+
+  aboutToDisappear(): void {
+    this.clearSensitiveLoginState();
+  }
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
@@ -38,29 +54,27 @@ export struct EduLoginPage {
     if (now - this.lastVerifyTime < 1200) return;
     this.lastVerifyTime = now;
     try {
-      // 合并 currentUrl 和 loginUrl 的 cookie（处理跨子域跳转）
+      if (!isAllowedEduNavigation(url, this.loginUrl, this.backendAllowedOrigins)) return;
       const urlsToCheck = [url, this.currentUrl, this.loginUrl].filter((u) => u.length > 0);
-      const merged: Record<string, string> = {};
+      const cookieJar: EduCookieDto[] = [];
       for (const u of urlsToCheck) {
+        if (!isAllowedEduNavigation(u, this.loginUrl, this.backendAllowedOrigins)) continue;
         try {
           const cs = await webview.WebCookieManager.fetchCookie(u);
           if (cs.length > 0) {
-            const parsed = parseCookieString(cs);
-            const keys = Object.keys(parsed);
-            for (const k of keys) {
-              merged[k] = parsed[k];
-            }
+            cookieJar.push(...cookieDtosForUrl(cs, u));
           }
         } catch { /* 忽略单个 URL 的 cookie 获取失败 */ }
       }
-      if (Object.keys(merged).length === 0) return;
+      if (cookieJar.length === 0) return;
       this.verifying = true;
       const client = new ApiClient(this.apiBaseUrl, () => this.authToken, null);
       const repo = new EduRepository(client);
-      const conn = await repo.continueWithCookies(this.connectionId, merged, url);
+      const conn = await repo.continueWithCookies(this.connectionId, cookieJar, url);
       if (conn.state === 'connected') {
         this.connected = true;
         this.verifying = false;
+        this.clearSensitiveLoginState();
         this.onConnected();
       } else if (conn.state === 'waiting_user_login') {
         this.errorMsg = '暂未检测到有效登录状态，请确认已进入教务系统首页';
@@ -78,9 +92,9 @@ export struct EduLoginPage {
   build() {
     Column({ space: 0 }) {
       Row() {
-        Button('返回').onClick(() => this.onBack()).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+        Button('返回').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().surface).fontColor(this.palette().text)
         Text('教务系统登录').fontSize(16).fontWeight(FontWeight.Bold).layoutWeight(1).textAlign(TextAlign.Center)
-        Button('取消').onClick(() => this.onBack()).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+        Button('取消').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().surface).fontColor(this.palette().text)
       }.width('100%').padding(12)
 
       Text('请在下方页面中完成学校教务系统的登录。CampusMate 不保存您的密码，仅在校验后使用登录会话同步课表和成绩。')
@@ -91,7 +105,18 @@ export struct EduLoginPage {
           .domStorageAccess(true)
           .databaseAccess(true)
           .javaScriptAccess(true)
+          .onUrlLoadIntercept((event?: { data: string | WebResourceRequest }) => {
+            if (event === undefined) return true;
+            const targetUrl: string = typeof event.data === 'string'
+              ? event.data
+              : event.data.getRequestUrl();
+            return !isAllowedEduNavigation(targetUrl, this.loginUrl, this.backendAllowedOrigins);
+          })
           .onPageEnd((e: PageEndEvent) => {
+            if (!isAllowedEduNavigation(e.url, this.loginUrl, this.backendAllowedOrigins)) {
+              this.controller.loadUrl('about:blank');
+              return;
+            }
             this.currentUrl = e.url;
             this.tryVerifyLogin(e.url);
           })

@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 import { ApiResponseParser } from './ApiResponse';
 import { RefreshCoordinator } from './AuthRefresh';
 import { AuthTokens, AuthTokensModel } from './auth/TokenStore';
+import { EduCookieDto } from './EduCookieDto';
 
 const ENABLE_API_LOG: boolean = false;
 
@@ -507,6 +508,7 @@ export interface EduConnectionContinueRequest {
   sms_code?: string;
   mfa_code?: string;
   action?: string;
+  cookie_jar?: EduCookieDto[];
   cookies?: Record<string, string>;
   current_url?: string;
   user_agent?: string;

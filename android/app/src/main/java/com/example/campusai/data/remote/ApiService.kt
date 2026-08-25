@@ -382,6 +382,7 @@ data class EduConnectionContinueRequest(
     val mfa_code: String? = null,
     val action: String? = null,
     val cookies: Map<String, String>? = null,
+    val cookie_jar: List<EduCookieDto>? = null,
     val current_url: String? = null,
     val user_agent: String? = null,
 )

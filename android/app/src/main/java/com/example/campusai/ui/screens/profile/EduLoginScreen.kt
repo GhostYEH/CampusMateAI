@@ -16,7 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.campusai.data.remote.EduCookieDto
 import kotlinx.coroutines.delay
+import java.net.URI
 
 /** 解析 Cookie 字符串 "k1=v1; k2=v2" 为 Map。安全处理 = 与 ; 。 */
 fun parseCookieString(cookieStr: String): Map<String, String> {
@@ -33,19 +35,53 @@ fun parseCookieString(cookieStr: String): Map<String, String> {
     return result
 }
 
-/** 从多个 URL 合并 Cookie（处理跨子域登录跳转）。 */
-fun collectCookiesFromUrls(urls: List<String>): Map<String, String> {
-    val merged = mutableMapOf<String, String>()
+private fun canonicalHttpsOrigin(url: String): String? {
+    return try {
+        val parsed = URI(url)
+        val host = parsed.host?.lowercase()
+        if (host == null || parsed.scheme?.lowercase() != "https" || parsed.userInfo != null) null
+        else {
+            val port = when (parsed.port) { -1, 443 -> ""; else -> ":${parsed.port}" }
+            "https://$host$port"
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/** Only exact HTTPS origins supplied by the backend login flow may be loaded. */
+fun isAllowedEduNavigation(url: String, loginUrl: String, backendAllowedOrigins: List<String> = emptyList()): Boolean {
+    val target = canonicalHttpsOrigin(url) ?: return false
+    val allowed = buildSet {
+        canonicalHttpsOrigin(loginUrl)?.let(::add)
+        backendAllowedOrigins.mapNotNull(::canonicalHttpsOrigin).forEach(::add)
+    }
+    return target in allowed
+}
+
+/** CookieManager exposes name/value only; unavailable attributes stay null. */
+fun cookieDtosForUrl(cookieStr: String, url: String): List<EduCookieDto> {
+    val domain = URI(url).host?.lowercase() ?: return emptyList()
+    return parseCookieString(cookieStr).map { (name, value) ->
+        EduCookieDto(name = name, value = value, domain = domain)
+    }
+}
+
+/** Read cookies only from approved login origins and retain same-name entries by source domain. */
+fun collectCookiesFromUrls(
+    urls: List<String>,
+    loginUrl: String,
+    backendAllowedOrigins: List<String> = emptyList(),
+): List<EduCookieDto> {
+    val jar = mutableListOf<EduCookieDto>()
     val cm = CookieManager.getInstance()
     for (url in urls) {
-        if (url.isBlank()) continue
+        if (url.isBlank() || !isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)) continue
         val cookieStr = cm.getCookie(url) ?: continue
         if (cookieStr.isBlank()) continue
-        for ((k, v) in parseCookieString(cookieStr)) {
-            merged[k] = v
-        }
+        jar += cookieDtosForUrl(cookieStr, url)
     }
-    return merged
+    return jar.distinctBy { listOf(it.name, it.value, it.domain, it.path).joinToString("\u0000") }
 }
 
 /** EduLoginScreen — 内嵌 WebView 教务登录页。
@@ -60,6 +96,7 @@ fun EduLoginScreen(
     loginUrl: String,
     connectionId: String,
     viewModel: EduViewModel,
+    backendAllowedOrigins: List<String> = emptyList(),
     onBack: () -> Unit,
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -69,10 +106,31 @@ fun EduLoginScreen(
     var capturedUserAgent by remember { mutableStateOf<String?>(null) }
     val state by viewModel.state.collectAsState()
 
+    val clearLoginState = {
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        webViewRef?.apply {
+            stopLoading()
+            loadUrl("about:blank")
+            clearHistory()
+            clearCache(true)
+            removeAllViews()
+            destroy()
+        }
+        webViewRef = null
+        capturedUserAgent = null
+        currentUrl = ""
+    }
+
     BackHandler {
         val wv = webViewRef
-        if (wv != null && wv.canGoBack()) wv.goBack() else onBack()
+        if (wv != null && wv.canGoBack()) wv.goBack() else {
+            clearLoginState()
+            onBack()
+        }
     }
+
+    DisposableEffect(connectionId) { onDispose { clearLoginState() } }
 
     // 设置 connectionId 到 ViewModel（EduLoginScreen 有独立 ViewModel 实例）
     LaunchedEffect(connectionId) {
@@ -80,16 +138,15 @@ fun EduLoginScreen(
     }
 
     // cookie 提取 + 回传验证（闭包捕获 viewModel）
-    val verifyLogin: (String?, Boolean) -> Unit = remember(viewModel, loginUrl) { { url, force ->
+    val verifyLogin: (String?, Boolean) -> Unit = remember(viewModel, loginUrl, backendAllowedOrigins) { { url, force ->
         if (!verifyInFlight && !url.isNullOrBlank()) {
-            // 合并 currentUrl 和 loginUrl 的 cookie（处理跨子域跳转）
-            val cookies = collectCookiesFromUrls(listOf(url, currentUrl, loginUrl))
-            if (cookies.isNotEmpty()) {
+            val cookieJar = collectCookiesFromUrls(listOf(url, currentUrl, loginUrl), loginUrl, backendAllowedOrigins)
+            if (cookieJar.isNotEmpty()) {
                 val now = System.currentTimeMillis()
                 if (force || now - lastVerifyTime > 1200) {
                     lastVerifyTime = now
                     verifyInFlight = true
-                    viewModel.submitCookies(cookies, url, capturedUserAgent)
+                    viewModel.submitCookies(cookieJar, url, capturedUserAgent)
                 }
             }
         }
@@ -124,10 +181,11 @@ fun EduLoginScreen(
                         capturedUserAgent = settings.userAgentString
                         webViewClient = object : WebViewClient() {
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                currentUrl = url ?: ""
+                                if (url != null && isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)) currentUrl = url
                             }
                             override fun onPageFinished(view: WebView?, url: String?) {
-                                currentUrl = url ?: ""
+                                if (url == null || !isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)) return
+                                currentUrl = url
                                 CookieManager.getInstance().flush()
                                 val now = System.currentTimeMillis()
                                 if (now - lastVerifyTime > 1200 && !verifyInFlight) {
@@ -136,11 +194,13 @@ fun EduLoginScreen(
                                 }
                             }
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                return false
+                                return request?.url?.toString()?.let {
+                                    !isAllowedEduNavigation(it, loginUrl, backendAllowedOrigins)
+                                } ?: true
                             }
                         }
                         webChromeClient = object : WebChromeClient() {}
-                        loadUrl(loginUrl)
+                        if (isAllowedEduNavigation(loginUrl, loginUrl, backendAllowedOrigins)) loadUrl(loginUrl)
                         webViewRef = this
                     }
                 },
@@ -173,6 +233,7 @@ fun EduLoginScreen(
     LaunchedEffect(state) {
         if (state is EduUiState.Connected || state is EduUiState.Synced) {
             delay(300)
+            clearLoginState()
             onBack()
         }
     }

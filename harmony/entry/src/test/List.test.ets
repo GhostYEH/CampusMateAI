@@ -10,6 +10,7 @@ import notificationBatchTest from './ets/notification/NotificationBatch.test';
 import notificationCapabilityTest from './ets/notification/NotificationCapability.test';
 import v3CoreContractTest from './ets/data/V3CoreContract.test';
 import motionSpecTest from './ets/ui/MotionSpec.test';
+import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
 import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
 
 export default function testsuite(): void {
@@ -26,4 +27,5 @@ export default function testsuite(): void {
   v3CoreContractTest();
   motionSpecTest();
   behaviorV34DecisionTest();
+  eduLoginSecurityTest();
 }

@@ -63,7 +63,7 @@ class EduRepository {
 
     suspend fun continueWithCookies(
         connectionId: String,
-        cookies: Map<String, String>,
+        cookieJar: List<com.example.campusai.data.remote.EduCookieDto>,
         currentUrl: String?,
         userAgent: String?,
     ): Result<EduConnectionDto> = runCatching {

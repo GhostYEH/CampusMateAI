@@ -127,12 +127,12 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
     }
 
     /** Step 2b: client_webview 路径 — 回传 cookies。 */
-    fun submitCookies(cookies: Map<String, String>, currentUrl: String?, userAgent: String?) {
+    fun submitCookies(cookieJar: List<com.example.campusai.data.remote.EduCookieDto>, currentUrl: String?, userAgent: String?) {
         val connId = currentConnectionId ?: return
         if (_state.value is EduUiState.Verifying) return
         viewModelScope.launch {
             _state.value = EduUiState.Verifying("正在验证登录状态…")
-            repo.continueWithCookies(connId, cookies, currentUrl, userAgent).onSuccess { conn ->
+            repo.continueWithCookies(connId, cookieJar, currentUrl, userAgent).onSuccess { conn ->
                 if (conn.state == "connected") onConnected(conn)
                 else if (conn.state == "waiting_user_login") _state.value = EduUiState.Error("暂未检测到有效登录状态，请确认已进入教务系统首页")
                 else if (conn.state == "auth_failed") _state.value = EduUiState.Error(conn.error_message ?: "Cookie 已失效")
