@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http.cookiejar import Cookie
 from typing import Optional
 from urllib.parse import urljoin
 
@@ -90,14 +91,105 @@ class ZhengfangHttpClient:
         self._timeout = timeout
         self._allow_private = allow_private
         self._extra_headers = extra_headers or {}
-        self._cookies: dict = {}
+        self._cookies = httpx.Cookies()
 
     @property
     def cookies(self) -> dict:
-        return dict(self._cookies)
+        result: dict[str, str] = {}
+        for cookie in self._cookies.jar:
+            result.setdefault(cookie.name, cookie.value)
+        return result
+
+    @property
+    def cookie_jar(self) -> list[dict]:
+        """Return every scoped cookie; unlike a dict, duplicate names survive."""
+        result: list[dict] = []
+        for cookie in sorted(self._cookies.jar, key=lambda item: (item.domain, item.path, item.name, item.value)):
+            rest = {str(key).lower(): value for key, value in (cookie._rest or {}).items()}
+            result.append({
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": None if rest.get("_campusmate_domain_unknown") else cookie.domain,
+                "path": None if rest.get("_campusmate_path_unknown") else cookie.path,
+                "secure": None if rest.get("_campusmate_secure_unknown") else cookie.secure,
+                "http_only": True if "httponly" in rest else None,
+                "same_site": rest.get("samesite"),
+                "expires": cookie.expires,
+            })
+        return result
 
     def set_cookies(self, cookies: dict) -> None:
-        self._cookies = dict(cookies)
+        if not isinstance(cookies, dict):
+            raise ValueError("cookies must be a dict")
+        self.set_cookie_jar([
+            {
+                "name": name,
+                "value": value,
+                "domain": None,
+                "path": None,
+                "secure": None,
+                "http_only": None,
+                "same_site": None,
+                "expires": None,
+            }
+            for name, value in cookies.items()
+        ])
+
+    def set_cookie_jar(self, cookies: list[dict]) -> None:
+        if not isinstance(cookies, list):
+            raise ValueError("cookie_jar must be a list")
+        jar = httpx.Cookies()
+        for item in cookies:
+            if not isinstance(item, dict):
+                raise ValueError("cookie entry must be an object")
+            name = item.get("name")
+            value = item.get("value")
+            domain = item.get("domain")
+            path = item.get("path")
+            if not isinstance(name, str) or not name or not isinstance(value, str):
+                raise ValueError("cookie name and value are required strings")
+            if any(ord(char) < 32 or ord(char) == 127 for char in name + value):
+                raise ValueError("cookie contains control characters")
+            if domain is not None and not isinstance(domain, str):
+                raise ValueError("cookie domain must be a string or null")
+            if path is not None and not isinstance(path, str):
+                raise ValueError("cookie path must be a string or null")
+            rest: dict[str, object] = {}
+            if item.get("http_only") is True:
+                rest["HttpOnly"] = None
+            if item.get("same_site") is not None:
+                rest["SameSite"] = item["same_site"]
+            if domain is None:
+                rest["_campusmate_domain_unknown"] = "1"
+            if path is None:
+                rest["_campusmate_path_unknown"] = "1"
+            if item.get("secure") is None:
+                rest["_campusmate_secure_unknown"] = "1"
+            normalized_domain = domain or ""
+            normalized_path = path or "/"
+            expires = item.get("expires")
+            if expires is not None and (not isinstance(expires, int) or isinstance(expires, bool) or expires < 0):
+                raise ValueError("cookie expires must be a non-negative integer or null")
+            jar.jar.set_cookie(Cookie(
+                version=0,
+                name=name,
+                value=value,
+                port=None,
+                port_specified=False,
+                domain=normalized_domain,
+                domain_specified=domain is not None,
+                domain_initial_dot=bool(domain and domain.startswith(".")),
+                path=normalized_path,
+                path_specified=path is not None,
+                secure=bool(item.get("secure")),
+                expires=expires,
+                discard=expires is None,
+                comment=None,
+                comment_url=None,
+                rest=rest,
+                rfc2109=False,
+            ))
+        self._cookies = jar
 
     def _build_headers(self, *, referer: Optional[str] = None, form_post: bool = False) -> dict:
         headers = {
@@ -123,7 +215,7 @@ class ZhengfangHttpClient:
             async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
                 resp = await client.get(url, params=params, headers=self._build_headers(referer=referer))
                 self._validate_redirect_target(resp, url)
-                self._cookies.update(dict(resp.cookies))
+                self._cookies.update(resp.cookies)
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
             raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
@@ -156,7 +248,7 @@ class ZhengfangHttpClient:
                     headers=self._build_headers(referer=referer, form_post=form_post),
                 )
                 self._validate_redirect_target(resp, url)
-                self._cookies.update(dict(resp.cookies))
+                self._cookies.update(resp.cookies)
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
             raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e

@@ -384,6 +384,7 @@ class EduConnectorService:
         mfa_code: Optional[str] = None,
         action: Optional[str] = None,
         cookies: Optional[dict] = None,
+        cookie_jar: Optional[list[dict]] = None,
         current_url: Optional[str] = None,
         user_agent: Optional[str] = None,
         pre_login_token: Optional[str] = None,
@@ -501,7 +502,7 @@ class EduConnectorService:
             return CONN_CONNECTED
 
         # CONN_WAITING_USER_LOGIN + cookies (action=CLIENT_WEBVIEW_COMPLETE): 客户端 WebView 登录完成
-        if conn.state == CONN_WAITING_USER_LOGIN and cookies and action == "CLIENT_WEBVIEW_COMPLETE":
+        if conn.state == CONN_WAITING_USER_LOGIN and (cookies or cookie_jar) and action == "CLIENT_WEBVIEW_COMPLETE":
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
                 self._edu_repo.update_connection_state(
                     connection_id,
@@ -518,7 +519,7 @@ class EduConnectorService:
                 config = {**config, "current_url": current_url}
             try:
                 internal = await adapter.login_with_cookies(
-                    cookies=cookies, current_url=current_url, user_agent=user_agent, config=config,
+                    cookies=cookies or {}, cookie_jar=cookie_jar, current_url=current_url, user_agent=user_agent, config=config,
                 )
             except NeedUserAction as action_needed:
                 self._edu_repo.update_connection_state(
@@ -544,7 +545,7 @@ class EduConnectorService:
             return CONN_CONNECTED
 
         # CONN_WAITING_USER_LOGIN + action=CLIENT_WEBVIEW_COMPLETE 但无 cookies: 提示未检测到
-        if conn.state == CONN_WAITING_USER_LOGIN and action == "CLIENT_WEBVIEW_COMPLETE" and not cookies:
+        if conn.state == CONN_WAITING_USER_LOGIN and action == "CLIENT_WEBVIEW_COMPLETE" and not (cookies or cookie_jar):
             self._edu_repo.update_connection_state(
                 connection_id, state=CONN_WAITING_USER_LOGIN,
                 error_code="NO_COOKIE", error_message="未检测到有效登录状态，请确认已进入教务系统首页",

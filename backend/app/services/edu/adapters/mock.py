@@ -67,21 +67,26 @@ class MockEduAdapter(EduAdapter):
         self,
         *,
         cookies: dict,
+        cookie_jar: Optional[list[dict]] = None,
         current_url: Optional[str] = None,
         user_agent: Optional[str] = None,
         config: Optional[dict] = None,
     ) -> dict:
         # Mock: 任何非空 cookies 视为登录成功
-        if not cookies:
+        if not cookies and not cookie_jar:
             raise PermissionError("Mock cookie 登录需要非空 cookies")
         # 用 cookie 数量的 hash 构造 mock id，不暴露原始 cookie 值
         import hashlib
-        cookie_hash = hashlib.sha1(str(sorted(cookies.keys())).encode()).hexdigest()[:12]
+        cookie_names = sorted(cookies.keys()) if cookies else sorted(
+            item.get("name", "") for item in (cookie_jar or []) if isinstance(item, dict)
+        )
+        cookie_hash = hashlib.sha1(str(cookie_names).encode()).hexdigest()[:12]
         return {
             "mock": True,
             "via_cookies": True,
             "external_student_id": f"MOCK-COOKIE-{cookie_hash}",
             "cookies": dict(cookies),
+            "cookie_jar": list(cookie_jar or []),
         }
 
     async def verify_session(self, session: dict) -> bool:

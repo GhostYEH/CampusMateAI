@@ -1062,6 +1062,39 @@ def test_client_webview_first_cookie_continue_connects() -> None:
     assert binding["session_type"] == SESSION_CLIENT_COOKIE
 
 
+def test_client_webview_cookie_jar_continue_connects_without_legacy_cookie_map() -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={
+            "system_key": "undergraduate-cookie-jar",
+            "provider": "mock",
+            "login_execution_mode": LOGIN_EXEC_CLIENT_WEBVIEW,
+        },
+    ).json()
+    conn = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+
+    complete = client.post(
+        f"/api/v1/edu/connections/{conn['id']}/continue",
+        headers=headers,
+        json={
+            "action": "CLIENT_WEBVIEW_COMPLETE",
+            "cookie_jar": [
+                {"name": "JSESSIONID", "value": "portal", "domain": "jwxt.example.edu.cn", "path": "/"},
+                {"name": "JSESSIONID", "value": "sso", "domain": "sso.example.edu.cn", "path": "/auth"},
+            ],
+        },
+    )
+
+    assert complete.status_code == 200
+    assert complete.json()["state"] == CONN_CONNECTED
+
+
 def test_client_webview_complete_without_cookies_stays_waiting() -> None:
     client = _client()
     headers = _headers(client)

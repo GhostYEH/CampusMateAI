@@ -6,9 +6,10 @@ DataNormalizer 负责把异构数据归一化到这些模型。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 
 # ===== extra_info 敏感字段过滤 =====
@@ -175,6 +176,56 @@ class EduConnectionCreate(BaseModel):
     edu_system_id: str = Field(..., min_length=1, max_length=128)
 
 
+class EduCookie(BaseModel):
+    """A scoped browser cookie without pretending unavailable attributes are known."""
+
+    name: str = Field(..., min_length=1, max_length=256)
+    value: str = Field(..., max_length=4096)
+    domain: Optional[str] = Field(None, max_length=253)
+    path: Optional[str] = Field(None, max_length=1024)
+    secure: Optional[bool] = None
+    http_only: Optional[bool] = None
+    same_site: Optional[Literal["Lax", "Strict", "None"]] = None
+    expires: Optional[int] = Field(None, ge=0, le=253402300799)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if any(char in value for char in "()<>@,;:\\\"/[]?={} \t") or _has_control_characters(value):
+            raise ValueError("cookie name contains invalid characters")
+        return value
+
+    @field_validator("value")
+    @classmethod
+    def validate_value(cls, value: str) -> str:
+        if _has_control_characters(value):
+            raise ValueError("cookie value contains control characters")
+        return value
+
+    @field_validator("domain")
+    @classmethod
+    def validate_domain(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.lower().lstrip(".")
+        if not normalized or "/" in normalized or _has_control_characters(normalized) or not re.fullmatch(r"[a-z0-9.-]+", normalized):
+            raise ValueError("cookie domain is invalid")
+        return normalized
+
+    @field_validator("path")
+    @classmethod
+    def validate_path(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if not value.startswith("/") or "?" in value or "#" in value or _has_control_characters(value):
+            raise ValueError("cookie path is invalid")
+        return value
+
+
+def _has_control_characters(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
+
+
 class EduConnectionContinue(BaseModel):
     """推进连接状态请求。
 
@@ -194,11 +245,19 @@ class EduConnectionContinue(BaseModel):
     sms_code: Optional[str] = None
     mfa_code: Optional[str] = None
     action: Optional[str] = None
-    cookies: Optional[dict] = None
+    cookies: Optional[Dict[str, str]] = None
+    cookie_jar: List[EduCookie] = Field(default_factory=list, max_length=64)
     current_url: Optional[str] = None
-    user_agent: Optional[str] = None
+    user_agent: Optional[str] = Field(None, max_length=512)
     pre_login_token: Optional[str] = None
     verification_session_id: Optional[str] = None
+
+    @field_validator("user_agent")
+    @classmethod
+    def validate_user_agent(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and _has_control_characters(value):
+            raise ValueError("user_agent contains control characters")
+        return value
 
 
 class EduPreLoginResult(BaseModel):
@@ -597,6 +656,7 @@ __all__ = [
     "EduDiscoveryCandidateOut",
     "EduDiscoveryReviewRequest",
     "EduDiscoveryStatsOut",
+    "EduCookie",
     "EduConnectionContinue",
     "EduPreLoginResult",
     "EduConnectionCreate",

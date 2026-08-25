@@ -72,6 +72,7 @@ class EduAdapter(ABC):
         self,
         *,
         cookies: dict,
+        cookie_jar: Optional[list[dict]] = None,
         current_url: Optional[str] = None,
         user_agent: Optional[str] = None,
         config: Optional[dict] = None,

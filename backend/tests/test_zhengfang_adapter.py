@@ -25,6 +25,7 @@ from app.services.edu.adapters.zhengfang_strategy import (
     ZHENGFANG_VERSION_JWGL2,
     school_config_from_dict,
 )
+from app.schemas.edu import EduConnectionContinue
 from app.services.edu.provider_detector import ProviderDetector
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "edu" / "zhengfang"
@@ -50,6 +51,103 @@ def test_http_wrap_preserves_binary_response_content():
 
     assert wrapped.content == png_bytes
     assert wrapped.content_type == "image/png"
+
+
+def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
+    """Changing the jar to a name/value dict would drop a valid login cookie."""
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+    client.set_cookie_jar([
+        {
+            "name": "JSESSIONID",
+            "value": "portal-session",
+            "domain": "jwxt.example.edu.cn",
+            "path": "/",
+            "secure": True,
+            "http_only": None,
+            "same_site": None,
+            "expires": None,
+        },
+        {
+            "name": "JSESSIONID",
+            "value": "sso-session",
+            "domain": "sso.example.edu.cn",
+            "path": "/auth",
+            "secure": True,
+            "http_only": True,
+            "same_site": "Lax",
+            "expires": 1735689600,
+        },
+    ])
+
+    assert client.cookie_jar == [
+        {
+            "name": "JSESSIONID",
+            "value": "portal-session",
+            "domain": "jwxt.example.edu.cn",
+            "path": "/",
+            "secure": True,
+            "http_only": None,
+            "same_site": None,
+            "expires": None,
+        },
+        {
+            "name": "JSESSIONID",
+            "value": "sso-session",
+            "domain": "sso.example.edu.cn",
+            "path": "/auth",
+            "secure": True,
+            "http_only": True,
+            "same_site": "Lax",
+            "expires": 1735689600,
+        },
+    ]
+
+
+def test_continue_contract_accepts_cookie_jar_and_rejects_control_character_user_agent():
+    request = EduConnectionContinue(
+        cookies={"JSESSIONID": "legacy"},
+        cookie_jar=[{"name": "JSESSIONID", "value": "scoped", "domain": "jwxt.example.edu.cn"}],
+        user_agent="Mozilla/5.0 CampusMate",
+    )
+
+    assert request.cookies == {"JSESSIONID": "legacy"}
+    assert request.cookie_jar[0].domain == "jwxt.example.edu.cn"
+    with pytest.raises(ValueError, match="user_agent"):
+        EduConnectionContinue(user_agent="Mozilla/5.0\r\nInjected: true")
+
+
+@pytest.mark.asyncio
+async def test_cookie_login_uses_validated_client_user_agent_for_followup_session(monkeypatch):
+    class UserAgentClient:
+        instance = None
+
+        def __init__(self, **kwargs):
+            self.extra_headers = kwargs["extra_headers"]
+            self.cookies = {}
+            UserAgentClient.instance = self
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+        async def get(self, _path, **_kwargs):
+            return HttpResponse(
+                200,
+                _load("profile_jwgl2.json"),
+                "https://jwxt.example.edu.cn/jwglxt/xsxx/profile",
+                {},
+            )
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", UserAgentClient)
+    user_agent = "Mozilla/5.0 (Linux; Android 14) CampusMate/1.0"
+
+    internal = await zhengfang_module.ZhengfangAdapter().login_with_cookies(
+        cookies={"JSESSIONID": "fixture"},
+        user_agent=user_agent,
+        config={"base_url": "https://jwxt.example.edu.cn"},
+    )
+
+    assert UserAgentClient.instance.extra_headers["User-Agent"] == user_agent
+    assert internal["user_agent"] == user_agent
 
 
 # ===== 课表 JSON 解析 =====

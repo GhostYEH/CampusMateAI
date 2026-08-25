@@ -680,6 +680,7 @@ async def continue_connection(
         mfa_code=request.mfa_code,
         action=request.action,
         cookies=request.cookies,
+        cookie_jar=[cookie.model_dump() for cookie in request.cookie_jar],
         current_url=request.current_url,
         user_agent=request.user_agent,
         pre_login_token=request.pre_login_token,

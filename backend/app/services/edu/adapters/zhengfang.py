@@ -52,6 +52,14 @@ _ALLOWED_CAPTCHA_MIME_TYPES = frozenset({
 })
 
 
+def _validated_user_agent(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if not value or len(value) > 512 or any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "客户端 User-Agent 无效")
+    return value
+
+
 def _hidden_input_value(html: str, name: str) -> Optional[str]:
     """Read one hidden form value without retaining the login page."""
     name_pattern = re.escape(name)
@@ -400,6 +408,7 @@ class ZhengfangAdapter(EduAdapter):
         self,
         *,
         cookies: dict,
+        cookie_jar: Optional[list[dict]] = None,
         current_url: Optional[str] = None,
         user_agent: Optional[str] = None,
         config: Optional[dict] = None,
@@ -408,7 +417,7 @@ class ZhengfangAdapter(EduAdapter):
 
         不再走表单登录，直接用 cookies 构造 client，供后续 fetch_schedule/fetch_grade 复用。
         """
-        if not cookies:
+        if not cookies and not cookie_jar:
             raise PermissionError("cookie 登录需要非空 cookies")
 
         school = school_config_from_dict(config)
@@ -424,13 +433,20 @@ class ZhengfangAdapter(EduAdapter):
                 raise AdapterNotImplemented(self.provider, "login_with_cookies: missing base_url in config and current_url")
         _ensure_configured_origin(school)
 
+        actual_user_agent = _validated_user_agent(user_agent)
+        extra_headers = dict(school.extra_headers)
+        if actual_user_agent is not None:
+            extra_headers["User-Agent"] = actual_user_agent
         client = ZhengfangHttpClient(
             base_url=school.base_url,
             encoding=school.encoding,
             allow_private=False,
-            extra_headers=school.extra_headers,
+            extra_headers=extra_headers,
         )
-        client.set_cookies(cookies)
+        if cookie_jar:
+            client.set_cookie_jar(cookie_jar)
+        else:
+            client.set_cookies(cookies)
 
         profile = await self._authenticated_probe(school, client)
 
@@ -439,8 +455,10 @@ class ZhengfangAdapter(EduAdapter):
             "adapter_version": self.adapter_version,
             "base_url": school.base_url,
             "version": school.version,
-            "cookies": dict(cookies),
+            "cookies": getattr(client, "cookies", dict(cookies)),
+            "cookie_jar": getattr(client, "cookie_jar", []),
             "via_cookies": True,
+            "user_agent": actual_user_agent,
             "external_student_id": profile.external_student_id,
             "adapter_config": school_config_to_dict(school),
         }
@@ -530,10 +548,16 @@ class ZhengfangAdapter(EduAdapter):
             base_url=school.base_url,
             encoding=school.encoding,
             allow_private=False,
-            extra_headers=school.extra_headers,
+            extra_headers={
+                **school.extra_headers,
+                **({"User-Agent": _validated_user_agent(session.get("user_agent"))} if session.get("user_agent") else {}),
+            },
         )
+        cookie_jar = session.get("cookie_jar") or []
         cookies = session.get("cookies") or {}
-        if isinstance(cookies, dict):
+        if isinstance(cookie_jar, list) and cookie_jar:
+            client.set_cookie_jar(cookie_jar)
+        elif isinstance(cookies, dict):
             client.set_cookies(cookies)
         return school, client
 
