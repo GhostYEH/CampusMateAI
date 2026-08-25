@@ -178,6 +178,27 @@ qa/
 # Isolated local Git worktrees
 .worktrees/
 
+# Agent-generated plans, design notes, and QA reports
+docs/superpowers/plans/
+docs/superpowers/specs/
+wx/docs/
+**/design-qa*.md
+harmony/PARITY_AUDIT.md
+wx/parity/PARITY_AUDIT.md
+.superpowers/sdd/
+
+# Local agent test caches and runtime uploads
+.codex/pytest-*/
+backend/data/community_images/
+
+# Local HarmonyOS packages and visual QA captures
+entry-default-unsigned.hap
+harmony/.hmos-feature-dev/
+harmony/*.jpeg
+harmony/*_layout*.json
+harmony/system_layout.json
+harmony/*_vs_*.png
+
 # HarmonyOS 构建产物 / 缓存 / 本地配置(不纳入版本控制)
 harmony/.hvigor/
 harmony/build/
