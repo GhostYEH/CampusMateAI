@@ -10,7 +10,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, StrictBool, StrictInt, field_validator
 
 
 # ===== extra_info 敏感字段过滤 =====
@@ -185,12 +185,12 @@ class EduCookie(BaseModel):
     value: str = Field(..., max_length=4096)
     domain: Optional[str] = Field(None, max_length=253)
     source_url: Optional[str] = Field(None, max_length=2048)
-    host_only: Optional[bool] = None
+    host_only: Optional[StrictBool] = None
     path: Optional[str] = Field(None, max_length=1024)
-    secure: Optional[bool] = None
-    http_only: Optional[bool] = None
+    secure: Optional[StrictBool] = None
+    http_only: Optional[StrictBool] = None
     same_site: Optional[Literal["Lax", "Strict", "None"]] = None
-    expires: Optional[int] = Field(None, ge=0, le=253402300799)
+    expires: Optional[StrictInt] = Field(None, ge=0, le=253402300799)
 
     @field_validator("name")
     @classmethod

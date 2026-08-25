@@ -117,6 +117,75 @@ async def test_server_parent_domain_cookie_round_trips_with_known_scope(monkeypa
     assert requests[-1].headers["cookie"] == "server=known"
 
 
+@pytest.mark.asyncio
+async def test_host_only_cookie_round_trip_uses_exact_response_host_with_multiple_origins(monkeypatch):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(
+                200,
+                headers={"set-cookie": "host=parent; Path=/; Secure"},
+                request=request,
+            )
+        return httpx.Response(200, request=request)
+
+    _install_transport(monkeypatch, handler)
+    parent = "https://example.edu.cn"
+    child = "https://jw.example.edu.cn"
+    client = ZhengfangHttpClient(base_url=parent)
+    client._allowed_origins = {parent, child}
+    await client.get("/")
+    snapshot = client.cookie_jar
+
+    assert snapshot[0]["domain"] == "example.edu.cn"
+    assert snapshot[0]["host_only"] is True
+    assert snapshot[0]["source_url"] == parent
+
+    for origins in ([parent, child], [child, parent]):
+        restored = ZhengfangHttpClient(base_url=parent)
+        restored.set_cookie_jar(snapshot, allowed_origins=origins)
+        await restored.get(parent + "/profile")
+        await restored.get(child + "/profile")
+
+    assert requests[-4].headers["cookie"] == "host=parent"
+    assert "cookie" not in requests[-3].headers
+    assert requests[-2].headers["cookie"] == "host=parent"
+    assert "cookie" not in requests[-1].headers
+
+
+def test_host_only_reload_without_source_prefers_exact_cookie_domain() -> None:
+    cookie = {
+        "name": "host",
+        "value": "parent",
+        "domain": "example.edu.cn",
+        "host_only": True,
+        "path": "/",
+    }
+    for origins in (
+        ["https://example.edu.cn", "https://jw.example.edu.cn"],
+        ["https://jw.example.edu.cn", "https://example.edu.cn"],
+    ):
+        client = ZhengfangHttpClient(base_url="https://example.edu.cn")
+        client.set_cookie_jar([cookie], allowed_origins=origins)
+        assert client.cookie_jar[0]["domain"] == "example.edu.cn"
+
+
+def test_parent_domain_cookie_reload_remains_domain_scoped() -> None:
+    client = ZhengfangHttpClient(base_url="https://jw.example.edu.cn")
+    client.set_cookie_jar([{
+        "name": "domain",
+        "value": "shared",
+        "domain": "example.edu.cn",
+        "host_only": False,
+        "path": "/",
+    }], allowed_origins=["https://example.edu.cn", "https://jw.example.edu.cn"])
+
+    assert client.cookie_jar[0]["host_only"] is False
+    assert client.cookie_jar[0]["domain"] == "example.edu.cn"
+
+
 def test_external_headers_cannot_inject_cookie_header():
     with pytest.raises(ValueError, match="Cookie header"):
         ZhengfangHttpClient(

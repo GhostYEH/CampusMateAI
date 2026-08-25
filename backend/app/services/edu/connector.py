@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import urlsplit
 
 from ...core.config import Settings
 from ...core.exceptions import AppException, Forbidden
@@ -61,6 +60,7 @@ from .adapters.qingguo import QingguoAdapter
 from .adapters.qiangzhi import QiangzhiAdapter
 from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
 from .adapters.zhengfang_http import NeedUserAction
+from .adapters.zhengfang_strategy import school_allowed_origins, school_config_from_dict
 from .detector import DetectResult, SystemDetector
 from .registry import SchoolRegistry
 from .session import EduSessionStore, InMemorySessionStore, PreLoginSessionStore, SessionManager
@@ -619,8 +619,8 @@ class EduConnectorService:
         if system is None:
             return {}
         config = {
-            "base_url": portal_url or system.base_url,
-            "login_url": portal_url or system.login_url,
+            "base_url": system.base_url or portal_url,
+            "login_url": system.login_url or portal_url,
             "provider_version": system.provider_version,
             "sso_url": system.sso_url,
             "vpn_url": system.vpn_url,
@@ -638,8 +638,11 @@ class EduConnectorService:
         if isinstance(stored, dict):
             config.update(stored)
         if portal_url:
-            config["base_url"] = portal_url
-            config["login_url"] = portal_url
+            configured_origins = config.get("allowed_origins")
+            explicit_origins = list(configured_origins) if isinstance(configured_origins, list) else []
+            if portal_url not in explicit_origins:
+                explicit_origins.append(portal_url)
+            config["allowed_origins"] = explicit_origins
         return config
 
     def allowed_origins_for_connection(self, connection_id: str) -> list[str]:
@@ -647,21 +650,8 @@ class EduConnectorService:
         conn = self._edu_repo.get_connection(connection_id)
         system = self._registry.get_system_by_id(conn.edu_system_id) if conn else None
         config = self._build_config_dict(system, portal_url=conn.portal_url if conn else None)
-        candidates = [config.get("login_url"), config.get("base_url"), config.get("sso_url")]
-        result: list[str] = []
-        for value in candidates:
-            if not isinstance(value, str):
-                continue
-            parsed = urlsplit(value)
-            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-                continue
-            port = "" if parsed.port in (None, 443) else f":{parsed.port}"
-            origin = f"https://{parsed.hostname.lower()}{port}"
-            if origin not in result:
-                result.append(origin)
-            if len(result) == 8:
-                break
-        return result
+        school = school_config_from_dict(config)
+        return school_allowed_origins(school) if school is not None else []
 
     # ===== 配置 =====
 

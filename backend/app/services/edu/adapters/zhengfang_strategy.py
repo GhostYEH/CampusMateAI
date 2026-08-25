@@ -133,6 +133,7 @@ class SchoolConfig:
     captcha_path: Optional[str] = None
     public_key_path: str = PUBLIC_KEY_PATH_JWGL2
     allowed_origin: Optional[str] = None
+    allowed_origins: list[str] = field(default_factory=list)
     semester_param_name: str = "xnxq01id"
     schedule_payload_extra: dict = field(default_factory=dict)
     grade_payload_extra: dict = field(default_factory=dict)
@@ -168,7 +169,14 @@ class SchoolConfig:
 def school_allowed_origins(school: SchoolConfig, *, limit: int = 8) -> list[str]:
     """Canonical, explicit HTTPS origins only; SSO is included only when configured."""
     result: list[str] = []
-    for value in (school.base_url, school.login_url, school.allowed_origin, school.sso_url):
+    candidates = (
+        school.base_url,
+        school.login_url,
+        school.allowed_origin,
+        school.sso_url,
+        *school.allowed_origins,
+    )
+    for value in candidates:
         if not isinstance(value, str):
             continue
         parsed = urlsplit(value)
@@ -227,6 +235,10 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         captcha_path=config.get("captcha_path"),
         public_key_path=config.get("public_key_path") or PUBLIC_KEY_PATH_JWGL2,
         allowed_origin=config.get("allowed_origin"),
+        allowed_origins=[
+            value for value in (config.get("allowed_origins") or [])
+            if isinstance(value, str)
+        ],
         semester_param_name=config.get("semester_param_name") or "xnxq01id",
         schedule_payload_extra=dict(config.get("schedule_payload_extra") or {}),
         grade_payload_extra=dict(config.get("grade_payload_extra") or {}),
@@ -251,6 +263,7 @@ def school_config_to_dict(school: SchoolConfig) -> dict:
         "captcha_path": school.captcha_path,
         "public_key_path": school.public_key_path,
         "allowed_origin": school.allowed_origin,
+        "allowed_origins": list(school.allowed_origins),
         "semester_param_name": school.semester_param_name,
         "schedule_payload_extra": dict(school.schedule_payload_extra),
         "grade_payload_extra": dict(school.grade_payload_extra),

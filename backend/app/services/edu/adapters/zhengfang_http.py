@@ -221,10 +221,17 @@ class ZhengfangHttpClient:
                     raise ValueError("cookie source_url is outside allowed origins")
             elif domain is not None and any(self._domain_matches(host, domain) for host in allowed_hosts):
                 # Old structured clients lacked source metadata: keep the scope host-only.
-                matching_hosts = [host for host in allowed_hosts if self._domain_matches(host, domain)]
                 if host_only is None:
                     host_only = True
-                source_host = matching_hosts[0]
+                domain_host = domain.lower().lstrip(".")
+                if host_only and domain_host in allowed_hosts:
+                    source_host = domain_host
+                else:
+                    matching_hosts = sorted(
+                        (host for host in allowed_hosts if self._domain_matches(host, domain)),
+                        key=lambda host: (host.count("."), host),
+                    )
+                    source_host = matching_hosts[0]
             else:
                 raise ValueError("cookie source_url is required for unknown scope")
             normalized_domain = (domain or source_host).lower()
@@ -336,10 +343,11 @@ class ZhengfangHttpClient:
         assert_safe_url(url, allow_private=self._allow_private)
         self._validate_request_origin(url)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
                 resp = await client.get(url, params=params, headers=self._request_headers(url, referer=referer))
                 self._validate_redirect_target(resp, url)
                 self._cookies.update(resp.cookies)
+                self._record_response_cookie_origins(resp)
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
             raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
@@ -365,7 +373,7 @@ class ZhengfangHttpClient:
         assert_safe_url(url, allow_private=self._allow_private)
         self._validate_request_origin(url)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False, cookies=self._cookies) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
                 resp = await client.post(
                     url,
                     data=data,
@@ -374,6 +382,7 @@ class ZhengfangHttpClient:
                 )
                 self._validate_redirect_target(resp, url)
                 self._cookies.update(resp.cookies)
+                self._record_response_cookie_origins(resp)
                 return self._wrap(resp, url)
         except httpx.TimeoutException as e:
             raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
@@ -408,6 +417,21 @@ class ZhengfangHttpClient:
             headers=dict(resp.headers),
             content=content,
         )
+
+    def _record_response_cookie_origins(self, resp: httpx.Response) -> None:
+        response_origin = self._exact_https_origin(str(resp.url))
+        response_host = resp.url.host.lower() if resp.url.host else ""
+        if response_origin is None or response_origin not in self._allowed_origins:
+            return
+        response_keys = {
+            (cookie.name, cookie.domain.lower().lstrip("."), cookie.path)
+            for cookie in resp.cookies.jar
+            if not cookie.domain_specified and cookie.domain.lower().lstrip(".") == response_host
+        }
+        for cookie in self._cookies.jar:
+            key = (cookie.name, cookie.domain.lower().lstrip("."), cookie.path)
+            if key in response_keys and not cookie.domain_specified:
+                cookie._rest["_campusmate_source_url"] = response_origin
 
     @staticmethod
     def _validate_redirect_target(resp: httpx.Response, request_url: str) -> None:
