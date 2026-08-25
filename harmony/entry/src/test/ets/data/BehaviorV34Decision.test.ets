@@ -46,5 +46,15 @@ export default function behaviorV34DecisionTest(): void {
       tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 4000);
       expect(tracker.process(stable(BehaviorV34Label.READ), 5000)).assertEqual('');
     });
+
+    it('uses phone exit hysteresis and reminder cooldown', 0, () => {
+      const tracker: BehaviorReminderTracker = new BehaviorReminderTracker();
+      tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 1000);
+      expect(tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 4000).length > 0).assertTrue();
+      expect(tracker.process(stable(BehaviorV34Label.READ), 4500).length > 0).assertTrue();
+      expect(tracker.process(stable(BehaviorV34Label.READ), 5000)).assertEqual('');
+      tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 6000);
+      expect(tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 9000)).assertEqual('');
+    });
   });
 }

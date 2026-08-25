@@ -24,5 +24,17 @@ export default function motionSpecTest(): void {
     it('does not generate negative stagger delays', 0, () => {
       expect(MotionSpec.stagger(false, -2)).assertEqual(0);
     });
+
+    it('gives the navigation glow a breathing range without motion reduction', 0, () => {
+      expect(MotionSpec.glowOpacity(false, 0)).assertEqual(0.56);
+      expect(MotionSpec.glowOpacity(false, 1)).assertEqual(0.86);
+      expect(MotionSpec.glowBlur(false)).assertEqual(12);
+    });
+
+    it('keeps the navigation glow static when motion is reduced', 0, () => {
+      expect(MotionSpec.glowOpacity(true, 0)).assertEqual(0.62);
+      expect(MotionSpec.glowOpacity(true, 1)).assertEqual(0.62);
+      expect(MotionSpec.glowBlur(true)).assertEqual(0);
+    });
   });
 }

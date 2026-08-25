@@ -47,7 +47,7 @@ export struct AccountPage {
           Button('退出当前账号').width('100%').height(50).backgroundColor('#FFFFECEA').fontColor('#FFC25450').onClick(() => this.onSignOut())
 
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

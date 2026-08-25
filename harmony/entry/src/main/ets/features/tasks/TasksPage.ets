@@ -1,7 +1,32 @@
 import { TaskItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
-import { SecondaryHeader } from '../../ui/SecondaryHeader';
+
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+
+function importanceLabel(importance: string): string {
+  if (importance === 'urgent') return '紧急';
+  if (importance === 'high') return '学业关键';
+  if (importance === 'important') return '较重要';
+  if (importance === 'normal') return '普通';
+  if (importance === 'low') return '次要';
+  return '待评';
+}
+function importanceBgColor(importance: string): string {
+  if (importance === 'urgent') return '#FFE0E3';
+  if (importance === 'high') return '#FFEBED';
+  if (importance === 'important') return '#FFF4DD';
+  if (importance === 'normal') return '#EEF1F6';
+  if (importance === 'low') return '#E8F7F0';
+  return '#EEF1F6';
+}
+function importanceFgColor(importance: string): string {
+  if (importance === 'urgent') return '#D6394B';
+  if (importance === 'high') return '#DD6570';
+  if (importance === 'important') return '#DA9739';
+  if (importance === 'normal') return '#6B7280';
+  if (importance === 'low') return '#3E9E7F';
+  return '#9CA3AF';
+}
 
 @Component
 export struct TasksPage {
@@ -10,13 +35,12 @@ export struct TasksPage {
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;
   @State filter: string = '待完成';
-  @State selectedId: string = '';
   onRefresh: () => void = () => {};
   onComplete: (id: string) => void = () => {};
+  onOpenDetail: (task: TaskItem) => void = (_: TaskItem) => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   pendingCount(): number { return this.tasks.filter((task: TaskItem) => task.status !== 'completed').length; }
-  selectedTask(): TaskItem | undefined { return this.tasks.find((item: TaskItem) => item.id === this.selectedId); }
 
   @Builder Hero() {
     Row() {
@@ -53,6 +77,14 @@ export struct TasksPage {
           Text(task.deadline ?? task.due ?? '待设置').fontColor(this.palette().muted).fontSize(11)
           Text('·').fontColor(this.palette().muted)
           Text(task.source_name ?? '个人安排').fontColor(this.palette().muted).fontSize(11)
+          if (task.importance && task.importance !== 'unknown') {
+            Text(importanceLabel(task.importance))
+              .fontColor(importanceFgColor(task.importance))
+              .fontSize(10)
+              .backgroundColor(importanceBgColor(task.importance))
+              .borderRadius(6)
+              .padding({ left: 5, right: 5, top: 2, bottom: 2 })
+          }
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(18).fontColor([this.palette().muted])
@@ -61,64 +93,28 @@ export struct TasksPage {
       .opacity(task.status === 'completed' ? 0.6 : 1)
       .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
-      .onClick(() => this.selectedId = task.id)
+      .onClick(() => this.onOpenDetail(task))
   }
 
-  @Builder TaskDetail(task: TaskItem) {
-    Scroll() {
-      Column({ space: 13 }) {
-        Column({ space: 8 }) {
-          Text(task.title).fontColor(this.palette().text).fontSize(20).fontWeight(FontWeight.Bold).width('100%')
-          Row({ space: 8 }) {
-            Text(task.status === 'completed' ? '已完成' : '待完成')
-              .fontColor(task.status === 'completed' ? this.palette().success : this.palette().accent).fontSize(11).fontWeight(FontWeight.Bold)
-              .padding({ left: 8, right: 8, top: 4, bottom: 4 }).backgroundColor(this.palette().soft).borderRadius(10)
-            Text(task.source_name ?? '个人安排').fontColor(this.palette().muted).fontSize(11)
-          }
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
-        Column() {
-          this.DetailRow($r('sys.symbol.text_alignleft'), '标题', task.title)
-          Divider().color(this.palette().line)
-          this.DetailRow($r('sys.symbol.clock'), '截止时间', task.deadline ?? task.due ?? '待设置')
-          Divider().color(this.palette().line)
-          this.DetailRow($r('sys.symbol.checkmark_circle'), '状态', task.status === 'completed' ? '已完成' : '待完成')
-          Divider().color(this.palette().line)
-          this.DetailRow($r('sys.symbol.info_circle'), '来源', task.source_name ?? '个人安排')
-        }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(18)
-        if ((task.description ?? '').length > 0) {
-          Column({ space: 6 }) {
-            Text('详细描述').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
-            Text(task.description ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(20)
-          }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
-        }
-        Button(task.status === 'completed' ? '标记为未完成' : '标记为已完成')
-          .width('100%').height(48).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF')
-          .onClick(() => { this.onComplete(task.id); this.selectedId = ''; })
-      }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
-  }
-
-  @Builder DetailRow(symbol: Resource, label: string, value: string) {
-    Row({ space: 11 }) {
-      SymbolGlyph(symbol).fontSize(19).fontColor([this.palette().primary])
-      Text(label).fontColor(this.palette().muted).fontSize(11).width(74)
-      Text(value).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Medium).layoutWeight(1)
-    }.width('100%').padding({ top: 14, bottom: 14 })
-  }
-
-  @Builder RightBadge() {
-    Text('REAL').fontColor(this.palette().success).fontSize(9).fontWeight(FontWeight.Bold)
+  @Builder Header() {
+    Row() {
+      Column({ space: 3 }) {
+        Text('待办').fontColor(this.palette().text).fontSize(25).fontWeight(FontWeight.Bold)
+        Text('今天先完成最重要的一小步').fontColor(this.palette().muted).fontSize(11).maxLines(1)
+      }.alignItems(HorizontalAlign.Start)
+      Blank()
+      Text('REAL')
+        .fontColor(this.palette().success).fontSize(9).fontWeight(FontWeight.Bold)
+        .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+        .backgroundColor(this.darkMode ? '#273D614A' : '#164E8C6A').borderRadius(12)
+    }.width('100%').alignItems(VerticalAlign.Top)
   }
 
   build() {
     Column() {
-      if (this.selectedTask() !== undefined) {
-        SecondaryHeader({ title: '待办详情', subtitle: '查看待办详细信息', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.selectedId = '' })
-        this.TaskDetail(this.selectedTask()!)
-      } else {
-        SecondaryHeader({ title: '待办', subtitle: '今天先完成最重要的一小步', darkMode: this.darkMode, reduceMotion: this.reduceMotion, rightContent: this.RightBadge })
       Scroll() {
         Column({ space: 14 }) {
+          this.Header()
           this.Hero()
           Row({ space: 8 }) {
             ForEach(['待完成','已完成','全部'], (item: string) => {
@@ -146,7 +142,6 @@ export struct TasksPage {
           Blank().height(112)
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 10 })
       }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
-      }
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

@@ -37,6 +37,8 @@ export class NotificationNormalizer {
     if (title.length === 0 && text.length === 0 && bigText.length === 0) {
       return null;
     }
+    const source: NotificationSource = NotificationSourceResolver.resolve(bundleName);
+    const isImSource: boolean = source === NotificationSource.WECHAT || source === NotificationSource.WECOM || source === NotificationSource.QQ;
     return {
       notificationKey: `${bundleName}:${notificationId}:${deliveryTime}`,
       bundleName: bundleName,
@@ -46,11 +48,11 @@ export class NotificationNormalizer {
       text: text,
       bigText: bigText,
       additionalText: cleanAdditional,
-      groupCandidate: '',
-      groupIdentityConfidence: 'NONE',
+      groupCandidate: isImSource ? title : '',
+      groupIdentityConfidence: isImSource && title.length > 0 ? 'HIGH' : 'NONE',
       category: category,
       postTime: deliveryTime,
-      source: NotificationSourceResolver.resolve(bundleName),
+      source: source,
     };
   }
 }

@@ -103,7 +103,7 @@ export struct PersonalHubPage {
           }
           Blank().height(24)
         }.width('100%').padding({ left: 14, right: 14, bottom: 18 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

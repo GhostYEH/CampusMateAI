@@ -147,7 +147,7 @@ export struct FocusPage {
           }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
           Blank().height(18)
         }.width('100%').padding({ left: 14, right: 14, bottom: 20 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

@@ -4,6 +4,7 @@ import { NotificationFilter } from './NotificationFilter';
 import { NotificationSource, NotificationSourceSettings, DEFAULT_SOURCE_SETTINGS } from './NotificationSource';
 import { NotificationTextSanitizer } from './NotificationTextSanitizer';
 import { NotificationSourceResolver } from './NotificationSource';
+import { NotificationInbox, NotificationMutationQueue } from './NotificationInbox';
 import { PreferencesUtil } from '../../util/PreferencesUtil';
 import { ApiClient } from '../ApiClient';
 import { http } from '@kit.NetworkKit';
@@ -26,6 +27,7 @@ export interface IngestResult {
 export class NotificationIngestService {
   private readonly apiClient: ApiClient;
   private readonly tokenProvider: () => string;
+  private readonly localMutationQueue: NotificationMutationQueue = new NotificationMutationQueue();
   constructor(apiClient: ApiClient, tokenProvider: () => string) {
     this.tokenProvider = tokenProvider;
     this.apiClient = apiClient;
@@ -39,17 +41,20 @@ export class NotificationIngestService {
     if (!NotificationFilter.shouldStore(notification, settings, wechatWhitelist, wecomWhitelist, qqWhitelist)) {
       return { success: false, fingerprint: '', reason: 'filtered' };
     }
+    const primaryText: string = NotificationTextSanitizer.primaryText(notification.bigText, notification.text);
+    if (primaryText.length === 0) {
+      return { success: false, fingerprint: '', reason: 'empty_text' };
+    }
     const fingerprint: string = NotificationFingerprint.create(notification);
-    const isNew: boolean = await this.recordFingerprint(fingerprint);
+    const sourceName: string = notification.groupCandidate.length > 0 ? notification.groupCandidate : (notification.title.length > 0 ? notification.title : NotificationSourceResolver.displayName(notification.bundleName));
+    let isNew: boolean = false;
+    await this.localMutationQueue.enqueue(async () => {
+      isNew = await this.recordFingerprint(fingerprint);
+      if (isNew) await this.saveLocalNotice(notification, fingerprint, primaryText, sourceName);
+    });
     if (!isNew) {
       return { success: false, fingerprint: fingerprint, reason: 'duplicate' };
     }
-    const primaryText: string = NotificationTextSanitizer.primaryText(notification.bigText, notification.text);
-    if (primaryText.length === 0) {
-      return { success: false, fingerprint: fingerprint, reason: 'empty_text' };
-    }
-    const sourceName: string = notification.groupCandidate.length > 0 ? notification.groupCandidate : (notification.title.length > 0 ? notification.title : NotificationSourceResolver.displayName(notification.bundleName));
-    await this.saveLocalNotice(notification, fingerprint, primaryText, sourceName);
     try {
       await this.ingestToBackend(primaryText, sourceName, notification.postTime);
     } catch (e) {
@@ -115,6 +120,11 @@ export class NotificationIngestService {
   }
 
   async loadLocalNotices(): Promise<LocalCapturedNotice[]> {
+    await this.localMutationQueue.whenIdle();
+    return this.loadLocalNoticesRaw();
+  }
+
+  private async loadLocalNoticesRaw(): Promise<LocalCapturedNotice[]> {
     const raw: string = await PreferencesUtil.getString(LOCAL_NOTICES_KEY, '');
     if (raw.length === 0) {
       return [];
@@ -127,8 +137,18 @@ export class NotificationIngestService {
   }
 
   async clearLocalNotices(): Promise<void> {
-    await PreferencesUtil.putString(LOCAL_NOTICES_KEY, '');
-    await PreferencesUtil.putString(FINGERPRINTS_KEY, '');
+    await this.localMutationQueue.enqueue(async () => {
+      await PreferencesUtil.putString(LOCAL_NOTICES_KEY, '');
+      await PreferencesUtil.putString(FINGERPRINTS_KEY, '');
+    });
+  }
+
+  async deleteLocalNotice(id: string): Promise<void> {
+    await this.localMutationQueue.enqueue(async () => {
+      const current: LocalCapturedNotice[] = await this.loadLocalNoticesRaw();
+      const updated: LocalCapturedNotice[] = NotificationInbox.remove(current, id);
+      await PreferencesUtil.putString(LOCAL_NOTICES_KEY, JSON.stringify(updated));
+    });
   }
 
   async loadWechatWhitelist(): Promise<string[]> {
@@ -164,16 +184,45 @@ export class NotificationIngestService {
 
   async addWechatWhitelistGroup(group: string): Promise<string[]> {
     const current: string[] = await this.loadWechatWhitelist();
-    if (!current.includes(group)) {
-      current.push(group);
-      await this.saveWechatWhitelist(current);
+    const updated: string[] = NotificationInbox.addWhitelistGroup(current, group);
+    if (updated !== current) {
+      await this.saveWechatWhitelist(updated);
     }
-    return current;
+    return updated;
+  }
+
+  async addWecomWhitelistGroup(group: string): Promise<string[]> {
+    const current: string[] = await this.loadWecomWhitelist();
+    const updated: string[] = NotificationInbox.addWhitelistGroup(current, group);
+    if (updated !== current) {
+      await this.saveWecomWhitelist(updated);
+    }
+    return updated;
+  }
+
+  async addQqWhitelistGroup(group: string): Promise<string[]> {
+    const current: string[] = await this.loadQqWhitelist();
+    const updated: string[] = NotificationInbox.addWhitelistGroup(current, group);
+    if (updated !== current) {
+      await this.saveQqWhitelist(updated);
+    }
+    return updated;
+  }
+
+  async removeWecomWhitelistGroup(group: string): Promise<string[]> {
+    const updated: string[] = NotificationInbox.removeWhitelistGroup(await this.loadWecomWhitelist(), group);
+    await this.saveWecomWhitelist(updated);
+    return updated;
+  }
+
+  async removeQqWhitelistGroup(group: string): Promise<string[]> {
+    const updated: string[] = NotificationInbox.removeWhitelistGroup(await this.loadQqWhitelist(), group);
+    await this.saveQqWhitelist(updated);
+    return updated;
   }
 
   async removeWechatWhitelistGroup(group: string): Promise<string[]> {
-    const current: string[] = await this.loadWechatWhitelist();
-    const updated: string[] = current.filter((g: string) => g !== group);
+    const updated: string[] = NotificationInbox.removeWhitelistGroup(await this.loadWechatWhitelist(), group);
     await this.saveWechatWhitelist(updated);
     return updated;
   }
@@ -233,7 +282,7 @@ export class NotificationIngestService {
       fingerprint: fingerprint,
       captured_at: Date.now(),
     };
-    const existing: LocalCapturedNotice[] = await this.loadLocalNotices();
+    const existing: LocalCapturedNotice[] = await this.loadLocalNoticesRaw();
     const updated: LocalCapturedNotice[] = [local, ...existing].slice(0, MAX_LOCAL_NOTICES);
     await PreferencesUtil.putString(LOCAL_NOTICES_KEY, JSON.stringify(updated));
   }

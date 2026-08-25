@@ -8,7 +8,11 @@ import { LoginScreen } from '../features/login/LoginScreen';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { AppDock } from '../ui/AppDock';
 import { CoursesPage } from '../features/courses/CoursesPage';
+import { CourseDetailPage } from '../features/courses/CourseDetailPage';
 import { TasksPage } from '../features/tasks/TasksPage';
+import { TaskDetailPage } from '../features/tasks/TaskDetailPage';
+import { ExamDetailPage } from '../features/exams/ExamDetailPage';
+import { ExamFormPage } from '../features/exams/ExamFormPage';
 import { CounselorPage } from '../features/counselor/CounselorPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { QrScannerPage } from '../features/profile/QrScannerPage';
@@ -19,21 +23,32 @@ import { V3CorePage } from '../features/v3/V3CorePage';
 import { FocusPage } from '../features/focus/FocusPage';
 import { LostFoundPage } from '../features/lostfound/LostFoundPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
+import { NotificationSourceSettingsPage } from '../features/notifications/NotificationSourceSettingsPage';
+import { ChaoxingPage } from '../features/notifications/ChaoxingPage';
 import { PersonalHubPage } from '../features/profile/PersonalHubPage';
 import { SettingsPage } from '../features/profile/SettingsPage';
 import { AccountPage } from '../features/profile/AccountPage';
 import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
-import { AcademicStatusItem, ActivityItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityPostItem, CommunityPostPayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse } from '../data/Models';
+import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
+import { AcademicStatusItem, ActivityItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
-import { notificationSubscriberManager } from '../data/notification/NotificationSubscriber';
+import { NotificationSource } from '../data/notification/NotificationSource';
+import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
+import { ChaoxingRepository } from '../data/chaoxing/ChaoxingRepository';
 import { StudyRepository } from '../repository/StudyRepository';
 import { http } from '@kit.NetworkKit';
 import { promptAction, window } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import picker from '@ohos.file.picker';
+import { ExpressionRecognitionService } from '../service/ExpressionRecognitionService';
+import { withExpressionSignal } from '../data/ExpressionSignalChatBridge';
+import { AppRoute, AppRouteRegistry } from '../navigation/AppRoute';
+import { EduScheduleItemDto } from '../data/ApiClient';
+import { abilityAccessCtrl, common, PermissionRequestResult } from '@kit.AbilityKit';
 import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
-import { MindSporeBehaviorProvider } from '../service/MindSporeBehaviorProvider';
+import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
+import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
@@ -50,14 +65,18 @@ function safeArray<T>(value: T[] | null | undefined): T[] {
 struct Index {
   private appState: AppState = new AppState();
   private tabsController: TabsController = new TabsController();
+  private pageStack: NavPathStack = new NavPathStack();
   private requestedTab: number = -1;
   private ingestService: NotificationIngestService | null = null;
+  private chaoxingRepository: ChaoxingRepository | null = null;
+  private expressionService: ExpressionRecognitionService = new ExpressionRecognitionService();
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
+  private expressionPollingTimer: number = -1;
+  private expressionConsentDialogOpen: boolean = false;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
   @State reduceMotion: boolean = false;
   @State activeTab: number = 0;
-  @State route: string = '';
   @State eduLoginUrl: string = '';
   @State eduLoginConnectionId: string = '';
   @State eduLoginAllowedOrigins: string[] = [];
@@ -77,6 +96,8 @@ struct Index {
   @State chatMessages: ChatMessage[] = [];
   @State chatInput: string = '';
   @State chatSending: boolean = false;
+  @State digitalHumanSpeechText: string = '';
+  @State digitalHumanSpeechRequestId: number = 0;
   @State displayName: string = '林知夏';
   @State profileDetail: string = '计算机科学与技术 · 大三';
   @State secondaryLoading: boolean = false;
@@ -85,14 +106,22 @@ struct Index {
   @State classrooms: ClassroomAvailability[] = [];
   @State universities: UniversityItem[] = [];
   @State selectedUniversityId: string = '';
+  @State selectedUniversityName: string = '';
   @State communityPosts: CommunityPostItem[] = [];
+  @State communityHotPosts: CommunityPostItem[] = [];
+  @State communityDetailPost: CommunityPostItem | null = null;
+  @State communityComments: CommunityComment[] = [];
+  @State communityDetailLoading: boolean = false;
+  @State communityDetailId: string = '';
+  @State communityPostImages: string[] = [];
+  @State communityEditPost: CommunityPostItem | null = null;
   @State academicStatus: AcademicStatusItem = { status: 'unsupported', provider: 'unsupported' };
   @State lostFoundItems: LostFoundItem[] = [];
   @State studySessions: StudySession[] = [];
   @State activeStudySession?: StudySession = undefined;
   @State notices: NoticeItem[] = [];
   @State localNotices: LocalCapturedNotice[] = [];
-  @State subscriberActive: boolean = false;
+  @State chaoxingStatus: ChaoxingAccountStatus = ChaoxingStatusMapper.unavailable();
   @State personalFiles: PersonalFileItem[] = [];
   @State activities: ActivityItem[] = [];
   @State favorites: FavoriteItem[] = [];
@@ -100,6 +129,18 @@ struct Index {
   @State rememberUsername: boolean = false;
   @State statusBarHeight: number = 0;
   @State showLogoutDialog: boolean = false;
+  @State expressionAvailable: boolean = false;
+  @State expressionDetail: string = '';
+  @State expressionGreeting: string = ExpressionGreetingPolicy.greeting(undefined);
+  @State courseDetailId: string = '';
+  @State taskDetailId: string = '';
+  @State examDetailId: string = '';
+  @State examFormId: string = '';
+  @State lostFoundDetailId: string = '';
+  @State notificationDetailId: string = '';
+  @State notificationSettingsSource: NotificationSource | null = null;
+  @State notificationManualSeed: string = '';
+  @State scheduleDetailItem?: EduScheduleItemDto = undefined;
   @State focusAssistDetail: string = '正在准备 V3.4 本地模型';
   @State focusAssistLabel: string = '';
   @State focusAssistConfidence: number = 0;
@@ -111,7 +152,15 @@ struct Index {
     this.darkMode = this.appState.darkMode;
     this.reduceMotion = this.appState.reduceMotion;
     this.rememberUsername = this.appState.rememberUsername;
+    this.selectedUniversityId = this.appState.universityId;
+    this.selectedUniversityName = this.appState.universityName;
     this.applySystemBarStyle();
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.expressionService = new ExpressionRecognitionService(new MindSporeExpressionProvider(context));
+    } catch (_) {
+      this.expressionService = new ExpressionRecognitionService();
+    }
     this.initializeFocusAssist();
     if (this.rememberUsername && this.appState.savedUsername.length > 0) {
       this.username = this.appState.savedUsername;
@@ -123,15 +172,9 @@ struct Index {
   }
 
   async initializeFocusAssist(): Promise<void> {
-    try {
-      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-      const provider: MindSporeBehaviorProvider = new MindSporeBehaviorProvider(context.resourceManager);
-      this.focusAssistProvider = provider;
-      await provider.start();
-    } catch (error) {
-      this.focusAssistProvider = new UnavailableFocusAssistProvider();
-    }
+    this.focusAssistProvider = new UnavailableFocusAssistProvider();
     this.refreshFocusAssistState();
+    this.focusAssistDetail = '鸿蒙 V3.4 候选模型未达到生产门槛，行为提醒保持关闭';
   }
 
   refreshFocusAssistState(): void {
@@ -142,13 +185,51 @@ struct Index {
     this.focusBehaviorReminder = this.focusAssistProvider.currentReminder();
   }
 
+  async onPageShow(): Promise<void> {
+    if (this.signedIn && this.appState.sessionToken.length > 0) {
+      this.refreshUniversityFromServer();
+    }
+    if (this.activeTab === 3) this.syncExpressionForTab();
+  }
+
+  aboutToDisappear(): void {
+    this.stopExpressionRecognition();
+  }
+
+  async refreshUniversityFromServer(): Promise<void> {
+    if (this.appState.sessionToken.length === 0) return;
+    try {
+      const client = this.createApiClient();
+      const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
+      const user = me?.user ?? {};
+      const newId: string = user.university_id ?? '';
+      const newName: string = user.university_name ?? '';
+      if (newId !== this.selectedUniversityId || newName !== this.selectedUniversityName) {
+        this.selectedUniversityId = newId;
+        this.selectedUniversityName = newName;
+        await this.appState.saveUniversity(newId, newName);
+        this.communityPosts = [];
+        this.communityHotPosts = [];
+        this.lostFoundItems = [];
+      }
+    } catch (_) { /* silent refresh, ignore errors */ }
+  }
+
   initNotificationService(): void {
     if (this.ingestService === null) {
       this.ingestService = new NotificationIngestService(this.createApiClient(), () => this.appState.getAccessToken());
-      notificationSubscriberManager.init(this.ingestService);
     }
+    if (this.chaoxingRepository === null) this.chaoxingRepository = new ChaoxingRepository(this.createApiClient());
     this.loadLocalNotices();
-    this.subscriberActive = false;
+  }
+
+  async refreshChaoxingStatus(): Promise<void> {
+    if (this.chaoxingRepository === null) return;
+    try {
+      this.chaoxingStatus = await this.chaoxingRepository.getStatus();
+    } catch (_) {
+      this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
+    }
   }
 
   createApiClient(): ApiClient {
@@ -161,9 +242,13 @@ struct Index {
   }
 
   async handleSessionExpired(): Promise<void> {
+    await this.expressionService.stop();
+    this.expressionAvailable = false;
     await this.appState.clearSession();
+    this.clearRoutes();
     this.signedIn = false;
-    this.subscriberActive = false;
+    this.chaoxingRepository = null;
+    this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
   }
 
   async loadLocalNotices(): Promise<void> {
@@ -179,7 +264,10 @@ struct Index {
       window.getLastWindow(getContext(this)).then((win: window.Window) => {
         win.setWindowSystemBarProperties({
           statusBarColor: '#00000000',
-          isStatusBarLightIcon: this.darkMode
+          isStatusBarLightIcon: this.darkMode,
+          navigationBarColor: '#00000000',
+          isNavigationBarLightIcon: this.darkMode,
+          enableNavigationBarAnimation: true
         }).catch(() => {});
         try {
           const avoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
@@ -235,7 +323,13 @@ struct Index {
     try {
       const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
       const user = me?.user ?? {};
-      this.selectedUniversityId = user.university_id ?? '';
+      const newUniversityId = user.university_id ?? '';
+      const newUniversityName = user.university_name ?? '';
+      if (newUniversityId !== this.selectedUniversityId || newUniversityName !== this.selectedUniversityName) {
+        this.selectedUniversityId = newUniversityId;
+        this.selectedUniversityName = newUniversityName;
+        await this.appState.saveUniversity(newUniversityId, newUniversityName);
+      }
       this.displayName = user.display_name ?? user.name ?? user.username ?? '林知夏';
       const detailParts: string[] = [];
       if (user.major !== undefined && user.major.length > 0) {
@@ -313,11 +407,12 @@ struct Index {
     this.chatSending = true;
     const client = this.createApiClient();
     try {
-      const request: ChatRequest = {
+      const baseRequest: ChatRequest = {
         message: message,
         session_id: 'harmony-session',
         stream: true
       };
+      const request: ChatRequest = withExpressionSignal(baseRequest, this.expressionService.latestStableSignal());
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -351,6 +446,11 @@ struct Index {
         });
       }
       if (!receivedChunk && completedAnswer.length === 0) throw new Error('AI 流式响应为空');
+      const finalAssistant = this.chatMessages.find((item: ChatMessage) => item.id === assistantMessage.id);
+      if (finalAssistant !== undefined && finalAssistant.content.trim().length > 0) {
+        this.digitalHumanSpeechText = finalAssistant.content;
+        this.digitalHumanSpeechRequestId += 1;
+      }
     } catch (error) {
       const latest = this.chatMessages[this.chatMessages.length - 1];
       if (latest !== undefined && latest.role === 'assistant' && latest.content.length === 0) {
@@ -370,11 +470,13 @@ struct Index {
   }
 
   async signOut(): Promise<void> {
-    await notificationSubscriberManager.stop();
-    this.subscriberActive = false;
+    await this.expressionService.stop();
+    this.expressionAvailable = false;
+    this.chaoxingRepository = null;
+    this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
     await this.appState.signOut();
     this.signedIn = false;
-    this.route = '';
+    this.clearRoutes();
     this.activeTab = 0;
     this.password = '';
     this.localNotices = [];
@@ -383,9 +485,80 @@ struct Index {
     }
   }
 
-  async toggleSubscriber(): Promise<void> {
-    this.subscriberActive = false;
-    toastError('普通 HarmonyOS 手机应用无系统级第三方通知订阅权限，请使用后端通知、学习通同步或手动粘贴。');
+  async startExpressionRecognition(): Promise<void> {
+    try {
+      await this.expressionService.start();
+      this.expressionAvailable = this.expressionService.available();
+      this.expressionDetail = this.expressionService.statusDetail();
+    } catch (_) {
+      this.expressionAvailable = false;
+      this.expressionDetail = '情绪识别初始化失败，聊天不会上传相机画面';
+    }
+  }
+
+  async stopExpressionRecognition(): Promise<void> {
+    if (this.expressionPollingTimer >= 0) {
+      clearInterval(this.expressionPollingTimer);
+      this.expressionPollingTimer = -1;
+    }
+    await this.expressionService.stop();
+    this.expressionAvailable = false;
+    this.expressionDetail = '情绪识别已停止；不会上传或保存相机画面';
+    this.expressionGreeting = ExpressionGreetingPolicy.greeting(undefined);
+  }
+
+  async requestExpressionPermissionAndStart(): Promise<void> {
+    if (!this.appState.emotionAssistanceEnabled || this.activeTab !== 3) return;
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const result: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
+        .requestPermissionsFromUser(context, ['ohos.permission.CAMERA']);
+      if (result.authResults.length === 0 || result.authResults[0] !== 0) {
+        this.expressionAvailable = false;
+        this.expressionDetail = '需要相机权限才能在本机识别表情';
+        return;
+      }
+      await this.startExpressionRecognition();
+      if (this.expressionPollingTimer < 0) {
+        this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 500);
+      }
+    } catch (_) {
+      this.expressionAvailable = false;
+      this.expressionDetail = '相机权限或本地模型不可用，聊天不会附带表情信息';
+    }
+  }
+
+  refreshExpressionState(): void {
+    this.expressionAvailable = this.expressionService.available();
+    this.expressionDetail = this.expressionService.statusDetail();
+    this.expressionGreeting = ExpressionGreetingPolicy.greeting(this.expressionService.latestStableSignal());
+  }
+
+  syncExpressionForTab(forceConsent: boolean = false): void {
+    if (!this.signedIn || this.activeTab !== 3) {
+      this.stopExpressionRecognition();
+      return;
+    }
+    if (this.appState.emotionAssistanceEnabled) {
+      this.requestExpressionPermissionAndStart();
+      return;
+    }
+    if (this.appState.emotionAssistanceDecisionMade && !forceConsent) {
+      this.expressionDetail = '情绪陪伴未启用；聊天不会获取或发送表情信息';
+      return;
+    }
+    if (this.expressionConsentDialogOpen) return;
+    this.expressionConsentDialogOpen = true;
+    promptAction.showDialog({
+      title: '启用本地情绪陪伴？',
+      message: '仅在 CPM 页面前台使用相机识别表情。画面只在本机处理，不上传、不保存；只有通过高精度阈值且连续稳定的表情标签会随提问发送给 AI。',
+      buttons: [{ text: '暂不启用', color: '#6b7280' }, { text: '同意并启用', color: '#5265E8' }]
+    }).then(async (result: promptAction.ShowDialogSuccessResponse) => {
+      const enabled: boolean = result.index === 1;
+      await this.appState.setEmotionAssistance(enabled);
+      if (enabled) await this.requestExpressionPermissionAndStart();
+      else this.expressionDetail = '情绪陪伴未启用；聊天不会获取或发送表情信息';
+    }).catch(() => {}).finally(() => { this.expressionConsentDialogOpen = false; });
   }
 
   async toggleTheme(): Promise<void> {
@@ -395,25 +568,118 @@ struct Index {
   }
 
   navigateTo(target: string): void {
-    if (target === 'courses') { this.selectTab(1); return; }
-    if (target === 'tasks') { this.selectTab(2); return; }
-    if (target === 'counselor') { this.selectTab(3); return; }
-    if (target === 'profile') { this.selectTab(4); return; }
-    this.route = target;
-    this.refreshSecondaryData(target);
+    const tabIndex: number = AppRouteRegistry.tabIndex(target);
+    if (tabIndex >= 0) {
+      this.selectTab(tabIndex);
+      return;
+    }
+    this.pushRoute(target);
+  }
+
+  openCourseDetail(course: CourseItem): void {
+    this.courseDetailId = course.id;
+    this.pushRoute(AppRoute.COURSE_DETAIL);
+  }
+
+  openTaskDetail(task: TaskItem): void {
+    this.taskDetailId = task.id;
+    this.pushRoute(AppRoute.TASK_DETAIL);
+  }
+
+  openExamDetail(exam: ExamItem): void {
+    this.examDetailId = exam.id;
+    this.pushRoute(AppRoute.EXAM_DETAIL);
+  }
+
+  openExamForm(exam?: ExamItem): void {
+    this.examFormId = exam?.id ?? '';
+    this.pushRoute(AppRoute.EXAM_FORM);
+  }
+
+  openLostFoundDetail(item: LostFoundItem): void {
+    this.lostFoundDetailId = item.id;
+    this.pushRoute(AppRoute.LOST_FOUND_DETAIL);
+  }
+
+  openNotificationDetail(id: string): void {
+    this.notificationDetailId = id;
+    this.pushRoute(AppRoute.NOTIFICATION_DETAIL);
+  }
+
+  openNotificationSourceSettings(source: NotificationSource): void {
+    this.notificationSettingsSource = source;
+    this.pushRoute(AppRoute.NOTIFICATION_SOURCE_SETTINGS);
+  }
+
+  openScheduleDetail(item: EduScheduleItemDto): void {
+    this.scheduleDetailItem = item;
+    this.pushRoute(AppRoute.EDU_SCHEDULE_DETAIL);
   }
 
   selectTab(index: number): void {
-    this.route = '';
+    this.clearRoutes();
     // Tabs.onChange is delivered after controller navigation on this SDK and
     // can briefly report the previous index. Ignore that stale callback while
     // the controller completes the requested page transition.
     this.requestedTab = index;
     this.activeTab = index;
     this.tabsController.changeIndex(index);
+    this.syncExpressionForTab();
+  }
+
+  pushRoute(target: string): void {
+    if (!AppRouteRegistry.isSecondary(target)) {
+      toastError('该校园服务暂不可用');
+      return;
+    }
+    const parent: string = AppRouteRegistry.parent(target);
+    const routeNames: string[] = this.pageStack.getAllPathName();
+    const current: string = routeNames.length > 0 ? routeNames[routeNames.length - 1] : '';
+    const parentTab: number = AppRouteRegistry.tabIndex(parent);
+    if (parentTab >= 0) {
+      if (this.activeTab !== parentTab) {
+        this.selectTab(parentTab);
+      }
+    } else if (parent.length > 0 && routeNames.indexOf(parent) < 0) {
+      this.pageStack.pushPath({ name: parent }, !this.reduceMotion);
+      if (AppRouteRegistry.loadsOnOpen(parent)) {
+        this.refreshSecondaryData(parent);
+      }
+    }
+    this.pageStack.pushPath({ name: target }, !this.reduceMotion);
+    if (AppRouteRegistry.loadsOnOpen(target)) {
+      this.refreshSecondaryData(target);
+    }
+  }
+
+  popRoute(): void {
+    this.pageStack.pop(!this.reduceMotion);
+  }
+
+  clearRoutes(): void {
+    if (this.pageStack.size() > 0) {
+      this.pageStack.clear(!this.reduceMotion);
+    }
+    this.courseDetailId = '';
+    this.taskDetailId = '';
+    this.examDetailId = '';
+    this.examFormId = '';
+    this.lostFoundDetailId = '';
+    this.notificationDetailId = '';
+    this.notificationSettingsSource = null;
+    this.scheduleDetailItem = undefined;
   }
 
   async refreshSecondaryData(target: string): Promise<void> {
+    if (target === AppRoute.NOTIFICATIONS) {
+      await this.loadLocalNotices();
+      await this.refreshChaoxingStatus();
+      return;
+    }
+    if (target === AppRoute.CHAOXING) {
+      await this.refreshChaoxingStatus();
+      return;
+    }
     if (this.secondaryLoading || this.appState.sessionToken.length === 0) return;
     this.secondaryLoading = true;
     const client = this.createApiClient();
@@ -424,11 +690,25 @@ struct Index {
         const response = await client.request<ClassroomResponse>(http.RequestMethod.GET, 'student/classrooms');
         this.classrooms = safeArray<ClassroomAvailability>(response?.items);
       } else if (target === 'university') {
-        const response = await client.request<PagedResponse<UniversityItem>>(http.RequestMethod.GET, 'universities?page=1&page_size=100');
-        this.universities = safeArray<UniversityItem>(response.items);
+        const all: UniversityItem[] = [];
+        let page: number = 1;
+        let total: number = 0;
+        do {
+          const response = await client.request<PagedResponse<UniversityItem>>(http.RequestMethod.GET, `universities?page=${page}&page_size=100`);
+          const items: UniversityItem[] = safeArray<UniversityItem>(response.items);
+          if (items.length === 0) break;
+          all.push(...items);
+          total = response.total ?? all.length;
+          page++;
+        } while (all.length < total);
+        this.universities = all;
       } else if (target === 'community') {
         const response = await client.request<PagedResponse<CommunityPostItem>>(http.RequestMethod.GET, 'community/posts?page=1&page_size=30');
         this.communityPosts = safeArray<CommunityPostItem>(response.items);
+        try {
+          const hot = await client.request<PagedResponse<CommunityPostItem>>(http.RequestMethod.GET, 'community/posts?sort=hot&page=1&page_size=30');
+          this.communityHotPosts = safeArray<CommunityPostItem>(hot.items);
+        } catch (_) { this.communityHotPosts = []; }
       } else if (target === 'academic') {
         this.academicStatus = await client.request<AcademicStatusItem>(http.RequestMethod.GET, 'academic/status');
       } else if (target === 'lostfound') {
@@ -437,10 +717,6 @@ struct Index {
         const repository = new StudyRepository(client);
         this.studySessions = safeArray<StudySession>(await repository.listSessions());
         this.activeStudySession = await repository.activeSession();
-      } else if (target === 'notifications') {
-        const page = await client.request<PagedResponse<NoticeItem>>(http.RequestMethod.GET, 'notices?page=1&page_size=100');
-        this.notices = safeArray<NoticeItem>(page?.items);
-        await this.loadLocalNotices();
       } else if (target === 'files') {
         this.personalFiles = safeArray<PersonalFileItem>(await client.request<PersonalFileItem[]>(http.RequestMethod.GET, 'personal-hub/files'));
       } else if (target === 'activities') {
@@ -466,17 +742,26 @@ struct Index {
       const client = this.createApiClient();
       const payload: UniversitySelectionRequest = { university_id: id };
       const response = await client.request<UniversitySelectionResponse>(http.RequestMethod.PUT, 'profile/university', payload);
-      this.selectedUniversityId = response.university_id ?? id;
+      const newId: string = response.university_id ?? id;
+      const newName: string = response.university?.name ?? '';
+      this.selectedUniversityId = newId;
+      this.selectedUniversityName = newName;
+      await this.appState.saveUniversity(newId, newName);
+      this.communityPosts = [];
+      this.communityHotPosts = [];
+      this.lostFoundItems = [];
+      this.academicStatus = { status: 'unsupported', provider: 'unsupported' };
       toastError('大学已切换，校园范围数据已更新');
     } catch (error) {
       toastError('切换大学失败，请稍后重试');
     } finally { this.secondarySubmitting = false; }
   }
 
-  async publishCommunityPost(title: string, content: string, anonymous: boolean): Promise<void> {
-    const payload: CommunityPostPayload = { title: title, content: content, category: 'campus', images: [], is_anonymous: anonymous };
+  async publishCommunityPost(title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra): Promise<void> {
+    const payload: CommunityPostPayload = { title: title, content: content, category: category, images: this.communityPostImages, is_anonymous: anonymous, extra: extra };
     try {
       await this.createApiClient().request<CommunityPostItem>(http.RequestMethod.POST, 'community/posts', payload);
+      this.communityPostImages = [];
       await this.refreshSecondaryData('community');
       toastError('帖子已发布');
     } catch (_) { toastError('发布失败，请稍后重试'); }
@@ -489,6 +774,167 @@ struct Index {
     } catch (_) { toastError('点赞失败，请重试'); }
   }
 
+  async openCommunityDetail(id: string): Promise<void> {
+    this.communityDetailId = id;
+    this.pushRoute(AppRoute.COMMUNITY_DETAIL);
+    this.communityDetailLoading = true;
+    try {
+      const client = this.createApiClient();
+      const post = await client.request<CommunityPostItem>(http.RequestMethod.GET, `community/posts/${id}`);
+      this.communityDetailPost = post;
+      try {
+        const comments = await client.request<PagedResponse<CommunityComment>>(http.RequestMethod.GET, `community/posts/${id}/comments`);
+        this.communityComments = safeArray<CommunityComment>(comments.items);
+      } catch (_) { this.communityComments = []; }
+    } catch (_) { toastError('加载详情失败'); }
+    finally { this.communityDetailLoading = false; }
+  }
+
+  async likeCommunityDetail(): Promise<void> {
+    if (this.communityDetailPost === null) return;
+    const id = this.communityDetailPost.id;
+    const liked = this.communityDetailPost.liked ?? false;
+    try {
+      const method = liked ? http.RequestMethod.DELETE : http.RequestMethod.POST;
+      this.communityDetailPost = await this.createApiClient().request<CommunityPostItem>(method, `community/posts/${id}/like`);
+    } catch (_) { toastError('操作失败'); }
+  }
+
+  async favoriteCommunityDetail(): Promise<void> {
+    if (this.communityDetailPost === null) return;
+    const id = this.communityDetailPost.id;
+    const favorited = this.communityDetailPost.favorited ?? false;
+    try {
+      const method = favorited ? http.RequestMethod.DELETE : http.RequestMethod.POST;
+      this.communityDetailPost = await this.createApiClient().request<CommunityPostItem>(method, `community/posts/${id}/favorite`);
+    } catch (_) { toastError('操作失败'); }
+  }
+
+  deleteCommunityDetail(): void {
+    promptAction.showDialog({
+      title: '确认删除', message: '确认删除这篇帖子？',
+      buttons: [{ text: '取消', color: '#6b7280' }, { text: '删除', color: '#dc2626' }],
+    }).then((res: promptAction.ShowDialogSuccessResponse) => {
+      if (res.index === 1) this.doDeleteCommunityDetail();
+    }).catch(() => {});
+  }
+
+  async doDeleteCommunityDetail(): Promise<void> {
+    if (this.communityDetailPost === null) return;
+    try {
+      await this.createApiClient().request<CommunityPostItem>(http.RequestMethod.DELETE, `community/posts/${this.communityDetailPost.id}`);
+      toastError('帖子已删除');
+      this.popRoute();
+      await this.refreshSecondaryData('community');
+    } catch (_) { toastError('删除失败'); }
+  }
+
+  reportCommunityDetail(): void {
+    promptAction.showActionMenu({
+      title: '选择举报原因',
+      buttons: [
+        { text: '垃圾广告', color: '#dc2626' },
+        { text: '辱骂攻击', color: '#dc2626' },
+        { text: '色情低俗', color: '#dc2626' },
+        { text: '违法违规', color: '#dc2626' },
+        { text: '隐私泄露', color: '#dc2626' },
+        { text: '其它', color: '#666666' }
+      ]
+    }).then((res: promptAction.ActionMenuSuccessResponse) => {
+      const reasons: string[] = ['垃圾广告', '辱骂攻击', '色情低俗', '违法违规', '隐私泄露', '其它'];
+      if (res.index >= 0 && res.index < reasons.length) {
+        this.doReportCommunityDetail(reasons[res.index]);
+      }
+    }).catch(() => {});
+  }
+
+  async doReportCommunityDetail(reason: string): Promise<void> {
+    if (this.communityDetailPost === null) return;
+    try {
+      const body: CommunityReportCreatePayload = { target_type: 'post', target_id: this.communityDetailPost.id, reason: reason };
+      await this.createApiClient().requestVoid(http.RequestMethod.POST, 'community/reports', body);
+      toastError('已举报，管理员将审核');
+    } catch (_) { toastError('举报失败'); }
+  }
+
+  async addCommunityComment(content: string, anonymous: boolean, parentId?: string): Promise<void> {
+    if (this.communityDetailId.length === 0) return;
+    try {
+      const body: CommunityCommentCreatePayload = { content: content, is_anonymous: anonymous, parent_comment_id: parentId ?? '' };
+      await this.createApiClient().request<CommunityComment>(http.RequestMethod.POST, `community/posts/${this.communityDetailId}/comments`, body);
+      const client = this.createApiClient();
+      const comments = await client.request<PagedResponse<CommunityComment>>(http.RequestMethod.GET, `community/posts/${this.communityDetailId}/comments`);
+      this.communityComments = safeArray<CommunityComment>(comments.items);
+      if (this.communityDetailPost !== null) {
+        this.communityDetailPost = { id: this.communityDetailPost.id, title: this.communityDetailPost.title, content: this.communityDetailPost.content, category: this.communityDetailPost.category, author_name: this.communityDetailPost.author_name, is_anonymous: this.communityDetailPost.is_anonymous, like_count: this.communityDetailPost.like_count, comment_count: this.communityDetailPost.comment_count + 1, favorite_count: this.communityDetailPost.favorite_count, created_at: this.communityDetailPost.created_at, images: this.communityDetailPost.images, extra: this.communityDetailPost.extra, liked: this.communityDetailPost.liked, favorited: this.communityDetailPost.favorited, is_owner: this.communityDetailPost.is_owner, view_count: this.communityDetailPost.view_count, status: this.communityDetailPost.status, author_id: this.communityDetailPost.author_id };
+      }
+    } catch (_) { toastError('评论失败'); }
+  }
+
+  async uploadCommunityImage(): Promise<void> {
+    if (this.communityPostImages.length >= 9) { toastError('最多上传 9 张图片'); return; }
+    try {
+      const photoPicker: picker.PhotoViewPicker = new picker.PhotoViewPicker();
+      const selectResult: picker.PhotoSelectOptions = new picker.PhotoSelectOptions();
+      selectResult.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+      selectResult.maxSelectNumber = 9 - this.communityPostImages.length;
+      const result = await photoPicker.select(selectResult);
+      if (result.photoUris.length === 0) return;
+      toastError(`正在上传 ${result.photoUris.length} 张图片…`);
+      const client = this.createApiClient();
+      const uris: string[] = result.photoUris;
+      for (let i = 0; i < uris.length; i++) {
+        const uri: string = uris[i];
+        const fileName: string = uri.split('/').pop() ?? 'image.jpg';
+        const contentType: string = this.guessImageContentType(fileName);
+        const res: UploadImageResult = await client.uploadImage(uri, fileName, contentType);
+        this.communityPostImages = this.communityPostImages.concat([res.url]);
+      }
+      toastError(`已添加 ${result.photoUris.length} 张图片`);
+    } catch (e) {
+      toastError('图片上传失败，请重试');
+    }
+  }
+
+  guessImageContentType(fileName: string): string {
+    const lower: string = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  removeCommunityImage(url: string): void {
+    this.communityPostImages = this.communityPostImages.filter((item: string) => item !== url);
+  }
+
+  openCommunityEdit(): void {
+    if (this.communityDetailPost === null) return;
+    this.communityEditPost = this.communityDetailPost;
+    this.communityPostImages = this.communityDetailPost.images ?? [];
+    this.pushRoute(AppRoute.COMMUNITY_EDIT);
+  }
+
+  async updateCommunityPost(title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra): Promise<void> {
+    if (this.communityEditPost === null) return;
+    const payload: CommunityPostUpdatePayload = { title: title, content: content, category: category, images: this.communityPostImages, is_anonymous: anonymous, extra: extra };
+    try {
+      const updated: CommunityPostItem = await this.createApiClient().request<CommunityPostItem>('PUT' as http.RequestMethod, `community/posts/${this.communityEditPost.id}`, payload);
+      this.communityDetailPost = updated;
+      this.communityEditPost = null;
+      this.communityPostImages = [];
+      this.popRoute();
+      await this.refreshSecondaryData('community');
+      toastError('帖子已更新');
+    } catch (_) { toastError('更新失败，请稍后重试'); }
+  }
+
+  cancelCommunityEdit(): void {
+    this.communityEditPost = null;
+    this.communityPostImages = [];
+    this.popRoute();
+  }
+
   async publishLostFound(kind: string, title: string, content: string, location: string, contact: string): Promise<void> {
     const payload: LostFoundPayload = { kind: kind, title: title, content: content, location: location, contact: contact };
     this.secondarySubmitting = true;
@@ -496,6 +942,7 @@ struct Index {
       const client = this.createApiClient();
       await client.request<LostFoundItem>(http.RequestMethod.POST, 'student/lost-found', payload);
       await this.refreshSecondaryData('lostfound');
+      this.popRoute();
       toastError('发布成功');
     } catch (error) {
       toastError('发布失败，请稍后重试');
@@ -543,6 +990,7 @@ struct Index {
         await client.request<ExamItem>(http.RequestMethod.POST, 'student/exams', payload);
       }
       await this.refreshSecondaryData('exams');
+      this.popRoute();
       toastError(id !== undefined && id.length > 0 ? '考试已更新' : '考试已添加');
     } catch (error) {
       toastError('保存考试失败，请重试');
@@ -554,26 +1002,11 @@ struct Index {
       const client = this.createApiClient();
       await client.requestVoid(http.RequestMethod.DELETE, `student/exams/${id}`);
       await this.refreshSecondaryData('exams');
+      this.popRoute();
       toastError('考试已删除');
     } catch (error) {
       toastError('删除失败，请重试');
     }
-  }
-
-  routeTitle(): string {
-    if (this.route === 'courses') return '我的课程';
-    if (this.route === 'exams') return '考试安排';
-    if (this.route === 'classrooms') return '空教室查询';
-    if (this.route === 'university') return '我的大学';
-    if (this.route === 'community') return '校园社区';
-    if (this.route === 'academic') return '教务系统';
-    if (this.route === 'focus') return '专注自习';
-    if (this.route === 'lostfound') return '失物招领';
-    if (this.route === 'settings') return '设置';
-    if (this.route === 'qr_scanner') return '扫一扫';
-    if (this.route === 'qr_confirm') return '确认登录';
-    if (this.route === 'profile') return '个人资料';
-    return '校园服务';
   }
 
   @Builder Header(title: string, subtitle: string) {
@@ -615,7 +1048,7 @@ struct Index {
     Column({ space: 8 }) {
       Text(label).fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.textColor())
       Text('进入功能').fontSize(12).fontColor(this.primaryColor())
-    }.alignItems(HorizontalAlign.Center).padding(14).backgroundColor(this.softColor()).borderRadius(16).width('31%').onClick(() => this.route = target)
+    }.alignItems(HorizontalAlign.Center).padding(14).backgroundColor(this.softColor()).borderRadius(16).width('31%').onClick(() => this.navigateTo(target))
   }
 
   @Builder HomePage() {
@@ -650,8 +1083,7 @@ struct Index {
       detail: this.profileDetail,
       onNavigate: (target: string) => {
         if (target === 'counselor') {
-          this.route = '';
-          this.activeTab = 3;
+          this.selectTab(3);
         } else {
           this.navigateTo(target);
         }
@@ -659,38 +1091,79 @@ struct Index {
     })
   }
 
-  @Builder SecondaryContent() {
-    if (this.route === 'exams') {
-      ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('exams'), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id), onDelete: (id: string) => this.deleteExam(id) })
-    } else if (this.route === 'classrooms') {
-      ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onQuery: () => this.refreshSecondaryData('classrooms') })
-    } else if (this.route === 'university' || this.route === 'community' || this.route === 'academic') {
-      V3CorePage({ route: this.route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, universities: this.universities, posts: this.communityPosts, academicStatus: this.academicStatus, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean) => this.publishCommunityPost(title, content, anonymous), onLike: (id: string) => this.likeCommunityPost(id) })
-    } else if (this.route === 'focus') {
-      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => this.route = '', onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
-    } else if (this.route === 'lostfound') {
-      LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, onBack: () => this.route = '', onFilter: (kind: string) => this.refreshSecondaryData('lostfound'), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact) })
-    } else if (this.route === 'notifications') {
-      NotificationsPage({ notices: this.notices, loading: this.secondaryLoading, darkMode: this.darkMode, localNotices: this.localNotices, subscriberActive: this.subscriberActive, ingestService: this.ingestService, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData('notifications'), onToggleSubscriber: () => this.toggleSubscriber(), onTaskSaved: () => this.refreshPrimaryData(), onLocalNoticesChanged: () => this.loadLocalNotices() })
-    } else if (this.route === 'files' || this.route === 'activities' || this.route === 'favorites') {
-      PersonalHubPage({ section: this.route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.route = '', onRefresh: () => this.refreshSecondaryData(this.route) })
-    } else if (this.route === 'settings') {
-      SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.route = '', onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
-    } else if (this.route === 'qr_scanner') {
+  courseDetailItem(): CourseItem | undefined {
+    return this.courses.find((item: CourseItem) => item.id === this.courseDetailId);
+  }
+
+  taskDetailItem(): TaskItem | undefined {
+    return this.tasks.find((item: TaskItem) => item.id === this.taskDetailId);
+  }
+
+  examDetailItem(): ExamItem | undefined {
+    return this.exams.find((item: ExamItem) => item.id === this.examDetailId);
+  }
+
+  examFormItem(): ExamItem {
+    return this.exams.find((item: ExamItem) => item.id === this.examFormId) ?? { id: '', course_name: '', exam_date: '' };
+  }
+
+  lostFoundView(route: string): string {
+    if (route === AppRoute.LOST_FOUND_DETAIL) return 'detail';
+    if (route === AppRoute.LOST_FOUND_PUBLISH) return 'publish';
+    if (route === AppRoute.LOST_FOUND_MINE) return 'mine';
+    return 'list';
+  }
+
+  @Builder SecondaryContent(route: string) {
+    if (route === AppRoute.COURSE_DETAIL) {
+      if (this.courseDetailItem() !== undefined) {
+        CourseDetailPage({ course: this.courseDetailItem()!, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onLoadContent: (courseId: string) => this.loadCourseContent(courseId), onSyncContent: (courseId: string) => this.syncCourseContent(courseId), onCacheContent: (courseId: string, itemId: string) => this.cacheCourseContent(courseId, itemId) })
+      }
+    } else if (route === AppRoute.TASK_DETAIL) {
+      if (this.taskDetailItem() !== undefined) {
+        TaskDetailPage({ task: this.taskDetailItem()!, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onComplete: (id: string) => { const selected = this.tasks.find((item: TaskItem) => item.id === id); if (selected !== undefined) this.toggleTask(selected); } })
+      }
+    } else if (route === AppRoute.EXAMS) {
+      ExamsPage({ exams: this.exams, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onRefresh: () => this.refreshSecondaryData(AppRoute.EXAMS), onOpenDetail: (exam: ExamItem) => this.openExamDetail(exam), onOpenForm: () => this.openExamForm() })
+    } else if (route === AppRoute.EXAM_DETAIL) {
+      if (this.examDetailItem() !== undefined) {
+        ExamDetailPage({ exam: this.examDetailItem()!, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onEdit: () => this.openExamForm(this.examDetailItem()), onDelete: (id: string) => this.deleteExam(id) })
+      }
+    } else if (route === AppRoute.EXAM_FORM) {
+      ExamFormPage({ exam: this.examFormItem(), isEditing: this.examFormId.length > 0, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id) })
+    } else if (route === AppRoute.CLASSROOMS) {
+      ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onQuery: () => this.refreshSecondaryData(AppRoute.CLASSROOMS) })
+    } else if (route === AppRoute.UNIVERSITY || route === AppRoute.COMMUNITY || route === AppRoute.COMMUNITY_HOT || route === AppRoute.COMMUNITY_PUBLISH || route === AppRoute.COMMUNITY_DETAIL || route === AppRoute.COMMUNITY_EDIT || route === AppRoute.ACADEMIC) {
+      V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailReport: () => this.reportCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
+    } else if (route === AppRoute.FOCUS) {
+      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => this.popRoute(), onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
+    } else if (route === AppRoute.LOST_FOUND || route === AppRoute.LOST_FOUND_DETAIL || route === AppRoute.LOST_FOUND_PUBLISH || route === AppRoute.LOST_FOUND_MINE) {
+      LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, reduceMotion: this.reduceMotion, view: this.lostFoundView(route), selectedItemId: this.lostFoundDetailId, onBack: () => this.popRoute(), onFilter: (_kind: string) => this.refreshSecondaryData(AppRoute.LOST_FOUND), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact), onOpenDetail: (item: LostFoundItem) => this.openLostFoundDetail(item), onOpenPublish: () => this.pushRoute(AppRoute.LOST_FOUND_PUBLISH), onOpenMine: () => this.pushRoute(AppRoute.LOST_FOUND_MINE) })
+    } else if (route === AppRoute.NOTIFICATIONS || route === AppRoute.NOTIFICATION_DETAIL) {
+      NotificationsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, localNotices: this.localNotices, chaoxingStatus: this.chaoxingStatus, ingestService: this.ingestService, view: route === AppRoute.NOTIFICATION_DETAIL ? 'detail' : 'main', selectedLocalId: this.notificationDetailId, manualSeed: this.notificationManualSeed, onBack: () => this.popRoute(), onTaskSaved: () => this.refreshPrimaryData(), onLocalNoticesChanged: () => this.loadLocalNotices(), onOpenDetail: (id: string) => this.openNotificationDetail(id), onOpenSourceSettings: (source: NotificationSource) => this.openNotificationSourceSettings(source), onOpenChaoxing: () => this.pushRoute(AppRoute.CHAOXING), onPrepareManualExtract: (content: string) => { this.notificationManualSeed = content; } })
+    } else if (route === AppRoute.NOTIFICATION_SOURCE_SETTINGS) {
+      NotificationSourceSettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, source: this.notificationSettingsSource ?? NotificationSource.WECHAT, ingestService: this.ingestService, onBack: () => this.popRoute() })
+    } else if (route === AppRoute.CHAOXING) {
+      ChaoxingPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.chaoxingRepository, onBack: () => this.popRoute(), onStatusChanged: (status: ChaoxingAccountStatus) => { this.chaoxingStatus = status; }, onSynced: () => { this.refreshPrimaryData(); this.loadLocalNotices(); } })
+    } else if (route === AppRoute.FILES || route === AppRoute.ACTIVITIES || route === AppRoute.FAVORITES) {
+      PersonalHubPage({ section: route, files: this.personalFiles, activities: this.activities, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onRefresh: () => this.refreshSecondaryData(route) })
+    } else if (route === AppRoute.SETTINGS) {
+      SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.popRoute(), onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
+    } else if (route === AppRoute.QR_SCANNER) {
       QrScannerPage({
         darkMode: this.darkMode,
         apiClient: this.createApiClient(),
-        onBack: () => this.route = '',
+        onBack: () => this.popRoute(),
         onScanned: (sessionId: string, scanToken: string, browserName: string, osName: string, deviceLabel: string) => {
           this.qrSessionId = sessionId;
           this.qrScanToken = scanToken;
           this.qrBrowserName = browserName;
           this.qrOsName = osName;
           this.qrDeviceLabel = deviceLabel;
-          this.route = 'qr_confirm';
+          this.pushRoute(AppRoute.QR_CONFIRM);
         }
       })
-    } else if (this.route === 'qr_confirm') {
+    } else if (route === AppRoute.QR_CONFIRM) {
       QrConfirmPage({
         darkMode: this.darkMode,
         sessionId: this.qrSessionId,
@@ -699,27 +1172,28 @@ struct Index {
         osName: this.qrOsName,
         deviceLabel: this.qrDeviceLabel,
         apiClient: this.createApiClient(),
-        onBack: () => { this.route = 'profile'; },
-        onSuccess: () => { this.route = 'profile'; }
+        onBack: () => this.popRoute(),
+        onSuccess: () => this.clearRoutes()
       })
-    } else if (this.route === 'account') {
-      AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.route = '', onSignOut: () => this.signOut() })
-    } else if (this.route === 'edu_system') {
+    } else if (route === AppRoute.ACCOUNT) {
+      AccountPage({ darkMode: this.darkMode, name: this.displayName, detail: this.profileDetail, onBack: () => this.popRoute(), onSignOut: () => this.signOut() })
+    } else if (route === AppRoute.EDU_SYSTEM) {
       EduSystemPage({
         darkMode: this.darkMode,
         universityId: this.selectedUniversityId,
         apiBaseUrl: API_BASE_URL,
         authToken: this.appState.getAccessToken(),
-        onBack: () => this.route = '',
+        apiClient: this.createApiClient(),
+        onBack: () => this.popRoute(),
         onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => {
           this.eduLoginUrl = loginUrl;
           this.eduLoginConnectionId = connectionId;
           this.eduLoginAllowedOrigins = allowedOrigins;
-          this.route = 'edu_login';
+          this.pushRoute(AppRoute.EDU_LOGIN);
         },
-        onOpenSchedule: () => { this.route = 'edu_schedule'; }
+        onOpenSchedule: () => this.pushRoute(AppRoute.EDU_SCHEDULE)
       })
-    } else if (this.route === 'edu_login') {
+    } else if (route === AppRoute.EDU_LOGIN) {
       EduLoginPage({
         darkMode: this.darkMode,
         loginUrl: this.eduLoginUrl,
@@ -727,19 +1201,22 @@ struct Index {
         backendAllowedOrigins: this.eduLoginAllowedOrigins,
         apiBaseUrl: API_BASE_URL,
         authToken: this.appState.getAccessToken(),
-        onBack: () => this.route = 'edu_system',
-        onConnected: () => { this.route = 'edu_system'; }
+        onBack: () => this.popRoute(),
+        onConnected: () => this.popRoute()
       })
-    } else if (this.route === 'edu_schedule') {
+    } else if (route === AppRoute.EDU_SCHEDULE) {
       EduSchedulePage({
         darkMode: this.darkMode,
         apiBaseUrl: API_BASE_URL,
         authToken: this.appState.getAccessToken(),
-        onBack: () => this.route = 'edu_system'
+        onBack: () => this.popRoute(),
+        onOpenDetail: (item: EduScheduleItemDto) => this.openScheduleDetail(item)
       })
-    } else if (this.route === 'about') {
+    } else if (route === AppRoute.EDU_SCHEDULE_DETAIL && this.scheduleDetailItem !== undefined) {
+      EduScheduleDetailPage({ item: this.scheduleDetailItem, darkMode: this.darkMode, onBack: () => this.popRoute() })
+    } else if (route === AppRoute.ABOUT) {
       Column({ space: 12 }) {
-        SecondaryHeader({ title: '关于 CampusMate', subtitle: '校园事务智能陪伴助手', darkMode: this.darkMode, onBack: () => this.route = '' })
+        SecondaryHeader({ title: '关于 CampusMate', subtitle: '校园事务智能陪伴助手', darkMode: this.darkMode, onBack: () => this.popRoute() })
         Scroll() {
           Column({ space: 14 }) {
             SymbolGlyph($r('sys.symbol.school')).fontSize(46).fontColor([this.primaryColor()])
@@ -747,11 +1224,11 @@ struct Index {
             Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(14).textAlign(TextAlign.Center).lineHeight(22)
             Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
           }.width('100%').padding(24).alignItems(HorizontalAlign.Center)
-        }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+        }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
       }.width('100%').height('100%').backgroundColor(this.pageBackground())
     } else {
       Column({ space: 12 }) {
-        SecondaryHeader({ title: '校园服务', subtitle: '功能开发中', darkMode: this.darkMode, onBack: () => this.route = '' })
+        SecondaryHeader({ title: AppRouteRegistry.title(route), subtitle: '功能开发中', darkMode: this.darkMode, onBack: () => this.popRoute() })
         Column({ space: 12 }) {
           SymbolGlyph($r('sys.symbol.info_circle')).fontSize(38).fontColor([this.primaryColor()])
           Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(15).textAlign(TextAlign.Center)
@@ -761,14 +1238,12 @@ struct Index {
     }
   }
 
-  @Builder SecondaryPage() {
-    Stack() {
-      this.SecondaryContent()
+  @Builder AppDestination(name: string) {
+    NavDestination() {
+      this.SecondaryContent(name)
     }
-    .width('100%')
-    .height('100%')
+    .hideTitleBar(true)
     .backgroundColor(this.pageBackground())
-
   }
 
   private createToolbarItem(icon: Resource, text: string, action: () => void): ToolbarItem {
@@ -789,9 +1264,7 @@ struct Index {
       loading: this.primaryLoading,
       darkMode: this.darkMode,
       onRefresh: () => this.refreshPrimaryData(),
-      onLoadContent: (courseId: string) => this.loadCourseContent(courseId),
-      onSyncContent: (courseId: string) => this.syncCourseContent(courseId),
-      onCacheContent: (courseId: string, itemId: string) => this.cacheCourseContent(courseId, itemId)
+      onOpenDetail: (course: CourseItem) => this.openCourseDetail(course)
     })
   }
 
@@ -801,6 +1274,7 @@ struct Index {
       loading: this.primaryLoading,
       darkMode: this.darkMode,
       onRefresh: () => this.refreshPrimaryData(),
+      onOpenDetail: (task: TaskItem) => this.openTaskDetail(task),
       onComplete: (id: string) => {
         const selected = this.tasks.find((task: TaskItem) => task.id === id);
         if (selected !== undefined) {
@@ -815,8 +1289,16 @@ struct Index {
       messages: this.chatMessages,
       sending: this.chatSending,
       darkMode: this.darkMode,
+      expressionAvailable: this.expressionAvailable,
+      expressionDetail: this.expressionDetail,
+      expressionGreeting: this.expressionGreeting,
+      apiBaseUrl: API_BASE_URL,
+      authToken: this.appState.getAccessToken(),
+      speechText: this.digitalHumanSpeechText,
+      speechRequestId: this.digitalHumanSpeechRequestId,
       input: $chatInput,
-      onSend: () => this.sendChat()
+      onSend: () => this.sendChat(),
+      onEnableExpression: () => this.syncExpressionForTab(true)
     })
   }
 
@@ -824,6 +1306,7 @@ struct Index {
     AppDock({
       activeTab: $activeTab,
       darkMode: this.darkMode,
+      reduceMotion: this.reduceMotion,
       pendingCount: this.tasks.filter((task: TaskItem) => task.status !== 'completed').length,
       onNavigate: (index: number) => {
         this.selectTab(index);
@@ -831,63 +1314,63 @@ struct Index {
     })
   }
 
+  @Builder AuthenticatedShell() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      Tabs({ barPosition: BarPosition.Start, index: this.activeTab, controller: this.tabsController }) {
+        TabContent() {
+          this.HomePage()
+        }.tabBar(this.EmptyTabBar)
+
+        TabContent() {
+          this.CoursesTabContent()
+        }.tabBar(this.EmptyTabBar)
+
+        TabContent() {
+          this.TasksTabContent()
+        }.tabBar(this.EmptyTabBar)
+
+        TabContent() {
+          this.CounselorTabContent()
+        }.tabBar(this.EmptyTabBar)
+
+        TabContent() {
+          this.ProfileTab()
+        }.tabBar(this.EmptyTabBar)
+      }
+      .barHeight(0)
+      .barMode(BarMode.Fixed)
+      .animationDuration(this.reduceMotion ? 0 : 260)
+      .scrollable(false)
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.pageBackground())
+      .onChange((index: number) => {
+        if (this.requestedTab >= 0 && index !== this.requestedTab) {
+          return;
+        }
+        this.activeTab = index;
+        this.syncExpressionForTab();
+      })
+
+      this.BottomNavigation()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(this.pageBackground())
+  }
+
   build() {
     if (this.signedIn) {
-      Stack({ alignContent: Alignment.Bottom }) {
-        Tabs({ barPosition: BarPosition.Start, index: this.activeTab, controller: this.tabsController }) {
-          TabContent() {
-            this.HomePage()
-          }.tabBar(this.EmptyTabBar)
-
-          TabContent() {
-            this.CoursesTabContent()
-          }.tabBar(this.EmptyTabBar)
-
-          TabContent() {
-            this.TasksTabContent()
-          }.tabBar(this.EmptyTabBar)
-
-          TabContent() {
-            this.CounselorTabContent()
-          }.tabBar(this.EmptyTabBar)
-
-          TabContent() {
-            this.ProfileTab()
-          }.tabBar(this.EmptyTabBar)
+      Stack() {
+        Navigation(this.pageStack) {
+          this.AuthenticatedShell()
         }
-        .barHeight(0)
-        .barMode(BarMode.Fixed)
-        .animationDuration(this.reduceMotion ? 0 : 260)
-        .scrollable(false)
+        .mode(NavigationMode.Stack)
+        .hideTitleBar(true)
+        .navDestination(this.AppDestination)
         .width('100%')
         .height('100%')
         .backgroundColor(this.pageBackground())
-        .onChange((index: number) => {
-          if (this.requestedTab >= 0) {
-            if (index !== this.requestedTab) {
-              return;
-            }
-            // Keep the requested tab until the next dock action. This Tabs
-            // implementation can emit a trailing callback for the former tab.
-          }
-          this.route = '';
-          this.activeTab = index;
-        })
-
-        if (this.route.length > 0) {
-          Stack({ alignContent: Alignment.Top }) {
-            this.SecondaryPage()
-          }
-          .width('100%')
-          .height('100%')
-          .transition(TransitionEffect.OPACITY
-            .combine(TransitionEffect.translate({ x: 0, y: '100%' }))
-            .animation({ duration: this.reduceMotion ? 0 : 320, curve: Curve.EaseOut }))
-        }
-
-        if (this.route.length === 0) {
-          this.BottomNavigation()
-        }
 
         if (this.showLogoutDialog) {
           Column() {

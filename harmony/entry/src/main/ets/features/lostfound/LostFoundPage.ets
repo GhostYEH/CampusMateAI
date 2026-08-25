@@ -2,6 +2,7 @@ import { LostFoundItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+import { filterLostFoundFeed, LostFoundFeedScope, lostFoundCategoryForItem } from './LostFoundFeed';
 
 @Component
 export struct LostFoundPage {
@@ -10,14 +11,14 @@ export struct LostFoundPage {
   @Prop submitting: boolean = false;
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;
+  @Prop view: string = 'list';
+  @Prop selectedItemId: string = '';
   @State kind: string = 'lost';
+  @State feedScope: LostFoundFeedScope = 'all';
   @State query: string = '';
   @State category: string = '全部';
   @State locationIndex: number = 0;
   @State newestFirst: boolean = true;
-  @State showMine: boolean = false;
-  @State showPublish: boolean = false;
-  @State selectedId: string = '';
   @State title: string = '';
   @State content: string = '';
   @State location: string = '';
@@ -25,8 +26,11 @@ export struct LostFoundPage {
   onBack: () => void = () => {};
   onFilter: (kind: string) => void = () => {};
   onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => void = () => {};
+  onOpenDetail: (item: LostFoundItem) => void = (_: LostFoundItem) => {};
+  onOpenPublish: () => void = () => {};
+  onOpenMine: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  selectedItem(): LostFoundItem | undefined { return this.items.find((item: LostFoundItem) => item.id === this.selectedId); }
+  selectedItem(): LostFoundItem | undefined { return this.items.find((item: LostFoundItem) => item.id === this.selectedItemId); }
 
   imageFor(index: number): Resource {
     if (index % 4 === 0) return $r('app.media.lost_book');
@@ -36,38 +40,51 @@ export struct LostFoundPage {
   }
 
   filteredItems(): LostFoundItem[] {
-    const key = this.query.trim();
-    const categoryKey = this.category === '全部' ? '' : this.category;
-    const result = this.items.filter((item: LostFoundItem) => item.kind === this.kind && (key.length === 0 || (item.title ?? '').includes(key) || (item.location ?? '').includes(key)) && (categoryKey.length === 0 || (item.title ?? '').includes(categoryKey) || (item.content ?? '').includes(categoryKey)));
-    return this.newestFirst ? result : result.reverse();
+    return filterLostFoundFeed(this.items, this.feedScope, this.query, this.category, this.locationLabel(), this.newestFirst);
   }
 
-  @Builder Tabs() {
-    Row() {
-      ForEach([['lost','失物'],['found','招领']], (entry: string[]) => {
-        Column({ space: 5 }) {
-          Text(entry[1]).fontColor(this.kind === entry[0] ? this.palette().primary : this.palette().muted).fontSize(14).fontWeight(FontWeight.Bold)
-          Rect().width(32).height(3).fill(this.kind === entry[0] ? this.palette().primary : Color.Transparent).radius(2)
-        }.layoutWeight(1).padding({ top: 8, bottom: 6 }).onClick(() => { this.kind = entry[0]; this.onFilter(entry[0]); })
-      })
-    }.width('100%').height(68).padding(5).backgroundColor(this.palette().surface).borderRadius(25).border({ width: 1, color: this.palette().line })
+  locationLabel(): string {
+    return ['全部地点', '图书馆', '教学楼', '宿舍区'][this.locationIndex];
+  }
+
+  listTitle(): string {
+    if (this.feedScope === 'lost') return '失主正在寻找';
+    if (this.feedScope === 'found') return '等待认领';
+    return '最新线索';
+  }
+
+  @Builder ScopeChip(label: string, scope: LostFoundFeedScope) {
+    Text(label).layoutWeight(1).textAlign(TextAlign.Center).fontSize(12).fontWeight(FontWeight.Medium)
+      .fontColor(this.feedScope === scope ? '#FFFFFFFF' : this.palette().muted)
+      .backgroundColor(this.feedScope === scope ? this.palette().primary : this.palette().surface)
+      .border({ width: 1, color: this.feedScope === scope ? this.palette().primary : this.palette().line })
+      .borderRadius(15).padding({ top: 10, bottom: 10 })
+      .onClick(() => this.feedScope = scope)
+  }
+
+  @Builder FeedScopePicker() {
+    Row({ space: 7 }) {
+      this.ScopeChip('全部线索', 'all')
+      this.ScopeChip('失主在找', 'lost')
+      this.ScopeChip('等待认领', 'found')
+    }.width('100%')
   }
 
   @Builder ItemCard(item: LostFoundItem, index: number) {
     Row({ space: 12 }) {
-      Image(this.imageFor(index)).width(112).height(126).objectFit(ImageFit.Cover).borderRadius(20)
-      Column({ space: 6 }) {
+      Stack({ alignContent: Alignment.BottomStart }) {
+        Image(this.imageFor(index)).width(92).height(104).objectFit(ImageFit.Cover).borderRadius(17)
+        Text(lostFoundCategoryForItem(item)).fontColor('#FFFFFFFF').fontSize(9).fontWeight(FontWeight.Medium).maxLines(1)
+          .padding({ left: 7, right: 7, top: 4, bottom: 4 }).backgroundColor('#8A102452').borderRadius(10).margin(7)
+      }.width(92).height(104)
+      Column({ space: 7 }) {
         Row() {
-          Text(item.title).fontColor(this.palette().text).fontSize(19).fontWeight(FontWeight.Bold).maxLines(1).layoutWeight(1)
-          Text(item.status === 'closed' ? '已解决' : '寻找中').fontColor(item.status === 'closed' ? this.palette().muted : '#FFF06B45').fontSize(11).fontWeight(FontWeight.Bold)
-            .padding({ left: 9, right: 9, top: 6, bottom: 6 }).backgroundColor(item.status === 'closed' ? this.palette().soft : '#FFFFF0EA').borderRadius(14)
+          Text(item.title).fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold).maxLines(1).layoutWeight(1)
+          Text(item.status === 'closed' ? '已解决' : (item.kind === 'lost' ? '失主在找' : '待认领'))
+            .fontColor(item.status === 'closed' ? this.palette().muted : (item.kind === 'lost' ? '#FFF06B45' : this.palette().success)).fontSize(10).fontWeight(FontWeight.Bold)
+            .padding({ left: 8, right: 8, top: 5, bottom: 5 }).backgroundColor(item.status === 'closed' ? this.palette().soft : (item.kind === 'lost' ? '#FFFFF0EA' : '#FFEAF9F3')).borderRadius(12)
         }.width('100%')
-        Row({ space: 7 }) {
-          Text(item.kind === 'lost' ? '失物招领' : '招领物品').fontColor(item.kind === 'lost' ? '#FFF06B45' : this.palette().success).fontSize(10).fontWeight(FontWeight.Bold)
-            .padding({ left: 8, right: 8, top: 5, bottom: 5 }).backgroundColor(item.kind === 'lost' ? '#FFFFEEE8' : '#FFEAF9F3').borderRadius(11)
-          Text('电子产品').fontColor(this.palette().primary).fontSize(10).fontWeight(FontWeight.Bold)
-            .padding({ left: 8, right: 8, top: 5, bottom: 5 }).backgroundColor(this.palette().soft).borderRadius(11)
-        }
+        Text(item.content ?? '暂未补充更多描述').fontColor(this.palette().muted).fontSize(11).maxLines(2).lineHeight(17).width('100%')
         Row({ space: 4 }) {
           SymbolGlyph($r('sys.symbol.location_up')).fontSize(12).fontColor([this.palette().muted])
           Text(item.location ?? '地点未填写').fontColor(this.palette().muted).fontSize(11).maxLines(1)
@@ -75,12 +92,11 @@ export struct LostFoundPage {
           SymbolGlyph($r('sys.symbol.clock')).fontSize(12).fontColor([this.palette().muted])
           Text((item.created_at ?? '刚刚').substring(0, Math.min(10, (item.created_at ?? '刚刚').length))).fontColor(this.palette().muted).fontSize(10).maxLines(1)
         }
-        Text((item.content ?? '物品外观良好，如有线索请联系发布者。')).fontColor(this.palette().muted).fontSize(11).maxLines(2).lineHeight(18)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-    }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(27)
+    }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(20)
       .border({ width: 1, color: this.palette().line })
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
-      .onClick(() => this.selectedId = item.id)
+      .onClick(() => this.onOpenDetail(item))
   }
 
   @Builder ItemDetail(item: LostFoundItem) {
@@ -112,7 +128,7 @@ export struct LostFoundPage {
           }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder DetailRow(symbol: Resource, label: string, value: string) {
@@ -125,28 +141,37 @@ export struct LostFoundPage {
 
   @Builder BrowsePage() {
     Scroll() {
-      Column({ space: 14 }) {
+      Column({ space: 16 }) {
         Stack({ alignContent: Alignment.TopStart }) {
-          Image($r('app.media.hero_lost_found_cutout')).width('100%').height(278).objectFit(ImageFit.Cover)
-          Column({ space: 10 }) {
-            Text('失物招领').fontColor('#FF102452').fontSize(36).fontWeight(FontWeight.Bold)
-            Text('本地显示数据，接入后端后\n可全校同步').fontColor('#FF536888').fontSize(15).lineHeight(24)
-          }.width('55%').padding({ left: 18, top: 104 }).alignItems(HorizontalAlign.Start)
-          Row({ space: 10 }) {
-            Text('我的发布').fontColor(this.palette().primary).fontSize(14).fontWeight(FontWeight.Bold).padding({ left: 16, right: 16, top: 11, bottom: 11 })
-              .backgroundColor('#D9FFFFFF').border({ width: 1, color: '#CCFFFFFF' }).borderRadius(22).onClick(() => this.showMine = true)
-            Stack({ alignContent: Alignment.Center }) { SymbolGlyph($r('sys.symbol.plus')).fontSize(27).fontColor(['#FFFFFFFF']) }
-              .width(52).height(52).backgroundColor(this.palette().primary).borderRadius(26).shadow({ radius: 15, color: '#665B68F2', offsetY: 6 }).onClick(() => this.showPublish = true)
-          }.padding({ top: 16, right: 16 }).align(Alignment.TopEnd)
-        }.width('100%').height(278)
-        this.Tabs()
+          Image($r('app.media.hero_lost_found_cutout')).width('100%').height(202).objectFit(ImageFit.Cover).borderRadius(24)
+          Column({ space: 7 }) {
+            Text('校园失物招领').fontColor('#FF102452').fontSize(29).fontWeight(FontWeight.Bold)
+            Text('每条线索，都可能让一件物品回到主人身边').fontColor('#FF536888').fontSize(12).lineHeight(19).maxLines(2)
+          }.width('54%').padding({ left: 19, top: 63 }).alignItems(HorizontalAlign.Start)
+          Text('我的发布').fontColor(this.palette().primary).fontSize(11).fontWeight(FontWeight.Bold)
+            .padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor('#E6FFFFFF').border({ width: 1, color: '#CCFFFFFF' }).borderRadius(16)
+            .margin({ top: 14, right: 14 }).align(Alignment.TopEnd).onClick(() => this.onOpenMine())
+        }.width('100%').height(202)
+
+        Button() {
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.plus')).fontSize(18).fontColor(['#FFFFFFFF'])
+            Text('发布线索').fontColor('#FFFFFFFF').fontSize(15).fontWeight(FontWeight.Bold)
+            Text('让更多同学看到').fontColor('#D9FFFFFF').fontSize(11)
+          }
+        }.width('100%').height(52).backgroundColor(this.palette().primary).borderRadius(18)
+          .onClick(() => this.onOpenPublish())
+
+        this.FeedScopePicker()
+
         Row({ space: 9 }) {
           SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(18).fontColor([this.palette().muted])
-          TextInput({ placeholder: '搜索物品、地点', text: this.query }).layoutWeight(1).height(52)
+          TextInput({ placeholder: '搜索物品、地点或线索', text: this.query }).layoutWeight(1).height(52)
             .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(Color.Transparent)
             .onChange((value: string) => this.query = value)
         }.width('100%').height(62).padding({ left: 17, right: 14 }).backgroundColor(this.palette().surface)
           .border({ width: 1, color: this.palette().line }).borderRadius(23)
+
         Scroll() {
           Row({ space: 8 }) {
             ForEach(['全部', '证件卡片', '电子产品', '书籍资料', '生活用品', '其他'], (entry: string) => {
@@ -156,38 +181,39 @@ export struct LostFoundPage {
             })
           }.width('max-content')
         }.width('100%').scrollBar(BarState.Off).scrollable(ScrollDirection.Horizontal)
-        Row() {
+
+        Row({ space: 8 }) {
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.location_up')).fontSize(17).fontColor([this.palette().muted])
-            Text(['全部地点', '图书馆', '教学楼', '宿舍区'][this.locationIndex]).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
+            Text(this.locationLabel()).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
             SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(14).fontColor([this.palette().muted])
           }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(17)
-            .onClick(() => this.locationIndex = (this.locationIndex + 1) % 4)
-          Blank()
+            .layoutWeight(1).onClick(() => this.locationIndex = (this.locationIndex + 1) % 4)
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(17).fontColor([this.palette().muted])
             Text(this.newestFirst ? '最新优先' : '最早优先').fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
             SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(14).fontColor([this.palette().muted])
           }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(17)
-            .onClick(() => this.newestFirst = !this.newestFirst)
+            .layoutWeight(1).onClick(() => this.newestFirst = !this.newestFirst)
         }.width('100%')
+
         Row() {
-          Text(this.kind === 'lost' ? '正在寻找' : '最新招领').fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold)
-          Blank(); Text(`${this.filteredItems().length} 条`).fontColor(this.palette().muted).fontSize(10)
+          Text(this.listTitle()).fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold)
+          Blank(); Text(`${this.filteredItems().length} 条线索`).fontColor(this.palette().muted).fontSize(10)
         }.width('100%')
         if (this.loading) {
           LoadingProgress().width(34).height(34).color(this.palette().primary).margin({ top: 32 })
         } else if (this.filteredItems().length === 0) {
           Column({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(32).fontColor([this.palette().muted])
-            Text('没有找到匹配的失物信息').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Medium)
+            Text('没有找到匹配的线索').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Medium)
             Text('换个关键词或筛选条件试试').fontColor(this.palette().muted).fontSize(11)
           }.width('100%').padding({ top: 30, bottom: 30 })
         } else {
           ForEach(this.filteredItems(), (item: LostFoundItem, index: number) => { this.ItemCard(item, index) }, (item: LostFoundItem) => item.id)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder MinePage() {
@@ -201,7 +227,7 @@ export struct LostFoundPage {
           ForEach(this.items, (item: LostFoundItem, index: number) => { this.ItemCard(item, index) }, (item: LostFoundItem) => item.id)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder PublishPage() {
@@ -228,18 +254,18 @@ export struct LostFoundPage {
           .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(15).onChange((value: string) => this.contact = value)
         Button(this.submitting ? '发布中...' : '发布信息').width('100%').height(52).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF')
           .enabled(!this.submitting && this.title.trim().length > 0)
-          .onClick(() => { this.onSubmit(this.kind, this.title.trim(), this.content.trim(), this.location.trim(), this.contact.trim()); this.showPublish = false; })
-        Button('返回失物招领').width('100%').height(46).backgroundColor(this.palette().soft).fontColor(this.palette().primary).onClick(() => this.showPublish = false)
+          .onClick(() => this.onSubmit(this.kind, this.title.trim(), this.content.trim(), this.location.trim(), this.contact.trim()))
+        Button('返回失物招领').width('100%').height(46).backgroundColor(this.palette().soft).fontColor(this.palette().primary).onClick(() => this.onBack())
       }.width('100%').padding({ left: 17, right: 17, top: 6, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   build() {
     Column() {
-      SecondaryHeader({ title: this.showPublish ? '发布失物招领' : this.selectedId.length > 0 ? '详情' : this.showMine ? '我的发布' : '失物招领', subtitle: this.showPublish ? '请如实填写物品信息' : this.selectedId.length > 0 ? '查看失物招领详情' : this.showMine ? '管理我的发布记录' : '', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => { if (this.showPublish) { this.showPublish = false; } else if (this.selectedId.length > 0) { this.selectedId = ''; } else if (this.showMine) { this.showMine = false; } else { this.onBack(); } } })
-      if (this.showPublish) { this.PublishPage() }
-      else if (this.selectedItem() !== undefined) { this.ItemDetail(this.selectedItem()!) }
-      else if (this.showMine) { this.MinePage() }
+      SecondaryHeader({ title: this.view === 'publish' ? '发布失物招领' : this.view === 'detail' ? '详情' : this.view === 'mine' ? '我的发布' : '失物招领', subtitle: this.view === 'publish' ? '请如实填写物品信息' : this.view === 'detail' ? '查看失物招领详情' : this.view === 'mine' ? '管理我的发布记录' : '', darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.onBack() })
+      if (this.view === 'publish') { this.PublishPage() }
+      else if (this.view === 'detail' && this.selectedItem() !== undefined) { this.ItemDetail(this.selectedItem()!) }
+      else if (this.view === 'mine') { this.MinePage() }
       else { this.BrowsePage() }
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }

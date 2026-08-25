@@ -4,10 +4,8 @@
     "requestPermissions": [
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_NETWORK_INFO" },
-      { "name": "ohos.permission.CAMERA", "reason": "$string:camera_reason", "usedScene": { "abilities": [ "EntryAbility" ], "when": "inuse" } },
-      { "name": "ohos.permission.SUBSCRIBE_NOTIFICATION", "reason": "$string:notification_controller_reason", "usedScene": { "abilities": [ "EntryAbility" ], "when": "always" } }
+      { "name": "ohos.permission.CAMERA", "reason": "$string:camera_reason", "usedScene": { "abilities": [ "EntryAbility" ], "when": "inuse" } }
     ],
-    "abilities": [{ "name": "EntryAbility", "srcEntry": "./ets/entryability/EntryAbility.ets", "description": "$string:EntryAbility_desc", "icon": "$media:app_icon", "label": "$string:EntryAbility_label", "startWindowIcon": "$media:app_icon", "startWindowBackground": "$color:start_window_background", "exported": true, "skills": [{ "entities": ["entity.system.home"], "actions": ["ohos.want.action.home"] }] }],
-    "extensionAbilities": [{ "name": "NotificationSubscriberAbility", "srcEntry": "./ets/notificationability/NotificationSubscriberAbility.ets", "type": "notificationSubscriber", "description": "$string:notification_controller_reason", "exported": true }]
+    "abilities": [{ "name": "EntryAbility", "srcEntry": "./ets/entryability/EntryAbility.ets", "description": "$string:EntryAbility_desc", "icon": "$media:app_icon", "label": "$string:EntryAbility_label", "startWindowIcon": "$media:app_icon", "startWindowBackground": "$color:start_window_background", "exported": true, "skills": [{ "entities": ["entity.system.home"], "actions": ["ohos.want.action.home"] }] }]
   }
 }

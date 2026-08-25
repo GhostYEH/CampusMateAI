@@ -1,4 +1,5 @@
 import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduPreLoginResult, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduSyncResult } from '../data/ApiClient';
+import { EduExamItemsResponse } from '../data/ApiClient';
 import { EduCookieDto } from '../data/EduCookieDto';
 
 /** EduRepository — 教务系统连接层仓库。 */
@@ -61,12 +62,20 @@ export class EduRepository {
     return this.client.eduSync('grade', semester);
   }
 
+  async syncExam(semester?: string): Promise<EduSyncResult> {
+    return this.client.eduSync('exam', semester);
+  }
+
   async listScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
     return this.client.eduScheduleItems(semester);
   }
 
   async listGradeItems(semester?: string): Promise<EduGradeItemsResponse> {
     return this.client.eduGradeItems(semester);
+  }
+
+  async listExamItems(semester?: string): Promise<EduExamItemsResponse> {
+    return this.client.eduExamItems(semester);
   }
 }
 

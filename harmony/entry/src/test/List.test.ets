@@ -10,8 +10,19 @@ import notificationBatchTest from './ets/notification/NotificationBatch.test';
 import notificationCapabilityTest from './ets/notification/NotificationCapability.test';
 import v3CoreContractTest from './ets/data/V3CoreContract.test';
 import motionSpecTest from './ets/ui/MotionSpec.test';
-import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
+import expressionSignalProcessorTest from './ets/data/ExpressionSignalProcessor.test';
+import expressionSignalChatBridgeTest from './ets/data/ExpressionSignalChatBridge.test';
+import appRouteTest from './ets/navigation/AppRoute.test';
+import notificationInboxTest from './ets/notification/NotificationInbox.test';
+import notificationNormalizerTest from './ets/notification/NotificationNormalizer.test';
+import chaoxingAccountTest from './ets/data/ChaoxingAccount.test';
+import lostFoundFeedTest from './ets/data/LostFoundFeed.test';
 import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
+import counselorConversationStateTest from './ets/ui/CounselorConversationState.test';
+import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
+import expressionModelMathTest from './ets/data/ExpressionModelMath.test';
+import expressionFaceQualityTest from './ets/data/ExpressionFaceQuality.test';
+import counselorVisualSpecTest from './ets/ui/CounselorVisualSpec.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -26,6 +37,17 @@ export default function testsuite(): void {
   notificationCapabilityTest();
   v3CoreContractTest();
   motionSpecTest();
+  expressionSignalProcessorTest();
+  expressionSignalChatBridgeTest();
+  appRouteTest();
+  notificationInboxTest();
+  notificationNormalizerTest();
+  chaoxingAccountTest();
+  lostFoundFeedTest();
   behaviorV34DecisionTest();
+  counselorConversationStateTest();
   eduLoginSecurityTest();
+  expressionModelMathTest();
+  expressionFaceQualityTest();
+  counselorVisualSpecTest();
 }

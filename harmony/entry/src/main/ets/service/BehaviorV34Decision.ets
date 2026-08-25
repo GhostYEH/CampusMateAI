@@ -79,22 +79,37 @@ export class BehaviorV34Decision {
 
 export class BehaviorReminderTracker {
   private phoneSince: number = -1;
+  private lastPhoneSeenAt: number = -1;
+  private lastPhoneReminderAt: number = -1;
   private noStudySince: number = -1;
   private reminderText: string = '';
+  private reminderKind: string = '';
 
   process(result: BehaviorV34Result, timestamp: number): string {
     if (!result.isStable || result.label === BehaviorV34Label.CONTINUE_OBSERVING) {
       return this.reminderText;
     }
     if (result.label === BehaviorV34Label.READ || result.label === BehaviorV34Label.WRITE) {
-      this.reset();
-      return '';
+      this.phoneSince = -1;
+      this.noStudySince = -1;
+      if (this.reminderKind === 'PHONE' && timestamp - this.lastPhoneSeenAt >= 1000) {
+        this.reminderText = '';
+        this.reminderKind = '';
+      } else if (this.reminderKind === 'NO_STUDY') {
+        this.reminderText = '';
+        this.reminderKind = '';
+      }
+      return this.reminderText;
     }
     if (result.label === BehaviorV34Label.PHONE_INTERACTION) {
       this.noStudySince = -1;
+      this.lastPhoneSeenAt = timestamp;
       if (this.phoneSince < 0) this.phoneSince = timestamp;
-      if (timestamp - this.phoneSince >= 3000) {
+      if (timestamp - this.phoneSince >= 3000 &&
+        (this.lastPhoneReminderAt < 0 || timestamp - this.lastPhoneReminderAt >= 600000)) {
         this.reminderText = '检测到持续手机交互，请确认它是否与当前学习任务有关。';
+        this.reminderKind = 'PHONE';
+        this.lastPhoneReminderAt = timestamp;
       }
       return this.reminderText;
     }
@@ -102,6 +117,7 @@ export class BehaviorReminderTracker {
     if (this.noStudySince < 0) this.noStudySince = timestamp;
     if (timestamp - this.noStudySince >= 20000) {
       this.reminderText = '暂时未观察到明确学习行为，可以把注意力拉回当前任务。';
+      this.reminderKind = 'NO_STUDY';
     }
     return this.reminderText;
   }
@@ -110,7 +126,10 @@ export class BehaviorReminderTracker {
 
   reset(): void {
     this.phoneSince = -1;
+    this.lastPhoneSeenAt = -1;
+    this.lastPhoneReminderAt = -1;
     this.noStudySince = -1;
     this.reminderText = '';
+    this.reminderKind = '';
   }
 }

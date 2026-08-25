@@ -1,4 +1,4 @@
-export interface TaskItem { id: string; title: string; description?: string; deadline?: string; due?: string; priority?: string; status?: string; source_name?: string; }
+export interface TaskItem { id: string; title: string; description?: string; deadline?: string; due?: string; priority?: string; importance?: string; status?: string; source_name?: string; }
 export interface NoticeItem { id: string; title: string; source?: string; time?: string; unread?: boolean; content?: string; }
 export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; }
 export class ChatMessageModel {
@@ -16,7 +16,7 @@ export interface CourseContentPage { items: CourseContentItem[]; total: number; 
 export interface CourseContentBundle { summary?: CourseContentSummary; items: CourseContentItem[]; }
 export interface ActivityItem { id: string; title: string; summary?: string; content?: string; category?: string; location?: string; starts_at?: string; author_name?: string; status?: string; capacity?: number; }
 export interface PagedResponse<T> { items: T[]; total: number; page: number; page_size: number; has_more: boolean; }
-export interface UserItem { id?: string; username?: string; name?: string; display_name?: string; role?: string; detail?: string; college?: string; major?: string; grade?: string; university_id?: string; }
+export interface UserItem { id?: string; username?: string; name?: string; display_name?: string; role?: string; detail?: string; college?: string; major?: string; grade?: string; university_id?: string; university_name?: string; }
 export interface MeResponse { user: UserItem; }
 export interface ChatResponse { answer?: string; message?: string; }
 export interface ExpressionSignalRequest { label: string; confidence: number; is_stable: boolean; timestamp: number; model_version: string; }
@@ -48,12 +48,22 @@ export interface LocalCapturedNotice { id: string; title: string; content: strin
 export interface UniversityItem { id: string; name: string; short_name?: string; province?: string; city?: string; academic_provider: string; forum_enabled: boolean; is_demo: boolean; }
 export interface UniversitySelectionResponse { university_id?: string; university?: UniversityItem; }
 export interface UniversitySelectionRequest { university_id: string; }
-export interface CommunityPostItem { id: string; title: string; content: string; category: string; author_name: string; is_anonymous: boolean; like_count: number; comment_count: number; favorite_count: number; created_at: string; }
+export interface CommunityPostItem { id: string; title: string; content: string; category: string; author_name: string; is_anonymous: boolean; like_count: number; comment_count: number; favorite_count: number; created_at: string; images?: string[]; extra?: CommunityPostExtra; liked?: boolean; favorited?: boolean; is_owner?: boolean; view_count?: number; status?: string; author_id?: string; }
 export interface CommunityPostExtra {
-  location: string;
-  topic_tag: string;
-  allow_comments: boolean;
+  location?: string;
+  topic_tag?: string;
+  tags?: string[];
+  allow_comments?: boolean;
+  headcount?: number;
+  deadline?: string;
+  price?: number;
+  kind?: string;
+  contact?: string;
+  contact_visibility?: string;
 }
+export interface CommunityComment { id: string; post_id: string; author_id: string; author_name: string; parent_comment_id?: string; content: string; is_anonymous: boolean; status: string; created_at: string; }
+export interface CommunityCommentCreatePayload { content: string; is_anonymous: boolean; parent_comment_id: string; }
+export interface CommunityReportCreatePayload { target_type: string; target_id: string; reason: string; details?: string; }
 export interface CommunityPostPayload {
   title: string;
   content: string;
@@ -62,6 +72,15 @@ export interface CommunityPostPayload {
   sub_category?: string;
   images: string[];
   is_anonymous: boolean;
+  extra?: CommunityPostExtra;
+}
+export interface UploadImageResult { url: string; filename: string; size: number; }
+export interface CommunityPostUpdatePayload {
+  title?: string;
+  content?: string;
+  category?: string;
+  images?: string[];
+  is_anonymous?: boolean;
   extra?: CommunityPostExtra;
 }
 export interface AcademicStatusItem { status: string; provider: string; last_synced_at?: string; external_student_id?: string; }

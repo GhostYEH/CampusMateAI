@@ -98,7 +98,7 @@ export struct ServicesPage {
           this.RequestMeta('申请编号', item.id)
         }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(17)
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder RequestMeta(label: string, value: string) {
@@ -174,7 +174,7 @@ export struct ServicesPage {
           }
         }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(20)
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder MetricCard(symbol: Resource, value: string, label: string, color: string) {
@@ -198,7 +198,7 @@ export struct ServicesPage {
           ForEach(this.requests, (item: ServiceRequestItem, index: number) => { this.RequestRow(item) }, (item: ServiceRequestItem) => item.id)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-    }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
   }
 
   @Builder FormPage() {

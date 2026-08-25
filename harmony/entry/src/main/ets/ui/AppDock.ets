@@ -21,6 +21,10 @@ export struct AppDock {
     return this.darkMode ? darkPalette : lightPalette;
   }
 
+  glowColor(): string {
+    return this.darkMode ? '#9CC7D0' : '#5B68F2';
+  }
+
   triggerPress(index: number): void {
     this.activeTab = index;
     this.pressedIndex = index;
@@ -36,15 +40,27 @@ export struct AppDock {
   DockItemView(item: DockItem) {
     Column({ space: 3 }) {
       Stack({ alignContent: Alignment.Center }) {
-        SymbolGlyph(item.symbol)
-          .fontSize(this.activeTab === item.index ? 23 : 21)
-          .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
-          .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
-          .scale({
-            x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
-            y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
-          })
-          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+        if (item.index === 3 && this.activeTab === item.index) {
+          Image($r('app.media.ph_robot'))
+            .width(this.activeTab === item.index ? 24 : 22)
+            .height(this.activeTab === item.index ? 24 : 22)
+            .objectFit(ImageFit.Contain)
+            .scale({
+              x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
+              y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+            })
+            .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+        } else {
+          SymbolGlyph(item.symbol)
+            .fontSize(this.activeTab === item.index ? 23 : 21)
+            .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
+            .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
+            .scale({
+              x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
+              y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+            })
+            .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+        }
         if (item.index === 2 && this.pendingCount > 0) {
           Text(this.pendingCount > 9 ? '9+' : this.pendingCount.toString())
             .fontColor('#FFFFFFFF')
@@ -62,7 +78,7 @@ export struct AppDock {
       .height(26)
       Text(item.label)
         .fontColor(this.activeTab === item.index ? this.palette().primary : this.palette().muted)
-        .fontSize(item.index === 3 ? 8.5 : 10)
+        .fontSize(10)
         .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
         .maxLines(1)
         .opacity(this.activeTab === item.index ? 1.0 : 0.82)
@@ -82,21 +98,45 @@ export struct AppDock {
   }
 
   build() {
-    Row() {
-      ForEach([
-        { label: '首页', symbol: $r('sys.symbol.house'), index: 0 },
-        { label: '课程', symbol: $r('sys.symbol.book'), index: 1 },
-        { label: '待办', symbol: $r('sys.symbol.checkmark_circle'), index: 2 },
-        { label: 'AI 校园助手', symbol: $r('sys.symbol.robot'), index: 3 },
-        { label: '我的', symbol: $r('sys.symbol.person'), index: 4 }
-      ], (item: DockItem) => {
-        this.DockItemView(item)
-      })
+    Column() {
+      Stack({ alignContent: Alignment.TopStart }) {
+        Row() {
+          ForEach([
+            { label: '首页', symbol: $r('sys.symbol.house'), index: 0 },
+            { label: '课程', symbol: $r('sys.symbol.book'), index: 1 },
+            { label: '待办', symbol: $r('sys.symbol.checkmark_circle'), index: 2 },
+            { label: 'CPM', symbol: $r('sys.symbol.robot'), index: 3 },
+            { label: '我的', symbol: $r('sys.symbol.person'), index: 4 }
+          ], (item: DockItem) => {
+            this.DockItemView(item)
+          })
+        }
+        .width('100%')
+        .height(60)
+
+        Row()
+          .width('20%')
+          .height(3)
+          .position({ x: `${this.activeTab * 20}%`, y: 55 })
+          .linearGradient({
+            angle: 0,
+            colors: [[this.glowColor(), 0.0], ['#FFFFFFFF', 0.5], [this.glowColor(), 1.0]]
+          })
+          .opacity(0.66)
+          .shadow({
+            radius: 5,
+            color: this.darkMode ? '#889CC7D0' : '#885B68F2',
+            offsetY: 0
+          })
+          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.TAB), curve: Curve.Smooth })
+      }
+      .width('100%')
+      .height(60)
     }
     .width('100%')
     .height(80)
     .padding({ left: 6, right: 6, top: 8, bottom: 8 })
-    .alignItems(VerticalAlign.Center)
+    .alignItems(HorizontalAlign.Center)
     .backgroundColor(this.darkMode ? '#E6162236' : '#F2FFFFFF')
     .backdropBlur(32)
     .border({ width: 0.5, color: this.darkMode ? '#33FFFFFF' : '#22FFFFFF' })

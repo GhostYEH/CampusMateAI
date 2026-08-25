@@ -1,8 +1,11 @@
 import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
+import fs from '@ohos.file.fs';
 import { ApiResponseParser } from './ApiResponse';
 import { RefreshCoordinator } from './AuthRefresh';
 import { AuthTokens, AuthTokensModel } from './auth/TokenStore';
+import { UploadImageResult } from './Models';
+import { ChaoxingApiClient } from './chaoxing/ChaoxingRepository';
 import { EduCookieDto } from './EduCookieDto';
 
 const ENABLE_API_LOG: boolean = false;
@@ -43,7 +46,7 @@ export class ApiError extends Error {
   }
 }
 
-export class ApiClient {
+export class ApiClient implements ChaoxingApiClient {
   private readonly baseUrl: string;
   private readonly tokenProvider: () => string;
   private readonly auth: ApiClientAuth | null;
@@ -142,6 +145,23 @@ export class ApiClient {
     await this.executeRequest<object>(method, path, body, true);
   }
 
+  async requestVoidWithoutAuthRefresh(
+    method: http.RequestMethod,
+    path: string,
+    body: object | undefined,
+    unauthorizedMessage: string
+  ): Promise<void> {
+    try {
+      await this.executeRequest<object>(method, path, body, false);
+    } catch (e) {
+      if (e instanceof ApiError && e.statusCode === 401) {
+        throw new ApiError(ApiErrorCode.FORBIDDEN, unauthorizedMessage, 401);
+      }
+      if (e instanceof Error) throw e;
+      throw new Error('网络连接失败，请检查网络后重试');
+    }
+  }
+
   private async executeRequest<T>(method: http.RequestMethod, path: string, body: object | undefined, allowRefresh: boolean): Promise<T | undefined> {
     const client = http.createHttp();
     const url: string = this.normalizedUrl(path);
@@ -213,6 +233,66 @@ export class ApiClient {
       if (response.responseCode < 200 || response.responseCode >= 300) throw this.createHttpError(response.responseCode);
       if (response.result instanceof ArrayBuffer) return response.result;
       return new util.TextEncoder().encode(response.result.toString()).buffer;
+    } finally {
+      client.destroy();
+    }
+  }
+
+  async uploadImage(fileUri: string, fileName: string, contentType: string): Promise<UploadImageResult> {
+    const boundary: string = `----CampusMateBoundary${Date.now().toString(36)}`;
+    const file = fs.openSync(fileUri, fs.OpenMode.READ_ONLY);
+    let fileBuffer: ArrayBuffer;
+    try {
+      const stat = fs.statSync(file.fd);
+      fileBuffer = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, fileBuffer);
+    } finally {
+      fs.closeSync(file);
+    }
+    const fileBytes: Uint8Array = new Uint8Array(fileBuffer);
+    const headerPart: string = `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`;
+    const footerPart: string = `\r\n--${boundary}--\r\n`;
+    const encoder: util.TextEncoder = new util.TextEncoder();
+    const headerBytes: Uint8Array = encoder.encode(headerPart);
+    const footerBytes: Uint8Array = encoder.encode(footerPart);
+    const bodyBytes: Uint8Array = new Uint8Array(headerBytes.length + fileBytes.length + footerBytes.length);
+    bodyBytes.set(headerBytes, 0);
+    bodyBytes.set(fileBytes, headerBytes.length);
+    bodyBytes.set(footerBytes, headerBytes.length + fileBytes.length);
+    const bodyBuffer: ArrayBuffer = bodyBytes.buffer as ArrayBuffer;
+    return this.executeUpload<UploadImageResult>('community/upload-image', bodyBuffer, boundary, true);
+  }
+
+  private async executeUpload<T>(path: string, body: ArrayBuffer, boundary: string, allowRefresh: boolean): Promise<T> {
+    const client = http.createHttp();
+    const url: string = this.normalizedUrl(path);
+    const headers: Record<string, string> = { 'Content-Type': `multipart/form-data; boundary=${boundary}` };
+    const token: string = this.tokenProvider();
+    if (token && token.length > 0) headers.Authorization = `Bearer ${token}`;
+    apiLog(`POST (upload) ${url}`);
+    try {
+      const response = await client.request(url, {
+        method: http.RequestMethod.POST,
+        header: headers,
+        extraData: body,
+        connectTimeout: 10000,
+        readTimeout: 30000
+      });
+      if (response.responseCode === 401 && allowRefresh && this.auth !== null) {
+        const refreshed: boolean = await ApiClient.refreshCoordinator.run(() => this.refreshAccessToken());
+        if (refreshed) {
+          return this.executeUpload<T>(path, body, boundary, false);
+        }
+        await this.auth.onSessionExpired();
+        throw this.createHttpError(401);
+      }
+      if (response.responseCode < 200 || response.responseCode >= 300) throw this.createHttpError(response.responseCode);
+      const result: T | undefined = ApiResponseParser.parseOptional<T>(response.result.toString());
+      if (result === undefined) throw new Error('服务器返回空数据');
+      return result;
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      throw new Error('图片上传失败，请检查网络后重试');
     } finally {
       client.destroy();
     }
@@ -346,6 +426,10 @@ export class ApiClient {
   async eduGradeItems(semester?: string): Promise<EduGradeItemsResponse> {
     const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
     return this.request<EduGradeItemsResponse>('GET' as http.RequestMethod, `edu/grade/items${query}`);
+  }
+  async eduExamItems(semester?: string): Promise<EduExamItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
+    return this.request<EduExamItemsResponse>('GET' as http.RequestMethod, `edu/exam/items${query}`);
   }
 }
 
@@ -586,6 +670,25 @@ export interface EduGradeItemsResponse {
   semester?: string;
   items_count: number;
   items: EduGradeItemDto[];
+}
+export interface EduExamItemDto {
+  id?: string;
+  semester?: string;
+  course_code?: string;
+  course_name?: string;
+  exam_type?: string;
+  location?: string;
+  seat?: string;
+  starts_at?: string;
+  ends_at?: string;
+  notes?: string;
+  is_stale?: boolean;
+  last_seen_at?: string;
+}
+export interface EduExamItemsResponse {
+  semester?: string;
+  items_count: number;
+  items: EduExamItemDto[];
 }
 
 // ===== QR 扫码登录 DTO =====

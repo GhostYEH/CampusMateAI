@@ -7,7 +7,7 @@ import { ApiClient } from '../../data/ApiClient';
 const WEEKDAY_NAMES: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const COURSE_COLORS: number[] = [0xFF5B70ED, 0xFFF29A49, 0xFF37B89B, 0xFF9369E8, 0xFFE85B7A, 0xFF42A5F5, 0xFF66BB6A, 0xFFAB47BC];
 
-interface DetailRow { label: string; value: string; }
+export interface ScheduleDetailRow { label: string; value: string; }
 interface ScheduleCard { id: string; course_name: string; location: string; section_label: string; color: number; }
 interface ScheduleGroup { weekday: number; label: string; items: ScheduleCard[]; }
 
@@ -85,8 +85,8 @@ function courseColorCode(item: EduScheduleItemDto): number {
   return COURSE_COLORS[hash % COURSE_COLORS.length];
 }
 
-function buildDetailRows(item: EduScheduleItemDto): DetailRow[] {
-  const rows: DetailRow[] = [];
+export function buildDetailRows(item: EduScheduleItemDto): ScheduleDetailRow[] {
+  const rows: ScheduleDetailRow[] = [];
   const teachers = formatTeachers(item.teachers, item.teacher);
   if (teachers.length > 0) rows.push({ label: '教师', value: teachers });
   const time = formatTime(item.weekday, item.start_section, item.end_section, item.start_time, item.end_time);
@@ -114,9 +114,9 @@ function buildDetailRows(item: EduScheduleItemDto): DetailRow[] {
   return rows;
 }
 
-function buildExtraRows(extraInfo: Record<string, Object> | undefined): DetailRow[] {
+export function buildExtraRows(extraInfo: Record<string, Object> | undefined): ScheduleDetailRow[] {
   if (extraInfo === undefined) return [];
-  const rows: DetailRow[] = [];
+  const rows: ScheduleDetailRow[] = [];
   const keys = Object.keys(extraInfo);
   for (let i = 0; i < keys.length; i++) {
     const k = keys[i];
@@ -137,13 +137,9 @@ export struct EduSchedulePage {
   @State allItems: EduScheduleItemDto[] = [];
   @State scheduleGroups: ScheduleGroup[] = [];
   @State scheduleEmpty: boolean = false;
-  @State sheetVisible: boolean = false;
-  @State detailCourseName: string = '';
-  @State detailCourseCode: string = '';
-  @State detailRows: DetailRow[] = [];
-  @State detailExtraRows: DetailRow[] = [];
 
   onBack: () => void = () => {};
+  onOpenDetail: (item: EduScheduleItemDto) => void = (_: EduScheduleItemDto) => {};
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
@@ -204,11 +200,7 @@ export struct EduSchedulePage {
   }
 
   openDetail(item: EduScheduleItemDto) {
-    this.detailCourseName = item.course_name || '未命名课程';
-    this.detailCourseCode = item.course_code || '';
-    this.detailRows = buildDetailRows(item);
-    this.detailExtraRows = buildExtraRows(item.extra_info);
-    this.sheetVisible = true;
+    this.onOpenDetail(item);
   }
 
   build() {
@@ -261,13 +253,10 @@ export struct EduSchedulePage {
                 Text('本周没有课程').fontSize(13).fontColor(this.palette().muted).padding(16)
               }
             }.width('100%').padding(16)
-          }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+          }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
         }
       }.width('100%').height('100%').backgroundColor(this.palette().background)
 
-      if (this.sheetVisible) {
-        this.DetailOverlay()
-      }
     }.width('100%').height('100%')
   }
 
@@ -284,37 +273,4 @@ export struct EduSchedulePage {
     }
   }
 
-  @Builder DetailOverlay() {
-    Column({ space: 0 }) {
-      Column().width('100%').layoutWeight(1).backgroundColor('#80000000').onClick(() => { this.sheetVisible = false; })
-      Scroll() {
-        Column({ space: 10 }) {
-          Text(this.detailCourseName).fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-          if (this.detailCourseCode.length > 0) {
-            Text(this.detailCourseCode).fontSize(12).fontColor(this.palette().muted)
-          }
-          ForEach(this.detailRows, (row: DetailRow) => {
-            Row({ space: 12 }) {
-              Text(row.label).fontSize(12).fontColor(this.palette().muted).width(80)
-              Text(row.value).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.palette().text).layoutWeight(1)
-                .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
-            }.width('100%')
-          }, (row: DetailRow) => row.label)
-          if (this.detailExtraRows.length > 0) {
-            Text('更多信息').fontSize(13).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-          }
-          ForEach(this.detailExtraRows, (row: DetailRow) => {
-            Row({ space: 12 }) {
-              Text(row.label).fontSize(12).fontColor(this.palette().muted).width(80)
-              Text(row.value).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.palette().text).layoutWeight(1)
-                .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
-            }.width('100%')
-          }, (row: DetailRow) => 'extra_' + row.label)
-          Text('数据来源：学校教务系统').fontSize(10).fontColor(this.palette().muted)
-          Button('关闭').width('100%').height(40).backgroundColor(this.palette().surface).fontColor(this.palette().primary)
-            .onClick(() => { this.sheetVisible = false; })
-        }.width('100%').padding({ left: 22, right: 22, top: 16, bottom: 28 })
-      }.scrollBar(BarState.Off).backgroundColor(this.palette().surface).borderRadius({ topLeft: 16, topRight: 16 }).height('70%')
-    }.width('100%').height('100%')
-  }
 }

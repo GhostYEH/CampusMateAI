@@ -9,6 +9,10 @@ export class AppState {
   reduceMotion: boolean = false;
   savedUsername: string = '';
   rememberUsername: boolean = false;
+  universityId: string = '';
+  universityName: string = '';
+  emotionAssistanceEnabled: boolean = false;
+  emotionAssistanceDecisionMade: boolean = false;
 
   private readonly tokenStorage: TokenStorage;
 
@@ -29,6 +33,10 @@ export class AppState {
     this.reduceMotion = await PreferencesUtil.getBoolean('reduceMotion');
     this.savedUsername = await PreferencesUtil.getString('savedUsername');
     this.rememberUsername = await PreferencesUtil.getBoolean('rememberUsername');
+    this.universityId = await PreferencesUtil.getString('universityId');
+    this.universityName = await PreferencesUtil.getString('universityName');
+    this.emotionAssistanceEnabled = await PreferencesUtil.getBoolean('emotionAssistanceEnabled');
+    this.emotionAssistanceDecisionMade = await PreferencesUtil.getBoolean('emotionAssistanceDecisionMade');
   }
 
   async signIn(tokens: AuthTokens): Promise<void> {
@@ -39,6 +47,10 @@ export class AppState {
     this.applyTokens(new AuthTokensModel('', ''));
     await this.tokenStorage.clear();
     await PreferencesUtil.delete('sessionToken');
+    this.universityId = '';
+    this.universityName = '';
+    await PreferencesUtil.delete('universityId');
+    await PreferencesUtil.delete('universityName');
   }
 
   getAccessToken(): string { return this.accessToken; }
@@ -47,6 +59,20 @@ export class AppState {
   async updateTokens(tokens: AuthTokens): Promise<void> {
     this.applyTokens(tokens);
     await this.tokenStorage.save(tokens);
+  }
+
+  async saveUniversity(id: string, name: string): Promise<void> {
+    this.universityId = id;
+    this.universityName = name;
+    await PreferencesUtil.putString('universityId', id);
+    await PreferencesUtil.putString('universityName', name);
+  }
+
+  async setEmotionAssistance(enabled: boolean): Promise<void> {
+    this.emotionAssistanceEnabled = enabled;
+    this.emotionAssistanceDecisionMade = true;
+    await PreferencesUtil.putBoolean('emotionAssistanceEnabled', enabled);
+    await PreferencesUtil.putBoolean('emotionAssistanceDecisionMade', true);
   }
 
   async clearSession(): Promise<void> {

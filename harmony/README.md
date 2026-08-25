@@ -32,6 +32,14 @@ $env:DEVECO_SDK_HOME='D:\DevEco Studio\sdk'
 - 通知整理、文件、活动、收藏、系统设置、账号与隐私、关于
 - 深浅主题、减少动态效果、退出登录
 
+## 原生导航与页面转场
+
+登录后的五栏主界面是 ArkUI `Navigation` 的根页面，所有二级页面均由同一个 `NavPathStack` 管理，并使用标准 `NavDestination` 承载。社区详情与编辑、扫码确认、教务登录与课表等连续流程会形成真实的页面栈；页面标题栏返回、系统返回键和侧滑返回共享同一套 Pop 语义。
+
+课程详情、待办详情、考试详情/编辑、失物招领详情/发布/我的发布、通知详情/来源设置和课表课程详情也使用子路由；筛选项、确认弹窗和手动整理结果仍保留在所属页面内，不会伪装成独立页面。
+
+二级页面使用 Navigation 的系统默认 Push/Pop 转场：打开时从右向左进入，关闭时从左向右退出，并由系统处理非线性曲线和交互式返回进度。开启“减少动态效果”后，路由入栈、出栈和清栈均禁用转场动画。
+
 登录后会从真实后端读取用户、课程、待办、校园通知、考试、空教室、服务申请、失物招领、专注记录、活动、文件和收藏；AI 对话、待办完成/恢复、服务申请、失物发布、专注开始/暂停/继续/结束也调用真实接口。
 
 ## 后端地址
@@ -62,10 +70,10 @@ HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` �
 
 认证已保存 access/refresh 双 token，并支持并发 401 的单航班刷新、刷新后原请求重放一次以及会话失效清理。敏感 token 由独立 TokenStore 使用 AssetStoreKit 保存，不写入普通 Preferences 或日志。
 
-本轮在本机 API 24 SDK 中确认：`ohos.permission.SUBSCRIBE_NOTIFICATION` 是 `system_basic`、`system_grant` 权限；普通 CampusMateAI 手机应用无法把 `NotificationSubscriberExtensionAbility` 当作 Android `NotificationListenerService` 使用，也不能据此读取本机微信、企业微信、QQ/TIM 通知。因此普通应用构建的通知自动采集状态明确为 **UNAVAILABLE**，页面不得显示“已开启”。订阅代码保留给将来具备合规系统授权/适用设备形态的构建；当前真实 fallback 是后端站内通知、学习通账号同步和用户手动粘贴。已实现的来源解析、三个 IM 独立白名单、群名精确匹配与本地分类均采用 fail-closed，但 Harmony 第三方 bundleName alias 必须用真实设备数据验证后才能登记。
+本轮在本机 API 24 SDK 中确认：`ohos.permission.SUBSCRIBE_NOTIFICATION` 是 `system_basic`、`system_grant` 权限；当前 CampusMateAI 构建没有该资质，不能读取本机微信、企业微信、QQ/TIM 通知。工程已移除无效权限声明和 `NotificationSubscriberExtensionAbility` 注册，自动采集状态固定为 **UNAVAILABLE**。当前真实来源是后端站内通知、学习通账号同步和用户手动粘贴；学习通已接入状态、登录、立即同步与断开接口。来源解析、三个 IM 独立白名单、群名精确匹配与本地分类继续采用 fail-closed。
 
 通知可靠队列尚未完成：当前本地记录仍使用 Preferences，不是 ArkData/RDB Outbox，失败重试与 App 重启恢复不能视为已对齐。完整状态见 `PARITY_AUDIT.md`。
 
-Android 表情模型当前没有已验证可在 HarmonyOS API 24 运行的等价推理 runtime/模型产物。Harmony 使用 `UnavailableFocusAssistProvider`，不会生成随机表情、不会伪装为真实识别，也不会上传相机画面；AI 对话在没有稳定信号时不发送 `expression_signal`。
+Android 表情模型当前没有已验证可在 HarmonyOS API 24 运行的等价推理 runtime/模型产物。Harmony 已接入 `ExpressionRecognitionService` 与 AI 对话 `expression_signal` 数据通路，并使用 `UnavailableExpressionProvider` 安全降级：不会生成随机表情、不会伪装为真实识别，也不会上传相机画面；provider 不可用、信号不稳定或过期时，AI 对话会省略 `expression_signal`。后续只需实现同一 provider 契约并完成 API 24 真机验证，即可接入真实模型。
 
 HAP 当前未配置项目签名；连接模拟器或真机后，可在 DevEco Studio 的 Signing Configs 中使用开发者调试证书签名运行。

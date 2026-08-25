@@ -29,4 +29,15 @@ export class MotionSpec {
     }
     return Math.min(Math.max(index, 0), 3) * 35;
   }
+
+  static glowOpacity(reduceMotion: boolean, phase: number): number {
+    if (reduceMotion) {
+      return 0.62;
+    }
+    return phase === 1 ? 0.86 : 0.56;
+  }
+
+  static glowBlur(reduceMotion: boolean): number {
+    return reduceMotion ? 0 : 12;
+  }
 }

@@ -4,7 +4,6 @@ import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ApiClient } from '../../data/ApiClient';
 import { promptAction } from '@kit.ArkUI';
-import { allowedOriginsFromEduResponse } from '../edu/EduLoginSecurity';
 import {
   captureEduLoginChallenge,
   EduLoginSensitiveEvent,
@@ -82,6 +81,7 @@ export struct EduSystemPage {
   @Prop universityId: string = '';
   @Prop apiBaseUrl: string = '';
   @Prop authToken: string = '';
+  @Prop apiClient: ApiClient = new ApiClient('', () => '', null);
   @State portalUrl: string = '';
   @State username: string = '';
   @State password: string = '';
@@ -109,7 +109,7 @@ export struct EduSystemPage {
   }
 
   buildClient(): ApiClient {
-    return new ApiClient(this.apiBaseUrl, () => this.authToken, null);
+    return this.apiClient;
   }
 
   async aboutToAppear() {
@@ -220,11 +220,7 @@ export struct EduSystemPage {
       } else if (conn.state === 'waiting_user_login' && !conn.portal_url?.includes('undefined')) {
         this.infoMsg = eduStateTextWithErrorCode(conn.state, conn.error_code);
         this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
-        this.onNavigateToLogin(
-          conn.portal_url || this.portalUrl,
-          conn.id,
-          allowedOriginsFromEduResponse(conn)
-        );
+        this.onNavigateToLogin(conn.portal_url || this.portalUrl, conn.id, conn.allowed_origins || []);
         this.startPolling(conn.id);
       } else if (conn.state === 'auth_failed') {
         this.errorMsg = conn.error_message || '账号或密码错误';
@@ -445,11 +441,7 @@ export struct EduSystemPage {
                 .onClick(() => {
                   if (this.connection !== null) {
                     this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
-                    this.onNavigateToLogin(
-                      this.portalUrl,
-                      this.connection.id,
-                      allowedOriginsFromEduResponse(this.connection)
-                    );
+                    this.onNavigateToLogin(this.portalUrl, this.connection.id, this.connection.allowed_origins || []);
                   }
                 })
             }
@@ -468,7 +460,7 @@ export struct EduSystemPage {
             }.padding(16)
           }
         }.width('100%').padding(16)
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
 
   }

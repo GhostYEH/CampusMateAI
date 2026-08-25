@@ -28,6 +28,7 @@ export class NotificationSourceAliasRegistry {
   static defaults(): NotificationSourceAliasRegistry {
     const registry: NotificationSourceAliasRegistry = new NotificationSourceAliasRegistry();
     registry.registerVerifiedAlias(NotificationSource.WECHAT, 'com.tencent.mm');
+    registry.registerVerifiedAlias(NotificationSource.WECOM, 'com.tencent.wework');
     registry.registerVerifiedAlias(NotificationSource.XUEXITONG, 'com.chaoxing.mobile');
     registry.registerVerifiedAlias(NotificationSource.QQ, 'com.tencent.mobileqq');
     registry.registerVerifiedAlias(NotificationSource.QQ, 'com.tencent.qqlite');

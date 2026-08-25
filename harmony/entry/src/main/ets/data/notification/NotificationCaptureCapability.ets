@@ -18,7 +18,7 @@ export class NotificationCaptureCapability {
   static ordinaryPhoneBuild(): NotificationCaptureCapability {
     return new NotificationCaptureCapability(
       NotificationCaptureStatus.UNAVAILABLE,
-      '普通手机应用没有 system_basic 通知订阅权限；可使用后端通知、学习通同步或手动粘贴。'
+      '当前应用没有 system_basic 通知订阅资质；可使用后端通知、学习通同步或手动粘贴。'
     );
   }
 

@@ -12,7 +12,8 @@ export default class EntryAbility extends UIAbility {
       statusBarColor: '#00000000',
       isStatusBarLightIcon: false,
       navigationBarColor: '#00000000',
-      isNavigationBarLightIcon: false
+      isNavigationBarLightIcon: false,
+      enableNavigationBarAnimation: true
     }).catch(() => {});
     windowStage.loadContent('pages/Index', (err) => { if (err.code) { return; } });
   }

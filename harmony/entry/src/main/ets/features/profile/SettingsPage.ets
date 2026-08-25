@@ -106,7 +106,7 @@ export struct SettingsPage {
           }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
           Text(this.darkMode ? '深色模式已应用到校园事务页面。' : '设置会自动保存在本机。').fontColor(this.palette().muted).fontSize(11).width('100%')
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

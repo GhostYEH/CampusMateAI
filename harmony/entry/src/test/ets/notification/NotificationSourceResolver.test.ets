@@ -16,5 +16,9 @@ export default function notificationSourceResolverTest(): void {
       expect(NotificationSourceResolver.resolve('com.tencent.tim', registry)).assertEqual(NotificationSource.QQ);
       expect(NotificationSourceResolver.resolve('com.tencent.mm', registry)).assertEqual(NotificationSource.WECHAT);
     });
+
+    it('recognizes the enterprise WeChat bundle used by the aligned Android source', 0, () => {
+      expect(NotificationSourceResolver.resolve('com.tencent.wework')).assertEqual(NotificationSource.WECOM);
+    });
   });
 }
