@@ -207,12 +207,21 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
     }
     assert detector.known_school_config("https://evil-xk.huel.edu.cn/") is None
     assert detector.known_school_config("http://xk.huel.edu.cn/") is None
+    assert detector.known_school_config("https://xk.huel.edu.cn/other/page.html") is None
+    assert detector.known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html?entry=portal"
+    ) is not None
+    assert detector.known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html/"
+    ) is None
     config["endpoint_overrides"]["profile_path"] = "/mutated-by-caller"
-    assert detector.known_school_config("https://xk.huel.edu.cn/")["endpoint_overrides"]["profile_path"] is None
+    assert detector.known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+    )["endpoint_overrides"]["profile_path"] is None
 
 
 def test_huel_configuration_does_not_enable_unverified_data_endpoints():
-    config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/")
+    config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
     school = school_config_from_dict(config)
 
     assert school is not None
@@ -238,7 +247,7 @@ async def test_huel_schedule_fetch_rejects_unverified_endpoint(monkeypatch):
     with pytest.raises(AdapterNotImplemented, match="schedule_path is not configured"):
         await zhengfang_module.ZhengfangAdapter().fetch_schedule(
             {
-                "adapter_config": ProviderDetector().known_school_config("https://xk.huel.edu.cn/"),
+                "adapter_config": ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"),
                 "cookies": {},
             }
         )
@@ -507,7 +516,7 @@ async def test_huel_prepare_login_rejects_an_html_captcha_url_outside_configured
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", HuelProtocolClient)
 
     result = await zhengfang_module.ZhengfangAdapter().prepare_login(
-        config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/")
+        config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
     )
 
     assert result["captcha_image_base64"] is None
@@ -552,13 +561,134 @@ async def test_huel_login_rejects_malformed_public_key_from_configured_path(monk
             username="fixture-user",
             password="fixture-password",
             captcha="fixture-captcha",
-            config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/"),
+            config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"),
         )
 
     assert HuelProtocolClient.instance.calls == [
         "/jwglxt/xtgl/login_slogin.html",
         "/jwglxt/xtgl/login_getPublicKey.html",
     ]
+
+
+@pytest.mark.asyncio
+async def test_huel_prepare_login_rejects_off_origin_absolute_login_url_before_io(monkeypatch):
+    class NoIoClient:
+        calls = []
+
+        def __init__(self, **_kwargs):
+            pass
+
+        async def get(self, path, **_kwargs):
+            NoIoClient.calls.append(path)
+            raise AssertionError("off-origin login URL must be rejected before HTTP I/O")
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", NoIoClient)
+    config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
+    config["login_url"] = "https://attacker.example/jwglxt/xtgl/login_slogin.html"
+
+    with pytest.raises(EduAdapterError, match="origin"):
+        await zhengfang_module.ZhengfangAdapter().prepare_login(config=config)
+
+    assert NoIoClient.calls == []
+
+
+@pytest.mark.asyncio
+async def test_huel_login_rejects_off_origin_absolute_public_key_url_before_io(monkeypatch):
+    class LoginOnlyClient:
+        calls = []
+
+        def __init__(self, **_kwargs):
+            pass
+
+        async def get(self, path, **_kwargs):
+            LoginOnlyClient.calls.append(path)
+            if path == "/jwglxt/xtgl/login_slogin.html":
+                return HttpResponse(
+                    200,
+                    _load("huel_login.html").replace(
+                        '<input name="csrftoken" type="hidden">',
+                        '<input name="csrftoken" type="hidden" value="fixture-csrf">',
+                    ),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            raise AssertionError("off-origin public-key URL must be rejected before HTTP I/O")
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginOnlyClient)
+    config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
+    config["public_key_path"] = "https://attacker.example/jwglxt/xtgl/login_getPublicKey.html"
+
+    with pytest.raises(EduAdapterError, match="origin"):
+        await zhengfang_module.ZhengfangAdapter().login(
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            config=config,
+        )
+
+    assert LoginOnlyClient.calls == ["/jwglxt/xtgl/login_slogin.html"]
+
+
+@pytest.mark.asyncio
+async def test_huel_login_serializes_public_form_fields_after_rsa_encryption(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=1024).public_key().public_numbers()
+    modulus = base64.b64encode(key.n.to_bytes((key.n.bit_length() + 7) // 8, "big")).decode()
+    exponent = base64.b64encode(key.e.to_bytes((key.e.bit_length() + 7) // 8, "big")).decode()
+
+    class StopAfterPost(Exception):
+        pass
+
+    class LoginFlowClient:
+        instance = None
+
+        def __init__(self, **_kwargs):
+            self.get_calls = []
+            self.post_call = None
+            LoginFlowClient.instance = self
+
+        async def get(self, path, **_kwargs):
+            self.get_calls.append(path)
+            if path == "/jwglxt/xtgl/login_slogin.html":
+                return HttpResponse(
+                    200,
+                    _load("huel_login.html").replace(
+                        '<input name="csrftoken" type="hidden">',
+                        '<input name="csrftoken" type="hidden" value="fixture-csrf">',
+                    ),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/login_getPublicKey.html":
+                return HttpResponse(
+                    200,
+                    json.dumps({"modulus": modulus, "exponent": exponent}),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_getPublicKey.html",
+                    {},
+                )
+            raise AssertionError(f"unexpected GET: {path}")
+
+        async def post(self, path, *, data=None, **_kwargs):
+            self.post_call = (path, data)
+            raise StopAfterPost
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginFlowClient)
+
+    with pytest.raises(StopAfterPost):
+        await zhengfang_module.ZhengfangAdapter().login(
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"),
+        )
+
+    path, data = LoginFlowClient.instance.post_call
+    assert path == "/jwglxt/xtgl/login_slogin.html"
+    assert data["yhm"] == "fixture-user"
+    assert data["mm"] != "fixture-password"
+    assert data["csrftoken"] == "fixture-csrf"
+    assert data["yzm"] == "fixture-captcha"
 
 
 @pytest.mark.asyncio

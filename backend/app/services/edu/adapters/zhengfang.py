@@ -138,18 +138,36 @@ def _extract_captcha_image_url(html: str) -> Optional[str]:
 
 
 def _is_exact_origin(url: str, origin: str) -> bool:
-    candidate = urlparse(url)
-    expected = urlparse(origin)
-    return (
-        candidate.scheme == expected.scheme
-        and candidate.netloc == expected.netloc
-        and candidate.scheme in ("http", "https")
-    )
+    def origin_parts(value: str) -> Optional[tuple[str, str, int]]:
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return None
+        try:
+            port = parsed.port
+        except ValueError:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        return (
+            parsed.scheme.lower(),
+            parsed.hostname.lower(),
+            port if port is not None else (443 if parsed.scheme.lower() == "https" else 80),
+        )
+
+    return origin_parts(url) == origin_parts(origin)
 
 
 def _ensure_configured_origin(school: SchoolConfig) -> None:
     if school.allowed_origin and not _is_exact_origin(school.base_url, school.allowed_origin):
         raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统登录 origin 与学校配置不一致")
+
+
+def _validated_protocol_request_path(school: SchoolConfig, path: str) -> str:
+    """Reject off-origin configured login protocol URLs before issuing I/O."""
+    resolved_url = urljoin(school.base_url.rstrip("/") + "/", path)
+    if school.allowed_origin and not _is_exact_origin(resolved_url, school.allowed_origin):
+        raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统登录协议 URL origin 与学校配置不一致")
+    return path
 
 
 def _configured_captcha_url(school: SchoolConfig, img_url: str) -> Optional[str]:
@@ -209,7 +227,8 @@ class ZhengfangAdapter(EduAdapter):
             extra_headers=school.extra_headers,
         )
 
-        page = await client.get(school.effective_login_url, referer=school.base_url)
+        login_path = _validated_protocol_request_path(school, school.effective_login_url)
+        page = await client.get(login_path, referer=school.base_url)
         page_action = _user_action_from_login_page(page.text)
         captcha_required = page_action == "NEED_CAPTCHA" or school.captcha_type == "image"
 
@@ -225,7 +244,7 @@ class ZhengfangAdapter(EduAdapter):
                 if full_url:
                     captcha_image_url = full_url
                     try:
-                        img_resp = await client.get(full_url, referer=school.effective_login_url)
+                        img_resp = await client.get(full_url, referer=login_path)
                         mime_type = img_resp.content_type
                         raw = img_resp.content
                         if (
@@ -239,8 +258,9 @@ class ZhengfangAdapter(EduAdapter):
                         pass
 
         public_key_text: Optional[str] = None
+        public_key_path = _validated_protocol_request_path(school, school.public_key_path)
         try:
-            pk_resp = await client.get(school.public_key_path, referer=school.effective_login_url)
+            pk_resp = await client.get(public_key_path, referer=login_path)
             public_key_text = pk_resp.text
         except EduAdapterError:
             pass
@@ -272,6 +292,7 @@ class ZhengfangAdapter(EduAdapter):
         if school is None:
             raise AdapterNotImplemented(self.provider, "login: missing base_url in config")
         _ensure_configured_origin(school)
+        login_path = _validated_protocol_request_path(school, school.effective_login_url)
 
         if school.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
             raise NeedUserAction(
@@ -311,11 +332,12 @@ class ZhengfangAdapter(EduAdapter):
                 if not csrf_token:
                     raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "预登录 session 缺少 csrftoken")
                 if not public_key_text:
-                    pk_resp = await client.get(school.public_key_path, referer=school.effective_login_url)
+                    public_key_path = _validated_protocol_request_path(school, school.public_key_path)
+                    pk_resp = await client.get(public_key_path, referer=login_path)
                     public_key_text = pk_resp.text
             else:
                 # 正常流程：GET 登录页
-                page = await client.get(school.effective_login_url, referer=school.base_url)
+                page = await client.get(login_path, referer=school.base_url)
                 page_action = _user_action_from_login_page(page.text)
                 if page_action and page_action != "NEED_CAPTCHA":
                     raise NeedUserAction(page_action, captcha_url=school.effective_login_url)
@@ -325,7 +347,8 @@ class ZhengfangAdapter(EduAdapter):
                 csrf_token = _hidden_input_value(page.text, "csrftoken")
                 if not csrf_token:
                     raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统未返回登录令牌")
-                public_key = await client.get(school.public_key_path, referer=school.effective_login_url)
+                public_key_path = _validated_protocol_request_path(school, school.public_key_path)
+                public_key = await client.get(public_key_path, referer=login_path)
                 public_key_text = public_key.text
 
             form = {
@@ -337,9 +360,9 @@ class ZhengfangAdapter(EduAdapter):
             if captcha:
                 form[school.form_field_captcha] = captcha
             resp = await client.post(
-                school.effective_login_url,
+                login_path,
                 data=form,
-                referer=school.effective_login_url,
+                referer=login_path,
                 form_post=True,
             )
         except EduAdapterError as e:

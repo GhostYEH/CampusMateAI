@@ -521,6 +521,7 @@ class ProviderDetector:
         if (
             parsed.scheme != "https"
             or parsed.netloc != "xk.huel.edu.cn"
+            or parsed.path != "/jwglxt/xtgl/login_slogin.html"
             or parsed.username is not None
             or parsed.password is not None
         ):
