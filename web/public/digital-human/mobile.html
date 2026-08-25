@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
-  <title>CampusMate 数字人</title>
+  <title>CPM 数字人</title>
   <style>
     :root { color: #26345f; font: 14px system-ui, -apple-system, "HarmonyOS Sans SC", sans-serif; background: #eef2ff; }
     * { box-sizing: border-box; }
@@ -18,6 +18,10 @@
     .speaking .state::before { background: #5368ef; box-shadow: 0 0 0 4px rgba(83,104,239,.14); }
     main { position: relative; min-height: 0; margin: 0 10px; overflow: hidden; border: 1px solid rgba(211,219,244,.9); border-radius: 18px; background: #e8edfb; box-shadow: 0 12px 28px rgba(48,65,128,.10); }
     iframe { width: 100%; height: 100%; border: 0; background: #e8edfb; }
+    #compat-avatar { position: absolute; inset: 0; overflow: hidden; background: #e8edfb; }
+    #compat-avatar[hidden] { display: none; }
+    #compat-avatar img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.04) translateY(9%); transform-origin: 50% 50%; }
+    #compat-mouth { position: absolute; left: 50%; top: 27%; width: 3.6%; height: calc(1% + var(--mouth-open, 0) * 4%); min-height: 2px; border-radius: 50%; background: rgba(116,52,72,.84); transform: translate(-50%, -50%); }
     #loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #65739a; text-align: center; background: #e8edfb; }
     #loading[hidden], #notice[hidden] { display: none; }
     #notice { margin: 8px 14px 0; color: #8b5a22; font-size: 11px; text-align: center; }
@@ -25,23 +29,35 @@
     button { min-height: 40px; border: 1px solid #d4dcf4; border-radius: 12px; background: rgba(255,255,255,.92); color: #53618b; font: inherit; }
     button:active:not(:disabled) { transform: scale(.97); background: #f3f5ff; }
     button:disabled { opacity: .42; }
+    body.embed { display: block; background: radial-gradient(circle at 50% 20%, #fff 0, #edf1ff 58%, #e1e7fb 100%); }
+    body.embed header, body.embed footer, body.embed #notice { display: none !important; }
+    body.embed main { width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
   </style>
 </head>
 <body>
   <header>
-    <div class="title"><small>你的学习小帮手</small><strong>CampusMate 数字人</strong></div>
+    <div class="title"><small>你的学习小帮手</small><strong>CPM 数字人</strong></div>
     <span class="state" id="state-label">正在载入</span>
   </header>
   <main>
     <iframe id="avatar-frame" src="./index.html" title="CampusMate AI 数字人" allow="autoplay"></iframe>
+    <div id="compat-avatar" hidden><img src="./fallback-avatar.png" alt="CPM 数字人" /><span id="compat-mouth"></span></div>
     <div id="loading">正在唤醒数字人…</div>
   </main>
   <p id="notice" role="status" hidden></p>
   <footer>
     <button id="mute" type="button" aria-pressed="false">静音</button>
-    <button id="stop" type="button" disabled>停止</button>
+    <button id="stop" type="button" disabled>暂停</button>
     <button id="replay" type="button" disabled>重播</button>
   </footer>
-  <script type="module" src="./mobileApp.js"></script>
+  <script>
+    if (new URLSearchParams(window.location.search).get("fallback") === "1") {
+      document.querySelector("#avatar-frame").removeAttribute("src");
+      document.querySelector("#avatar-frame").hidden = true;
+      document.querySelector("#compat-avatar").hidden = false;
+      document.querySelector("#loading").hidden = true;
+    }
+  </script>
+  <script type="module" src="./mobileApp.js?v=3"></script>
 </body>
 </html>

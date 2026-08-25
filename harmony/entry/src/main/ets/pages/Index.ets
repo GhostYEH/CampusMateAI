@@ -10,6 +10,7 @@ import { AppDock } from '../ui/AppDock';
 import { CoursesPage } from '../features/courses/CoursesPage';
 import { TasksPage } from '../features/tasks/TasksPage';
 import { CounselorPage } from '../features/counselor/CounselorPage';
+import { CpmChatDataSource } from '../features/counselor/CpmChatDataSource';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { QrScannerPage } from '../features/profile/QrScannerPage';
 import { QrConfirmPage } from '../features/profile/QrConfirmPage';
@@ -25,7 +26,7 @@ import { AccountPage } from '../features/profile/AccountPage';
 import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
-import { AcademicStatusItem, ActivityItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityPostItem, CommunityPostPayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse } from '../data/Models';
+import { AcademicStatusItem, ActivityItem, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityPostItem, CommunityPostPayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { notificationSubscriberManager } from '../data/notification/NotificationSubscriber';
 import { StudyRepository } from '../repository/StudyRepository';
@@ -75,7 +76,7 @@ struct Index {
   @State primaryLoading: boolean = false;
   @State courses: CourseItem[] = [];
   @State tasks: TaskItem[] = [];
-  @State chatMessages: ChatMessage[] = [];
+  private chatMessages: CpmChatDataSource = new CpmChatDataSource();
   @State chatInput: string = '';
   @State chatSending: boolean = false;
   @State digitalHumanSpeechText: string = '';
@@ -316,17 +317,12 @@ struct Index {
     }
   }
 
-  async sendChat(): Promise<void> {
-    const message = this.chatInput.trim();
+  async sendChat(messageOverride: string = ''): Promise<void> {
+    const message = (messageOverride.length > 0 ? messageOverride : this.chatInput).trim();
     if (message.length === 0 || this.chatSending) {
       return;
     }
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: message
-    };
-    this.chatMessages = [...this.chatMessages, userMessage];
+    const assistantId = this.chatMessages.addUserAndAssistant(message, Date.now());
     this.chatInput = '';
     this.chatSending = true;
     const client = this.createApiClient();
@@ -336,12 +332,6 @@ struct Index {
         session_id: 'harmony-session',
         stream: true
       };
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: ''
-      };
-      this.chatMessages = [...this.chatMessages, assistantMessage];
       let receivedChunk = false;
       let streamError = '';
       let completedAnswer = '';
@@ -350,9 +340,7 @@ struct Index {
           const payload = JSON.parse(event.data) as Record<string, string>;
           if (event.event === 'chunk' && payload.text) {
             receivedChunk = true;
-            this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
-              return item.id === assistantMessage.id ? new ChatMessageModel(item.id, item.role, item.content + payload.text) : item;
-            });
+            this.chatMessages.appendChunk(assistantId, payload.text);
           } else if (event.event === 'done' && payload.answer) {
             completedAnswer = payload.answer;
           } else if (event.event === 'error') {
@@ -363,33 +351,23 @@ struct Index {
         }
       });
       if (streamError.length > 0) throw new Error(streamError);
-      if (!receivedChunk && completedAnswer.length > 0) {
-        this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
-          return item.id === assistantMessage.id ? new ChatMessageModel(item.id, item.role, completedAnswer) : item;
-        });
-      }
       if (!receivedChunk && completedAnswer.length === 0) throw new Error('AI 流式响应为空');
-      const finalAssistant = this.chatMessages.find((item: ChatMessage) => item.id === assistantMessage.id);
-      if (finalAssistant !== undefined && finalAssistant.content.trim().length > 0) {
-        this.digitalHumanSpeechText = finalAssistant.content;
+      const finalAnswer = this.chatMessages.complete(assistantId, completedAnswer);
+      if (finalAnswer.trim().length > 0) {
+        this.digitalHumanSpeechText = finalAnswer;
         this.digitalHumanSpeechRequestId += 1;
       }
     } catch (error) {
-      const latest = this.chatMessages[this.chatMessages.length - 1];
-      if (latest !== undefined && latest.role === 'assistant' && latest.content.length === 0) {
-        this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
-          return item.id === latest.id ? new ChatMessageModel(item.id, item.role, '暂时无法连接校园知识库，请检查网络后重试。') : item;
-        });
-      } else {
-        this.chatMessages = [...this.chatMessages, {
-          id: `assistant-error-${Date.now()}`,
-          role: 'assistant',
-          content: '暂时无法连接校园知识库，请检查网络后重试。'
-        }];
-      }
+      const message = error instanceof Error ? error.message : 'AI 服务暂时不可用';
+      this.chatMessages.fail(assistantId, message);
     } finally {
       this.chatSending = false;
     }
+  }
+
+  async retryChat(): Promise<void> {
+    const prompt = this.chatMessages.findLastUserPrompt();
+    if (prompt.length > 0) await this.sendChat(prompt);
   }
 
   async signOut(): Promise<void> {
@@ -781,7 +759,7 @@ struct Index {
             SymbolGlyph($r('sys.symbol.school')).fontSize(46).fontColor([this.primaryColor()])
             Text('CampusMate AI').fontColor(this.textColor()).fontSize(22).fontWeight(FontWeight.Bold)
             Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(14).textAlign(TextAlign.Center).lineHeight(22)
-            Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
+            Text('CPM 的回答仅作辅助建议，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center).lineHeight(20)
           }.width('100%').padding(24).alignItems(HorizontalAlign.Center)
         }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
       }.width('100%').height('100%').backgroundColor(this.pageBackground())
@@ -791,7 +769,7 @@ struct Index {
         Column({ space: 12 }) {
           SymbolGlyph($r('sys.symbol.info_circle')).fontSize(38).fontColor([this.primaryColor()])
           Text('面向大学生的校园事务智能陪伴助手。').fontColor(this.textColor()).fontSize(15).textAlign(TextAlign.Center)
-          Text('AI 校园助手的回答仅作校园事务辅助，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center)
+          Text('CPM 的回答仅作辅助建议，学校正式通知为准。').fontColor(this.mutedColor()).fontSize(12).textAlign(TextAlign.Center)
         }.width('100%').padding(28).alignItems(HorizontalAlign.Center)
       }.width('100%').height('100%').backgroundColor(this.pageBackground())
     }
@@ -848,7 +826,7 @@ struct Index {
 
   @Builder CounselorTabContent() {
     CounselorPage({
-      messages: this.chatMessages,
+      dataSource: this.chatMessages,
       sending: this.chatSending,
       darkMode: this.darkMode,
       apiBaseUrl: API_BASE_URL,
@@ -856,7 +834,8 @@ struct Index {
       speechText: this.digitalHumanSpeechText,
       speechRequestId: this.digitalHumanSpeechRequestId,
       input: $chatInput,
-      onSend: () => this.sendChat()
+      onSend: (question: string) => this.sendChat(question),
+      onRetry: () => this.retryChat()
     })
   }
 
