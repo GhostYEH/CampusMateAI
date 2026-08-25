@@ -356,9 +356,10 @@ fun AppNavHost(
         composable("edu_system") {
             com.example.campusai.ui.screens.profile.EduSystemScreen(
                 onBack = { navController.popBackStack() },
-                onNavigateToLogin = { loginUrl, connectionId ->
+                onNavigateToLogin = { loginUrl, connectionId, allowedOrigins ->
                     val encodedUrl = URLEncoder.encode(loginUrl, "UTF-8")
-                    navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl")
+                    val encodedOrigins = URLEncoder.encode(allowedOrigins.joinToString(","), "UTF-8")
+                    navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl&allowedOrigins=$encodedOrigins")
                 },
                 onOpenSchedule = { go("edu_schedule") },
             )
@@ -367,18 +368,21 @@ fun AppNavHost(
             com.example.campusai.ui.screens.profile.EduScheduleScreen()
         }
         composable(
-            route = "edu_login/{connectionId}?loginUrl={loginUrl}",
+            route = "edu_login/{connectionId}?loginUrl={loginUrl}&allowedOrigins={allowedOrigins}",
             arguments = listOf(
                 navArgument("connectionId") { type = NavType.StringType },
                 navArgument("loginUrl") { type = NavType.StringType },
+                navArgument("allowedOrigins") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { backStackEntry ->
             val connectionId = backStackEntry.arguments?.getString("connectionId") ?: ""
             val loginUrl = backStackEntry.arguments?.getString("loginUrl") ?: ""
+            val allowedOrigins = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("allowedOrigins") ?: "", "UTF-8").split(",").filter { it.isNotBlank() }
             com.example.campusai.ui.screens.profile.EduLoginScreen(
                 loginUrl = java.net.URLDecoder.decode(loginUrl, "UTF-8"),
                 connectionId = connectionId,
                 viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                backendAllowedOrigins = allowedOrigins,
                 onBack = { navController.popBackStack() },
             )
         }

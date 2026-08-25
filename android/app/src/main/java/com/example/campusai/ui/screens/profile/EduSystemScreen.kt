@@ -42,7 +42,7 @@ object EduStateText {
 @Composable
 fun EduSystemScreen(
     onBack: () -> Unit,
-    onNavigateToLogin: (loginUrl: String, connectionId: String) -> Unit,
+    onNavigateToLogin: (loginUrl: String, connectionId: String, allowedOrigins: List<String>) -> Unit,
     onOpenSchedule: () -> Unit = {},
     viewModel: EduViewModel = viewModel(),
 ) {
@@ -58,7 +58,7 @@ fun EduSystemScreen(
     LaunchedEffect(Unit) { viewModel.loadInitial() }
     LaunchedEffect(state) {
         val waiting = state as? EduUiState.WaitingUserLogin ?: return@LaunchedEffect
-        onNavigateToLogin(waiting.loginUrl, waiting.connection.id)
+        onNavigateToLogin(waiting.loginUrl, waiting.connection.id, waiting.connection.allowed_origins)
     }
 
     if (showDisconnectDialog) {

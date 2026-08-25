@@ -346,6 +346,7 @@ data class EduConnectionDto(
     val provider: String = "unknown",
     val login_execution_mode: String = "unsupported",
     val portal_url: String? = null,
+    val allowed_origins: List<String> = emptyList(),
     val external_student_id: String? = null,
     val external_student_name: String? = null,
     val error_code: String? = null,
