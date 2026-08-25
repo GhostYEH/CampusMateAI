@@ -15,6 +15,7 @@ import {
   eduCreateConnectionFromUrl,
   eduContinueConnection,
   eduPollConnection,
+  eduPreLogin,
   eduScheduleItems,
   eduGradeItems,
 } from "../../services/studentApi";
@@ -30,6 +31,8 @@ const syncBusy = ref("");
 const bindForm = ref({ username: "", password: "" });
 const bindBusy = ref(false);
 const bindError = ref("");
+const captchaInput = ref("");
+const preLoginResult = ref(null);
 const universities = ref([]);
 const universityQuery = ref("");
 const universityPickerOpen = ref(false);
@@ -73,6 +76,21 @@ const connectionStateText = {
 
 function stateText(state) {
   return connectionStateText[state] || state || "未知";
+}
+
+function stateTextWithErrorCode(state, errorCode) {
+  if (state === "waiting_user_login" && errorCode) {
+    const codeMap = {
+      NEED_CAPTCHA: "学校要求完成图片验证码",
+      NEED_SLIDER: "需要完成滑块验证",
+      NEED_SMS: "需要短信验证码",
+      NEED_MFA: "需要多因素认证",
+      CLIENT_WEBVIEW: "请在学校登录页面完成验证",
+      NEED_CAMPUS_NETWORK: "请连接校园网或 VPN 后继续",
+    };
+    return codeMap[errorCode] || connectionStateText[state] || state;
+  }
+  return stateText(state);
 }
 
 async function load() {
@@ -197,6 +215,8 @@ async function submitCredentialConnect() {
     if (connection.value.state === "connected") {
       await load();
       bindForm.value = { username: "", password: "" };
+    } else if (connection.value.state === "waiting_user_login" && connection.value.error_code === "NEED_CAPTCHA") {
+      await fetchCaptchaImage();
     } else if (connection.value.state === "auth_failed") {
       bindError.value = connection.value.error_message || "账号或密码错误";
     } else {
@@ -207,6 +227,59 @@ async function submitCredentialConnect() {
   } finally {
     bindBusy.value = false;
   }
+}
+
+// ===== 验证码图片前端化 =====
+async function fetchCaptchaImage() {
+  if (!connection.value) return;
+  bindBusy.value = true;
+  bindError.value = "";
+  try {
+    preLoginResult.value = await eduPreLogin(connection.value.id);
+    if (!preLoginResult.value.captcha_required || !preLoginResult.value.captcha_image_base64) {
+      bindError.value = "无法获取验证码图片，请尝试在浏览器中完成登录";
+    }
+  } catch (e) {
+    bindError.value = e.response?.data?.message || "获取验证码失败";
+  } finally {
+    bindBusy.value = false;
+  }
+}
+
+async function submitCredentialsWithCaptcha() {
+  if (!connection.value || !preLoginResult.value || !captchaInput.value || !bindForm.value.username || !bindForm.value.password) return;
+  bindBusy.value = true;
+  bindError.value = "";
+  try {
+    connection.value = await eduContinueConnection(connection.value.id, {
+      username: bindForm.value.username,
+      password: bindForm.value.password,
+      captcha: captchaInput.value,
+      pre_login_token: preLoginResult.value.pre_login_token,
+      action: "SUBMIT_WITH_CAPTCHA",
+    });
+    preLoginResult.value = null;
+    captchaInput.value = "";
+    if (connection.value.state === "connected") {
+      await load();
+      bindForm.value = { username: "", password: "" };
+    } else if (connection.value.state === "waiting_user_login" && connection.value.error_code === "NEED_CAPTCHA") {
+      await fetchCaptchaImage();
+    } else if (connection.value.state === "auth_failed") {
+      bindError.value = connection.value.error_message || "账号或密码错误";
+    } else {
+      bindError.value = connection.value.error_message || "登录失败";
+    }
+  } catch (e) {
+    bindError.value = e.response?.data?.message || "登录失败";
+  } finally {
+    bindBusy.value = false;
+  }
+}
+
+async function refreshCaptcha() {
+  captchaInput.value = "";
+  await fetchCaptchaImage();
 }
 
 // ===== 轮询连接状态（client_webview 模式，移动端登录后 Web 端轮询） =====
@@ -223,6 +296,9 @@ function startPolling(connId) {
       if (conn.state === "connected") {
         stopPolling();
         await load();
+      } else if (conn.state === "waiting_user_login" && conn.error_code === "NEED_CAPTCHA") {
+        stopPolling();
+        await fetchCaptchaImage();
       }
     } catch { /* ignore poll error */ }
   }, 3000);
@@ -248,6 +324,8 @@ async function reconnect() {
   probeResult.value = null;
   connectionError.value = "";
   bindForm.value = { username: "", password: "" };
+  preLoginResult.value = null;
+  captchaInput.value = "";
 }
 
 // ===== 课表展示 =====
@@ -429,6 +507,24 @@ onUnmounted(stopPolling);
         <p class="edu-hint">密码仅用于本次登录校验，不会明文保存。</p>
       </div>
 
+      <div v-if="preLoginResult" class="edu-credential-block">
+        <h4>请输入验证码</h4>
+        <p class="edu-hint">学校登录页要求完成图片验证码，请对照下方图片输入。</p>
+        <div v-if="bindError" class="redesign-alert error">{{ bindError }}</div>
+        <div v-if="preLoginResult.captcha_image_base64" class="captcha-image-block">
+          <img :src="'data:image/png;base64,' + preLoginResult.captcha_image_base64" alt="验证码图片" class="captcha-image" />
+          <button class="redesign-button secondary" type="button" @click="refreshCaptcha" :disabled="bindBusy">换一张</button>
+        </div>
+        <div v-else class="redesign-alert warning">⚠ 未获取到验证码图片，请点击换一张</div>
+        <form class="edu-form" @submit.prevent="submitCredentialsWithCaptcha">
+          <label>学号<input v-model="bindForm.username" type="text" required /></label>
+          <label>密码<input v-model="bindForm.password" type="password" required /></label>
+          <label>验证码<input v-model="captchaInput" type="text" required autocomplete="off" /></label>
+          <button class="redesign-button" type="submit" :disabled="bindBusy">{{ bindBusy ? "验证中…" : "登录" }}</button>
+        </form>
+        <p class="edu-hint">密码仅用于本次登录校验，不会明文保存。</p>
+      </div>
+
       <div v-if="connection && connection.login_execution_mode === 'client_webview'" class="edu-webview-block">
         <div class="redesign-alert info">
           <UiIcon name="PhDeviceMobile" />
@@ -577,4 +673,6 @@ onUnmounted(stopPolling);
 .schedule-detail-list dd { font-weight: 600; margin: 0; }
 .schedule-extra-title { font-size: 13px; font-weight: 700; margin: 16px 0 8px; }
 .schedule-modal-source { font-size: 10px; color: var(--muted, #667784); margin-top: 16px; }
+.captcha-image-block { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.captcha-image { height: 48px; width: 120px; object-fit: contain; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; }
 </style>

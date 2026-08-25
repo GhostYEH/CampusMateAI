@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, ref, watch } from "vue";
 import UiIcon from "../UiIcon.vue";
-import { formatDeadline, getPriorityLabel, getTaskState } from "../../features/tasks/taskModel.js";
+import { formatDeadline, getImportanceLabel, getPriorityLabel, getTaskState } from "../../features/tasks/taskModel.js";
 
 const props = defineProps({
   groups: { type: Object, required: true },
@@ -67,6 +67,7 @@ function onDrop(task, key) {
             </button>
             <span class="task-row-deadline"><small>{{ task.done ? '完成于' : itemState(task) === 'overdue' ? '已逾期' : '截止' }}</small><time>{{ formatDeadline(task.deadline) }}</time></span>
             <span class="task-row-priority" :class="`priority-${task.priority}`"><i></i>{{ getPriorityLabel(task.priority) }}</span>
+            <span v-if="task.kind === 'personal'" class="task-row-importance" :class="`importance-${task.importance || 'unknown'}`"><i></i>{{ getImportanceLabel(task.importance) }}</span>
             <span class="task-row-status" :class="task.done ? 'done' : itemState(task)">{{ task.done ? '已完成' : task.statusLabel }}</span>
             <details class="task-row-menu">
               <summary aria-label="更多操作"><UiIcon name="PhDotsThreeVertical" :size="17" /></summary>

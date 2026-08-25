@@ -75,6 +75,12 @@ export async function getPersonalTasks(params = {}) {
   return data;
 }
 
+export async function rankTaskImportance(taskIds = null) {
+  const payload = taskIds ? { task_ids: taskIds } : {};
+  const { data } = await client.post("/tasks/rank-importance", payload);
+  return data;
+}
+
 export async function getStudentNotices(params = {}) {
   const { data } = await client.get("/notices", { params: { page_size: 200, ...params } });
   return data;
@@ -334,6 +340,27 @@ export async function uploadCommunityImage(file) {
   return data;
 }
 
+export async function adminListCommunityPosts(params = {}) {
+  const { data } = await client.get("/admin/community/posts", { params });
+  return data;
+}
+export async function adminHideCommunityPost(id) {
+  const { data } = await client.post(`/admin/community/posts/${id}/hide`);
+  return data;
+}
+export async function adminListCommunityReports(params = {}) {
+  const { data } = await client.get("/admin/community/reports", { params });
+  return data;
+}
+export async function adminResolveCommunityReport(id, action) {
+  const { data } = await client.post(`/admin/community/reports/${id}/resolve`, null, { params: { action } });
+  return data;
+}
+export async function adminMigrateLostFound() {
+  const { data } = await client.post("/admin/community/migrate-lost-found");
+  return data;
+}
+
 export function resolveAssetUrl(url) {
   if (!url) return url;
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
@@ -418,11 +445,19 @@ export async function eduPollConnection(connectionId) {
   const { data } = await client.post(`/edu/connections/${connectionId}/continue`, { action: "POLL" });
   return data;
 }
+export async function eduPreLogin(connectionId) {
+  const { data } = await client.post(`/edu/connections/${connectionId}/pre-login`, {});
+  return data;
+}
 export async function eduScheduleItems(semester = null) {
   const { data } = await client.get("/edu/schedule/items", { params: semester ? { semester } : {} });
   return data;
 }
 export async function eduGradeItems(semester = null) {
   const { data } = await client.get("/edu/grade/items", { params: semester ? { semester } : {} });
+  return data;
+}
+export async function eduExamItems(semester = null) {
+  const { data } = await client.get("/edu/exam/items", { params: semester ? { semester } : {} });
   return data;
 }

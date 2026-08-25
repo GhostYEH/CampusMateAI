@@ -16,6 +16,10 @@ function priorityLabel(priority) {
   return { high: "高", medium: "中", low: "低" }[priority] || "中";
 }
 
+function importanceLabel(importance) {
+  return { urgent: "紧急", high: "学业关键", important: "较重要", normal: "普通", low: "次要", unknown: "待评" }[importance] || "待评";
+}
+
 function assignmentDone(item) {
   return ["submitted", "graded"].includes(item.submission_status);
 }
@@ -42,6 +46,7 @@ export function buildTaskModel(assignments = [], personal = []) {
       typeLabel: "个人待办",
       done: item.status === "completed",
       priority: item.priority || "medium",
+      importance: item.importance || "unknown",
       source: item.source_name || "个人安排",
       statusLabel: item.status === "completed" ? "已完成" : "待完成",
       progress: item.status === "completed" ? 100 : 0,
@@ -122,6 +127,10 @@ export function formatDeadline(value, options = {}) {
 
 export function getPriorityLabel(priority) {
   return priorityLabel(priority);
+}
+
+export function getImportanceLabel(importance) {
+  return importanceLabel(importance);
 }
 
 export function getRemainingSeconds(value, now = new Date()) {

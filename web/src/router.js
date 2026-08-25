@@ -8,6 +8,7 @@ import AdminRagIndexView from "./views/admin/AdminRagIndexView.vue";
 import AdminSystemView from "./views/admin/AdminSystemView.vue";
 import AdminUsersView from "./views/admin/AdminUsersView.vue";
 import AdminEduDiscoveryView from "./views/admin/AdminEduDiscoveryView.vue";
+import AdminCommunityView from "./views/admin/AdminCommunityView.vue";
 import StudentSettingsView from "./views/student/StudentSettingsView.vue";
 import StudentExamDetailView from "./views/student/StudentExamDetailView.vue";
 import StudentExamEditView from "./views/student/StudentExamEditView.vue";
@@ -50,6 +51,7 @@ const router = createRouter({
       { path: "system", component: AdminSystemView },
       { path: "users", component: AdminUsersView },
       { path: "edu-discovery", component: AdminEduDiscoveryView },
+      { path: "community", component: AdminCommunityView },
     ]},
     // 学生端
     { path: "/", component: AppShell, children: [

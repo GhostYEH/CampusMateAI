@@ -16,6 +16,7 @@ const menus = [
   ["admin/documents", "文档维护", "PhFileText"],
   ["admin/rag-index", "RAG 索引", "PhStack"],
   ["admin/users", "账号管理", "PhUsers"],
+  ["admin/community", "校园论坛", "PhChatsCircle"],
   ["admin/edu-discovery", "教务系统发现", "PhMagnifyingGlass"],
   ["admin/system", "系统状态", "PhActivity"],
 ];
