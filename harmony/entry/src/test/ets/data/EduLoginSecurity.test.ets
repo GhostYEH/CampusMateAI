@@ -4,9 +4,39 @@ import {
   cookieDtosForUrl,
   isAllowedEduNavigation
 } from '../../../main/ets/features/edu/EduLoginSecurity';
+import {
+  EduLoginSensitiveEvent,
+  EduLoginSensitiveState,
+  reduceEduLoginSensitiveState
+} from '../../../main/ets/features/edu/EduLoginSensitiveState';
 
 export default function eduLoginSecurityTest(): void {
   describe('EduLoginSecurity', () => {
+    it('clears sensitive login fields for every lifecycle exit and keeps username', 0, () => {
+      const events: EduLoginSensitiveEvent[] = [
+        EduLoginSensitiveEvent.DIRECT_CONNECTED,
+        EduLoginSensitiveEvent.WEB_HANDOFF,
+        EduLoginSensitiveEvent.DISCONNECT,
+        EduLoginSensitiveEvent.CONNECTION_REPLACED,
+        EduLoginSensitiveEvent.CANCEL,
+        EduLoginSensitiveEvent.DISPOSE
+      ];
+      const initial: EduLoginSensitiveState = {
+        username: 'student-1',
+        password: 'secret',
+        captcha: '1234',
+        preLoginToken: 'pre-login-token'
+      };
+
+      for (let index = 0; index < events.length; index++) {
+        const result: EduLoginSensitiveState = reduceEduLoginSensitiveState(initial, events[index]);
+        expect(result.username).assertEqual('student-1');
+        expect(result.password).assertEqual('');
+        expect(result.captcha).assertEqual('');
+        expect(result.preLoginToken === undefined).assertTrue();
+      }
+    });
+
     it('preserves allowed origins from the backend connection response', 0, () => {
       expect(allowedOriginsFromEduResponse({ allowed_origins: ['https://sso.huel.edu.cn'] })[0])
         .assertEqual('https://sso.huel.edu.cn');

@@ -51,14 +51,35 @@ fun EduSystemScreen(
     val universityId by viewModel.universityId.collectAsState()
 
     var portalUrl by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var sensitiveState by remember { mutableStateOf(EduLoginSensitiveState()) }
     var showDisconnectDialog by remember { mutableStateOf(false) }
+
+    fun clearSensitiveState(event: EduLoginSensitiveEvent) {
+        sensitiveState = reduceEduLoginSensitiveState(sensitiveState, event)
+    }
 
     LaunchedEffect(Unit) { viewModel.loadInitial() }
     LaunchedEffect(state) {
-        val waiting = state as? EduUiState.WaitingUserLogin ?: return@LaunchedEffect
-        onNavigateToLogin(waiting.loginUrl, waiting.connection.id, waiting.connection.allowed_origins)
+        when (val current = state) {
+            is EduUiState.WaitingUserLogin -> {
+                clearSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF)
+                onNavigateToLogin(current.loginUrl, current.connection.id, current.connection.allowed_origins)
+            }
+            is EduUiState.Connected, is EduUiState.Syncing, is EduUiState.Synced -> {
+                clearSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED)
+            }
+            else -> Unit
+        }
+    }
+    LaunchedEffect(binding?.connection_status) {
+        if (binding?.connection_status in setOf("active", "connected")) {
+            clearSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            sensitiveState = reduceEduLoginSensitiveState(sensitiveState, EduLoginSensitiveEvent.DISPOSE)
+        }
     }
 
     if (showDisconnectDialog) {
@@ -69,6 +90,7 @@ fun EduSystemScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDisconnectDialog = false
+                    clearSensitiveState(EduLoginSensitiveEvent.DISCONNECT)
                     viewModel.disconnect()
                 }) { Text("确认断开") }
             },
@@ -98,6 +120,7 @@ fun EduSystemScreen(
                 state = state,
                 onSync = { viewModel.manualSync() },
                 onReconnect = {
+                    clearSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED)
                     viewModel.reset()
                     portalUrl = ""
                 },
@@ -116,7 +139,10 @@ fun EduSystemScreen(
                         busy = false,
                         onDetect = {
                             val url = portalUrl.trim()
-                            if (url.isNotEmpty()) viewModel.probeAndCreateConnection(url)
+                            if (url.isNotEmpty()) {
+                                clearSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED)
+                                viewModel.probeAndCreateConnection(url)
+                            }
                         },
                     )
                 }
@@ -138,12 +164,12 @@ fun EduSystemScreen(
                         )
                     )
                     CredentialFormCard(
-                        username = username,
-                        password = password,
-                        onUsernameChange = { username = it },
-                        onPasswordChange = { password = it },
+                        username = sensitiveState.username,
+                        password = sensitiveState.password,
+                        onUsernameChange = { sensitiveState = sensitiveState.copy(username = it) },
+                        onPasswordChange = { sensitiveState = sensitiveState.copy(password = it) },
                         busy = false,
-                        onSubmit = { viewModel.submitCredentials(username, password) },
+                        onSubmit = { viewModel.submitCredentials(sensitiveState.username, sensitiveState.password) },
                     )
                 }
                 is EduUiState.WaitingUserLogin -> {
@@ -183,7 +209,13 @@ fun EduSystemScreen(
                         if (schedOk) {
                             Button(onClick = onOpenSchedule, modifier = Modifier.weight(1f)) { Text("查看课表") }
                         }
-                        OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("完成") }
+                        OutlinedButton(
+                            onClick = {
+                                clearSensitiveState(EduLoginSensitiveEvent.CANCEL)
+                                onBack()
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("完成") }
                     }
                 }
             }

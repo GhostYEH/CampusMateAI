@@ -5,6 +5,11 @@ import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ApiClient } from '../../data/ApiClient';
 import { promptAction } from '@kit.ArkUI';
 import { allowedOriginsFromEduResponse } from '../edu/EduLoginSecurity';
+import {
+  EduLoginSensitiveEvent,
+  EduLoginSensitiveState,
+  reduceEduLoginSensitiveState
+} from '../edu/EduLoginSensitiveState';
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
@@ -19,6 +24,8 @@ export struct EduSystemPage {
   @State portalUrl: string = '';
   @State username: string = '';
   @State password: string = '';
+  @State captchaInput: string = '';
+  @State preLoginToken: string | undefined = undefined;
   @State loading: boolean = false;
   @State errorMsg: string = '';
   @State infoMsg: string = '';
@@ -44,6 +51,24 @@ export struct EduSystemPage {
     await this.loadBinding();
   }
 
+  aboutToDisappear() {
+    this.resetSensitiveState(EduLoginSensitiveEvent.DISPOSE);
+  }
+
+  resetSensitiveState(event: EduLoginSensitiveEvent) {
+    const current: EduLoginSensitiveState = {
+      username: this.username,
+      password: this.password,
+      captcha: this.captchaInput,
+      preLoginToken: this.preLoginToken
+    };
+    const cleared: EduLoginSensitiveState = reduceEduLoginSensitiveState(current, event);
+    this.username = cleared.username;
+    this.password = cleared.password;
+    this.captchaInput = cleared.captcha;
+    this.preLoginToken = cleared.preLoginToken;
+  }
+
   async loadBinding() {
     try {
       const client = this.buildClient();
@@ -57,6 +82,7 @@ export struct EduSystemPage {
   async probeAndConnect() {
     const url = this.portalUrl.trim();
     if (url.length === 0) return;
+    this.resetSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED);
     this.loading = true;
     this.errorMsg = '';
     this.infoMsg = '';
@@ -102,6 +128,7 @@ export struct EduSystemPage {
   }
 
   async onConnected() {
+    this.resetSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED);
     this.infoMsg = '教务系统连接成功';
     await this.loadBinding();
     await this.autoSync();
@@ -128,6 +155,7 @@ export struct EduSystemPage {
   }
 
   async disconnect() {
+    this.resetSensitiveState(EduLoginSensitiveEvent.DISCONNECT);
     this.loading = true;
     try {
       const client = this.buildClient();
@@ -161,7 +189,15 @@ export struct EduSystemPage {
 
   build() {
     Column({ space: 0 }) {
-      SecondaryHeader({ title: '教务系统', subtitle: '连接教务系统，同步课表与成绩', darkMode: this.darkMode, onBack: () => this.onBack() })
+      SecondaryHeader({
+        title: '教务系统',
+        subtitle: '连接教务系统，同步课表与成绩',
+        darkMode: this.darkMode,
+        onBack: () => {
+          this.resetSensitiveState(EduLoginSensitiveEvent.CANCEL);
+          this.onBack();
+        }
+      })
 
       Scroll() {
         Column({ space: 12 }) {
@@ -186,6 +222,7 @@ export struct EduSystemPage {
                 .backgroundColor(this.palette().primary).fontColor(Color.White)
                 .onClick(() => {
                   if (this.connection !== null) {
+                    this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
                     this.onNavigateToLogin(
                       this.portalUrl,
                       this.connection.id,
@@ -286,6 +323,7 @@ export struct EduSystemPage {
         Row({ space: 8 }) {
           Button('立即同步').backgroundColor(this.palette().primary).fontColor(Color.White).onClick(() => this.autoSync())
           Button('重新登录').backgroundColor(this.palette().surface).fontColor(this.palette().text).onClick(() => {
+            this.resetSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED);
             this.binding = null;
             this.connection = null;
             this.probe = null;
