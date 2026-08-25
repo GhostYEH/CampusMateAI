@@ -71,7 +71,7 @@ class EduRepository {
             connectionId,
             EduConnectionContinueRequest(
                 action = "CLIENT_WEBVIEW_COMPLETE",
-                cookies = cookies,
+                cookie_jar = cookieJar,
                 current_url = currentUrl,
                 user_agent = userAgent,
             ),
