@@ -1,5 +1,14 @@
 import { EduCookieDto } from '../../data/EduCookieDto';
 
+export interface EduAllowedOriginsPayload {
+  allowed_origins?: string[];
+}
+
+/** Preserve the backend response allow-list; missing legacy fields remain fail-closed. */
+export function allowedOriginsFromEduResponse(response: EduAllowedOriginsPayload): string[] {
+  return response.allowed_origins ?? [];
+}
+
 function canonicalHttpsOrigin(value: string): string | undefined {
   const match: RegExpExecArray | null = /^https:\/\/([a-zA-Z0-9.-]+)(?::([0-9]+))?(?:[/?#]|$)/.exec(value);
   if (match === null) return undefined;

@@ -4,6 +4,7 @@ import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ApiClient } from '../../data/ApiClient';
 import { promptAction } from '@kit.ArkUI';
+import { allowedOriginsFromEduResponse } from '../edu/EduLoginSecurity';
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
@@ -28,7 +29,7 @@ export struct EduSystemPage {
   @State syncMsg: string = '';
 
   onBack: () => void = () => {};
-  onNavigateToLogin: (loginUrl: string, connectionId: string) => void = () => {};
+  onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => void = () => {};
   onOpenSchedule: () => void = () => {};
 
   palette(): CampusPalette {
@@ -185,7 +186,11 @@ export struct EduSystemPage {
                 .backgroundColor(this.palette().primary).fontColor(Color.White)
                 .onClick(() => {
                   if (this.connection !== null) {
-                    this.onNavigateToLogin(this.portalUrl, this.connection.id);
+                    this.onNavigateToLogin(
+                      this.portalUrl,
+                      this.connection.id,
+                      allowedOriginsFromEduResponse(this.connection)
+                    );
                   }
                 })
             }

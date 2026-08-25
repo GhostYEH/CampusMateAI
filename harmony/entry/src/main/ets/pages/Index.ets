@@ -60,6 +60,7 @@ struct Index {
   @State route: string = '';
   @State eduLoginUrl: string = '';
   @State eduLoginConnectionId: string = '';
+  @State eduLoginAllowedOrigins: string[] = [];
   // QR 扫码登录
   @State qrSessionId: string = '';
   @State qrScanToken: string = '';
@@ -710,9 +711,10 @@ struct Index {
         apiBaseUrl: API_BASE_URL,
         authToken: this.appState.getAccessToken(),
         onBack: () => this.route = '',
-        onNavigateToLogin: (loginUrl: string, connectionId: string) => {
+        onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => {
           this.eduLoginUrl = loginUrl;
           this.eduLoginConnectionId = connectionId;
+          this.eduLoginAllowedOrigins = allowedOrigins;
           this.route = 'edu_login';
         },
         onOpenSchedule: () => { this.route = 'edu_schedule'; }
@@ -722,6 +724,7 @@ struct Index {
         darkMode: this.darkMode,
         loginUrl: this.eduLoginUrl,
         connectionId: this.eduLoginConnectionId,
+        backendAllowedOrigins: this.eduLoginAllowedOrigins,
         apiBaseUrl: API_BASE_URL,
         authToken: this.appState.getAccessToken(),
         onBack: () => this.route = 'edu_system',

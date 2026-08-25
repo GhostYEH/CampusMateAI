@@ -1,8 +1,18 @@
 import { describe, expect, it } from '@ohos/hypium';
-import { cookieDtosForUrl, isAllowedEduNavigation } from '../../../main/ets/features/edu/EduLoginSecurity';
+import {
+  allowedOriginsFromEduResponse,
+  cookieDtosForUrl,
+  isAllowedEduNavigation
+} from '../../../main/ets/features/edu/EduLoginSecurity';
 
 export default function eduLoginSecurityTest(): void {
   describe('EduLoginSecurity', () => {
+    it('preserves allowed origins from the backend connection response', 0, () => {
+      expect(allowedOriginsFromEduResponse({ allowed_origins: ['https://sso.huel.edu.cn'] })[0])
+        .assertEqual('https://sso.huel.edu.cn');
+      expect(allowedOriginsFromEduResponse({}).length).assertEqual(0);
+    });
+
     it('allows only exact HTTPS login and backend-listed origins', 0, () => {
       const loginUrl: string = 'https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html';
       expect(isAllowedEduNavigation('https://xk.huel.edu.cn/jwglxt/xsxx', loginUrl)).assertTrue();

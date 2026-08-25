@@ -474,6 +474,7 @@ export interface EduConnectionDto {
   provider: string;
   login_execution_mode: string;
   portal_url?: string;
+  allowed_origins?: string[];
   external_student_id?: string;
   external_student_name?: string;
   error_code?: string;
