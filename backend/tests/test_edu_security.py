@@ -138,6 +138,39 @@ def test_production_rejects_memory_edu_session_store() -> None:
         )
 
 
+def test_test_container_can_explicitly_use_memory_edu_session_store() -> None:
+    from app.services.edu.session import InMemorySessionStore
+
+    settings = Settings(
+        _env_file=None,
+        app_env="test",
+        database_url="sqlite:///:memory:",
+        auto_seed_demo_users=False,
+        auto_import_demo=False,
+        edu_session_store="memory",
+    )
+    container = reset_container_for_tests(settings)
+    assert isinstance(container.edu_connector._sessions, InMemorySessionStore)
+
+
+def test_production_container_defaults_to_encrypted_edu_session_store() -> None:
+    from app.services.edu.encrypted_session_store import EncryptedSqliteEduSessionStore
+
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        database_url="sqlite:///:memory:",
+        auto_seed_demo_users=False,
+        auto_import_demo=False,
+        jwt_secret="production-test-secret-that-is-long-enough-1234567890",
+        edu_session_encryption_key=_TEST_EDU_SESSION_KEY,
+    )
+    container = reset_container_for_tests(settings)
+    assert isinstance(
+        container.edu_connector._sessions, EncryptedSqliteEduSessionStore
+    )
+
+
 def test_edu_session_schema_is_idempotent(tmp_path) -> None:
     db_path = tmp_path / "edu-sessions.db"
     first = Database(db_path)
