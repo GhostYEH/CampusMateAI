@@ -7,6 +7,8 @@ export const demoUsers: Record<string, User> = {
     detail: '计算机科学与技术 · 大三',
     email: 'lin.zhixia@campus.edu.cn',
     studentId: '2024020318',
+    universityId: '',
+    universityName: '',
   },
 }
 

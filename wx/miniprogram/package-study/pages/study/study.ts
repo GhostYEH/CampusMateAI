@@ -1,4 +1,5 @@
 import { repository } from '../../../services/repository'
+import { LocalVisionSession, VisionState } from '../../../services/local-vision-session'
 
 interface FocusLog {
   id: number
@@ -8,6 +9,7 @@ interface FocusLog {
 }
 
 let timer: number | undefined
+let visionSession: LocalVisionSession | undefined
 
 Page({
   data: {
@@ -26,6 +28,9 @@ Page({
     primaryAction: '开始',
     assistanceAvailable: false,
     assistanceEnabled: false,
+    cameraVisible: false,
+    visionDetail: '启用后仅在专注计时期间运行',
+    expressionLabel: '',
     feeling: '',
     feelings: ['状态不错', '有点疲惫', '任务偏多'],
     mockMode: false,
@@ -40,12 +45,18 @@ Page({
     recentLogs: [] as Array<FocusLog & { dateLabel: string; durationLabel: string }>,
   },
 
+  onLoad() {
+    visionSession = new LocalVisionSession()
+    visionSession.subscribe((state) => this.onVisionState(state))
+  },
+
   async onShow() {
     const settings = repository.getSettings()
     this.setData({
       mockMode: settings.mockMode,
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
+      assistanceAvailable: Boolean(settings.expressionModelUrl) && wx.canIUse('createInferenceSession'),
     })
     this.refreshSummary()
     if (!settings.mockMode && !this.data.remoteSessionId) {
@@ -68,6 +79,8 @@ Page({
 
   onHide() {
     this.clearTimer()
+    visionSession?.stop()
+    this.setData({ cameraVisible: false })
     if (this.data.status === 'running') {
       this.setData({ status: 'paused', statusText: '已暂停', primaryAction: '继续' })
       if (this.data.remoteSessionId) {
@@ -78,6 +91,8 @@ Page({
 
   onUnload() {
     this.clearTimer()
+    visionSession?.destroy()
+    visionSession = undefined
   },
 
   async chooseDuration(event: WechatMiniprogram.TouchEvent) {
@@ -117,6 +132,8 @@ Page({
         return
       }
       this.clearTimer()
+      visionSession?.stop()
+      this.setData({ cameraVisible: false })
       this.setData({ status: 'paused', statusText: '已暂停', primaryAction: '继续' })
       return
     }
@@ -133,6 +150,10 @@ Page({
       return
     }
     this.setData({ status: 'running', statusText: '专注进行中', primaryAction: '暂停' })
+    if (this.data.assistanceEnabled) {
+      this.setData({ cameraVisible: true })
+      wx.nextTick(() => visionSession?.start(wx.createCameraContext()))
+    }
     this.startTimer()
   },
 
@@ -153,6 +174,7 @@ Page({
 
   async reset() {
     this.clearTimer()
+    visionSession?.stop()
     if (this.data.remoteSessionId) {
       try {
         await repository.finishStudySession(this.data.remoteSessionId, this.data.feeling)
@@ -171,11 +193,13 @@ Page({
       statusText: '准备开始',
       primaryAction: '开始',
       remoteSessionId: '',
+      cameraVisible: false,
     })
   },
 
   async finish() {
     this.clearTimer()
+    visionSession?.stop()
     const elapsedMinutes = Math.max(1, Math.round((this.data.targetMinutes * 60 - this.data.secondsLeft) / 60))
     try {
       if (this.data.remoteSessionId) await repository.finishStudySession(this.data.remoteSessionId, this.data.feeling)
@@ -197,6 +221,7 @@ Page({
       statusText: '本次专注已完成',
       primaryAction: '再来一次',
       remoteSessionId: '',
+      cameraVisible: false,
     })
     this.refreshSummary()
     wx.showToast({ title: '专注记录已保存', icon: 'success' })
@@ -206,13 +231,36 @@ Page({
     this.setData({ feeling: event.currentTarget.dataset.feeling as string })
   },
 
-  onAssistanceChange(event: WechatMiniprogram.SwitchChange) {
+  async onAssistanceChange(event: WechatMiniprogram.SwitchChange) {
     if (!this.data.assistanceAvailable) {
       this.setData({ assistanceEnabled: false })
       wx.showToast({ title: '当前设备暂不支持本地识别', icon: 'none' })
       return
     }
-    this.setData({ assistanceEnabled: event.detail.value })
+    if (!event.detail.value) {
+      visionSession?.stop()
+      this.setData({ assistanceEnabled: false, cameraVisible: false, expressionLabel: '' })
+      return
+    }
+    const prepared = await visionSession?.prepare(repository.getSettings().expressionModelUrl)
+    if (!prepared) {
+      this.setData({ assistanceEnabled: false, cameraVisible: false })
+      return
+    }
+    this.setData({ assistanceEnabled: true })
+    if (this.data.status === 'running') {
+      this.setData({ cameraVisible: true })
+      wx.nextTick(() => visionSession?.start(wx.createCameraContext()))
+    }
+  },
+
+  onVisionState(state: VisionState) {
+    this.setData({ visionDetail: state.detail, expressionLabel: state.signal?.label || '' })
+  },
+
+  onCameraError() {
+    visionSession?.stop()
+    this.setData({ cameraVisible: false, visionDetail: '前置摄像头不可用' })
   },
 
   editGoal() {

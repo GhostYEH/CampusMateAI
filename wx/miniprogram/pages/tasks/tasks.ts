@@ -22,6 +22,7 @@ Page({
     mockMode: true,
     reduceMotion: false,
     darkMode: false,
+    importanceLabel: { urgent: '紧急', high: '学业关键', important: '较重要', normal: '普通', low: '次要', unknown: '待评' } as Record<string, string>,
   },
   onShow() {
     this.load()

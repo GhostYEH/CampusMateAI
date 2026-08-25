@@ -1,4 +1,9 @@
 .lost-page{padding-bottom:calc(126px + env(safe-area-inset-bottom))}
+.university-guide{padding:32px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;border:1px solid var(--campus-line);border-radius:20px;background:#fff;text-align:center}
+.guide-icon{font-size:48px}
+.guide-title{font-size:18px;font-weight:800;color:var(--campus-text)}
+.guide-desc{font-size:13px;color:var(--campus-muted);line-height:1.6}
+.guide-btn{height:44px;padding:0 28px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;background:var(--campus-primary);line-height:44px}
 .lost-hero{position:relative;height:300px;overflow:hidden;border-radius:0 0 34px 34px}
 .lost-hero__image{position:absolute;inset:0;width:100%;height:100%}
 .lost-hero__nav{position:relative;z-index:2;padding-left:18px;display:flex;align-items:center;gap:10px;box-sizing:border-box}

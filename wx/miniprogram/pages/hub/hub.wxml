@@ -8,6 +8,6 @@
     <state-view wx:if="{{loading}}" state="loading" title="正在同步"></state-view>
     <state-view wx:elif="{{error}}" state="error" title="暂时无法加载" description="{{error}}" actionText="重试" bindaction="load"></state-view>
     <state-view wx:elif="{{!items.length}}" state="empty" title="这里暂时没有内容" description="数据会从真实校园后端同步到这里"></state-view>
-    <view wx:else class="hub-list"><view wx:for="{{items}}" wx:key="id" class="hub-item campus-enter"><view class="item-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view><view class="item-main"><view>{{item.title}}</view><text>{{item.subtitle}}</text><label>{{item.meta}}</label></view><image class="item-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></view></view>
+    <view wx:else class="hub-list"><view wx:for="{{items}}" wx:key="id" class="hub-item campus-enter"><view class="item-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view><view class="item-main"><view>{{item.title}}</view><text>{{item.subtitle}}</text><label>{{item.meta}}</label></view><button wx:if="{{kind === 'university' && currentUniversityId === item.id}}" class="university-current-btn" disabled>当前大学</button><button wx:elif="{{kind === 'university'}}" class="university-select-btn" loading="{{selectingUniversityId === item.id}}" disabled="{{selectingUniversityId === item.id}}" data-id="{{item.id}}" data-name="{{item.title}}" bindtap="onSelectUniversity">选择</button><image wx:else class="item-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></view></view>
   </view>
 </view>

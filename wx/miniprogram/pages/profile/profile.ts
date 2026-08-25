@@ -8,6 +8,7 @@ Page({
     settings: repository.getSettings() as AppSettings,
     editingUrl: false,
     apiBaseUrlInput: '',
+    expressionModelUrlInput: '',
     showSettings: false,
   },
   onShow() {
@@ -21,6 +22,7 @@ Page({
       user,
       settings,
       apiBaseUrlInput: settings.apiBaseUrl,
+      expressionModelUrlInput: settings.expressionModelUrl,
     })
     wx.nextTick(() => {
       const tabBar = this.getTabBar()
@@ -135,6 +137,18 @@ Page({
   },
   onUrlInput(event: WechatMiniprogram.Input) {
     this.setData({ apiBaseUrlInput: event.detail.value })
+  },
+  onExpressionModelUrlInput(event: WechatMiniprogram.Input) {
+    this.setData({ expressionModelUrlInput: event.detail.value })
+  },
+  saveExpressionModelUrl() {
+    const expressionModelUrl = this.data.expressionModelUrlInput.trim()
+    if (expressionModelUrl && !/^https:\/\//.test(expressionModelUrl)) {
+      wx.showToast({ title: '请输入 HTTPS 模型地址', icon: 'none' })
+      return
+    }
+    this.saveSetting({ expressionModelUrl })
+    wx.showToast({ title: expressionModelUrl ? '本机模型地址已保存' : '已清除模型地址', icon: 'success' })
   },
   saveUrl() {
     const apiBaseUrl = this.data.apiBaseUrlInput.trim().replace(/\/$/, '')

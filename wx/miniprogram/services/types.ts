@@ -6,6 +6,8 @@ export interface User {
   detail: string
   email: string
   studentId: string
+  universityId: string
+  universityName: string
 }
 
 export interface CampusTask {
@@ -16,6 +18,7 @@ export interface CampusTask {
   course: string
   done: boolean
   priority?: 'low' | 'medium' | 'high'
+  importance?: 'urgent' | 'high' | 'important' | 'normal' | 'low' | 'unknown'
 }
 
 export interface Notice {
@@ -69,6 +72,15 @@ export interface AppSettings {
   remindersEnabled: boolean
   demoMode: boolean
   apiBaseUrl: string
+  expressionModelUrl: string
+}
+
+export interface ExpressionSignalPayload {
+  label: string
+  confidence: number
+  is_stable: boolean
+  timestamp: number
+  model_version: string
 }
 
 export interface ConnectionState {
@@ -304,4 +316,25 @@ export interface EduGradeItemsResponse {
   semester: string | null
   items_count: number
   items: EduGradeItem[]
+}
+
+export interface EduExamItem {
+  id: string
+  semester: string | null
+  course_code: string | null
+  course_name: string
+  exam_type: string | null
+  location: string | null
+  seat: string | null
+  starts_at: string | null
+  ends_at: string | null
+  notes: string | null
+  is_stale: boolean
+  last_seen_at: string | null
+}
+
+export interface EduExamItemsResponse {
+  semester: string | null
+  items_count: number
+  items: EduExamItem[]
 }

@@ -41,12 +41,13 @@
         <switch checked="{{assistanceEnabled}}" disabled="{{!assistanceAvailable}}" color="#5B68F2" bindchange="onAssistanceChange"></switch>
       </view>
       <view class="assist-state">
-        <view><image src="/package-study/assets/icons/focus-cpu.svg"></image><text>本机 ONNX：状态由设备能力决定</text></view>
-        <view><image src="/package-study/assets/icons/focus-eye.svg"></image><text>当前辅助观察：暂不可用</text></view>
-        <view><image src="/package-study/assets/icons/focus-motion.svg"></image><text>动作识别准备中</text></view>
-        <view><image src="/package-study/assets/icons/focus-smile.svg"></image><text>稳定表情：仅作本地提示</text></view>
+        <view><image src="/package-study/assets/icons/focus-cpu.svg"></image><text>本机 ONNX：{{visionDetail}}</text></view>
+        <view><image src="/package-study/assets/icons/focus-eye.svg"></image><text>仅在计时运行且页面可见时观察</text></view>
+        <view><image src="/package-study/assets/icons/focus-motion.svg"></image><text>不识别身份，画面不上传、不保存</text></view>
+        <view><image src="/package-study/assets/icons/focus-smile.svg"></image><text>稳定表情：{{expressionLabel || '等待稳定信号'}}</text></view>
         <view><image src="/package-study/assets/icons/focus-clock.svg"></image><text>本次专注时长：{{currentMinutes}} 分钟</text></view>
       </view>
+      <camera wx:if="{{cameraVisible}}" class="study-camera" style="width:100%;height:260rpx;margin-top:18rpx;border-radius:20rpx;overflow:hidden;" device-position="front" frame-size="small" flash="off" binderror="onCameraError"></camera>
     </view>
 
     <view class="feeling-card campus-enter">

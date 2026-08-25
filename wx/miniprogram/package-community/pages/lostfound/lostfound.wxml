@@ -41,6 +41,7 @@
 
     <view class="result-card">
       <state-view wx:if="{{loading}}" state="loading" title="正在加载失物信息"></state-view>
+      <view wx:elif="{{error && needsUniversity}}" class="university-guide campus-enter"><view class="guide-icon">🎓</view><view class="guide-title">尚未关联学校</view><view class="guide-desc">{{error}}</view><button class="guide-btn" bindtap="goSelectUniversity">去选择大学</button></view>
       <state-view wx:elif="{{error}}" state="error" title="暂时无法加载" description="{{error}}" actionText="重试" bindaction="load"></state-view>
       <state-view wx:elif="{{!filtered.length}}" state="empty" title="暂无相关信息" description="换个筛选条件，或发布一条新的线索"></state-view>
     </view>

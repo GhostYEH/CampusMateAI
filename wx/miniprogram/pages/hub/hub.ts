@@ -20,7 +20,7 @@ const CONFIG: Record<string, { title: string; subtitle: string; icon: string }> 
 Page({
   data: {
     kind: 'files',
-    title: '我的文件',
+    title: '我的大学',
     subtitle: '',
     icon: '/assets/icons/quick-notice.svg',
     loading: true,
@@ -30,6 +30,8 @@ Page({
     requestTitle: '',
     requestContent: '',
     sending: false,
+    currentUniversityId: '',
+    selectingUniversityId: '',
   },
   onLoad(query: Record<string, string | undefined>) {
     const kind = query.kind && CONFIG[query.kind] ? query.kind : 'files'
@@ -48,6 +50,8 @@ Page({
       } else if (this.data.kind === 'favorites') {
         items = (await repository.getFavoritesAsync()).map((item) => ({ id: item.id, title: item.title, subtitle: item.subtitle || item.type, meta: item.saved_at, icon: CONFIG.favorites.icon }))
       } else if (this.data.kind === 'university') {
+        const session = repository.getSession()
+        this.setData({ currentUniversityId: session?.universityId || '' })
         items = (await repository.getUniversitiesAsync()).map((item) => ({ id: item.id, title: item.name, subtitle: [item.province, item.city].filter(Boolean).join(' · ') || '学校信息', meta: '校园后端', icon: CONFIG.university.icon }))
       } else if (this.data.kind === 'academic') {
         items = (await repository.getCoursesAsync()).map((item) => ({ id: item.code, title: item.name, subtitle: `${item.teacher} · ${item.location}`, meta: `${item.weekday} ${item.time}`, icon: CONFIG.academic.icon }))
@@ -57,6 +61,30 @@ Page({
       this.setData({ items, loading: false })
     } catch (error) {
       this.setData({ loading: false, error: error instanceof Error ? error.message : '内容加载失败' })
+    }
+  },
+  async onSelectUniversity(event: WechatMiniprogram.BaseEvent) {
+    const id = event.currentTarget.dataset.id as string
+    const name = event.currentTarget.dataset.name as string
+    if (!id || id === this.data.currentUniversityId) return
+    const confirm = await new Promise<boolean>((resolve) => {
+      wx.showModal({
+        title: '切换大学',
+        content: `切换到 ${name} 后，论坛、失物招领和校园活动将切换到新学校。`,
+        confirmText: '确认切换',
+        success: (res) => resolve(res.confirm),
+      })
+    })
+    if (!confirm) return
+    this.setData({ selectingUniversityId: id })
+    try {
+      const result = await repository.selectUniversityAsync(id)
+      this.setData({ currentUniversityId: result.university_id })
+      wx.showToast({ title: '大学已切换', icon: 'success' })
+    } catch (error) {
+      wx.showToast({ title: error instanceof Error ? error.message : '切换失败', icon: 'none' })
+    } finally {
+      this.setData({ selectingUniversityId: '' })
     }
   },
   toggleComposer() {

@@ -14,9 +14,11 @@ import {
   Course,
   EduConnection,
   EduGradeItemsResponse,
+  EduExamItemsResponse,
   EduProbeResult,
   EduScheduleItemsResponse,
   ExtractResult,
+  ExpressionSignalPayload,
   FavoriteItem,
   LostFoundItem,
   Notice,
@@ -43,6 +45,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   remindersEnabled: true,
   demoMode: false,
   apiBaseUrl: 'http://192.168.1.17:8000',
+  expressionModelUrl: '',
 }
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -67,6 +70,8 @@ interface ApiUser {
   college?: string
   major?: string
   grade?: string
+  university_id?: string
+  university_name?: string
 }
 
 interface TokenPair {
@@ -82,6 +87,7 @@ interface ApiTask {
   source_name?: string
   status: string
   priority?: 'low' | 'medium' | 'high'
+  importance?: 'urgent' | 'high' | 'important' | 'normal' | 'low' | 'unknown'
 }
 
 interface ApiCourse {
@@ -271,6 +277,11 @@ class CampusRepository {
     if (this.getSettings().mockMode) return this.getTasks()
     const response = await this.request<ApiPage<ApiTask>>('/tasks', 'GET')
     return response.items.map((item) => this.mapTask(item))
+  }
+
+  async rankTaskImportance(taskIds?: string[]): Promise<unknown> {
+    const payload = taskIds ? { task_ids: taskIds } : {}
+    return await this.request<unknown>('/tasks/rank-importance', 'POST', payload)
   }
 
   getTasks(): CampusTask[] {
@@ -511,6 +522,21 @@ class CampusRepository {
     return response.items
   }
 
+  async selectUniversityAsync(universityId: string): Promise<{ university_id: string; university_name: string }> {
+    const response = await this.request<{ university_id?: string; university?: University }>(
+      '/profile/university', 'PUT', { university_id: universityId },
+    )
+    const id = response.university_id || universityId
+    const name = response.university?.name || ''
+    const current = this.getSession()
+    if (current) {
+      const updated: User = { ...current, universityId: id, universityName: name }
+      const mode: SessionMode = wx.getStorageSync(STORAGE.sessionMode) === 'mock' ? 'mock' : 'remote'
+      this.persistSession(updated, mode)
+    }
+    return { university_id: id, university_name: name }
+  }
+
   async getServiceRequestsAsync(): Promise<ServiceRequest[]> {
     return this.request<ServiceRequest[]>('/student/service-requests', 'GET')
   }
@@ -543,12 +569,13 @@ class CampusRepository {
     }]
   }
 
-  async chat(message: string): Promise<ChatReply> {
+  async chat(message: string, expressionSignal?: ExpressionSignalPayload): Promise<ChatReply> {
     if (!this.getSettings().mockMode) {
       const response = await this.request<ChatResponse>('/counselor/chat', 'POST', {
         message,
         conversation_id: 'wx-session',
         stream: false,
+        ...(expressionSignal ? { expression_signal: expressionSignal } : {}),
       })
       const sourceTitles = (response.sources || []).map((source) => source.title)
       return {
@@ -623,6 +650,11 @@ class CampusRepository {
     await this.request('/edu/sync/grade', 'POST')
   }
 
+  async eduSyncExam(semester?: string): Promise<void> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : ''
+    await this.request(`/edu/sync/exam${query}`, 'POST')
+  }
+
   async eduUnbind(): Promise<void> {
     await this.request('/edu/binding', 'DELETE')
   }
@@ -643,6 +675,15 @@ class CampusRepository {
   async eduGradeItems(semester?: string): Promise<EduGradeItemsResponse> {
     const query = semester ? `?semester=${encodeURIComponent(semester)}` : ''
     return this.request<EduGradeItemsResponse>(`/edu/grade/items${query}`, 'GET')
+  }
+
+  async eduExamSemesters(): Promise<string[]> {
+    return this.request<string[]>('/edu/exam/semesters', 'GET')
+  }
+
+  async eduExamItems(semester?: string): Promise<EduExamItemsResponse> {
+    const query = semester ? `?semester=${encodeURIComponent(semester)}` : ''
+    return this.request<EduExamItemsResponse>(`/edu/exam/items${query}`, 'GET')
   }
 
   async getActiveStudySession(): Promise<StudySessionResponse | null> {
@@ -823,6 +864,8 @@ class CampusRepository {
       detail,
       email: '',
       studentId: user.student_number || '',
+      universityId: user.university_id || '',
+      universityName: user.university_name || '',
     }
   }
 
@@ -835,6 +878,7 @@ class CampusRepository {
       course: item.source_name || '个人待办',
       done: item.status === 'completed',
       priority: item.priority,
+      importance: item.importance,
     }
   }
 

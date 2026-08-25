@@ -34,6 +34,7 @@ Page({
     publishContent: '',
     publishLocation: '',
     publishContact: '',
+    needsUniversity: false,
   },
 
   onLoad() {
@@ -58,14 +59,20 @@ Page({
       this.applyFilter()
     } catch (error) {
       const message = error instanceof Error ? error.message : '失物招领加载失败'
+      const needsUniversity = message.includes('409') || message.includes('学校') || message.includes('UNIVERSITY_REQUIRED')
       this.setData({
         loading: false,
-        error: message.includes('409') || message.includes('学校')
+        error: needsUniversity
           ? '当前账号尚未关联学校，关联后即可查看全校失物信息'
           : message,
+        needsUniversity,
         filtered: [],
       })
     }
+  },
+
+  goSelectUniversity() {
+    wx.navigateTo({ url: '/pages/hub/hub?kind=university' })
   },
 
   goBack() {
