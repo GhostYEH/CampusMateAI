@@ -93,6 +93,7 @@ def _encrypt_jwgl2_password(password: str, public_key_json: str) -> str:
 def _user_action_from_login_page(html: str) -> Optional[str]:
     """Classify only visible user-verification controls; never solve them."""
     visible_html = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", "", html, flags=re.IGNORECASE | re.DOTALL)
+    visible_html = re.sub(r"data:[^\"']+", "data:", visible_html, flags=re.IGNORECASE)
     lowered = visible_html.lower()
     if re.search(r'id=["\']yzmdiv["\'][^>]*style=["\'][^"\']*display\s*:\s*none', lowered):
         return None
@@ -533,7 +534,18 @@ class ZhengfangAdapter(EduAdapter):
         return self._parser.parse_grade_json(resp.text, semester=semester)
 
     async def fetch_exam(self, session: dict, *, semester: Optional[str] = None) -> EduExam:
-        raise AdapterNotImplemented(self.provider, "fetch_exam")
+        school, client = self._prepare(session)
+        endpoint = school.endpoints.exam_path
+        if not endpoint:
+            raise AdapterNotImplemented(self.provider, "fetch_exam: exam_path is not configured")
+        params = dict(school.exam_payload_extra)
+        if semester:
+            params.setdefault(school.semester_param_name, semester)
+        if school.endpoints.exam_format == "html":
+            resp = await client.get(endpoint, params=params or None, referer=school.base_url)
+            return self._parser.parse_exam_html(resp.text, semester=semester)
+        resp = await client.post(endpoint, data=params or None, referer=school.base_url, form_post=True)
+        return self._parser.parse_exam_json(resp.text, semester=semester)
 
     # ===== 内部 =====
 

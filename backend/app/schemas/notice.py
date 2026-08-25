@@ -203,7 +203,7 @@ class NoticeExtractResponse(BaseModel):
     source_text: str = Field(..., description="通知原文(便于人工复核)")
     importance: str = Field(
         "unknown",
-        description="重要程度: urgent|important|normal|unknown",
+        description="重要程度: urgent|high|important|normal|low|unknown",
     )
     confidence: float = Field(..., ge=0.0, le=1.0, description="抽取置信度 0~1")
     needs_confirmation: bool = Field(

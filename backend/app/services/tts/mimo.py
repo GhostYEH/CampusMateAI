@@ -107,7 +107,10 @@ class MiMoTtsClient:
                         break
                     try:
                         event = json.loads(value)
-                        audio = event.get("choices", [{}])[0].get("delta", {}).get("audio")
+                        choices = event.get("choices")
+                        if not choices:
+                            continue
+                        audio = choices[0].get("delta", {}).get("audio")
                         encoded = audio.get("data") if isinstance(audio, dict) else None
                         if encoded:
                             yield base64.b64decode(encoded, validate=True)

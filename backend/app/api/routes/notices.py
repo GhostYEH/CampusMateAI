@@ -92,6 +92,7 @@ def _persist_automation_result(
         identity = "\n".join((task.task, task.deadline.isoformat() if task.deadline else "", task.submission_method or "", task.location or ""))
         task_key = f"{notice_key}:{compute_notice_hash(identity)}"
         before, _ = container.personal_task_repository.list_tasks(user.id, page=1, page_size=200)
+        importance = task.importance if task.importance in ("urgent", "high", "important", "normal", "low", "unknown") else "unknown"
         container.personal_task_repository.create_task(
             user_id=user.id,
             title=task.task,
@@ -104,7 +105,8 @@ def _persist_automation_result(
             source_name=item.source_name,
             source_text=task.source_text,
             source_notice_id=task_key,
-            priority={"urgent": "high", "important": "high", "normal": "medium"}.get(task.importance, "medium"),
+            priority={"urgent": "high", "high": "high", "important": "high", "normal": "medium", "low": "low", "unknown": "medium"}.get(importance, "medium"),
+            importance=importance,
         )
         after, _ = container.personal_task_repository.list_tasks(user.id, page=1, page_size=200)
         tasks_created += int(len(after) > len(before))

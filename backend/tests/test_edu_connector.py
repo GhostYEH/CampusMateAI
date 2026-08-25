@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -120,6 +121,34 @@ def test_probe_portal_keeps_visible_image_captcha_on_backend_challenge(monkeypat
     assert result["provider"] == EDU_PROVIDER_ZHENGFANG
     assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
     assert result["challenge_type"] == "image"
+
+
+def test_huel_connection_config_uses_verified_login_and_identity_protocol() -> None:
+    connector = object.__new__(EduConnectorService)
+    system = SimpleNamespace(
+        base_url=None,
+        login_url=None,
+        provider_version=None,
+        sso_url=None,
+        vpn_url=None,
+        auth_type="unknown",
+        login_execution_mode="unsupported",
+        captcha_type="unknown",
+        requires_campus_network=False,
+        requires_vpn=False,
+        provider="unknown",
+        adapter_config="{}",
+    )
+
+    config = connector._build_config_dict(
+        system,
+        portal_url="https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html?language=zh_CN",
+    )
+
+    assert config["base_url"] == "https://xk.huel.edu.cn"
+    assert config["login_url"] == "/jwglxt/xtgl/login_slogin.html"
+    assert config["login_execution_mode"] == "backend_http"
+    assert config["endpoint_overrides"]["profile_path"] == "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw"
 
 
 def _client(app_env: str = "test") -> TestClient:
@@ -506,6 +535,34 @@ def test_sync_grade_and_exam_with_mock() -> None:
         result = response.json()
         assert result["status"] == "success"
         assert result["items_count"] >= 1
+        if endpoint == "sync/exam":
+            assert result["persisted"] is True
+
+    items_response = client.get("/api/v1/edu/exam/items", headers=headers)
+    assert items_response.status_code == 200, items_response.text
+    items = items_response.json()
+    assert items["items_count"] >= 1
+    assert items["items"][0]["course_name"]
+
+
+def test_exam_semesters_are_read_from_persisted_data() -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    client.post(
+        "/api/v1/edu/bind",
+        headers=headers,
+        json={"username": "S202401001", "password": "demo"},
+    )
+    response = client.post(
+        "/api/v1/edu/sync/exam",
+        headers=headers,
+        params={"semester": "2025-2026春季"},
+    )
+    assert response.status_code == 200, response.text
+    semesters = client.get("/api/v1/edu/exam/semesters", headers=headers)
+    assert semesters.status_code == 200, semesters.text
+    assert "2025-2026春季" in semesters.json()
 
 
 def test_sync_records_listed_after_sync() -> None:

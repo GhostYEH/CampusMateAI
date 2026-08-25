@@ -163,6 +163,32 @@ _LOCATION_FROM_SUBMIT_PATTERNS = [
 
 _URGENT_MARKERS = ["紧急", "逾期不予受理", "请勿延误", "立即", "马上"]
 _IMPORTANT_MARKERS = ["评选", "汇总", "审核", "公示"]
+
+# 学业关键任务: 直接影响成绩/学分/毕业，不完成后果严重
+_ACADEMIC_CRITICAL_MARKERS = [
+    "作业", "实验报告", "课程设计", "大作业", "结课报告",
+    "论文", "开题", "结题", "答辩", "中期检查",
+    "考试", "期末", "期中", "补考", "重修",
+    "选课", "补退选", "退选",
+    "实习报告", "实习鉴定", "实训报告",
+    "学分", "绩点", "毕业",
+]
+
+# 重要事务: 影响评优/申请/升学，错过有较大损失但不直接挂科
+_IMPORTANT_TASK_MARKERS = [
+    "奖学金", "助学金", "保研", "推免", "考研",
+    "综合测评", "评优", "评先", "评选",
+    "竞赛", "大赛", "立项", "项目申请",
+    "社会实践", "申请表", "申请书",
+]
+
+# 行政事务: 事务性工作，不完成可补办，后果较轻
+_ADMIN_TASK_MARKERS = [
+    "填表", "登记", "签到", "打卡",
+    "领取", "确认", "核对", "采集", "录入",
+    "更新信息", "完善信息", "实名", "信息采集",
+    "体检", "照像", "照相", "问卷",
+]
 _TASK_KEYWORDS = [
     ("实践", "申请", "提交实践申请"),
     ("综合测评", None, "完成综合测评材料汇总"),
@@ -506,10 +532,21 @@ def _rule_parse_task(text: str) -> str:
 
 
 def _rule_parse_importance(text: str) -> str:
+    """规则评定重要程度(6 级)。
+
+    优先级: urgent 标记 > 学业关键(high) > 重要事务(important) > important 标记 > 行政事务(low) > normal
+    例: "交作业"→high(学业关键)，"去某地填表"→low(行政事务)。
+    """
     if any(m in text for m in _URGENT_MARKERS):
         return "urgent"
+    if any(m in text for m in _ACADEMIC_CRITICAL_MARKERS):
+        return "high"
+    if any(m in text for m in _IMPORTANT_TASK_MARKERS):
+        return "important"
     if any(m in text for m in _IMPORTANT_MARKERS):
         return "important"
+    if any(m in text for m in _ADMIN_TASK_MARKERS):
+        return "low"
     return "normal"
 
 
@@ -556,7 +593,14 @@ _LLM_SYSTEM_PROMPT = """你是校园通知结构化抽取助手。
 3. 面向对象、提交方式不明确时，needs_confirmation=true 并在 warnings 中写明原因。
 4. confidence 仅表示抽取置信度(0~1)，不表示内容真实性。
 5. 不要编造 source_text 中没有的信息。
-6. importance 取值: urgent|important|normal|unknown。
+6. importance 取值: urgent|high|important|normal|low|unknown，评判标准:
+   - urgent: 通知明确标注"紧急/逾期不予受理/立即"等
+   - high: 学业关键任务(交作业/实验报告/考试/答辩/选课/论文/实习报告)，不完成直接影响成绩或毕业
+   - important: 重要事务(奖学金/助学金/保研/竞赛/综合测评/评优/项目申请/社会实践申请)，错过有较大损失
+   - normal: 普通通知/公告(会议通知/讲座/活动安排)，无强制动作
+   - low: 行政事务(填表/登记/签到/打卡/领取/信息采集/体检)，不完成可补办，后果较轻
+   - unknown: 无法判断
+   注意: "交作业"的重要程度远大于"去某地填表"。
 7. materials 列表只包含通知中明确提到的材料名称。
 8. actionable 表示是否是明确需要学生执行的行动型通知，普通课程公告、情况说明为 false。
 输出严格 JSON，不要 Markdown 代码块。
@@ -573,7 +617,7 @@ _LLM_OUTPUT_SCHEMA_HINT = """
   "materials": [{"id": "m_1", "name": string, "required": bool}],
   "submission_method": string|null,
   "location": string|null,
-  "importance": "urgent|important|normal|unknown",
+  "importance": "urgent|high|important|normal|low|unknown",
   "confidence": number 0~1,
   "needs_confirmation": bool,
   "warnings": [string]
@@ -633,6 +677,14 @@ _LLM_MULTI_SYSTEM_PROMPT = """你是校园通知结构化抽取助手,专注于�
 4. 不要把同一动作的多个步骤强行拆成多任务(如"填表 + 提交"应为单任务)。
 5. 拆分时,每个任务的 source_text 应保留完整原通知文本(便于人工复核)。
 6. actionable 表示是否是明确需要学生执行的行动型通知，普通公告为 false。
+7. importance 取值 urgent|high|important|normal|low|unknown，评判标准:
+   - urgent: 明确标注"紧急/逾期不予受理/立即"
+   - high: 学业关键(交作业/实验报告/考试/答辩/选课/论文/实习报告)，不完成直接影响成绩
+   - important: 重要事务(奖学金/保研/竞赛/综合测评/评优/项目申请)，错过有较大损失
+   - normal: 普通公告(会议/讲座/活动)，无强制动作
+   - low: 行政事务(填表/登记/签到/打卡/领取/信息采集)，可补办
+   - unknown: 无法判断
+   注意: "交作业"的重要程度远大于"去某地填表"。
 
 输出严格 JSON,不要 Markdown 代码块:
 {
@@ -646,7 +698,7 @@ _LLM_MULTI_SYSTEM_PROMPT = """你是校园通知结构化抽取助手,专注于�
       "materials": [{"id": "m_1", "name": string, "required": bool}],
       "submission_method": string|null,
       "location": string|null,
-      "importance": "urgent|important|normal|unknown",
+      "importance": "urgent|high|important|normal|low|unknown",
       "confidence": number 0~1,
       "needs_confirmation": bool,
       "warnings": [string]
@@ -853,7 +905,7 @@ def _normalize_llm_output(obj: dict, content: str, source_name: Optional[str]) -
     """把 LLM 输出标准化为 NoticeExtractResponse。"""
     # 安全 fallback
     importance = str(obj.get("importance") or "unknown").lower()
-    if importance not in ("urgent", "important", "normal", "unknown"):
+    if importance not in ("urgent", "high", "important", "normal", "low", "unknown"):
         importance = "unknown"
     materials_raw = obj.get("materials") or []
     materials: List[MaterialItem] = []
@@ -1322,6 +1374,120 @@ class NoticeExtractionService:
             matches=matches,
             content_hash=content_hash,
         )
+
+    async def rank_importance_batch(
+        self,
+        tasks: List[dict[str, Any]],
+    ) -> tuple[List[dict[str, Any]], str]:
+        """批量评定任务重要程度。
+
+        Args:
+            tasks: [{"id", "title", "description", "deadline", "source_text"}, ...]
+
+        Returns:
+            (results, mode): results=[{"id", "importance", "reason"}, ...]
+            mode 为 "llm" 或 "rules"。
+        """
+        if not tasks:
+            return [], "rules"
+
+        def _rule_fallback() -> tuple[List[dict[str, Any]], str]:
+            results = []
+            for t in tasks:
+                text = " ".join(
+                    str(x) for x in (t.get("title"), t.get("description"), t.get("source_text")) if x
+                )
+                results.append({
+                    "id": str(t.get("id")),
+                    "importance": _rule_parse_importance(text),
+                    "reason": "rule_fallback",
+                })
+            return results, "rules"
+
+        if self._llm is None or not self._settings.llm_available:
+            return _rule_fallback()
+
+        system_prompt = """你是校园任务重要程度评定助手。根据任务标题/描述/原文评定重要程度标签。
+
+评判标准:
+- urgent: 明确标注"紧急/逾期不予受理/立即"
+- high: 学业关键任务(交作业/实验报告/考试/答辩/选课/论文/实习报告)，不完成直接影响成绩或毕业
+- important: 重要事务(奖学金/助学金/保研/竞赛/综合测评/评优/项目申请)，错过有较大损失
+- normal: 普通通知/公告(会议/讲座/活动)，无强制动作
+- low: 行政事务(填表/登记/签到/打卡/领取/信息采集/体检)，可补办，后果较轻
+- unknown: 无法判断
+
+注意: "交作业"的重要程度远大于"去某地填表"。
+
+输出严格 JSON,不要 Markdown 代码块:
+{"results":[{"id":"...","importance":"urgent|high|important|normal|low|unknown","reason":"简短理由"}]}
+每个输入 id 必须出现且仅出现一次。
+"""
+        payload = [
+            {
+                "id": str(t.get("id")),
+                "title": t.get("title") or "",
+                "description": (t.get("description") or "")[:200],
+                "deadline": t.get("deadline"),
+                "source_text": (t.get("source_text") or "")[:500],
+            }
+            for t in tasks
+        ]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+        try:
+            response = await asyncio.wait_for(
+                self._llm.chat(messages, temperature=0.0, max_tokens=2000, timeout=LLM_TIMEOUT),
+                timeout=LLM_TIMEOUT + 5,
+            )
+            raw = response.content.strip()
+            if raw.startswith("```"):
+                raw = raw.strip("`")
+                if raw.lower().startswith("json"):
+                    raw = raw[4:].lstrip()
+                raw = raw.strip()
+                if raw.startswith("```") and raw.endswith("```"):
+                    raw = raw[3:-3].strip()
+            obj = json.loads(raw)
+            results_raw = obj.get("results") if isinstance(obj, dict) else None
+            if not isinstance(results_raw, list):
+                raise ValueError("LLM 未返回 results 列表")
+            by_id = {str(t.get("id")): t for t in tasks}
+            seen: set[str] = set()
+            results: List[dict[str, Any]] = []
+            for item in results_raw:
+                tid = str(item.get("id"))
+                if tid not in by_id or tid in seen:
+                    continue
+                seen.add(tid)
+                imp = str(item.get("importance") or "unknown").lower()
+                if imp not in ("urgent", "high", "important", "normal", "low", "unknown"):
+                    imp = "unknown"
+                results.append({
+                    "id": tid,
+                    "importance": imp,
+                    "reason": (str(item.get("reason") or "")[:100] or "llm"),
+                })
+            for tid in by_id:
+                if tid not in seen:
+                    text = " ".join(
+                        str(x) for x in (
+                            by_id[tid].get("title"),
+                            by_id[tid].get("description"),
+                            by_id[tid].get("source_text"),
+                        ) if x
+                    )
+                    results.append({
+                        "id": tid,
+                        "importance": _rule_parse_importance(text),
+                        "reason": "rule_supplement",
+                    })
+            return results, "llm"
+        except (asyncio.TimeoutError, LLMTimeoutError, LLMError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("重要程度批量评定 LLM 失败,降级到规则: {}", str(exc)[:120])
+            return _rule_fallback()
 
 
 __all__ = [

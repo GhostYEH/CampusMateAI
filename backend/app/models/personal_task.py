@@ -28,6 +28,7 @@ class PersonalTaskRow:
     source_text: Optional[str] = None
     source_notice_id: Optional[str] = None
     priority: str = "medium"  # low / medium / high
+    importance: str = "unknown"  # urgent / high / important / normal / low / unknown (AI 评定)
     status: str = "pending"  # pending / completed / deleted
     reminder_minutes: Optional[int] = None
     source: Optional[str] = None
@@ -57,6 +58,7 @@ class PersonalTaskRow:
             source_text=row["source_text"],
             source_notice_id=row["source_notice_id"],
             priority=row["priority"],
+            importance=row["importance"] if "importance" in keys else "unknown",
             status=row["status"],
             reminder_minutes=row["reminder_minutes"],
             source=row["source"] if "source" in keys else None,

@@ -50,9 +50,11 @@ from ...models.multi_role import UserRow
 from ...models.personal_task import PersonalTaskRow
 from ...schemas.chat import ChatFinalMeta, ChatRequest
 from ...services.container import ServiceContainer, get_container
+from ...services.emotion_context import EmotionContextBuilder
 from ..deps import current_user_optional
 
 router = APIRouter()
+_emotion_context_builder = EmotionContextBuilder()
 
 
 def _container() -> ServiceContainer:
@@ -449,48 +451,6 @@ def _build_context_warnings(
     return warnings
 
 
-def _sanitize_expression_signal(
-    req: ChatRequest,
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """只保留稳定的 CNN 表情观察，避免把低置信度结果当成情绪结论。"""
-    raw = req.expression_signal
-    if not raw:
-        return None, None
-    if not isinstance(raw, dict):
-        return None, "表情信号格式无效，已忽略"
-
-    allowed_labels = {
-        "HAPPY", "NEUTRAL", "SAD", "ANGRY", "FEAR", "SURPRISE", "DISGUST",
-    }
-    label = str(raw.get("label", "")).upper()
-    try:
-        confidence = float(raw.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        confidence = 0.0
-    is_stable = raw.get("is_stable") is True
-    if label not in allowed_labels or not is_stable or confidence < 0.60:
-        return None, "当前表情尚未达到稳定置信度，本轮未用于调整回复"
-
-    return {
-        "label": label,
-        "confidence": round(max(0.0, min(1.0, confidence)), 3),
-        "is_stable": True,
-    }, None
-
-
-def _build_expression_hint(signal: Optional[Dict[str, Any]]) -> Optional[str]:
-    if not signal:
-        return None
-    return (
-        "[CNN 表情观察，仅供辅助参考]\n"
-        f"当前可观察到的面部表情标签: {signal['label']}，"
-        f"稳定置信度: {signal['confidence']:.0%}。\n"
-        "这不是心理状态、情绪事实或医学判断。只能在用户主动询问感受、"
-        "或语气需要更温和时谨慎调整措辞；不得据此诊断、下结论或强行进行情绪安慰，"
-        "也不要向用户声称‘识别出了你的心理状态’。"
-    )
-
-
 @router.post("/counselor/chat")
 async def chat(
     req: ChatRequest,
@@ -506,9 +466,11 @@ async def chat(
 
     # 构造 context_used(新结构: count + accepted + ignored + self_report_present)
     context_used = _build_context_used(req, ctx_used, sanitized_tasks)
-    expression_signal, expression_warning = _sanitize_expression_signal(req)
-    expression_hint = _build_expression_hint(expression_signal)
-    context_used["expression_signal_used"] = expression_signal is not None
+    emotion_guidance, expression_warning = _emotion_context_builder.build(
+        req.expression_signal
+    )
+    expression_hint = emotion_guidance.prompt if emotion_guidance else None
+    context_used["expression_signal_used"] = emotion_guidance is not None
     # 构造 context_warnings(包含表情信号校验结果)
     all_ctx_warnings = _build_context_warnings(
         req,

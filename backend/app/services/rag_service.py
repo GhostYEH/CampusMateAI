@@ -128,7 +128,20 @@ _CASUAL_SYSTEM_PROMPT = """你是 CampusMate AI 校园事务导员助手"小夏"
 直接以口语化、简短、友好的方式回复用户本人，控制在 80 字以内，并自然引导用户咨询校园事务。
 你只允许输出最终回复内容，禁止输出系统说明、规则、字数限制、思考过程、任务描述或任何解释。
 不要输出 Markdown 列表，不要编造校园信息，不要声称这是学校官方答复。
+若收到端侧可见表情辅助：必须让回复语气体现相应关怀或积极回应，但不得把观察结果说成确定事实。
 """
+
+
+def _emotion_aware_greeting_fallback(answer: str, expression_hint: Optional[str]) -> str:
+    if not expression_hint:
+        return answer
+    if "可见表情标签: SAD" in expression_hint:
+        return "看起来你可能有些难过，别难过，也别一个人扛着，我在这里陪你。" + answer
+    if any(f"可见表情标签: {label}" in expression_hint for label in ("ANGRY", "FEAR", "DISGUST")):
+        return "看起来你现在可能有些不舒服，我们先慢一点，我会认真听你说。" + answer
+    if "可见表情标签: HAPPY" in expression_hint:
+        return "看到你状态不错真好。" + answer
+    return answer
 
 
 def _build_context(retrieved: List[RetrievedChunk]) -> Tuple[str, List[ChatSource], List[Dict]]:
@@ -657,6 +670,7 @@ class RagService:
                 ctx_used=ctx_used,
                 ctx_warnings=ctx_warnings,
                 fallback_answer=greeting_answer,
+                expression_hint=expression_hint,
             ):
                 yield ev
             return
@@ -854,6 +868,10 @@ class RagService:
         expression_hint: Optional[str] = None,
     ) -> AsyncIterator[ChatFinalMeta]:
         """问候/寒暄也渐进流式输出，打字效果与知识问答一致。"""
+        fallback_answer = _emotion_aware_greeting_fallback(
+            fallback_answer,
+            expression_hint,
+        )
         llm_available = self._llm is not None and self._settings.llm_available
         if not llm_available:
             yield ChatFinalMeta(

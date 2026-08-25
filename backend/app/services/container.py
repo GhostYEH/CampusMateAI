@@ -51,6 +51,7 @@ from ..services.retrieval_service import RetrievalService
 from ..services.task_breakdown_service import TaskBreakdownService
 from ..services.tts import MiMoTtsClient
 from ..services.edu import EduConnectorService, SchoolRegistry, SystemDetector, SessionManager
+from ..services.edu.encrypted_session_store import EncryptedSqliteEduSessionStore
 
 
 @dataclass
@@ -144,7 +145,17 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     edu_data_repo = EduDataRepository(db)
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
-    session_manager = SessionManager(session_ttl_seconds=settings.edu_session_ttl_seconds)
+    if settings.effective_edu_session_store == "encrypted_sqlite":
+        session_manager = EncryptedSqliteEduSessionStore(
+            db=db,
+            encryption_key_base64=settings.edu_session_encryption_key,
+            key_id=settings.edu_session_encryption_key_id,
+            session_ttl_seconds=settings.edu_session_ttl_seconds,
+        )
+    else:
+        session_manager = SessionManager(
+            session_ttl_seconds=settings.edu_session_ttl_seconds
+        )
     edu_connector = EduConnectorService(
         settings=settings,
         registry=school_registry,

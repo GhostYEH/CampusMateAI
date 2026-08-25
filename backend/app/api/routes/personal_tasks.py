@@ -20,7 +20,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -35,6 +35,9 @@ from ...schemas.personal_task import (
     PersonalTaskCreate,
     PersonalTaskOut,
     PersonalTaskUpdate,
+    ImportanceRankRequest,
+    ImportanceRankResponse,
+    ImportanceRankItem,
 )
 from ...schemas.multi_role import Page
 from ...services.container import ServiceContainer, get_container
@@ -62,6 +65,7 @@ def _to_out(row: PersonalTaskRow) -> PersonalTaskOut:
         source_text=row.source_text,
         source_notice_id=row.source_notice_id,
         priority=row.priority,
+        importance=row.importance,
         status=row.status,
         reminder_minutes=row.reminder_minutes,
         created_at=row.created_at,
@@ -129,6 +133,7 @@ def create_personal_task(
         source_text=req.source_text,
         source_notice_id=req.source_notice_id,
         priority=req.priority,
+        importance=req.importance or "unknown",
         reminder_minutes=req.reminder_minutes,
     )
     return _to_out(row)
@@ -226,6 +231,64 @@ def delete_personal_task(
     if updated is None:
         raise PersonalTaskConflict("当前状态不允许删除")
     return _to_out(updated)
+
+
+@router.post("/rank-importance", response_model=ImportanceRankResponse)
+async def rank_importance(
+    req: ImportanceRankRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> ImportanceRankResponse:
+    """批量评定任务重要程度(AI 优先 + 规则降级)。
+
+    - 不传 task_ids 时，评定当前用户所有 pending 任务(最多 50 条)
+    - 传 task_ids 时，评定指定任务(跨用户或不存在的自动跳过)
+    - 评定结果写回任务的 importance 字段
+    """
+    repo = container.personal_task_repository
+    if req.task_ids:
+        tasks: List[PersonalTaskRow] = []
+        for tid in req.task_ids:
+            row = repo.get_task(tid, user_id=user.id)
+            if row is not None:
+                tasks.append(row)
+    else:
+        rows, _ = repo.list_tasks(user.id, status="pending", page=1, page_size=50)
+        tasks = list(rows)
+
+    if not tasks:
+        return ImportanceRankResponse(updated=[], skipped=[], mode="rules", total=0)
+
+    payload = [
+        {
+            "id": t.id,
+            "title": t.title,
+            "description": t.description,
+            "deadline": t.deadline,
+            "source_text": t.source_text,
+        }
+        for t in tasks
+    ]
+    results, mode = await container.notice_extraction.rank_importance_batch(payload)
+
+    updated_items: List[ImportanceRankItem] = []
+    skipped: List[str] = []
+    for r in results:
+        tid = r["id"]
+        imp = r["importance"]
+        row = repo.update_task(tid, user_id=user.id, fields={"importance": imp})
+        if row is None:
+            skipped.append(tid)
+        else:
+            updated_items.append(ImportanceRankItem(
+                task_id=tid,
+                importance=imp,
+                reason=r.get("reason"),
+                mode=mode,
+            ))
+    return ImportanceRankResponse(
+        updated=updated_items, skipped=skipped, mode=mode, total=len(updated_items)
+    )
 
 
 __all__ = ["router"]

@@ -78,6 +78,7 @@ class UserPublic(BaseModel):
     grade: Optional[str] = None
     avatar_url: Optional[str] = None
     university_id: Optional[str] = None
+    university_name: Optional[str] = None
     is_active: bool = True
     created_at: str = ""
     updated_at: str = ""

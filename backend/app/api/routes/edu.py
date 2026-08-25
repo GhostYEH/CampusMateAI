@@ -461,6 +461,49 @@ def list_grade_items(
     }
 
 
+@router.get("/exam/semesters", response_model=list[str])
+def list_exam_semesters(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> list[str]:
+    """列出已同步考试安排的所有学期。"""
+    return container.edu_connector.list_exam_semesters(user.id)
+
+
+@router.get("/exam/items")
+def list_exam_items(
+    semester: Optional[str] = Query(None),
+    include_stale: bool = Query(False),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> dict:
+    """读取已持久化的考试安排，补考通过 exam_type 区分。"""
+    items = container.edu_connector.list_exam_items(
+        user.id, semester=semester, include_stale=include_stale
+    )
+    return {
+        "semester": semester,
+        "items_count": len(items),
+        "items": [
+            {
+                "id": item.id,
+                "semester": item.semester,
+                "course_code": item.course_code,
+                "course_name": item.course_name,
+                "exam_type": item.exam_type,
+                "location": item.location,
+                "seat": item.seat,
+                "starts_at": item.starts_at,
+                "ends_at": item.ends_at,
+                "notes": item.notes,
+                "is_stale": item.is_stale,
+                "last_seen_at": item.last_seen_at,
+            }
+            for item in items
+        ],
+    }
+
+
 # ===== edu_systems (1:N) =====
 
 

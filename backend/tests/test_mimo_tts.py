@@ -81,6 +81,33 @@ async def test_stream_pcm_places_optional_style_before_spoken_text() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_pcm_ignores_empty_choices_metadata_after_audio() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text=(
+                'data: {"choices":[{"delta":{"audio":{"data":"AQI="}}}]}\n\n'
+                'data: {"choices":[]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    client = MiMoTtsClient(
+        base_url="https://api.xiaomimimo.com/v1",
+        api_key="test-key",
+        model="mimo-v2.5-tts",
+        voice="冰糖",
+        transport=httpx.MockTransport(handler),
+    )
+
+    chunks = [chunk async for chunk in client.stream_pcm("你好")]
+    await client.aclose()
+
+    assert chunks == [b"\x01\x02"]
+
+
+@pytest.mark.asyncio
 async def test_stream_pcm_rejects_malformed_audio_without_leaking_key() -> None:
     async def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(

@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from ..database.sqlite_db import Database
 from ..models.edu import EduBindingRow
-from ..schemas.edu import EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
+from ..schemas.edu import EduExam, EduExamItem, EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
 
 
 def _now_iso() -> str:
@@ -106,6 +106,23 @@ class PersistedGradeItem:
     grade_point: Optional[float]
     category: Optional[str]
     status: Optional[str]
+    is_stale: bool
+    last_seen_at: Optional[str]
+
+
+@dataclass
+class PersistedExamItem:
+    id: str
+    user_id: str
+    semester: Optional[str]
+    course_code: Optional[str]
+    course_name: str
+    exam_type: Optional[str]
+    location: Optional[str]
+    seat: Optional[str]
+    starts_at: Optional[str]
+    ends_at: Optional[str]
+    notes: Optional[str]
     is_stale: bool
     last_seen_at: Optional[str]
 
@@ -528,12 +545,181 @@ class EduDataRepository:
             last_seen_at=row["last_seen_at"],
         )
 
+    # ===== 考试 =====
+
+    def sync_exam_items(
+        self,
+        *,
+        binding: EduBindingRow,
+        exam: EduExam,
+        sync_batch_id: str,
+    ) -> SyncStats:
+        stats = SyncStats()
+        now = _now_iso()
+        seen_ids: list[str] = []
+        edu_system_id = binding.edu_system_id
+        user_id = binding.user_id
+        university_id = binding.university_id
+        semester = exam.semester
+
+        with self._db.transaction() as conn:
+            for item in exam.items:
+                if not item.course_name:
+                    stats.failed += 1
+                    continue
+                item_semester = item.semester or semester
+                source_hash = _source_hash(
+                    course_code=item.course_code or "",
+                    course_name=item.course_name,
+                    exam_type=item.exam_type or "",
+                    location=item.location or "",
+                    seat=item.seat or "",
+                    starts_at=item.starts_at or "",
+                    ends_at=item.ends_at or "",
+                    notes=item.notes or "",
+                )
+                item_id = _short_id(
+                    "edu_exm",
+                    user_id,
+                    edu_system_id or "",
+                    item_semester or "",
+                    item.course_code or "",
+                    item.course_name,
+                    item.exam_type or "",
+                    item.starts_at or "",
+                )
+                seen_ids.append(item_id)
+                existing = conn.execute(
+                    "SELECT id, source_hash, is_stale FROM edu_exam_items WHERE id = ?",
+                    (item_id,),
+                ).fetchone()
+                if existing is None:
+                    conn.execute(
+                        """
+                        INSERT INTO edu_exam_items (
+                            id, user_id, edu_system_id, university_id, semester,
+                            course_code, course_name, exam_type, location, seat,
+                            starts_at, ends_at, notes, provider, source, source_hash,
+                            last_seen_at, sync_batch_id, is_stale, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                        """,
+                        (
+                            item_id, user_id, edu_system_id, university_id, item_semester,
+                            item.course_code, item.course_name, item.exam_type, item.location,
+                            item.seat, item.starts_at, item.ends_at, item.notes,
+                            binding.provider, "edu_connector", source_hash,
+                            now, sync_batch_id, now, now,
+                        ),
+                    )
+                    stats.inserted += 1
+                elif existing["is_stale"] == 1 or existing["source_hash"] != source_hash:
+                    conn.execute(
+                        """
+                        UPDATE edu_exam_items SET
+                            course_name = ?, exam_type = ?, location = ?, seat = ?,
+                            starts_at = ?, ends_at = ?, notes = ?, semester = COALESCE(?, semester),
+                            source_hash = ?, last_seen_at = ?, sync_batch_id = ?,
+                            is_stale = 0, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            item.course_name, item.exam_type, item.location, item.seat,
+                            item.starts_at, item.ends_at, item.notes, item_semester,
+                            source_hash, now, sync_batch_id, now, item_id,
+                        ),
+                    )
+                    stats.updated += 1
+                else:
+                    conn.execute(
+                        "UPDATE edu_exam_items SET last_seen_at = ?, sync_batch_id = ?, updated_at = ? WHERE id = ?",
+                        (now, sync_batch_id, now, item_id),
+                    )
+                    stats.unchanged += 1
+
+            if seen_ids and edu_system_id:
+                seen_semesters = {it.semester or semester for it in exam.items if it.course_name}
+                if seen_semesters:
+                    sem_placeholders = ",".join("?" for _ in seen_semesters)
+                    id_placeholders = ",".join("?" for _ in seen_ids)
+                    cur = conn.execute(
+                        f"""
+                        UPDATE edu_exam_items SET is_stale = 1, updated_at = ?
+                        WHERE user_id = ? AND edu_system_id = ?
+                          AND semester IN ({sem_placeholders})
+                          AND id NOT IN ({id_placeholders})
+                          AND is_stale = 0
+                        """,
+                        (now, user_id, edu_system_id, *seen_semesters, *seen_ids),
+                    )
+                    stats.removed = cur.rowcount or 0
+        return stats
+
+    def list_exam_items(
+        self,
+        *,
+        user_id: str,
+        semester: Optional[str] = None,
+        include_stale: bool = False,
+    ) -> list[PersistedExamItem]:
+        with self._db.query() as conn:
+            stale_limit = 1 if include_stale else 0
+            if semester:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM edu_exam_items
+                    WHERE user_id = ? AND semester = ? AND is_stale <= ?
+                    ORDER BY starts_at ASC, course_name ASC
+                    """,
+                    (user_id, semester, stale_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM edu_exam_items
+                    WHERE user_id = ? AND is_stale <= ?
+                    ORDER BY semester DESC, starts_at ASC, course_name ASC
+                    """,
+                    (user_id, stale_limit),
+                ).fetchall()
+        return [self._row_to_exam_item(row) for row in rows]
+
+    def list_semesters_with_exams(self, user_id: str) -> list[str]:
+        with self._db.query() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT semester FROM edu_exam_items
+                WHERE user_id = ? AND semester IS NOT NULL AND is_stale = 0
+                ORDER BY semester DESC
+                """,
+                (user_id,),
+            ).fetchall()
+        return [row["semester"] for row in rows if row["semester"]]
+
+    @staticmethod
+    def _row_to_exam_item(row) -> PersistedExamItem:
+        return PersistedExamItem(
+            id=row["id"],
+            user_id=row["user_id"],
+            semester=row["semester"],
+            course_code=row["course_code"],
+            course_name=row["course_name"],
+            exam_type=row["exam_type"],
+            location=row["location"],
+            seat=row["seat"],
+            starts_at=row["starts_at"],
+            ends_at=row["ends_at"],
+            notes=row["notes"],
+            is_stale=bool(row["is_stale"]),
+            last_seen_at=row["last_seen_at"],
+        )
+
     # ===== 清理 =====
 
     def clear_user_data(self, user_id: str) -> None:
         with self._db.transaction() as conn:
             conn.execute("DELETE FROM edu_schedule_items WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM edu_grades WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM edu_exam_items WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM edu_courses WHERE user_id = ?", (user_id,))
 
 
@@ -541,5 +727,6 @@ __all__ = [
     "SyncStats",
     "PersistedScheduleItem",
     "PersistedGradeItem",
+    "PersistedExamItem",
     "EduDataRepository",
 ]

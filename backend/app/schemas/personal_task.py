@@ -82,6 +82,11 @@ class PersonalTaskCreate(BaseModel):
         None, max_length=128, description="关联通知 ID(可为空)"
     )
     priority: str = Field("medium", pattern="^(low|medium|high)$")
+    importance: Optional[str] = Field(
+        "unknown",
+        pattern="^(urgent|high|important|normal|low|unknown)$",
+        description="AI 评定的重要程度标签(交作业=high,填表=low)",
+    )
     reminder_minutes: Optional[int] = Field(
         None, ge=0, le=60 * 24 * 30, description="提前提醒分钟数(0 表示按 deadline 精确触发)"
     )
@@ -118,6 +123,9 @@ class PersonalTaskUpdate(BaseModel):
     source_text: Optional[str] = Field(None, max_length=10000)
     source_notice_id: Optional[str] = Field(None, max_length=128)
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
+    importance: Optional[str] = Field(
+        None, pattern="^(urgent|high|important|normal|low|unknown)$"
+    )
     reminder_minutes: Optional[int] = Field(None, ge=0, le=60 * 24 * 30)
 
     @field_validator(*_TEXT_FIELDS)
@@ -154,6 +162,7 @@ class PersonalTaskOut(BaseModel):
     source_text: Optional[str] = None
     source_notice_id: Optional[str] = None
     priority: str
+    importance: str = "unknown"
     status: str
     reminder_minutes: Optional[int] = None
     source: Optional[str] = None
@@ -167,8 +176,45 @@ class PersonalTaskOut(BaseModel):
     deleted_at: Optional[str] = None
 
 
+# ===== 重要程度批量重排 =====
+
+
+class ImportanceRankItem(BaseModel):
+    """单个任务的重要程度评定结果。"""
+
+    task_id: str
+    importance: str = Field(..., pattern="^(urgent|high|important|normal|low|unknown)$")
+    reason: Optional[str] = Field(None, description="评定理由")
+    mode: str = Field(..., description="评定模式: llm|rules")
+
+
+class ImportanceRankRequest(BaseModel):
+    """批量重排任务重要程度请求。
+
+    不传 task_ids 时，对当前用户所有 pending 任务评定(最多 50 条)。
+    """
+
+    task_ids: Optional[List[str]] = Field(
+        None, max_length=50, description="指定任务 ID 列表(为空则评定全部 pending 任务)"
+    )
+
+
+class ImportanceRankResponse(BaseModel):
+    """批量重排响应。"""
+
+    updated: List[ImportanceRankItem] = Field(default_factory=list)
+    skipped: List[str] = Field(
+        default_factory=list, description="跳过的任务 ID(LLM 不可用或任务不存在)"
+    )
+    mode: str = Field(..., description="本次评定实际使用模式: llm|rules")
+    total: int = Field(0, description="本次评定任务数")
+
+
 __all__ = [
     "PersonalTaskCreate",
     "PersonalTaskUpdate",
     "PersonalTaskOut",
+    "ImportanceRankItem",
+    "ImportanceRankRequest",
+    "ImportanceRankResponse",
 ]

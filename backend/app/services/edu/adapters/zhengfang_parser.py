@@ -14,6 +14,8 @@ import re
 from typing import Any, Optional
 
 from ....schemas.edu import (
+    EduExam,
+    EduExamItem,
     EduGrade,
     EduGradeItem,
     EduProfile,
@@ -68,6 +70,14 @@ def _split_teachers(value: Any) -> Optional[list[str]]:
 def _parse_weeks(weeks_raw: Any) -> Optional[str]:
     """归一化周次表达。保留原始字符串（如 '1-16' / '1,3,5-15' / '1-16单'）。"""
     return _clean(weeks_raw)
+
+
+def _combine_datetime(date_value: Any, time_value: Any, fallback: Any = None) -> Optional[str]:
+    date_text = _clean(date_value)
+    time_text = _clean(time_value)
+    if date_text and time_text:
+        return f"{date_text}T{time_text}"
+    return _clean(fallback) or date_text or time_text
 
 
 def _expand_json_payload(text: str) -> Any:
@@ -310,6 +320,90 @@ class ZhengfangParser:
             )
         return EduGrade(semester=semester, items=items)
 
+    # ===== 考试 =====
+
+    def parse_exam_json(self, text: str, *, semester: Optional[str] = None) -> EduExam:
+        payload = _expand_json_payload(text)
+        rows: Any = []
+        if isinstance(payload, dict):
+            rows = payload.get("ksList") or payload.get("examList") or payload.get("items") or payload.get("rows") or payload.get("data") or []
+            if isinstance(rows, dict):
+                rows = rows.get("items") or rows.get("rows") or rows.get("list") or []
+        elif isinstance(payload, list):
+            rows = payload
+
+        items: list[EduExamItem] = []
+        for row in rows if isinstance(rows, list) else []:
+            if not isinstance(row, dict):
+                continue
+            course_name = _clean(row.get("kcmc") or row.get("kc_mc") or row.get("course_name"))
+            if not course_name:
+                continue
+            exam_date = row.get("ksrq") or row.get("exam_date") or row.get("date")
+            row_semester = _clean(row.get("xqmc") or row.get("xnxq01id") or row.get("semester") or semester)
+            items.append(
+                EduExamItem(
+                    course_name=course_name,
+                    course_code=_clean(row.get("kch") or row.get("kch_id") or row.get("course_code")),
+                    exam_type=_clean(row.get("kslxmc") or row.get("kslx") or row.get("exam_type")),
+                    location=_clean(row.get("cdmc") or row.get("dd") or row.get("location")),
+                    seat=_clean(row.get("zwh") or row.get("seat") or row.get("seat_number")),
+                    starts_at=_combine_datetime(
+                        exam_date,
+                        row.get("kssj") or row.get("start_time"),
+                        row.get("kssjstr") or row.get("starts_at"),
+                    ),
+                    ends_at=_combine_datetime(
+                        row.get("jsrq") or exam_date,
+                        row.get("jssj") or row.get("end_time"),
+                        row.get("jssjstr") or row.get("ends_at"),
+                    ),
+                    semester=row_semester,
+                    notes=_clean(row.get("bz") or row.get("beizhu") or row.get("note") or row.get("notes")),
+                )
+            )
+        return EduExam(semester=semester, items=items)
+
+    def parse_exam_html(self, text: str, *, semester: Optional[str] = None) -> EduExam:
+        """解析旧版正方考试表格；学校字段名通过常见中英文别名匹配。"""
+        row_pattern = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+        cell_pattern = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.IGNORECASE | re.DOTALL)
+        tag_strip = re.compile(r"<[^>]+>")
+        rows_html = row_pattern.findall(text)
+        if not rows_html:
+            return EduExam(semester=semester, items=[])
+        header_cells = [tag_strip.sub("", cell).strip() for cell in cell_pattern.findall(rows_html[0])]
+        col_index = {name: index for index, name in enumerate(header_cells)}
+        items: list[EduExamItem] = []
+        for row_html in rows_html[1:]:
+            cells = [tag_strip.sub("", cell).strip() for cell in cell_pattern.findall(row_html)]
+            if not cells:
+                continue
+            course_name = self._cell_by_name(cells, col_index, ("课程名称", "课名", "kcmc", "course_name"))
+            if not course_name:
+                continue
+            date = self._cell_by_name(cells, col_index, ("考试日期", "日期", "ksrq", "exam_date"))
+            items.append(
+                EduExamItem(
+                    course_name=course_name,
+                    course_code=self._cell_by_name(cells, col_index, ("课程代码", "课号", "kch", "course_code")),
+                    exam_type=self._cell_by_name(cells, col_index, ("考试类型", "kslxmc", "exam_type")),
+                    location=self._cell_by_name(cells, col_index, ("考试地点", "地点", "cdmc", "location")),
+                    seat=self._cell_by_name(cells, col_index, ("座位号", "座号", "zwh", "seat")),
+                    starts_at=_combine_datetime(
+                        date,
+                        self._cell_by_name(cells, col_index, ("开始时间", "考试时间", "kssj", "start_time")),
+                    ),
+                    ends_at=_combine_datetime(
+                        date,
+                        self._cell_by_name(cells, col_index, ("结束时间", "jssj", "end_time")),
+                    ),
+                    semester=self._cell_by_name(cells, col_index, ("学期", "xqmc", "semester")) or semester,
+                    notes=self._cell_by_name(cells, col_index, ("备注", "说明", "bz", "notes")),
+                )
+            )
+        return EduExam(semester=semester, items=items)
+
     @staticmethod
     def _cell_by_name(cells: list[str], col_index: dict, names: tuple[str, ...]) -> Optional[str]:
         for n in names:
@@ -360,6 +454,10 @@ class ZhengfangParser:
             key = aliases.get(cells[0])
             if key:
                 values[key] = cells[1]
+        if "external_student_id" not in values:
+            photo_id = re.search(r"[?&](?:amp;)?xh_id=([^&\"'<>]+)", text, re.IGNORECASE)
+            if photo_id:
+                values["external_student_id"] = photo_id.group(1)
         return EduProfile(**{key: _clean(value) for key, value in values.items()})
 
     # ===== 登录响应识别 =====

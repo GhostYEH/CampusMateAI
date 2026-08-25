@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     source_text TEXT,
     source_notice_id TEXT,
     priority TEXT NOT NULL DEFAULT 'medium',
+    importance TEXT NOT NULL DEFAULT 'unknown',
     status TEXT NOT NULL DEFAULT 'pending',
     reminder_minutes INTEGER,
     created_at TEXT NOT NULL,
@@ -347,12 +348,7 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     UNIQUE(user_id, source_notice_id),
     UNIQUE(user_id, source, external_id)
 );
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id);
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status);
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_deadline ON personal_tasks(deadline);
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_priority ON personal_tasks(priority);
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_status ON personal_tasks(user_id, status);
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_deadline ON personal_tasks(user_id, deadline);
+
 """
 
 
@@ -935,6 +931,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_grades_unique ON edu_grades(
 ) WHERE course_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_edu_grades_user_semester ON edu_grades(user_id, semester);
 CREATE INDEX IF NOT EXISTS idx_edu_grades_stale ON edu_grades(is_stale);
+
+CREATE TABLE IF NOT EXISTS edu_exam_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    edu_system_id TEXT,
+    university_id TEXT NOT NULL,
+    semester TEXT,
+    course_code TEXT,
+    course_name TEXT NOT NULL,
+    exam_type TEXT,
+    location TEXT,
+    seat TEXT,
+    starts_at TEXT,
+    ends_at TEXT,
+    notes TEXT,
+    provider TEXT,
+    source TEXT NOT NULL DEFAULT 'edu_connector',
+    source_hash TEXT,
+    last_seen_at TEXT NOT NULL,
+    sync_batch_id TEXT,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edu_exam_items_unique ON edu_exam_items(
+    user_id, edu_system_id, semester, course_code, course_name, exam_type, starts_at
+);
+CREATE INDEX IF NOT EXISTS idx_edu_exam_items_user_semester ON edu_exam_items(user_id, semester);
+CREATE INDEX IF NOT EXISTS idx_edu_exam_items_stale ON edu_exam_items(is_stale);
 """
 
 
@@ -985,6 +1012,22 @@ CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(token_hash);
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_device ON trusted_devices(device_id);
 CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expires_at);
+"""
+
+
+EDU_SESSION_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS edu_sessions (
+    connection_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    envelope_version INTEGER NOT NULL,
+    key_id TEXT NOT NULL,
+    nonce BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_edu_sessions_user ON edu_sessions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_edu_sessions_expires ON edu_sessions(expires_at);
 """
 
 
@@ -1045,6 +1088,7 @@ class Database:
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
+                conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
@@ -1116,6 +1160,8 @@ class Database:
         # 检查 personal_tasks 表新增列
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
         task_cols = {row["name"] for row in cur.fetchall()}
+        if "importance" not in task_cols:
+            conn.execute("ALTER TABLE personal_tasks ADD COLUMN importance TEXT NOT NULL DEFAULT 'unknown'")
         if "source" not in task_cols:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN source TEXT")
         if "external_id" not in task_cols:
@@ -1126,6 +1172,14 @@ class Database:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_url TEXT")
         if "last_synced_at" not in task_cols:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN last_synced_at TEXT")
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_deadline ON personal_tasks(deadline)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_priority ON personal_tasks(priority)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_importance ON personal_tasks(importance)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_status ON personal_tasks(user_id, status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_deadline ON personal_tasks(user_id, deadline)")
 
         cur = conn.execute("PRAGMA index_list(personal_tasks)")
         indexes = cur.fetchall()
@@ -1165,6 +1219,17 @@ class Database:
             conn.execute("ALTER TABLE universities ADD COLUMN level TEXT")
         if "school_code" not in uni_cols:
             conn.execute("ALTER TABLE universities ADD COLUMN school_code TEXT")
+        # 教务系统连接字段(旧库缺列补齐，与 UNIVERSITY_SCHEMA_SQL 对齐)
+        if "academic_system_type" not in uni_cols:
+            conn.execute(
+                "ALTER TABLE universities ADD COLUMN academic_system_type TEXT NOT NULL DEFAULT 'unsupported'"
+            )
+        if "academic_system_url" not in uni_cols:
+            conn.execute("ALTER TABLE universities ADD COLUMN academic_system_url TEXT")
+        if "academic_provider" not in uni_cols:
+            conn.execute(
+                "ALTER TABLE universities ADD COLUMN academic_provider TEXT NOT NULL DEFAULT 'unsupported'"
+            )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_universities_level ON universities(level)")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_universities_school_code "

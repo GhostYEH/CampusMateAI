@@ -14,7 +14,7 @@ import pytest
 from app.database.sqlite_db import Database
 from app.models.edu import BINDING_ACTIVE, EduBindingRow
 from app.repositories.edu_data_repository import EduDataRepository
-from app.schemas.edu import EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
+from app.schemas.edu import EduExam, EduExamItem, EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
 
 
 @pytest.fixture
@@ -80,6 +80,32 @@ def _grade(items=None):
         items=items or [
             EduGradeItem(course_name="高等数学", course_code="MATH101", credit=4.0, score="88", grade_point=3.7),
             EduGradeItem(course_name="程序设计", course_code="CS101", credit=3.0, score="92", grade_point=4.0),
+        ],
+    )
+
+
+def _exam(items=None):
+    return EduExam(
+        semester="2024-2025秋季",
+        items=items or [
+            EduExamItem(
+                course_name="高等数学",
+                course_code="MATH101",
+                exam_type="期末考试",
+                location="东教 A101",
+                seat="12",
+                starts_at="2025-01-06T09:00:00+08:00",
+                ends_at="2025-01-06T11:00:00+08:00",
+                notes="携带学生证",
+            ),
+            EduExamItem(
+                course_name="程序设计",
+                course_code="CS101",
+                exam_type="补考",
+                location="实验楼 B202",
+                starts_at="2025-01-08T14:00:00+08:00",
+                ends_at="2025-01-08T16:00:00+08:00",
+            ),
         ],
     )
 
@@ -189,6 +215,42 @@ def test_sync_grade_stale_on_removal(repo, binding):
     assert stats.removed == 1
     active = repo.list_grade_items(user_id=binding.user_id, semester="2024-2025秋季", include_stale=False)
     assert len(active) == 1
+
+
+def test_sync_exam_is_idempotent_and_soft_deletes_removed_items(repo, binding):
+    first = repo.sync_exam_items(binding=binding, exam=_exam(), sync_batch_id="batch_001")
+    assert first.inserted == 2
+
+    second = repo.sync_exam_items(binding=binding, exam=_exam(), sync_batch_id="batch_002")
+    assert second.unchanged == 2
+    assert second.inserted == 0
+
+    smaller = EduExam(
+        semester="2024-2025秋季",
+        items=[_exam().items[0]],
+    )
+    third = repo.sync_exam_items(binding=binding, exam=smaller, sync_batch_id="batch_003")
+    assert third.removed == 1
+    active = repo.list_exam_items(user_id=binding.user_id, semester="2024-2025秋季")
+    assert len(active) == 1
+    assert active[0].course_code == "MATH101"
+    all_items = repo.list_exam_items(
+        user_id=binding.user_id,
+        semester="2024-2025秋季",
+        include_stale=True,
+    )
+    assert len(all_items) == 2
+    assert any(item.is_stale and item.course_code == "CS101" for item in all_items)
+
+
+def test_sync_exam_persists_makeup_details(repo, binding):
+    repo.sync_exam_items(binding=binding, exam=_exam(), sync_batch_id="batch_001")
+    makeup = next(
+        item for item in repo.list_exam_items(user_id=binding.user_id) if item.exam_type == "补考"
+    )
+    assert makeup.location == "实验楼 B202"
+    assert makeup.starts_at == "2025-01-08T14:00:00+08:00"
+    assert makeup.notes == "" or makeup.notes is None
 
 
 def test_clear_user_data(repo, binding):

@@ -30,6 +30,23 @@ class SuggestedAction(BaseModel):
     payload: Optional[str] = None
 
 
+class ExpressionSignal(BaseModel):
+    """端侧表情模型的瞬时观察结果；不包含也不允许包含图像数据。"""
+
+    label: str = Field(..., min_length=1, max_length=24)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    is_stable: bool = False
+    timestamp: int = Field(..., gt=0, description="Unix epoch milliseconds")
+    model_version: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def _normalize_label(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("label 必须是字符串")
+        return value.strip().upper()
+
+
 class CounselorRecentTask(BaseModel):
     """AI 导员上下文中的"最近待办"条目 — 仅表示 PersonalTask。
 
@@ -103,7 +120,7 @@ class ChatRequest(BaseModel):
         max_length=500,
     )
     # 表情信号(可选): 仅接收客户端 CNN 的稳定标签与置信度,不接收图像
-    expression_signal: Optional[Dict[str, Any]] = Field(
+    expression_signal: Optional[ExpressionSignal] = Field(
         None,
         description="CNN 观察到的可见表情信号。后端会白名单校验并仅用于调整措辞，"
         "不用于心理或医学判断，不保存原始图像",
@@ -164,6 +181,7 @@ class ChatFinalMeta(BaseModel):
 
 __all__ = [
     "ChatSource",
+    "ExpressionSignal",
     "SuggestedAction",
     "CounselorRecentTask",
     "CounselorAttachment",

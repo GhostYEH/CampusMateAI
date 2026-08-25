@@ -271,6 +271,39 @@ def test_parse_grade_html_jw2005():
     assert by_name["体育(三)"].score == "良好"
 
 
+def test_parse_exam_json_normalizes_makeup_exam_fields():
+    exam = ZhengfangParser().parse_exam_json(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kcmc": "高等数学",
+                        "kch": "MATH101",
+                        "kslxmc": "补考",
+                        "cdmc": "东教 A101",
+                        "zwh": "12",
+                        "ksrq": "2025-01-08",
+                        "kssj": "14:00",
+                        "jssj": "16:00",
+                        "bz": "携带学生证",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        semester="2024-2025秋季",
+    )
+    assert len(exam.items) == 1
+    item = exam.items[0]
+    assert item.course_name == "高等数学"
+    assert item.exam_type == "补考"
+    assert item.location == "东教 A101"
+    assert item.seat == "12"
+    assert item.starts_at == "2025-01-08T14:00"
+    assert item.ends_at == "2025-01-08T16:00"
+    assert item.notes == "携带学生证"
+
+
 # ===== 基本信息解析 =====
 
 
@@ -315,6 +348,18 @@ def test_login_page_scripts_do_not_count_as_visible_sms_or_captcha():
     assert zhengfang_module._user_action_from_login_page(page) is None
 
 
+def test_login_page_inline_image_data_does_not_count_as_visible_mfa():
+    page = '''
+        <form action="/jwglxt/xtgl/login_slogin.html">
+          <input name="yhm" />
+          <input name="mm" type="password" />
+          <img alt="school login QR code" src="data:image/png;base64,AAAmfAzz" />
+        </form>
+    '''
+
+    assert zhengfang_module._user_action_from_login_page(page) is None
+
+
 def test_huel_login_configuration_is_bound_to_its_exact_origin():
     detector = ProviderDetector()
 
@@ -327,7 +372,7 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
         "login_url": "/jwglxt/xtgl/login_slogin.html",
         "provider_version": ZHENGFANG_VERSION_JWGL2,
         "auth_type": "form",
-        "captcha_type": "image",
+        "captcha_type": "none",
         "form_field_username": "yhm",
         "form_field_password": "mm",
         "form_field_captcha": "yzm",
@@ -335,7 +380,8 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
         "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
         "allowed_origin": "https://xk.huel.edu.cn",
         "endpoint_overrides": {
-            "profile_path": None,
+            "profile_path": "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw",
+            "profile_format": "html",
             "schedule_path": None,
             "grade_path": None,
         },
@@ -352,15 +398,17 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
     config["endpoint_overrides"]["profile_path"] = "/mutated-by-caller"
     assert detector.known_school_config(
         "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
-    )["endpoint_overrides"]["profile_path"] is None
+    )["endpoint_overrides"]["profile_path"] == "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw"
 
 
-def test_huel_configuration_does_not_enable_unverified_data_endpoints():
+def test_huel_configuration_uses_verified_identity_endpoint_only():
     config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
     school = school_config_from_dict(config)
 
     assert school is not None
-    assert school.endpoints.profile_path is None
+    assert school.captcha_type == "none"
+    assert school.endpoints.profile_path == "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw"
+    assert school.endpoints.profile_format == "html"
     assert school.endpoints.schedule_path is None
     assert school.endpoints.grade_path is None
 
@@ -436,6 +484,14 @@ def test_parse_profile_html_jw2005():
     assert profile.external_student_id == "FIXTURE-2005-001"
     assert profile.name == "旧版测试生"
     assert profile.major == "软件工程"
+
+
+def test_parse_profile_html_extracts_student_id_from_authenticated_photo_url():
+    profile = ZhengfangParser().parse_profile_html(
+        '<img src="/jwglxt/xtgl/photo_cxXszp4.html?xh_id=FIXTURE-2025-001&amp;zplx=rxhzp">'
+    )
+
+    assert profile.external_student_id == "FIXTURE-2025-001"
 
 
 def test_school_config_unknown_version_falls_back_to_jwgl2():
@@ -919,10 +975,49 @@ async def test_verify_session_rejects_network_errors(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_exam_without_parser_is_explicitly_unsupported(monkeypatch):
+async def test_exam_without_configured_endpoint_is_explicitly_unsupported():
     adapter = zhengfang_module.ZhengfangAdapter()
     with pytest.raises(AdapterNotImplemented):
         await adapter.fetch_exam({"base_url": "https://jwxt.example.edu.cn", "cookies": {}})
+
+
+@pytest.mark.asyncio
+async def test_exam_uses_explicit_configured_endpoint(monkeypatch):
+    class ExamClient:
+        def __init__(self, **_kwargs):
+            self.cookies = {}
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+        async def post(self, path, *, data=None, **_kwargs):
+            assert path == "/fixture/exams"
+            assert data == {"semesterId": "2024-2025秋季"}
+            return HttpResponse(
+                200,
+                json.dumps({"items": [{"kcmc": "高等数学", "kslxmc": "补考"}]}, ensure_ascii=False),
+                "https://jwxt.example.edu.cn/fixture/exams",
+                {},
+            )
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", ExamClient)
+    exam = await zhengfang_module.ZhengfangAdapter().fetch_exam(
+        {
+            "base_url": "https://jwxt.example.edu.cn",
+            "cookies": {"JSESSIONID": "fixture"},
+            "adapter_config": {
+                "base_url": "https://jwxt.example.edu.cn",
+                "semester_param_name": "semesterId",
+                "exam_payload_extra": {},
+                "endpoint_overrides": {
+                    "exam_path": "/fixture/exams",
+                    "exam_format": "json",
+                },
+            },
+        },
+        semester="2024-2025秋季",
+    )
+    assert exam.items[0].exam_type == "补考"
 
 
 def test_provider_capabilities_do_not_claim_exam_support():

@@ -158,6 +158,53 @@ class CommunityRepository:
             row = conn.execute("SELECT * FROM forum_reports WHERE id=?", (report_id,)).fetchone()
         return dict(row)
 
+    def list_reports(self, university_id: Optional[str] = None, *, status: Optional[str] = None,
+                     page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if university_id:
+            conditions.append("university_id = ?"); params.append(university_id)
+        if status:
+            conditions.append("status = ?"); params.append(status)
+        where = " AND ".join(conditions) if conditions else "1=1"
+        with self.db.query() as conn:
+            total = int(conn.execute(f"SELECT COUNT(*) n FROM forum_reports WHERE {where}", params).fetchone()["n"])
+            rows = conn.execute(
+                f"SELECT * FROM forum_reports WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                [*params, page_size, (page - 1) * page_size],
+            ).fetchall()
+        return [dict(row) for row in rows], total
+
+    def get_report(self, report_id: str) -> Optional[dict]:
+        with self.db.query() as conn:
+            row = conn.execute("SELECT * FROM forum_reports WHERE id = ?", (report_id,)).fetchone()
+        return dict(row) if row else None
+
+    def update_report_status(self, report_id: str, status: str) -> Optional[dict]:
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE forum_reports SET status=?, updated_at=? WHERE id=?", (status, _now(), report_id))
+        return self.get_report(report_id)
+
+    def list_posts_admin(self, *, university_id: Optional[str] = None, status: Optional[str] = None,
+                         q: Optional[str] = None, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if university_id:
+            conditions.append("university_id = ?"); params.append(university_id)
+        if status:
+            conditions.append("status = ?"); params.append(status)
+        if q:
+            conditions.append("(title LIKE ? OR content LIKE ?)")
+            params.extend([f"%{q.strip()}%", f"%{q.strip()}%"])
+        where = " AND ".join(conditions) if conditions else "1=1"
+        with self.db.query() as conn:
+            total = int(conn.execute(f"SELECT COUNT(*) n FROM forum_posts WHERE {where}", params).fetchone()["n"])
+            rows = conn.execute(
+                f"SELECT * FROM forum_posts WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                [*params, page_size, (page - 1) * page_size],
+            ).fetchall()
+        return [dict(row) for row in rows], total
+
     def migrate_lost_found(self) -> int:
         """把 lost_found_items 旧数据迁移到 forum_posts(category=lostfound)。幂等：按 id 去重。返回迁移条数。"""
         try:

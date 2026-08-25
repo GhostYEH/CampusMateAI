@@ -65,6 +65,8 @@ class ZhengfangEndpoints:
     grade_format: str = "json"
     profile_path: str = PROFILE_PATH_JWGL2_JSON
     profile_format: str = "json"
+    exam_path: Optional[str] = None
+    exam_format: str = "json"
     logout_path: Optional[str] = None
 
 
@@ -137,6 +139,7 @@ class SchoolConfig:
     semester_param_name: str = "xnxq01id"
     schedule_payload_extra: dict = field(default_factory=dict)
     grade_payload_extra: dict = field(default_factory=dict)
+    exam_payload_extra: dict = field(default_factory=dict)
     endpoints_override: Optional[ZhengfangEndpoints] = None
     sso_url: Optional[str] = None
     vpn_url: Optional[str] = None
@@ -211,7 +214,8 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
     if isinstance(endpoint_values, dict) and endpoint_values:
         allowed_endpoint_fields = {
             "login_path", "schedule_path", "schedule_format", "grade_path",
-            "grade_format", "profile_path", "profile_format", "logout_path",
+            "grade_format", "profile_path", "profile_format", "exam_path",
+            "exam_format", "logout_path",
         }
         endpoints_override = ZhengfangEndpoints(
             **{k: v for k, v in endpoint_values.items() if k in allowed_endpoint_fields}
@@ -242,6 +246,7 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         semester_param_name=config.get("semester_param_name") or "xnxq01id",
         schedule_payload_extra=dict(config.get("schedule_payload_extra") or {}),
         grade_payload_extra=dict(config.get("grade_payload_extra") or {}),
+        exam_payload_extra=dict(config.get("exam_payload_extra") or {}),
         endpoints_override=endpoints_override,
     )
 
@@ -267,6 +272,7 @@ def school_config_to_dict(school: SchoolConfig) -> dict:
         "semester_param_name": school.semester_param_name,
         "schedule_payload_extra": dict(school.schedule_payload_extra),
         "grade_payload_extra": dict(school.grade_payload_extra),
+        "exam_payload_extra": dict(school.exam_payload_extra),
         "sso_url": school.sso_url,
         "vpn_url": school.vpn_url,
         "requires_campus_network": school.requires_campus_network,

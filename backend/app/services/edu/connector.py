@@ -62,6 +62,7 @@ from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
 from .adapters.zhengfang_http import NeedUserAction
 from .adapters.zhengfang_strategy import school_allowed_origins, school_config_from_dict
 from .detector import DetectResult, SystemDetector
+from .provider_detector import ProviderDetector
 from .registry import SchoolRegistry
 from .session import EduSessionStore, InMemorySessionStore, PreLoginSessionStore, SessionManager
 
@@ -618,9 +619,11 @@ class EduConnectorService:
         """从 EduSystemRow 构造 adapter config dict。"""
         if system is None:
             return {}
-        config = {
-            "base_url": system.base_url or portal_url,
-            "login_url": system.login_url or portal_url,
+        known_config = ProviderDetector().known_school_config(portal_url) if portal_url else None
+        config = dict(known_config or {})
+        system_config = {
+            "base_url": system.base_url,
+            "login_url": system.login_url,
             "provider_version": system.provider_version,
             "sso_url": system.sso_url,
             "vpn_url": system.vpn_url,
@@ -631,6 +634,15 @@ class EduConnectorService:
             "requires_vpn": system.requires_vpn,
             "provider": system.provider,
         }
+        for key, value in system_config.items():
+            if value is None or value == "":
+                continue
+            if isinstance(value, str) and value.lower() in {"unknown", "unsupported"}:
+                continue
+            config[key] = value
+        config.setdefault("base_url", portal_url)
+        config.setdefault("login_url", portal_url)
+        config.setdefault("login_execution_mode", LOGIN_EXEC_BACKEND_HTTP)
         try:
             stored = json.loads(system.adapter_config or "{}")
         except (TypeError, ValueError):
@@ -898,6 +910,15 @@ class EduConnectorService:
             elif sync_type == "exam":
                 data = await adapter.fetch_exam(internal_session, semester=semester)
                 count = len(data.items)
+                stats = SyncStats()
+                sync_batch_id = None
+                if self._edu_data_repo is not None and count > 0:
+                    sync_batch_id = sync_record.id
+                    stats = self._edu_data_repo.sync_exam_items(
+                        binding=binding,
+                        exam=data,
+                        sync_batch_id=sync_batch_id,
+                    )
                 self._edu_repo.finish_sync_record(
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
@@ -908,7 +929,18 @@ class EduConnectorService:
                     last_error=None,
                 )
                 return EduSyncResult(
-                    sync_type=sync_type, status=SYNC_SUCCESS, items_count=count, exam=data
+                    sync_type=sync_type,
+                    status=SYNC_SUCCESS,
+                    items_count=count,
+                    exam=data,
+                    inserted=stats.inserted,
+                    updated=stats.updated,
+                    unchanged=stats.unchanged,
+                    removed=stats.removed,
+                    failed=stats.failed,
+                    sync_batch_id=sync_batch_id,
+                    semester=data.semester,
+                    persisted=self._edu_data_repo is not None and count > 0,
                 )
             else:
                 raise ValueError(f"unknown sync_type: {sync_type}")
@@ -958,6 +990,11 @@ class EduConnectorService:
             return []
         return self._edu_data_repo.list_grade_items(user_id=user_id, semester=semester, include_stale=include_stale)
 
+    def list_exam_items(self, user_id: str, *, semester: Optional[str] = None, include_stale: bool = False):
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_exam_items(user_id=user_id, semester=semester, include_stale=include_stale)
+
     def list_schedule_semesters(self, user_id: str) -> list[str]:
         if self._edu_data_repo is None:
             return []
@@ -967,6 +1004,11 @@ class EduConnectorService:
         if self._edu_data_repo is None:
             return []
         return self._edu_data_repo.list_semesters_with_grades(user_id)
+
+    def list_exam_semesters(self, user_id: str) -> list[str]:
+        if self._edu_data_repo is None:
+            return []
+        return self._edu_data_repo.list_semesters_with_exams(user_id)
 
     # ===== 内部 =====
 

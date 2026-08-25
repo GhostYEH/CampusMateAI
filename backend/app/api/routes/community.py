@@ -261,3 +261,45 @@ def hide(post_id: str, user: UserRow = Depends(require_role("admin")), c: Servic
 def migrate_lost_found(user: UserRow = Depends(require_role("admin")), c: ServiceContainer = Depends(_container)) -> dict:
     count = c.community_repository.migrate_lost_found()
     return {"migrated": count}
+
+
+@admin_router.get("/posts")
+def admin_list_posts(q: str | None = Query(None, max_length=200),
+                     status: str | None = Query(None, max_length=32),
+                     page: int = Query(1, ge=1),
+                     page_size: int = Query(20, ge=1, le=100),
+                     user: UserRow = Depends(require_role("admin")),
+                     c: ServiceContainer = Depends(_container)) -> dict:
+    rows, total = c.community_repository.list_posts_admin(
+        university_id=user.university_id or None, status=status, q=q, page=page, page_size=page_size,
+    )
+    return {"items": [_post_out(row, c, user.id) for row in rows], "page": page, "page_size": page_size, "total": total}
+
+
+def _report_out(row: dict, c: ServiceContainer) -> dict:
+    row = dict(row)
+    reporter = c.user_repository.get_user_by_id(row["reporter_id"])
+    return {**row, "reporter_name": (reporter.display_name or reporter.username) if reporter else "已注销用户"}
+
+
+@admin_router.get("/reports")
+def admin_list_reports(status: str | None = Query(None, pattern="^(pending|resolved|rejected)$"),
+                       page: int = Query(1, ge=1),
+                       page_size: int = Query(20, ge=1, le=100),
+                       user: UserRow = Depends(require_role("admin")),
+                       c: ServiceContainer = Depends(_container)) -> dict:
+    rows, total = c.community_repository.list_reports(
+        user.university_id or None, status=status, page=page, page_size=page_size,
+    )
+    return {"items": [_report_out(row, c) for row in rows], "page": page, "page_size": page_size, "total": total}
+
+
+@admin_router.post("/reports/{report_id}/resolve")
+def admin_resolve_report(report_id: str, action: str = Query(..., pattern="^(resolve|reject)$"),
+                         user: UserRow = Depends(require_role("admin")),
+                         c: ServiceContainer = Depends(_container)) -> dict:
+    report = c.community_repository.get_report(report_id)
+    if not report:
+        raise NotFoundError("举报不存在")
+    new_status = "resolved" if action == "resolve" else "rejected"
+    return c.community_repository.update_report_status(report_id, new_status)

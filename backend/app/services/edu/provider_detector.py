@@ -281,7 +281,7 @@ _KNOWN_SCHOOL_CONFIGS: dict[str, dict] = {
         "login_url": "/jwglxt/xtgl/login_slogin.html",
         "provider_version": "jwgl2",
         "auth_type": "form",
-        "captcha_type": "image",
+        "captcha_type": "none",
         "form_field_username": "yhm",
         "form_field_password": "mm",
         "form_field_captcha": "yzm",
@@ -289,7 +289,8 @@ _KNOWN_SCHOOL_CONFIGS: dict[str, dict] = {
         "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
         "allowed_origin": "https://xk.huel.edu.cn",
         "endpoint_overrides": {
-            "profile_path": None,
+            "profile_path": "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw",
+            "profile_format": "html",
             "schedule_path": None,
             "grade_path": None,
         },

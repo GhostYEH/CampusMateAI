@@ -72,6 +72,7 @@ class PersonalTaskRepository:
         source_text: Optional[str] = None,
         source_notice_id: Optional[str] = None,
         priority: str = "medium",
+        importance: str = "unknown",
         reminder_minutes: Optional[int] = None,
         source: Optional[str] = None,
         external_id: Optional[str] = None,
@@ -89,15 +90,15 @@ class PersonalTaskRepository:
                         id, user_id, title, description, target_students,
                         deadline, materials, submission_method, location,
                         source_name, source_text, source_notice_id,
-                        priority, status, reminder_minutes,
+                        priority, importance, status, reminder_minutes,
                         source, external_id, course_id, source_url, last_synced_at,
                         created_at, updated_at, completed_at, deleted_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)""",
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)""",
                     (
                         tid, user_id, title, description, target_students,
                         deadline, _dump_materials(materials), submission_method, location,
                         source_name, source_text, source_notice_id,
-                        priority, "pending", reminder_minutes,
+                        priority, importance, "pending", reminder_minutes,
                         source, external_id, course_id, source_url, last_synced_at,
                         now, now,
                     ),
@@ -160,7 +161,7 @@ class PersonalTaskRepository:
 
         - `status`: pending / completed / deleted(默认排除 deleted,除非 include_deleted=True)
         - `deadline_before` / `deadline_after`: ISO 8601,用于"即将截止"筛选
-        - 返回按 `created_at DESC` 排序
+        - 返回按截止时间升序排序(无 deadline 排后,再按 created_at DESC)
         """
         conditions = ["user_id = ?"]
         params: list = [user_id]
@@ -187,7 +188,10 @@ class PersonalTaskRepository:
             total = int(cur.fetchone()["n"])
             cur = conn.execute(
                 f"""SELECT * FROM personal_tasks{where}
-                    ORDER BY created_at DESC
+                    ORDER BY
+                        CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
+                        deadline ASC,
+                        created_at DESC
                     LIMIT ? OFFSET ?""",
                 params + [page_size, offset],
             )
@@ -251,7 +255,7 @@ class PersonalTaskRepository:
         allowed = {
             "title", "description", "target_students", "deadline",
             "materials", "submission_method", "location", "source_name",
-            "source_text", "source_notice_id", "priority", "reminder_minutes",
+            "source_text", "source_notice_id", "priority", "importance", "reminder_minutes",
             "source", "external_id", "course_id", "source_url", "last_synced_at",
             "status", "completed_at",
         }

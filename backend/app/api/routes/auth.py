@@ -64,6 +64,17 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
+def _enrich_user_public(user: UserRow, container: ServiceContainer) -> UserPublic:
+    """构造 UserPublic 并按 university_id 补全 university_name，避免客户端二次请求。"""
+    public_user = UserPublic(**user.to_public_dict())
+    public_user.name = user.display_name or user.username
+    if user.university_id:
+        university = container.university_repository.get_by_id(user.university_id)
+        if university is not None:
+            public_user.university_name = university.name
+    return public_user
+
+
 @router.post("/login", response_model=TokenPair)
 def login(
     req: LoginRequest,
@@ -186,8 +197,11 @@ def logout(
 
 
 @router.get("/me", response_model=AuthMeResponse)
-def me(user: UserRow = Depends(current_user)) -> AuthMeResponse:
-    return AuthMeResponse(user=UserPublic(**user.to_public_dict()))
+def me(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> AuthMeResponse:
+    return AuthMeResponse(user=_enrich_user_public(user, container))
 
 
 @router.post("/admin/users", response_model=UserPublic, status_code=201)
@@ -257,7 +271,7 @@ def admin_list_users(
         page=page,
         page_size=page_size,
     )
-    items = [UserPublic(**row.to_public_dict()) for row in rows]
+    items = [_enrich_user_public(row, container) for row in rows]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
@@ -286,7 +300,7 @@ def admin_update_user(
             container.trusted_device_repository.revoke_all_for_user(user_id)
         except Exception:
             pass
-    return UserPublic(**updated.to_public_dict())
+    return _enrich_user_public(updated, container)
 
 
 def _issue_tokens(
@@ -316,8 +330,7 @@ def _issue_tokens(
         expires_at=expires_at,
     )
     # 响应中返回降级后的角色,避免前端误判为 teacher
-    public_user = UserPublic(**user.to_public_dict())
-    public_user.name = user.display_name or user.username
+    public_user = _enrich_user_public(user, container)
     public_user.role = effective_role
     return TokenPair(
         access_token=access_token,
