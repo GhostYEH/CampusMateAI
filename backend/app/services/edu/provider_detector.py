@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
@@ -273,6 +274,29 @@ PROVIDER_RULES: dict[str, dict[str, list[tuple[str, float]]]] = {
 }
 
 
+# 仅记录已公开确认的登录协议；课程、成绩、考试等数据端点必须另行验证后才能加入。
+_KNOWN_SCHOOL_CONFIGS: dict[str, dict] = {
+    "https://xk.huel.edu.cn": {
+        "base_url": "https://xk.huel.edu.cn",
+        "login_url": "/jwglxt/xtgl/login_slogin.html",
+        "provider_version": "jwgl2",
+        "auth_type": "form",
+        "captcha_type": "image",
+        "form_field_username": "yhm",
+        "form_field_password": "mm",
+        "form_field_captcha": "yzm",
+        "captcha_path": "/jwglxt/kaptcha",
+        "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
+        "allowed_origin": "https://xk.huel.edu.cn",
+        "endpoint_overrides": {
+            "profile_path": None,
+            "schedule_path": None,
+            "grade_path": None,
+        },
+    },
+}
+
+
 # 通用教务关键词（用于判断是否为教务系统页面，不区分 Provider）
 EDU_SYSTEM_KEYWORDS = [
     "教务", "教务系统", "教务管理", "课表", "成绩", "选课", "排课",
@@ -485,6 +509,24 @@ class ProviderDetector:
         置信度上限 0.3，且 provider 仅作参考，必须经 HTTP 验证后才能定论。
         """
         return self.detect(url=url, html="", headers=None)
+
+    def known_school_config(self, url: str) -> Optional[dict]:
+        """Return a copy of a public, origin-bound school login configuration.
+
+        A known configuration is intentionally limited to publicly verified login
+        protocol details.  It is never inferred for lookalike hosts or a different
+        scheme, and it does not include unverified academic-data endpoints.
+        """
+        parsed = urlparse(url)
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc != "xk.huel.edu.cn"
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return None
+        config = _KNOWN_SCHOOL_CONFIGS.get(f"{parsed.scheme}://{parsed.netloc}")
+        return deepcopy(config) if config else None
 
     def is_edu_system_page(self, html: str, title: Optional[str] = None) -> bool:
         """判断页面是否为教务系统页面（不区分 Provider）。"""

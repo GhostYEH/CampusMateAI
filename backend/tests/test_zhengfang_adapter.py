@@ -25,6 +25,7 @@ from app.services.edu.adapters.zhengfang_strategy import (
     ZHENGFANG_VERSION_JWGL2,
     school_config_from_dict,
 )
+from app.services.edu.provider_detector import ProviderDetector
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "edu" / "zhengfang"
 
@@ -177,6 +178,81 @@ def test_login_page_scripts_do_not_count_as_visible_sms_or_captcha():
         <script>var dxyz = "短信验证码"; function refreshCode() { return "yzmDiv"; }</script>
     '''
     assert zhengfang_module._user_action_from_login_page(page) is None
+
+
+def test_huel_login_configuration_is_bound_to_its_exact_origin():
+    detector = ProviderDetector()
+
+    config = detector.known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+    )
+
+    assert config == {
+        "base_url": "https://xk.huel.edu.cn",
+        "login_url": "/jwglxt/xtgl/login_slogin.html",
+        "provider_version": ZHENGFANG_VERSION_JWGL2,
+        "auth_type": "form",
+        "captcha_type": "image",
+        "form_field_username": "yhm",
+        "form_field_password": "mm",
+        "form_field_captcha": "yzm",
+        "captcha_path": "/jwglxt/kaptcha",
+        "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
+        "allowed_origin": "https://xk.huel.edu.cn",
+        "endpoint_overrides": {
+            "profile_path": None,
+            "schedule_path": None,
+            "grade_path": None,
+        },
+    }
+    assert detector.known_school_config("https://evil-xk.huel.edu.cn/") is None
+    assert detector.known_school_config("http://xk.huel.edu.cn/") is None
+    config["endpoint_overrides"]["profile_path"] = "/mutated-by-caller"
+    assert detector.known_school_config("https://xk.huel.edu.cn/")["endpoint_overrides"]["profile_path"] is None
+
+
+def test_huel_configuration_does_not_enable_unverified_data_endpoints():
+    config = ProviderDetector().known_school_config("https://xk.huel.edu.cn/")
+    school = school_config_from_dict(config)
+
+    assert school is not None
+    assert school.endpoints.profile_path is None
+    assert school.endpoints.schedule_path is None
+    assert school.endpoints.grade_path is None
+
+
+@pytest.mark.asyncio
+async def test_huel_schedule_fetch_rejects_unverified_endpoint(monkeypatch):
+    class NoDataRequestClient:
+        def __init__(self, **_kwargs):
+            self.cookies = {}
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+        async def post(self, *args, **kwargs):
+            raise AssertionError("an unverified HUEL schedule endpoint must not be requested")
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", NoDataRequestClient)
+
+    with pytest.raises(AdapterNotImplemented, match="schedule_path is not configured"):
+        await zhengfang_module.ZhengfangAdapter().fetch_schedule(
+            {
+                "adapter_config": ProviderDetector().known_school_config("https://xk.huel.edu.cn/"),
+                "cookies": {},
+            }
+        )
+
+
+def test_huel_login_fixture_detects_zhengfang():
+    result = ProviderDetector().detect(
+        url="https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+        html=_load("huel_login.html"),
+        headers={"X-Frame-Options": "SAMEORIGIN"},
+    )
+
+    assert result.provider == "ZHENGFANG"
+    assert result.confidence >= 0.6
 
 
 # ===== SchoolConfig 装配 =====
@@ -400,6 +476,89 @@ async def test_prepare_login_does_not_guess_captcha_url(monkeypatch):
 
     assert result["captcha_image_base64"] is None
     assert all("login_getCaptcha" not in path for path in NoCaptchaUrlClient.instance.calls)
+
+
+@pytest.mark.asyncio
+async def test_huel_prepare_login_rejects_an_html_captcha_url_outside_configured_path(monkeypatch):
+    class HuelProtocolClient:
+        instance = None
+
+        def __init__(self, **_kwargs):
+            self.calls = []
+            HuelProtocolClient.instance = self
+
+        async def get(self, path, **_kwargs):
+            self.calls.append(path)
+            if path.endswith("login_slogin.html"):
+                return HttpResponse(
+                    200,
+                    _load("huel_login.html").replace("/jwglxt/kaptcha", "/unexpected-captcha"),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/login_getPublicKey.html":
+                return HttpResponse(200, "{}", "https://xk.huel.edu.cn/jwglxt/xtgl/login_getPublicKey.html", {})
+            raise AssertionError(f"unexpected verification request: {path}")
+
+        @property
+        def cookies(self):
+            return {}
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", HuelProtocolClient)
+
+    result = await zhengfang_module.ZhengfangAdapter().prepare_login(
+        config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/")
+    )
+
+    assert result["captcha_image_base64"] is None
+    assert HuelProtocolClient.instance.calls == [
+        "/jwglxt/xtgl/login_slogin.html",
+        "/jwglxt/xtgl/login_getPublicKey.html",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_huel_login_rejects_malformed_public_key_from_configured_path(monkeypatch):
+    class HuelProtocolClient:
+        instance = None
+
+        def __init__(self, **_kwargs):
+            self.calls = []
+            HuelProtocolClient.instance = self
+
+        async def get(self, path, **_kwargs):
+            self.calls.append(path)
+            if path.endswith("login_slogin.html"):
+                return HttpResponse(
+                    200,
+                    _load("huel_login.html").replace(
+                        '<input name="csrftoken" type="hidden">',
+                        '<input name="csrftoken" type="hidden" value="fixture-csrf">',
+                    ),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/login_getPublicKey.html":
+                return HttpResponse(200, "not-json", "https://xk.huel.edu.cn/jwglxt/xtgl/login_getPublicKey.html", {})
+            raise AssertionError(f"unexpected verification request: {path}")
+
+        async def post(self, *args, **kwargs):
+            raise AssertionError("malformed public key must prevent login submission")
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", HuelProtocolClient)
+
+    with pytest.raises(EduAdapterError, match="登录加密参数无效"):
+        await zhengfang_module.ZhengfangAdapter().login(
+            username="fixture-user",
+            password="fixture-password",
+            captcha="fixture-captcha",
+            config=ProviderDetector().known_school_config("https://xk.huel.edu.cn/"),
+        )
+
+    assert HuelProtocolClient.instance.calls == [
+        "/jwglxt/xtgl/login_slogin.html",
+        "/jwglxt/xtgl/login_getPublicKey.html",
+    ]
 
 
 @pytest.mark.asyncio

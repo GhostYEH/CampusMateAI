@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from urllib.parse import urljoin, urlparse
 from typing import Optional
 
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -42,7 +43,6 @@ from .zhengfang_strategy import (
 )
 
 
-_JWGL2_PUBLIC_KEY_PATH = "/jwglxt/xtgl/login_getPublicKey.html"
 _CAPTCHA_IMAGE_MAX_BYTES = 1 * 1024 * 1024
 _ALLOWED_CAPTCHA_MIME_TYPES = frozenset({
     "image/gif",
@@ -137,6 +137,33 @@ def _extract_captcha_image_url(html: str) -> Optional[str]:
     return candidates[0][1]
 
 
+def _is_exact_origin(url: str, origin: str) -> bool:
+    candidate = urlparse(url)
+    expected = urlparse(origin)
+    return (
+        candidate.scheme == expected.scheme
+        and candidate.netloc == expected.netloc
+        and candidate.scheme in ("http", "https")
+    )
+
+
+def _ensure_configured_origin(school: SchoolConfig) -> None:
+    if school.allowed_origin and not _is_exact_origin(school.base_url, school.allowed_origin):
+        raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统登录 origin 与学校配置不一致")
+
+
+def _configured_captcha_url(school: SchoolConfig, img_url: str) -> Optional[str]:
+    full_url = img_url if img_url.startswith(("http://", "https://")) else urljoin(
+        school.base_url.rstrip("/") + "/", img_url
+    )
+    parsed = urlparse(full_url)
+    if school.allowed_origin and not _is_exact_origin(full_url, school.allowed_origin):
+        return None
+    if school.captcha_path and parsed.path != school.captcha_path:
+        return None
+    return full_url
+
+
 class ZhengfangAdapter(EduAdapter):
     """正方教务系统适配器（真实实现）。
 
@@ -166,6 +193,7 @@ class ZhengfangAdapter(EduAdapter):
         school = school_config_from_dict(config)
         if school is None:
             raise AdapterNotImplemented(self.provider, "prepare_login: missing base_url in config")
+        _ensure_configured_origin(school)
 
         if school.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
             raise NeedUserAction(
@@ -193,26 +221,26 @@ class ZhengfangAdapter(EduAdapter):
         if captcha_required:
             img_url = _extract_captcha_image_url(page.text)
             if img_url:
-                from urllib.parse import urljoin
-                full_url = img_url if img_url.startswith(("http://", "https://")) else urljoin(school.base_url.rstrip("/") + "/", img_url)
-                captcha_image_url = full_url
-                try:
-                    img_resp = await client.get(full_url, referer=school.effective_login_url)
-                    mime_type = img_resp.content_type
-                    raw = img_resp.content
-                    if (
-                        img_resp.status == 200
-                        and mime_type in _ALLOWED_CAPTCHA_MIME_TYPES
-                        and 0 < len(raw) <= _CAPTCHA_IMAGE_MAX_BYTES
-                    ):
-                        captcha_image_base64 = base64.b64encode(raw).decode("ascii")
-                        captcha_mime_type = mime_type
-                except EduAdapterError:
-                    pass
+                full_url = _configured_captcha_url(school, img_url)
+                if full_url:
+                    captcha_image_url = full_url
+                    try:
+                        img_resp = await client.get(full_url, referer=school.effective_login_url)
+                        mime_type = img_resp.content_type
+                        raw = img_resp.content
+                        if (
+                            img_resp.status == 200
+                            and mime_type in _ALLOWED_CAPTCHA_MIME_TYPES
+                            and 0 < len(raw) <= _CAPTCHA_IMAGE_MAX_BYTES
+                        ):
+                            captcha_image_base64 = base64.b64encode(raw).decode("ascii")
+                            captcha_mime_type = mime_type
+                    except EduAdapterError:
+                        pass
 
         public_key_text: Optional[str] = None
         try:
-            pk_resp = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+            pk_resp = await client.get(school.public_key_path, referer=school.effective_login_url)
             public_key_text = pk_resp.text
         except EduAdapterError:
             pass
@@ -243,6 +271,7 @@ class ZhengfangAdapter(EduAdapter):
         school = school_config_from_dict(config)
         if school is None:
             raise AdapterNotImplemented(self.provider, "login: missing base_url in config")
+        _ensure_configured_origin(school)
 
         if school.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
             raise NeedUserAction(
@@ -282,7 +311,7 @@ class ZhengfangAdapter(EduAdapter):
                 if not csrf_token:
                     raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "预登录 session 缺少 csrftoken")
                 if not public_key_text:
-                    pk_resp = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+                    pk_resp = await client.get(school.public_key_path, referer=school.effective_login_url)
                     public_key_text = pk_resp.text
             else:
                 # 正常流程：GET 登录页
@@ -296,7 +325,7 @@ class ZhengfangAdapter(EduAdapter):
                 csrf_token = _hidden_input_value(page.text, "csrftoken")
                 if not csrf_token:
                     raise EduAdapterError("LOGIN_PROTOCOL_ERROR", "教务系统未返回登录令牌")
-                public_key = await client.get(_JWGL2_PUBLIC_KEY_PATH, referer=school.effective_login_url)
+                public_key = await client.get(school.public_key_path, referer=school.effective_login_url)
                 public_key_text = public_key.text
 
             form = {
@@ -370,6 +399,7 @@ class ZhengfangAdapter(EduAdapter):
                     school = SchoolConfig(base_url=base_url)
             if school is None:
                 raise AdapterNotImplemented(self.provider, "login_with_cookies: missing base_url in config and current_url")
+        _ensure_configured_origin(school)
 
         client = ZhengfangHttpClient(
             base_url=school.base_url,
@@ -402,6 +432,8 @@ class ZhengfangAdapter(EduAdapter):
 
     async def _authenticated_probe(self, school: SchoolConfig, client: ZhengfangHttpClient) -> EduProfile:
         """访问需要登录的学生信息端点，拒绝首页 200、登录页和网络异常。"""
+        if not school.endpoints.profile_path:
+            raise AdapterNotImplemented(self.provider, "authenticated probe: profile_path is not configured")
         try:
             resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
         except Exception as exc:
@@ -424,6 +456,8 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_profile(self, session: dict) -> EduProfile:
         school, client = self._prepare(session)
+        if not school.endpoints.profile_path:
+            raise AdapterNotImplemented(self.provider, "fetch_profile: profile_path is not configured")
         if school.endpoints.profile_format == "html":
             resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
             return self._parser.parse_profile_html(resp.text)
@@ -432,6 +466,8 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_schedule(self, session: dict, *, semester: Optional[str] = None) -> EduSchedule:
         school, client = self._prepare(session)
+        if not school.endpoints.schedule_path:
+            raise AdapterNotImplemented(self.provider, "fetch_schedule: schedule_path is not configured")
         params = dict(school.schedule_payload_extra)
         if semester:
             params.setdefault(school.semester_param_name, semester)
@@ -443,6 +479,8 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_grade(self, session: dict, *, semester: Optional[str] = None) -> EduGrade:
         school, client = self._prepare(session)
+        if not school.endpoints.grade_path:
+            raise AdapterNotImplemented(self.provider, "fetch_grade: grade_path is not configured")
         params = dict(school.grade_payload_extra)
         if semester:
             params.setdefault(school.semester_param_name, semester)
@@ -464,6 +502,7 @@ class ZhengfangAdapter(EduAdapter):
         school = school_config_from_dict(config)
         if school is None:
             raise AdapterNotImplemented(self.provider, "session missing base_url")
+        _ensure_configured_origin(school)
         client = ZhengfangHttpClient(
             base_url=school.base_url,
             encoding=school.encoding,
