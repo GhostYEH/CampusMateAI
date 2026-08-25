@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -20,9 +21,9 @@ import com.example.campusai.data.remote.EduCookieDto
 import kotlinx.coroutines.delay
 import java.net.URI
 
-/** 解析 Cookie 字符串 "k1=v1; k2=v2" 为 Map。安全处理 = 与 ; 。 */
-fun parseCookieString(cookieStr: String): Map<String, String> {
-    val result = mutableMapOf<String, String>()
+/** Parses the Cookie header as ordered entries; never collapse same-name cookies. */
+fun parseCookieString(cookieStr: String): List<Pair<String, String>> {
+    val result = mutableListOf<Pair<String, String>>()
     for (part in cookieStr.split(";")) {
         val trimmed = part.trim()
         if (trimmed.isEmpty()) continue
@@ -30,7 +31,7 @@ fun parseCookieString(cookieStr: String): Map<String, String> {
         if (eqIdx <= 0) continue
         val key = trimmed.substring(0, eqIdx).trim()
         val value = trimmed.substring(eqIdx + 1).trim()
-        if (key.isNotEmpty()) result[key] = value
+        if (key.isNotEmpty()) result += key to value
     }
     return result
 }
@@ -59,11 +60,16 @@ fun isAllowedEduNavigation(url: String, loginUrl: String, backendAllowedOrigins:
     return target in allowed
 }
 
+/** Fail closed for every WebView callback, including resource/POST callbacks. */
+fun shouldBlockEduRequest(url: String?, loginUrl: String, backendAllowedOrigins: List<String> = emptyList()): Boolean =
+    url == null || !isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)
+
 /** CookieManager exposes name/value only; unavailable attributes stay null. */
 fun cookieDtosForUrl(cookieStr: String, url: String): List<EduCookieDto> {
-    val domain = URI(url).host?.lowercase() ?: return emptyList()
+    val parsed = URI(url)
+    val domain = parsed.host?.lowercase() ?: return emptyList()
     return parseCookieString(cookieStr).map { (name, value) ->
-        EduCookieDto(name = name, value = value, domain = domain)
+        EduCookieDto(name = name, value = value, domain = domain, source_url = url, host_only = true)
     }
 }
 
@@ -81,7 +87,7 @@ fun collectCookiesFromUrls(
         if (cookieStr.isBlank()) continue
         jar += cookieDtosForUrl(cookieStr, url)
     }
-    return jar.distinctBy { listOf(it.name, it.value, it.domain, it.path).joinToString("\u0000") }
+    return jar.distinctBy { listOf(it.name, it.value, it.domain, it.path, it.source_url, it.host_only).joinToString("\u0000") }
 }
 
 /** EduLoginScreen — 内嵌 WebView 教务登录页。
@@ -184,8 +190,14 @@ fun EduLoginScreen(
                                 if (url != null && isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)) currentUrl = url
                             }
                             override fun onPageFinished(view: WebView?, url: String?) {
-                                if (url == null || !isAllowedEduNavigation(url, loginUrl, backendAllowedOrigins)) return
-                                currentUrl = url
+                                if (shouldBlockEduRequest(url, loginUrl, backendAllowedOrigins)) {
+                                    view?.stopLoading()
+                                    view?.loadUrl("about:blank")
+                                    CookieManager.getInstance().removeAllCookies(null)
+                                    CookieManager.getInstance().flush()
+                                    return
+                                }
+                                currentUrl = url ?: return
                                 CookieManager.getInstance().flush()
                                 val now = System.currentTimeMillis()
                                 if (now - lastVerifyTime > 1200 && !verifyInFlight) {
@@ -194,9 +206,11 @@ fun EduLoginScreen(
                                 }
                             }
                             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                return request?.url?.toString()?.let {
-                                    !isAllowedEduNavigation(it, loginUrl, backendAllowedOrigins)
-                                } ?: true
+                                return shouldBlockEduRequest(request?.url?.toString(), loginUrl, backendAllowedOrigins)
+                            }
+                            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                                if (!shouldBlockEduRequest(request?.url?.toString(), loginUrl, backendAllowedOrigins)) return null
+                                return WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", emptyMap(), null)
                             }
                         }
                         webChromeClient = object : WebChromeClient() {}

@@ -5,6 +5,8 @@ data class EduCookieDto(
     val name: String,
     val value: String,
     val domain: String? = null,
+    val source_url: String? = null,
+    val host_only: Boolean? = null,
     val path: String? = null,
     val secure: Boolean? = null,
     val http_only: Boolean? = null,

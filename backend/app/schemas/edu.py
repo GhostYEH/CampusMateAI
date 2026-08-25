@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
@@ -182,6 +183,8 @@ class EduCookie(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
     value: str = Field(..., max_length=4096)
     domain: Optional[str] = Field(None, max_length=253)
+    source_url: Optional[str] = Field(None, max_length=2048)
+    host_only: Optional[bool] = None
     path: Optional[str] = Field(None, max_length=1024)
     secure: Optional[bool] = None
     http_only: Optional[bool] = None
@@ -198,7 +201,7 @@ class EduCookie(BaseModel):
     @field_validator("value")
     @classmethod
     def validate_value(cls, value: str) -> str:
-        if _has_control_characters(value):
+        if _has_control_characters(value) or any(char in value for char in ";,\\\""):
             raise ValueError("cookie value contains control characters")
         return value
 
@@ -219,6 +222,16 @@ class EduCookie(BaseModel):
             return None
         if not value.startswith("/") or "?" in value or "#" in value or _has_control_characters(value):
             raise ValueError("cookie path is invalid")
+        return value
+
+    @field_validator("source_url")
+    @classmethod
+    def validate_source_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or _has_control_characters(value):
+            raise ValueError("cookie source_url must be an https URL without userinfo")
         return value
 
 
@@ -257,6 +270,17 @@ class EduConnectionContinue(BaseModel):
     def validate_user_agent(cls, value: Optional[str]) -> Optional[str]:
         if value is not None and _has_control_characters(value):
             raise ValueError("user_agent contains control characters")
+        return value
+
+    @field_validator("cookies")
+    @classmethod
+    def validate_legacy_cookies(cls, value: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+        if value is None:
+            return None
+        if len(value) > 64:
+            raise ValueError("too many cookies")
+        for name, cookie_value in value.items():
+            EduCookie(name=name, value=cookie_value)
         return value
 
 

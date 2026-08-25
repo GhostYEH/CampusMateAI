@@ -18,6 +18,14 @@ class EduLoginSecurityTest {
     }
 
     @Test
+    fun requestLayerFailsClosedForExternalAndMissingUrls() {
+        val loginUrl = "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+        assertFalse(shouldBlockEduRequest("https://xk.huel.edu.cn/jwglxt/main", loginUrl))
+        assertTrue(shouldBlockEduRequest("https://xk.huel.edu.cn.attacker.example/post", loginUrl))
+        assertTrue(shouldBlockEduRequest(null, loginUrl))
+    }
+
+    @Test
     fun cookieDtosKeepSameNameFromDifferentAllowedOrigins() {
         val portal = cookieDtosForUrl("JSESSIONID=portal", "https://xk.huel.edu.cn/jwglxt")
         val sso = cookieDtosForUrl("JSESSIONID=sso", "https://sso.huel.edu.cn/cas")

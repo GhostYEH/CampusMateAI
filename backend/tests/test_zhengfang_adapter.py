@@ -61,6 +61,8 @@ def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
             "name": "JSESSIONID",
             "value": "portal-session",
             "domain": "jwxt.example.edu.cn",
+            "source_url": "https://jwxt.example.edu.cn/login",
+            "host_only": True,
             "path": "/",
             "secure": True,
             "http_only": None,
@@ -71,19 +73,23 @@ def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
             "name": "JSESSIONID",
             "value": "sso-session",
             "domain": "sso.example.edu.cn",
+                "source_url": "https://sso.example.edu.cn/auth/login",
+                "host_only": None,
             "path": "/auth",
             "secure": True,
             "http_only": True,
             "same_site": "Lax",
             "expires": 1735689600,
         },
-    ])
+    ], allowed_origins=["https://jwxt.example.edu.cn", "https://sso.example.edu.cn"])
 
     assert client.cookie_jar == [
         {
             "name": "JSESSIONID",
             "value": "portal-session",
             "domain": "jwxt.example.edu.cn",
+            "source_url": "https://jwxt.example.edu.cn/login",
+            "host_only": True,
             "path": "/",
             "secure": True,
             "http_only": None,
@@ -94,13 +100,44 @@ def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
             "name": "JSESSIONID",
             "value": "sso-session",
             "domain": "sso.example.edu.cn",
-            "path": "/auth",
+                "source_url": "https://sso.example.edu.cn/auth/login",
+                "host_only": None,
+                "path": "/auth",
             "secure": True,
             "http_only": True,
             "same_site": "Lax",
             "expires": 1735689600,
         },
     ]
+
+
+def test_http_cookie_jar_matches_path_host_only_secure_expiry_and_rejects_unknown_scope():
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+    client.set_cookie_jar([
+        {"name": "sid", "value": "root", "source_url": "https://jwxt.example.edu.cn/login", "host_only": True, "path": "/", "expires": 253402300799},
+        {"name": "sid", "value": "deep", "source_url": "https://jwxt.example.edu.cn/login", "host_only": True, "path": "/jwglxt", "expires": 253402300799},
+    ])
+    request = httpx.Request("GET", "https://jwxt.example.edu.cn/jwglxt/profile")
+    client._cookies.set_cookie_header(request)
+    assert request.headers["cookie"] == "sid=deep; sid=root"
+    subdomain_request = httpx.Request("GET", "https://sub.jwxt.example.edu.cn/jwglxt/profile")
+    client._cookies.set_cookie_header(subdomain_request)
+    assert "cookie" not in subdomain_request.headers
+    insecure_request = httpx.Request("GET", "http://jwxt.example.edu.cn/jwglxt/profile")
+    client._cookies.set_cookie_header(insecure_request)
+    assert "cookie" not in insecure_request.headers
+    with pytest.raises(ValueError, match="source_url"):
+        client.set_cookie_jar([{"name": "sid", "value": "ok", "domain": None}])
+
+
+def test_cookie_contract_rejects_delimiters_and_untrusted_source():
+    with pytest.raises(ValueError):
+        EduConnectionContinue(cookie_jar=[{"name": "sid", "value": "ok; injected=yes"}])
+    with pytest.raises(ValueError):
+        EduConnectionContinue(cookies={"sid": "ok; injected=yes"})
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+    with pytest.raises(ValueError, match="outside allowed"):
+        client.set_cookie_jar([{"name": "sid", "value": "ok", "source_url": "https://evil.example/login"}])
 
 
 def test_continue_contract_accepts_cookie_jar_and_rejects_control_character_user_agent():

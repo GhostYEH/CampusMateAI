@@ -34,7 +34,7 @@ export function cookieDtosForUrl(cookieString: string, url: string): EduCookieDt
     if (separator <= 0) continue;
     const name: string = item.slice(0, separator).trim();
     const value: string = item.slice(separator + 1).trim();
-    if (name.length > 0) entries.push({ name: name, value: value, domain: domain });
+    if (name.length > 0) entries.push({ name: name, value: value, domain: domain, source_url: url, host_only: true });
   }
   return entries;
 }

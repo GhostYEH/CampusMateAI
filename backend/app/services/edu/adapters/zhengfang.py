@@ -444,7 +444,7 @@ class ZhengfangAdapter(EduAdapter):
             extra_headers=extra_headers,
         )
         if cookie_jar:
-            client.set_cookie_jar(cookie_jar)
+            client.set_cookie_jar(cookie_jar, allowed_origins=[school.allowed_origin or school.base_url])
         else:
             client.set_cookies(cookies)
 
@@ -556,7 +556,7 @@ class ZhengfangAdapter(EduAdapter):
         cookie_jar = session.get("cookie_jar") or []
         cookies = session.get("cookies") or {}
         if isinstance(cookie_jar, list) and cookie_jar:
-            client.set_cookie_jar(cookie_jar)
+            client.set_cookie_jar(cookie_jar, allowed_origins=[school.allowed_origin or school.base_url])
         elif isinstance(cookies, dict):
             client.set_cookies(cookies)
         return school, client

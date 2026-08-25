@@ -12,9 +12,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from http.cookiejar import Cookie
+from http.cookiejar import Cookie, DefaultCookiePolicy
 from typing import Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 
@@ -110,6 +110,8 @@ class ZhengfangHttpClient:
                 "name": cookie.name,
                 "value": cookie.value,
                 "domain": None if rest.get("_campusmate_domain_unknown") else cookie.domain,
+                "source_url": rest.get("_campusmate_source_url"),
+                "host_only": True if rest.get("_campusmate_host_only") else None,
                 "path": None if rest.get("_campusmate_path_unknown") else cookie.path,
                 "secure": None if rest.get("_campusmate_secure_unknown") else cookie.secure,
                 "http_only": True if "httponly" in rest else None,
@@ -126,6 +128,8 @@ class ZhengfangHttpClient:
                 "name": name,
                 "value": value,
                 "domain": None,
+                "source_url": self._base_url,
+                "host_only": True,
                 "path": None,
                 "secure": None,
                 "http_only": None,
@@ -135,10 +139,18 @@ class ZhengfangHttpClient:
             for name, value in cookies.items()
         ])
 
-    def set_cookie_jar(self, cookies: list[dict]) -> None:
+    def set_cookie_jar(self, cookies: list[dict], *, allowed_origins: Optional[list[str]] = None) -> None:
         if not isinstance(cookies, list):
             raise ValueError("cookie_jar must be a list")
         jar = httpx.Cookies()
+        jar.jar.set_policy(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain))
+        allowed = allowed_origins or [self._base_url]
+        allowed_hosts: set[str] = set()
+        for origin in allowed:
+            parsed = urlsplit(origin)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError("allowed cookie origin must be exact https origin")
+            allowed_hosts.add(parsed.hostname.lower())
         for item in cookies:
             if not isinstance(item, dict):
                 raise ValueError("cookie entry must be an object")
@@ -146,26 +158,52 @@ class ZhengfangHttpClient:
             value = item.get("value")
             domain = item.get("domain")
             path = item.get("path")
+            source_url = item.get("source_url")
+            host_only = item.get("host_only")
             if not isinstance(name, str) or not name or not isinstance(value, str):
                 raise ValueError("cookie name and value are required strings")
-            if any(ord(char) < 32 or ord(char) == 127 for char in name + value):
+            if any(ord(char) < 32 or ord(char) == 127 for char in name + value) or any(char in value for char in ';,\\\"'):
                 raise ValueError("cookie contains control characters")
             if domain is not None and not isinstance(domain, str):
                 raise ValueError("cookie domain must be a string or null")
             if path is not None and not isinstance(path, str):
                 raise ValueError("cookie path must be a string or null")
+            if source_url is not None and not isinstance(source_url, str):
+                raise ValueError("cookie source_url must be a string or null")
+            if host_only is not None and not isinstance(host_only, bool):
+                raise ValueError("cookie host_only must be a boolean or null")
+            source_host: Optional[str] = None
+            if source_url is not None:
+                source = urlsplit(source_url)
+                if source.scheme != "https" or not source.hostname or source.username or source.password:
+                    raise ValueError("cookie source_url must be exact https")
+                source_host = source.hostname.lower()
+                if source_host not in allowed_hosts:
+                    raise ValueError("cookie source_url is outside allowed origins")
+            elif domain is not None and domain.lower().lstrip(".") in allowed_hosts:
+                # Old structured clients lacked source metadata: keep the scope host-only.
+                source_host = domain.lower().lstrip(".")
+                host_only = True
+            else:
+                raise ValueError("cookie source_url is required for unknown scope")
+            normalized_domain = (domain or source_host).lower().lstrip(".")
+            if normalized_domain not in allowed_hosts or normalized_domain != source_host:
+                raise ValueError("cookie domain is outside the source origin")
+            if host_only is None:
+                host_only = domain is None
             rest: dict[str, object] = {}
             if item.get("http_only") is True:
                 rest["HttpOnly"] = None
             if item.get("same_site") is not None:
                 rest["SameSite"] = item["same_site"]
-            if domain is None:
-                rest["_campusmate_domain_unknown"] = "1"
+            if host_only:
+                rest["_campusmate_host_only"] = "1"
+            if source_url is not None:
+                rest["_campusmate_source_url"] = source_url
             if path is None:
                 rest["_campusmate_path_unknown"] = "1"
             if item.get("secure") is None:
                 rest["_campusmate_secure_unknown"] = "1"
-            normalized_domain = domain or ""
             normalized_path = path or "/"
             expires = item.get("expires")
             if expires is not None and (not isinstance(expires, int) or isinstance(expires, bool) or expires < 0):
@@ -177,11 +215,11 @@ class ZhengfangHttpClient:
                 port=None,
                 port_specified=False,
                 domain=normalized_domain,
-                domain_specified=domain is not None,
-                domain_initial_dot=bool(domain and domain.startswith(".")),
+                domain_specified=not host_only,
+                domain_initial_dot=False,
                 path=normalized_path,
                 path_specified=path is not None,
-                secure=bool(item.get("secure")),
+                secure=True if item.get("secure") is None else bool(item.get("secure")),
                 expires=expires,
                 discard=expires is None,
                 comment=None,

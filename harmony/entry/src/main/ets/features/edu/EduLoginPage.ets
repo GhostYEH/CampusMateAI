@@ -6,6 +6,7 @@ import { ApiClient } from '../../data/ApiClient';
 import { cookieDtosForUrl, isAllowedEduNavigation } from './EduLoginSecurity';
 
 interface PageEndEvent { url: string }
+interface UrlLoadEvent { data: string | WebResourceRequest }
 
 /** EduLoginPage — ArkWeb 内嵌教务登录页。
 
@@ -34,9 +35,9 @@ export struct EduLoginPage {
     this.currentUrl = '';
     this.errorMsg = '';
     this.verifying = false;
-    try { webview.WebCookieManager.deleteAllCookies(); } catch (_) {}
+    try { webview.WebCookieManager.clearAllCookiesSync(); } catch (_) {}
     try { this.controller.clearHistory(); } catch (_) {}
-    try { this.controller.clearCache(); } catch (_) {}
+    try { this.controller.removeCache(true); } catch (_) {}
     try { this.controller.loadUrl('about:blank'); } catch (_) {}
   }
 
@@ -70,7 +71,7 @@ export struct EduLoginPage {
       this.verifying = true;
       const client = new ApiClient(this.apiBaseUrl, () => this.authToken, null);
       const repo = new EduRepository(client);
-      const conn = await repo.continueWithCookies(this.connectionId, cookieJar, url);
+      const conn = await repo.continueWithCookies(this.connectionId, cookieJar, url, this.controller.getUserAgent());
       if (conn.state === 'connected') {
         this.connected = true;
         this.verifying = false;
@@ -105,7 +106,7 @@ export struct EduLoginPage {
           .domStorageAccess(true)
           .databaseAccess(true)
           .javaScriptAccess(true)
-          .onUrlLoadIntercept((event?: { data: string | WebResourceRequest }) => {
+          .onUrlLoadIntercept((event?: UrlLoadEvent) => {
             if (event === undefined) return true;
             const targetUrl: string = typeof event.data === 'string'
               ? event.data
