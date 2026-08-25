@@ -7,6 +7,7 @@ const notice = document.querySelector("#notice");
 const muteButton = document.querySelector("#mute");
 const stopButton = document.querySelector("#stop");
 const replayButton = document.querySelector("#replay");
+const compatAvatar = document.querySelector("#compat-avatar");
 let config = normalizeRuntimeConfig();
 let lastText = "";
 let muted = false;
@@ -14,11 +15,20 @@ let speaking = false;
 let paused = false;
 let abortController = null;
 
-if (new URLSearchParams(window.location.search).get("embed") === "1") {
+const pageParams = new URLSearchParams(window.location.search);
+if (pageParams.get("embed") === "1") {
   document.body.classList.add("embed");
+}
+if (pageParams.get("fallback") === "1") {
+  frame.src = "./index.html?fallback=1";
 }
 
 function sendUnity(type, value) {
+  if (!compatAvatar.hidden) {
+    if (type === "speech-level") compatAvatar.style.setProperty("--mouth-open", String(Math.max(0, Math.min(1, Number(value) || 0))));
+    if (type === "speech-stop") compatAvatar.style.setProperty("--mouth-open", "0");
+    return;
+  }
   frame.contentWindow?.postMessage(createUnitySpeechMessage(type, value), window.location.origin);
 }
 

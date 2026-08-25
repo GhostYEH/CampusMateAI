@@ -19,8 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 
 object DigitalHumanBridge {
-    fun stageUrl(apiBaseUrl: String): String =
-        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") + "/digital-human/mobile.html?embed=1"
+    fun stageUrl(apiBaseUrl: String, forceFallback: Boolean = false): String =
+        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") +
+            "/digital-human/mobile.html?embed=1" + if (forceFallback) "&fallback=1" else ""
 
     fun configureScript(apiBaseUrl: String, accessToken: String): String =
         "window.CampusMateDigitalHuman.configure({apiBaseUrl:${jsString(apiBaseUrl)},accessToken:${jsString(accessToken)}});"
@@ -84,7 +85,10 @@ fun DigitalHumanStage(
                     pageReady = true
                 }
             }
-            loadUrl(DigitalHumanBridge.stageUrl(apiBaseUrl))
+            val emulatorNeedsFallback = android.os.Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+                android.os.Build.MODEL.contains("sdk_gphone", ignoreCase = true) ||
+                android.os.Build.MODEL.contains("Emulator", ignoreCase = true)
+            loadUrl(DigitalHumanBridge.stageUrl(apiBaseUrl, emulatorNeedsFallback))
         }
     }
 

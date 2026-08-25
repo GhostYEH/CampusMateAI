@@ -35,18 +35,11 @@ struct CpmMessageRow {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   aboutToAppear(): void {
-    this.dataSource.onChanged = () => {
-      setTimeout(() => this.scroller.scrollEdge(Edge.Bottom), 0);
-    };
     this.cursorTimer = setInterval(() => {
       animateTo({ duration: 480, curve: Curve.EaseInOut }, () => {
         this.cursorOpacity = this.cursorOpacity > 0.5 ? 0.15 : 1;
       });
     }, 520);
-  }
-
-  aboutToDisappear(): void {
-    this.dataSource.onChanged = () => {};
   }
 
   aboutToDisappear(): void {
@@ -170,10 +163,17 @@ export struct CounselorPage {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   aboutToAppear(): void {
+    this.dataSource.onChanged = () => {
+      setTimeout((): void => this.scroller.scrollEdge(Edge.Bottom), 0);
+    };
     if (this.dataSource.totalCount() > 0) {
       this.chatActive = true;
       this.suggestionOpacity = 0;
     }
+  }
+
+  aboutToDisappear(): void {
+    this.dataSource.onChanged = () => {};
   }
 
   visibleQuestions(): QuickQuestion[] {
@@ -235,37 +235,23 @@ export struct CounselorPage {
   }
 
   @Builder DigitalHumanCard() {
-    if (this.chatActive) {
-      Row({ space: 12 }) {
-        this.Avatar(58)
-        Column({ space: 3 }) {
-          Text('你好，我是CPM').fontColor(this.palette().text).fontSize(18).fontWeight(FontWeight.Bold)
-          Text(this.sending ? '正在生成回答…' : '尽管提问！').fontColor(this.sending ? this.palette().primary : this.palette().muted).fontSize(12)
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        SymbolGlyph($r('sys.symbol.speaker_slash')).fontSize(20).fontColor([this.palette().primary]).onClick(() => this.issueCommand('mute'))
-        SymbolGlyph($r('sys.symbol.pause_circle')).fontSize(20).fontColor([this.palette().primary]).onClick(() => this.issueCommand('pause'))
-      }.width('100%').height(78).padding(10).alignItems(VerticalAlign.Center)
-        .backgroundColor(this.darkMode ? '#F21B2436' : '#F8FFFFFF').border({ width: 1, color: '#FFFFFFFF' }).borderRadius(24)
-        .shadow({ radius: 18, color: '#164B5DAC', offsetY: 7 })
-    } else {
-      Row({ space: 18 }) {
-        this.Avatar(154)
-        Column({ space: 0 }) {
-          Row() {
-            Text('你好，我是').fontColor('#FF385AF6').fontSize(23).fontWeight(FontWeight.Bold)
-            Text('CPM').fontColor('#FF8152F6').fontSize(23).fontWeight(FontWeight.Bold)
-          }
-          Text('尽管提问！').fontColor(this.palette().muted).fontSize(15).margin({ top: 8, bottom: 18 })
-          Row({ space: 8 }) {
-            this.Control($r('sys.symbol.speaker_slash'), '静音', 'mute')
-            this.Control($r('sys.symbol.pause_circle'), '暂停', 'pause')
-            this.Control($r('sys.symbol.arrow_counterclockwise'), '重播', 'replay')
-          }.width('100%')
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Center)
-      }.width('100%').height(224).padding(18).alignItems(VerticalAlign.Center)
-        .backgroundColor(this.darkMode ? '#F21B2436' : '#F8FFFFFF').border({ width: 1, color: '#FFFFFFFF' }).borderRadius(31)
-        .shadow({ radius: 22, color: '#164B5DAC', offsetY: 8 })
-    }
+    Row({ space: 18 }) {
+      this.Avatar(160)
+      Column({ space: 0 }) {
+        Row() {
+          Text('你好，我是').fontColor('#FF385AF6').fontSize(23).fontWeight(FontWeight.Bold)
+          Text('CPM').fontColor('#FF8152F6').fontSize(23).fontWeight(FontWeight.Bold)
+        }
+        Text(this.sending ? '正在生成回答…' : '尽管提问！').fontColor(this.sending ? this.palette().primary : this.palette().muted).fontSize(15).margin({ top: 8, bottom: 18 })
+        Row({ space: 8 }) {
+          this.Control($r('sys.symbol.speaker_slash'), '静音', 'mute')
+          this.Control($r('sys.symbol.pause_circle'), '暂停', 'pause')
+          this.Control($r('sys.symbol.arrow_counterclockwise'), '重播', 'replay')
+        }.width('100%')
+      }.layoutWeight(1).alignItems(HorizontalAlign.Start).justifyContent(FlexAlign.Center)
+    }.width('100%').height(250).padding(18).alignItems(VerticalAlign.Center)
+      .backgroundColor(this.darkMode ? '#F21B2436' : '#F8FFFFFF').border({ width: 1, color: '#FFFFFFFF' }).borderRadius(31)
+      .shadow({ radius: 22, color: '#164B5DAC', offsetY: 8 })
   }
 
   @Builder QuestionCard(question: QuickQuestion) {

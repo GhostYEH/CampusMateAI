@@ -18,6 +18,10 @@
     .speaking .state::before { background: #5368ef; box-shadow: 0 0 0 4px rgba(83,104,239,.14); }
     main { position: relative; min-height: 0; margin: 0 10px; overflow: hidden; border: 1px solid rgba(211,219,244,.9); border-radius: 18px; background: #e8edfb; box-shadow: 0 12px 28px rgba(48,65,128,.10); }
     iframe { width: 100%; height: 100%; border: 0; background: #e8edfb; }
+    #compat-avatar { position: absolute; inset: 0; overflow: hidden; background: #e8edfb; }
+    #compat-avatar[hidden] { display: none; }
+    #compat-avatar img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.04) translateY(9%); transform-origin: 50% 50%; }
+    #compat-mouth { position: absolute; left: 50%; top: 27%; width: 3.6%; height: calc(1% + var(--mouth-open, 0) * 4%); min-height: 2px; border-radius: 50%; background: rgba(116,52,72,.84); transform: translate(-50%, -50%); }
     #loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: #65739a; text-align: center; background: #e8edfb; }
     #loading[hidden], #notice[hidden] { display: none; }
     #notice { margin: 8px 14px 0; color: #8b5a22; font-size: 11px; text-align: center; }
@@ -37,6 +41,7 @@
   </header>
   <main>
     <iframe id="avatar-frame" src="./index.html" title="CampusMate AI 数字人" allow="autoplay"></iframe>
+    <div id="compat-avatar" hidden><img src="./fallback-avatar.png" alt="CPM 数字人" /><span id="compat-mouth"></span></div>
     <div id="loading">正在唤醒数字人…</div>
   </main>
   <p id="notice" role="status" hidden></p>
@@ -45,6 +50,14 @@
     <button id="stop" type="button" disabled>暂停</button>
     <button id="replay" type="button" disabled>重播</button>
   </footer>
-  <script type="module" src="./mobileApp.js"></script>
+  <script>
+    if (new URLSearchParams(window.location.search).get("fallback") === "1") {
+      document.querySelector("#avatar-frame").removeAttribute("src");
+      document.querySelector("#avatar-frame").hidden = true;
+      document.querySelector("#compat-avatar").hidden = false;
+      document.querySelector("#loading").hidden = true;
+    }
+  </script>
+  <script type="module" src="./mobileApp.js?v=3"></script>
 </body>
 </html>
