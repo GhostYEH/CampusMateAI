@@ -79,6 +79,7 @@ tmp/
 **/verify_notice_output.txt
 *.mp4
 !android/app/src/main/res/raw/login_campus.mp4
+!harmony/entry/src/main/resources/base/media/login_campus.mp4
 
 # Build artifacts (APK / Web / etc.) — 产物不纳入版本控制
 artifacts/

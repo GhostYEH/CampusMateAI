@@ -23,6 +23,8 @@ import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
 import expressionModelMathTest from './ets/data/ExpressionModelMath.test';
 import expressionFaceQualityTest from './ets/data/ExpressionFaceQuality.test';
 import counselorVisualSpecTest from './ets/ui/CounselorVisualSpec.test';
+import focusCameraContractTest from './ets/data/FocusCameraContract.test';
+import cpmChatDataSourceTest from './ets/counselor/CpmChatDataSource.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -50,4 +52,6 @@ export default function testsuite(): void {
   expressionModelMathTest();
   expressionFaceQualityTest();
   counselorVisualSpecTest();
+  focusCameraContractTest();
+  cpmChatDataSourceTest();
 }

@@ -6,31 +6,39 @@ import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 object DigitalHumanBridge {
-    fun stageUrl(apiBaseUrl: String): String =
-        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") + "/digital-human/mobile.html"
+    fun stageUrl(apiBaseUrl: String, forceFallback: Boolean = false): String =
+        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") +
+            "/digital-human/mobile.html?embed=1" + if (forceFallback) "&fallback=1" else ""
 
     fun configureScript(apiBaseUrl: String, accessToken: String): String =
         "window.CampusMateDigitalHuman.configure({apiBaseUrl:${jsString(apiBaseUrl)},accessToken:${jsString(accessToken)}});"
 
     fun speakScript(text: String): String =
         "window.CampusMateDigitalHuman.speak(${jsString(text)});"
+
+    fun commandScript(command: DigitalHumanCommand): String = when (command) {
+        DigitalHumanCommand.TOGGLE_MUTE -> "window.CampusMateDigitalHuman.toggleMuted();"
+        DigitalHumanCommand.TOGGLE_PAUSE -> "window.CampusMateDigitalHuman.togglePaused();"
+        DigitalHumanCommand.REPLAY -> "window.CampusMateDigitalHuman.replay();"
+        DigitalHumanCommand.NONE -> ""
+    }
 
     private fun jsString(value: String): String = buildString {
         append('"')
@@ -51,6 +59,38 @@ object DigitalHumanBridge {
         append('"')
     }
 }
+
+internal enum class DigitalHumanRenderMode { LIVE_WEBGL, NATIVE_COMPAT }
+
+internal fun shouldCreateEmbeddedDigitalHuman(renderMode: DigitalHumanRenderMode): Boolean =
+    renderMode == DigitalHumanRenderMode.LIVE_WEBGL
+
+internal fun selectDigitalHumanRenderMode(
+    fingerprint: String,
+    model: String,
+    supportedAbis: List<String>,
+    lowRamDevice: Boolean,
+): DigitalHumanRenderMode {
+    val emulator = fingerprint.contains("generic", ignoreCase = true) ||
+        model.contains("sdk_gphone", ignoreCase = true) ||
+        model.contains("Android SDK built", ignoreCase = true) ||
+        model.contains("Emulator", ignoreCase = true)
+    val hasArm64 = supportedAbis.any { it.equals("arm64-v8a", ignoreCase = true) }
+    return if (emulator || lowRamDevice || !hasArm64) {
+        DigitalHumanRenderMode.NATIVE_COMPAT
+    } else {
+        DigitalHumanRenderMode.LIVE_WEBGL
+    }
+}
+
+internal fun shouldUseNativeDigitalHuman(fingerprint: String, model: String): Boolean =
+    selectDigitalHumanRenderMode(
+        fingerprint = fingerprint,
+        model = model,
+        supportedAbis = android.os.Build.SUPPORTED_ABIS.toList(),
+        lowRamDevice = false,
+    ) == DigitalHumanRenderMode.NATIVE_COMPAT
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun DigitalHumanStage(
@@ -58,28 +98,67 @@ fun DigitalHumanStage(
     accessToken: String,
     speechText: String,
     speechRequestId: Int,
+    command: DigitalHumanCommand = DigitalHumanCommand.NONE,
+    commandRequestId: Int = 0,
+    forceFallback: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var pageReady by remember { mutableStateOf(false) }
     var lastSpokenRequestId by remember { mutableIntStateOf(0) }
-    val webView = remember {
+    var lastCommandRequestId by remember { mutableIntStateOf(0) }
+    val webView = remember(apiBaseUrl, forceFallback) {
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            setLayerType(if (forceFallback) View.LAYER_TYPE_NONE else View.LAYER_TYPE_HARDWARE, null)
+            setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, false)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.loadsImagesAutomatically = true
             settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+            settings.setSupportZoom(false)
+            settings.builtInZoomControls = false
+            settings.displayZoomControls = false
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     pageReady = true
                 }
             }
-            loadUrl(DigitalHumanBridge.stageUrl(apiBaseUrl))
+            loadUrl(DigitalHumanBridge.stageUrl(apiBaseUrl, forceFallback))
         }
+    }
+
+    LaunchedEffect(pageReady, apiBaseUrl, accessToken) {
+        if (pageReady) {
+            webView.evaluateJavascript(DigitalHumanBridge.configureScript(apiBaseUrl, accessToken), null)
+        }
+    }
+    LaunchedEffect(pageReady, speechRequestId) {
+        if (pageReady && speechRequestId > 0 && speechRequestId != lastSpokenRequestId && speechText.isNotBlank()) {
+            lastSpokenRequestId = speechRequestId
+            webView.evaluateJavascript(DigitalHumanBridge.speakScript(speechText), null)
+        }
+    }
+    LaunchedEffect(pageReady, commandRequestId) {
+        if (pageReady && commandRequestId > 0 && commandRequestId != lastCommandRequestId && command != DigitalHumanCommand.NONE) {
+            lastCommandRequestId = commandRequestId
+            webView.evaluateJavascript(DigitalHumanBridge.commandScript(command), null)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, webView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> webView.onResume()
+                Lifecycle.Event.ON_PAUSE -> webView.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     DisposableEffect(webView) {
@@ -92,14 +171,7 @@ fun DigitalHumanStage(
 
     AndroidView(
         factory = { webView },
-        update = { view ->
-            if (!pageReady) return@AndroidView
-            view.evaluateJavascript(DigitalHumanBridge.configureScript(apiBaseUrl, accessToken), null)
-            if (speechRequestId > 0 && speechRequestId != lastSpokenRequestId && speechText.isNotBlank()) {
-                lastSpokenRequestId = speechRequestId
-                view.evaluateJavascript(DigitalHumanBridge.speakScript(speechText), null)
-            }
-        },
-        modifier = modifier.fillMaxWidth().height(470.dp).clip(RoundedCornerShape(25.dp)),
+        update = {},
+        modifier = modifier.fillMaxSize(),
     )
 }

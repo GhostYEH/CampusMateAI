@@ -101,7 +101,7 @@ val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
     NavItem("courses", "课程", Icons.Default.MenuBook),
     NavItem("tasks", "待办", Icons.Default.AssignmentTurnedIn),
-    NavItem("counselor", "AI校园助手", Icons.Default.SmartToy),
+    NavItem("counselor", "CPM", Icons.Default.SmartToy),
     NavItem("profile", "我的", Icons.Default.Person),
 )
 
@@ -459,15 +459,15 @@ private fun RowScope.LiquidGlassNavItem(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .size(16.dp)
+                                .size(18.dp)
                                 .clip(CircleShape)
                                 .background(UnreadDot),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = pendingCount.coerceAtMost(9).toString(),
+                                text = if (pendingCount > 9) "9+" else pendingCount.toString(),
                                 color = Color.White,
-                                fontSize = 8.sp,
+                                fontSize = 7.sp,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
@@ -481,6 +481,12 @@ private fun RowScope.LiquidGlassNavItem(
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 )
             }
+        }
+        if (isSelected) {
+            Box(
+                Modifier.align(Alignment.BottomCenter).width(48.dp).height(2.dp)
+                    .clip(CircleShape).background(Primary.copy(alpha = .38f)),
+            )
         }
     }
 }

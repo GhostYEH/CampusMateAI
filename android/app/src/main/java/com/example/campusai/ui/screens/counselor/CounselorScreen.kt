@@ -1,13 +1,31 @@
 package com.example.campusai.ui.screens.counselor
 
 import android.Manifest
+import android.app.ActivityManager
+import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +33,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,109 +41,88 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import com.example.campusai.R
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import com.example.campusai.BuildConfig
+import com.example.campusai.R
 import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.ExpressionServiceStatus
-import com.example.campusai.data.model.ChatMessage
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.TypingIndicator
-import com.example.campusai.ui.components.enterAnimation
-import com.example.campusai.ui.components.slideInAnimation
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.launch
+import java.util.Locale
 
-private data class QuickQuestion(
-    val label: String,
-    val prompt: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-)
+private val CpmBlue = Color(0xFF385AF6)
+private val CpmViolet = Color(0xFF8152F6)
+private val CpmLine = Color(0xFFDDE3FA)
 
 @Composable
 fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
-    val mockMode by repository.mockMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val accessToken by repository.accessToken.collectAsState()
-    val assistanceEnabled by repository.learningAssistanceEnabled.collectAsState()
-    val scope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val factory = remember(repository) { CounselorViewModelFactory(repository) }
+    val viewModel: CounselorViewModel = viewModel(factory = factory)
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val accessToken by repository.accessToken.collectAsStateWithLifecycle()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val assistanceEnabled by repository.learningAssistanceEnabled.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val expressionManager = repository.expressionSessionManager
-    val expressionResult by expressionManager.result.collectAsState()
-    val expressionStatus by expressionManager.status.collectAsState()
-    val listState = rememberLazyListState()
-    var input by remember { mutableStateOf("") }
-    var sending by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var speechText by remember { mutableStateOf("") }
-    var speechRequestId by remember { mutableIntStateOf(0) }
-    var greetingCustomized by remember(mockMode) { mutableStateOf(false) }
+    val expressionResult by expressionManager.result.collectAsStateWithLifecycle()
+    val expressionStatus by expressionManager.status.collectAsStateWithLifecycle()
     var consentDismissed by rememberSaveable { mutableStateOf(false) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
     var cameraPermissionGranted by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
         )
     }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> cameraPermissionGranted = granted }
-    var messages by remember(mockMode) {
-        mutableStateOf(listOf(ChatMessage("assistant", "你好，我是 AI 校园助手小灵。课程流程、奖助政策、校园服务，都可以来问我。\n\n我会结合校园知识库与后端配置给你整理清晰步骤。")))
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraPermissionGranted = granted
+    }
+    val renderMode = remember(context) {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        selectDigitalHumanRenderMode(
+            fingerprint = Build.FINGERPRINT,
+            model = Build.MODEL,
+            supportedAbis = Build.SUPPORTED_ABIS.toList(),
+            lowRamDevice = activityManager.isLowRamDevice,
+        )
     }
 
-    fun sendMessage(text: String) {
-        val question = text.trim()
-        if (question.isEmpty() || sending) return
-        scope.launch {
-            messages += ChatMessage("user", question)
-            input = ""
-            sending = true
-            error = null
-            try {
-                messages += ChatMessage("assistant", "")
-                var receivedChunk = false
-                repository.streamChat(
-                    question,
-                    CounselorExpressionPolicy.usableOrNull(expressionResult),
-                ) { chunk ->
-                    receivedChunk = true
-                    messages.lastOrNull()?.takeIf { it.role == "assistant" }?.let { last ->
-                        messages = messages.dropLast(1) + last.copy(text = last.text + chunk)
-                    }
-                }
-                if (!receivedChunk) throw IllegalStateException("empty AI stream")
-                messages.lastOrNull()?.takeIf { it.role == "assistant" && it.text.isNotBlank() }?.let { answer ->
-                    speechText = answer.text
-                    speechRequestId += 1
-                }
-            } catch (_: Exception) {
-                error = "暂时无法连接校园知识库，请检查网络后重试。"
-                messages = messages.dropLastWhile { it.role == "assistant" && it.text.isEmpty() }
-            } finally {
-                sending = false
-            }
-        }
+    LaunchedEffect(initialPrompt) {
+        if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
     }
-
+    LaunchedEffect(expressionResult) {
+        viewModel.updateExpression(CounselorExpressionPolicy.usableOrNull(expressionResult))
+    }
     DisposableEffect(lifecycleOwner) {
         expressionManager.attachLifecycle(lifecycleOwner)
         val observer = LifecycleEventObserver { _, event ->
@@ -147,7 +145,6 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             }
         }
     }
-
     LaunchedEffect(assistanceEnabled, cameraPermissionGranted) {
         if (assistanceEnabled && !cameraPermissionGranted && !permissionRequested) {
             permissionRequested = true
@@ -160,85 +157,125 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             foreground = true,
         )
     }
-
-    LaunchedEffect(expressionResult, messages.size) {
-        if (!greetingCustomized && messages.size == 1) {
-            CounselorExpressionPolicy.greeting(expressionResult)?.let { greeting ->
-                messages = listOf(ChatMessage("assistant", greeting))
-                greetingCustomized = true
-            }
-        }
-    }
-
-    LaunchedEffect(initialPrompt) { initialPrompt?.takeIf { it.isNotBlank() }?.let(::sendMessage) }
-    LaunchedEffect(messages.size, sending) {
-        if (!reduceMotion && messages.isNotEmpty()) {
-            listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Background)
-            .padding(
-                bottom = floatingDockContentBottomPadding(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ),
-            ),
-    ) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            state = listState,
-            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 14.dp),
-            verticalArrangement = Arrangement.spacedBy(13.dp),
-        ) {
-            item { AssistantHeader(mockMode) }
-            item {
-                ExpressionPrivacyStatus(
-                    enabled = assistanceEnabled,
-                    permissionGranted = cameraPermissionGranted,
-                    status = expressionStatus,
-                    hasUsableSignal = CounselorExpressionPolicy.isUsable(expressionResult),
-                )
-            }
-            item {
-                DigitalHumanStage(
-                    apiBaseUrl = BuildConfig.API_BASE_URL,
-                    accessToken = accessToken.orEmpty(),
-                    speechText = speechText,
-                    speechRequestId = speechRequestId,
-                )
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("你可以这样问", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                    QuickQuestionGrid(onAsk = ::sendMessage)
-                }
-            }
-            items(messages) { message -> AssistantBubble(message, reduceMotion) }
-            if (sending) item { LoadingBubble(reduceMotion) }
-            error?.let { message -> item { ErrorNotice(message) { error = null } } }
-        }
-        AssistantComposer(input, sending, { input = it }) { sendMessage(input) }
-    }
-
+    CpmCounselorContent(
+        state = state,
+        reduceMotion = reduceMotion,
+        accessToken = accessToken.orEmpty(),
+        mockMode = mockMode,
+        renderMode = renderMode,
+        expressionEnabled = assistanceEnabled,
+        expressionPermissionGranted = cameraPermissionGranted,
+        expressionStatus = expressionStatus,
+        hasUsableExpression = CounselorExpressionPolicy.isUsable(expressionResult),
+        onInputChange = viewModel::updateInput,
+        onSend = viewModel::send,
+        onAsk = viewModel::send,
+        onShuffle = viewModel::shuffleRecommendations,
+        onRetry = viewModel::retryLast,
+        onPlayback = viewModel::sendPlaybackCommand,
+    )
     if (!assistanceEnabled && !consentDismissed) {
         AlertDialog(
             onDismissRequest = { consentDismissed = true },
             title = { Text("启用情绪陪伴") },
-            text = {
-                Text("CPM 可在本机使用前置摄像头识别可见表情，用于调整问候和回答语气。画面不上传、不保存，退出本页即停止。")
-            },
+            text = { Text("CPM 可在本机使用前置摄像头识别可见表情，用于调整问候和回答语气。画面不上传、不保存，退出本页即停止。") },
             confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { repository.setLearningAssistanceEnabled(true) }
-                }) { Text("同意并启用") }
+                TextButton(onClick = { scope.launch { repository.setLearningAssistanceEnabled(true) } }) {
+                    Text("同意并启用")
+                }
             },
             dismissButton = {
                 TextButton(onClick = { consentDismissed = true }) { Text("暂不启用") }
             },
         )
+    }
+}
+
+@Composable
+private fun CpmCounselorContent(
+    state: CpmCounselorUiState,
+    reduceMotion: Boolean,
+    accessToken: String,
+    mockMode: Boolean,
+    renderMode: DigitalHumanRenderMode,
+    expressionEnabled: Boolean,
+    expressionPermissionGranted: Boolean,
+    expressionStatus: ExpressionServiceStatus,
+    hasUsableExpression: Boolean,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onAsk: (String) -> Unit,
+    onShuffle: () -> Unit,
+    onRetry: () -> Unit,
+    onPlayback: (DigitalHumanCommand) -> Unit,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.content?.length) {
+        if (state.chatActive) {
+            yield()
+            val last = listState.layoutInfo.totalItemsCount - 1
+            if (last >= 0) {
+                if (reduceMotion) listState.scrollToItem(last) else listState.animateScrollToItem(last)
+            }
+        }
+    }
+
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFFBFCFF), Color(0xFFF0F2FF))))
+            .padding(bottom = floatingDockContentBottomPadding(
+                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+            )),
+    ) {
+        Column(Modifier.align(Alignment.TopCenter).fillMaxSize().widthIn(max = 760.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(18.dp, 14.dp, 18.dp, 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item("brand") {
+                    AnimatedVisibility(
+                        visible = !state.chatActive,
+                        enter = fadeIn(),
+                        exit = fadeOut(tween(if (reduceMotion) 0 else 180)) + shrinkVertically(),
+                    ) { CpmHeader(mockMode) }
+                }
+                item("expression-status") {
+                    ExpressionPrivacyStatus(
+                        enabled = expressionEnabled,
+                        permissionGranted = expressionPermissionGranted,
+                        status = expressionStatus,
+                        hasUsableSignal = hasUsableExpression,
+                    )
+                }
+                item("digital-human") {
+                    CpmDigitalHumanCard(
+                        sending = state.sending,
+                        speechText = state.speechText,
+                        speechRequestId = state.speechRequestId,
+                        playbackCommand = state.playbackCommand,
+                        playbackCommandId = state.playbackCommandId,
+                        accessToken = accessToken,
+                        renderMode = renderMode,
+                        reduceMotion = reduceMotion,
+                        onPlayback = onPlayback,
+                    )
+                }
+                item("recommendations") {
+                    AnimatedVisibility(
+                        visible = !state.chatActive,
+                        enter = fadeIn() + slideInVertically { it / 4 },
+                        exit = fadeOut(tween(if (reduceMotion) 0 else 190)) + slideOutVertically { -it / 5 } + shrinkVertically(),
+                    ) { CpmRecommendations(state.recommendations, onAsk, onShuffle) }
+                }
+                items(state.messages, key = CpmChatMessage::id) { message ->
+                    CpmMessageBubble(message, state.sending, onRetry)
+                }
+                item("tail") { Spacer(Modifier.height(2.dp)) }
+            }
+            CpmComposer(state.input, state.sending, onInputChange, onSend)
+        }
     }
 }
 
@@ -251,14 +288,14 @@ private fun ExpressionPrivacyStatus(
 ) {
     val (text, color) = when {
         !enabled -> "情绪陪伴未启用" to Muted
-        !permissionGranted -> "等待摄像头权限" to AlertErrorText
-        hasUsableSignal -> "表情信号稳定 · 仅本机处理" to Success
-        status is ExpressionServiceStatus.Error -> "表情识别暂不可用" to AlertErrorText
-        else -> "正在本机观察表情 · 画面不上传" to Primary
+        !permissionGranted -> "等待摄像头权限" to Color(0xFFC63D4F)
+        hasUsableSignal -> "表情信号稳定 · 仅本机处理" to Color(0xFF247A52)
+        status is ExpressionServiceStatus.Error -> "表情识别暂不可用" to Color(0xFFC63D4F)
+        else -> "正在本机观察表情 · 画面不上传" to CpmBlue
     }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White)
+            .border(1.dp, CpmLine, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Default.Visibility, null, tint = color, modifier = Modifier.size(16.dp))
@@ -267,75 +304,268 @@ private fun ExpressionPrivacyStatus(
 }
 
 @Composable
-private fun AssistantHeader(mockMode: Boolean) {
+private fun CpmHeader(mockMode: Boolean) = Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("AI 校园助手", color = TextPrimary, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-                Text("✦", color = Primary, fontSize = 22.sp, modifier = Modifier.padding(start = 4.dp, bottom = 14.dp))
-            }
-            Text("校园问题，随时来聊一聊", color = Muted, fontSize = 14.sp)
+        Row(verticalAlignment = Alignment.Top) {
+            Text("CPM", color = TextPrimary, fontSize = 36.sp, fontWeight = FontWeight.Black)
+            Text("✦", color = CpmBlue, fontSize = 23.sp, modifier = Modifier.padding(start = 7.dp, top = 1.dp))
         }
-        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(if (mockMode) Accent else Color(0xFFFF9646)))
-            Text(if (mockMode) " 演示模式" else " 真实后端", color = TextPrimary, fontSize = 12.sp)
+        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(8.dp).clip(CircleShape)
+                    .background(if (mockMode) CpmViolet else Color(0xFFFF5B36)),
+            )
+            Text(
+                if (mockMode) "演示模式" else "真实后端",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 7.dp),
+            )
+        }
+    }
+    Text("校园问题，随时来聊一聊", color = Muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+}
+
+@Composable
+private fun CpmDigitalHumanCard(
+    sending: Boolean,
+    speechText: String,
+    speechRequestId: Int,
+    playbackCommand: DigitalHumanCommand,
+    playbackCommandId: Int,
+    accessToken: String,
+    renderMode: DigitalHumanRenderMode,
+    reduceMotion: Boolean,
+    onPlayback: (DigitalHumanCommand) -> Unit,
+) {
+    // Keep the live character visible while chatting. The recommendations may
+    // leave, but the avatar and all three playback controls remain full-size.
+    val compact = false
+    val duration = if (reduceMotion) 0 else 280
+    BoxWithConstraints(
+        Modifier.fillMaxWidth(),
+    ) {
+        val metrics = cpmHeroMetrics(maxWidth.value.toInt())
+        val cardHeight by animateDpAsState(if (compact) 78.dp else metrics.cardHeightDp.dp, tween(duration), label = "cardHeight")
+        val avatarSize by animateDpAsState(if (compact) 58.dp else metrics.avatarSizeDp.dp, tween(duration), label = "avatarSize")
+        val cardRadius by animateDpAsState(if (compact) 24.dp else 28.dp, tween(duration), label = "cardRadius")
+        val avatarOverflow = avatarSize * ((metrics.avatarContainerScale - 1f) / 2f)
+        Row(
+            Modifier.fillMaxWidth().height(cardHeight)
+                .shadow(20.dp, RoundedCornerShape(cardRadius), ambientColor = Color(0x1A4B5DAC), spotColor = Color(0x144B5DAC))
+                .clip(RoundedCornerShape(cardRadius))
+                .background(Brush.linearGradient(listOf(Color(0xF8FFFFFF), Color(0xFFF2F2FF), Color(0xF8FFFFFF))))
+                .border(1.dp, Color.White, RoundedCornerShape(cardRadius))
+                .padding(if (compact) 10.dp else metrics.contentPaddingDp.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else metrics.itemGapDp.dp),
+        ) {
+            Box(
+                Modifier.size(avatarSize),
+            ) {
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = metrics.avatarContainerScale
+                        scaleY = metrics.avatarContainerScale
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        shape = CircleShape
+                        clip = true
+                    }
+                        .background(Brush.radialGradient(listOf(Color.White, Color(0xFFE3E7FF))))
+                        .border(2.dp, Color.White, CircleShape),
+                ) {
+                    if (shouldCreateEmbeddedDigitalHuman(renderMode)) {
+                        DigitalHumanStage(
+                            apiBaseUrl = BuildConfig.API_BASE_URL,
+                            accessToken = accessToken,
+                            speechText = speechText,
+                            speechRequestId = speechRequestId,
+                            command = playbackCommand,
+                            commandRequestId = playbackCommandId,
+                        )
+                    } else {
+                        NativeDigitalHumanPlayback(
+                            speechText = speechText,
+                            speechRequestId = speechRequestId,
+                            command = playbackCommand,
+                            commandRequestId = playbackCommandId,
+                        )
+                    }
+                    if (renderMode == DigitalHumanRenderMode.NATIVE_COMPAT) {
+                        Image(
+                            painter = painterResource(R.drawable.cpm_avatar_fallback),
+                            contentDescription = "CPM 数字人",
+                            contentScale = ContentScale.Crop,
+                            alignment = if (metrics.alignAvatarToTop) Alignment.TopCenter else Alignment.Center,
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                scaleX = metrics.avatarScale
+                                scaleY = metrics.avatarScale
+                                translationY = size.height * metrics.avatarVerticalOffsetFraction
+                            },
+                        )
+                    }
+                }
+                Box(
+                    Modifier.align(Alignment.BottomStart).offset(x = -avatarOverflow - 2.dp, y = 2.dp)
+                        .size(metrics.sparkleBadgeSizeDp.dp).shadow(8.dp, CircleShape)
+                        .clip(CircleShape).background(Color.White).border(1.dp, Color(0xFFF1F3FF), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = CpmBlue,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            if (compact) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("你好，我是CPM", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(if (sending) "正在生成回答…" else "尽管提问！", color = if (sending) CpmBlue else Muted, fontSize = 12.sp)
+                }
+                CpmMiniControl(Icons.AutoMirrored.Filled.VolumeOff, "静音") { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
+                CpmMiniControl(Icons.Default.PauseCircleOutline, "暂停") { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
+            } else {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+                    Text(
+                        "你好，我是CPM",
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(listOf(CpmBlue, CpmViolet)),
+                            fontSize = 21.sp,
+                            fontWeight = FontWeight.Black,
+                        ),
+                        maxLines = 1,
+                    )
+                    Text("尽管提问！", color = Muted, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CpmControl(Icons.AutoMirrored.Filled.VolumeOff, "静音", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
+                        CpmControl(Icons.Default.PauseCircleOutline, "暂停", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
+                        CpmControl(Icons.Default.Replay, "重播", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.REPLAY) }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun AssistantHero(mockMode: Boolean, reduceMotion: Boolean) {
-    Box(
-        Modifier.fillMaxWidth().height(144.dp).clip(RoundedCornerShape(25.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFFF9FAFF), Color(0xFFF1F2FF), Color.White)))
-            .border(1.dp, Color(0xFFE1E5FF), RoundedCornerShape(25.dp)).enterAnimation(enabled = !reduceMotion),
+private fun CpmControl(icon: ImageVector, label: String, modifier: Modifier, heightDp: Int, onClick: () -> Unit) {
+    Column(
+        modifier.height(heightDp.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xA6FFFFFF))
+            .border(1.dp, CpmLine, RoundedCornerShape(16.dp)).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Image(
-            painterResource(R.drawable.ai_campus_robot), null,
-            Modifier.size(124.dp).align(Alignment.CenterStart).padding(start = 3.dp), contentScale = ContentScale.Fit,
-        )
-        Column(
-            Modifier.fillMaxWidth().padding(start = 125.dp, top = 25.dp, end = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("校园事务助手", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                Box(Modifier.size(6.dp).clip(CircleShape).background(if (mockMode) Accent else Color(0xFFFF9646)))
-                Text(if (mockMode) "演示" else "真实后端", color = TextPrimary, fontSize = 10.sp)
+        Icon(icon, label, tint = CpmBlue, modifier = Modifier.size(23.dp))
+        Text(label, color = Color(0xFF596785), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun NativeDigitalHumanPlayback(
+    speechText: String,
+    speechRequestId: Int,
+    command: DigitalHumanCommand,
+    commandRequestId: Int,
+) {
+    // Keep the initial hero allocation-free on compatibility devices. The system
+    // speech engine is created only when there is actually something to play.
+    if (speechRequestId <= 0 && commandRequestId <= 0) return
+
+    val context = LocalContext.current.applicationContext
+    var ready by remember { mutableStateOf(false) }
+    var muted by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var lastSpeechText by remember { mutableStateOf("") }
+    val textToSpeech = remember(context) {
+        TextToSpeech(context) { status -> ready = status == TextToSpeech.SUCCESS }
+    }
+
+    fun speak(text: String) {
+        if (!ready || muted || text.isBlank()) return
+        val params = Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f)
+        }
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, "cpm-$speechRequestId")
+    }
+
+    LaunchedEffect(ready) {
+        if (ready) {
+            textToSpeech.language = Locale.SIMPLIFIED_CHINESE
+            textToSpeech.setSpeechRate(0.96f)
+        }
+    }
+    LaunchedEffect(ready, speechRequestId) {
+        if (ready && speechRequestId > 0 && speechText.isNotBlank()) {
+            lastSpeechText = speechText
+            paused = false
+            speak(speechText)
+        }
+    }
+    LaunchedEffect(ready, commandRequestId) {
+        if (!ready || commandRequestId <= 0) return@LaunchedEffect
+        when (command) {
+            DigitalHumanCommand.TOGGLE_MUTE -> {
+                muted = !muted
+                if (muted) textToSpeech.stop() else if (!paused) speak(lastSpeechText)
             }
-            Text("帮你整理流程、材料和下一步", color = Muted, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 1)
+            DigitalHumanCommand.TOGGLE_PAUSE -> {
+                paused = !paused
+                if (paused) textToSpeech.stop() else speak(lastSpeechText)
+            }
+            DigitalHumanCommand.REPLAY -> {
+                paused = false
+                speak(lastSpeechText)
+            }
+            DigitalHumanCommand.NONE -> Unit
+        }
+    }
+    DisposableEffect(textToSpeech) {
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
+    }
+}
+
+@Composable
+private fun CpmMiniControl(icon: ImageVector, label: String, onClick: () -> Unit) = FilledIconButton(
+    onClick = onClick,
+    modifier = Modifier.size(38.dp),
+    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White, contentColor = CpmBlue),
+) { Icon(icon, label, Modifier.size(20.dp)) }
+
+@Composable
+private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Unit, onShuffle: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("你可以这样问", color = TextPrimary, fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Text("✦", color = CpmViolet, fontSize = 16.sp, modifier = Modifier.padding(start = 5.dp, bottom = 7.dp))
+            Spacer(Modifier.weight(1f))
             Row(
-                Modifier.clip(RoundedCornerShape(15.dp)).background(Color(0xFFF0F1FF)).padding(horizontal = 7.dp, vertical = 5.dp),
+                Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onShuffle)
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.VerifiedUser, null, tint = Primary, modifier = Modifier.size(13.dp))
-                Text(" 覆盖奖助、课程、校园服务问答", color = Primary, fontSize = 9.sp, maxLines = 1)
+                Text("换一批", color = Muted, fontSize = 13.sp)
+                Icon(Icons.Default.Refresh, null, tint = Muted, modifier = Modifier.padding(start = 4.dp).size(17.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun QuickQuestionGrid(onAsk: (String) -> Unit) {
-    val questions = listOf(
-        QuickQuestion("奖学金申请\n材料清单", "奖学金申请需要什么材料？", Icons.Default.School),
-        QuickQuestion("课程重修\n办理流程", "课程重修怎么办理？", Icons.Default.MenuBook),
-        QuickQuestion("校园卡丢失\n补办地点", "校园卡丢失去哪里补办？", Icons.Default.CreditCard),
-        QuickQuestion("请假流程\n怎么走", "请假流程怎么走？", Icons.Default.EventAvailable),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         questions.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { question ->
                     Row(
-                        Modifier.weight(1f).heightIn(min = 88.dp).clip(RoundedCornerShape(18.dp)).background(Surface)
-                            .border(1.dp, Line, RoundedCornerShape(18.dp)).clickable { onAsk(question.prompt) }.padding(11.dp),
+                        Modifier.weight(1f).height(CPM_RECOMMENDATION_CARD_HEIGHT_DP.dp)
+                            .shadow(10.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x0F41518C), spotColor = Color(0x0F41518C))
+                            .clip(RoundedCornerShape(22.dp)).background(Color(0xEFFFFFFF))
+                            .border(1.dp, CpmLine, RoundedCornerShape(22.dp)).clickable { onAsk(question.prompt) }.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
-                            Icon(question.icon, null, tint = Primary, modifier = Modifier.size(21.dp))
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(PrimarySoft), contentAlignment = Alignment.Center) {
+                            Icon(question.icon, null, tint = CpmBlue, modifier = Modifier.size(23.dp))
                         }
-                        Text(question.label, Modifier.padding(start = 9.dp).weight(1f), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
+                        Text(question.label, Modifier.padding(start = 10.dp).weight(1f), color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold)
                         Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
                     }
                 }
@@ -345,28 +575,36 @@ private fun QuickQuestionGrid(onAsk: (String) -> Unit) {
 }
 
 @Composable
-private fun AssistantBubble(message: ChatMessage, reduceMotion: Boolean) {
+private fun CpmMessageBubble(message: CpmChatMessage, sending: Boolean, onRetry: () -> Unit) {
     val assistant = message.role == "assistant"
-    Row(
-        Modifier.fillMaxWidth().slideInAnimation(fromLeft = assistant, enabled = !reduceMotion),
-        horizontalArrangement = if (assistant) Arrangement.Start else Arrangement.End,
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        if (assistant) {
-            Image(painterResource(R.drawable.ai_campus_robot), null, Modifier.size(46.dp).padding(end = 6.dp), contentScale = ContentScale.Fit)
-        }
+    val clipboard = LocalClipboardManager.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (assistant) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.Bottom) {
+        if (assistant) CpmAvatarBadge()
         Column(
-            Modifier.widthIn(max = 300.dp)
-                .clip(if (assistant) RoundedCornerShape(22.dp, 22.dp, 22.dp, 5.dp) else RoundedCornerShape(22.dp, 22.dp, 5.dp, 22.dp))
-                .background(if (assistant) Surface else Primary)
-                .then(if (assistant) Modifier.border(1.dp, Line, RoundedCornerShape(22.dp)) else Modifier)
-                .padding(14.dp),
+            Modifier.widthIn(max = 330.dp).then(
+                if (assistant) Modifier.shadow(9.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x12404E7D), spotColor = Color(0x10404E7D))
+                    .background(Color(0xF8FFFFFF), RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp))
+                    .border(1.dp, CpmLine, RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp))
+                else Modifier.background(Brush.linearGradient(listOf(CpmBlue, CpmViolet)), RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp))
+            ).padding(horizontal = 15.dp, vertical = 13.dp),
         ) {
-            MarkdownMessage(message.text, color = if (assistant) TextPrimary else Color.White)
-            if (assistant && message.text.isNotBlank()) {
-                Row(Modifier.padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.MenuBook, null, tint = Muted, modifier = Modifier.size(13.dp))
-                    Text("  校友知识库 · 流程同步", color = Muted, fontSize = 11.sp)
+            if (assistant && message.status == CpmMessageStatus.GENERATING && message.content.isEmpty()) CpmThinkingText()
+            else {
+                MarkdownMessage(message.content, if (assistant) TextPrimary else Color.White)
+                if (assistant && message.status == CpmMessageStatus.GENERATING) CpmStreamingCursor()
+            }
+            if (assistant && message.status == CpmMessageStatus.ERROR) {
+                Text(message.errorMessage ?: "生成中断", color = AlertErrorText, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) { Text("重新生成", color = CpmBlue, fontSize = 12.sp) }
+            }
+            if (assistant && message.status == CpmMessageStatus.COMPLETED && message.content.isNotBlank()) {
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(message.content)) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Icon(Icons.Default.ContentCopy, null, tint = Muted, modifier = Modifier.size(14.dp)); Text(" 复制", color = Muted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 4.dp), enabled = !sending) {
+                        Icon(Icons.Default.Refresh, null, tint = Muted, modifier = Modifier.size(14.dp)); Text(" 重新生成", color = Muted, fontSize = 11.sp)
+                    }
                 }
             }
         }
@@ -374,98 +612,101 @@ private fun AssistantBubble(message: ChatMessage, reduceMotion: Boolean) {
 }
 
 @Composable
-private fun LoadingBubble(reduceMotion: Boolean) = Row(verticalAlignment = Alignment.Bottom) {
-    Image(painterResource(R.drawable.ai_campus_robot), null, Modifier.size(40.dp).padding(end = 6.dp), contentScale = ContentScale.Fit)
-    Row(
-        Modifier.clip(RoundedCornerShape(18.dp)).background(Surface).border(1.dp, Line, RoundedCornerShape(18.dp)).padding(11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TypingIndicator(dotColor = Primary, enabled = !reduceMotion)
-        Text(" 正在查询校园知识库", color = Muted, fontSize = 12.sp)
-    }
+private fun CpmAvatarBadge() = Box(
+    Modifier.padding(end = 7.dp).size(32.dp).clip(CircleShape).background(PrimarySoft).border(1.dp, Color.White, CircleShape),
+    contentAlignment = Alignment.Center,
+) { Text("CPM", color = CpmBlue, fontSize = 8.sp, fontWeight = FontWeight.Black) }
+
+@Composable
+private fun CpmThinkingText() {
+    val transition = rememberInfiniteTransition(label = "thinking")
+    val phase by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(900), RepeatMode.Restart), label = "thinkingPhase")
+    Text("正在思考" + when { phase < .33f -> "."; phase < .66f -> ".."; else -> "..." }, color = Muted, fontSize = 13.sp)
 }
 
 @Composable
-private fun ErrorNotice(message: String, dismiss: () -> Unit) = Row(
-    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AlertErrorBg).padding(12.dp),
-    verticalAlignment = Alignment.CenterVertically,
-) {
-    Icon(Icons.Default.CloudOff, null, tint = AlertErrorText)
-    Text(message, Modifier.weight(1f).padding(start = 8.dp), color = AlertErrorText, fontSize = 13.sp)
-    TextButton(dismiss) { Text("知道了") }
+private fun CpmStreamingCursor() {
+    val transition = rememberInfiniteTransition(label = "cursor")
+    val alpha by transition.animateFloat(.2f, 1f, infiniteRepeatable(tween(520), RepeatMode.Reverse), label = "cursorAlpha")
+    Box(Modifier.padding(top = 5.dp).width(2.dp).height(16.dp).background(CpmBlue.copy(alpha = alpha)))
 }
 
 @Composable
-private fun AssistantComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).imePadding().padding(11.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value, onValueChange, Modifier.weight(1f),
-                placeholder = { Text("✦ 输入你的校园事务问题…", color = Muted, fontSize = 14.sp) }, maxLines = 2,
-                shape = RoundedCornerShape(19.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Primary, unfocusedBorderColor = Primary.copy(alpha = .4f),
-                    focusedContainerColor = Surface, unfocusedContainerColor = Surface, cursorColor = Primary,
-                ),
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = CPM_COMPOSER_MIN_HEIGHT_DP.dp)
+                .shadow(12.dp, RoundedCornerShape(34.dp), ambientColor = Color(0x10415A9A), spotColor = Color(0x10415A9A))
+                .clip(RoundedCornerShape(34.dp)).background(Color(0xF8FFFFFF))
+                .border(1.dp, CpmLine, RoundedCornerShape(34.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(38.dp).clip(CircleShape).background(Color(0xFFF8F9FF))
+                    .border(1.dp, CpmLine, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.AutoAwesome, null, tint = CpmViolet, modifier = Modifier.size(20.dp))
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp, lineHeight = 20.sp),
+                cursorBrush = SolidColor(CpmBlue),
+                maxLines = 3,
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) Text("输入你的校园事务问题…", color = Muted, fontSize = 14.sp)
+                        innerTextField()
+                    }
+                },
             )
             FilledIconButton(
-                onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(52.dp), shape = RoundedCornerShape(19.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = Primary, contentColor = Color.White, disabledContainerColor = PrimarySoft),
-            ) { Icon(if (sending) Icons.Default.HourglassTop else Icons.Default.Send, "发送", Modifier.size(22.dp)) }
+                onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(44.dp), shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = CpmBlue,
+                    contentColor = Color.White,
+                    disabledContainerColor = CpmBlue,
+                    disabledContentColor = Color.White,
+                ),
+            ) { Icon(Icons.Default.NearMe, "发送", Modifier.size(23.dp)) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Shield, null, tint = Success, modifier = Modifier.size(13.dp))
+            Icon(Icons.Default.Shield, null, tint = Muted, modifier = Modifier.size(13.dp))
             Text(" 仅提供校园事务辅助，不替代学校正式通知或专业咨询", color = Muted, fontSize = 10.sp, maxLines = 1)
         }
     }
 }
 
 @Composable
-private fun MarkdownMessage(markdown: String, color: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        markdown.replace("\r\n", "\n").lines().forEach { rawLine ->
-            val line = rawLine.trimEnd()
-            when {
-                line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ") ->
-                    MarkdownText(line.substringAfter(' ').trim(), color, 16.sp, 22.sp, FontWeight.Bold)
-                line.startsWith("- ") || line.startsWith("* ") -> Row(verticalAlignment = Alignment.Top) {
-                    Text("•", color = Primary, fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
-                    MarkdownText(line.drop(2), color, 14.sp, 21.sp, FontWeight.Normal, Modifier.weight(1f))
-                }
-                Regex("^\\d+[.)]\\s+").containsMatchIn(line) -> MarkdownText(line, color, 14.sp, 21.sp, FontWeight.Normal)
-                else -> MarkdownText(line, color, 14.sp, 21.sp, FontWeight.Normal)
+private fun MarkdownMessage(markdown: String, color: Color) = Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    markdown.replace("\r\n", "\n").lines().forEach { rawLine ->
+        val line = rawLine.trimEnd()
+        when {
+            line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ") -> MarkdownText(line.substringAfter(' ').trim(), color, 16.sp, 22.sp, FontWeight.Bold)
+            line.startsWith("- ") || line.startsWith("* ") -> Row(verticalAlignment = Alignment.Top) {
+                Text("•", color = if (color == Color.White) Color.White else Primary, fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
+                MarkdownText(line.drop(2), color, 14.sp, 21.sp, FontWeight.Normal, Modifier.weight(1f))
             }
+            else -> MarkdownText(line, color, 14.sp, 21.sp, FontWeight.Normal)
         }
     }
 }
 
 @Composable
-private fun MarkdownText(
-    text: String,
-    color: Color,
-    fontSize: TextUnit,
-    lineHeight: TextUnit,
-    fontWeight: FontWeight,
-    modifier: Modifier = Modifier,
-) {
-    val annotated: AnnotatedString = buildAnnotatedString {
+private fun MarkdownText(text: String, color: Color, fontSize: TextUnit, lineHeight: TextUnit, fontWeight: FontWeight, modifier: Modifier = Modifier) {
+    val annotated = buildAnnotatedString {
         var cursor = 0
         while (cursor < text.length) {
             val start = text.indexOf("**", cursor)
-            if (start < 0) {
-                append(text.substring(cursor))
-                break
-            }
+            if (start < 0) { append(text.substring(cursor)); break }
             append(text.substring(cursor, start))
             val end = text.indexOf("**", start + 2)
-            if (end < 0) {
-                append(text.substring(start))
-                break
-            }
+            if (end < 0) { append(text.substring(start)); break }
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text.substring(start + 2, end)) }
             cursor = end + 2
         }

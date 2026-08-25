@@ -104,7 +104,7 @@ fun ProfileScreen(
             icon = { Icon(Icons.Default.AutoAwesome, null) },
             title = { Text("关于 CampusMate") },
             text = {
-                Text("面向大学生的校园事务智能陪伴助手。AI 校园助手与知识库能力会明确标注 Mock 模式，回答仅作校园事务辅助。")
+                Text("面向大学生的成长型智能陪伴助手。CPM 的回答仅作辅助建议，学校正式通知为准。")
             },
             confirmButton = {
                 TextButton(onClick = { showAbout = false }) {
