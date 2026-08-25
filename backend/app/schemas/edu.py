@@ -164,6 +164,7 @@ class EduConnectionOut(BaseModel):
     provider: str
     login_execution_mode: str
     portal_url: Optional[str] = None
+    allowed_origins: List[str] = Field(default_factory=list, max_length=8)
     external_student_id: Optional[str] = None
     external_student_name: Optional[str] = None
     error_code: Optional[str] = None

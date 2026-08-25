@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlsplit
 
 from ...core.config import Settings
 from ...core.exceptions import AppException, Forbidden
@@ -640,6 +641,27 @@ class EduConnectorService:
             config["base_url"] = portal_url
             config["login_url"] = portal_url
         return config
+
+    def allowed_origins_for_connection(self, connection_id: str) -> list[str]:
+        """Return only explicitly configured, exact HTTPS login/base/SSO origins."""
+        conn = self._edu_repo.get_connection(connection_id)
+        system = self._registry.get_system_by_id(conn.edu_system_id) if conn else None
+        config = self._build_config_dict(system, portal_url=conn.portal_url if conn else None)
+        candidates = [config.get("login_url"), config.get("base_url"), config.get("sso_url")]
+        result: list[str] = []
+        for value in candidates:
+            if not isinstance(value, str):
+                continue
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                continue
+            port = "" if parsed.port in (None, 443) else f":{parsed.port}"
+            origin = f"https://{parsed.hostname.lower()}{port}"
+            if origin not in result:
+                result.append(origin)
+            if len(result) == 8:
+                break
+        return result
 
     # ===== 配置 =====
 
