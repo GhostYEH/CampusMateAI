@@ -8,7 +8,7 @@ class DigitalHumanBridgeTest {
     @Test
     fun `stage url uses API origin instead of embedding credentials`() {
         assertEquals(
-            "http://10.0.2.2:8000/digital-human/mobile.html",
+            "http://10.0.2.2:8000/digital-human/mobile.html?embed=1",
             DigitalHumanBridge.stageUrl("http://10.0.2.2:8000/api/v1/"),
         )
     }
@@ -26,6 +26,22 @@ class DigitalHumanBridgeTest {
         assertEquals(
             "window.CampusMateDigitalHuman.speak(\"第一行\\n\\\"第二行\\\"\");",
             DigitalHumanBridge.speakScript("第一行\n\"第二行\""),
+        )
+    }
+
+    @Test
+    fun `native playback controls call the embedded runtime API`() {
+        assertEquals(
+            "window.CampusMateDigitalHuman.toggleMuted();",
+            DigitalHumanBridge.commandScript(com.example.campusai.ui.screens.counselor.DigitalHumanCommand.TOGGLE_MUTE),
+        )
+        assertEquals(
+            "window.CampusMateDigitalHuman.togglePaused();",
+            DigitalHumanBridge.commandScript(com.example.campusai.ui.screens.counselor.DigitalHumanCommand.TOGGLE_PAUSE),
+        )
+        assertEquals(
+            "window.CampusMateDigitalHuman.replay();",
+            DigitalHumanBridge.commandScript(com.example.campusai.ui.screens.counselor.DigitalHumanCommand.REPLAY),
         )
     }
 }

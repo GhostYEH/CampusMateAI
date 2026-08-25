@@ -87,7 +87,7 @@ export struct AppDock {
         { label: '首页', symbol: $r('sys.symbol.house'), index: 0 },
         { label: '课程', symbol: $r('sys.symbol.book'), index: 1 },
         { label: '待办', symbol: $r('sys.symbol.checkmark_circle'), index: 2 },
-        { label: 'AI 校园助手', symbol: $r('sys.symbol.robot'), index: 3 },
+        { label: 'CPM', symbol: $r('sys.symbol.robot'), index: 3 },
         { label: '我的', symbol: $r('sys.symbol.person'), index: 4 }
       ], (item: DockItem) => {
         this.DockItemView(item)

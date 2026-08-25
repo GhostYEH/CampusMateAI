@@ -7,13 +7,28 @@ const notice = document.querySelector("#notice");
 const muteButton = document.querySelector("#mute");
 const stopButton = document.querySelector("#stop");
 const replayButton = document.querySelector("#replay");
+const compatAvatar = document.querySelector("#compat-avatar");
 let config = normalizeRuntimeConfig();
 let lastText = "";
 let muted = false;
 let speaking = false;
+let paused = false;
 let abortController = null;
 
+const pageParams = new URLSearchParams(window.location.search);
+if (pageParams.get("embed") === "1") {
+  document.body.classList.add("embed");
+}
+if (pageParams.get("fallback") === "1") {
+  frame.src = "./index.html?fallback=1";
+}
+
 function sendUnity(type, value) {
+  if (!compatAvatar.hidden) {
+    if (type === "speech-level") compatAvatar.style.setProperty("--mouth-open", String(Math.max(0, Math.min(1, Number(value) || 0))));
+    if (type === "speech-stop") compatAvatar.style.setProperty("--mouth-open", "0");
+    return;
+  }
   frame.contentWindow?.postMessage(createUnitySpeechMessage(type, value), window.location.origin);
 }
 
@@ -42,6 +57,25 @@ function stop() {
   abortController = null;
   player.stop();
   sendUnity("speech-stop");
+}
+
+function toggleMuted() {
+  muted = !muted;
+  muteButton.textContent = muted ? "开启语音" : "静音";
+  muteButton.setAttribute("aria-pressed", String(muted));
+  if (muted) stop();
+  replayButton.disabled = !lastText || speaking || muted;
+  return muted;
+}
+
+async function togglePaused() {
+  paused = await player.togglePaused();
+  stopButton.textContent = paused ? "继续" : "暂停";
+  return paused;
+}
+
+function replay() {
+  return speak(lastText);
 }
 
 async function speak(text) {
@@ -88,6 +122,9 @@ window.CampusMateDigitalHuman = {
   },
   speak,
   stop,
+  toggleMuted,
+  togglePaused,
+  replay,
 };
 
 window.addEventListener("message", (event) => {
@@ -100,13 +137,7 @@ window.addEventListener("message", (event) => {
   }
 });
 
-muteButton.addEventListener("click", () => {
-  muted = !muted;
-  muteButton.textContent = muted ? "开启语音" : "静音";
-  muteButton.setAttribute("aria-pressed", String(muted));
-  if (muted) stop();
-  replayButton.disabled = !lastText || speaking || muted;
-});
-stopButton.addEventListener("click", stop);
-replayButton.addEventListener("click", () => speak(lastText));
+muteButton.addEventListener("click", toggleMuted);
+stopButton.addEventListener("click", togglePaused);
+replayButton.addEventListener("click", replay);
 window.addEventListener("pagehide", stop);

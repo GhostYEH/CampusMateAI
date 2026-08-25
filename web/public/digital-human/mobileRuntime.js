@@ -115,6 +115,16 @@ export class PcmStreamPlayer {
     if (!this.sources.size) this.markStopped();
   }
 
+  async togglePaused() {
+    if (!this.context || this.context.state === "closed") return false;
+    if (this.context.state === "running") {
+      await this.context.suspend();
+      return true;
+    }
+    await this.context.resume();
+    return false;
+  }
+
   stop() {
     for (const source of this.sources) {
       try { source.stop(); } catch { /* already ended */ }
