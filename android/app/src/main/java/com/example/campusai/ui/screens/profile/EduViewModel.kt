@@ -6,6 +6,7 @@ import com.example.campusai.CampusAIApplication
 import com.example.campusai.data.remote.EduBindingDto
 import com.example.campusai.data.remote.EduConnectionDto
 import com.example.campusai.data.remote.EduGradeItemsResponse
+import com.example.campusai.data.remote.EduPreLoginResult
 import com.example.campusai.data.remote.EduProbeResult
 import com.example.campusai.data.remote.EduScheduleItemsResponse
 import com.example.campusai.data.remote.EduSyncResult
@@ -22,6 +23,7 @@ sealed interface EduUiState {
     data class ProbeReady(val probe: EduProbeResult, val connection: EduConnectionDto) : EduUiState
     data class WaitingUserLogin(val connection: EduConnectionDto, val loginUrl: String) : EduUiState
     data class NeedCredentials(val connection: EduConnectionDto) : EduUiState
+    data class NeedCaptcha(val connection: EduConnectionDto, val preLoginResult: EduPreLoginResult) : EduUiState
     data class Verifying(val message: String) : EduUiState
     data class Connected(val connection: EduConnectionDto) : EduUiState
     data class Syncing(val message: String, val scheduleDone: Boolean, val gradeDone: Boolean) : EduUiState
@@ -118,11 +120,65 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
             repo.continueWithCredentials(connId, username, password).onSuccess { conn ->
                 if (conn.state == "connected") onConnected(conn)
                 else if (connectionNeedsWebLogin(conn)) {
-                    _state.value = EduUiState.WaitingUserLogin(conn, conn.portal_url!!)
+                    if (conn.error_code == "NEED_CAPTCHA") {
+                        fetchCaptchaImage(conn)
+                    } else {
+                        _state.value = EduUiState.WaitingUserLogin(conn, conn.portal_url!!)
+                    }
                 }
                 else if (conn.state == "auth_failed") _state.value = EduUiState.Error(conn.error_message ?: "账号或密码错误")
                 else _state.value = EduUiState.Error(conn.error_message ?: "登录失败，状态: ${conn.state}")
             }.onFailure { _state.value = EduUiState.Error(it.message ?: "登录失败") }
+        }
+    }
+
+    /** 获取验证码图片（pre-login）。 */
+    private fun fetchCaptchaImage(conn: EduConnectionDto) {
+        val connId = currentConnectionId ?: return
+        viewModelScope.launch {
+            _state.value = EduUiState.Verifying("正在获取验证码图片…")
+            repo.preLogin(connId).onSuccess { preLoginResult ->
+                if (preLoginResult.captcha_required && !preLoginResult.captcha_image_base64.isNullOrBlank()) {
+                    _state.value = EduUiState.NeedCaptcha(conn, preLoginResult)
+                } else if (!preLoginResult.pre_login_token.isBlank()) {
+                    _state.value = EduUiState.NeedCaptcha(conn, preLoginResult)
+                } else {
+                    _state.value = EduUiState.Error("无法获取验证码图片，请尝试在浏览器中完成登录")
+                }
+            }.onFailure { _state.value = EduUiState.Error(it.message ?: "获取验证码失败") }
+        }
+    }
+
+    /** Step 2a-2: 携带验证码提交登录。 */
+    fun submitCredentialsWithCaptcha(username: String, password: String, captcha: String, preLoginToken: String) {
+        val connId = currentConnectionId ?: return
+        if (_state.value is EduUiState.Verifying) return
+        viewModelScope.launch {
+            _state.value = EduUiState.Verifying("正在验证登录…")
+            repo.continueWithCaptcha(connId, username, password, captcha, preLoginToken).onSuccess { conn ->
+                if (conn.state == "connected") onConnected(conn)
+                else if (connectionNeedsWebLogin(conn)) {
+                    if (conn.error_code == "NEED_CAPTCHA") {
+                        fetchCaptchaImage(conn)
+                    } else {
+                        _state.value = EduUiState.WaitingUserLogin(conn, conn.portal_url!!)
+                    }
+                }
+                else if (conn.state == "auth_failed") _state.value = EduUiState.Error(conn.error_message ?: "账号或密码错误")
+                else _state.value = EduUiState.Error(conn.error_message ?: "登录失败，状态: ${conn.state}")
+            }.onFailure { _state.value = EduUiState.Error(it.message ?: "登录失败") }
+        }
+    }
+
+    /** 刷新验证码图片。 */
+    fun refreshCaptcha() {
+        val connId = currentConnectionId ?: return
+        val currentState = _state.value as? EduUiState.NeedCaptcha ?: return
+        viewModelScope.launch {
+            _state.value = EduUiState.Verifying("正在刷新验证码…")
+            repo.preLogin(connId).onSuccess { preLoginResult ->
+                _state.value = EduUiState.NeedCaptcha(currentState.connection, preLoginResult)
+            }.onFailure { _state.value = EduUiState.Error(it.message ?: "刷新验证码失败") }
         }
     }
 
@@ -148,6 +204,9 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
                 if (_state.value !is EduUiState.WaitingUserLogin) return@repeat
                 repo.pollConnection(connId).onSuccess { conn ->
                     if (conn.state == "connected") onConnected(conn)
+                    else if (conn.state == "waiting_user_login" && conn.error_code == "NEED_CAPTCHA") {
+                        fetchCaptchaImage(conn)
+                    }
                 }
             }
         }

@@ -1,11 +1,12 @@
-import { EduRepository, eduStateText } from '../../repository/EduRepository';
-import { EduBindingDto, EduConnectionDto, EduProbeResult, EduSyncResult } from '../../data/ApiClient';
+import { EduRepository, eduStateText, eduStateTextWithErrorCode } from '../../repository/EduRepository';
+import { EduBindingDto, EduConnectionDto, EduPreLoginResult, EduProbeResult, EduSyncResult } from '../../data/ApiClient';
 import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ApiClient } from '../../data/ApiClient';
 import { promptAction } from '@kit.ArkUI';
 import { allowedOriginsFromEduResponse } from '../edu/EduLoginSecurity';
 import {
+  captureEduLoginChallenge,
   EduLoginSensitiveEvent,
   EduLoginSensitiveState,
   reduceEduLoginSensitiveState
@@ -26,6 +27,7 @@ export struct EduSystemPage {
   @State password: string = '';
   @State captchaInput: string = '';
   @State preLoginToken: string | undefined = undefined;
+  @State preLoginResult: EduPreLoginResult | null = null;
   @State loading: boolean = false;
   @State errorMsg: string = '';
   @State infoMsg: string = '';
@@ -34,6 +36,8 @@ export struct EduSystemPage {
   @State probe: EduProbeResult | null = null;
   @State syncing: boolean = false;
   @State syncMsg: string = '';
+  @State polling: boolean = false;
+  private pollTimer: number = -1;
 
   onBack: () => void = () => {};
   onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => void = () => {};
@@ -52,6 +56,7 @@ export struct EduSystemPage {
   }
 
   aboutToDisappear() {
+    this.stopPolling();
     this.resetSensitiveState(EduLoginSensitiveEvent.DISPOSE);
   }
 
@@ -67,6 +72,7 @@ export struct EduSystemPage {
     this.password = cleared.password;
     this.captchaInput = cleared.captcha;
     this.preLoginToken = cleared.preLoginToken;
+    this.preLoginResult = null;
   }
 
   async loadBinding() {
@@ -94,6 +100,7 @@ export struct EduSystemPage {
       this.probe = { portal_url: url, provider: conn.provider, provider_confidence: 0, reachable: true, is_edu_page: true, suggested_login_mode: conn.login_execution_mode, evidence: [] } as EduProbeResult;
       if (conn.login_execution_mode === 'client_webview') {
         this.infoMsg = '该教务系统需要在客户端浏览器中由您本人完成登录。';
+        this.startPolling(conn.id);
       } else if (conn.login_execution_mode === 'backend_http') {
         this.infoMsg = '该教务系统支持账号密码登录。';
       }
@@ -115,6 +122,17 @@ export struct EduSystemPage {
       this.connection = conn;
       if (conn.state === 'connected') {
         await this.onConnected();
+      } else if (conn.state === 'waiting_user_login' && conn.error_code === 'NEED_CAPTCHA') {
+        await this.fetchCaptchaImage();
+      } else if (conn.state === 'waiting_user_login' && !conn.portal_url?.includes('undefined')) {
+        this.infoMsg = eduStateTextWithErrorCode(conn.state, conn.error_code);
+        this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
+        this.onNavigateToLogin(
+          conn.portal_url || this.portalUrl,
+          conn.id,
+          allowedOriginsFromEduResponse(conn)
+        );
+        this.startPolling(conn.id);
       } else if (conn.state === 'auth_failed') {
         this.errorMsg = conn.error_message || '账号或密码错误';
       } else {
@@ -125,6 +143,104 @@ export struct EduSystemPage {
     } finally {
       this.loading = false;
     }
+  }
+
+  async fetchCaptchaImage() {
+    if (this.connection === null) return;
+    this.loading = true;
+    this.errorMsg = '';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      this.preLoginResult = await repo.preLogin(this.connection.id);
+      const captured: EduLoginSensitiveState = captureEduLoginChallenge(
+        {
+          username: this.username,
+          password: this.password,
+          captcha: this.captchaInput,
+          preLoginToken: this.preLoginToken
+        },
+        this.captchaInput,
+        this.preLoginResult.pre_login_token
+      );
+      this.captchaInput = captured.captcha;
+      this.preLoginToken = captured.preLoginToken;
+      if (!this.preLoginResult.captcha_required || !this.preLoginResult.captcha_image_base64) {
+        this.errorMsg = '无法获取验证码图片，请尝试在浏览器中完成登录';
+      }
+    } catch (e) {
+      this.errorMsg = String(e).substring(0, 150);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async submitCredentialsWithCaptcha() {
+    if (this.connection === null || this.preLoginResult === null || this.preLoginToken === undefined || this.captchaInput.length === 0) return;
+    this.loading = true;
+    this.errorMsg = '';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      const conn = await repo.continueWithCaptcha(
+        this.connection.id, this.username, this.password, this.captchaInput, this.preLoginToken
+      );
+      this.connection = conn;
+      this.preLoginResult = null;
+      this.preLoginToken = undefined;
+      this.captchaInput = '';
+      if (conn.state === 'connected') {
+        await this.onConnected();
+      } else if (conn.state === 'waiting_user_login' && conn.error_code === 'NEED_CAPTCHA') {
+        await this.fetchCaptchaImage();
+      } else if (conn.state === 'waiting_user_login' && !conn.portal_url?.includes('undefined')) {
+        this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
+        this.onNavigateToLogin(conn.portal_url || this.portalUrl, conn.id, conn.allowed_origins || []);
+        this.startPolling(conn.id);
+      } else if (conn.state === 'auth_failed') {
+        this.errorMsg = conn.error_message || '账号或密码错误';
+      } else {
+        this.errorMsg = conn.error_message || '登录失败';
+      }
+    } catch (e) {
+      this.errorMsg = String(e).substring(0, 150);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async refreshCaptcha() {
+    this.captchaInput = '';
+    await this.fetchCaptchaImage();
+  }
+
+  startPolling(connId: string) {
+    this.stopPolling();
+    this.polling = true;
+    let count = 0;
+    const poll = async () => {
+      count++;
+      if (count > 60 || !this.polling) { this.stopPolling(); return; }
+      try {
+        const client = this.buildClient();
+        const repo = new EduRepository(client);
+        const conn = await repo.pollConnection(connId);
+        this.connection = conn;
+        if (conn.state === 'connected') {
+          this.stopPolling();
+          await this.onConnected();
+        } else if (conn.state === 'waiting_user_login' && conn.error_code === 'NEED_CAPTCHA') {
+          this.stopPolling();
+          await this.fetchCaptchaImage();
+        }
+      } catch { /* ignore poll error */ }
+    };
+    this.pollTimer = setInterval(poll, 3000);
+  }
+
+  stopPolling() {
+    this.polling = false;
+    if (this.pollTimer !== -1) { clearInterval(this.pollTimer); this.pollTimer = -1; }
   }
 
   async onConnected() {
@@ -216,6 +332,9 @@ export struct EduSystemPage {
             if (this.connection !== null && this.connection.login_execution_mode === 'backend_http') {
               this.CredentialFormCard()
             }
+            if (this.preLoginResult !== null) {
+              this.CaptchaFormCard()
+            }
             if (this.connection !== null && this.connection.login_execution_mode === 'client_webview') {
               Button('打开教务登录页面')
                 .width('90%').height(44)
@@ -296,6 +415,41 @@ export struct EduSystemPage {
         .backgroundColor(this.palette().primary).fontColor(Color.White)
         .enabled(!this.loading && this.username.length > 0 && this.password.length > 0)
         .onClick(() => this.submitCredentials())
+      Text('密码仅用于本次登录校验，不会明文保存。').fontSize(11).fontColor(this.palette().muted)
+    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+  }
+
+  @Builder CaptchaFormCard() {
+    Column({ space: 8 }) {
+      Text('请输入验证码').fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
+      Text('学校登录页要求完成图片验证码，请对照下方图片输入。').fontSize(12).fontColor(this.palette().muted)
+      if (this.preLoginResult !== null && this.preLoginResult.captcha_image_base64 !== undefined && this.preLoginResult.captcha_image_base64.length > 0) {
+        Row({ space: 8 }) {
+          Image('data:image/png;base64,' + this.preLoginResult.captcha_image_base64)
+            .width(120).height(48).objectFit(ImageFit.Contain)
+          Button('换一张').backgroundColor(this.palette().surface).fontColor(this.palette().text)
+            .onClick(() => this.refreshCaptcha())
+        }.width('100%')
+      } else {
+        Text('⚠ 未获取到验证码图片，请点击换一张').fontSize(12).fontColor(this.palette().danger)
+      }
+      TextInput({ text: this.username, placeholder: '学号' })
+        .width('100%').height(44)
+        .onChange((value: string) => { this.username = value; })
+        .enabled(!this.loading)
+      TextInput({ text: this.password, placeholder: '密码' })
+        .width('100%').height(44).type(InputType.Password)
+        .onChange((value: string) => { this.password = value; })
+        .enabled(!this.loading)
+      TextInput({ text: this.captchaInput, placeholder: '验证码' })
+        .width('100%').height(44)
+        .onChange((value: string) => { this.captchaInput = value; })
+        .enabled(!this.loading)
+      Button(this.loading ? '验证中…' : '登录')
+        .width('100%').height(44)
+        .backgroundColor(this.palette().primary).fontColor(Color.White)
+        .enabled(!this.loading && this.username.length > 0 && this.password.length > 0 && this.captchaInput.length > 0)
+        .onClick(() => this.submitCredentialsWithCaptcha())
       Text('密码仅用于本次登录校验，不会明文保存。').fontSize(11).fontColor(this.palette().muted)
     }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
   }

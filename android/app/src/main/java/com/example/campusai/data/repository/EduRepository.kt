@@ -6,6 +6,7 @@ import com.example.campusai.data.remote.EduConnectionContinueRequest
 import com.example.campusai.data.remote.EduConnectionDto
 import com.example.campusai.data.remote.EduConnectionFromUrlRequest
 import com.example.campusai.data.remote.EduGradeItemsResponse
+import com.example.campusai.data.remote.EduPreLoginResult
 import com.example.campusai.data.remote.EduProbeRequest
 import com.example.campusai.data.remote.EduProbeResult
 import com.example.campusai.data.remote.EduScheduleItemsResponse
@@ -56,6 +57,33 @@ class EduRepository {
         val resp = api.eduContinueConnection(
             connectionId,
             EduConnectionContinueRequest(username = username, password = password),
+        )
+        if (!resp.isSuccessful) throw Exception(resp.errorBody()?.string() ?: "登录失败 (${resp.code()})")
+        resp.body()!!
+    }
+
+    suspend fun preLogin(connectionId: String): Result<EduPreLoginResult> = runCatching {
+        val resp = api.eduPreLogin(connectionId)
+        if (!resp.isSuccessful) throw Exception(resp.errorBody()?.string() ?: "预登录失败 (${resp.code()})")
+        resp.body()!!
+    }
+
+    suspend fun continueWithCaptcha(
+        connectionId: String,
+        username: String,
+        password: String,
+        captcha: String,
+        preLoginToken: String,
+    ): Result<EduConnectionDto> = runCatching {
+        val resp = api.eduContinueConnection(
+            connectionId,
+            EduConnectionContinueRequest(
+                username = username,
+                password = password,
+                captcha = captcha,
+                pre_login_token = preLoginToken,
+                action = "SUBMIT_WITH_CAPTCHA",
+            ),
         )
         if (!resp.isSuccessful) throw Exception(resp.errorBody()?.string() ?: "登录失败 (${resp.code()})")
         resp.body()!!

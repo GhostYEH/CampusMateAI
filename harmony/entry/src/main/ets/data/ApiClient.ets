@@ -336,6 +336,9 @@ export class ApiClient {
   async eduContinueConnection(connectionId: string, body: EduConnectionContinueRequest): Promise<EduConnectionDto> {
     return this.request<EduConnectionDto>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/continue`, body as object);
   }
+  async eduPreLogin(connectionId: string): Promise<EduPreLoginResult> {
+    return this.request<EduPreLoginResult>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/pre-login`);
+  }
   async eduScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
     const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
     return this.request<EduScheduleItemsResponse>('GET' as http.RequestMethod, `edu/schedule/items${query}`);
@@ -513,6 +516,15 @@ export interface EduConnectionContinueRequest {
   cookies?: Record<string, string>;
   current_url?: string;
   user_agent?: string;
+  pre_login_token?: string;
+}
+export interface EduPreLoginResult {
+  pre_login_token: string;
+  captcha_required: boolean;
+  captcha_type: string;
+  captcha_image_base64?: string;
+  captcha_image_url?: string;
+  expires_at: string;
 }
 export interface EduScheduleItemDto {
   id?: string;

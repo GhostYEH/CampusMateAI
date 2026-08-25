@@ -6,6 +6,22 @@ import org.junit.Test
 
 class EduLoginSensitiveStateTest {
     @Test
+    fun captchaChallengeIsCapturedInTheSameStateThatLifecycleEventsClear() {
+        val captured = captureEduLoginChallenge(
+            EduLoginSensitiveState(username = "student-1", password = "secret"),
+            captcha = "1234",
+            preLoginToken = "pre-login-token",
+        )
+
+        assertEquals("1234", captured.captcha)
+        assertEquals("pre-login-token", captured.preLoginToken)
+        val cleared = reduceEduLoginSensitiveState(captured, EduLoginSensitiveEvent.DIRECT_CONNECTED)
+        assertEquals("", cleared.password)
+        assertEquals("", cleared.captcha)
+        assertNull(cleared.preLoginToken)
+    }
+
+    @Test
     fun everySensitiveLifecycleExitClearsSecretsButKeepsUsername() {
         for (event in EduLoginSensitiveEvent.entries) {
             val result = reduceEduLoginSensitiveState(

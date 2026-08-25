@@ -1,4 +1,4 @@
-import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduSyncResult } from '../data/ApiClient';
+import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduPreLoginResult, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduSyncResult } from '../data/ApiClient';
 import { EduCookieDto } from '../data/EduCookieDto';
 
 /** EduRepository — 教务系统连接层仓库。 */
@@ -31,6 +31,15 @@ export class EduRepository {
 
   async continueWithCredentials(connectionId: string, username: string, password: string): Promise<EduConnectionDto> {
     const body: EduConnectionContinueRequest = { username, password };
+    return this.client.eduContinueConnection(connectionId, body);
+  }
+
+  async preLogin(connectionId: string): Promise<EduPreLoginResult> {
+    return this.client.eduPreLogin(connectionId);
+  }
+
+  async continueWithCaptcha(connectionId: string, username: string, password: string, captcha: string, preLoginToken: string): Promise<EduConnectionDto> {
+    const body: EduConnectionContinueRequest = { username, password, captcha, pre_login_token: preLoginToken, action: 'SUBMIT_WITH_CAPTCHA' };
     return this.client.eduContinueConnection(connectionId, body);
   }
 
@@ -90,4 +99,20 @@ export function eduStateText(state: string): string {
     'error': '连接出错', 'active': '已连接', 'unbound': '未绑定',
   };
   return map[state] || state;
+}
+
+/** 教务连接状态文案（带 error_code，用于 waiting_user_login + NEED_CAPTCHA 等场景）。 */
+export function eduStateTextWithErrorCode(state: string, errorCode?: string): string {
+  if (state === 'waiting_user_login' && errorCode && errorCode.length > 0) {
+    const codeMap: Record<string, string> = {
+      'NEED_CAPTCHA': '学校要求完成图片验证码',
+      'NEED_SLIDER': '需要完成滑块验证',
+      'NEED_SMS': '需要短信验证码',
+      'NEED_MFA': '需要多因素认证',
+      'CLIENT_WEBVIEW': '请在学校登录页面完成验证',
+      'NEED_CAMPUS_NETWORK': '请连接校园网或 VPN 后继续',
+    };
+    return codeMap[errorCode] || eduStateText(state);
+  }
+  return eduStateText(state);
 }

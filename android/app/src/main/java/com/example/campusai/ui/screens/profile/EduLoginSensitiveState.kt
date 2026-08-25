@@ -16,6 +16,15 @@ enum class EduLoginSensitiveEvent {
     DISPOSE,
 }
 
+fun captureEduLoginChallenge(
+    state: EduLoginSensitiveState,
+    captcha: String,
+    preLoginToken: String,
+): EduLoginSensitiveState = state.copy(
+    captcha = captcha,
+    preLoginToken = preLoginToken,
+)
+
 fun reduceEduLoginSensitiveState(
     state: EduLoginSensitiveState,
     @Suppress("UNUSED_PARAMETER") event: EduLoginSensitiveEvent,

@@ -14,6 +14,19 @@ export enum EduLoginSensitiveEvent {
   DISPOSE
 }
 
+export function captureEduLoginChallenge(
+  state: EduLoginSensitiveState,
+  captcha: string,
+  preLoginToken: string
+): EduLoginSensitiveState {
+  return {
+    username: state.username,
+    password: state.password,
+    captcha: captcha,
+    preLoginToken: preLoginToken
+  };
+}
+
 export function reduceEduLoginSensitiveState(
   state: EduLoginSensitiveState,
   event: EduLoginSensitiveEvent

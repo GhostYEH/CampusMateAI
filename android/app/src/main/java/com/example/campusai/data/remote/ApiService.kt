@@ -386,6 +386,16 @@ data class EduConnectionContinueRequest(
     val cookie_jar: List<EduCookieDto>? = null,
     val current_url: String? = null,
     val user_agent: String? = null,
+    val pre_login_token: String? = null,
+)
+
+data class EduPreLoginResult(
+    val pre_login_token: String = "",
+    val captcha_required: Boolean = false,
+    val captcha_type: String = "none",
+    val captcha_image_base64: String? = null,
+    val captcha_image_url: String? = null,
+    val expires_at: String = "",
 )
 
 data class EduScheduleItemsResponse(
@@ -783,6 +793,9 @@ interface ApiService {
         @Path("connectionId") connectionId: String,
         @Body request: EduConnectionContinueRequest,
     ): Response<EduConnectionDto>
+
+    @POST("edu/connections/{connectionId}/pre-login")
+    suspend fun eduPreLogin(@Path("connectionId") connectionId: String): Response<EduPreLoginResult>
 
     @GET("edu/schedule/semesters")
     suspend fun eduScheduleSemesters(): Response<List<String>>

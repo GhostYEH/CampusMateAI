@@ -5,6 +5,7 @@ import {
   isAllowedEduNavigation
 } from '../../../main/ets/features/edu/EduLoginSecurity';
 import {
+  captureEduLoginChallenge,
   EduLoginSensitiveEvent,
   EduLoginSensitiveState,
   reduceEduLoginSensitiveState
@@ -12,6 +13,18 @@ import {
 
 export default function eduLoginSecurityTest(): void {
   describe('EduLoginSecurity', () => {
+    it('captures the real captcha challenge in lifecycle-cleared state', 0, () => {
+      const captured: EduLoginSensitiveState = captureEduLoginChallenge({
+        username: 'student-1', password: 'secret', captcha: '', preLoginToken: undefined
+      }, '1234', 'pre-login-token');
+      expect(captured.captcha).assertEqual('1234');
+      expect(captured.preLoginToken).assertEqual('pre-login-token');
+      const cleared = reduceEduLoginSensitiveState(captured, EduLoginSensitiveEvent.DIRECT_CONNECTED);
+      expect(cleared.password).assertEqual('');
+      expect(cleared.captcha).assertEqual('');
+      expect(cleared.preLoginToken === undefined).assertTrue();
+    });
+
     it('clears sensitive login fields for every lifecycle exit and keeps username', 0, () => {
       const events: EduLoginSensitiveEvent[] = [
         EduLoginSensitiveEvent.DIRECT_CONNECTED,

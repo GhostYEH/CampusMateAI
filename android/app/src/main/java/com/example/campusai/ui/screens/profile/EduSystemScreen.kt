@@ -12,6 +12,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.campusai.CampusAIApplication
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 
 object EduStateText {
     fun text(state: String): String = when (state) {
@@ -36,6 +41,21 @@ object EduStateText {
         "active" -> "已连接"
         "unbound" -> "未绑定"
         else -> state
+    }
+
+    fun textWithErrorCode(state: String, errorCode: String?): String {
+        if (state == "waiting_user_login" && !errorCode.isNullOrBlank()) {
+            return when (errorCode) {
+                "NEED_CAPTCHA" -> "学校要求完成图片验证码"
+                "NEED_SLIDER" -> "需要完成滑块验证"
+                "NEED_SMS" -> "需要短信验证码"
+                "NEED_MFA" -> "需要多因素认证"
+                "CLIENT_WEBVIEW" -> "请在学校登录页面完成验证"
+                "NEED_CAMPUS_NETWORK" -> "请连接校园网或 VPN 后继续"
+                else -> text(state)
+            }
+        }
+        return text(state)
     }
 }
 
@@ -64,6 +84,13 @@ fun EduSystemScreen(
             is EduUiState.WaitingUserLogin -> {
                 clearSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF)
                 onNavigateToLogin(current.loginUrl, current.connection.id, current.connection.allowed_origins)
+            }
+            is EduUiState.NeedCaptcha -> {
+                sensitiveState = captureEduLoginChallenge(
+                    sensitiveState,
+                    captcha = sensitiveState.captcha,
+                    preLoginToken = current.preLoginResult.pre_login_token,
+                )
             }
             is EduUiState.Connected, is EduUiState.Syncing, is EduUiState.Synced -> {
                 clearSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED)
@@ -170,6 +197,34 @@ fun EduSystemScreen(
                         onPasswordChange = { sensitiveState = sensitiveState.copy(password = it) },
                         busy = false,
                         onSubmit = { viewModel.submitCredentials(sensitiveState.username, sensitiveState.password) },
+                    )
+                }
+                is EduUiState.NeedCaptcha -> {
+                    ProbeResultCard(
+                        com.example.campusai.data.remote.EduProbeResult(
+                            portal_url = "",
+                            provider = s.connection.provider,
+                            suggested_login_mode = "backend_http",
+                            reachable = true,
+                        )
+                    )
+                    CaptchaFormCard(
+                        username = sensitiveState.username,
+                        password = sensitiveState.password,
+                        captchaInput = sensitiveState.captcha,
+                        captchaImageBase64 = s.preLoginResult.captcha_image_base64,
+                        onUsernameChange = { sensitiveState = sensitiveState.copy(username = it) },
+                        onPasswordChange = { sensitiveState = sensitiveState.copy(password = it) },
+                        onCaptchaChange = { sensitiveState = sensitiveState.copy(captcha = it) },
+                        onSubmit = {
+                            viewModel.submitCredentialsWithCaptcha(
+                                sensitiveState.username,
+                                sensitiveState.password,
+                                sensitiveState.captcha,
+                                sensitiveState.preLoginToken ?: s.preLoginResult.pre_login_token,
+                            )
+                        },
+                        onRefresh = { viewModel.refreshCaptcha() },
                     )
                 }
                 is EduUiState.WaitingUserLogin -> {
@@ -292,6 +347,67 @@ private fun CredentialFormCard(
                 onClick = onSubmit, modifier = Modifier.fillMaxWidth(),
                 enabled = !busy && username.isNotBlank() && password.isNotBlank(),
             ) { Text(if (busy) "验证中…" else "登录") }
+            Text("密码仅用于本次登录校验，不会明文保存。", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun CaptchaFormCard(
+    username: String,
+    password: String,
+    captchaInput: String,
+    captchaImageBase64: String?,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onCaptchaChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("请输入验证码", fontWeight = FontWeight.Bold)
+            Text("学校登录页要求完成图片验证码，请对照下方图片输入。", style = MaterialTheme.typography.bodySmall)
+            if (!captchaImageBase64.isNullOrBlank()) {
+                val bitmap = remember(captchaImageBase64) {
+                    try {
+                        val bytes = Base64.decode(captchaImageBase64, Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    } catch (_: Exception) { null }
+                }
+                if (bitmap != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "验证码图片",
+                            modifier = Modifier.height(48.dp).width(120.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                        OutlinedButton(onClick = onRefresh) { Text("换一张") }
+                    }
+                } else {
+                    Text("⚠ 验证码图片加载失败，请点击换一张", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            } else {
+                Text("⚠ 未获取到验证码图片，请点击换一张", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(
+                value = username, onValueChange = onUsernameChange,
+                label = { Text("学号") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = password, onValueChange = onPasswordChange,
+                label = { Text("密码") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = captchaInput, onValueChange = onCaptchaChange,
+                label = { Text("验证码") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = onSubmit, modifier = Modifier.fillMaxWidth(),
+                enabled = username.isNotBlank() && password.isNotBlank() && captchaInput.isNotBlank(),
+            ) { Text("登录") }
             Text("密码仅用于本次登录校验，不会明文保存。", style = MaterialTheme.typography.bodySmall)
         }
     }
