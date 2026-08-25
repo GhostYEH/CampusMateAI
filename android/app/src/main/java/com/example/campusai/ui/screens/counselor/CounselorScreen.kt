@@ -1,5 +1,9 @@
 package com.example.campusai.ui.screens.counselor
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,7 +34,14 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.example.campusai.R
+import com.example.campusai.BuildConfig
+import com.example.campusai.data.expression.CounselorExpressionPolicy
+import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.model.ChatMessage
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.TypingIndicator
@@ -49,11 +61,32 @@ private data class QuickQuestion(
 fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val mockMode by repository.mockMode.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
+    val accessToken by repository.accessToken.collectAsState()
+    val assistanceEnabled by repository.learningAssistanceEnabled.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val expressionManager = repository.expressionSessionManager
+    val expressionResult by expressionManager.result.collectAsState()
+    val expressionStatus by expressionManager.status.collectAsState()
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var speechText by remember { mutableStateOf("") }
+    var speechRequestId by remember { mutableIntStateOf(0) }
+    var greetingCustomized by remember(mockMode) { mutableStateOf(false) }
+    var consentDismissed by rememberSaveable { mutableStateOf(false) }
+    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    var cameraPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> cameraPermissionGranted = granted }
     var messages by remember(mockMode) {
         mutableStateOf(listOf(ChatMessage("assistant", "你好，我是 AI 校园助手小灵。课程流程、奖助政策、校园服务，都可以来问我。\n\n我会结合校园知识库与后端配置给你整理清晰步骤。")))
     }
@@ -69,18 +102,70 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             try {
                 messages += ChatMessage("assistant", "")
                 var receivedChunk = false
-                repository.streamChat(question) { chunk ->
+                repository.streamChat(
+                    question,
+                    CounselorExpressionPolicy.usableOrNull(expressionResult),
+                ) { chunk ->
                     receivedChunk = true
                     messages.lastOrNull()?.takeIf { it.role == "assistant" }?.let { last ->
                         messages = messages.dropLast(1) + last.copy(text = last.text + chunk)
                     }
                 }
                 if (!receivedChunk) throw IllegalStateException("empty AI stream")
+                messages.lastOrNull()?.takeIf { it.role == "assistant" && it.text.isNotBlank() }?.let { answer ->
+                    speechText = answer.text
+                    speechRequestId += 1
+                }
             } catch (_: Exception) {
                 error = "暂时无法连接校园知识库，请检查网络后重试。"
                 messages = messages.dropLastWhile { it.role == "assistant" && it.text.isEmpty() }
             } finally {
                 sending = false
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        expressionManager.attachLifecycle(lifecycleOwner)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> scope.launch {
+                    expressionManager.updateCounselorEligibility(foreground = true)
+                }
+                Lifecycle.Event.ON_PAUSE -> scope.launch {
+                    expressionManager.updateCounselorEligibility(foreground = false)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            scope.launch {
+                expressionManager.updateCounselorEligibility(visible = false, foreground = false)
+                expressionManager.detachLifecycle()
+            }
+        }
+    }
+
+    LaunchedEffect(assistanceEnabled, cameraPermissionGranted) {
+        if (assistanceEnabled && !cameraPermissionGranted && !permissionRequested) {
+            permissionRequested = true
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+        expressionManager.updateCounselorEligibility(
+            enabled = assistanceEnabled,
+            permissionGranted = cameraPermissionGranted,
+            visible = true,
+            foreground = true,
+        )
+    }
+
+    LaunchedEffect(expressionResult, messages.size) {
+        if (!greetingCustomized && messages.size == 1) {
+            CounselorExpressionPolicy.greeting(expressionResult)?.let { greeting ->
+                messages = listOf(ChatMessage("assistant", greeting))
+                greetingCustomized = true
             }
         }
     }
@@ -109,7 +194,22 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             verticalArrangement = Arrangement.spacedBy(13.dp),
         ) {
             item { AssistantHeader(mockMode) }
-            item { AssistantHero(mockMode, reduceMotion) }
+            item {
+                ExpressionPrivacyStatus(
+                    enabled = assistanceEnabled,
+                    permissionGranted = cameraPermissionGranted,
+                    status = expressionStatus,
+                    hasUsableSignal = CounselorExpressionPolicy.isUsable(expressionResult),
+                )
+            }
+            item {
+                DigitalHumanStage(
+                    apiBaseUrl = BuildConfig.API_BASE_URL,
+                    accessToken = accessToken.orEmpty(),
+                    speechText = speechText,
+                    speechRequestId = speechRequestId,
+                )
+            }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("你可以这样问", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
@@ -121,6 +221,48 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
             error?.let { message -> item { ErrorNotice(message) { error = null } } }
         }
         AssistantComposer(input, sending, { input = it }) { sendMessage(input) }
+    }
+
+    if (!assistanceEnabled && !consentDismissed) {
+        AlertDialog(
+            onDismissRequest = { consentDismissed = true },
+            title = { Text("启用情绪陪伴") },
+            text = {
+                Text("CPM 可在本机使用前置摄像头识别可见表情，用于调整问候和回答语气。画面不上传、不保存，退出本页即停止。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { repository.setLearningAssistanceEnabled(true) }
+                }) { Text("同意并启用") }
+            },
+            dismissButton = {
+                TextButton(onClick = { consentDismissed = true }) { Text("暂不启用") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ExpressionPrivacyStatus(
+    enabled: Boolean,
+    permissionGranted: Boolean,
+    status: ExpressionServiceStatus,
+    hasUsableSignal: Boolean,
+) {
+    val (text, color) = when {
+        !enabled -> "情绪陪伴未启用" to Muted
+        !permissionGranted -> "等待摄像头权限" to AlertErrorText
+        hasUsableSignal -> "表情信号稳定 · 仅本机处理" to Success
+        status is ExpressionServiceStatus.Error -> "表情识别暂不可用" to AlertErrorText
+        else -> "正在本机观察表情 · 画面不上传" to Primary
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surface)
+            .border(1.dp, Line, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Visibility, null, tint = color, modifier = Modifier.size(16.dp))
+        Text("  $text", color = color, fontSize = 12.sp)
     }
 }
 

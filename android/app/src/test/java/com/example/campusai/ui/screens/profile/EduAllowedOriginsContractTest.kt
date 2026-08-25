@@ -34,7 +34,10 @@ class EduAllowedOriginsContractTest {
             "com/example/campusai/ui/navigation/AppNavHost.kt",
         )
 
-        assertTrue(eduSystemSource.contains("waiting.connection.allowed_origins"))
+        val navigationCall = Regex(
+            """onNavigateToLogin\(\s*\w+\.loginUrl,\s*\w+\.connection\.id,\s*\w+\.connection\.allowed_origins\s*\)""",
+        )
+        assertTrue(navigationCall.containsMatchIn(eduSystemSource))
         assertTrue(navHostSource.contains("allowedOrigins.joinToString"))
         assertTrue(navHostSource.contains("backendAllowedOrigins = allowedOrigins"))
     }

@@ -14,6 +14,8 @@ enum class StableBehaviorEvent {
 
 data class BehaviorSignalConfig(
     val phoneUseThresholdMs: Long = 3000L,
+    val phoneExitThresholdMs: Long = 1000L,
+    val phoneReminderCooldownMs: Long = 600_000L,
     val lookAwayThresholdMs: Long = 5000L,
     val penFidgetingThresholdMs: Long = 10000L,
     val absentThresholdMs: Long = 10000L,
@@ -38,7 +40,13 @@ sealed class BehaviorDisplayState {
 class BehaviorSignalProcessor(
     private val config: BehaviorSignalConfig = BehaviorSignalConfig()
 ) {
-    private var lastPhoneUseStart = 0L
+    private val phoneEventAggregator = BehaviorEventAggregator(
+        phoneEnterMs = config.phoneUseThresholdMs,
+        exitMs = config.phoneExitThresholdMs,
+        reminderCooldownMs = config.phoneReminderCooldownMs,
+        // Evidence is already accepted against the active model contract below.
+        minimumConfidence = 0f,
+    )
     private var lastLookAwayStart = 0L
     private var lastPenFidgetingStart = 0L
     private var lastAbsentStart = 0L
@@ -158,15 +166,27 @@ class BehaviorSignalProcessor(
         } else {
             phoneProb > config.confidenceThreshold
         }
-        if (acceptedPhoneEvidence) {
-            if (lastPhoneUseStart == 0L) lastPhoneUseStart = now
-            if (!currentlyPhoneDistracted && now - lastPhoneUseStart >= config.phoneUseThresholdMs) {
-                currentlyPhoneDistracted = true
+        val productLabel = when {
+            rejectedV34PhoneEvidence -> BehaviorProductLabel.UNCERTAIN
+            acceptedPhoneEvidence -> BehaviorProductLabel.PHONE_INTERACTION
+            else -> BehaviorProductLabel.STUDY_ACTIVITY
+        }
+        phoneEventAggregator.update(
+            BehaviorFramePrediction(
+                timestampMs = now,
+                label = productLabel,
+                confidence = if (acceptedPhoneEvidence) {
+                    if (isV34) prediction.probabilities[StudyBehavior.PHONE_USE] ?: 1f else phoneProb
+                } else {
+                    prediction.probabilities.values.maxOrNull() ?: 0f
+                },
+                qualityAccepted = !rejectedV34PhoneEvidence,
+            ),
+        ).forEach { event ->
+            currentlyPhoneDistracted = event.active
+            if (event.active && event.reminderAllowed) {
                 events.add(StableBehaviorEvent.PHONE_DISTRACTION)
             }
-        } else if (!rejectedV34PhoneEvidence) {
-            lastPhoneUseStart = 0L
-            currentlyPhoneDistracted = false
         }
 
         // Check Look Away
@@ -215,7 +235,7 @@ class BehaviorSignalProcessor(
     }
 
     fun reset() {
-        lastPhoneUseStart = 0L
+        phoneEventAggregator.reset()
         lastLookAwayStart = 0L
         lastPenFidgetingStart = 0L
         lastAbsentStart = 0L

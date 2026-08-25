@@ -7,4 +7,5 @@ data class Task(
     val course: String,
     val done: Boolean,
     val description: String = "",
+    val importance: String = "unknown",
 )

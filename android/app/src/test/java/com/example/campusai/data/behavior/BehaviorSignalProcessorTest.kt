@@ -257,6 +257,30 @@ class BehaviorSignalProcessorTest {
         )
     }
 
+    @Test
+    fun phoneReminderUsesExitHysteresisAndCooldown() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(
+                phoneUseThresholdMs = 2_000L,
+                phoneExitThresholdMs = 1_000L,
+                phoneReminderCooldownMs = 600_000L,
+            ),
+        )
+        assertTrue(processor.process(v34(StudyBehavior.PHONE_USE, 100L)).isEmpty())
+        assertTrue(
+            processor.process(v34(StudyBehavior.PHONE_USE, 2_100L))
+                .contains(StableBehaviorEvent.PHONE_DISTRACTION),
+        )
+        processor.process(v34(StudyBehavior.READING, 2_500L))
+        processor.process(v34(StudyBehavior.READING, 3_500L))
+        processor.process(v34(StudyBehavior.PHONE_USE, 4_000L))
+
+        assertTrue(
+            processor.process(v34(StudyBehavior.PHONE_USE, 6_000L))
+                .none { it == StableBehaviorEvent.PHONE_DISTRACTION },
+        )
+    }
+
     private fun v34(behavior: StudyBehavior, timestampMs: Long): BehaviorPrediction =
         BehaviorPrediction(
             probabilities = if (behavior == StudyBehavior.UNCERTAIN) {

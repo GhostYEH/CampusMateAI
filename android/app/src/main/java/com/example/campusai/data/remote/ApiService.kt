@@ -460,6 +460,25 @@ data class EduGradeItemDto(
     val is_stale: Boolean = false,
     val last_seen_at: String? = null,
 )
+data class EduExamItemsResponse(
+    val semester: String? = null,
+    val items_count: Int = 0,
+    val items: List<EduExamItemDto> = emptyList(),
+)
+data class EduExamItemDto(
+    val id: String? = null,
+    val semester: String? = null,
+    val course_code: String? = null,
+    val course_name: String? = null,
+    val exam_type: String? = null,
+    val location: String? = null,
+    val seat: String? = null,
+    val starts_at: String? = null,
+    val ends_at: String? = null,
+    val notes: String? = null,
+    val is_stale: Boolean = false,
+    val last_seen_at: String? = null,
+)
 
 /** 通用分页响应，对应后端 Page。 */
 data class PagedResponse<T>(
@@ -573,10 +592,15 @@ data class PersonalTaskDto(
     val source_name: String? = null,
     val source_text: String? = null,
     val priority: String? = null,
+    val importance: String? = null,
     val status: String? = null,
     val created_at: String? = null,
     val updated_at: String? = null,
 )
+
+data class ImportanceRankRequest(val task_ids: List<String>? = null)
+data class ImportanceRankItemDto(val task_id: String = "", val importance: String = "unknown", val reason: String? = null, val mode: String = "rules")
+data class ImportanceRankResponseDto(val updated: List<ImportanceRankItemDto> = emptyList(), val skipped: List<String> = emptyList(), val mode: String = "rules", val total: Int = 0)
 
 data class PersonalTaskCreateRequest(
     val title: String,
@@ -809,6 +833,12 @@ interface ApiService {
     @GET("edu/grade/items")
     suspend fun eduGradeItems(@Query("semester") semester: String? = null): Response<EduGradeItemsResponse>
 
+    @GET("edu/exam/semesters")
+    suspend fun eduExamSemesters(): Response<List<String>>
+
+    @GET("edu/exam/items")
+    suspend fun eduExamItems(@Query("semester") semester: String? = null): Response<EduExamItemsResponse>
+
     @POST("auth/refresh")
     suspend fun refresh(@Body request: RefreshRequest): Response<LoginResponse>
 
@@ -893,6 +923,9 @@ interface ApiService {
 
     @POST("tasks")
     suspend fun createTask(@Body request: PersonalTaskCreateRequest): Response<PersonalTaskDto>
+
+    @POST("tasks/rank-importance")
+    suspend fun rankTaskImportance(@Body request: ImportanceRankRequest): Response<ImportanceRankResponseDto>
 
     @PATCH("tasks/{taskId}")
     suspend fun updateTask(

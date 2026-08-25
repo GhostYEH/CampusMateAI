@@ -11,10 +11,10 @@ object BehaviorModelSelection {
         v34Available: Boolean,
         v32Available: Boolean,
         hasPersonRoi: Boolean,
+        allowCandidateV34: Boolean = false,
     ): BehaviorRuntimeModel = when {
-        v34Available && hasPersonRoi -> BehaviorRuntimeModel.V34
+        allowCandidateV34 && v34Available && hasPersonRoi -> BehaviorRuntimeModel.V34
         v32Available -> BehaviorRuntimeModel.V32
         else -> BehaviorRuntimeModel.UNAVAILABLE
     }
 }
-

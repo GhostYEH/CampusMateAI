@@ -52,4 +52,20 @@ class FaceQualityGateTest {
         assertTrue(decision.accepted)
         assertEquals(null, decision.reason)
     }
+
+    @Test
+    fun rejectsMultipleFacesAndUnsafeExposure() {
+        assertEquals(
+            FaceQualityGate.Reason.MULTIPLE_FACES,
+            gate.evaluate(FaceQualityMetrics(120, 0.0, 0.0, 0.0, 50.0, faceCount = 2)).reason,
+        )
+        assertEquals(
+            FaceQualityGate.Reason.UNSAFE_EXPOSURE,
+            gate.evaluate(FaceQualityMetrics(120, 0.0, 0.0, 0.0, 50.0, brightness = 20.0)).reason,
+        )
+        assertEquals(
+            FaceQualityGate.Reason.UNSAFE_EXPOSURE,
+            gate.evaluate(FaceQualityMetrics(120, 0.0, 0.0, 0.0, 50.0, brightness = 245.0)).reason,
+        )
+    }
 }

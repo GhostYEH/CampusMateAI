@@ -285,6 +285,19 @@ private fun SmartFocusCard(task: Task?, onFocus: (Task) -> Unit) {
     }
 }
 
+private fun importanceLabel(importance: String): String = when (importance) {
+    "urgent" -> "紧急"; "high" -> "学业关键"; "important" -> "较重要"
+    "normal" -> "普通"; "low" -> "次要"; else -> "待评"
+}
+private fun importanceBgColor(importance: String): Color = when (importance) {
+    "urgent" -> Color(0xFFFFE0E3); "high" -> Color(0xFFFFEBED); "important" -> Color(0xFFFFF4DD)
+    "normal" -> Color(0xFFEEF1F6); "low" -> Color(0xFFE8F7F0); else -> Color(0xFFEEF1F6)
+}
+private fun importanceFgColor(importance: String): Color = when (importance) {
+    "urgent" -> Color(0xFFD6394B); "high" -> Color(0xFFDD6570); "important" -> Color(0xFFDA9739)
+    "normal" -> Color(0xFF6B7280); "low" -> Color(0xFF3E9E7F); else -> Color(0xFF9CA3AF)
+}
+
 @Composable
 private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Surface).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -296,6 +309,7 @@ private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Uni
                 Icon(Icons.Default.Schedule, null, tint = Muted, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp)); Text(task.due, color = Muted, fontSize = 12.sp)
                 if (task.course.isNotBlank()) { Spacer(Modifier.width(8.dp)); Surface(color = PrimarySoft, shape = RoundedCornerShape(6.dp)) { Text(task.course, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = Primary, fontSize = 10.sp) } }
+                if (task.importance.isNotBlank() && task.importance != "unknown") { Spacer(Modifier.width(8.dp)); Surface(color = importanceBgColor(task.importance), shape = RoundedCornerShape(6.dp)) { Text(importanceLabel(task.importance), Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = importanceFgColor(task.importance), fontSize = 10.sp) } }
             }
         }
         IconButton(onClick = onDelete) { Icon(Icons.Default.MoreVert, null, tint = Muted) }

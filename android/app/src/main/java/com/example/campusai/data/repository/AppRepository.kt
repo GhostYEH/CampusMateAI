@@ -6,6 +6,7 @@ import com.example.campusai.data.local.CredentialStore
 import com.example.campusai.data.news.CampusNewsPreferences
 import com.example.campusai.data.expression.ExpressionRecognitionService
 import com.example.campusai.data.expression.ExpressionSessionManager
+import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.MockExpressionRecognitionService
 import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
@@ -17,6 +18,7 @@ import com.example.campusai.data.remote.ExpressionSignalRequest
 import com.example.campusai.data.remote.NoticeExtractRequest
 import com.example.campusai.data.remote.PersonalTaskCreateRequest
 import com.example.campusai.data.remote.PersonalTaskUpdateRequest
+import com.example.campusai.data.remote.ImportanceRankRequest
 import com.example.campusai.data.remote.PersonalFileCreateRequest
 import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
@@ -62,6 +64,12 @@ class AppRepository(
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
+
+    val accessToken: StateFlow<String?> = dataStore.accessToken.stateIn(
+        scope,
+        SharingStarted.Eagerly,
+        null,
+    )
 
     private val _backendOnline = MutableStateFlow(false)
     val backendOnline: StateFlow<Boolean> = _backendOnline.asStateFlow()
@@ -518,6 +526,7 @@ class AppRepository(
                             course = dto.source_name ?: "个人待办",
                             done = dto.status == "completed",
                             description = dto.description ?: dto.source_text ?: "",
+                            importance = dto.importance ?: "unknown",
                         )
                     })
                 _taskError.value = null
@@ -533,6 +542,15 @@ class AppRepository(
             // the screen or race a successful add/update operation.
             _taskError.value = "待办数据加载失败，请稍后重试"
         }
+    }
+
+    /** 批量评定任务重要程度（AI 优先 + 规则降级），评定后刷新本地缓存。 */
+    suspend fun rankTaskImportance(taskIds: List<String> = emptyList()) {
+        if (!_backendOnline.value || _mockMode.value) return
+        try {
+            val resp = ApiClient.api.rankTaskImportance(ImportanceRankRequest(task_ids = taskIds.takeIf { it.isNotEmpty() }))
+            if (resp.isSuccessful) refreshTasks()
+        } catch (_: Exception) { }
     }
 
     suspend fun loadCourseContent(courseId: String): Pair<CourseContentSummaryDto?, List<CourseContentItemDto>> {
@@ -1073,12 +1091,7 @@ class AppRepository(
     suspend fun chat(message: String, expression: ExpressionResult? = null): String {
         if (_backendOnline.value && !_mockMode.value) {
             val expressionSignal = expression
-                ?.takeIf {
-                    it.isStable &&
-                        it.confidence >= 0.60 &&
-                        it.label != ExpressionLabel.UNKNOWN &&
-                        it.label != ExpressionLabel.NO_FACE
-                }
+                ?.let { CounselorExpressionPolicy.usableOrNull(it) }
                 ?.let {
                     ExpressionSignalRequest(
                         label = it.label.name,
@@ -1117,12 +1130,7 @@ class AppRepository(
             return
         }
         val expressionSignal = expression
-            ?.takeIf {
-                it.isStable &&
-                    it.confidence >= 0.60 &&
-                    it.label != ExpressionLabel.UNKNOWN &&
-                    it.label != ExpressionLabel.NO_FACE
-            }
+            ?.let { CounselorExpressionPolicy.usableOrNull(it) }
             ?.let {
                 ExpressionSignalRequest(
                     label = it.label.name,

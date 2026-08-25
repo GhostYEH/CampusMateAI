@@ -162,6 +162,7 @@ class RealExpressionRecognitionService(
                     infer(
                         bitmap = bitmap,
                         face = selectLargestFace(faces),
+                        faceCount = faces.size,
                         totalStartedAtNanos = totalStartedAtNanos,
                         faceDetectionMs = faceDetectionMs,
                     )
@@ -190,6 +191,7 @@ class RealExpressionRecognitionService(
     private fun infer(
         bitmap: Bitmap,
         face: Face,
+        faceCount: Int,
         totalStartedAtNanos: Long,
         faceDetectionMs: Long,
     ) {
@@ -204,7 +206,7 @@ class RealExpressionRecognitionService(
             )
             try {
                 val qualityStartedAt = SystemClock.elapsedRealtimeNanos()
-                val quality = faceQualityGate.evaluate(face, faceBitmap)
+                val quality = faceQualityGate.evaluate(face, faceBitmap, faceCount)
                 val qualityMs = elapsedMs(qualityStartedAt)
                 if (!quality.accepted) {
                     val postprocessStartedAt = SystemClock.elapsedRealtimeNanos()

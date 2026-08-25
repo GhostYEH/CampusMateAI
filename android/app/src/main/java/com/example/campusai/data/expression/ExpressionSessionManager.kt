@@ -77,6 +77,12 @@ class ExpressionSessionManager(
     private var pageVisible = false
     private var appForeground = true
     private var focusMode: FocusMode? = null
+    private var counselorAssistanceEnabled = false
+    private var counselorCameraPermissionGranted = false
+    private var counselorPageVisible = false
+    private var counselorAppForeground = true
+    @Volatile private var focusAnalysisActive = false
+    private var behaviorAnalyzersAttached = false
     private var processor = FocusStateProcessor(observationConfig)
     private val personAnalyzer = PersonAnalyzer(application)
     private val behaviorAnalyzer = BehaviorAnalyzer(
@@ -213,6 +219,22 @@ class ExpressionSessionManager(
         }
     }
 
+    suspend fun updateCounselorEligibility(
+        enabled: Boolean = counselorAssistanceEnabled,
+        permissionGranted: Boolean = counselorCameraPermissionGranted,
+        visible: Boolean = counselorPageVisible,
+        foreground: Boolean = counselorAppForeground,
+    ) {
+        releaseJob?.cancel()
+        mutex.withLock {
+            counselorAssistanceEnabled = enabled
+            counselorCameraPermissionGranted = permissionGranted
+            counselorPageVisible = visible
+            counselorAppForeground = foreground
+            syncLocked()
+        }
+    }
+
     suspend fun beginFocusSession() {
         releaseJob?.cancel()
         mutex.withLock {
@@ -271,6 +293,9 @@ class ExpressionSessionManager(
         service?.dispose()
         service = null
         serviceInitialized = false
+        behaviorAnalyzersAttached = false
+        focusAnalysisActive = false
+        behaviorObservationActive = false
         _status.value = ExpressionServiceStatus.Off
         _focusState.value = FocusState.UNAVAILABLE
     }
@@ -287,8 +312,12 @@ class ExpressionSessionManager(
     }
 
     private suspend fun syncLocked() {
-        val eligible = assistanceEnabled && cameraPermissionGranted && timerRunning && pageVisible && appForeground
-        val shouldRun = eligible && focusMode == FocusMode.FOCUS
+        val focusEligible = assistanceEnabled && cameraPermissionGranted && timerRunning && pageVisible && appForeground
+        val focusShouldRun = focusEligible && focusMode == FocusMode.FOCUS
+        val counselorShouldRun = counselorAssistanceEnabled && counselorCameraPermissionGranted &&
+            counselorPageVisible && counselorAppForeground
+        val shouldRun = focusShouldRun || counselorShouldRun
+        focusAnalysisActive = focusShouldRun
 
         if (!shouldRun) {
             cameraPipeline.pause()
@@ -299,11 +328,13 @@ class ExpressionSessionManager(
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
             behaviorObservationActive = false
             val fallbackStatus: ExpressionServiceStatus = when {
-                !assistanceEnabled -> ExpressionServiceStatus.Off
-                !cameraPermissionGranted -> ExpressionServiceStatus.Error("需要摄像头权限")
-                !timerRunning -> ExpressionServiceStatus.Ready
-                !pageVisible || !appForeground -> ExpressionServiceStatus.Paused
-                focusMode != FocusMode.FOCUS -> ExpressionServiceStatus.Paused
+                !assistanceEnabled && !counselorAssistanceEnabled -> ExpressionServiceStatus.Off
+                (assistanceEnabled && !cameraPermissionGranted) ||
+                    (counselorAssistanceEnabled && !counselorCameraPermissionGranted) ->
+                    ExpressionServiceStatus.Error("需要摄像头权限")
+                (assistanceEnabled && (!timerRunning || focusMode != FocusMode.FOCUS)) ||
+                    (counselorAssistanceEnabled && (!counselorPageVisible || !counselorAppForeground)) ->
+                    ExpressionServiceStatus.Paused
                 else -> ExpressionServiceStatus.Off
             }
             if (_status.value !is ExpressionServiceStatus.Error) {
@@ -313,7 +344,7 @@ class ExpressionSessionManager(
             return
         }
 
-        if (!behaviorObservationActive) {
+        if (focusShouldRun && !behaviorObservationActive) {
             behaviorSignalProcessor.reset()
             behaviorSignalProcessor.beginBehaviorObservation(System.currentTimeMillis())
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
@@ -323,10 +354,6 @@ class ExpressionSessionManager(
         val target = service ?: createService(useMock).also { created ->
             service = created
             cameraPipeline.addAnalyzer(created)
-            behaviorAnalyzer.ensureInitialized()
-            cameraPipeline.addAnalyzer(behaviorAnalyzer)
-            personAnalyzer.ensureInitialized()
-            cameraPipeline.addAnalyzer(personAnalyzer)
 
             cancelCollectors()
 
@@ -396,6 +423,7 @@ class ExpressionSessionManager(
                 created.results().collectLatest { result ->
                     latestResult = result
                     _result.value = result
+                    if (!focusAnalysisActive) return@collectLatest
                     updatePresence(
                         timestampMs = result.timestamp,
                         faceDetected = result.facePresent,
@@ -434,9 +462,22 @@ class ExpressionSessionManager(
             target.initialize()
             serviceInitialized = true
         }
+        if (focusShouldRun && !behaviorAnalyzersAttached) {
+            behaviorAnalyzer.ensureInitialized()
+            personAnalyzer.ensureInitialized()
+            cameraPipeline.addAnalyzer(behaviorAnalyzer)
+            cameraPipeline.addAnalyzer(personAnalyzer)
+            behaviorAnalyzersAttached = true
+        } else if (!focusShouldRun && behaviorAnalyzersAttached) {
+            cameraPipeline.removeAnalyzer(behaviorAnalyzer)
+            cameraPipeline.removeAnalyzer(personAnalyzer)
+            personAnalyzer.pause()
+            behaviorAnalyzersAttached = false
+            _focusState.value = FocusState.UNAVAILABLE
+        }
         cameraPipeline.start()
         target.start()
-        personAnalyzer.start()
+        if (focusShouldRun) personAnalyzer.start()
     }
 
     private fun initialResult() = ExpressionResult(

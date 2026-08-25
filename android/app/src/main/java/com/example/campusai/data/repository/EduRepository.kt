@@ -6,6 +6,7 @@ import com.example.campusai.data.remote.EduConnectionContinueRequest
 import com.example.campusai.data.remote.EduConnectionDto
 import com.example.campusai.data.remote.EduConnectionFromUrlRequest
 import com.example.campusai.data.remote.EduGradeItemsResponse
+import com.example.campusai.data.remote.EduExamItemsResponse
 import com.example.campusai.data.remote.EduPreLoginResult
 import com.example.campusai.data.remote.EduProbeRequest
 import com.example.campusai.data.remote.EduProbeResult
@@ -157,6 +158,17 @@ class EduRepository {
     suspend fun listGradeItems(semester: String? = null): Result<EduGradeItemsResponse> = runCatching {
         val resp = api.eduGradeItems(semester)
         if (!resp.isSuccessful) throw Exception("加载成绩失败 (${resp.code()})")
+        resp.body()!!
+    }
+
+    suspend fun listExamSemesters(): Result<List<String>> = runCatching {
+        val resp = api.eduExamSemesters()
+        if (resp.isSuccessful) resp.body() ?: emptyList() else emptyList()
+    }
+
+    suspend fun listExamItems(semester: String? = null): Result<EduExamItemsResponse> = runCatching {
+        val resp = api.eduExamItems(semester)
+        if (!resp.isSuccessful) throw Exception("加载考试安排失败 (${resp.code()})")
         resp.body()!!
     }
 }

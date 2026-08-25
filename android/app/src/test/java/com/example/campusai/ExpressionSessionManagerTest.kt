@@ -16,6 +16,29 @@ import org.junit.Test
 import org.mockito.Mockito
 
 class ExpressionSessionManagerTest {
+    @Test fun counselorStartsWithoutFocusTimer() = runBlocking {
+        val fake = FakeService()
+        val application = Mockito.mock(Application::class.java)
+        val manager = ExpressionSessionManager(
+            application = application,
+            createService = { fake },
+            initialUseMock = false,
+            createBehaviorEngine = { NoOpBehaviorRecognitionEngine() },
+        )
+
+        manager.updateCounselorEligibility(
+            enabled = true,
+            permissionGranted = true,
+            visible = true,
+            foreground = true,
+        )
+
+        assertEquals(1, fake.starts)
+        manager.updateCounselorEligibility(visible = false)
+        assertEquals(1, fake.pauses)
+        manager.release()
+    }
+
     @Test fun pauseOnTimerStopAndDisposeOnRelease() = runBlocking {
         val fake = FakeService()
         val application = Mockito.mock(Application::class.java)
