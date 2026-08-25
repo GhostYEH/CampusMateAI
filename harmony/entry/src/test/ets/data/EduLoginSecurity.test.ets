@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@ohos/hypium';
-import { EduConnectionDto } from '../../../main/ets/data/ApiClient';
+import { EduConnectionDto, EduPreLoginResult } from '../../../main/ets/data/ApiClient';
 import {
   allowedOriginsFromEduResponse,
   cookieDtosForUrl,
@@ -11,6 +11,14 @@ import {
   EduLoginSensitiveState,
   reduceEduLoginSensitiveState
 } from '../../../main/ets/features/edu/EduLoginSensitiveState';
+import {
+  EduConnectionRequestGuard,
+  EduConnectionRequestToken
+} from '../../../main/ets/features/edu/EduConnectionRequestGuard';
+import {
+  EduLoginSurface,
+  selectEduLoginSurface
+} from '../../../main/ets/features/edu/EduLoginSurface';
 
 export default function eduLoginSecurityTest(): void {
   describe('EduLoginSecurity', () => {
@@ -81,6 +89,54 @@ export default function eduLoginSecurityTest(): void {
       expect(cookies[0].domain).assertEqual('xk.huel.edu.cn');
       expect(cookies[1].domain).assertEqual('sso.huel.edu.cn');
       expect(cookies[0].secure === undefined).assertTrue();
+    });
+
+    it('does not let a delayed request from a replaced connection overwrite current state', 0, async () => {
+      const guard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
+      const oldGeneration: number = guard.beginReplacement();
+      expect(guard.acceptCreatedConnection(oldGeneration, 'connection-old')).assertTrue();
+      const oldRequest: EduConnectionRequestToken | undefined = guard.capture('connection-old');
+      expect(oldRequest !== undefined).assertTrue();
+
+      const delayedOldResult: Promise<string> = (async (): Promise<string> => {
+        await Promise.resolve();
+        return 'connection-old';
+      })();
+      const newGeneration: number = guard.beginReplacement();
+      expect(guard.acceptCreatedConnection(newGeneration, 'connection-new')).assertTrue();
+      let renderedConnectionId: string = 'connection-new';
+      let renderedCaptcha: string = 'new-answer';
+      let renderedPreLoginToken: string = 'new-token';
+
+      const oldResultId: string = await delayedOldResult;
+      guard.commitIfCurrent(oldRequest as EduConnectionRequestToken, oldResultId, () => {
+        renderedConnectionId = oldResultId;
+        renderedCaptcha = 'old-answer';
+        renderedPreLoginToken = 'old-token';
+      });
+
+      expect(renderedConnectionId).assertEqual('connection-new');
+      expect(renderedCaptcha).assertEqual('new-answer');
+      expect(renderedPreLoginToken).assertEqual('new-token');
+    });
+
+    it('selects exactly one credentials or captcha surface for backend login', 0, () => {
+      const backendConnection: EduConnectionDto = {
+        id: 'connection-backend', state: 'waiting_user_login', provider: 'zhengfang',
+        login_execution_mode: 'backend_http'
+      };
+      const clientConnection: EduConnectionDto = {
+        id: 'connection-client', state: 'waiting_user_login', provider: 'zhengfang',
+        login_execution_mode: 'client_webview'
+      };
+      expect(selectEduLoginSurface(backendConnection, null)).assertEqual(EduLoginSurface.CREDENTIALS);
+      const challenge: EduPreLoginResult = {
+        pre_login_token: 'token-new', captcha_required: true, captcha_type: 'image',
+        captcha_image_base64: 'image', expires_at: '2026-08-25T12:00:00Z'
+      };
+      expect(selectEduLoginSurface(backendConnection, challenge)).assertEqual(EduLoginSurface.CAPTCHA);
+      expect(selectEduLoginSurface(clientConnection, null)).assertEqual(EduLoginSurface.WEB_HANDOFF);
+      expect(selectEduLoginSurface(clientConnection, challenge)).assertEqual(EduLoginSurface.WEB_HANDOFF);
     });
   });
 }

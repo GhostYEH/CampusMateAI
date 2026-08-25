@@ -11,6 +11,11 @@ import {
   EduLoginSensitiveState,
   reduceEduLoginSensitiveState
 } from '../edu/EduLoginSensitiveState';
+import {
+  EduConnectionRequestGuard,
+  EduConnectionRequestToken
+} from '../edu/EduConnectionRequestGuard';
+import { EduLoginSurface, selectEduLoginSurface } from '../edu/EduLoginSurface';
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
@@ -38,6 +43,7 @@ export struct EduSystemPage {
   @State syncMsg: string = '';
   @State polling: boolean = false;
   private pollTimer: number = -1;
+  private connectionGuard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
 
   onBack: () => void = () => {};
   onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => void = () => {};
@@ -56,8 +62,13 @@ export struct EduSystemPage {
   }
 
   aboutToDisappear() {
-    this.stopPolling();
+    this.invalidateConnectionRequests();
     this.resetSensitiveState(EduLoginSensitiveEvent.DISPOSE);
+  }
+
+  invalidateConnectionRequests(): number {
+    this.stopPolling();
+    return this.connectionGuard.invalidate();
   }
 
   resetSensitiveState(event: EduLoginSensitiveEvent) {
@@ -88,6 +99,8 @@ export struct EduSystemPage {
   async probeAndConnect() {
     const url = this.portalUrl.trim();
     if (url.length === 0) return;
+    this.stopPolling();
+    const generation: number = this.connectionGuard.beginReplacement();
     this.resetSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED);
     this.loading = true;
     this.errorMsg = '';
@@ -96,6 +109,7 @@ export struct EduSystemPage {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       const conn = await repo.createConnectionFromUrl(url, this.universityId || undefined);
+      if (!this.connectionGuard.acceptCreatedConnection(generation, conn.id)) return;
       this.connection = conn;
       this.probe = { portal_url: url, provider: conn.provider, provider_confidence: 0, reachable: true, is_edu_page: true, suggested_login_mode: conn.login_execution_mode, evidence: [] } as EduProbeResult;
       if (conn.login_execution_mode === 'client_webview') {
@@ -105,20 +119,24 @@ export struct EduSystemPage {
         this.infoMsg = '该教务系统支持账号密码登录。';
       }
     } catch (e) {
+      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      this.loading = false;
+      if (this.connectionGuard.isGenerationCurrent(generation)) this.loading = false;
     }
   }
 
   async submitCredentials() {
     if (this.connection === null || this.username.length === 0 || this.password.length === 0) return;
+    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
+    if (request === undefined) return;
     this.loading = true;
     this.errorMsg = '';
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
-      const conn = await repo.continueWithCredentials(this.connection.id, this.username, this.password);
+      const conn = await repo.continueWithCredentials(request.connectionId, this.username, this.password);
+      if (!this.connectionGuard.isCurrent(request, conn.id)) return;
       this.connection = conn;
       if (conn.state === 'connected') {
         await this.onConnected();
@@ -139,20 +157,29 @@ export struct EduSystemPage {
         this.errorMsg = conn.error_message || '登录失败';
       }
     } catch (e) {
+      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      this.loading = false;
+      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
     }
   }
 
   async fetchCaptchaImage() {
     if (this.connection === null) return;
+    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
+    if (request === undefined) return;
+    const connectionId: string = request.connectionId;
     this.loading = true;
     this.errorMsg = '';
+    this.preLoginResult = null;
+    this.captchaInput = '';
+    this.preLoginToken = undefined;
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
-      this.preLoginResult = await repo.preLogin(this.connection.id);
+      const preLoginResult: EduPreLoginResult = await repo.preLogin(connectionId);
+      if (!this.connectionGuard.isCurrent(request, connectionId)) return;
+      this.preLoginResult = preLoginResult;
       const captured: EduLoginSensitiveState = captureEduLoginChallenge(
         {
           username: this.username,
@@ -161,30 +188,35 @@ export struct EduSystemPage {
           preLoginToken: this.preLoginToken
         },
         this.captchaInput,
-        this.preLoginResult.pre_login_token
+        preLoginResult.pre_login_token
       );
       this.captchaInput = captured.captcha;
       this.preLoginToken = captured.preLoginToken;
-      if (!this.preLoginResult.captcha_required || !this.preLoginResult.captcha_image_base64) {
+      if (!preLoginResult.captcha_required || !preLoginResult.captcha_image_base64) {
         this.errorMsg = '无法获取验证码图片，请尝试在浏览器中完成登录';
       }
     } catch (e) {
+      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      this.loading = false;
+      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
     }
   }
 
   async submitCredentialsWithCaptcha() {
     if (this.connection === null || this.preLoginResult === null || this.preLoginToken === undefined || this.captchaInput.length === 0) return;
+    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
+    if (request === undefined) return;
+    const connectionId: string = request.connectionId;
     this.loading = true;
     this.errorMsg = '';
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       const conn = await repo.continueWithCaptcha(
-        this.connection.id, this.username, this.password, this.captchaInput, this.preLoginToken
+        connectionId, this.username, this.password, this.captchaInput, this.preLoginToken
       );
+      if (!this.connectionGuard.isCurrent(request, conn.id)) return;
       this.connection = conn;
       this.preLoginResult = null;
       this.preLoginToken = undefined;
@@ -203,9 +235,10 @@ export struct EduSystemPage {
         this.errorMsg = conn.error_message || '登录失败';
       }
     } catch (e) {
+      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      this.loading = false;
+      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
     }
   }
 
@@ -216,6 +249,8 @@ export struct EduSystemPage {
 
   startPolling(connId: string) {
     this.stopPolling();
+    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(connId);
+    if (request === undefined) return;
     this.polling = true;
     let count = 0;
     const poll = async () => {
@@ -225,6 +260,7 @@ export struct EduSystemPage {
         const client = this.buildClient();
         const repo = new EduRepository(client);
         const conn = await repo.pollConnection(connId);
+        if (!this.connectionGuard.isCurrent(request, conn.id)) return;
         this.connection = conn;
         if (conn.state === 'connected') {
           this.stopPolling();
@@ -271,20 +307,23 @@ export struct EduSystemPage {
   }
 
   async disconnect() {
+    const generation: number = this.invalidateConnectionRequests();
     this.resetSensitiveState(EduLoginSensitiveEvent.DISCONNECT);
     this.loading = true;
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       await repo.unbind();
+      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.binding = null;
       this.connection = null;
       this.probe = null;
       this.infoMsg = '已断开教务系统连接';
     } catch (e) {
+      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      this.loading = false;
+      if (this.connectionGuard.isGenerationCurrent(generation)) this.loading = false;
     }
   }
 
@@ -310,6 +349,7 @@ export struct EduSystemPage {
         subtitle: '连接教务系统，同步课表与成绩',
         darkMode: this.darkMode,
         onBack: () => {
+          this.invalidateConnectionRequests();
           this.resetSensitiveState(EduLoginSensitiveEvent.CANCEL);
           this.onBack();
         }
@@ -329,13 +369,13 @@ export struct EduSystemPage {
             if (this.probe !== null) {
               this.ProbeResultCard()
             }
-            if (this.connection !== null && this.connection.login_execution_mode === 'backend_http') {
+            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.CREDENTIALS) {
               this.CredentialFormCard()
             }
-            if (this.preLoginResult !== null) {
+            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.CAPTCHA) {
               this.CaptchaFormCard()
             }
-            if (this.connection !== null && this.connection.login_execution_mode === 'client_webview') {
+            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.WEB_HANDOFF) {
               Button('打开教务登录页面')
                 .width('90%').height(44)
                 .backgroundColor(this.palette().primary).fontColor(Color.White)

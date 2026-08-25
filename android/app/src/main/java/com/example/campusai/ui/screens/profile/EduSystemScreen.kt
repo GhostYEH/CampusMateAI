@@ -43,20 +43,6 @@ object EduStateText {
         else -> state
     }
 
-    fun textWithErrorCode(state: String, errorCode: String?): String {
-        if (state == "waiting_user_login" && !errorCode.isNullOrBlank()) {
-            return when (errorCode) {
-                "NEED_CAPTCHA" -> "学校要求完成图片验证码"
-                "NEED_SLIDER" -> "需要完成滑块验证"
-                "NEED_SMS" -> "需要短信验证码"
-                "NEED_MFA" -> "需要多因素认证"
-                "CLIENT_WEBVIEW" -> "请在学校登录页面完成验证"
-                "NEED_CAMPUS_NETWORK" -> "请连接校园网或 VPN 后继续"
-                else -> text(state)
-            }
-        }
-        return text(state)
-    }
 }
 
 @Composable
@@ -224,7 +210,10 @@ fun EduSystemScreen(
                                 sensitiveState.preLoginToken ?: s.preLoginResult.pre_login_token,
                             )
                         },
-                        onRefresh = { viewModel.refreshCaptcha() },
+                        onRefresh = {
+                            sensitiveState = beginEduLoginChallenge(sensitiveState)
+                            viewModel.refreshCaptcha()
+                        },
                     )
                 }
                 is EduUiState.WaitingUserLogin -> {

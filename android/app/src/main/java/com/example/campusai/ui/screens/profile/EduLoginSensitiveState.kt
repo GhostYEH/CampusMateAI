@@ -16,6 +16,11 @@ enum class EduLoginSensitiveEvent {
     DISPOSE,
 }
 
+fun beginEduLoginChallenge(state: EduLoginSensitiveState): EduLoginSensitiveState = state.copy(
+    captcha = "",
+    preLoginToken = null,
+)
+
 fun captureEduLoginChallenge(
     state: EduLoginSensitiveState,
     captcha: String,
