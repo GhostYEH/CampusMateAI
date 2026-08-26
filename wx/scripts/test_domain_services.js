@@ -23,6 +23,8 @@ function loadTypeScript(relativePath) {
 const expression = loadTypeScript('miniprogram/services/expression-signal.ts')
 const notifications = loadTypeScript('miniprogram/services/notification-inbox.ts')
 const visionPreprocess = loadTypeScript('miniprogram/services/vision-preprocess.ts')
+const cpmState = loadTypeScript('miniprogram/services/cpm-counselor-state.ts')
+const digitalHumanAudio = loadTypeScript('miniprogram/services/digital-human-audio.ts')
 
 function testExpressionSignal() {
   const processor = new expression.ExpressionSignalProcessor(undefined, 3, 5_000, 'wx-test')
@@ -86,7 +88,58 @@ function testVisionPreprocessUsesAndroidNhwcContract() {
   assert.ok(Math.abs(tensor[3] - ((0 - 0.485) / 0.229)) < 1e-6)
 }
 
+function testCpmConversationTransitions() {
+  const initial = cpmState.createCpmState()
+  assert.equal(cpmState.shouldShowCpmSuggestions(initial), true)
+  assert.deepEqual(initial.recommendations.map((item) => item.id), ['freshman', 'graduate', 'club', 'balance'])
+
+  const submitted = cpmState.submitCpmQuestion(initial, '  大一应该怎么规划？  ', 1000)
+  assert.equal(submitted.sending, true)
+  assert.equal(submitted.chatActive, true)
+  assert.equal(submitted.input, '')
+  assert.deepEqual(submitted.messages.map((item) => [item.role, item.status]), [
+    ['user', 'COMPLETED'], ['assistant', 'GENERATING'],
+  ])
+  assert.equal(cpmState.shouldShowCpmSuggestions(submitted), false)
+
+  const assistantId = submitted.messages[1].id
+  const completed = cpmState.completeCpmAnswer(submitted, assistantId, '先建立稳定作息。')
+  assert.equal(completed.sending, false)
+  assert.equal(completed.speechText, '先建立稳定作息。')
+  assert.equal(completed.speechRequestId, 1)
+  assert.equal(completed.messages[1].status, 'COMPLETED')
+
+  const failed = cpmState.failCpmAnswer(submitted, assistantId, '网络错误')
+  assert.equal(failed.sending, false)
+  assert.equal(failed.messages[1].status, 'ERROR')
+  assert.match(failed.messages[1].text, /暂时无法生成回答/)
+}
+
+function testCpmRecommendationRotation() {
+  const rotated = cpmState.shuffleCpmRecommendations(cpmState.createCpmState())
+  assert.deepEqual(rotated.recommendations.map((item) => item.id), ['internship', 'direction', 'friendship', 'habits'])
+  assert.deepEqual(cpmState.shuffleCpmRecommendations(rotated).recommendations.map((item) => item.id), ['freshman', 'graduate', 'club', 'balance'])
+}
+
+function testPcm16WavEnvelope() {
+  const pcm = new Uint8Array([1, 2, 3, 4]).buffer
+  const wav = digitalHumanAudio.pcm16ToWav(pcm, 24000, 1)
+  const bytes = new Uint8Array(wav)
+  const text = (start, length) => String.fromCharCode(...bytes.slice(start, start + length))
+  const view = new DataView(wav)
+  assert.equal(text(0, 4), 'RIFF')
+  assert.equal(text(8, 4), 'WAVE')
+  assert.equal(text(36, 4), 'data')
+  assert.equal(view.getUint32(24, true), 24000)
+  assert.equal(view.getUint32(40, true), 4)
+  assert.deepEqual(Array.from(bytes.slice(44)), [1, 2, 3, 4])
+  assert.equal(digitalHumanAudio.digitalHumanAvatarUrl('https://campus.example/api/v1/'), 'https://campus.example/digital-human/fallback-avatar.png')
+}
+
 testExpressionSignal()
 testNotificationInbox()
 testVisionPreprocessUsesAndroidNhwcContract()
-console.log('PASS domain services: expression signal, vision preprocessing, and notification inbox')
+testCpmConversationTransitions()
+testCpmRecommendationRotation()
+testPcm16WavEnvelope()
+console.log('PASS domain services: expression signal, vision preprocessing, notification inbox, CPM state, and digital-human audio')

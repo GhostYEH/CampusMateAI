@@ -26,7 +26,7 @@
       <view class="forum-toolbar-right">
         <view class="forum-search">
           <icon type="search" size="14"></icon>
-          <input value="{{query}}" placeholder="搜索标题或内容" bindinput="onQuery" bindconfirm="onSearch"></input>
+          <input value="{{query}}" placeholder="搜索标题或内容" aria-label="搜索论坛帖子" confirm-type="search" bindinput="onQuery" bindconfirm="onSearch"></input>
         </view>
         <view class="forum-sort">
           <view class="forum-sort-item {{sort === 'time' ? 'active' : ''}}" data-sort="time" bindtap="switchSort">最新</view>
@@ -37,7 +37,7 @@
 
     <state-view wx:if="{{loading && !posts.length}}" state="loading" title="正在加载论坛"></state-view>
     <state-view wx:elif="{{error}}" state="error" title="暂时无法进入论坛" description="{{error}}" actionText="重试" bindaction="load"></state-view>
-    <state-view wx:elif="{{!posts.length}}" state="empty" title="论坛还很安静" description="成为第一个发帖的同学"></state-view>
+    <state-view wx:elif="{{!posts.length}}" state="empty" title="论坛还很安静" description="成为第一个发帖的同学" actionText="发布第一条" bindaction="openPublish"></state-view>
     <view wx:else class="post-list">
       <view wx:for="{{posts}}" wx:key="id" class="forum-card campus-enter" data-id="{{item.id}}" bindtap="onOpen">
         <view class="forum-card-head">

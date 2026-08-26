@@ -11,9 +11,13 @@ assert(communityPages.includes('pages/hot-topics/hot-topics'), '论坛分包应�
 assert(communityPages.includes('pages/community-publish/community-publish'), '论坛分包应注册独立发帖页')
 
 const forumPage = read('package-community/pages/community/community.wxml')
+const forumStyle = read('package-community/pages/community/community.wxss')
 assert.match(forumPage, /今日热门话题/, '论坛首页应展示今日热门话题入口')
 assert.match(forumPage, /openHotTopics/, '今日热门话题入口应可打开榜单')
 assert.match(forumPage, /openPublish/, '论坛发布按钮应打开独立发帖页')
+assert.match(forumPage, /state="empty"[\s\S]*actionText="发布第一条"/, '论坛空状态应提供直接发布入口')
+assert.match(forumPage, /aria-label="搜索论坛帖子"/, '论坛搜索框应有无障碍名称')
+assert.doesNotMatch(forumStyle, /community-body\s*\{[^}]*padding-top\s*:\s*120px/, 'secondary-nav 已提供占位，论坛正文不得重复增加 120px 顶距')
 
 const hotTopicsPage = read('package-community/pages/hot-topics/hot-topics.ts')
 assert.match(hotTopicsPage, /sort:\s*'hot'/, '热门榜单应使用论坛 hot 排序')

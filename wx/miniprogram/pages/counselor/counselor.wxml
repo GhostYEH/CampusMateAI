@@ -1,23 +1,83 @@
-<view class="page tab-page chat-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
-  <campus-header title="AI 校园助手" subtitle="校园问题，随时来聊一聊" mode="{{mockMode ? '演示知识库' : '真实后端'}}" />
+<view class="page tab-page cpm-page {{darkMode ? 'dark' : ''}} {{reduceMotion ? 'reduce-motion' : ''}}">
+  <campus-header title="CPM 校园助手" subtitle="规划、成长与校园生活，随时聊一聊" mode="{{mockMode ? '演示知识库' : '真实后端'}}" />
+
   <scroll-view class="chat-scroll" scroll-y enhanced enable-flex scroll-with-animation="{{!reduceMotion}}" scroll-into-view="{{scrollTarget}}">
     <view class="chat-content">
-      <view class="assistant-identity enter"><image src="/assets/secondary/ai-robot.png" mode="aspectFit"></image><view class="assistant-copy"><view class="assistant-title">校园事务助手 <text>{{mockMode ? '演示' : '在线'}}</text></view><view class="assistant-subtitle">帮你整理流程、材料和下一步</view><view class="coverage">覆盖奖助、课程、校园服务问答</view></view></view>
+      <view class="cpm-stage enter {{digitalHumanAudioState}}">
+        <view class="stage-orbit orbit-one"></view>
+        <view class="stage-orbit orbit-two"></view>
+        <view class="digital-human-wrap">
+          <view class="voice-ring"></view>
+          <image
+            wx:if="{{digitalHumanAvatar && !digitalHumanAvatarFailed}}"
+            class="digital-human"
+            src="{{digitalHumanAvatar}}"
+            mode="aspectFit"
+            binderror="onDigitalHumanAvatarError"
+          ></image>
+          <image wx:else class="digital-human fallback" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image>
+          <view class="online-dot"></view>
+        </view>
+
+        <view class="stage-copy">
+          <view class="stage-eyebrow">CPM DIGITAL HUMAN</view>
+          <view class="stage-title">你好，我是 CPM</view>
+          <view class="stage-subtitle">你的大学成长伙伴，陪你把问题想清楚、把下一步做具体。</view>
+          <view class="voice-state"><view class="voice-state-dot"></view><text>{{digitalHumanAudioDetail}}</text></view>
+          <view class="voice-controls">
+            <button aria-label="{{digitalHumanMuted ? '取消数字人静音' : '将数字人静音'}}" bindtap="toggleDigitalHumanMute">{{digitalHumanMuted ? '取消静音' : '静音'}}</button>
+            <button aria-label="{{digitalHumanPaused ? '继续数字人语音' : '暂停数字人语音'}}" bindtap="toggleDigitalHumanPause">{{digitalHumanPaused ? '继续' : '暂停'}}</button>
+            <button aria-label="重播数字人语音" bindtap="replayDigitalHuman">重播</button>
+          </view>
+        </view>
+      </view>
 
       <view class="vision-card enter">
-        <view class="vision-head"><view><view class="vision-title">本机表情陪伴</view><view class="vision-subtitle">识别可见表情，不识别身份</view></view><button wx:if="{{!visionEnabled}}" class="vision-action" bindtap="enableVision">启用</button><button wx:else class="vision-action stop" bindtap="disableVision">停止</button></view>
+        <view class="vision-head">
+          <view><view class="vision-title">本机表情陪伴</view><view class="vision-subtitle">识别可见表情或学习状态，不识别用户身份</view></view>
+          <button wx:if="{{!visionEnabled}}" class="vision-action" bindtap="enableVision">启用</button>
+          <button wx:else class="vision-action stop" bindtap="disableVision">停止</button>
+        </view>
         <view class="vision-status {{visionStatus}}"><view class="status-dot"></view><text>{{visionDetail}}</text></view>
         <camera wx:if="{{cameraVisible}}" class="local-camera" device-position="front" frame-size="small" flash="off" binderror="onCameraError"></camera>
         <view wx:if="{{expressionLabel}}" class="expression-result">稳定信号 {{expressionLabel}} · {{expressionConfidence}}%</view>
-        <view class="privacy-line">画面不上传、不保存；退出本页立即停止。没有稳定信号时不会发送任何表情字段。</view>
+        <view class="privacy-line">画面不上传、不保存，只在本机处理；退出本页立即停止。</view>
       </view>
 
-      <view class="suggestion-block enter enter-delay-1"><view class="suggestion-title">你可以这样问</view><view class="suggestion-grid"><button wx:for="{{suggestions}}" wx:key="label" class="suggestion" data-text="{{item.prompt}}" bindtap="useSuggestion"><view class="suggestion-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view><view>{{item.label}}</view><image class="suggestion-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button></view></view>
+      <view wx:if="{{showSuggestions}}" class="suggestion-block enter enter-delay-1">
+        <view class="section-head"><view><view class="suggestion-title">你可以这样问</view><view class="section-caption">从大学规划开始，CPM 会给你可执行的建议</view></view><button bindtap="shuffleSuggestions">换一批</button></view>
+        <view class="suggestion-grid">
+          <button wx:for="{{recommendations}}" wx:key="id" class="suggestion" data-text="{{item.prompt}}" bindtap="useSuggestion">
+            <view class="suggestion-icon"><image src="{{item.icon}}" mode="aspectFit"></image></view>
+            <view class="suggestion-label">{{item.label}}</view>
+            <image class="suggestion-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image>
+          </button>
+        </view>
+      </view>
 
-      <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message-row {{item.role}} enter"><image wx:if="{{item.role === 'assistant'}}" class="assistant-avatar" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image><view class="bubble-wrap"><view class="bubble" user-select>{{item.text}}</view><view wx:if="{{item.citation}}" class="citation">{{item.citation}} · 流程同步</view></view></view>
-      <view wx:if="{{sending}}" id="typing" class="message-row assistant typing-row"><image class="assistant-avatar" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image><view class="typing"><view></view><view></view><view></view><text>正在查询校园知识库</text></view></view>
-      <view wx:if="{{error}}" class="chat-error"><view><view class="chat-error-title">回答未完成</view><text>{{error}}</text></view><view class="error-actions"><button bindtap="retryLastMessage">重试</button><button bindtap="dismissError">关闭</button></view></view>
+      <view wx:else class="conversation-heading"><view class="suggestion-title">与 CPM 对话</view><view>回答完成后可由数字人朗读</view></view>
+
+      <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message-row {{item.role}} enter">
+        <view wx:if="{{item.role === 'assistant'}}" class="assistant-avatar-shell">
+          <image wx:if="{{digitalHumanAvatar && !digitalHumanAvatarFailed}}" class="assistant-avatar" src="{{digitalHumanAvatar}}" mode="aspectFill"></image>
+          <image wx:else class="assistant-avatar fallback" src="/assets/secondary/ai-robot.png" mode="aspectFit"></image>
+        </view>
+        <view class="bubble-wrap">
+          <view wx:if="{{item.role === 'assistant'}}" class="message-author">CPM</view>
+          <view wx:if="{{item.status === 'GENERATING'}}" class="typing"><view></view><view></view><view></view><text>正在整理建议</text></view>
+          <view wx:else class="bubble" user-select>{{item.text}}</view>
+          <view wx:if="{{item.citation}}" class="citation">{{item.citation}}</view>
+          <view wx:if="{{item.status === 'ERROR'}}" class="message-error"><text>{{item.errorMessage}}</text><button bindtap="retryLastMessage">重试</button></view>
+        </view>
+      </view>
     </view>
   </scroll-view>
-  <view class="composer"><view class="composer-row"><textarea class="composer-input" value="{{input}}" auto-height maxlength="500" placeholder="输入你的校园事务问题…" bindinput="onInput" confirm-type="send" bindconfirm="send"></textarea><button class="send-button" disabled="{{!input || sending}}" loading="{{sending}}" bindtap="send"><image src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button></view><view class="disclaimer">仅提供校园事务辅助，请以学校正式通知为准</view></view>
+
+  <view class="composer">
+    <view class="composer-row">
+      <textarea class="composer-input" value="{{input}}" auto-height maxlength="500" placeholder="和 CPM 聊聊你的大学问题…" bindinput="onInput" confirm-type="send" bindconfirm="send"></textarea>
+      <button class="send-button" disabled="{{!input || sending}}" loading="{{sending}}" bindtap="send"><image src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
+    </view>
+    <view class="disclaimer">建议仅供参考，请结合自身情况与学校正式通知判断</view>
+  </view>
 </view>

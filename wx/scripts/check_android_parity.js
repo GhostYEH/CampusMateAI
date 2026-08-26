@@ -12,7 +12,7 @@ const contracts = [
   ['pages/index/index.wxml', 'class="today-card', '首页必须包含安卓式今日课程卡'],
   ['pages/courses/courses.wxml', 'class="next-course-card', '课程页必须包含下一节课主卡'],
   ['pages/tasks/tasks.wxml', 'class="task-summary', '待办页必须包含汇总卡'],
-  ['pages/counselor/counselor.wxml', 'class="assistant-identity', '助手页必须包含机器人身份卡'],
+  ['pages/counselor/counselor.wxml', 'class="cpm-stage', '助手页必须包含 CPM 数字人舞台'],
   ['pages/profile/profile.wxml', 'class="profile-hero', '我的页面必须包含紫色身份头图区'],
   ['pages/login/login.wxml', 'src="/assets/campus-login.jpg"', '登录页必须使用随包校园视觉资源'],
 ]

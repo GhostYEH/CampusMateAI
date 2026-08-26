@@ -3,7 +3,25 @@
     <button class="home-profile" bindtap="openProfile"><image src="/assets/profile-avatar.png" mode="aspectFill"></image><view><view>{{user ? user.name : '校园同学'}}</view><text>点击头像进入个人中心</text></view></button>
   </view>
   <view class="home-content">
-    <view class="hero-card enter"><image src="/assets/home-hero.jpg" mode="aspectFill"></image><view class="hero-overlay"></view><view class="hero-text"><view>期末考试周进行中</view><text>合理规划时间，稳住节奏，我们能赢。</text><button bindtap="openTasks">查看复习计划</button></view><view class="hero-pages"><view class="active"></view><view></view><view></view><view></view></view></view>
+    <view class="hero-shell enter">
+      <swiper class="hero-swiper" current="{{heroCurrent}}" circular="{{heroSlides.length > 1}}" autoplay="{{!reduceMotion}}" interval="4200" duration="{{reduceMotion ? 0 : 420}}" bindchange="onHeroChange">
+        <swiper-item wx:for="{{heroSlides}}" wx:key="id">
+          <view class="hero-card theme-{{item.theme}}">
+            <image wx:if="{{item.art}}" class="hero-art" src="{{item.art}}" mode="aspectFit"></image>
+            <view class="hero-glow"></view>
+            <view class="hero-text">
+              <text class="hero-eyebrow">{{item.eyebrow}}</text>
+              <view class="hero-title">{{item.title}}</view>
+              <text class="hero-subtitle">{{item.subtitle}}</text>
+              <button class="hero-cta" data-route="{{item.route}}" data-tab="{{item.tab}}" bindtap="openHero">{{item.button}} <text>→</text></button>
+            </view>
+          </view>
+        </swiper-item>
+      </swiper>
+      <view class="hero-pages">
+        <button wx:for="{{heroSlides}}" wx:key="id" class="{{index === heroCurrent ? 'active' : ''}}" data-index="{{index}}" bindtap="selectHero"></button>
+      </view>
+    </view>
     <view class="quick-card enter enter-delay-1"><button wx:for="{{quickActions}}" wx:key="label" class="quick-item" data-route="{{item.route}}" data-tab="{{item.tab}}" bindtap="openAction"><view class="quick-icon {{item.tone}}"><image src="/assets/icons/{{item.icon}}.svg" mode="aspectFit"></image></view><text>{{item.label}}</text></button></view>
     <view class="today-card enter enter-delay-2"><view class="card-heading"><view>今日课程</view><button bindtap="openCourses">查看全部</button></view><view class="today-grid"><view class="next-course"><label>下一节</label><view>{{courses[0] ? courses[0].name : '暂无课程'}}</view><text><image src="/assets/icons/clock-white.svg" mode="aspectFit"></image>{{courses[0] ? courses[0].time : '--:--'}}</text><text><image src="/assets/icons/pin-white.svg" mode="aspectFit"></image>{{courses[0] ? courses[0].location : '地点待设置'}}</text></view><view class="course-list-mini"><view wx:for="{{courses}}" wx:key="code" class="course-line"><view class="course-status {{index === 0 ? 'active' : ''}}"></view><view><view>{{item.name}}</view><text>{{item.time}} · {{item.location}}</text></view></view><view wx:if="{{!courses.length}}" class="mini-empty">今天没有课程</view></view></view></view>
     <view class="overview-row enter enter-delay-3"><view class="overview-card"><view class="card-heading"><view>学习总览</view><image src="/assets/icons/eye-dark.svg" mode="aspectFit"></image></view><text>本周进度</text><strong>{{weekProgress}}<label>%</label></strong><view class="progress"><view style="width:{{weekProgress}}%"></view></view></view><view class="overview-card"><view class="card-heading"><view>近期截止</view><button bindtap="openTasks">更多</button></view><view wx:for="{{deadlineTasks}}" wx:key="id" class="deadline-line"><view></view><view><text>{{item.title}}</text><label>{{item.due}}</label></view></view><view wx:if="{{!deadlineTasks.length}}" class="mini-empty">暂无临近事项</view></view></view>

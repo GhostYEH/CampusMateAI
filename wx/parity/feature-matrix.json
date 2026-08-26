@@ -15,7 +15,7 @@
     { "id": "notice-to-task", "status": "ALIGNED", "wx": "package-campus/pages/notices/notices" },
     { "id": "counselor-chat", "status": "ALIGNED", "wx": "pages/counselor/counselor" },
     { "id": "counselor-streaming", "status": "PARTIAL", "gap": "微信端当前使用非流式后端响应并展示发送中状态" },
-    { "id": "digital-human", "status": "PARTIAL", "gap": "微信端使用机器人身份卡，不加载原生端 WebView 数字人" },
+    { "id": "digital-human", "status": "PARTIAL", "gap": "微信端已提供 CPM 数字人舞台、后端 TTS、静音、暂停与重播；受小程序原生页面约束，不内嵌原生端 Unity WebView" },
     { "id": "local-expression", "status": "BLOCKED", "wx": "services/local-vision-session", "gap": "运行链路已接入；需提供兼容 ONNX 下载地址并完成微信真机模型验证" },
     { "id": "local-study-state", "status": "BLOCKED", "wx": "package-study/pages/study/study", "gap": "生命周期已接入；现有候选模型未完成前置摄像头真机验证" },
     { "id": "expression-contribution", "status": "MISSING", "gap": "小程序尚无主动拍摄、同意、上传和删除流程" },

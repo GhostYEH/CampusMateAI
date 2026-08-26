@@ -54,6 +54,7 @@ type SessionMode = 'mock' | 'remote'
 interface RequestOptions {
   authenticated?: boolean
   retryAfterRefresh?: boolean
+  responseType?: 'text' | 'arraybuffer'
 }
 
 interface ApiPage<T> {
@@ -599,6 +600,11 @@ class CampusRepository {
     }
   }
 
+  async synthesizeCpmSpeech(text: string): Promise<ArrayBuffer | null> {
+    if (this.getSettings().mockMode || !text.trim()) return null
+    return this.request<ArrayBuffer>('/assistant/tts', 'POST', { text: text.trim() }, { responseType: 'arraybuffer' })
+  }
+
   async startStudySession(): Promise<string | null> {
     if (this.getSettings().mockMode) return null
     const session = await this.request<StudySessionResponse>('/study/sessions', 'POST', {
@@ -785,6 +791,7 @@ class CampusRepository {
         url: `${baseUrl}/api/v1${path}`,
         method: method as WechatMiniprogram.RequestOption['method'],
         data,
+        responseType: options.responseType,
         header: authenticated && token ? { Authorization: `Bearer ${token}` } : {},
         timeout: 15000,
         success: (response) => {

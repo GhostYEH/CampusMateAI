@@ -4,7 +4,9 @@
   "description": "大学生校园事务智能陪伴助手微信小程序端",
   "scripts": {
     "test:domain": "node scripts/test_domain_services.js",
+    "check:home": "node scripts/check_home_hero_carousel.js",
     "check:notifications": "node scripts/check_notification_parity.js",
+    "check:community": "node scripts/check_community_forum_experience.js",
     "check:counselor": "node scripts/check_counselor_parity.js",
     "check:full-parity": "node scripts/check_full_parity.js",
     "typecheck": "tsc --noEmit",
@@ -18,7 +20,7 @@
     "check:primary-routes": "node scripts/check_primary_routes.js",
     "check:parity": "node scripts/check_android_parity.js",
     "check:contracts": "node scripts/check_backend_contracts.js && node scripts/check_date_utils.js",
-    "check": "npm run test:domain && npm run check:notifications && npm run check:counselor && npm run check:full-parity && npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:layout && npm run check:student-tools && npm run check:primary-routes && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
+    "check": "npm run test:domain && npm run check:home && npm run check:notifications && npm run check:community && npm run check:counselor && npm run check:full-parity && npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:layout && npm run check:student-tools && npm run check:primary-routes && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
   },
   "keywords": [],
   "author": "",

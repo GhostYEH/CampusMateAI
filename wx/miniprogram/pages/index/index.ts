@@ -15,6 +15,18 @@ interface DeadlineTask extends CampusTask {
   tone: string
 }
 
+interface HeroSlide {
+  id: string
+  eyebrow: string
+  title: string
+  subtitle: string
+  button: string
+  route: string
+  tab: boolean
+  theme: 'cpm' | 'learning' | 'academic' | 'study' | 'community'
+  art?: string
+}
+
 Page({
   data: {
     statusBarHeight: 24,
@@ -27,6 +39,34 @@ Page({
     weekProgress: 0,
     reduceMotion: false,
     darkMode: false,
+    heroCurrent: 0,
+    heroSlides: [
+      {
+        id: 'cpm', eyebrow: '新功能上线', title: '你的 CPM 伙伴已上线',
+        subtitle: '小灵随时陪你聊课程、校园服务和学习计划', button: '和小灵聊聊',
+        route: '/pages/counselor/counselor', tab: true, theme: 'cpm', art: '/assets/secondary/ai-robot.png',
+      },
+      {
+        id: 'learning', eyebrow: '学习通接入', title: '学习通，一键接入',
+        subtitle: '学习通课程、作业与通知，及时同步到你的校园首页', button: '查看学习通',
+        route: '/package-campus/pages/notices/notices', tab: false, theme: 'learning',
+      },
+      {
+        id: 'academic', eyebrow: '教务系统接入', title: '教务系统已支持',
+        subtitle: '连接学校教务系统，课表和成绩都能在这里查看', button: '连接教务系统',
+        route: '/package-academic/pages/edu/edu', tab: false, theme: 'academic',
+      },
+      {
+        id: 'study', eyebrow: '专注学习', title: '期末复习计划',
+        subtitle: '待办、复习与专注时段，帮你稳稳推进每一步', button: '打开学习计划',
+        route: '/pages/tasks/tasks', tab: true, theme: 'study',
+      },
+      {
+        id: 'community', eyebrow: '校园社区', title: '校园社区，发现新鲜事',
+        subtitle: '校园动态、经验分享和新鲜话题，等你一起加入', button: '逛逛校园社区',
+        route: '/package-community/pages/community/community', tab: false, theme: 'community',
+      },
+    ] as HeroSlide[],
     quickActions: [
       {
         label: '考试安排', detail: '', route: '/package-campus/pages/exams/exams', tab: false, tone: 'indigo',
@@ -116,6 +156,17 @@ Page({
   },
   openNotice() {
     wx.navigateTo({ url: '/package-campus/pages/notices/notices' })
+  },
+  onHeroChange(event: WechatMiniprogram.CustomEvent<{ current: number }>) {
+    this.setData({ heroCurrent: Number(event.detail.current) })
+  },
+  selectHero(event: WechatMiniprogram.TouchEvent) {
+    const index = Number(event.currentTarget.dataset.index)
+    if (!Number.isInteger(index) || index < 0 || index >= this.data.heroSlides.length) return
+    this.setData({ heroCurrent: index })
+  },
+  openHero(event: WechatMiniprogram.TouchEvent) {
+    this.openAction(event)
   },
   openAction(event: WechatMiniprogram.TouchEvent) {
     const route = event.currentTarget.dataset.route as string
