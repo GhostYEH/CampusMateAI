@@ -32,6 +32,7 @@ from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
 from ..repositories.university_repository import UniversityRepository
 from ..repositories.community_repository import CommunityRepository
+from ..repositories.home_banner_repository import HomeBannerRepository
 from ..repositories.academic_repository import AcademicRepository
 from ..repositories.notice_automation_repository import NoticeAutomationRepository
 from ..repositories.course_content_repository import CourseContentRepository
@@ -85,6 +86,7 @@ class ServiceContainer:
     notice_repository: NoticeRepository
     university_repository: UniversityRepository
     community_repository: CommunityRepository
+    home_banner_repository: HomeBannerRepository
     academic_repository: AcademicRepository
     notice_automation_repository: NoticeAutomationRepository
     course_content_repository: CourseContentRepository
@@ -138,6 +140,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         settings=settings,
     )
     course_content_repository = CourseContentRepository(db)
+    home_banner_repository = HomeBannerRepository(db)
+    home_banner_repository.seed_defaults()
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
@@ -189,6 +193,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         notice_repository=NoticeRepository(db),
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),
+        home_banner_repository=home_banner_repository,
         academic_repository=AcademicRepository(db),
         notice_automation_repository=NoticeAutomationRepository(db),
         course_content_repository=CourseContentRepository(db),

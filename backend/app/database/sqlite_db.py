@@ -410,6 +410,27 @@ CREATE TABLE IF NOT EXISTS favorites (
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
 """
 
+HOME_BANNER_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS home_banners (
+    id TEXT PRIMARY KEY,
+    eyebrow TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    cta_label TEXT NOT NULL,
+    image_url TEXT NOT NULL,
+    action_key TEXT NOT NULL,
+    theme_key TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    starts_at TEXT,
+    ends_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_home_banners_public
+    ON home_banners(status, sort_order, starts_at, ends_at);
+"""
+
 CHAOXING_CREDENTIALS_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS chaoxing_credentials (
     user_id TEXT PRIMARY KEY,
@@ -1063,6 +1084,7 @@ class Database:
                 conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
                 conn.executescript(STUDY_SCHEMA_SQL)
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
+                conn.executescript(HOME_BANNER_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)

@@ -14,6 +14,7 @@ from .routes import (
     dashboards,
     edu,
     health,
+    home_banners,
     knowledge,
     notices,
     personal_hub,
@@ -32,6 +33,8 @@ from .routes import (
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(home_banners.router)
+api_router.include_router(home_banners.admin_router)
 api_router.include_router(notices.router, tags=["notices"])
 api_router.include_router(knowledge.router, tags=["knowledge"])
 # AI 校园助手:保留 /counselor 兼容旧客户端,新增 /assistant 别名
