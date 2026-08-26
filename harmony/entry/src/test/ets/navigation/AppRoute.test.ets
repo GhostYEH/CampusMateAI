@@ -20,7 +20,6 @@ export default function appRouteTest(): void {
         AppRoute.NOTIFICATION_SOURCE_SETTINGS,
         AppRoute.CHAOXING,
         AppRoute.FILES,
-        AppRoute.ACTIVITIES,
         AppRoute.FAVORITES,
         AppRoute.SETTINGS,
         AppRoute.QR_SCANNER,

@@ -67,7 +67,7 @@ Page({
     const confirm = await new Promise<boolean>((resolve) => {
       wx.showModal({
         title: '切换大学',
-        content: `切换到 ${name} 后，论坛、失物招领和校园活动将切换到新学校。`,
+        content: `切换到 ${name} 后，论坛和失物招领内容将切换到新学校。`,
         confirmText: '确认切换',
         success: (res) => resolve(res.confirm),
       })

@@ -29,7 +29,6 @@
     { "id": "community-publish", "status": "ALIGNED", "wx": "package-community/pages/community-publish/community-publish" },
     { "id": "lost-found", "status": "PARTIAL", "wx": "package-community/pages/lostfound/lostfound", "gap": "详情仍使用页内状态" },
     { "id": "personal-files", "status": "PARTIAL", "wx": "pages/hub/hub", "gap": "主要为读取，CRUD 未全部对齐" },
-    { "id": "activities", "status": "PARTIAL", "wx": "pages/hub/hub", "gap": "操作链路未逐项对齐" },
     { "id": "favorites", "status": "PARTIAL", "wx": "pages/hub/hub", "gap": "新增和删除未完整对齐" },
     { "id": "service-requests", "status": "PARTIAL", "wx": "pages/hub/hub", "gap": "原生端多类型表单在小程序聚合页实现" },
     { "id": "qr-login", "status": "ALIGNED", "wx": "pages/qr-confirm/qr-confirm" },
