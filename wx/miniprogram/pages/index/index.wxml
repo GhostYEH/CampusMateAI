@@ -7,6 +7,8 @@
       <swiper class="hero-swiper" current="{{heroCurrent}}" circular="{{heroSlides.length > 1}}" autoplay="{{!reduceMotion}}" interval="4200" duration="{{reduceMotion ? 0 : 420}}" bindchange="onHeroChange">
         <swiper-item wx:for="{{heroSlides}}" wx:key="id">
           <view class="hero-card theme-{{item.theme}}">
+            <image wx:if="{{item.image}}" class="hero-background" src="{{item.image}}" mode="aspectFill"></image>
+            <view wx:if="{{item.image}}" class="hero-overlay"></view>
             <image wx:if="{{item.art}}" class="hero-art" src="{{item.art}}" mode="aspectFit"></image>
             <view class="hero-glow"></view>
             <view class="hero-text">
