@@ -1,5 +1,6 @@
 package com.example.campusai.ui.screens.dashboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -52,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +67,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.campusai.R
+import com.example.campusai.data.model.HomeBanner
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.AnimatedCircularProgress
@@ -84,6 +90,7 @@ import com.example.campusai.ui.theme.Success
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private val HeroBlue = Color(0xFF5368E8)
 private val HeroBlueDeep = Color(0xFF3449C7)
@@ -98,6 +105,7 @@ fun DashboardScreen(
     val session by repository.session.collectAsState()
     val tasks by repository.tasks.collectAsState()
     val campusNews by repository.campusNews.collectAsState()
+    val homeBanners by repository.homeBanners.collectAsState()
     val reduceMotion by repository.reduceMotion.collectAsState()
 
     // 首页加载时尝试从后端拉取最新数据（通知 / 热搜 / 课程 / 任务）
@@ -106,6 +114,7 @@ fun DashboardScreen(
         repository.refreshCampusNews()
         repository.refreshCourses()
         repository.refreshTasks()
+        repository.refreshHomeBanners()
     }
     val floatingDockScrollPadding =
         floatingDockContentBottomPadding(
@@ -148,7 +157,7 @@ fun DashboardScreen(
                 }
             }
         }
-        item { ExamHero(onNavigate, reduceMotion) }
+        if (homeBanners.isNotEmpty()) item { HomeBannerCarousel(homeBanners, onNavigate, reduceMotion) }
         item { QuickActions(onNavigate, reduceMotion) }
         item { TodayCourseCard(onNavigate, reduceMotion) }
         item { OverviewAndDeadlines(tasks, onNavigate, reduceMotion) }
@@ -157,74 +166,95 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun ExamHero(onNavigate: (String) -> Unit, reduceMotion: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(188.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(HeroBlue)
-            .campusClickable { onNavigate("tasks") }
-            .enterAnimation(enabled = !reduceMotion)
-            .breathingFloat(enabled = !reduceMotion, amplitude = 3f, periodMs = 4000),
-    ) {
-        Image(
-            painter = painterResource(R.drawable.campus_login_poster),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            alignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to HeroBlueDeep.copy(alpha = .97f),
-                    .55f to HeroBlue.copy(alpha = .82f),
-                    1f to HeroBlue.copy(alpha = .18f),
-                ),
-            ),
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(.72f)
-                .padding(horizontal = 22.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                "期末考试周进行中",
-                color = Color.White,
-                fontSize = 23.sp,
-                lineHeight = 28.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-.4).sp,
-            )
-            Spacer(Modifier.height(7.dp))
-            Text("合理规划时间，稳住节奏，我们能赢。", color = HeroMist, fontSize = 12.sp)
-            Spacer(Modifier.height(19.dp))
-            Row(
-                modifier = Modifier
-                    .border(1.dp, Color.White.copy(alpha = .72f), CircleShape)
-                    .padding(horizontal = 15.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("查看复习计划", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(7.dp))
-                Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(15.dp))
+@OptIn(ExperimentalFoundationApi::class)
+private fun HomeBannerCarousel(
+    banners: List<HomeBanner>,
+    onNavigate: (String) -> Unit,
+    reduceMotion: Boolean,
+) {
+    val pagerState = rememberPagerState(pageCount = { banners.size })
+    LaunchedEffect(banners.size, reduceMotion) {
+        if (!reduceMotion && banners.size > 1) {
+            while (true) {
+                delay(4_500)
+                pagerState.animateScrollToPage((pagerState.currentPage + 1) % banners.size)
             }
         }
+    }
+    Box(Modifier.fillMaxWidth().height(188.dp).enterAnimation(enabled = !reduceMotion)) {
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            val banner = banners[page]
+            val destination = banner.destination
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(HeroBlue)
+                    .then(if (destination != null) Modifier.campusClickable { onNavigate(destination) } else Modifier),
+            ) {
+                AsyncImage(
+                    model = banner.imageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                val isCpm = banner.actionKey == "CPM_ASSISTANT"
+                Box(
+                    Modifier.fillMaxSize().background(
+                        if (isCpm) Brush.horizontalGradient(
+                            0f to Color.Transparent,
+                            .48f to HeroBlue.copy(alpha = .48f),
+                            1f to HeroBlueDeep.copy(alpha = .96f),
+                        ) else Brush.horizontalGradient(
+                            0f to HeroBlueDeep.copy(alpha = .96f),
+                            .56f to HeroBlue.copy(alpha = .74f),
+                            1f to Color.Transparent,
+                        ),
+                    ),
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(if (isCpm) .58f else .72f)
+                        .align(if (isCpm) Alignment.CenterEnd else Alignment.CenterStart)
+                        .padding(horizontal = 22.dp, vertical = 17.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(banner.eyebrow, color = Color.White.copy(alpha = .78f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(banner.title, color = Color.White, fontSize = 21.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(banner.subtitle, color = HeroMist, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (destination != null) {
+                        Spacer(Modifier.height(11.dp))
+                        Row(
+                            modifier = Modifier.border(1.dp, Color.White.copy(alpha = .72f), CircleShape).padding(horizontal = 13.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(banner.ctaLabel, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 9.dp),
+        ) {
         Row(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            repeat(4) { index ->
+            repeat(banners.size) { index ->
                 Box(
                     Modifier
-                        .size(if (index == 0) 7.dp else 6.dp)
+                        .width(if (index == pagerState.currentPage) 18.dp else 6.dp)
+                        .height(6.dp)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = if (index == 0) 1f else .42f)),
+                        .background(Color.White.copy(alpha = if (index == pagerState.currentPage) 1f else .42f)),
                 )
             }
+        }
         }
     }
 }

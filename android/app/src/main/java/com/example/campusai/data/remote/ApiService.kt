@@ -664,7 +664,26 @@ data class FavoriteCreateRequest(
     val source_route: String? = null,
 )
 
+data class HomeBannerDto(
+    val id: String,
+    val eyebrow: String,
+    val title: String,
+    val subtitle: String,
+    val cta_label: String,
+    val image_url: String,
+    val action_key: String,
+    val theme_key: String,
+)
+
+data class HomeBannerFeedDto(
+    val items: List<HomeBannerDto>,
+    val updated_at: String? = null,
+)
+
 interface ApiService {
+    @GET("home-banners")
+    suspend fun homeBanners(): Response<HomeBannerFeedDto>
+
     @GET("health")
     suspend fun health(): Response<HealthResponse>
 

@@ -24,6 +24,7 @@ import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
+import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -123,6 +124,9 @@ class AppRepository(
     private val _courses = MutableStateFlow(defaultCourses())
     val courses: StateFlow<List<Course>> = _courses.asStateFlow()
 
+    private val _homeBanners = MutableStateFlow<List<HomeBanner>>(emptyList())
+    val homeBanners: StateFlow<List<HomeBanner>> = _homeBanners.asStateFlow()
+
     private val personalHubMutex = Mutex()
     private var personalHubJob: Job? = null
     private var activeAccountKey: String? = null
@@ -209,6 +213,7 @@ class AppRepository(
         // Keep one app-wide source of truth and refresh it as soon as the
         // repository is created.
         scope.launch { refreshBackendStatus() }
+        scope.launch { loadCachedHomeBanners() }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
@@ -476,6 +481,69 @@ class AppRepository(
     }
 
     /** 拉取课程列表。 */
+    suspend fun refreshHomeBanners() {
+        try {
+            val response = ApiClient.api.homeBanners()
+            if (response.isSuccessful) {
+                val banners = response.body()?.items.orEmpty().map(::mapHomeBanner)
+                if (banners.isNotEmpty()) {
+                    _homeBanners.value = banners
+                    dataStore.saveRaw(HOME_BANNER_CACHE_KEY, encodeHomeBanners(banners))
+                }
+            }
+        } catch (_: Exception) {
+            // Keep the last successful backend snapshot.
+        }
+    }
+
+    private suspend fun loadCachedHomeBanners() {
+        val raw = dataStore.readRaw(HOME_BANNER_CACHE_KEY) ?: return
+        try {
+            val array = JSONArray(raw)
+            _homeBanners.value = List(array.length()) { index ->
+                val item = array.getJSONObject(index)
+                HomeBanner(
+                    id = item.getString("id"),
+                    eyebrow = item.getString("eyebrow"),
+                    title = item.getString("title"),
+                    subtitle = item.getString("subtitle"),
+                    ctaLabel = item.getString("ctaLabel"),
+                    imageUrl = item.getString("imageUrl"),
+                    actionKey = item.getString("actionKey"),
+                    themeKey = item.getString("themeKey"),
+                )
+            }
+        } catch (_: Exception) {
+            // Ignore an obsolete or malformed local snapshot.
+        }
+    }
+
+    private fun mapHomeBanner(dto: HomeBannerDto) = HomeBanner(
+        id = dto.id,
+        eyebrow = dto.eyebrow,
+        title = dto.title,
+        subtitle = dto.subtitle,
+        ctaLabel = dto.cta_label,
+        imageUrl = ApiClient.resolveStaticUrl(dto.image_url).orEmpty(),
+        actionKey = dto.action_key,
+        themeKey = dto.theme_key,
+    )
+
+    private fun encodeHomeBanners(items: List<HomeBanner>): String = JSONArray().apply {
+        items.forEach { banner ->
+            put(JSONObject().apply {
+                put("id", banner.id)
+                put("eyebrow", banner.eyebrow)
+                put("title", banner.title)
+                put("subtitle", banner.subtitle)
+                put("ctaLabel", banner.ctaLabel)
+                put("imageUrl", banner.imageUrl)
+                put("actionKey", banner.actionKey)
+                put("themeKey", banner.themeKey)
+            })
+        }
+    }.toString()
+
     suspend fun refreshCourses() {
         if (!_backendOnline.value || _mockMode.value) return
         try {
@@ -500,6 +568,10 @@ class AppRepository(
                 }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
+    }
+
+    private companion object {
+        const val HOME_BANNER_CACHE_KEY = "home_banners_v1"
     }
 
     /** 拉取云端任务并合并到本地缓存。 */
