@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
@@ -93,6 +93,27 @@ def test_admin_can_create_publish_update_and_archive_banner() -> None:
     assert archived.status_code == 200, archived.text
     assert archived.json()["status"] == "ARCHIVED"
     assert {item["id"] for item in client.get("/api/v1/home-banners").json()["items"]} == before_ids
+
+
+def test_public_schedule_compares_equivalent_instants_across_timezones() -> None:
+    client = _setup()
+    admin = _headers(client, "admin_demo")
+    created = client.post(
+        "/api/v1/admin/home-banners",
+        headers=admin,
+        json={**_draft_payload("跨时区生效"), "starts_at": "2026-08-26T08:00:00+08:00"},
+    )
+    assert created.status_code == 201, created.text
+    banner_id = created.json()["id"]
+    published = client.post(f"/api/v1/admin/home-banners/{banner_id}/publish", headers=admin)
+    assert published.status_code == 200, published.text
+
+    visible_ids = {
+        item.id
+        for item in get_container().home_banner_repository.list_public("2026-08-26T00:30:00+00:00")
+    }
+
+    assert banner_id in visible_ids
 
 
 def test_banner_admin_requires_admin_role_and_valid_action_key() -> None:

@@ -9,6 +9,12 @@ data class HomeBanner(
     val imageUrl: String,
     val actionKey: String,
     val themeKey: String,
+    val sortOrder: Int,
+    val status: String,
+    val startsAt: String?,
+    val endsAt: String?,
+    val createdAt: String,
+    val updatedAt: String,
 ) {
     val destination: String?
         get() = when (actionKey) {

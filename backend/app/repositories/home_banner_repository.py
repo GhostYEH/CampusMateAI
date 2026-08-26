@@ -50,8 +50,8 @@ class HomeBannerRepository:
             rows = conn.execute(
                 """SELECT * FROM home_banners
                 WHERE status = 'PUBLISHED'
-                  AND (starts_at IS NULL OR starts_at <= ?)
-                  AND (ends_at IS NULL OR ends_at > ?)
+                  AND (starts_at IS NULL OR julianday(starts_at) <= julianday(?))
+                  AND (ends_at IS NULL OR julianday(ends_at) > julianday(?))
                 ORDER BY sort_order ASC, created_at ASC""",
                 (current, current),
             ).fetchall()

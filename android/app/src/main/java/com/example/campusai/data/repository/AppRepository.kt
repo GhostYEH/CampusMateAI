@@ -509,6 +509,12 @@ class AppRepository(
                     imageUrl = item.getString("imageUrl"),
                     actionKey = item.getString("actionKey"),
                     themeKey = item.getString("themeKey"),
+                    sortOrder = item.optInt("sortOrder", 0),
+                    status = item.optString("status", "PUBLISHED"),
+                    startsAt = item.optString("startsAt").takeIf { !item.isNull("startsAt") && it.isNotBlank() },
+                    endsAt = item.optString("endsAt").takeIf { !item.isNull("endsAt") && it.isNotBlank() },
+                    createdAt = item.optString("createdAt"),
+                    updatedAt = item.optString("updatedAt"),
                 )
             }
         } catch (_: Exception) {
@@ -525,6 +531,12 @@ class AppRepository(
         imageUrl = ApiClient.resolveStaticUrl(dto.image_url).orEmpty(),
         actionKey = dto.action_key,
         themeKey = dto.theme_key,
+        sortOrder = dto.sort_order,
+        status = dto.status,
+        startsAt = dto.starts_at,
+        endsAt = dto.ends_at,
+        createdAt = dto.created_at,
+        updatedAt = dto.updated_at,
     )
 
     private fun encodeHomeBanners(items: List<HomeBanner>): String = JSONArray().apply {
@@ -538,6 +550,12 @@ class AppRepository(
                 put("imageUrl", banner.imageUrl)
                 put("actionKey", banner.actionKey)
                 put("themeKey", banner.themeKey)
+                put("sortOrder", banner.sortOrder)
+                put("status", banner.status)
+                put("startsAt", banner.startsAt)
+                put("endsAt", banner.endsAt)
+                put("createdAt", banner.createdAt)
+                put("updatedAt", banner.updatedAt)
             })
         }
     }.toString()

@@ -673,6 +673,12 @@ data class HomeBannerDto(
     val image_url: String,
     val action_key: String,
     val theme_key: String,
+    val sort_order: Int,
+    val status: String,
+    val starts_at: String? = null,
+    val ends_at: String? = null,
+    val created_at: String,
+    val updated_at: String,
 )
 
 data class HomeBannerFeedDto(

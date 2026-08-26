@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import uuid
 
@@ -40,11 +41,16 @@ def _out(row: HomeBannerRow) -> HomeBannerOut:
     return HomeBannerOut(**row.__dict__)
 
 
+def _utc_iso(value: datetime) -> str:
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return aware.astimezone(timezone.utc).isoformat()
+
+
 def _values(request: HomeBannerWrite) -> dict[str, object]:
     values = request.model_dump()
     for key in ("starts_at", "ends_at"):
         value = values[key]
-        values[key] = value.isoformat() if value is not None else None
+        values[key] = _utc_iso(value) if value is not None else None
     return values
 
 
