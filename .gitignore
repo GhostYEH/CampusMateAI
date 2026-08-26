@@ -183,6 +183,7 @@ qa/
 docs/superpowers/plans/
 docs/superpowers/specs/
 wx/docs/
+ml/**/reports/*.md
 **/design-qa*.md
 harmony/PARITY_AUDIT.md
 wx/parity/PARITY_AUDIT.md
