@@ -206,6 +206,7 @@ harmony/.hvigor/
 harmony/build/
 harmony/entry/build/
 harmony/entry/.test/
+harmony/entry/.preview/
 harmony/.appanalyzer/
 harmony/local.properties
 harmony/.cxx/
