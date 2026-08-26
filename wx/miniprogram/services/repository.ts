@@ -19,6 +19,8 @@ import {
   ExtractResult,
   ExpressionSignalPayload,
   FavoriteItem,
+  HomeBanner,
+  HomeBannerFeed,
   LostFoundItem,
   Notice,
   PersonalFile,
@@ -35,6 +37,7 @@ const STORAGE = {
   token: 'campus.token',
   refreshToken: 'campus.refresh-token',
   tasks: 'campus.tasks',
+  homeBanners: 'campus.home-banners',
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -271,6 +274,25 @@ class CampusRepository {
 
   async checkBackendHealth(): Promise<void> {
     await this.probeRealBackend()
+  }
+
+  getCachedHomeBanners(): HomeBanner[] {
+    return (wx.getStorageSync(STORAGE.homeBanners) as HomeBanner[] | '') || []
+  }
+
+  async getHomeBannersAsync(): Promise<HomeBanner[]> {
+    try {
+      const feed = await this.request<HomeBannerFeed>('/home-banners', 'GET', undefined, {
+        authenticated: false,
+        retryAfterRefresh: false,
+      })
+      if (feed.items.length) wx.setStorageSync(STORAGE.homeBanners, feed.items)
+      return feed.items
+    } catch (error) {
+      const cached = this.getCachedHomeBanners()
+      if (cached.length) return cached
+      throw error
+    }
   }
 
   async getTasksAsync(): Promise<CampusTask[]> {

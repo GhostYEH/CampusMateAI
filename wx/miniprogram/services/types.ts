@@ -95,6 +95,28 @@ export interface BackendHealth {
   version?: string
 }
 
+export interface HomeBanner {
+  id: string
+  eyebrow: string
+  title: string
+  subtitle: string
+  cta_label: string
+  image_url: string
+  action_key: string
+  theme_key: string
+  sort_order: number
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+  starts_at?: string | null
+  ends_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface HomeBannerFeed {
+  items: HomeBanner[]
+  updated_at?: string | null
+}
+
 export interface StudentExam {
   id: string
   course_name: string

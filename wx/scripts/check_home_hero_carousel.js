@@ -6,18 +6,19 @@ const root = path.resolve(__dirname, '..')
 const homeTs = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.ts'), 'utf8')
 const homeWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.wxml'), 'utf8')
 const homeWxss = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.wxss'), 'utf8')
+const repository = fs.readFileSync(path.join(root, 'miniprogram/services/repository.ts'), 'utf8')
+const mapper = fs.readFileSync(path.join(root, 'miniprogram/services/home-banner.ts'), 'utf8')
 
-assert.match(homeTs, /heroSlides:\s*\[/, 'home must define hero slide data')
+assert.match(homeTs, /heroSlides:\s*\[\]\s+as HeroSlide\[\]/, 'home must start from backend or cached banner data')
+assert.match(homeTs, /getHomeBannersAsync\(\)/, 'home must refresh banners from the backend')
+assert.match(repository, /request<HomeBannerFeed>\('\/home-banners'/, 'repository must call the central banner API')
+assert.match(repository, /getCachedHomeBanners/, 'repository must retain the latest successful banner feed')
 assert.match(homeTs, /onHeroChange\(/, 'home must update the active hero slide')
 assert.match(homeTs, /openHero\(/, 'home must expose a hero CTA handler')
 assert.match(homeWxml, /<swiper\b/, 'home must render the activity area as a swiper')
 assert.match(homeWxml, /hero-background/, 'hero slides must render feature artwork')
 assert.match(homeWxss, /\.hero-background\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0/, 'hero artwork must anchor to every card edge')
 assert.match(homeWxml, /bindtap="openHero"/, 'hero CTA must be clickable')
-
-for (const label of ['你的 CPM 伙伴已上线', '学习通，一键接入', '教务系统已支持', '期末复习计划', '校园社区，发现新鲜事']) {
-  assert.match(homeTs, new RegExp(label), `home is missing ${label}`)
-}
 
 for (const route of [
   '/pages/counselor/counselor',
@@ -26,12 +27,11 @@ for (const route of [
   '/pages/tasks/tasks',
   '/package-community/pages/community/community',
 ]) {
-  assert.match(homeTs, new RegExp(route.replaceAll('/', '\\/')), `home is missing hero destination ${route}`)
+  assert.match(mapper, new RegExp(route.replaceAll('/', '\\/')), `banner mapper is missing destination ${route}`)
 }
 
-for (const image of ['hero-learning.jpg', 'hero-academic.jpg', 'hero-study.jpg', 'hero-community.jpg']) {
-  assert.match(homeTs, new RegExp(image.replace('.', '\\.')), `home is missing hero artwork ${image}`)
-  assert.ok(fs.existsSync(path.join(root, 'miniprogram/assets', image)), `missing hero artwork file ${image}`)
+for (const action of ['CPM_ASSISTANT', 'CHAOXING', 'EDU_SYSTEM', 'TASKS', 'COMMUNITY']) {
+  assert.match(mapper, new RegExp(action), `banner mapper is missing action ${action}`)
 }
 
 console.log('PASS home hero carousel contracts')

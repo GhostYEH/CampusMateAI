@@ -1,5 +1,6 @@
 import { repository } from '../../services/repository'
 import { CampusTask, Course, User } from '../../services/types'
+import { HeroSlide, mapHomeBanner } from '../../services/home-banner'
 
 interface QuickAction {
   label: string
@@ -15,19 +16,6 @@ interface DeadlineTask extends CampusTask {
   tone: string
 }
 
-interface HeroSlide {
-  id: string
-  eyebrow: string
-  title: string
-  subtitle: string
-  button: string
-  route: string
-  tab: boolean
-  theme: 'cpm' | 'learning' | 'academic' | 'study' | 'community'
-  art?: string
-  image?: string
-}
-
 Page({
   data: {
     statusBarHeight: 24,
@@ -41,33 +29,7 @@ Page({
     reduceMotion: false,
     darkMode: false,
     heroCurrent: 0,
-    heroSlides: [
-      {
-        id: 'cpm', eyebrow: '新功能上线', title: '你的 CPM 伙伴已上线',
-        subtitle: '小灵随时陪你聊课程、校园服务和学习计划', button: '和小灵聊聊',
-        route: '/pages/counselor/counselor', tab: true, theme: 'cpm', art: '/assets/secondary/ai-robot.png',
-      },
-      {
-        id: 'learning', eyebrow: '学习通接入', title: '学习通，一键接入',
-        subtitle: '学习通课程、作业与通知，及时同步到你的校园首页', button: '查看学习通',
-        route: '/package-campus/pages/notices/notices', tab: false, theme: 'learning', image: '/assets/hero-learning.jpg',
-      },
-      {
-        id: 'academic', eyebrow: '教务系统接入', title: '教务系统已支持',
-        subtitle: '连接学校教务系统，课表和成绩都能在这里查看', button: '连接教务系统',
-        route: '/package-academic/pages/edu/edu', tab: false, theme: 'academic', image: '/assets/hero-academic.jpg',
-      },
-      {
-        id: 'study', eyebrow: '专注学习', title: '期末复习计划',
-        subtitle: '待办、复习与专注时段，帮你稳稳推进每一步', button: '打开学习计划',
-        route: '/pages/tasks/tasks', tab: true, theme: 'study', image: '/assets/hero-study.jpg',
-      },
-      {
-        id: 'community', eyebrow: '校园社区', title: '校园社区，发现新鲜事',
-        subtitle: '校园动态、经验分享和新鲜话题，等你一起加入', button: '逛逛校园社区',
-        route: '/package-community/pages/community/community', tab: false, theme: 'community', image: '/assets/hero-community.jpg',
-      },
-    ] as HeroSlide[],
+    heroSlides: [] as HeroSlide[],
     quickActions: [
       {
         label: '考试安排', detail: '', route: '/package-campus/pages/exams/exams', tab: false, tone: 'indigo',
@@ -86,9 +48,11 @@ Page({
     ] as QuickAction[],
   },
   onLoad() {
+    const cachedBanners = repository.getCachedHomeBanners()
     this.setData({
       statusBarHeight: wx.getWindowInfo().statusBarHeight || 24,
       todayLabel: this.formatToday(),
+      heroSlides: cachedBanners.map((item) => mapHomeBanner(item, (url) => repository.resolveAssetUrl(url))),
     })
   },
   async onShow() {
@@ -100,15 +64,19 @@ Page({
 
     const settings = repository.getSettings()
     try {
-      const [tasksResult, coursesResult] = await Promise.allSettled([
+      const [tasksResult, coursesResult, bannersResult] = await Promise.allSettled([
         repository.getTasksAsync(),
         repository.getCoursesAsync(),
+        repository.getHomeBannersAsync(),
       ])
       if (tasksResult.status === 'rejected' && coursesResult.status === 'rejected') {
         throw tasksResult.reason
       }
       const tasks = tasksResult.status === 'fulfilled' ? tasksResult.value : []
       const allCourses = coursesResult.status === 'fulfilled' ? coursesResult.value : []
+      const heroSlides = bannersResult.status === 'fulfilled'
+        ? bannersResult.value.map((item) => mapHomeBanner(item, (url) => repository.resolveAssetUrl(url)))
+        : this.data.heroSlides
       const pendingTasks = tasks.filter((task) => !task.done)
       const courses = allCourses.slice(0, 2)
     const completedCount = tasks.length - pendingTasks.length
@@ -127,6 +95,7 @@ Page({
       weekProgress: tasks.length ? Math.round((completedCount / tasks.length) * 100) : 0,
       reduceMotion: settings.reduceMotion,
       darkMode: settings.darkMode,
+      heroSlides,
     })
       if (tasksResult.status === 'rejected' || coursesResult.status === 'rejected') {
         wx.showToast({ title: '部分校园数据暂未加载', icon: 'none' })
@@ -140,7 +109,8 @@ Page({
         completedCount: 0,
         weekProgress: 0,
         reduceMotion: settings.reduceMotion,
-        darkMode: settings.darkMode,
+      darkMode: settings.darkMode,
+      heroSlides: this.data.heroSlides,
       })
       wx.showToast({
         title: error instanceof Error ? error.message : '首页数据加载失败',
