@@ -36,6 +36,8 @@ export interface StudyDailyGoal { target_minutes: number; updated_at: string; }
 export interface PersonalFileItem { id: string; name: string; category?: string; size_label?: string; updated_at?: string; source?: string; is_favorite?: boolean; }
 export interface PersonalFileCreate { name: string; category: string; source: string; size_label: string; }
 export interface FavoriteItem { id: string; title: string; type?: string; subtitle?: string; saved_at?: string; source_route?: string; }
+export interface HomeBannerItem { id: string; eyebrow: string; title: string; subtitle: string; cta_label: string; image_url: string; action_key: string; theme_key: string; sort_order: number; status: string; starts_at?: string; ends_at?: string; created_at: string; updated_at: string; }
+export interface HomeBannerFeed { items: HomeBannerItem[]; updated_at?: string; }
 
 export interface NoticeIngestRequest { content: string; source_name: string; published_at: string; }
 export interface ExtractRequest { content: string; }

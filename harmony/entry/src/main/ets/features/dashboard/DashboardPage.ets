@@ -1,5 +1,5 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
-import { CommunityPostItem, CourseItem, NoticeItem, TaskItem } from '../../data/Models';
+import { CommunityPostItem, CourseItem, HomeBannerItem, NoticeItem, TaskItem } from '../../data/Models';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
 interface DashboardAction {
@@ -17,11 +17,13 @@ export struct DashboardPage {
   @Prop courses: CourseItem[] = [];
   @Prop tasks: TaskItem[] = [];
   @Prop notices: NoticeItem[] = [];
+  @Prop banners: HomeBannerItem[] = [];
   @Prop hotPosts: CommunityPostItem[] = [];
   onNavigate: (route: string) => void = () => {};
   @State pressedRoute: string = '';
   @State heroPressed: boolean = false;
   @State profilePressed: boolean = false;
+  @State heroIndex: number = 0;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
@@ -32,10 +34,19 @@ export struct DashboardPage {
     setTimeout(() => { if (this.pressedRoute === route) this.pressedRoute = ''; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate(route);
   }
-  triggerHero(): void {
+  bannerRoute(actionKey: string): string {
+    if (actionKey === 'CPM_ASSISTANT') return 'counselor';
+    if (actionKey === 'CHAOXING') return 'chaoxing';
+    if (actionKey === 'EDU_SYSTEM') return 'edu_system';
+    if (actionKey === 'TASKS') return 'tasks';
+    if (actionKey === 'COMMUNITY') return 'community';
+    return '';
+  }
+  triggerHero(route: string): void {
+    if (route.length === 0) return;
     this.heroPressed = true;
     setTimeout(() => { this.heroPressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.STATE));
-    this.onNavigate('tasks');
+    this.onNavigate(route);
   }
   triggerProfile(): void {
     this.profilePressed = true;
@@ -93,71 +104,49 @@ export struct DashboardPage {
   }
 
   @Builder
-  ExamHero() {
-    Stack() {
-      Image($r('app.media.campus_login_poster'))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-      Column() {}
-        .width('100%')
-        .height('100%')
-        .linearGradient({
-          angle: 90,
-          colors: [
-            ['#FA3449C7', 0.0],
-            ['#D15368E8', 0.55],
-            ['#2E5368E8', 1.0]
-          ]
-        })
-      Column() {
-        Text('期末考试周进行中')
-          .fontColor('#FFFFFFFF')
-          .fontSize(23)
-          .fontWeight(FontWeight.Bold)
-          .letterSpacing(-0.4)
-          .lineHeight(28)
-        Text('合理规划时间，稳住节奏，我们能赢。')
-          .fontColor('#FFDCE5FF')
-          .fontSize(12)
-          .margin({ top: 7 })
-        Row({ space: 7 }) {
-          Text('查看复习计划')
-            .fontColor('#FFFFFFFF')
-            .fontSize(12)
-            .fontWeight(FontWeight.Medium)
-          SymbolGlyph($r('sys.symbol.arrow_right'))
-            .fontSize(15)
-            .fontColor(['#FFFFFFFF'])
+  HomeBanner() {
+    Swiper() {
+      ForEach(this.banners, (banner: HomeBannerItem) => {
+        Stack() {
+          Image(banner.image_url).width('100%').height('100%').objectFit(ImageFit.Cover)
+          Column() {}
+            .width('100%').height('100%')
+            .linearGradient({ angle: banner.action_key === 'CPM_ASSISTANT' ? 270 : 90, colors: banner.action_key === 'CPM_ASSISTANT'
+              ? [['#003449C7', 0.0], ['#985368E8', 0.52], ['#F53449C7', 1.0]]
+              : [['#F53449C7', 0.0], ['#C85368E8', 0.56], ['#005368E8', 1.0]] })
+          Column() {
+            Text(banner.eyebrow).fontColor('#C7FFFFFF').fontSize(9).fontWeight(FontWeight.Bold)
+            Text(banner.title).fontColor('#FFFFFFFF').fontSize(21).fontWeight(FontWeight.Bold).lineHeight(25).maxLines(2).margin({ top: 6 })
+            Text(banner.subtitle).fontColor('#FFDCE5FF').fontSize(11).lineHeight(15).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).margin({ top: 6 })
+            if (this.bannerRoute(banner.action_key).length > 0) {
+              Row({ space: 6 }) {
+                Text(banner.cta_label).fontColor('#FFFFFFFF').fontSize(11).fontWeight(FontWeight.Medium)
+                SymbolGlyph($r('sys.symbol.arrow_right')).fontSize(14).fontColor(['#FFFFFFFF'])
+              }.padding({ left: 13, right: 13, top: 7, bottom: 7 }).border({ width: 1, color: '#B8FFFFFF' }).borderRadius(18).margin({ top: 11 })
+            }
+          }
+          .width(banner.action_key === 'CPM_ASSISTANT' ? '58%' : '72%').height('100%')
+          .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Start)
+          .align(banner.action_key === 'CPM_ASSISTANT' ? Alignment.End : Alignment.Start)
+          .padding({ left: 22, right: 14, top: 17, bottom: 17 })
         }
-        .padding({ left: 15, right: 15, top: 9, bottom: 9 })
-        .border({ width: 1, color: '#B8FFFFFF' })
-        .borderRadius(18)
-        .margin({ top: 19 })
-      }
-      .width('72%')
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Start)
-      .padding({ left: 22, right: 8, top: 20, bottom: 20 })
-
-      Row({ space: 6 }) {
-        Circle().width(7).height(7).fill('#FFFFFFFF')
-        Circle().width(6).height(6).fill('#6BFFFFFF')
-        Circle().width(6).height(6).fill('#6BFFFFFF')
-        Circle().width(6).height(6).fill('#6BFFFFFF')
-      }
-      .align(Alignment.Bottom)
-      .margin({ bottom: 10 })
+        .width('100%').height('100%')
+        .onClick(() => this.triggerHero(this.bannerRoute(banner.action_key)))
+      }, (banner: HomeBannerItem) => banner.id)
     }
     .width('100%')
     .height(188)
+    .index(this.heroIndex)
+    .autoPlay(!this.reduceMotion && this.banners.length > 1)
+    .interval(4500)
+    .loop(this.banners.length > 1)
+    .indicator(this.banners.length > 1)
+    .onChange((index: number) => { this.heroIndex = index; })
     .borderRadius(26)
     .clip(true)
     .scale({ x: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0, y: this.heroPressed ? MotionSpec.scale(this.reduceMotion, 0.97) : 1.0 })
     .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseOut })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
-    .onClick(() => this.triggerHero())
   }
 
   @Builder
@@ -469,7 +458,9 @@ export struct DashboardPage {
     Scroll() {
       Column({ space: 14 }) {
         this.HeaderProfile()
-        this.ExamHero()
+        if (this.banners.length > 0) {
+          this.HomeBanner()
+        }
         this.QuickActions()
         this.TodayCourseCard()
         Row({ space: 10 }) {

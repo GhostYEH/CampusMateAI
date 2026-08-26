@@ -32,7 +32,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
@@ -49,8 +49,10 @@ import { abilityAccessCtrl, common, PermissionRequestResult } from '@kit.Ability
 import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
+import { PreferencesUtil } from '../util/PreferencesUtil';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
+const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
 
 function toastError(message: string): void {
   try { promptAction.showToast({ message: message, duration: 2200 }); } catch { /* ignore toast failure */ }
@@ -93,6 +95,7 @@ struct Index {
   @State primaryLoading: boolean = false;
   @State courses: CourseItem[] = [];
   @State tasks: TaskItem[] = [];
+  @State homeBanners: HomeBannerItem[] = [];
   @State chatMessages: ChatMessage[] = [];
   @State chatInput: string = '';
   @State chatSending: boolean = false;
@@ -166,6 +169,7 @@ struct Index {
     }
     if (this.signedIn) {
       this.initNotificationService();
+      await this.loadCachedHomeBanners();
       this.refreshPrimaryData();
     }
   }
@@ -319,6 +323,7 @@ struct Index {
     }
     this.primaryLoading = true;
     const client = this.createApiClient();
+    await this.refreshHomeBanners(client);
     try {
       const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
       const user = me?.user ?? {};
@@ -357,6 +362,51 @@ struct Index {
     } finally {
       this.primaryLoading = false;
     }
+  }
+
+  async loadCachedHomeBanners(): Promise<void> {
+    const raw: string = await PreferencesUtil.getString(HOME_BANNER_CACHE_KEY, '');
+    if (raw.length === 0) return;
+    try {
+      const cached = JSON.parse(raw) as HomeBannerItem[];
+      if (Array.isArray(cached)) this.homeBanners = cached;
+    } catch (_) { /* ignore stale cache */ }
+  }
+
+  resolveBannerUrl(url: string): string {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const marker: string = '/api/v1';
+    const markerIndex: number = API_BASE_URL.indexOf(marker);
+    const origin: string = markerIndex >= 0 ? API_BASE_URL.substring(0, markerIndex) : API_BASE_URL.replace(/\/$/, '');
+    return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`;
+  }
+
+  async refreshHomeBanners(client: ApiClient): Promise<void> {
+    try {
+      const feed = await client.request<HomeBannerFeed>(http.RequestMethod.GET, 'home-banners');
+      const items: HomeBannerItem[] = safeArray<HomeBannerItem>(feed?.items).map((item: HomeBannerItem): HomeBannerItem => {
+        return {
+          id: item.id,
+          eyebrow: item.eyebrow,
+          title: item.title,
+          subtitle: item.subtitle,
+          cta_label: item.cta_label,
+          image_url: this.resolveBannerUrl(item.image_url),
+          action_key: item.action_key,
+          theme_key: item.theme_key,
+          sort_order: item.sort_order,
+          status: item.status,
+          starts_at: item.starts_at,
+          ends_at: item.ends_at,
+          created_at: item.created_at,
+          updated_at: item.updated_at
+        };
+      });
+      if (items.length > 0) {
+        this.homeBanners = items;
+        await PreferencesUtil.putString(HOME_BANNER_CACHE_KEY, JSON.stringify(items));
+      }
+    } catch (_) { /* retain cached banners */ }
   }
 
   async loadCourseContent(courseId: string): Promise<CourseContentBundle> {
@@ -1054,6 +1104,8 @@ struct Index {
       courses: this.courses,
       tasks: this.tasks,
       notices: this.notices,
+      banners: this.homeBanners,
+      reduceMotion: this.reduceMotion,
       onNavigate: (target: string) => {
         this.navigateTo(target);
       }
