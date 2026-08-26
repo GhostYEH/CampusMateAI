@@ -12,7 +12,7 @@ assert.match(homeTs, /onHeroChange\(/, 'home must update the active hero slide')
 assert.match(homeTs, /openHero\(/, 'home must expose a hero CTA handler')
 assert.match(homeWxml, /<swiper\b/, 'home must render the activity area as a swiper')
 assert.match(homeWxml, /hero-background/, 'hero slides must render feature artwork')
-assert.match(homeWxss, /\.hero-background\s*\{[^}]*position:\s*absolute/, 'hero artwork must fill the activity card')
+assert.match(homeWxss, /\.hero-background\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0/, 'hero artwork must anchor to every card edge')
 assert.match(homeWxml, /bindtap="openHero"/, 'hero CTA must be clickable')
 
 for (const label of ['你的 CPM 伙伴已上线', '学习通，一键接入', '教务系统已支持', '期末复习计划', '校园社区，发现新鲜事']) {
