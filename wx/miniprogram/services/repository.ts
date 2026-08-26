@@ -286,7 +286,7 @@ class CampusRepository {
         authenticated: false,
         retryAfterRefresh: false,
       })
-      if (feed.items.length) wx.setStorageSync(STORAGE.homeBanners, feed.items)
+      wx.setStorageSync(STORAGE.homeBanners, feed.items)
       return feed.items
     } catch (error) {
       const cached = this.getCachedHomeBanners()

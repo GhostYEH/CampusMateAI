@@ -13,6 +13,7 @@ assert.match(homeTs, /heroSlides:\s*\[\]\s+as HeroSlide\[\]/, 'home must start f
 assert.match(homeTs, /getHomeBannersAsync\(\)/, 'home must refresh banners from the backend')
 assert.match(repository, /request<HomeBannerFeed>\('\/home-banners'/, 'repository must call the central banner API')
 assert.match(repository, /getCachedHomeBanners/, 'repository must retain the latest successful banner feed')
+assert.match(repository, /wx\.setStorageSync\(STORAGE\.homeBanners, feed\.items\)/, 'an empty successful feed must clear stale banner cache')
 assert.match(homeTs, /onHeroChange\(/, 'home must update the active hero slide')
 assert.match(homeTs, /openHero\(/, 'home must expose a hero CTA handler')
 assert.match(homeWxml, /<swiper\b/, 'home must render the activity area as a swiper')

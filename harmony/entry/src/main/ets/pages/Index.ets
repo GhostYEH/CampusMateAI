@@ -402,10 +402,8 @@ struct Index {
           updated_at: item.updated_at
         };
       });
-      if (items.length > 0) {
-        this.homeBanners = items;
-        await PreferencesUtil.putString(HOME_BANNER_CACHE_KEY, JSON.stringify(items));
-      }
+      this.homeBanners = items;
+      await PreferencesUtil.putString(HOME_BANNER_CACHE_KEY, JSON.stringify(items));
     } catch (_) { /* retain cached banners */ }
   }
 

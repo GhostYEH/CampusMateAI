@@ -486,10 +486,8 @@ class AppRepository(
             val response = ApiClient.api.homeBanners()
             if (response.isSuccessful) {
                 val banners = response.body()?.items.orEmpty().map(::mapHomeBanner)
-                if (banners.isNotEmpty()) {
-                    _homeBanners.value = banners
-                    dataStore.saveRaw(HOME_BANNER_CACHE_KEY, encodeHomeBanners(banners))
-                }
+                _homeBanners.value = banners
+                dataStore.saveRaw(HOME_BANNER_CACHE_KEY, encodeHomeBanners(banners))
             }
         } catch (_: Exception) {
             // Keep the last successful backend snapshot.
