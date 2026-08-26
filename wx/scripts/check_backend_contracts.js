@@ -21,6 +21,7 @@ const checks = [
   ['counselor explicitly requests non-stream response', /stream:\s*false/.test(repository)],
   ['refresh token is persisted', repository.includes('refreshToken')],
   ['401 can refresh access token', repository.includes("'/auth/refresh'")],
+  ['401 retry preserves binary response type', /retryAfterRefresh:\s*false,\s*responseType:\s*options\.responseType/.test(repository)],
   ['courses expose an async real-data method', repository.includes('getCoursesAsync')],
   ['notices expose an async real-data method', repository.includes('getNoticesAsync')],
   ['notice save waits for backend completion', /async saveTask[\s\S]*await repository/.test(noticesPage)],

@@ -806,7 +806,11 @@ class CampusRepository {
                 reject(new Error('登录已过期，请重新登录'))
                 return
               }
-              this.request<T>(path, method, data, { authenticated, retryAfterRefresh: false })
+              this.request<T>(path, method, data, {
+                authenticated,
+                retryAfterRefresh: false,
+                responseType: options.responseType,
+              })
                 .then(resolve)
                 .catch(reject)
             }).catch(reject)
