@@ -44,6 +44,19 @@ class TemporalBehaviorModel(nn.Module):
         return self.classifier(outputs[:, -1])
 
 
+class TemporalGRUHead(nn.Module):
+    def __init__(self, input_size: int, hidden_size: int = 256, num_classes: int = 4):
+        super().__init__()
+        self.gru = nn.GRU(input_size, hidden_size, batch_first=True)
+        self.classifier = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        if features.ndim != 3:
+            raise ValueError("Expected feature shape [batch, time, features]")
+        outputs, _ = self.gru(features)
+        return self.classifier(outputs[:, -1])
+
+
 def freeze_encoder(model: TemporalBehaviorModel) -> None:
     for parameter in model.encoder.parameters():
         parameter.requires_grad = False
