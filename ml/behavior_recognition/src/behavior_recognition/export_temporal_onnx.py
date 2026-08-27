@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -41,11 +44,16 @@ def _prepare_frame_graph(
     sequence_length: int,
 ) -> tuple[onnx.ModelProto, tuple[int, int, int]]:
     model = onnx.load(source_path)
+    if len(model.graph.input) != 1:
+        raise ValueError("Source ONNX must have exactly one input")
     source_input = model.graph.input[0]
+    if source_input.type.tensor_type.elem_type != TensorProto.FLOAT:
+        raise ValueError("Source ONNX input must be float32")
     dimensions = source_input.type.tensor_type.shape.dim
-    channels, height, width = (int(dimensions[index].dim_value) for index in (1, 2, 3))
-    if min(channels, height, width) < 1:
-        raise ValueError("Source ONNX must have fixed channel and spatial dimensions")
+    source_shape = [int(dimension.dim_value) for dimension in dimensions]
+    if source_shape != [1, 3, 224, 224]:
+        raise ValueError("Source ONNX input must be fixed [1, 3, 224, 224]")
+    _, channels, height, width = source_shape
     available = {name for node in model.graph.node for name in node.output}
     if feature_output not in available:
         raise ValueError(f"ONNX intermediate output not found: {feature_output}")
@@ -105,6 +113,41 @@ def _prepare_frame_graph(
     return model, (channels, height, width)
 
 
+def _shape(value: onnx.ValueInfoProto) -> list[int]:
+    return [int(dimension.dim_value) for dimension in value.type.tensor_type.shape.dim]
+
+
+def _validate_fused_contract(model: onnx.ModelProto) -> None:
+    if len(model.graph.input) != 1 or model.graph.input[0].name != "frames":
+        raise ValueError("Fused ONNX must expose only the frames input")
+    if _shape(model.graph.input[0]) != [1, 16, 3, 224, 224]:
+        raise ValueError("Fused ONNX input must be [1, 16, 3, 224, 224]")
+    if len(model.graph.output) != 1 or model.graph.output[0].name != "logits":
+        raise ValueError("Fused ONNX must expose only the logits output")
+    if _shape(model.graph.output[0]) != [1, 4]:
+        raise ValueError("Fused ONNX output must be [1, 4]")
+
+
+def _load_temporal_checkpoint(path: Path) -> dict:
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Temporal checkpoint must be a mapping")
+    required = {
+        "epoch", "architecture", "model_state", "config", "class_names",
+        "source_onnx_sha256",
+    }
+    missing = required - set(checkpoint)
+    if missing:
+        raise ValueError(f"Temporal checkpoint is missing fields: {sorted(missing)}")
+    if not isinstance(checkpoint["config"], Mapping):
+        raise ValueError("Temporal checkpoint config must be a mapping")
+    if not isinstance(checkpoint["model_state"], Mapping):
+        raise ValueError("Temporal checkpoint model_state must be a mapping")
+    if tuple(checkpoint["class_names"]) != tuple(CLASS_NAMES):
+        raise ValueError("Temporal checkpoint class order does not match the product contract")
+    return checkpoint
+
+
 def _export_head(
     head: TemporalGRUHead,
     path: Path,
@@ -141,7 +184,9 @@ def export_fused_temporal_candidate(
     *,
     parity_samples: int = 4,
 ) -> Path:
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if parity_samples < 1:
+        raise ValueError("parity_samples must be at least 1")
+    checkpoint = _load_temporal_checkpoint(checkpoint_path)
     if checkpoint.get("architecture") != "mobilenet_v3_small_onnx_gru":
         raise ValueError("Checkpoint is not a frozen-ONNX temporal candidate")
     source_hash = _sha256(source_onnx_path)
@@ -149,6 +194,8 @@ def export_fused_temporal_candidate(
         raise ValueError("Source ONNX hash does not match the temporal checkpoint")
     config = checkpoint["config"]
     sequence_length = int(config.get("sequence_length", 16))
+    if sequence_length != 16:
+        raise ValueError("Temporal checkpoint sequence_length must be 16")
     feature_size = int(config["onnx_feature_size"])
     feature_output = str(config["onnx_feature_output"])
     hidden_size = int(config.get("hidden_size", 256))
@@ -156,70 +203,70 @@ def export_fused_temporal_candidate(
     head.load_state_dict(checkpoint["model_state"])
     head.eval()
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    frame_model, image_shape = _prepare_frame_graph(
-        source_onnx_path, feature_output, feature_size, sequence_length
-    )
-    head_path = output_dir / "temporal_head.onnx"
-    head_model = _export_head(
-        head, head_path, sequence_length, feature_size, frame_model.ir_version
-    )
-    fused = compose.merge_models(
-        frame_model,
-        head_model,
-        io_map=[("sequence_features", "sequence_features")],
-        prefix2="temporal/",
-        name="CampusMateTemporalBehavior",
-    )
-    _rename_value(fused, "temporal/head_logits", "logits")
-    fused = onnx.shape_inference.infer_shapes(fused)
-    onnx.checker.check_model(fused)
-    fused_path = output_dir / "campusmate_behavior_gru_candidate.onnx"
-    onnx.save(fused, fused_path)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="temporal-export-", dir=output_dir.parent
+    ) as temporary_directory:
+        temporary_dir = Path(temporary_directory)
+        frame_model, image_shape = _prepare_frame_graph(
+            source_onnx_path, feature_output, feature_size, sequence_length
+        )
+        head_path = temporary_dir / "temporal_head.onnx"
+        head_model = _export_head(
+            head, head_path, sequence_length, feature_size, frame_model.ir_version
+        )
+        fused = compose.merge_models(
+            frame_model,
+            head_model,
+            io_map=[("sequence_features", "sequence_features")],
+            prefix2="temporal/",
+            name="CampusMateTemporalBehavior",
+        )
+        _rename_value(fused, "temporal/head_logits", "logits")
+        fused = onnx.shape_inference.infer_shapes(fused)
+        _validate_fused_contract(fused)
+        onnx.checker.check_model(fused)
+        temporary_fused_path = temporary_dir / "campusmate_behavior_gru_candidate.onnx"
+        onnx.save(fused, temporary_fused_path)
 
-    feature_model_path = output_dir / "parity_frame_features.onnx"
-    create_feature_model(
-        source_onnx_path,
-        feature_model_path,
-        feature_output,
-        feature_size=feature_size,
-    )
-    encoder = OnnxFrameFeatureEncoder(feature_model_path, feature_output)
-    fused_session = ort.InferenceSession(
-        str(fused_path), providers=["CPUExecutionProvider"]
-    )
-    rng = np.random.default_rng(int(config.get("seed", 20260827)))
-    maximum_error = 0.0
-    top1_matches = []
-    channels, height, width = image_shape
-    with torch.no_grad():
-        for _ in range(parity_samples):
-            sample = rng.normal(
-                size=(1, sequence_length, channels, height, width)
-            ).astype(np.float32)
-            features = encoder.encode(sample.reshape(-1, channels, height, width))
-            reference = head(
-                torch.from_numpy(features.reshape(1, sequence_length, feature_size))
-            ).numpy()
-            actual = fused_session.run(["logits"], {"frames": sample})[0]
-            maximum_error = max(
-                maximum_error, float(np.max(np.abs(reference - actual)))
-            )
-            top1_matches.append(int(reference.argmax()) == int(actual.argmax()))
-    parity = {
-        "sample_count": parity_samples,
-        "top1_match": bool(all(top1_matches)),
-        "max_abs_error": maximum_error,
-        "tolerance": 1e-4,
-    }
-    (output_dir / "parity.json").write_text(
-        json.dumps(parity, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    (output_dir / "labels.json").write_text(
-        json.dumps({"classes": list(CLASS_NAMES)}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    model_card = {
+        feature_model_path = temporary_dir / "parity_frame_features.onnx"
+        create_feature_model(
+            source_onnx_path,
+            feature_model_path,
+            feature_output,
+            feature_size=feature_size,
+        )
+        encoder = OnnxFrameFeatureEncoder(feature_model_path, feature_output)
+        fused_session = ort.InferenceSession(
+            str(temporary_fused_path), providers=["CPUExecutionProvider"]
+        )
+        rng = np.random.default_rng(int(config.get("seed", 20260827)))
+        maximum_error = 0.0
+        top1_matches = []
+        channels, height, width = image_shape
+        with torch.no_grad():
+            for _ in range(parity_samples):
+                sample = rng.normal(
+                    size=(1, sequence_length, channels, height, width)
+                ).astype(np.float32)
+                features = encoder.encode(sample.reshape(-1, channels, height, width))
+                reference = head(
+                    torch.from_numpy(features.reshape(1, sequence_length, feature_size))
+                ).numpy()
+                actual = fused_session.run(["logits"], {"frames": sample})[0]
+                maximum_error = max(
+                    maximum_error, float(np.max(np.abs(reference - actual)))
+                )
+                top1_matches.append(int(reference.argmax()) == int(actual.argmax()))
+        parity = {
+            "sample_count": parity_samples,
+            "top1_match": bool(all(top1_matches)),
+            "max_abs_error": maximum_error,
+            "tolerance": 1e-4,
+        }
+        if not parity["top1_match"] or maximum_error > 1e-4:
+            raise RuntimeError(f"Fused temporal ONNX parity failed: {parity}")
+        model_card = {
         "status": "offline_temporal_candidate_not_for_production",
         "architecture": "mobilenet_v3_small_gru",
         "checkpoint_epoch": int(checkpoint["epoch"]),
@@ -233,18 +280,34 @@ def export_fused_temporal_candidate(
         "output": {"name": "logits", "classes": list(CLASS_NAMES)},
         "source_onnx_sha256": source_hash,
         "checkpoint_metrics": checkpoint.get("metrics", {}),
-        "fused_onnx_sha256": _sha256(fused_path),
-        "file_size_bytes": fused_path.stat().st_size,
+        "fused_onnx_sha256": _sha256(temporary_fused_path),
+        "file_size_bytes": temporary_fused_path.stat().st_size,
         "parity": parity,
         "limitations": [
             "Validated on only three independent source videos.",
             "No real-device front-camera evaluation has been completed.",
             "This artifact must not replace the Android production model without promotion checks.",
         ],
-    }
-    (output_dir / "model_card.json").write_text(
-        json.dumps(model_card, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    if not parity["top1_match"] or maximum_error > 1e-4:
-        raise RuntimeError(f"Fused temporal ONNX parity failed: {parity}")
-    return fused_path
+        }
+        sidecars = {
+            "parity.json": parity,
+            "labels.json": {"classes": list(CLASS_NAMES)},
+            "model_card.json": model_card,
+        }
+        for filename, contents in sidecars.items():
+            (temporary_dir / filename).write_text(
+                json.dumps(contents, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for filename in (
+            "campusmate_behavior_gru_candidate.onnx",
+            "parity.json",
+            "labels.json",
+            "model_card.json",
+        ):
+            os.replace(temporary_dir / filename, output_dir / filename)
+        for stale_helper in ("temporal_head.onnx", "parity_frame_features.onnx"):
+            stale_path = output_dir / stale_helper
+            if stale_path.is_file():
+                stale_path.unlink()
+    return output_dir / "campusmate_behavior_gru_candidate.onnx"
