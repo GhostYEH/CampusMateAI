@@ -71,16 +71,22 @@ def test_fused_temporal_onnx_matches_frame_encoder_plus_gru(tmp_path: Path):
     output = session.run(
         ["logits"], {"frames": np.zeros((1, 16, 3, 224, 224), np.float32)}
     )[0]
-    parity = json.loads((tmp_path / "export" / "parity.json").read_text(encoding="utf-8"))
+    parity = json.loads((fused_path.parent / "parity.json").read_text(encoding="utf-8"))
 
     assert input_shape == [1, 16, 3, 224, 224]
     assert output.shape == (1, 4)
     assert parity["top1_match"] is True
     assert parity["max_abs_error"] <= 1e-4
-    assert (tmp_path / "export" / "model_card.json").is_file()
-    assert sorted(path.suffix for path in (tmp_path / "export").iterdir()) == [
+    assert (fused_path.parent / "model_card.json").is_file()
+    assert fused_path.parent.parent.name == "generations"
+    assert sorted(path.suffix for path in fused_path.parent.iterdir()) == [
         ".json", ".json", ".json", ".onnx"
     ]
+    pointer = json.loads(
+        (tmp_path / "export" / "current.json").read_text(encoding="utf-8")
+    )
+    assert (tmp_path / "export" / pointer["model"]).resolve() == fused_path.resolve()
+    assert pointer["fused_onnx_sha256"] == _sha256(fused_path)
 
 
 def test_fused_export_rejects_disabled_parity(tmp_path: Path):

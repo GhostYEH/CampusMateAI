@@ -104,7 +104,7 @@ python -m behavior_recognition.cli temporal-export `
   --output exports_temporal\full-current-onnx-20260827
 ```
 
-The fused model accepts `frames` with shape `[1, 16, 3, 224, 224]` and returns four `logits`. Export fails if the source ONNX SHA-256 differs from the model used during GRU training or if fused-vs-two-stage parity exceeds `1e-4`.
+The fused model accepts `frames` with shape `[1, 16, 3, 224, 224]` and returns four `logits`. Export fails if the source ONNX SHA-256 differs from the model used during GRU training or if fused-vs-two-stage parity exceeds `1e-4`. A successful export writes an immutable artifact set under `generations/<content-id>/` and atomically updates `current.json`; consumers should resolve the model path from that pointer.
 
 This route preserves and actually executes the current ONNX frame encoder; it does not substitute ImageNet weights under the same name. Because the original PyTorch checkpoint is unavailable, the encoder remains frozen and only the GRU and four-class head train. The three-video split is suitable for pipeline development but not production promotion or subject-independent accuracy claims.
 
@@ -118,7 +118,7 @@ manifests/                 absolute-path train/val/test manifests
 runs/                      checkpoints and histories
 manifests_temporal/        leak-free temporal window manifests
 runs_temporal/             GRU checkpoints, logs, and derived feature ONNX
-exports_temporal/          fused temporal ONNX, parity, labels, and model card
+exports_temporal/          atomic pointer plus versioned fused temporal artifacts
 reports/generated/         machine-readable audit/evaluation reports
 exports/                   candidate ONNX, labels, parity, and model card
 ```

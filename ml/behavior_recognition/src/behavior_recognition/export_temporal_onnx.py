@@ -27,6 +27,17 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _artifact_set_digest(directory: Path, filenames: tuple[str, ...]) -> str:
+    digest = hashlib.sha256()
+    for filename in sorted(filenames):
+        digest.update(filename.encode("utf-8"))
+        digest.update(b"\0")
+        with (directory / filename).open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _rename_value(model: onnx.ModelProto, old: str, new: str) -> None:
     for node in model.graph.node:
         node.input[:] = [new if value == old else value for value in node.input]
@@ -208,10 +219,14 @@ def export_fused_temporal_candidate(
         prefix="temporal-export-", dir=output_dir.parent
     ) as temporary_directory:
         temporary_dir = Path(temporary_directory)
+        staged_dir = temporary_dir / "generation"
+        work_dir = temporary_dir / "work"
+        staged_dir.mkdir()
+        work_dir.mkdir()
         frame_model, image_shape = _prepare_frame_graph(
             source_onnx_path, feature_output, feature_size, sequence_length
         )
-        head_path = temporary_dir / "temporal_head.onnx"
+        head_path = work_dir / "temporal_head.onnx"
         head_model = _export_head(
             head, head_path, sequence_length, feature_size, frame_model.ir_version
         )
@@ -226,10 +241,10 @@ def export_fused_temporal_candidate(
         fused = onnx.shape_inference.infer_shapes(fused)
         _validate_fused_contract(fused)
         onnx.checker.check_model(fused)
-        temporary_fused_path = temporary_dir / "campusmate_behavior_gru_candidate.onnx"
+        temporary_fused_path = staged_dir / "campusmate_behavior_gru_candidate.onnx"
         onnx.save(fused, temporary_fused_path)
 
-        feature_model_path = temporary_dir / "parity_frame_features.onnx"
+        feature_model_path = work_dir / "parity_frame_features.onnx"
         create_feature_model(
             source_onnx_path,
             feature_model_path,
@@ -267,27 +282,27 @@ def export_fused_temporal_candidate(
         if not parity["top1_match"] or maximum_error > 1e-4:
             raise RuntimeError(f"Fused temporal ONNX parity failed: {parity}")
         model_card = {
-        "status": "offline_temporal_candidate_not_for_production",
-        "architecture": "mobilenet_v3_small_gru",
-        "checkpoint_epoch": int(checkpoint["epoch"]),
-        "input": {
-            "name": "frames",
-            "shape": [1, sequence_length, channels, height, width],
-            "dtype": "float32",
-            "color": "RGB",
-        },
-        "normalization": {"mean": IMAGENET_MEAN, "std": IMAGENET_STD},
-        "output": {"name": "logits", "classes": list(CLASS_NAMES)},
-        "source_onnx_sha256": source_hash,
-        "checkpoint_metrics": checkpoint.get("metrics", {}),
-        "fused_onnx_sha256": _sha256(temporary_fused_path),
-        "file_size_bytes": temporary_fused_path.stat().st_size,
-        "parity": parity,
-        "limitations": [
-            "Validated on only three independent source videos.",
-            "No real-device front-camera evaluation has been completed.",
-            "This artifact must not replace the Android production model without promotion checks.",
-        ],
+            "status": "offline_temporal_candidate_not_for_production",
+            "architecture": "mobilenet_v3_small_gru",
+            "checkpoint_epoch": int(checkpoint["epoch"]),
+            "input": {
+                "name": "frames",
+                "shape": [1, sequence_length, channels, height, width],
+                "dtype": "float32",
+                "color": "RGB",
+            },
+            "normalization": {"mean": IMAGENET_MEAN, "std": IMAGENET_STD},
+            "output": {"name": "logits", "classes": list(CLASS_NAMES)},
+            "source_onnx_sha256": source_hash,
+            "checkpoint_metrics": checkpoint.get("metrics", {}),
+            "fused_onnx_sha256": _sha256(temporary_fused_path),
+            "file_size_bytes": temporary_fused_path.stat().st_size,
+            "parity": parity,
+            "limitations": [
+                "Validated on only three independent source videos.",
+                "No real-device front-camera evaluation has been completed.",
+                "This artifact must not replace the Android production model without promotion checks.",
+            ],
         }
         sidecars = {
             "parity.json": parity,
@@ -295,19 +310,49 @@ def export_fused_temporal_candidate(
             "model_card.json": model_card,
         }
         for filename, contents in sidecars.items():
-            (temporary_dir / filename).write_text(
+            (staged_dir / filename).write_text(
                 json.dumps(contents, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-        output_dir.mkdir(parents=True, exist_ok=True)
-        for filename in (
+
+        artifact_filenames = (
             "campusmate_behavior_gru_candidate.onnx",
             "parity.json",
             "labels.json",
             "model_card.json",
-        ):
-            os.replace(temporary_dir / filename, output_dir / filename)
-        for stale_helper in ("temporal_head.onnx", "parity_frame_features.onnx"):
-            stale_path = output_dir / stale_helper
-            if stale_path.is_file():
-                stale_path.unlink()
-    return output_dir / "campusmate_behavior_gru_candidate.onnx"
+        )
+        generation_digest = _artifact_set_digest(staged_dir, artifact_filenames)
+        generation_id = generation_digest[:20]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        generations_dir = output_dir / "generations"
+        generations_dir.mkdir(exist_ok=True)
+        generation_dir = generations_dir / generation_id
+        if generation_dir.exists():
+            if _artifact_set_digest(generation_dir, artifact_filenames) != generation_digest:
+                raise RuntimeError(f"Generation directory collision: {generation_id}")
+        else:
+            os.replace(staged_dir, generation_dir)
+
+        pointer = {
+            "generation": generation_id,
+            "model": (
+                f"generations/{generation_id}/campusmate_behavior_gru_candidate.onnx"
+            ),
+            "fused_onnx_sha256": model_card["fused_onnx_sha256"],
+        }
+        pointer_path = output_dir / "current.json"
+        pointer_temporary_path = output_dir / f".current-{os.getpid()}.json.tmp"
+        pointer_temporary_path.write_text(
+            json.dumps(pointer, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(pointer_temporary_path, pointer_path)
+
+        legacy_names = (
+            *artifact_filenames,
+            "temporal_head.onnx",
+            "parity_frame_features.onnx",
+        )
+        for legacy_name in legacy_names:
+            legacy_path = output_dir / legacy_name
+            if legacy_path.is_file():
+                legacy_path.unlink()
+    return generation_dir / "campusmate_behavior_gru_candidate.onnx"
