@@ -19,10 +19,17 @@ def create_feature_model(
     available = {name for node in model.graph.node for name in node.output}
     if output_name not in available:
         raise ValueError(f"ONNX intermediate output not found: {output_name}")
+    input_batch = model.graph.input[0].type.tensor_type.shape.dim[0]
+    input_batch.ClearField("dim_value")
+    input_batch.dim_param = "batch"
+    for graph_output in model.graph.output:
+        output_batch = graph_output.type.tensor_type.shape.dim[0]
+        output_batch.ClearField("dim_value")
+        output_batch.dim_param = "batch"
     if output_name not in {output.name for output in model.graph.output}:
         model.graph.output.append(
             helper.make_tensor_value_info(
-                output_name, TensorProto.FLOAT, [1, feature_size]
+                output_name, TensorProto.FLOAT, ["batch", feature_size]
             )
         )
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,9 +49,7 @@ class OnnxFrameFeatureEncoder:
         values = np.asarray(inputs, dtype=np.float32)
         if values.ndim != 4:
             raise ValueError("Expected ONNX frame inputs shaped [batch, channels, height, width]")
-        outputs = [
-            self.session.run([self.output_name], {self.input_name: value[None]})[0][0]
-            for value in values
-        ]
-        return np.stack(outputs).astype(np.float32, copy=False)
-
+        output = self.session.run(
+            [self.output_name], {self.input_name: values}
+        )[0]
+        return np.asarray(output, dtype=np.float32)
