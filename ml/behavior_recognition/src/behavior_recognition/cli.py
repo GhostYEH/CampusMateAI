@@ -9,6 +9,7 @@ from .manifest import build_manifest
 from .train import train_model
 from .evaluate import evaluate_checkpoint
 from .export_onnx import export_candidate
+from .export_temporal_onnx import export_fused_temporal_candidate
 from .temporal_manifest import build_temporal_manifests
 from .temporal_train import train_temporal_model
 
@@ -48,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     temporal_train.add_argument("--run-dir", type=Path, required=True)
     temporal_train.add_argument("--max-epochs", type=int)
     temporal_train.add_argument("--source-onnx", type=Path)
+    temporal_export = subparsers.add_parser(
+        "temporal-export", help="fuse frame encoder and GRU into one ONNX model"
+    )
+    temporal_export.add_argument("--checkpoint", type=Path, required=True)
+    temporal_export.add_argument("--source-onnx", type=Path, required=True)
+    temporal_export.add_argument("--output", type=Path, required=True)
     evaluate = subparsers.add_parser("evaluate", help="evaluate and calibrate a checkpoint")
     evaluate.add_argument("--checkpoint", type=Path, required=True)
     evaluate.add_argument("--manifests", type=Path, required=True)
@@ -112,6 +119,12 @@ def main(argv: list[str] | None = None) -> int:
             source_onnx_override=args.source_onnx,
         )
         print(f"temporal training complete: {checkpoint}")
+        return 0
+    if args.command == "temporal-export":
+        onnx_path = export_fused_temporal_candidate(
+            args.checkpoint, args.source_onnx, args.output
+        )
+        print(f"temporal export complete: {onnx_path}")
         return 0
     if args.command == "evaluate":
         report = evaluate_checkpoint(

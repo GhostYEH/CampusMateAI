@@ -95,6 +95,17 @@ python -m behavior_recognition.cli temporal-train `
   --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
 ```
 
+Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX model:
+
+```powershell
+python -m behavior_recognition.cli temporal-export `
+  --checkpoint runs_temporal\full-current-onnx-20260827\best.pt `
+  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
+  --output exports_temporal\full-current-onnx-20260827
+```
+
+The fused model accepts `frames` with shape `[1, 16, 3, 224, 224]` and returns four `logits`. Export fails if the source ONNX SHA-256 differs from the model used during GRU training or if fused-vs-two-stage parity exceeds `1e-4`.
+
 This route preserves and actually executes the current ONNX frame encoder; it does not substitute ImageNet weights under the same name. Because the original PyTorch checkpoint is unavailable, the encoder remains frozen and only the GRU and four-class head train. The three-video split is suitable for pipeline development but not production promotion or subject-independent accuracy claims.
 
 ## Local artifacts
@@ -107,6 +118,7 @@ manifests/                 absolute-path train/val/test manifests
 runs/                      checkpoints and histories
 manifests_temporal/        leak-free temporal window manifests
 runs_temporal/             GRU checkpoints, logs, and derived feature ONNX
+exports_temporal/          fused temporal ONNX, parity, labels, and model card
 reports/generated/         machine-readable audit/evaluation reports
 exports/                   candidate ONNX, labels, parity, and model card
 ```

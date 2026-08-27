@@ -3,8 +3,6 @@ seed: 20260827
 sequence_length: 16
 stride: 8
 hidden_size: 256
-pretrained: true
-pretrained_weights: IMAGENET1K_V1
 encoder_mode: onnx_frozen
 onnx_feature_output: /classifier/classifier.1/HardSwish_output_0
 onnx_feature_size: 1024
