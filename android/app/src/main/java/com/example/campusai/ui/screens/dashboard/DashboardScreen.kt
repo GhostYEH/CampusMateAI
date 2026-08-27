@@ -52,7 +52,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
@@ -102,11 +102,11 @@ fun DashboardScreen(
     repository: AppRepository,
     onNavigate: (String) -> Unit,
 ) {
-    val session by repository.session.collectAsState()
-    val tasks by repository.tasks.collectAsState()
-    val campusNews by repository.campusNews.collectAsState()
-    val homeBanners by repository.homeBanners.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val session by repository.session.collectAsStateWithLifecycle()
+    val tasks by repository.tasks.collectAsStateWithLifecycle()
+    val campusNews by repository.campusNews.collectAsStateWithLifecycle()
+    val homeBanners by repository.homeBanners.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
 
     // 首页加载时尝试从后端拉取最新数据（通知 / 热搜 / 课程 / 任务）
     androidx.compose.runtime.LaunchedEffect(Unit) {

@@ -1,5 +1,7 @@
 package com.example.campusai
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.os.Build
@@ -22,14 +24,10 @@ import com.example.campusai.ui.screens.shell.AppShell
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
 
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import com.example.campusai.workers.ChaoxingSyncWorker
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,13 +35,6 @@ class MainActivity : ComponentActivity() {
         // 使启动画面主题的 windowBackground 仅在启动瞬间显示
         setTheme(R.style.Theme_Campusai)
         super.onCreate(savedInstanceState)
-
-        val workRequest = PeriodicWorkRequestBuilder<ChaoxingSyncWorker>(1, TimeUnit.HOURS).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "chaoxing_sync",
-            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
 
         enableEdgeToEdge()
         // The bottom dock is intentionally floating. Keep the system navigation
@@ -64,9 +55,9 @@ class MainActivity : ComponentActivity() {
         val notificationInboxRepository = (application as CampusAIApplication).notificationInboxRepository
 
         setContent {
-            val session by repository.session.collectAsState()
-            val darkMode by repository.darkMode.collectAsState()
-            val reduceMotion by repository.reduceMotion.collectAsState()
+            val session by repository.session.collectAsStateWithLifecycle()
+            val darkMode by repository.darkMode.collectAsStateWithLifecycle()
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             val view = LocalView.current
             SideEffect {
                 val policy = systemBarPolicy(
@@ -93,7 +84,7 @@ fun CampusAIApp(
     modules: ModuleRepositories,
     notificationInboxRepository: com.example.campusai.data.repository.NotificationInboxRepository,
 ) {
-    val session by repository.session.collectAsState()
+    val session by repository.session.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val context = LocalContext.current
 

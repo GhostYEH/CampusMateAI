@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.community
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,7 +40,7 @@ fun CommunityPublishScreen(
     onBack: () -> Unit,
     onPublished: (String) -> Unit,
 ) {
-    val categories by repository.categories.collectAsState()
+    val categories by repository.categories.collectAsStateWithLifecycle()
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("campus") }

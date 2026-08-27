@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,9 +79,9 @@ fun MyRequestsScreen(
     onBack: () -> Unit,
     onOpenDetail: (Long) -> Unit,
 ) {
-    val requests by repository.requests.collectAsState()
-    val loading by repository.loading.collectAsState()
-    val error by repository.error.collectAsState()
+    val requests by repository.requests.collectAsStateWithLifecycle()
+    val loading by repository.loading.collectAsStateWithLifecycle()
+    val error by repository.error.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("全部") }
     val tabs = listOf("全部", "审核中", "已通过", "已驳回", "已完成")

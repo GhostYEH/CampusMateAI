@@ -2,7 +2,7 @@ import { CourseItem } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
-@Component
+@Component({ freezeWhenInactive: true })
 export struct CoursesPage {
   @Prop courses: CourseItem[] = [];
   @Prop loading: boolean = false;

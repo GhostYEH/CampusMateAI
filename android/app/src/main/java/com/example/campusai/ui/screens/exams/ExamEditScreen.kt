@@ -11,7 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,8 +47,8 @@ fun ExamEditScreen(
     appRepository: AppRepository,
     onBack: () -> Unit,
 ) {
-    val exams by repository.exams.collectAsState()
-    val courses by appRepository.courses.collectAsState()
+    val exams by repository.exams.collectAsStateWithLifecycle()
+    val courses by appRepository.courses.collectAsStateWithLifecycle()
     val editing = exams.find { it.id == examId }
     val scope = rememberCoroutineScope()
 

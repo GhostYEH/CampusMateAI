@@ -42,7 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -92,9 +92,9 @@ fun ExamsScreen(
     onOpenDetail: (Long) -> Unit,
     onOpenEdit: (Long?) -> Unit,
 ) {
-    val exams by repository.exams.collectAsState()
-    val loading by repository.loading.collectAsState()
-    val error by repository.error.collectAsState()
+    val exams by repository.exams.collectAsStateWithLifecycle()
+    val loading by repository.loading.collectAsStateWithLifecycle()
+    val error by repository.error.collectAsStateWithLifecycle()
     var filter by remember { mutableStateOf(CampusStrings.Exams.FILTER_ALL) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val scope = rememberCoroutineScope()

@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.community
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -79,11 +81,11 @@ fun CommunityScreen(
     initialSort: String = "time",
     initialQuery: String = "",
 ) {
-    val posts by repository.posts.collectAsState()
-    val loading by repository.loading.collectAsState()
-    val error by repository.error.collectAsState()
-    val categories by repository.categories.collectAsState()
-    val total by repository.total.collectAsState()
+    val posts by repository.posts.collectAsStateWithLifecycle()
+    val loading by repository.loading.collectAsStateWithLifecycle()
+    val error by repository.error.collectAsStateWithLifecycle()
+    val categories by repository.categories.collectAsStateWithLifecycle()
+    val total by repository.total.collectAsStateWithLifecycle()
     var query by remember(initialQuery) { mutableStateOf(initialQuery) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var sort by remember(initialSort) { mutableStateOf(initialSort) }
@@ -387,8 +389,8 @@ fun CommunityDetailScreen(
 
 @Composable
 fun CommunityHotTopicsScreen(repository: CommunityRepository, onOpenDetail: (String) -> Unit) {
-    val posts by repository.posts.collectAsState()
-    val loading by repository.loading.collectAsState()
+    val posts by repository.posts.collectAsStateWithLifecycle()
+    val loading by repository.loading.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { repository.refresh(sort = "hot") }
     if (loading && posts.isEmpty()) {
         Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

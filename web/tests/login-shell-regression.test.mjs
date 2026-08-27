@@ -37,7 +37,10 @@ test("registers the existing student home view at /home", async () => {
   try {
     const { default: router } = await vite.ssrLoadModule("/src/router.js");
     const homeRoute = router.resolve("/home").matched.at(-1);
-    assert.equal(homeRoute.components.default.__name, "StudentHomeView");
+    const loadHomeView = homeRoute.components.default;
+    assert.equal(typeof loadHomeView, "function");
+    const homeViewModule = await loadHomeView();
+    assert.equal(homeViewModule.default.__name, "StudentHomeView");
   } finally {
     globalThis.window = originalWindow;
     globalThis.location = originalLocation;

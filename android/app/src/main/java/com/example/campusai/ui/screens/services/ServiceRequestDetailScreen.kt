@@ -19,7 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +44,7 @@ fun ServiceRequestDetailScreen(
     repository: ServiceRepository,
     onBack: () -> Unit,
 ) {
-    val requests by repository.requests.collectAsState()
+    val requests by repository.requests.collectAsStateWithLifecycle()
     val request = requests.find { it.id == requestId }
 
     Column(

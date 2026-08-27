@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,12 +37,12 @@ fun SettingsScreen(
     onOpenContribution: () -> Unit,
 
 ) {
-    val darkMode by repository.darkMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val reminders by repository.remindersEnabled.collectAsState()
-    val mockMode by repository.mockMode.collectAsState()
-    val modelStatus by repository.expressionSessionManager.status.collectAsState()
-    val modelResult by repository.expressionSessionManager.result.collectAsState()
+    val darkMode by repository.darkMode.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val reminders by repository.remindersEnabled.collectAsStateWithLifecycle()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val modelStatus by repository.expressionSessionManager.status.collectAsStateWithLifecycle()
+    val modelResult by repository.expressionSessionManager.result.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var backendLabel by remember { mutableStateOf("正在检查") }

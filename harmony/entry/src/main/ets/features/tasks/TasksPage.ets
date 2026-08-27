@@ -28,7 +28,7 @@ function importanceFgColor(importance: string): string {
   return '#9CA3AF';
 }
 
-@Component
+@Component({ freezeWhenInactive: true })
 export struct TasksPage {
   @Prop tasks: TaskItem[] = [];
   @Prop loading: boolean = false;

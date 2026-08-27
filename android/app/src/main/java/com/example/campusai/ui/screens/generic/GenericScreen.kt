@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.generic
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -25,8 +27,8 @@ import com.example.campusai.ui.theme.*
 
 @Composable
 fun GenericScreen(repository: AppRepository, section: String) {
-    val mockMode by repository.mockMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val titleMap = mapOf(
         "publish" to "发布中心",
         "stats" to "教学统计",

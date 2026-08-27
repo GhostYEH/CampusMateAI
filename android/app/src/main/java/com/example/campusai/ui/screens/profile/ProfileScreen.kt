@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -38,9 +40,9 @@ fun ProfileScreen(
     repository: AppRepository,
     onNavigate: (String) -> Unit,
 ) {
-    val session by repository.session.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val darkMode by repository.darkMode.collectAsState()
+    val session by repository.session.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     var showAbout by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Background)) {

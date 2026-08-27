@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.notifications
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.expandVertically
@@ -47,13 +49,13 @@ fun NotificationsScreen(
     onNavigateToWechat: () -> Unit,
     onNavigateToChaoxing: () -> Unit,
 ) {
-    val mockMode by repository.mockMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val inbox by inboxRepository.observeRecentNotifications().collectAsState(initial = emptyList())
-    val sourceSettings by inboxRepository.observeSourceSettings().collectAsState(initial = null)
+    val inbox by inboxRepository.observeRecentNotifications().collectAsStateWithLifecycle(initialValue = emptyList())
+    val sourceSettings by inboxRepository.observeSourceSettings().collectAsStateWithLifecycle(initialValue = null)
     var notificationAccessGranted by remember { mutableStateOf(inboxRepository.isNotificationAccessGranted()) }
     var showClearConfirmation by remember { mutableStateOf(false) }
 

@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +61,7 @@ fun ExamDetailScreen(
     onBack: () -> Unit,
     onEdit: (Long) -> Unit,
 ) {
-    val exams by repository.exams.collectAsState()
+    val exams by repository.exams.collectAsStateWithLifecycle()
     val exam = exams.find { it.id == examId }
     val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }

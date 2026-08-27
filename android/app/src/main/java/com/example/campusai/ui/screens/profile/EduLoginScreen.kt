@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.view.ViewGroup
@@ -110,7 +112,7 @@ fun EduLoginScreen(
     var lastVerifyTime by remember { mutableStateOf(0L) }
     var verifyInFlight by remember { mutableStateOf(false) }
     var capturedUserAgent by remember { mutableStateOf<String?>(null) }
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     val clearLoginState = {
         CookieManager.getInstance().removeAllCookies(null)

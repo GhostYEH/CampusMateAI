@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +39,7 @@ fun UniversityPickerScreen(
     onSelected: (id: String, name: String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var universities by remember { mutableStateOf(emptyList<com.example.campusai.data.remote.UniversityDto>()) }
     var loading by remember { mutableStateOf(false) }

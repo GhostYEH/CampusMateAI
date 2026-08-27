@@ -4,7 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
@@ -126,7 +126,7 @@ fun AppNavHost(
             popUpTo(fromRoute) { inclusive = true }
         }
     }
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
@@ -413,9 +413,9 @@ fun AppNavHost(
         composable("account") {
             val accountEntry = remember { navController.getBackStackEntry("account") }
             val pickedId by accountEntry.savedStateHandle
-                .getStateFlow<String?>("pickedUniversityId", null).collectAsState()
+                .getStateFlow<String?>("pickedUniversityId", null).collectAsStateWithLifecycle()
             val pickedName by accountEntry.savedStateHandle
-                .getStateFlow<String?>("pickedUniversityName", null).collectAsState()
+                .getStateFlow<String?>("pickedUniversityName", null).collectAsStateWithLifecycle()
             AccountScreen(
                 repository = repository,
                 onBack = { navController.popBackStack() },
@@ -475,7 +475,7 @@ fun AppNavHost(
 
         // ── 考试安排 ──
         composable("exams") {
-            val reduceMotion by repository.reduceMotion.collectAsState()
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             ExamsScreen(
                 repository = modules.exams,
                 reduceMotion = reduceMotion,
@@ -510,7 +510,7 @@ fun AppNavHost(
 
         // ── 空教室 ──
         composable("classrooms") {
-            val reduceMotion by repository.reduceMotion.collectAsState()
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             ClassroomsScreen(
                 repository = modules.classrooms,
                 reduceMotion = reduceMotion,
@@ -540,7 +540,7 @@ fun AppNavHost(
                 defaultValue = null
             }),
         ) { backStackEntry ->
-            val reduceMotion by repository.reduceMotion.collectAsState()
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             FocusScreen(
                 repository = modules.focus,
                 appRepository = repository,

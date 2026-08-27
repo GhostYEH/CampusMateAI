@@ -32,7 +32,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,7 +69,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun ClassroomsScreen(repository: ClassroomRepository, reduceMotion: Boolean, onBack: () -> Unit) {
-    val loading by repository.loading.collectAsState()
+    val loading by repository.loading.collectAsStateWithLifecycle()
     val slots = remember { repository.slots() }
     val dates = remember { repository.availableDates(System.currentTimeMillis()).map { it.format(DateTimeFormatter.ofPattern("M月d日")) to it.toString() } }
     val scope = rememberCoroutineScope()

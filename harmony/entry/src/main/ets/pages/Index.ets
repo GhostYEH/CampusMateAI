@@ -50,6 +50,7 @@ import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider 
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 import { PreferencesUtil } from '../util/PreferencesUtil';
+import { ForegroundRefreshGate } from '../core/ForegroundRefreshGate';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
@@ -74,6 +75,7 @@ struct Index {
   private expressionService: ExpressionRecognitionService = new ExpressionRecognitionService();
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
   private expressionPollingTimer: number = -1;
+  private foregroundRefreshGate: ForegroundRefreshGate = new ForegroundRefreshGate(30_000);
   private expressionConsentDialogOpen: boolean = false;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
@@ -149,6 +151,7 @@ struct Index {
   @State focusBehaviorReminder: string = '';
 
   async aboutToAppear(): Promise<void> {
+    this.foregroundRefreshGate.setVisible(true);
     await this.appState.restore();
     this.signedIn = this.appState.sessionToken.length > 0;
     this.darkMode = this.appState.darkMode;
@@ -189,18 +192,26 @@ struct Index {
   }
 
   async onPageShow(): Promise<void> {
+    this.foregroundRefreshGate.setVisible(true);
     if (this.signedIn && this.appState.sessionToken.length > 0) {
       this.refreshUniversityFromServer();
     }
     if (this.activeTab === 3) this.syncExpressionForTab();
   }
 
+  onPageHide(): void {
+    this.foregroundRefreshGate.setVisible(false);
+    this.stopExpressionRecognition();
+  }
+
   aboutToDisappear(): void {
+    this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
   }
 
   async refreshUniversityFromServer(): Promise<void> {
     if (this.appState.sessionToken.length === 0) return;
+    if (!this.foregroundRefreshGate.tryStart(Date.now())) return;
     try {
       const client = this.createApiClient();
       const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
@@ -216,6 +227,7 @@ struct Index {
         this.lostFoundItems = [];
       }
     } catch (_) { /* silent refresh, ignore errors */ }
+    finally { this.foregroundRefreshGate.finish(); }
   }
 
   initNotificationService(): void {
@@ -323,9 +335,23 @@ struct Index {
     }
     this.primaryLoading = true;
     const client = this.createApiClient();
-    await this.refreshHomeBanners(client);
     try {
-      const me = await client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
+      // ArkTS promises begin immediately, so independent startup requests share
+      // one network window while retaining explicit response types.
+      const bannerPromise: Promise<void> = this.refreshHomeBanners(client);
+      const mePromise: Promise<MeResponse> = client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
+      const coursesPromise: Promise<PagedResponse<CourseItem>> = client.request<PagedResponse<CourseItem>>(
+        http.RequestMethod.GET, 'courses?page=1&page_size=100'
+      );
+      const tasksPromise: Promise<PagedResponse<TaskItem>> = client.request<PagedResponse<TaskItem>>(
+        http.RequestMethod.GET, 'tasks?page=1&page_size=200'
+      );
+      const noticesPromise: Promise<PagedResponse<NoticeItem>> = client.request<PagedResponse<NoticeItem>>(
+        http.RequestMethod.GET, 'notices?page=1&page_size=20'
+      );
+
+      await bannerPromise;
+      const me: MeResponse = await mePromise;
       const user = me?.user ?? {};
       const newUniversityId = user.university_id ?? '';
       const newUniversityName = user.university_name ?? '';
@@ -345,11 +371,11 @@ struct Index {
       if (detailParts.length > 0) {
         this.profileDetail = detailParts.join(' · ');
       }
-      const coursePage = await client.request<PagedResponse<CourseItem>>(http.RequestMethod.GET, 'courses?page=1&page_size=100');
+      const coursePage: PagedResponse<CourseItem> = await coursesPromise;
       this.courses = safeArray<CourseItem>(coursePage?.items);
-      const taskPage = await client.request<PagedResponse<TaskItem>>(http.RequestMethod.GET, 'tasks?page=1&page_size=200');
+      const taskPage: PagedResponse<TaskItem> = await tasksPromise;
       this.tasks = safeArray<TaskItem>(taskPage?.items);
-      const noticePage = await client.request<PagedResponse<NoticeItem>>(http.RequestMethod.GET, 'notices?page=1&page_size=20');
+      const noticePage: PagedResponse<NoticeItem> = await noticesPromise;
       this.notices = safeArray<NoticeItem>(noticePage?.items);
       await this.loadLocalNotices();
       this.backendOnline = true;
@@ -409,8 +435,14 @@ struct Index {
 
   async loadCourseContent(courseId: string): Promise<CourseContentBundle> {
     const client = this.createApiClient();
-    const summary = await client.request<CourseContentSummary>(http.RequestMethod.GET, `courses/${courseId}/content-summary`);
-    const page = await client.request<CourseContentPage>(http.RequestMethod.GET, `courses/${courseId}/content?page=1&page_size=500`);
+    const summaryPromise: Promise<CourseContentSummary> = client.request<CourseContentSummary>(
+      http.RequestMethod.GET, `courses/${courseId}/content-summary`
+    );
+    const pagePromise: Promise<CourseContentPage> = client.request<CourseContentPage>(
+      http.RequestMethod.GET, `courses/${courseId}/content?page=1&page_size=500`
+    );
+    const summary: CourseContentSummary = await summaryPromise;
+    const page: CourseContentPage = await pagePromise;
     return { summary: summary, items: safeArray(page.items) };
   }
 
@@ -527,6 +559,7 @@ struct Index {
     this.activeTab = 0;
     this.password = '';
     this.localNotices = [];
+    this.foregroundRefreshGate.reset();
     if (!this.rememberUsername) {
       this.username = '';
     }
@@ -567,7 +600,7 @@ struct Index {
       }
       await this.startExpressionRecognition();
       if (this.expressionPollingTimer < 0) {
-        this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 500);
+        this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 1000);
       }
     } catch (_) {
       this.expressionAvailable = false;
@@ -582,7 +615,7 @@ struct Index {
   }
 
   syncExpressionForTab(forceConsent: boolean = false): void {
-    if (!this.signedIn || this.activeTab !== 3) {
+    if (!this.foregroundRefreshGate.isVisible() || !this.signedIn || this.activeTab !== 3) {
       this.stopExpressionRecognition();
       return;
     }

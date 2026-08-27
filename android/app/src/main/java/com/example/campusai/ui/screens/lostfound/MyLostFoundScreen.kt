@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,8 +33,8 @@ fun MyLostFoundScreen(
     onBack: () -> Unit,
     onOpenDetail: (Long) -> Unit,
 ) {
-    val items by repository.items.collectAsState()
-    val loading by repository.loading.collectAsState()
+    val items by repository.items.collectAsStateWithLifecycle()
+    val loading by repository.loading.collectAsStateWithLifecycle()
     val mine = items.filter { it.mine }
 
     Column(

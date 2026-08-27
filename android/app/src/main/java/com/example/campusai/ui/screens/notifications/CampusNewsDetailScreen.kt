@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.notifications
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -42,7 +44,7 @@ fun CampusNewsDetailScreen(
     onBack: () -> Unit,
 ) {
     val news = remember(newsId) { repository.getCampusNewsById(newsId) }
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
 
     val animatedAlpha by animateFloatAsState(
         targetValue = 1f,

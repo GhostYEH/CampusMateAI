@@ -4,22 +4,24 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Indication
-import androidx.compose.foundation.IndicationInstance
+import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.DrawModifierNode
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * A single motion switch shared by page transitions, components and custom
@@ -45,38 +47,23 @@ object CampusMotion {
  * It is deliberately low-contrast so it supports the tap without becoming a
  * second visual layer, and it follows the same motion-reduction setting.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Stable
-private class CampusIndication(
+private data class CampusIndication(
     private val highlight: Color,
     private val reduceMotion: Boolean,
-) : Indication {
-    @Composable
-    override fun rememberUpdatedInstance(interactionSource: InteractionSource): IndicationInstance {
-        val instance = remember(interactionSource, highlight, reduceMotion) {
-            CampusIndicationInstance(highlight, reduceMotion)
-        }
-        LaunchedEffect(interactionSource, instance) {
-            interactionSource.interactions.collect { interaction ->
-                when (interaction) {
-                    is PressInteraction.Press -> instance.onPress()
-                    is PressInteraction.Release,
-                    is PressInteraction.Cancel -> instance.onRelease()
-                }
-            }
-        }
-        return instance
-    }
+) : IndicationNodeFactory {
+    override fun create(interactionSource: InteractionSource): DelegatableNode =
+        CampusIndicationNode(interactionSource, highlight, reduceMotion)
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-private class CampusIndicationInstance(
+private class CampusIndicationNode(
+    private val interactionSource: InteractionSource,
     private val highlight: Color,
     private val reduceMotion: Boolean,
-) : IndicationInstance {
+) : Modifier.Node(), DrawModifierNode {
     private val progress = Animatable(0f)
 
-    suspend fun onPress() {
+    private suspend fun onPress() {
         if (reduceMotion) return
         progress.snapTo(0.12f)
         progress.animateTo(
@@ -85,7 +72,7 @@ private class CampusIndicationInstance(
         )
     }
 
-    suspend fun onRelease() {
+    private suspend fun onRelease() {
         if (reduceMotion) return
         progress.animateTo(
             targetValue = 0f,
@@ -93,7 +80,19 @@ private class CampusIndicationInstance(
         )
     }
 
-    override fun ContentDrawScope.drawIndication() {
+    override fun onAttach() {
+        coroutineScope.launch {
+            interactionSource.interactions.collectLatest { interaction ->
+                when (interaction) {
+                    is PressInteraction.Press -> onPress()
+                    is PressInteraction.Release,
+                    is PressInteraction.Cancel -> onRelease()
+                }
+            }
+        }
+    }
+
+    override fun ContentDrawScope.draw() {
         drawContent()
         val alpha = progress.value * 0.1f
         if (alpha <= 0f) return
@@ -109,7 +108,6 @@ private class CampusIndicationInstance(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun rememberCampusIndication(highlight: Color): Indication {
     val reduceMotion = LocalReduceMotion.current
@@ -118,7 +116,6 @@ internal fun rememberCampusIndication(highlight: Color): Indication {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ProvideCampusIndication(content: @Composable () -> Unit) {
     androidx.compose.runtime.CompositionLocalProvider(

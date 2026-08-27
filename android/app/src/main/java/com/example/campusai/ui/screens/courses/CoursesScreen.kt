@@ -57,7 +57,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -97,9 +97,9 @@ private val CoursePurple = Color(0xFF9369E8)
 
 @Composable
 fun CoursesScreen(repository: AppRepository) {
-    val courses by repository.courses.collectAsState()
-    val mockMode by repository.mockMode.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val courses by repository.courses.collectAsStateWithLifecycle()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var selectedType by remember { mutableStateOf("全部") }

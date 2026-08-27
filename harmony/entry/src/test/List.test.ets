@@ -25,6 +25,7 @@ import expressionFaceQualityTest from './ets/data/ExpressionFaceQuality.test';
 import counselorVisualSpecTest from './ets/ui/CounselorVisualSpec.test';
 import focusCameraContractTest from './ets/data/FocusCameraContract.test';
 import cpmChatDataSourceTest from './ets/counselor/CpmChatDataSource.test';
+import foregroundRefreshGateTest from './ets/core/ForegroundRefreshGate.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -54,4 +55,5 @@ export default function testsuite(): void {
   counselorVisualSpecTest();
   focusCameraContractTest();
   cpmChatDataSourceTest();
+  foregroundRefreshGateTest();
 }

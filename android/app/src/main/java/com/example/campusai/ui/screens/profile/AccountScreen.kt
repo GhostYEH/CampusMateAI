@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -42,8 +44,8 @@ fun AccountScreen(
     pickedUniversityName: String? = null,
     onConsumePicked: () -> Unit = {},
 ) {
-    val user by repository.session.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val user by repository.session.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     var name by remember(user) { mutableStateOf(user?.name.orEmpty()) }
     var detail by remember(user) { mutableStateOf(user?.detail.orEmpty()) }
     var studentId by remember(user) { mutableStateOf(user?.studentId.orEmpty()) }

@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.focus
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -76,26 +78,26 @@ fun FocusScreen(
     relatedTaskId: String? = null,
     onOpenCounselorPlan: (String) -> Unit,
 ) {
-    val stats by repository.stats.collectAsState()
-    val records by repository.records.collectAsState()
-    val activeSession by repository.activeSession.collectAsState()
-    val remoteError by repository.error.collectAsState()
-    val backendOnline by appRepository.backendOnline.collectAsState()
-    val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsState()
+    val stats by repository.stats.collectAsStateWithLifecycle()
+    val records by repository.records.collectAsStateWithLifecycle()
+    val activeSession by repository.activeSession.collectAsStateWithLifecycle()
+    val remoteError by repository.error.collectAsStateWithLifecycle()
+    val backendOnline by appRepository.backendOnline.collectAsStateWithLifecycle()
+    val assistanceEnabled by appRepository.learningAssistanceEnabled.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val manager = appRepository.expressionSessionManager
-    val behaviorPrediction by manager.behaviorPrediction.collectAsState()
-    val behaviorDisplayState by manager.behaviorDisplayState.collectAsState()
-    val behaviorObservation by manager.behaviorObservation.collectAsState()
-    val learningContinuityState by manager.learningContinuityState.collectAsState()
-    val presence by manager.presence.collectAsState()
-    val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsState()
-    val assistanceStatus by manager.status.collectAsState()
-    val expressionResult by manager.result.collectAsState()
-    val focusState by manager.focusState.collectAsState()
-    val gentleReminder by manager.gentleReminder.collectAsState()
+    val behaviorPrediction by manager.behaviorPrediction.collectAsStateWithLifecycle()
+    val behaviorDisplayState by manager.behaviorDisplayState.collectAsStateWithLifecycle()
+    val behaviorObservation by manager.behaviorObservation.collectAsStateWithLifecycle()
+    val learningContinuityState by manager.learningContinuityState.collectAsStateWithLifecycle()
+    val presence by manager.presence.collectAsStateWithLifecycle()
+    val datasetCaptureState by BehaviorInputDebugExporter.datasetCaptureState.collectAsStateWithLifecycle()
+    val assistanceStatus by manager.status.collectAsStateWithLifecycle()
+    val expressionResult by manager.result.collectAsStateWithLifecycle()
+    val focusState by manager.focusState.collectAsStateWithLifecycle()
+    val gentleReminder by manager.gentleReminder.collectAsStateWithLifecycle()
 
     var cameraPermissionGranted by remember {
         mutableStateOf(

@@ -52,7 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -90,9 +90,9 @@ fun ExpressionContributionScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val mockMode by repository.mockMode.collectAsState()
-    val backendOnline by repository.backendOnline.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val backendOnline by repository.backendOnline.collectAsStateWithLifecycle()
 
     var consentGiven by remember { mutableStateOf(false) }
     var permissionGranted by remember {

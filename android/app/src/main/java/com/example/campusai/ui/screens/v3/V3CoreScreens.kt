@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.v3
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +39,7 @@ fun UniversityScreen(
     repository: AppRepository,
     onNavigate: (String) -> Unit,
 ) {
-    val user by repository.session.collectAsState()
+    val user by repository.session.collectAsStateWithLifecycle()
     val universityName = user?.universityName.orEmpty()
     val universityId = user?.universityId.orEmpty()
     val hasUniversity = universityId.isNotBlank()

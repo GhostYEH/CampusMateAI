@@ -9,7 +9,7 @@ interface DashboardAction {
   color: string;
 }
 
-@Component
+@Component({ freezeWhenInactive: true })
 export struct DashboardPage {
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;

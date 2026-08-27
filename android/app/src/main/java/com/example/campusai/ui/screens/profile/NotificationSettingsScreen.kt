@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -44,10 +46,10 @@ fun NotificationSettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val monitoredGroups by repository.getMonitoredGroupChats().collectAsState(initial = emptySet())
-    val wecomGroups by repository.getWecomGroupChats().collectAsState(initial = emptySet())
-    val qqGroups by repository.getQqGroupChats().collectAsState(initial = emptySet())
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val monitoredGroups by repository.getMonitoredGroupChats().collectAsStateWithLifecycle(initialValue = emptySet())
+    val wecomGroups by repository.getWecomGroupChats().collectAsStateWithLifecycle(initialValue = emptySet())
+    val qqGroups by repository.getQqGroupChats().collectAsStateWithLifecycle(initialValue = emptySet())
     var newGroup by remember { mutableStateOf("") }
     var newWecomGroup by remember { mutableStateOf("") }
     var newQqGroup by remember { mutableStateOf("") }

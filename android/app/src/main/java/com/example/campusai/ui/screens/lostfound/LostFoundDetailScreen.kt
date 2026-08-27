@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,7 +53,7 @@ fun LostFoundDetailScreen(
     repository: LostFoundRepository,
     onBack: () -> Unit,
 ) {
-    val items by repository.items.collectAsState()
+    val items by repository.items.collectAsStateWithLifecycle()
     val item = items.find { it.id == itemId }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current

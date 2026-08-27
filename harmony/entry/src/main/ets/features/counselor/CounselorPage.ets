@@ -10,7 +10,7 @@ interface QuickQuestion {
   symbol: Resource;
 }
 
-@Component
+@Component({ freezeWhenInactive: true })
 export struct CounselorPage {
   @Prop messages: ChatMessage[] = [];
   @Prop sending: boolean = false;

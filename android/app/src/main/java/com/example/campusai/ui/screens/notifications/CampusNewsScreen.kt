@@ -33,7 +33,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,9 +83,9 @@ fun CampusNewsScreen(
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
     var refreshError by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val news by repository.campusNews.collectAsState()
-    val readIds by repository.newsReadIds.collectAsState()
-    val favoriteIds by repository.newsFavoriteIds.collectAsState()
+    val news by repository.campusNews.collectAsStateWithLifecycle()
+    val readIds by repository.newsReadIds.collectAsStateWithLifecycle()
+    val favoriteIds by repository.newsFavoriteIds.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val sort = NewsSort.valueOf(sortName)
     val categories = listOf(AllCategories) + news.map { it.category.trim() }

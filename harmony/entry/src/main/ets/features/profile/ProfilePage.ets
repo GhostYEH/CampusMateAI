@@ -1,7 +1,7 @@
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 
-@Component
+@Component({ freezeWhenInactive: true })
 export struct ProfilePage {
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;

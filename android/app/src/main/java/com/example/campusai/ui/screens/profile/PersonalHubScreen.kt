@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,10 +51,10 @@ fun PersonalHubScreen(
     onSectionNavigate: (String) -> Unit,
     onNavigate: (String) -> Unit,
 ) {
-    val files by repository.files.collectAsState()
-    val favorites by repository.favorites.collectAsState()
-    val loading by repository.personalHubLoading.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val files by repository.files.collectAsStateWithLifecycle()
+    val favorites by repository.favorites.collectAsStateWithLifecycle()
+    val loading by repository.personalHubLoading.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var sectionName by remember(initialSection) { mutableStateOf(initialSection) }

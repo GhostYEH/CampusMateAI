@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,7 +93,7 @@ fun ServicesScreen(
     onBack: () -> Unit,
     onNavigate: (String) -> Unit,
 ) {
-    val requests by repository.requests.collectAsState()
+    val requests by repository.requests.collectAsStateWithLifecycle()
     val entries = listOf(
         ServiceEntry("请假申请", "在线提交请假申请", "service_leave", Icons.Default.Assignment, Color(0xFF6658EC)),
         ServiceEntry("宿舍报修", "报修维护更快捷", "service_repair", Icons.Default.Build, Color(0xFF45AF85)),

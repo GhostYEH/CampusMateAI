@@ -31,7 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +60,7 @@ private val COURSE_COLORS = listOf(
 fun EduScheduleScreen(
     viewModel: EduViewModel = viewModel(),
 ) {
-    val scheduleItems by viewModel.scheduleItems.collectAsState()
+    val scheduleItems by viewModel.scheduleItems.collectAsStateWithLifecycle()
     var currentWeek by remember { mutableIntStateOf(1) }
     var selectedCourse by remember { mutableStateOf<EduScheduleItemDto?>(null) }
     var loading by remember { mutableStateOf(true) }

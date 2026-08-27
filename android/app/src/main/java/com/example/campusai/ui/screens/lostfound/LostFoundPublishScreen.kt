@@ -10,7 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,7 +44,7 @@ fun LostFoundPublishScreen(
     onBack: () -> Unit,
     onPublished: (Long) -> Unit,
 ) {
-    val session by appRepository.session.collectAsState()
+    val session by appRepository.session.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val categoryOptions = CampusStrings.LostFound.CATEGORIES.split(",")
     val locationOptions = CampusStrings.LostFound.LOCATIONS.split(",")

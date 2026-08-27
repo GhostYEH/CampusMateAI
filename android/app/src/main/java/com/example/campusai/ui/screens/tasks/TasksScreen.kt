@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.tasks
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,9 +42,9 @@ private val TaskBlue: Color @Composable get() = Primary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
-    val tasks by repository.tasks.collectAsState()
-    val backendOnline by repository.backendOnline.collectAsState()
-    val taskError by repository.taskError.collectAsState()
+    val tasks by repository.tasks.collectAsStateWithLifecycle()
+    val backendOnline by repository.backendOnline.collectAsStateWithLifecycle()
+    val taskError by repository.taskError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var filter by remember { mutableStateOf("全部") }
     var search by remember { mutableStateOf("") }

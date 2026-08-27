@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,7 +25,7 @@ import com.example.campusai.ui.theme.*
 
 @Composable
 fun TaskCalendarScreen(repository: AppRepository, onBack: () -> Unit, onOpenTask: (String) -> Unit) {
-    val tasks by repository.tasks.collectAsState()
+    val tasks by repository.tasks.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize().background(Color(0xFFF4F5FF)), contentPadding = PaddingValues(16.dp, 22.dp, 16.dp, BottomDockReservedHeight + 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Surface(shape = RoundedCornerShape(24.dp), color = Surface) { Column(Modifier.padding(18.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CalendarMonth, null, tint = Primary); Spacer(Modifier.width(8.dp)); Text("任务时间线", fontWeight = FontWeight.Bold, fontSize = 18.sp) }; Spacer(Modifier.height(8.dp)); Text("可在任务详情中编辑截止时间；此页不会生成演示任务。", color = Muted, fontSize = 12.sp) } } }
         if (tasks.isEmpty()) item { Text("暂无后端任务记录", Modifier.fillMaxWidth().padding(36.dp), color = Muted) }

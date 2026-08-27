@@ -45,7 +45,7 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -134,10 +134,10 @@ fun AppShell(
     repository: AppRepository,
     content: @Composable () -> Unit,
 ) {
-    val session by repository.session.collectAsState()
-    val pendingCount by repository.pendingCount.collectAsState()
-    val reduceMotion by repository.reduceMotion.collectAsState()
-    val darkMode by repository.darkMode.collectAsState()
+    val session by repository.session.collectAsStateWithLifecycle()
+    val pendingCount by repository.pendingCount.collectAsStateWithLifecycle()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     val navItems = studentNavItems.take(5)
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.

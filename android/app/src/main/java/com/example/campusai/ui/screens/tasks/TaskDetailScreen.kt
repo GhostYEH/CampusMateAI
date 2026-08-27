@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.tasks
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
@@ -39,9 +41,9 @@ fun TaskDetailScreen(
     onBack: () -> Unit,
     onTaskDeleted: () -> Unit,
 ) {
-    val tasks by repository.tasks.collectAsState()
+    val tasks by repository.tasks.collectAsStateWithLifecycle()
     val task = remember(tasks, taskId) { tasks.find { it.id == taskId } }
-    val reduceMotion by repository.reduceMotion.collectAsState()
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     if (task == null) {
