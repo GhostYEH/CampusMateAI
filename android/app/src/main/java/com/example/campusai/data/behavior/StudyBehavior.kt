@@ -8,6 +8,8 @@ enum class StudyBehavior {
 
     READING,
     WRITING,
+    /** TSM V4: sustained laptop/desktop computer interaction. */
+    COMPUTER,
     TYPING,
     PAGE_TURNING,
     DRINKING,

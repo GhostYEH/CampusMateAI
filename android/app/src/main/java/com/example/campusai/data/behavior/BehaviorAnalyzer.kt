@@ -164,6 +164,7 @@ class BehaviorAnalyzer(
         synchronized(lifecycleLock) {
             if (disposed.get()) return
             frameBuffer.clear()
+            engine.reset()
             _predictions.value = BehaviorPrediction(emptyMap(), 0L, "NOT_INITIALIZED")
         }
     }

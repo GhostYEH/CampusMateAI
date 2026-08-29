@@ -44,12 +44,14 @@ import com.example.campusai.data.behavior.BehaviorDatasetCaptureState
 import com.example.campusai.data.behavior.BehaviorDatasetLabel
 import com.example.campusai.data.behavior.BehaviorDisplayState
 import com.example.campusai.data.behavior.BehaviorInputDebugExporter
+import com.example.campusai.data.behavior.BehaviorHybridPolicy
 import com.example.campusai.data.behavior.BehaviorObservationSummary
 import com.example.campusai.data.behavior.BehaviorPrediction
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.PresenceSnapshot
 import com.example.campusai.data.behavior.PresenceState
 import com.example.campusai.data.behavior.StudyBehavior
+import com.example.campusai.data.behavior.BehaviorV34Contract
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
@@ -407,12 +409,19 @@ private fun behaviorPredictionText(prediction: BehaviorPrediction?): String {
         "MODEL_NOT_AVAILABLE" -> "动作模型暂不可用"
         "INFERENCE_ERROR" -> "动作识别异常"
         "NO_FRAME" -> "动作识别等待画面"
-        "READY_RGB_V1", "READY_VISIBLE_STUDY_V32", "READY_VISIBLE_STUDY_V31" -> {
+        "READY_RGB_V1", "READY_VISIBLE_STUDY_V32", "READY_VISIBLE_STUDY_V31",
+        BehaviorV34Contract.MODEL_STATE, BehaviorHybridPolicy.MODEL_STATE -> {
             val readProb = prediction.probabilities[StudyBehavior.READING] ?: 0f
             val writeProb = prediction.probabilities[StudyBehavior.WRITING] ?: 0f
+            val phoneProb = prediction.probabilities[StudyBehavior.PHONE_USE] ?: 0f
+            val computerProb = prediction.probabilities[StudyBehavior.COMPUTER] ?: 0f
+            val idleProb = prediction.probabilities[StudyBehavior.IDLE] ?: 0f
             when (prediction.stableBehavior) {
                 StudyBehavior.READING -> "动作识别：阅读 ${(readProb * 100).toInt()}%"
                 StudyBehavior.WRITING -> "动作识别：书写 ${(writeProb * 100).toInt()}%"
+                StudyBehavior.PHONE_USE -> "动作识别：使用手机 ${(phoneProb * 100).toInt()}%"
+                StudyBehavior.COMPUTER -> "动作识别：使用电脑 ${(computerProb * 100).toInt()}%"
+                StudyBehavior.IDLE -> "动作识别：其他/空闲 ${(idleProb * 100).toInt()}%"
                 else -> "动作识别：暂不确定"
             }
         }

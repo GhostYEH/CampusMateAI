@@ -8,6 +8,18 @@ class LearningContinuityStateMachineTest {
     private val idle = BehaviorDisplayState.Stable(StudyBehavior.IDLE, 0.9f)
 
     @Test
+    fun confirmedComputerActivityStartsStudying() {
+        val machine = LearningContinuityStateMachine()
+
+        val result = machine.process(
+            BehaviorDisplayState.Stable(StudyBehavior.COMPUTER, 0.85f),
+            1_000L,
+        )
+
+        assertEquals(LearningContinuityState.STUDYING, result.state)
+    }
+
+    @Test
     fun visibleStudyImmediatelyStartsStudying() {
         val machine = LearningContinuityStateMachine()
         assertEquals(LearningContinuityState.STUDYING, machine.process(visible, 1_000L).state)

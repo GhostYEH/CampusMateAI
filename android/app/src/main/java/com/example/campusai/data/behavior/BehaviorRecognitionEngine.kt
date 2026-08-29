@@ -19,6 +19,9 @@ interface BehaviorRecognitionEngine {
         personBoundingBox: RectF?,
     ): BehaviorPrediction = analyzeTemporalWindow(frames, timestampMs)
 
+    /** Clears temporal state while keeping loaded model sessions warm. */
+    fun reset() = Unit
+
     fun close()
 }
 

@@ -36,7 +36,10 @@ class LearningContinuityStateMachine(
     fun process(displayState: BehaviorDisplayState, timestampMs: Long): LearningContinuityResult {
         when (displayState) {
             is BehaviorDisplayState.Stable -> when (displayState.behavior) {
-                StudyBehavior.VISIBLE_STUDY -> {
+                StudyBehavior.VISIBLE_STUDY,
+                StudyBehavior.READING,
+                StudyBehavior.WRITING,
+                StudyBehavior.COMPUTER -> {
                     if (state == LearningContinuityState.OBSERVING || state == LearningContinuityState.PAUSED) {
                         continuousStudyStartedAtMs = timestampMs
                     }

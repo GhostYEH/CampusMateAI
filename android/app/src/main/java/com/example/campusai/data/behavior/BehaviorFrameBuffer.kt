@@ -7,7 +7,7 @@ data class BehaviorModelConfig(
     val frameCount: Int = 16,
     val inputWidth: Int = 224,
     val inputHeight: Int = 224,
-    val sampleIntervalMs: Long = 200L,
+    val sampleIntervalMs: Long = 400L,
     val confidenceThreshold: Float = 0.5f
 ) {
     companion object {
@@ -18,7 +18,7 @@ data class BehaviorModelConfig(
             frameCount = 16,
             inputWidth = 224,
             inputHeight = 224,
-            sampleIntervalMs = 200L,
+            sampleIntervalMs = 400L,
             confidenceThreshold = 0.5f,
         )
 

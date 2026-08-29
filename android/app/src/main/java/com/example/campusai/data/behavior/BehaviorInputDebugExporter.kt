@@ -299,6 +299,10 @@ object BehaviorInputDebugExporter {
         is BehaviorDisplayState.Stable -> {
             val label = when (displayState.behavior) {
                 StudyBehavior.VISIBLE_STUDY -> "检测到学习行为"
+                StudyBehavior.READING -> "检测到阅读"
+                StudyBehavior.WRITING -> "检测到书写"
+                StudyBehavior.COMPUTER -> "检测到电脑学习"
+                StudyBehavior.PHONE_USE -> "检测到手机交互"
                 StudyBehavior.IDLE -> "暂未检测到明确学习行为"
                 else -> "正在观察"
             }
@@ -347,6 +351,10 @@ object BehaviorInputDebugExporter {
     private val UI_BEHAVIORS = setOf(
         StudyBehavior.IDLE,
         StudyBehavior.VISIBLE_STUDY,
+        StudyBehavior.READING,
+        StudyBehavior.WRITING,
+        StudyBehavior.COMPUTER,
+        StudyBehavior.PHONE_USE,
     )
 
     private class DatasetSession(

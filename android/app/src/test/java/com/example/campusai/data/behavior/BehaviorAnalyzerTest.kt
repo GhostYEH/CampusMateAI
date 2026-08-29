@@ -176,6 +176,21 @@ class BehaviorAnalyzerTest {
         assertEquals(1, engine.closeCount.get())
     }
 
+    @Test
+    fun resetClearsEngineTemporalStateWithoutClosingIt() {
+        val engine = BlockingEngine()
+        val analyzer = BehaviorAnalyzer(engine, testConfig())
+
+        try {
+            analyzer.reset()
+
+            assertEquals(1, engine.resetCount.get())
+            assertEquals(0, engine.closeCount.get())
+        } finally {
+            analyzer.dispose()
+        }
+    }
+
     private fun testConfig() = BehaviorModelConfig(
         frameCount = 16,
         inputWidth = 4,
@@ -212,6 +227,7 @@ class BehaviorAnalyzerTest {
         val completed = CountDownLatch(1)
         val invocationCount = AtomicInteger()
         val closeCount = AtomicInteger()
+        val resetCount = AtomicInteger()
         @Volatile var lastFrameCount = 0
         @Volatile var lastSnapshot: List<Bitmap>? = null
 
@@ -233,6 +249,10 @@ class BehaviorAnalyzerTest {
 
         override fun close() {
             closeCount.incrementAndGet()
+        }
+
+        override fun reset() {
+            resetCount.incrementAndGet()
         }
     }
 

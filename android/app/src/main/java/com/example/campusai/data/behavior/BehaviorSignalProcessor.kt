@@ -75,10 +75,7 @@ class BehaviorSignalProcessor(
         if (prediction.modelState !in SUPPORTED_MODEL_STATES || prediction.probabilities.isEmpty()) {
             return BehaviorDisplayState.Observing
         }
-        if (
-            prediction.modelState == BehaviorV34Contract.MODEL_STATE &&
-            prediction.stableBehavior == StudyBehavior.UNCERTAIN
-        ) {
+        if (prediction.isCalibratedBehaviorModel() && prediction.stableBehavior == StudyBehavior.UNCERTAIN) {
             return BehaviorDisplayState.NoStableBehavior
         }
 
@@ -133,7 +130,7 @@ class BehaviorSignalProcessor(
 
         val probs = prediction.probabilities
 
-        if (prediction.modelState == BehaviorV34Contract.MODEL_STATE) {
+        if (prediction.isCalibratedBehaviorModel()) {
             processNoVisibleStudy(prediction, events)
         }
 
@@ -159,9 +156,9 @@ class BehaviorSignalProcessor(
 
         // Check Phone Use
         val phoneProb = (probs[StudyBehavior.PHONE_USE] ?: 0f) + (probs[StudyBehavior.PHONE_PICKUP] ?: 0f)
-        val isV34 = prediction.modelState == BehaviorV34Contract.MODEL_STATE
-        val rejectedV34PhoneEvidence = isV34 && prediction.stableBehavior == StudyBehavior.UNCERTAIN
-        val acceptedPhoneEvidence = if (isV34) {
+        val isCalibratedModel = prediction.isCalibratedBehaviorModel()
+        val rejectedV34PhoneEvidence = isCalibratedModel && prediction.stableBehavior == StudyBehavior.UNCERTAIN
+        val acceptedPhoneEvidence = if (isCalibratedModel) {
             prediction.stableBehavior == StudyBehavior.PHONE_USE
         } else {
             phoneProb > config.confidenceThreshold
@@ -176,7 +173,7 @@ class BehaviorSignalProcessor(
                 timestampMs = now,
                 label = productLabel,
                 confidence = if (acceptedPhoneEvidence) {
-                    if (isV34) prediction.probabilities[StudyBehavior.PHONE_USE] ?: 1f else phoneProb
+                    if (isCalibratedModel) prediction.probabilities[StudyBehavior.PHONE_USE] ?: 1f else phoneProb
                 } else {
                     prediction.probabilities.values.maxOrNull() ?: 0f
                 },
@@ -220,9 +217,14 @@ class BehaviorSignalProcessor(
         }
 
         // Check Learning
-        val learningProb = (probs[StudyBehavior.READING] ?: 0f) + (probs[StudyBehavior.WRITING] ?: 0f) + (probs[StudyBehavior.TYPING] ?: 0f)
-        val acceptedLearningEvidence = if (isV34) {
-            prediction.stableBehavior == StudyBehavior.READING || prediction.stableBehavior == StudyBehavior.WRITING
+        val learningProb = (probs[StudyBehavior.READING] ?: 0f) +
+            (probs[StudyBehavior.WRITING] ?: 0f) +
+            (probs[StudyBehavior.COMPUTER] ?: 0f) +
+            (probs[StudyBehavior.TYPING] ?: 0f)
+        val acceptedLearningEvidence = if (isCalibratedModel) {
+            prediction.stableBehavior == StudyBehavior.READING ||
+                prediction.stableBehavior == StudyBehavior.WRITING ||
+                prediction.stableBehavior == StudyBehavior.COMPUTER
         } else {
             learningProb > config.confidenceThreshold
         }
@@ -303,13 +305,18 @@ class BehaviorSignalProcessor(
             StudyBehavior.VISIBLE_STUDY,
             StudyBehavior.READING,
             StudyBehavior.WRITING,
+            StudyBehavior.COMPUTER,
             StudyBehavior.PHONE_USE,
         )
         val SUPPORTED_MODEL_STATES = setOf(
             BehaviorV34Contract.MODEL_STATE,
+            BehaviorHybridPolicy.MODEL_STATE,
             "READY_VISIBLE_STUDY_V32",
             "READY_VISIBLE_STUDY_V31",
             "READY_RGB_V2",
         )
     }
+
+    private fun BehaviorPrediction.isCalibratedBehaviorModel(): Boolean =
+        modelState == BehaviorV34Contract.MODEL_STATE || modelState == BehaviorHybridPolicy.MODEL_STATE
 }

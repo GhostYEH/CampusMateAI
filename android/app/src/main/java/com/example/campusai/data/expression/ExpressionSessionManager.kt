@@ -13,11 +13,14 @@ import com.example.campusai.data.behavior.BehaviorPredictionTemporalSmoother
 import com.example.campusai.data.behavior.BehaviorRecognitionEngine
 import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.BehaviorV34Contract
+import com.example.campusai.data.behavior.BehaviorHybridPolicy
 import com.example.campusai.data.behavior.FocusSupervisor
+import com.example.campusai.data.behavior.HybridBehaviorRecognitionEngine
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.LearningContinuityStateMachine
 import com.example.campusai.data.behavior.NoOpBehaviorRecognitionEngine
 import com.example.campusai.data.behavior.OnnxBehaviorRecognitionEngine
+import com.example.campusai.data.behavior.OnnxTsmBehaviorRecognitionEngine
 import com.example.campusai.data.behavior.PersonAnalyzer
 import com.example.campusai.data.behavior.PersonDetectorConfig
 import com.example.campusai.data.behavior.PersonDetectionSnapshot
@@ -86,7 +89,10 @@ class ExpressionSessionManager(
     private var processor = FocusStateProcessor(observationConfig)
     private val personAnalyzer = PersonAnalyzer(application)
     private val behaviorAnalyzer = BehaviorAnalyzer(
-        engine = createBehaviorEngine?.invoke(application) ?: OnnxBehaviorRecognitionEngine(application),
+        engine = createBehaviorEngine?.invoke(application) ?: HybridBehaviorRecognitionEngine(
+            singleFrameEngine = OnnxBehaviorRecognitionEngine(application),
+            temporalEngine = OnnxTsmBehaviorRecognitionEngine(application),
+        ),
         personBoundingBoxProvider = { personAnalyzer.snapshot.value.boundingBox },
     )
     private val behaviorTemporalSmoother = BehaviorPredictionTemporalSmoother()
@@ -471,6 +477,7 @@ class ExpressionSessionManager(
         } else if (!focusShouldRun && behaviorAnalyzersAttached) {
             cameraPipeline.removeAnalyzer(behaviorAnalyzer)
             cameraPipeline.removeAnalyzer(personAnalyzer)
+            behaviorAnalyzer.reset()
             personAnalyzer.pause()
             behaviorAnalyzersAttached = false
             _focusState.value = FocusState.UNAVAILABLE
@@ -512,6 +519,7 @@ class ExpressionSessionManager(
         private const val BEHAVIOR_UI_INTERVAL_MS = 500L
         private val SUPPORTED_BEHAVIOR_MODEL_STATES = setOf(
             BehaviorV34Contract.MODEL_STATE,
+            BehaviorHybridPolicy.MODEL_STATE,
             "READY_RGB_V1",
             "READY_RGB_V2",
             "READY_VISIBLE_STUDY_V32",
@@ -521,6 +529,7 @@ class ExpressionSessionManager(
             StudyBehavior.VISIBLE_STUDY,
             StudyBehavior.READING,
             StudyBehavior.WRITING,
+            StudyBehavior.COMPUTER,
         )
     }
 }
