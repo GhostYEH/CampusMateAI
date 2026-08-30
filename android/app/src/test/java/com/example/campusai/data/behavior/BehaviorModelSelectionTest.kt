@@ -6,22 +6,22 @@ import org.junit.Test
 class BehaviorModelSelectionTest {
 
     @Test
-    fun productionKeepsV32EvenWhenV34CandidateIsAvailable() {
+    fun productionUsesV34WhenModelAndPersonRoiAreAvailable() {
         assertEquals(
-            BehaviorRuntimeModel.V32,
+            BehaviorRuntimeModel.V34,
             BehaviorModelSelection.select(v34Available = true, v32Available = true, hasPersonRoi = true),
         )
     }
 
     @Test
-    fun explicitCandidateEvaluationCanUseV34WithPersonRoi() {
+    fun disabledV34FallsBackToV32ForControlledRollback() {
         assertEquals(
-            BehaviorRuntimeModel.V34,
+            BehaviorRuntimeModel.V32,
             BehaviorModelSelection.select(
                 v34Available = true,
                 v32Available = true,
                 hasPersonRoi = true,
-                allowCandidateV34 = true,
+                enableV34 = false,
             ),
         )
     }

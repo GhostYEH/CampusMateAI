@@ -32,9 +32,13 @@ class HybridBehaviorRecognitionEngine(
         timestampMs: Long,
         personBoundingBox: RectF?,
     ): BehaviorPrediction {
-        retainLatestFrame(frames.lastOrNull())
         val single = singleFrameEngine.analyzeTemporalWindow(frames, timestampMs, personBoundingBox)
+        if (single.modelState != BehaviorV34Contract.MODEL_STATE) {
+            clearTemporalEvidence()
+            return single
+        }
         if (single.probabilities.isEmpty()) return single
+        retainLatestFrame(frames.lastOrNull())
 
         val singleTop = single.probabilities.maxByOrNull { it.value }?.key
         val shouldRun = BehaviorHybridPolicy.shouldRunTemporal(
@@ -104,14 +108,18 @@ class HybridBehaviorRecognitionEngine(
 
     @Synchronized
     override fun reset() {
+        clearTemporalEvidence()
+        temporalEngine.reset()
+        singleFrameEngine.reset()
+    }
+
+    private fun clearTemporalEvidence() {
         frameBuffer.forEach { if (!it.isRecycled) it.recycle() }
         frameBuffer.clear()
         lastTemporalAtMs = 0L
         previousSingleTop = null
         computerConfirmationCount = 0
         latestTemporalPrediction = null
-        temporalEngine.reset()
-        singleFrameEngine.reset()
     }
 
     @Synchronized

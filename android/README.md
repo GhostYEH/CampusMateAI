@@ -94,36 +94,38 @@ gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
 
 ## 本地行为识别演进与学习状态辅助
 
-行为识别是设备端辅助观察，不是专注度、心理状态或学习效果判断。V1、V2 和 V3.2 的演进如下：
+行为识别是设备端辅助观察，不是专注度、心理状态或学习效果判断。当前模型演进如下：
 
 | 版本 | 输出类别 | 模型 | 用途 |
 |------|----------|------|------|
 | V1 | `READING` / `WRITING` | `assets/models/behavior/rgb_resnet18.onnx` | 研究基线，识别阅读与书写 |
 | V2 | `READING` / `WRITING` / `PHONE_USE` | `assets/models/behavior/rgb_resnet18_v2.onnx` | 扩展手机使用类别，保留回滚路径 |
-| V3.2 | `IDLE` / `VISIBLE_STUDY` | `assets/models/behavior/campusmate_visible_study_v32.onnx` | 当前默认，判断是否观察到明确可见学习行为 |
+| V3.2 | `IDLE` / `VISIBLE_STUDY` | `assets/models/behavior/campusmate_visible_study_v32.onnx` | 无人物 ROI 或 V3.4 不可用时的安全回退 |
+| V3.4 | `READING` / `WRITING` / `PHONE_USE` / `IDLE` | `assets/models/behavior/campusmate_behavior_v34.onnx` | 当前单帧主模型，在人物 ROI 上运行 |
+| V4 TSM | 上述类别 + `COMPUTER` | `assets/models/behavior/campusmate_tsm_mobilenetv2_v4.onnx` | 8 帧低频时序确认，与 V3.4 融合 |
 
-当前默认使用 V3.2。历史 ONNX 文件都保留，因为目前是科研/开发阶段，需要比较模型演进并保证实验可复现；约 128 MB 的 APK 体积代价暂不通过删除模型解决。
+当前默认使用 V3.4 单帧模型与 V4 TSM 时序模型的混合链路。历史 ONNX 文件都保留，因为目前是科研/开发阶段，需要比较模型演进、保证实验可复现并提供 V3.2 回退。
 
 ### V1.1 工程优化
 
 V1.1 延续 V1 的 READ/WRITE 语义，但完善了共享 CameraX pipeline、异步单线程推理、16 帧滑动窗口、推理 busy 时不重复调度、Bitmap ownership/recycle 和 Focus 生命周期释放。UI 主线程只消费 Flow 结果，不执行 ONNX 推理。
 
-### V3.2 产品语义与数据流
+### V3.4 + V4 产品语义与数据流
 
-V3.2 是“是否观察到明确可见学习行为”的二分类：
+V3.4 对最新采样图片识别 `READING`、`WRITING`、`PHONE_USE` 和 `IDLE`。V4 TSM 从连续相机流中保留最近 8 张采样图片，仅在低置信度、类别变化、手机交互或周期确认时运行，并补充 `COMPUTER` 时序类别。
 
-- `VISIBLE_STUDY`：阅读、书写、明显操作书本、纸张等学习材料。
-- `IDLE`：人在画面中，但当前未看到明确学习动作；不应解读为“不专注”或“没有学习”。
+当人物 ROI 暂时不可用或 V3.4 加载失败时，系统回退到 V3.2 二分类。V3.2 的 `IDLE / VISIBLE_STUDY` 与 V4 标签空间不兼容，因此回退结果不会参与 TSM 融合，并会清空此前的时序证据。
 
 数据流为：
 
 ```
 CameraX
 → FocusCameraPipeline / CameraFrame
-→ BehaviorAnalyzer（16 帧缓冲与单线程推理调度）
-→ OnnxBehaviorRecognitionEngine
-→ campusmate_visible_study_v32.onnx（本地 ONNX 推理）
-→ BehaviorPrediction（IDLE / VISIBLE_STUDY 概率）
+→ BehaviorAnalyzer（400 ms 采样与单线程推理调度）
+→ HybridBehaviorRecognitionEngine
+   ├─ OnnxBehaviorRecognitionEngine（V3.4 单帧；必要时回退 V3.2）
+   └─ OnnxTsmBehaviorRecognitionEngine（最近 8 帧、按条件低频运行）
+→ BehaviorHybridPolicy（仅融合标签兼容的 V3.4 + V4 输出）
 → BehaviorPredictionTemporalSmoother（EMA 概率平滑）
 → BehaviorSignalProcessor（启动观察、稳定判定）
 → LearningContinuityStateMachine（会话级连续性）
@@ -131,29 +133,25 @@ CameraX
 → FocusScreen（学习状态、节奏与本次观察摘要）
 ```
 
-稳定的 V3.2 结果会映射为 `OBSERVING`、`STUDYING`、`THINKING_OR_ADJUSTING` 和 `PAUSED`。学习中短暂出现 `IDLE` 时，前 8 秒仍保留学习状态，8～20 秒显示“短暂思考或调整中”，超过 20 秒才进入“暂时停顿”。`BehaviorSignalProcessor` 负责观察期、时间窗和稳定判定；`LearningContinuityStateMachine` 只改变产品层连续性，不改变底层模型标签。
+稳定结果会映射为 `OBSERVING`、`STUDYING`、`THINKING_OR_ADJUSTING` 和 `PAUSED`。学习中短暂出现 `IDLE` 时，前 8 秒仍保留学习状态，8～20 秒显示“短暂思考或调整中”，超过 20 秒才进入“暂时停顿”。`BehaviorSignalProcessor` 负责观察期、时间窗和稳定判定；`LearningContinuityStateMachine` 只改变产品层连续性，不改变底层模型标签。
 
 `BehaviorObservationHistory` 是当前 Focus session 的内存历史，按最近 5 分钟裁剪统计学习、暂停、最长连续学习和 meaningful switch；`FocusScreen` 通过 `behaviorObservation` Flow 显示学习节奏卡片和本次观察摘要。
 
-### V2 / V3.1 回退
+### V3.2 回退
 
-回滚只需在 `data/behavior/OnnxBehaviorRecognitionEngine.kt` 将：
-
-```kotlin
-private val CURRENT_BEHAVIOR_MODEL = V32_MODEL
-```
-
-切换为 V3.1 回退模型：
+`BehaviorModelSelection` 只有在 V3.4 可用且人物 ROI 有效时选择 V3.4，否则自动使用 V3.2。需要进行受控回滚时，可在调用 `select` 时传入：
 
 ```kotlin
-private val CURRENT_BEHAVIOR_MODEL = V31_MODEL
+enableV34 = false
 ```
 
-也可以切换为 `V2_MODEL` 进行 V2 对照，然后重新构建 APK。V2 的输出会恢复为 `READING` / `WRITING` / `PHONE_USE`；V3.1 和 V3.2 模型文件均保留。
+混合引擎检测到 V3.2 或模型不可用状态时会绕过 TSM 并清空时序缓存，恢复 V3.4 后需要重新积累 8 张兼容帧。
 
 ### 主要实现文件
 
 - `data/behavior/OnnxBehaviorRecognitionEngine.kt` — 模型加载、预处理、推理、softmax 与版本类别映射
+- `data/behavior/HybridBehaviorRecognitionEngine.kt` — V3.4 单帧与 V4 TSM 调度、兼容性保护和结果融合
+- `data/behavior/OnnxTsmBehaviorRecognitionEngine.kt` — 8 帧 TSM 模型加载与推理
 - `data/behavior/BehaviorAnalyzer.kt` — 16 帧缓冲、并发推理控制、异常恢复与 Bitmap 回收
 - `data/behavior/BehaviorSignalProcessor.kt` — 观察期、时间窗口与稳定状态输出
 - `data/behavior/LearningContinuityStateMachine.kt` — 会话级连续性状态
