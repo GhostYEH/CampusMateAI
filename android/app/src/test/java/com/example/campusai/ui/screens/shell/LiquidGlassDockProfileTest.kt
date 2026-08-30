@@ -40,13 +40,6 @@ class LiquidGlassDockProfileTest {
     }
 
     @Test
-    fun selectedItemUsesTheGlassPillWithoutABottomIndicator() {
-        val profile = liquidGlassDockInteractionProfile(reduceMotion = false)
-
-        assertFalse(profile.showBottomIndicator)
-    }
-
-    @Test
     fun pressFeedbackUsesAnExpandingWaveWhenMotionIsEnabled() {
         val profile = liquidGlassDockInteractionProfile(reduceMotion = false)
 

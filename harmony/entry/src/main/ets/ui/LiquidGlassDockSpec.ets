@@ -7,7 +7,6 @@ export interface LiquidGlassDockStyle {
   shadowColor: string;
   motionDuration: number;
   pressScale: number;
-  showBottomIndicator: boolean;
   pressWaveEnabled: boolean;
   pressWaveDuration: number;
   pressWaveDiameter: number;
@@ -24,7 +23,6 @@ export function liquidGlassDockStyle(darkMode: boolean, reduceMotion: boolean): 
     shadowColor: darkMode ? '#80000000' : '#260B1830',
     motionDuration: reduceMotion ? 0 : 260,
     pressScale: reduceMotion ? 1.0 : 0.92,
-    showBottomIndicator: false,
     pressWaveEnabled: !reduceMotion,
     pressWaveDuration: reduceMotion ? 0 : 420,
     pressWaveDiameter: 76,

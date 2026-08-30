@@ -10,7 +10,6 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.surfaceColor).assertEqual('#66FFFFFF');
       expect(style.highlightColor).assertEqual('#99FFFFFF');
       expect(style.motionDuration).assertEqual(260);
-      expect(style.showBottomIndicator).assertFalse();
       expect(style.pressWaveEnabled).assertTrue();
       expect(style.pressWaveDuration).assertEqual(420);
       expect(style.pressWaveDiameter).assertEqual(76);

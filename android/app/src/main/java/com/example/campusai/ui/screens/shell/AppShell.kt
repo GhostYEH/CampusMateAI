@@ -609,11 +609,5 @@ private fun RowScope.LiquidGlassNavItem(
                 )
             }
         }
-        if (isSelected && interactionProfile.showBottomIndicator) {
-            Box(
-                Modifier.align(Alignment.BottomCenter).width(48.dp).height(2.dp)
-                    .clip(CircleShape).background(Primary.copy(alpha = .38f)),
-            )
-        }
     }
 }

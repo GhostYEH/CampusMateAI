@@ -9,7 +9,6 @@ internal data class LiquidGlassDockProfile(
 )
 
 internal data class LiquidGlassDockInteractionProfile(
-    val showBottomIndicator: Boolean,
     val pressWaveEnabled: Boolean,
     val pressWaveDurationMillis: Int,
     val pressWaveRadiusDp: Float,
@@ -19,7 +18,6 @@ internal data class LiquidGlassDockInteractionProfile(
 internal fun liquidGlassDockInteractionProfile(
     reduceMotion: Boolean,
 ): LiquidGlassDockInteractionProfile = LiquidGlassDockInteractionProfile(
-    showBottomIndicator = false,
     pressWaveEnabled = !reduceMotion,
     pressWaveDurationMillis = if (reduceMotion) 0 else 420,
     pressWaveRadiusDp = 44f,
