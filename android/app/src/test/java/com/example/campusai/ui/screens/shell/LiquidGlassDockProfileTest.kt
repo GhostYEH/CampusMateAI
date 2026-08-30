@@ -38,4 +38,29 @@ class LiquidGlassDockProfileTest {
         assertEquals(0.82f, lightProfile.surfaceAlpha)
         assertEquals(0.74f, darkProfile.surfaceAlpha)
     }
+
+    @Test
+    fun selectedItemUsesTheGlassPillWithoutABottomIndicator() {
+        val profile = liquidGlassDockInteractionProfile(reduceMotion = false)
+
+        assertFalse(profile.showBottomIndicator)
+    }
+
+    @Test
+    fun pressFeedbackUsesAnExpandingWaveWhenMotionIsEnabled() {
+        val profile = liquidGlassDockInteractionProfile(reduceMotion = false)
+
+        assertTrue(profile.pressWaveEnabled)
+        assertEquals(420, profile.pressWaveDurationMillis)
+        assertEquals(44f, profile.pressWaveRadiusDp)
+    }
+
+    @Test
+    fun reducedMotionKeepsAStaticPressWashWithoutWaveExpansion() {
+        val profile = liquidGlassDockInteractionProfile(reduceMotion = true)
+
+        assertFalse(profile.pressWaveEnabled)
+        assertEquals(0, profile.pressWaveDurationMillis)
+        assertEquals(1f, profile.pressScale)
+    }
 }
