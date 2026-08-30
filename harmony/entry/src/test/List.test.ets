@@ -26,6 +26,7 @@ import counselorVisualSpecTest from './ets/ui/CounselorVisualSpec.test';
 import focusCameraContractTest from './ets/data/FocusCameraContract.test';
 import cpmChatDataSourceTest from './ets/counselor/CpmChatDataSource.test';
 import foregroundRefreshGateTest from './ets/core/ForegroundRefreshGate.test';
+import liquidGlassDockSpecTest from './ets/ui/LiquidGlassDockSpec.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -56,4 +57,5 @@ export default function testsuite(): void {
   focusCameraContractTest();
   cpmChatDataSourceTest();
   foregroundRefreshGateTest();
+  liquidGlassDockSpecTest();
 }

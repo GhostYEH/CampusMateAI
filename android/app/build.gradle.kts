@@ -94,6 +94,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.haze)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.3")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

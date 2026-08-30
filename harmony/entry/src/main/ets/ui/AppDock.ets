@@ -1,5 +1,6 @@
 import { CampusPalette, darkPalette, lightPalette } from './Theme';
 import { MotionDuration, MotionSpec } from './MotionSpec';
+import { LiquidGlassDockStyle, liquidGlassDockStyle } from './LiquidGlassDockSpec';
 
 interface DockItem {
   label: string;
@@ -23,6 +24,10 @@ export struct AppDock {
 
   glowColor(): string {
     return this.darkMode ? '#9CC7D0' : '#5B68F2';
+  }
+
+  glassStyle(): LiquidGlassDockStyle {
+    return liquidGlassDockStyle(this.darkMode, this.reduceMotion);
   }
 
   triggerPress(index: number): void {
@@ -88,18 +93,41 @@ export struct AppDock {
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(26)
-    .backgroundColor(this.activeTab === item.index ? (this.darkMode ? '#336F78FF' : '#1F6C63FF') : Color.Transparent)
-    .scale({
-      x: this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.92) : 1.0,
-      y: this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.92) : 1.0
+    .backgroundColor(this.activeTab === item.index ? this.glassStyle().selectedSurfaceColor : Color.Transparent)
+    .border({
+      width: this.activeTab === item.index ? 0.7 : 0,
+      color: this.activeTab === item.index ? this.glassStyle().selectedBorderColor : Color.Transparent
     })
-    .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+    .shadow({
+      radius: this.activeTab === item.index ? 8 : 0,
+      color: this.activeTab === item.index ? (this.darkMode ? '#3344A8FF' : '#225B68F2') : Color.Transparent,
+      offsetY: 2
+    })
+    .scale({
+      x: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0,
+      y: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0
+    })
+    .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
     .onClick(() => this.triggerPress(item.index))
   }
 
   build() {
     Column() {
       Stack({ alignContent: Alignment.TopStart }) {
+        Row()
+          .width('100%')
+          .height(60)
+          .linearGradient({
+            angle: 135,
+            colors: [
+              [this.glassStyle().highlightColor, 0.0],
+              ['#12FFFFFF', 0.42],
+              [this.darkMode ? '#1844A8FF' : '#145B68F2', 1.0]
+            ]
+          })
+          .opacity(this.darkMode ? 0.38 : 0.52)
+          .hitTestBehavior(HitTestMode.None)
+
         Row() {
           ForEach([
             { label: '首页', symbol: $r('sys.symbol.house'), index: 0 },
@@ -128,7 +156,18 @@ export struct AppDock {
             color: this.darkMode ? '#889CC7D0' : '#885B68F2',
             offsetY: 0
           })
-          .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.TAB), curve: Curve.Smooth })
+          .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
+
+        Row()
+          .width('84%')
+          .height(1)
+          .position({ x: '8%', y: 1 })
+          .linearGradient({
+            angle: 0,
+            colors: [['#00FFFFFF', 0.0], [this.glassStyle().highlightColor, 0.5], ['#00FFFFFF', 1.0]]
+          })
+          .opacity(0.82)
+          .hitTestBehavior(HitTestMode.None)
       }
       .width('100%')
       .height(60)
@@ -137,13 +176,13 @@ export struct AppDock {
     .height(80)
     .padding({ left: 6, right: 6, top: 8, bottom: 8 })
     .alignItems(HorizontalAlign.Center)
-    .backgroundColor(this.darkMode ? '#E6162236' : '#F2FFFFFF')
-    .backdropBlur(32)
-    .border({ width: 0.5, color: this.darkMode ? '#33FFFFFF' : '#22FFFFFF' })
+    .backgroundColor(this.glassStyle().surfaceColor)
+    .backdropBlur(this.glassStyle().backdropBlur)
+    .border({ width: 0.7, color: this.glassStyle().highlightColor })
     .borderRadius(40)
     .shadow({
       radius: 28,
-      color: this.darkMode ? '#80000000' : '#1A0B1830',
+      color: this.glassStyle().shadowColor,
       offsetY: 8
     })
     .margin({ left: 14, right: 14, bottom: 10 })

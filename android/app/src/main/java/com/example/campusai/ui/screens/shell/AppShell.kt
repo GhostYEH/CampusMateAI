@@ -3,6 +3,7 @@ package com.example.campusai.ui.screens.shell
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -54,11 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -82,6 +85,10 @@ import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import com.example.campusai.ui.theme.UnreadDot
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.launch
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
@@ -139,6 +146,7 @@ fun AppShell(
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     val navItems = studentNavItems.take(5)
+    val hazeState = remember { HazeState() }
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
@@ -158,9 +166,7 @@ fun AppShell(
         }
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Background),
-    ) {
+    Box(Modifier.fillMaxSize()) {
         // The app uses page content and the bottom dock as its navigation model;
         // no secondary personal header is shown above the main tabs.
         if (false) {
@@ -176,14 +182,30 @@ fun AppShell(
                 },
             )
         }
-        Box(Modifier.fillMaxSize()) { content() }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .haze(
+                    state = hazeState,
+                    style = HazeStyle(
+                        tint = Background.copy(alpha = .16f),
+                        blurRadius = 8.dp,
+                        noiseFactor = .04f,
+                    ),
+                )
+                .background(Background),
+        ) {
+            content()
+        }
         CampusDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter),
+            hazeState = hazeState,
             items = navItems,
             route = route,
             pendingCount = pendingCount,
             reduceMotion = reduceMotion,
+            darkMode = darkMode,
             onNavigate = { target ->
                 navController.navigate(target) {
                     popUpTo("home") { inclusive = false }
@@ -277,16 +299,35 @@ private fun CampusTopBar(
 @Composable
 private fun CampusDock(
     modifier: Modifier = Modifier,
+    hazeState: HazeState,
     items: List<NavItem>,
     route: String,
     pendingCount: Int,
     reduceMotion: Boolean,
+    darkMode: Boolean,
     onNavigate: (String) -> Unit,
 ) {
     val selectedRoute = selectedStudentDockRoute(route)
     val primaryColor = Primary
     val dockSurface = Surface
     val dockLine = Line
+    val glassProfile = liquidGlassDockProfile(Build.VERSION.SDK_INT, darkMode)
+    val dockShape = RoundedCornerShape(38.dp)
+    val dockGlassModifier = if (glassProfile.blurEnabled) {
+        Modifier.hazeChild(
+            state = hazeState,
+            shape = dockShape,
+            style = HazeStyle(
+                tint = dockSurface.copy(alpha = glassProfile.surfaceAlpha),
+                blurRadius = glassProfile.blurRadiusDp.dp,
+                noiseFactor = .08f,
+            ),
+        )
+    } else {
+        Modifier
+            .clip(dockShape)
+            .background(dockSurface.copy(alpha = glassProfile.surfaceAlpha))
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -297,13 +338,15 @@ private fun CampusDock(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp)
-                .clip(RoundedCornerShape(38.dp))
-                .background(dockSurface.copy(alpha = .97f))
+                .shadow(
+                    elevation = 18.dp,
+                    shape = dockShape,
+                    clip = false,
+                )
+                .then(dockGlassModifier)
                 .drawBehind {
-                    // Keep the dock layered and calm in both themes; no hard-coded
-                    // white wash means night mode retains its surface hierarchy.
                     drawRoundRect(
-                        color = dockSurface.copy(alpha = .32f),
+                        color = Color.White.copy(alpha = if (darkMode) .04f else .12f),
                         cornerRadius = CornerRadius(size.height / 2f),
                     )
                     drawCircle(
@@ -317,7 +360,12 @@ private fun CampusDock(
                     )
                     drawCircle(
                         brush = Brush.radialGradient(
-                            colors = listOf(primaryColor.copy(alpha = .08f), Color.Transparent),
+                            colors = listOf(
+                                primaryColor.copy(
+                                    alpha = if (glassProfile.vibrancyEnabled) .12f else .07f,
+                                ),
+                                Color.Transparent,
+                            ),
                             center = Offset(size.width, size.height),
                             radius = size.width * .52f,
                         ),
@@ -325,13 +373,14 @@ private fun CampusDock(
                         center = Offset(size.width, size.height),
                     )
                 }
-                .border(1.dp, dockLine.copy(alpha = .82f), RoundedCornerShape(38.dp))
+                .border(0.8.dp, dockLine.copy(alpha = .58f), dockShape)
                 .padding(horizontal = 7.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
                 val selected = selectedRoute == item.route
                 LiquidGlassNavItem(
+                    glassProfile = glassProfile,
                     item = item,
                     isSelected = selected,
                     pendingCount = pendingCount,
@@ -345,6 +394,7 @@ private fun CampusDock(
 
 @Composable
 private fun RowScope.LiquidGlassNavItem(
+    glassProfile: LiquidGlassDockProfile,
     item: NavItem,
     isSelected: Boolean,
     pendingCount: Int,
@@ -356,6 +406,7 @@ private fun RowScope.LiquidGlassNavItem(
     val scope = rememberCoroutineScope()
     val tapGlow = remember { Animatable(0f) }
     val primaryColor = Primary
+    val primarySoftColor = PrimarySoft
     val color by animateColorAsState(
         targetValue = if (isSelected) primaryColor else Muted,
         animationSpec = tween(260, easing = FastOutSlowInEasing),
@@ -375,6 +426,43 @@ private fun RowScope.LiquidGlassNavItem(
         label = "dock-press-scale-${item.route}",
     )
     val itemShape = RoundedCornerShape(27.dp)
+    val selectedGlassModifier = if (isSelected) {
+        Modifier.drawBehind {
+            val pressBoost = if (pressed && !reduceMotion) .12f else 0f
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = .34f + pressBoost),
+                        primarySoftColor.copy(alpha = if (glassProfile.lensEnabled) .48f else .70f),
+                        primaryColor.copy(alpha = .16f + pressBoost),
+                    ),
+                ),
+                cornerRadius = CornerRadius(size.height / 2f),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = .26f), Color.Transparent),
+                    center = Offset(size.width * .28f, size.height * .18f),
+                    radius = size.width * .72f,
+                ),
+                radius = size.width * .72f,
+                center = Offset(size.width * .28f, size.height * .18f),
+            )
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = .72f),
+                        primaryColor.copy(alpha = .24f),
+                        Color.White.copy(alpha = .18f),
+                    ),
+                ),
+                cornerRadius = CornerRadius(size.height / 2f),
+                style = Stroke(width = (if (pressed) 1.4.dp else .8.dp).toPx()),
+            )
+        }
+    } else {
+        Modifier
+    }
 
     Box(
         modifier = Modifier
@@ -404,13 +492,10 @@ private fun RowScope.LiquidGlassNavItem(
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier
+            modifier = selectedGlassModifier
                 .fillMaxWidth()
                 .height(58.dp)
                 .clip(itemShape)
-                .background(
-                    if (isSelected) PrimarySoft.copy(alpha = .86f) else Color.Transparent,
-                )
                 .drawBehind {
                     val activeGlow = if (isSelected) .9f else 0f
                     val flashGlow = tapGlow.value
