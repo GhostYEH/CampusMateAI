@@ -17,13 +17,11 @@ export struct AppDock {
   onNavigate: (index: number) => void = () => {};
 
   @State pressedIndex: number = -1;
+  @State pressWaveIndex: number = -1;
+  @State pressWaveExpanded: boolean = false;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
-  }
-
-  glowColor(): string {
-    return this.darkMode ? '#9CC7D0' : '#5B68F2';
   }
 
   glassStyle(): LiquidGlassDockStyle {
@@ -32,66 +30,105 @@ export struct AppDock {
 
   triggerPress(index: number): void {
     this.activeTab = index;
-    this.pressedIndex = index;
-    setTimeout(() => {
-      if (this.pressedIndex === index) {
-        this.pressedIndex = -1;
-      }
-    }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS));
     this.onNavigate(index);
+  }
+
+  beginPress(index: number): void {
+    this.pressedIndex = index;
+    this.pressWaveIndex = index;
+    this.pressWaveExpanded = false;
+    if (!this.glassStyle().pressWaveEnabled) {
+      return;
+    }
+    setTimeout(() => {
+      if (this.pressWaveIndex === index) {
+        this.pressWaveExpanded = true;
+      }
+    }, 16);
+  }
+
+  endPress(index: number): void {
+    if (this.pressedIndex === index) {
+      this.pressedIndex = -1;
+    }
+    if (!this.glassStyle().pressWaveEnabled) {
+      this.pressWaveIndex = -1;
+      return;
+    }
+    setTimeout(() => {
+      if (this.pressWaveIndex === index) {
+        this.pressWaveIndex = -1;
+        this.pressWaveExpanded = false;
+      }
+    }, this.glassStyle().pressWaveDuration);
   }
 
   @Builder
   DockItemView(item: DockItem) {
-    Column({ space: 3 }) {
-      Stack({ alignContent: Alignment.Center }) {
-        if (item.index === 3 && this.activeTab === item.index) {
-          Image($r('app.media.ph_robot'))
-            .width(this.activeTab === item.index ? 24 : 22)
-            .height(this.activeTab === item.index ? 24 : 22)
-            .objectFit(ImageFit.Contain)
-            .scale({
-              x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
-              y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
-            })
-            .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
-        } else {
-          SymbolGlyph(item.symbol)
-            .fontSize(this.activeTab === item.index ? 23 : 21)
-            .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
-            .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
-            .scale({
-              x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
-              y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
-            })
-            .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
-        }
-        if (item.index === 2 && this.pendingCount > 0) {
-          Text(this.pendingCount > 9 ? '9+' : this.pendingCount.toString())
-            .fontColor('#FFFFFFFF')
-            .fontSize(8)
-            .fontWeight(FontWeight.Bold)
-            .textAlign(TextAlign.Center)
-            .width(16)
-            .height(16)
-            .backgroundColor('#FFED6E52')
-            .borderRadius(8)
-            .position({ x: 22, y: -3 })
-        }
+    Stack({ alignContent: Alignment.Center }) {
+      if (this.pressWaveIndex === item.index) {
+        Circle()
+          .width(this.glassStyle().pressWaveEnabled ?
+            (this.pressWaveExpanded ? this.glassStyle().pressWaveDiameter : 18) : 52)
+          .height(this.glassStyle().pressWaveEnabled ?
+            (this.pressWaveExpanded ? this.glassStyle().pressWaveDiameter : 18) : 52)
+          .backgroundColor(this.glassStyle().pressWaveColor)
+          .opacity(this.glassStyle().pressWaveEnabled ? (this.pressWaveExpanded ? 0.0 : 0.48) : 0.12)
+          .border({ width: 1, color: this.glassStyle().highlightColor })
+          .animation({ duration: this.glassStyle().pressWaveDuration, curve: Curve.Smooth })
       }
-      .width(42)
-      .height(26)
-      Text(item.label)
-        .fontColor(this.activeTab === item.index ? this.palette().primary : this.palette().muted)
-        .fontSize(10)
-        .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
-        .maxLines(1)
-        .opacity(this.activeTab === item.index ? 1.0 : 0.82)
+      Column({ space: 3 }) {
+        Stack({ alignContent: Alignment.Center }) {
+          if (item.index === 3 && this.activeTab === item.index) {
+            Image($r('app.media.ph_robot'))
+              .width(this.activeTab === item.index ? 24 : 22)
+              .height(this.activeTab === item.index ? 24 : 22)
+              .objectFit(ImageFit.Contain)
+              .scale({
+                x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
+                y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+              })
+              .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+          } else {
+            SymbolGlyph(item.symbol)
+              .fontSize(this.activeTab === item.index ? 23 : 21)
+              .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
+              .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
+              .scale({
+                x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
+                y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+              })
+              .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
+          }
+          if (item.index === 2 && this.pendingCount > 0) {
+            Text(this.pendingCount > 9 ? '9+' : this.pendingCount.toString())
+              .fontColor('#FFFFFFFF')
+              .fontSize(8)
+              .fontWeight(FontWeight.Bold)
+              .textAlign(TextAlign.Center)
+              .width(16)
+              .height(16)
+              .backgroundColor('#FFED6E52')
+              .borderRadius(8)
+              .position({ x: 22, y: -3 })
+          }
+        }
+        .width(42)
+        .height(26)
+        Text(item.label)
+          .fontColor(this.activeTab === item.index ? this.palette().primary : this.palette().muted)
+          .fontSize(10)
+          .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
+          .maxLines(1)
+          .opacity(this.activeTab === item.index ? 1.0 : 0.82)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
     }
     .layoutWeight(1)
     .height(60)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
     .borderRadius(26)
     .backgroundColor(this.activeTab === item.index ? this.glassStyle().selectedSurfaceColor : Color.Transparent)
     .border({
@@ -107,7 +144,15 @@ export struct AppDock {
       x: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0,
       y: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0
     })
+    .clip(true)
     .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.beginPress(item.index);
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.endPress(item.index);
+      }
+    })
     .onClick(() => this.triggerPress(item.index))
   }
 
@@ -141,22 +186,6 @@ export struct AppDock {
         }
         .width('100%')
         .height(60)
-
-        Row()
-          .width('20%')
-          .height(3)
-          .position({ x: `${this.activeTab * 20}%`, y: 55 })
-          .linearGradient({
-            angle: 0,
-            colors: [[this.glowColor(), 0.0], ['#FFFFFFFF', 0.5], [this.glowColor(), 1.0]]
-          })
-          .opacity(0.66)
-          .shadow({
-            radius: 5,
-            color: this.darkMode ? '#889CC7D0' : '#885B68F2',
-            offsetY: 0
-          })
-          .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
 
         Row()
           .width('84%')
