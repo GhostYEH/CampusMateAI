@@ -1,14 +1,23 @@
 import {
+  applyAvatarSpeechMessage,
+  CompatAvatarAnimator,
   createSpeechEndpoint,
   createUnitySpeechMessage,
   normalizeRuntimeConfig,
   PcmStreamPlayer,
   resolveDigitalHumanMode,
   resolveMobileLayout,
+  resolveReducedMotion,
 } from "./mobileRuntime.js";
 
-document.body.classList.toggle("harmony", resolveMobileLayout(window.location.search) === "harmony");
+const mobileLayout = resolveMobileLayout(window.location.search);
+document.body.classList.toggle("harmony", mobileLayout === "harmony");
+document.body.classList.toggle("embed", mobileLayout === "embed");
 const runtimeMode = resolveDigitalHumanMode(window.location.search);
+const reducedMotion = resolveReducedMotion(
+  window.location.search,
+  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+);
 
 const frame = document.querySelector("#avatar-frame");
 const loading = document.querySelector("#loading");
@@ -17,14 +26,24 @@ const notice = document.querySelector("#notice");
 const muteButton = document.querySelector("#mute");
 const stopButton = document.querySelector("#stop");
 const replayButton = document.querySelector("#replay");
+const compatAvatar = document.querySelector("#compat-avatar");
 let config = normalizeRuntimeConfig();
 let lastText = "";
 let muted = false;
 let speaking = false;
 let abortController = null;
+const avatarAnimator = runtimeMode === "compat"
+  ? new CompatAvatarAnimator(compatAvatar, { reducedMotion })
+  : null;
+
+avatarAnimator?.start();
+if (runtimeMode === "compat") stateLabel.textContent = "随时为你解答";
 
 function sendUnity(type, value) {
-  if (runtimeMode === "compat") return;
+  if (runtimeMode === "compat") {
+    applyAvatarSpeechMessage(avatarAnimator, type, value);
+    return;
+  }
   frame.contentWindow?.postMessage(createUnitySpeechMessage(type, value), window.location.origin);
 }
 
@@ -127,7 +146,7 @@ window.CampusMateDigitalHuman = {
 };
 
 window.addEventListener("message", (event) => {
-  if (event.origin !== window.location.origin || event.data?.source !== "campusmate-unity") return;
+  if (event.source !== frame.contentWindow || event.origin !== window.location.origin || event.data?.source !== "campusmate-unity") return;
   if (event.data.type === "ready") {
     loading.hidden = true;
     stateLabel.textContent = "随时为你解答";
@@ -139,4 +158,10 @@ window.addEventListener("message", (event) => {
 muteButton.addEventListener("click", toggleMuted);
 stopButton.addEventListener("click", togglePaused);
 replayButton.addEventListener("click", replay);
-window.addEventListener("pagehide", stop);
+window.addEventListener("pagehide", () => {
+  stop();
+  avatarAnimator?.stop();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) avatarAnimator?.start();
+});

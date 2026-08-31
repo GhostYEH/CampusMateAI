@@ -3,8 +3,9 @@ package com.example.campusai
 import com.example.campusai.ui.screens.counselor.DigitalHumanBridge
 import com.example.campusai.ui.screens.counselor.DigitalHumanRenderMode
 import com.example.campusai.ui.screens.counselor.selectDigitalHumanRenderMode
-import com.example.campusai.ui.screens.counselor.shouldCreateEmbeddedDigitalHuman
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DigitalHumanBridgeTest {
@@ -48,12 +49,6 @@ class DigitalHumanBridgeTest {
     }
 
     @Test
-    fun `native compatibility mode never creates the embedded WebView runtime`() {
-        assertEquals(false, shouldCreateEmbeddedDigitalHuman(DigitalHumanRenderMode.NATIVE_COMPAT))
-        assertEquals(true, shouldCreateEmbeddedDigitalHuman(DigitalHumanRenderMode.LIVE_WEBGL))
-    }
-
-    @Test
     fun `stage url uses API origin instead of embedding credentials`() {
         assertEquals(
             "http://10.0.2.2:8000/digital-human/mobile.html?embed=1",
@@ -66,6 +61,44 @@ class DigitalHumanBridgeTest {
         assertEquals(
             "http://10.0.2.2:8000/digital-human/mobile.html?embed=1&fallback=1",
             DigitalHumanBridge.stageUrl("http://10.0.2.2:8000/api/v1/", forceFallback = true),
+        )
+    }
+
+    @Test
+    fun `stage url forwards the app reduced motion preference`() {
+        assertEquals(
+            "http://10.0.2.2:8000/digital-human/mobile.html?embed=1&fallback=1&reduceMotion=1",
+            DigitalHumanBridge.stageUrl(
+                "http://10.0.2.2:8000/api/v1/",
+                forceFallback = true,
+                reduceMotion = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `stage scripts only run on the expected digital human document`() {
+        val expected = "https://campus.example/digital-human/mobile.html?embed=1&fallback=1"
+
+        assertTrue(DigitalHumanBridge.isTrustedStageUrl(expected, expected))
+        assertTrue(DigitalHumanBridge.isTrustedStageUrl(expected, "$expected#avatar"))
+        assertFalse(
+            DigitalHumanBridge.isTrustedStageUrl(
+                expected,
+                "https://evil.example/digital-human/mobile.html?embed=1&fallback=1",
+            ),
+        )
+        assertFalse(
+            DigitalHumanBridge.isTrustedStageUrl(
+                expected,
+                "https://campus.example/other.html?embed=1&fallback=1",
+            ),
+        )
+        assertFalse(
+            DigitalHumanBridge.isTrustedStageUrl(
+                expected,
+                "https://campus.example/digital-human/mobile.html?embed=1",
+            ),
         )
     }
 

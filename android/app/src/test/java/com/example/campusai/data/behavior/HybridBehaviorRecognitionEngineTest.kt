@@ -75,6 +75,69 @@ class HybridBehaviorRecognitionEngineTest {
     }
 
     @Test
+    fun v32FallbackBypassesIncompatibleTemporalFusion() {
+        val expected = BehaviorPrediction(
+            probabilities = mapOf(
+                StudyBehavior.IDLE to 0.15f,
+                StudyBehavior.VISIBLE_STUDY to 0.85f,
+            ),
+            timestampMs = 0L,
+            modelState = "READY_VISIBLE_STUDY_V32",
+        )
+        val single = FakeEngine(expected)
+        val temporal = FakeEngine(temporalPrediction(StudyBehavior.IDLE))
+        val hybrid = HybridBehaviorRecognitionEngine(single, temporal)
+        hybrid.initialize()
+
+        try {
+            var result = expected
+            repeat(12) { index ->
+                result = hybrid.analyzeTemporalWindow(listOf(frame()), index * 500L)
+            }
+
+            assertEquals(expected.probabilities, result.probabilities)
+            assertEquals(expected.modelState, result.modelState)
+            assertEquals(0, temporal.calls)
+        } finally {
+            hybrid.close()
+        }
+    }
+
+    @Test
+    fun v32FallbackClearsStaleTemporalEvidenceBeforeV34Resumes() {
+        val single = FakeEngine(singlePrediction())
+        val temporal = FakeEngine(temporalPrediction(StudyBehavior.PHONE_USE))
+        val hybrid = HybridBehaviorRecognitionEngine(single, temporal)
+        hybrid.initialize()
+
+        try {
+            repeat(8) { index ->
+                hybrid.analyzeTemporalWindow(listOf(frame()), index * 500L)
+            }
+            assertEquals(1, temporal.calls)
+
+            single.result = BehaviorPrediction(
+                probabilities = mapOf(
+                    StudyBehavior.IDLE to 0.20f,
+                    StudyBehavior.VISIBLE_STUDY to 0.80f,
+                ),
+                timestampMs = 0L,
+                modelState = "READY_VISIBLE_STUDY_V32",
+            )
+            hybrid.analyzeTemporalWindow(listOf(frame()), 4_000L)
+
+            single.result = singlePrediction()
+            val resumed = hybrid.analyzeTemporalWindow(listOf(frame()), 4_500L)
+
+            assertEquals(BehaviorV34Contract.MODEL_STATE, resumed.modelState)
+            assertEquals(StudyBehavior.IDLE, resumed.stableBehavior)
+            assertEquals(1, temporal.calls)
+        } finally {
+            hybrid.close()
+        }
+    }
+
+    @Test
     fun latestTemporalEvidenceStaysActiveBetweenTsmRuns() {
         val single = FakeEngine(
             BehaviorPrediction(
@@ -148,7 +211,7 @@ class HybridBehaviorRecognitionEngineTest {
     }
 
     private class FakeEngine(
-        private val result: BehaviorPrediction,
+        var result: BehaviorPrediction,
         private val available: Boolean = true,
     ) : BehaviorRecognitionEngine {
         var calls = 0

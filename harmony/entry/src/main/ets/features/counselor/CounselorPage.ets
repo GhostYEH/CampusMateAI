@@ -250,7 +250,8 @@ export struct CounselorPage {
             authToken: this.authToken,
             speechText: this.speechText,
             speechRequestId: this.speechRequestId,
-            darkMode: this.darkMode
+            darkMode: this.darkMode,
+            reduceMotion: this.reduceMotion
           })
           if (CounselorConversationState.showSuggestions(this.messages.length)) {
             Row() {

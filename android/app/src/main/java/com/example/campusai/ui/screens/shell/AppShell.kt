@@ -46,10 +46,10 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,7 +89,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
-import kotlinx.coroutines.launch
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
@@ -312,6 +311,7 @@ private fun CampusDock(
     val dockSurface = Surface
     val dockLine = Line
     val glassProfile = liquidGlassDockProfile(Build.VERSION.SDK_INT, darkMode)
+    val interactionProfile = liquidGlassDockInteractionProfile(reduceMotion)
     val dockShape = RoundedCornerShape(38.dp)
     val dockGlassModifier = if (glassProfile.blurEnabled) {
         Modifier.hazeChild(
@@ -381,6 +381,7 @@ private fun CampusDock(
                 val selected = selectedRoute == item.route
                 LiquidGlassNavItem(
                     glassProfile = glassProfile,
+                    interactionProfile = interactionProfile,
                     item = item,
                     isSelected = selected,
                     pendingCount = pendingCount,
@@ -395,6 +396,7 @@ private fun CampusDock(
 @Composable
 private fun RowScope.LiquidGlassNavItem(
     glassProfile: LiquidGlassDockProfile,
+    interactionProfile: LiquidGlassDockInteractionProfile,
     item: NavItem,
     isSelected: Boolean,
     pendingCount: Int,
@@ -403,8 +405,7 @@ private fun RowScope.LiquidGlassNavItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val scope = rememberCoroutineScope()
-    val tapGlow = remember { Animatable(0f) }
+    val pressWaveProgress = remember { Animatable(1f) }
     val primaryColor = Primary
     val primarySoftColor = PrimarySoft
     val color by animateColorAsState(
@@ -421,10 +422,29 @@ private fun RowScope.LiquidGlassNavItem(
         label = "dock-icon-scale-${item.route}",
     )
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed && !reduceMotion) .96f else 1f,
+        targetValue = if (pressed) interactionProfile.pressScale else 1f,
         animationSpec = tween(140),
         label = "dock-press-scale-${item.route}",
     )
+    LaunchedEffect(pressed, interactionProfile.pressWaveEnabled) {
+        if (!interactionProfile.pressWaveEnabled) {
+            pressWaveProgress.snapTo(if (pressed) 0f else 1f)
+        } else if (pressed) {
+            pressWaveProgress.snapTo(0f)
+            pressWaveProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = interactionProfile.pressWaveDurationMillis,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+        } else if (pressWaveProgress.value < 1f) {
+            pressWaveProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(180, easing = FastOutSlowInEasing),
+            )
+        }
+    }
     val itemShape = RoundedCornerShape(27.dp)
     val selectedGlassModifier = if (isSelected) {
         Modifier.drawBehind {
@@ -478,15 +498,6 @@ private fun RowScope.LiquidGlassNavItem(
                 indication = null,
                 role = Role.Tab,
             ) {
-                if (!reduceMotion) {
-                    scope.launch {
-                        tapGlow.snapTo(1f)
-                        tapGlow.animateTo(
-                            0f,
-                            animationSpec = tween(540, easing = FastOutSlowInEasing),
-                        )
-                    }
-                }
                 onNavigate(item.route)
             },
         contentAlignment = Alignment.Center,
@@ -498,19 +509,50 @@ private fun RowScope.LiquidGlassNavItem(
                 .clip(itemShape)
                 .drawBehind {
                     val activeGlow = if (isSelected) .9f else 0f
-                    val flashGlow = tapGlow.value
-                    if (activeGlow > 0f || flashGlow > 0f) {
+                    if (activeGlow > 0f) {
                         drawRoundRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    primaryColor.copy(alpha = .28f * activeGlow + .34f * flashGlow),
-                                    primaryColor.copy(alpha = .10f * activeGlow + .16f * flashGlow),
+                                    primaryColor.copy(alpha = .28f * activeGlow),
+                                    primaryColor.copy(alpha = .10f * activeGlow),
                                     Color.Transparent,
                                 ),
                                 center = Offset(size.width / 2f, size.height / 2f),
                                 radius = size.width * .82f,
                             ),
                             cornerRadius = CornerRadius(size.height / 2f),
+                        )
+                    }
+                    if (!interactionProfile.pressWaveEnabled && pressed) {
+                        drawRoundRect(
+                            color = primaryColor.copy(alpha = .11f),
+                            cornerRadius = CornerRadius(size.height / 2f),
+                        )
+                    }
+                    val waveProgress = pressWaveProgress.value
+                    if (interactionProfile.pressWaveEnabled && waveProgress < 1f) {
+                        val waveAlpha = (1f - waveProgress) * .34f
+                        val waveRadius = interactionProfile.pressWaveRadiusDp.dp.toPx() *
+                            (.22f + .78f * waveProgress)
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    primaryColor.copy(alpha = waveAlpha * .48f),
+                                    primaryColor.copy(alpha = waveAlpha * .16f),
+                                    Color.Transparent,
+                                ),
+                                center = center,
+                                radius = waveRadius,
+                            ),
+                            radius = waveRadius,
+                            center = center,
+                        )
+                        drawCircle(
+                            color = Color.White.copy(alpha = waveAlpha),
+                            radius = waveRadius,
+                            center = center,
+                            style = Stroke(width = 1.2.dp.toPx()),
                         )
                     }
                 }
@@ -566,12 +608,6 @@ private fun RowScope.LiquidGlassNavItem(
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 )
             }
-        }
-        if (isSelected) {
-            Box(
-                Modifier.align(Alignment.BottomCenter).width(48.dp).height(2.dp)
-                    .clip(CircleShape).background(Primary.copy(alpha = .38f)),
-            )
         }
     }
 }
