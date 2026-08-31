@@ -4,22 +4,23 @@
 
 ## 环境与构建
 
-- DevEco Studio：`D:\DevEco Studio`
+- DevEco Studio：通过本机环境变量 `DEVECO_HOME` 指向安装目录
 - HarmonyOS / OpenHarmony SDK：6.1.1（API 24）
 - Hvigor `modelVersion`：6.1.1
 
 PowerShell 构建命令：
 
 ```powershell
-$env:PATH='D:\DevEco Studio\tools\node;D:\DevEco Studio\tools\hvigor\bin;' + $env:PATH
-$env:DEVECO_SDK_HOME='D:\DevEco Studio\sdk'
-& 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleApp --no-daemon
+$hvigor = Join-Path $env:DEVECO_HOME 'tools\hvigor\bin\hvigorw.bat'
+$env:PATH = "$(Join-Path $env:DEVECO_HOME 'tools\node');$(Join-Path $env:DEVECO_HOME 'tools\hvigor\bin');$env:PATH"
+$env:DEVECO_SDK_HOME = Join-Path $env:DEVECO_HOME 'sdk'
+& $hvigor assembleApp --no-daemon
 ```
 
 单元测试：
 
 ```powershell
-& 'D:\DevEco Studio\tools\hvigor\bin\hvigorw.bat' test --no-daemon
+& $hvigor test --no-daemon
 ```
 
 构建产物：`entry/build/default/outputs/default/app/entry-default.hap`。

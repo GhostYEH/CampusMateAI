@@ -1,4 +1,0 @@
-interface:
-  display_name: "WeChat Mini Program Auto Port Deploy"
-  short_description: "Automate WeChat Mini Program delivery"
-  default_prompt: "Use this skill to inspect, migrate, validate, preview, upload, deploy, or prepare review materials for a WeChat Mini Program."

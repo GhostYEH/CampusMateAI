@@ -1,6 +1,6 @@
 # CampusMateAI Behavior Recognition Offline Baseline
 
-This package builds an auditable offline MobileNetV3-Small baseline from YOLO classroom annotations. It never edits `F:\数据集` and it does not replace the Android V3.2 production asset.
+This package builds an auditable offline MobileNetV3-Small baseline from YOLO classroom annotations. It treats configured source dataset directories as read-only and does not replace the Android V3.2 production asset.
 
 ## Output contract
 
@@ -22,7 +22,8 @@ The verified machine environment at implementation time was Python 3.13, PyTorch
 Install the package only when the existing environment does not already provide the requirements:
 
 ```powershell
-Set-Location D:\File\demo1\.worktrees\behavior-recognition-v34\ml\behavior_recognition
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+Set-Location (Join-Path $repoRoot 'ml\behavior_recognition')
 python -m pip install -e .
 python -m pip install -r requirements.txt
 ```
@@ -35,7 +36,7 @@ $env:PYTHONPATH = "src"
 
 ## Data sources
 
-`configs/sources.yaml` currently treats only `F:\数据集\0.671k_university_yolo_Dataset` as training-ready because its six-class mapping is verified. The larger Handrise/Read/Write and Bow/Turn sets remain audit-only until their numeric label order is verified from authoritative metadata or a reviewed visual audit.
+Copy `configs/sources.example.yaml` to the ignored local file `configs/sources.yaml`, then replace each placeholder with a local read-only dataset directory. Only the university dataset is marked training-ready because its six-class mapping is verified. The larger Handrise/Read/Write and Bow/Turn sets remain audit-only until their numeric label order is verified from authoritative metadata or a reviewed visual audit.
 
 The university mapping is:
 
@@ -79,7 +80,7 @@ Build 16-frame windows from the three ordered university frame sequences. The bu
 ```powershell
 $env:PYTHONPATH = "src"
 python -m behavior_recognition.cli temporal-manifest `
-  --dataset-root "F:\数据集\0.671k_university_yolo_Dataset" `
+  --dataset-root $env:CAMPUSMATE_BEHAVIOR_DATASET_ROOT `
   --output manifests_temporal `
   --sequence-length 16 `
   --stride 8
@@ -92,7 +93,7 @@ python -m behavior_recognition.cli temporal-train `
   --config configs\mobilenet_v3_gru.yaml `
   --manifests manifests_temporal `
   --run-dir runs_temporal\full-current-onnx-20260827 `
-  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
+  --source-onnx "exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
 ```
 
 Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX model:
@@ -100,7 +101,7 @@ Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX mo
 ```powershell
 python -m behavior_recognition.cli temporal-export `
   --checkpoint runs_temporal\full-current-onnx-20260827\best.pt `
-  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
+  --source-onnx "exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
   --output exports_temporal\full-current-onnx-20260827
 ```
 

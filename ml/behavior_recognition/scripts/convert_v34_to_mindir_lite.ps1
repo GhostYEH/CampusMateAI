@@ -1,10 +1,18 @@
 param(
-    [string]$InputModel = "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx",
-    [string]$OutputDirectory = "D:\File\demo1\harmony\entry\src\main\resources\rawfile\models\behavior",
+    [string]$InputModel,
+    [string]$OutputDirectory,
     [string]$ToolCache = "$env:LOCALAPPDATA\CampusMateAI\tools\mindspore-lite-2.1.0"
 )
 
 $ErrorActionPreference = "Stop"
+$moduleRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $moduleRoot)
+if (!$InputModel) {
+    $InputModel = Join-Path $moduleRoot "exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
+}
+if (!$OutputDirectory) {
+    $OutputDirectory = Join-Path $repoRoot "harmony\entry\src\main\resources\rawfile\models\behavior"
+}
 $downloadUrl = "https://ms-release.obs.cn-north-4.myhuaweicloud.com/2.1.0/MindSpore/lite/release/windows/mindspore-lite-2.1.0-win-x64.zip"
 $archiveHash = "5B32178F2BCB57C1A0D33F3D99A7A966527D41F0745D5879FE3AE011704F93F6"
 $inputHash = "9ABE029D18E1BFC1F0E1E47217F575153AF966BF013500DD66E8DDA0592C5740"

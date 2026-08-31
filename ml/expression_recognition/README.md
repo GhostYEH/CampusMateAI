@@ -28,7 +28,7 @@ v1 旧训练结果保留在 `manifests/`、`runs/`、`reports/generated/`、`exp
 
 ## 数据集
 
-训练数据位于 `K:\人脸数据集`，包含 3 个自动检测到的数据集：
+通过 `CAMPUSMATE_EXPRESSION_DATASET_ROOT` 指定的训练目录包含 3 个自动检测到的数据集：
 
 | 数据集 | 图片数 | 尺寸 | 通道 | 标签格式 |
 |---|---:|---|---|---|
@@ -40,11 +40,13 @@ v1 旧训练结果保留在 `manifests/`、`runs/`、`reports/generated/`、`exp
 
 ## 从零复现
 
-要求 Windows、`uv`、可用的 NVIDIA 驱动，以及只读数据源 `K:\人脸数据集`。脚本在本模块内创建 Python 3.12 独立环境，不修改系统 Python 或后端虚拟环境。
+要求 Windows、`uv`、可用的 NVIDIA 驱动，以及通过 `CAMPUSMATE_EXPRESSION_DATASET_ROOT` 指定的只读数据源。脚本在本模块内创建 Python 3.12 独立环境，不修改系统 Python 或后端虚拟环境。
 
 ```powershell
-Set-Location F:\demo1\ml\expression_recognition
-.\scripts\reproduce_training.ps1 -DatasetRoot 'K:\人脸数据集'
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+Set-Location (Join-Path $repoRoot 'ml\expression_recognition')
+if (-not $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT) { throw 'Set CAMPUSMATE_EXPRESSION_DATASET_ROOT first.' }
+.\scripts\reproduce_training.ps1 -DatasetRoot $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT
 ```
 
 这会安装官方 CUDA 13.0 PyTorch wheel、运行环境自检与 pytest、构建多数据集统一清单、依次执行四个模型的 smoke test 和完整训练与评估。
