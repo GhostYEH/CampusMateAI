@@ -39,3 +39,23 @@ test("renders a hot post with its interaction counts", async () => {
   assert.match(html, /12/);
   assert.match(html, /3/);
 });
+
+test("renders the readable category label for a study hot post", async () => {
+  const { default: CampusHotPostsPanel } = await vite.ssrLoadModule(
+    "/src/components/CampusHotPostsPanel.vue",
+  );
+  const html = await renderToString(
+    createSSRApp(CampusHotPostsPanel, {
+      posts: [{
+        id: "post-study",
+        title: "小组讨论地点推荐",
+        category: "study",
+        like_count: 8,
+        comment_count: 2,
+        created_at: "2026-08-18T09:00:00Z",
+      }],
+    }),
+  );
+
+  assert.match(html, /学习交流/);
+});

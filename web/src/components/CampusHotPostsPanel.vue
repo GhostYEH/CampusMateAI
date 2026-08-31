@@ -17,6 +17,10 @@ function rankLabel(index) {
 function categoryLabel(category) {
   return ({
     campus: "校园生活",
+    study: "学习交流",
+    life: "生活随笔",
+    activity: "校园活动",
+    secondhand: "二手交易",
     question: "提问求助",
     recruit: "组队招募",
     errand: "校园互助",
