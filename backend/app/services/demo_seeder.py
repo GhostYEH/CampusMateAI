@@ -104,6 +104,7 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
         "assignments_added": 0,
         "submissions_added": 0,
         "personal_tasks_added": 0,
+        "community_posts_added": 0,
     }
 
     user_repo = container.user_repository
@@ -114,6 +115,7 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     asg_repo = container.assignment_repository
     sub_repo = container.submission_repository
     personal_task_repo = container.personal_task_repository
+    community_repo = container.community_repository
 
     # === 用户 ===
     created_users: dict[str, UserRow] = {}
@@ -141,6 +143,73 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     demo_university = container.university_repository.ensure_demo_university()
     if student_demo.university_id != demo_university.id:
         student_demo = user_repo.update_university(student_demo.id, demo_university.id)
+
+    # === 校园社区热帖 ===
+    # 首页按热度读取社区数据。使用真实的帖子、评论和点赞记录，让演示环境
+    # 与用户发布后的正常页面保持同一条数据链路。
+    hot_post_defs = [
+        (
+            "图书馆自习室座位怎么选？这份避坑清单请收好",
+            "整理了早中晚三个时段的空位情况，也欢迎大家补充常用楼层和插座位置。",
+            "campus",
+            7,
+            ["北区三楼靠窗位置上午光线很好。", "期末周建议提前在小程序里预约。", "一楼研讨区可以小组讨论。", "谢谢分享，已收藏。"],
+        ),
+        (
+            "新学期选课互助：这些公共课还有空位吗？",
+            "想整理一份选课互助表，已经选到课程的同学可以分享上课时间和老师风格。",
+            "question",
+            5,
+            ["体育课还有两个时段可以选。", "通识课《电影鉴赏》周四下午还有名额。", "建议先关注教务系统的补退选通知。"],
+        ),
+        (
+            "求推荐：校内适合小组讨论的安静地点",
+            "我们四个人要准备课程展示，希望找一个有白板、插座方便、不会影响别人的地方。",
+            "study",
+            3,
+            ["图书馆一层研讨间需要提前预约。", "教学楼 B 座的公共讨论区晚上人不多。"],
+        ),
+        (
+            "周末校园骑行路线分享，沿途景色很棒",
+            "从东门出发绕湖一圈，大约四十分钟，适合傍晚放松。",
+            "life",
+            1,
+            ["收藏了，周末去试试。"],
+        ),
+    ]
+    existing_posts, _ = community_repo.list_posts(
+        demo_university.id, q=None, page=1, page_size=200, sort="time"
+    )
+    posts_by_title = {post["title"]: post for post in existing_posts}
+    engagement_users = [
+        created_users[f"student_demo_{index:02d}"] for index in range(1, 31)
+    ]
+    for title, content, category, like_target, comments in hot_post_defs:
+        post = posts_by_title.get(title)
+        if post is None:
+            post = community_repo.create_post(
+                university_id=demo_university.id,
+                author_id=student_demo.id,
+                title=title,
+                content=content,
+                category=category,
+                images=[],
+                is_anonymous=False,
+            )
+            stats["community_posts_added"] += 1
+        for user in engagement_users[:like_target]:
+            community_repo.toggle("forum_likes", "like_count", post["id"], user.id, True)
+        existing_comments = community_repo.list_comments(post["id"])
+        existing_comment_texts = {comment["content"] for comment in existing_comments}
+        for index, comment in enumerate(comments):
+            if comment not in existing_comment_texts:
+                community_repo.create_comment(
+                    post=post,
+                    author_id=engagement_users[like_target + index].id,
+                    content=comment,
+                    parent_comment_id=None,
+                    is_anonymous=False,
+                )
 
     # === 课程 ===
     existing_courses, _ = course_repo.list_courses(page=1, page_size=200)

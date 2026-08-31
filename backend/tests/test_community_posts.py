@@ -66,8 +66,28 @@ def test_feed_is_isolated_by_authenticated_users_university() -> None:
 
     a_feed = client.get("/api/v1/community/posts", headers=a).json()
     b_feed = client.get("/api/v1/community/posts", headers=b).json()
-    assert [item["title"] for item in a_feed["items"]] == ["A campus only"]
+    assert "A campus only" in [item["title"] for item in a_feed["items"]]
     assert b_feed["items"] == []
+
+
+def test_demo_student_receives_seeded_hot_campus_posts() -> None:
+    client, _ = _setup()
+    student = _headers(client, "student_demo")
+
+    response = client.get(
+        "/api/v1/community/posts?sort=hot&page=1&page_size=3",
+        headers=student,
+    )
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [item["title"] for item in items] == [
+        "图书馆自习室座位怎么选？这份避坑清单请收好",
+        "新学期选课互助：这些公共课还有空位吗？",
+        "求推荐：校内适合小组讨论的安静地点",
+    ]
+    assert all(item["like_count"] > 0 for item in items)
+    assert all(item["comment_count"] > 0 for item in items)
 
 
 def test_post_ownership_and_admin_moderation_are_enforced() -> None:
@@ -87,7 +107,10 @@ def test_post_ownership_and_admin_moderation_are_enforced() -> None:
     hidden = client.post(f"/api/v1/admin/community/posts/{post_id}/hide", headers=admin)
     assert hidden.status_code == 200, hidden.text
     assert hidden.json()["status"] == "hidden"
-    assert client.get("/api/v1/community/posts", headers=a).json()["items"] == []
+    assert "Owned by A" not in [
+        item["title"]
+        for item in client.get("/api/v1/community/posts", headers=a).json()["items"]
+    ]
 
 
 def test_anonymous_post_hides_identity_but_preserves_backend_ownership() -> None:
