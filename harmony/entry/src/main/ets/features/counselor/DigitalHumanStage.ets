@@ -3,6 +3,7 @@ import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { CounselorVisualSpec } from './CounselorVisualSpec';
 
 interface PageEndEvent { url: string }
+interface UrlLoadEvent { data: string | WebResourceRequest }
 
 @Component
 export struct DigitalHumanStage {
@@ -11,6 +12,7 @@ export struct DigitalHumanStage {
   @Prop speechText: string = '';
   @Prop @Watch('onSpeechRequestChanged') speechRequestId: number = 0;
   @Prop darkMode: boolean = false;
+  @Prop reduceMotion: boolean = false;
   @State ready: boolean = false;
   @State runtimeRequested: boolean = false;
   @State errorMessage: string = '';
@@ -24,7 +26,7 @@ export struct DigitalHumanStage {
   }
 
   stageUrl(): string {
-    return CounselorVisualSpec.speechRuntimeUrl(this.apiBaseUrl);
+    return CounselorVisualSpec.speechRuntimeUrl(this.apiBaseUrl, this.reduceMotion);
   }
 
   run(script: string): void {
@@ -86,11 +88,45 @@ export struct DigitalHumanStage {
   Avatar() {
     Stack({ alignContent: Alignment.TopStart }) {
       Stack({ alignContent: Alignment.TopStart }) {
-        Image($r('app.media.cpm_avatar'))
-          .width(CounselorVisualSpec.AVATAR_IMAGE_WIDTH)
-          .height(CounselorVisualSpec.AVATAR_IMAGE_HEIGHT)
-          .objectFit(ImageFit.Fill)
-          .position({ x: CounselorVisualSpec.AVATAR_IMAGE_X, y: CounselorVisualSpec.AVATAR_IMAGE_Y })
+        if (this.runtimeRequested) {
+          Web({ src: this.stageUrl(), controller: this.controller })
+            .javaScriptAccess(true)
+            .domStorageAccess(true)
+            .databaseAccess(false)
+            .mediaPlayGestureAccess(false)
+            .onUrlLoadIntercept((event?: UrlLoadEvent) => {
+              if (event === undefined) return true;
+              const targetUrl: string = typeof event.data === 'string'
+                ? event.data
+                : event.data.getRequestUrl();
+              return !CounselorVisualSpec.isTrustedSpeechRuntimeUrl(this.stageUrl(), targetUrl);
+            })
+            .onPageEnd((event: PageEndEvent) => {
+              if (!CounselorVisualSpec.isTrustedSpeechRuntimeUrl(this.stageUrl(), event.url)) {
+                this.ready = false;
+                this.errorMessage = '数字人页面校验失败，文字聊天仍可使用';
+                if (event.url !== 'about:blank') this.controller.loadUrl('about:blank');
+                return;
+              }
+              this.ready = true;
+              this.errorMessage = '';
+              this.configure();
+              if (this.muted) this.run('window.CampusMateDigitalHuman.toggleMuted();');
+              this.speakIfNeeded();
+            })
+            .onErrorReceive(() => {
+              this.ready = false;
+              this.errorMessage = '数字人动画加载失败，文字聊天仍可使用';
+            })
+            .width('100%')
+            .height('100%')
+        } else {
+          Image($r('app.media.cpm_avatar'))
+            .width(CounselorVisualSpec.AVATAR_IMAGE_WIDTH)
+            .height(CounselorVisualSpec.AVATAR_IMAGE_HEIGHT)
+            .objectFit(ImageFit.Fill)
+            .position({ x: CounselorVisualSpec.AVATAR_IMAGE_X, y: CounselorVisualSpec.AVATAR_IMAGE_Y })
+        }
       }
       .width(CounselorVisualSpec.AVATAR_VIEWPORT)
       .height(CounselorVisualSpec.AVATAR_VIEWPORT)
@@ -115,31 +151,6 @@ export struct DigitalHumanStage {
   }
 
   @Builder
-  SpeechRuntime() {
-    if (this.runtimeRequested) {
-      Web({ src: this.stageUrl(), controller: this.controller })
-        .javaScriptAccess(true)
-        .domStorageAccess(true)
-        .databaseAccess(false)
-        .mediaPlayGestureAccess(false)
-        .onPageEnd((_event: PageEndEvent) => {
-          this.ready = true;
-          this.errorMessage = '';
-          this.configure();
-          if (this.muted) this.run('window.CampusMateDigitalHuman.toggleMuted();');
-          this.speakIfNeeded();
-        })
-        .onErrorReceive(() => {
-          this.errorMessage = '语音加载失败，文字聊天仍可使用';
-        })
-        .width(1)
-        .height(1)
-        .opacity(0)
-        .position({ x: 0, y: 0 })
-    }
-  }
-
-  @Builder
   ControlButton(label: string, symbol: Resource, action: () => void) {
     Column({ space: 5 }) {
       SymbolGlyph(symbol).fontSize(22).fontColor([this.palette().primary])
@@ -159,8 +170,6 @@ export struct DigitalHumanStage {
     Stack({ alignContent: Alignment.TopStart }) {
       Circle().width(176).height(176).fill(this.darkMode ? '#332C3C66' : '#42E5E9FF').position({ x: 0, y: 34 })
       Circle().width(72).height(72).fill(this.darkMode ? '#221D2A48' : '#36FFFFFF').position({ x: '70%', y: 10 })
-      this.SpeechRuntime()
-
       Row({ space: 5 }) {
         this.Avatar()
         Column({ space: 9 }) {

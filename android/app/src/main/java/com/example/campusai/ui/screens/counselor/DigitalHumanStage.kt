@@ -1,9 +1,11 @@
 package com.example.campusai.ui.screens.counselor
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.View
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,11 +23,14 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import java.net.URI
 
 object DigitalHumanBridge {
-    fun stageUrl(apiBaseUrl: String, forceFallback: Boolean = false): String =
+    fun stageUrl(apiBaseUrl: String, forceFallback: Boolean = false, reduceMotion: Boolean = false): String =
         apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") +
-            "/digital-human/mobile.html?embed=1" + if (forceFallback) "&fallback=1" else ""
+            "/digital-human/mobile.html?embed=1" +
+            (if (forceFallback) "&fallback=1" else "") +
+            (if (reduceMotion) "&reduceMotion=1" else "")
 
     fun configureScript(apiBaseUrl: String, accessToken: String): String =
         "window.CampusMateDigitalHuman.configure({apiBaseUrl:${jsString(apiBaseUrl)},accessToken:${jsString(accessToken)}});"
@@ -38,6 +43,23 @@ object DigitalHumanBridge {
         DigitalHumanCommand.TOGGLE_PAUSE -> "window.CampusMateDigitalHuman.togglePaused();"
         DigitalHumanCommand.REPLAY -> "window.CampusMateDigitalHuman.replay();"
         DigitalHumanCommand.NONE -> ""
+    }
+
+    fun isTrustedStageUrl(expectedUrl: String, candidateUrl: String): Boolean = runCatching {
+        val expected = URI(expectedUrl)
+        val candidate = URI(candidateUrl)
+        expected.scheme.equals(candidate.scheme, ignoreCase = true) &&
+            expected.host.equals(candidate.host, ignoreCase = true) &&
+            effectivePort(expected) == effectivePort(candidate) &&
+            expected.rawPath == candidate.rawPath &&
+            expected.rawQuery == candidate.rawQuery
+    }.getOrDefault(false)
+
+    private fun effectivePort(uri: URI): Int = when {
+        uri.port >= 0 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        else -> -1
     }
 
     private fun jsString(value: String): String = buildString {
@@ -61,9 +83,6 @@ object DigitalHumanBridge {
 }
 
 internal enum class DigitalHumanRenderMode { LIVE_WEBGL, NATIVE_COMPAT }
-
-internal fun shouldCreateEmbeddedDigitalHuman(renderMode: DigitalHumanRenderMode): Boolean =
-    renderMode == DigitalHumanRenderMode.LIVE_WEBGL
 
 internal fun selectDigitalHumanRenderMode(
     fingerprint: String,
@@ -101,6 +120,7 @@ fun DigitalHumanStage(
     command: DigitalHumanCommand = DigitalHumanCommand.NONE,
     commandRequestId: Int = 0,
     forceFallback: Boolean = false,
+    reduceMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -108,7 +128,10 @@ fun DigitalHumanStage(
     var pageReady by remember { mutableStateOf(false) }
     var lastSpokenRequestId by remember { mutableIntStateOf(0) }
     var lastCommandRequestId by remember { mutableIntStateOf(0) }
-    val webView = remember(apiBaseUrl, forceFallback) {
+    val stageUrl = remember(apiBaseUrl, forceFallback, reduceMotion) {
+        DigitalHumanBridge.stageUrl(apiBaseUrl, forceFallback, reduceMotion)
+    }
+    val webView = remember(stageUrl) {
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
             setLayerType(if (forceFallback) View.LAYER_TYPE_NONE else View.LAYER_TYPE_HARDWARE, null)
@@ -123,11 +146,18 @@ fun DigitalHumanStage(
             settings.displayZoomControls = false
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    pageReady = false
+                }
+
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                    request.isForMainFrame && !DigitalHumanBridge.isTrustedStageUrl(stageUrl, request.url.toString())
+
                 override fun onPageFinished(view: WebView, url: String) {
-                    pageReady = true
+                    pageReady = DigitalHumanBridge.isTrustedStageUrl(stageUrl, url)
                 }
             }
-            loadUrl(DigitalHumanBridge.stageUrl(apiBaseUrl, forceFallback))
+            loadUrl(stageUrl)
         }
     }
 

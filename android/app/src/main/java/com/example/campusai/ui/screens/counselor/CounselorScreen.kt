@@ -5,8 +5,6 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
-import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -24,7 +22,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,11 +45,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -68,7 +63,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import com.example.campusai.BuildConfig
-import com.example.campusai.R
 import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.repository.AppRepository
@@ -76,7 +70,6 @@ import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 private val CpmBlue = Color(0xFF385AF6)
 private val CpmViolet = Color(0xFF8152F6)
@@ -374,7 +367,7 @@ private fun CpmDigitalHumanCard(
                         .background(Brush.radialGradient(listOf(Color.White, Color(0xFFE3E7FF))))
                         .border(2.dp, Color.White, CircleShape),
                 ) {
-                    if (shouldCreateEmbeddedDigitalHuman(renderMode)) {
+                    key(renderMode, reduceMotion) {
                         DigitalHumanStage(
                             apiBaseUrl = BuildConfig.API_BASE_URL,
                             accessToken = accessToken,
@@ -382,26 +375,8 @@ private fun CpmDigitalHumanCard(
                             speechRequestId = speechRequestId,
                             command = playbackCommand,
                             commandRequestId = playbackCommandId,
-                        )
-                    } else {
-                        NativeDigitalHumanPlayback(
-                            speechText = speechText,
-                            speechRequestId = speechRequestId,
-                            command = playbackCommand,
-                            commandRequestId = playbackCommandId,
-                        )
-                    }
-                    if (renderMode == DigitalHumanRenderMode.NATIVE_COMPAT) {
-                        Image(
-                            painter = painterResource(R.drawable.cpm_avatar_fallback),
-                            contentDescription = "CPM 数字人",
-                            contentScale = ContentScale.Crop,
-                            alignment = if (metrics.alignAvatarToTop) Alignment.TopCenter else Alignment.Center,
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                scaleX = metrics.avatarScale
-                                scaleY = metrics.avatarScale
-                                translationY = size.height * metrics.avatarVerticalOffsetFraction
-                            },
+                            forceFallback = renderMode == DigitalHumanRenderMode.NATIVE_COMPAT,
+                            reduceMotion = reduceMotion,
                         )
                     }
                 }
@@ -459,73 +434,6 @@ private fun CpmControl(icon: ImageVector, label: String, modifier: Modifier, hei
     ) {
         Icon(icon, label, tint = CpmBlue, modifier = Modifier.size(23.dp))
         Text(label, color = Color(0xFF596785), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-    }
-}
-
-@Composable
-private fun NativeDigitalHumanPlayback(
-    speechText: String,
-    speechRequestId: Int,
-    command: DigitalHumanCommand,
-    commandRequestId: Int,
-) {
-    // Keep the initial hero allocation-free on compatibility devices. The system
-    // speech engine is created only when there is actually something to play.
-    if (speechRequestId <= 0 && commandRequestId <= 0) return
-
-    val context = LocalContext.current.applicationContext
-    var ready by remember { mutableStateOf(false) }
-    var muted by remember { mutableStateOf(false) }
-    var paused by remember { mutableStateOf(false) }
-    var lastSpeechText by remember { mutableStateOf("") }
-    val textToSpeech = remember(context) {
-        TextToSpeech(context) { status -> ready = status == TextToSpeech.SUCCESS }
-    }
-
-    fun speak(text: String) {
-        if (!ready || muted || text.isBlank()) return
-        val params = Bundle().apply {
-            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f)
-        }
-        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, params, "cpm-$speechRequestId")
-    }
-
-    LaunchedEffect(ready) {
-        if (ready) {
-            textToSpeech.language = Locale.SIMPLIFIED_CHINESE
-            textToSpeech.setSpeechRate(0.96f)
-        }
-    }
-    LaunchedEffect(ready, speechRequestId) {
-        if (ready && speechRequestId > 0 && speechText.isNotBlank()) {
-            lastSpeechText = speechText
-            paused = false
-            speak(speechText)
-        }
-    }
-    LaunchedEffect(ready, commandRequestId) {
-        if (!ready || commandRequestId <= 0) return@LaunchedEffect
-        when (command) {
-            DigitalHumanCommand.TOGGLE_MUTE -> {
-                muted = !muted
-                if (muted) textToSpeech.stop() else if (!paused) speak(lastSpeechText)
-            }
-            DigitalHumanCommand.TOGGLE_PAUSE -> {
-                paused = !paused
-                if (paused) textToSpeech.stop() else speak(lastSpeechText)
-            }
-            DigitalHumanCommand.REPLAY -> {
-                paused = false
-                speak(lastSpeechText)
-            }
-            DigitalHumanCommand.NONE -> Unit
-        }
-    }
-    DisposableEffect(textToSpeech) {
-        onDispose {
-            textToSpeech.stop()
-            textToSpeech.shutdown()
-        }
     }
 }
 
