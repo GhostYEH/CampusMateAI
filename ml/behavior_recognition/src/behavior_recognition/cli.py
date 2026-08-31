@@ -9,6 +9,9 @@ from .manifest import build_manifest
 from .train import train_model
 from .evaluate import evaluate_checkpoint
 from .export_onnx import export_candidate
+from .export_temporal_onnx import export_fused_temporal_candidate
+from .temporal_manifest import build_temporal_manifests
+from .temporal_train import train_temporal_model
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,28 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--run-dir", type=Path, required=True)
     train.add_argument("--max-epochs", type=int)
     train.add_argument("--limit-per-class", type=int)
+    temporal_manifest = subparsers.add_parser(
+        "temporal-manifest", help="build ordered leak-free behavior windows"
+    )
+    temporal_manifest.add_argument("--dataset-root", type=Path, required=True)
+    temporal_manifest.add_argument("--output", type=Path, required=True)
+    temporal_manifest.add_argument("--sequence-length", type=int, default=16)
+    temporal_manifest.add_argument("--stride", type=int, default=8)
+    temporal_manifest.add_argument("--seed", type=int, default=20260827)
+    temporal_train = subparsers.add_parser(
+        "temporal-train", help="train MobileNetV3 GRU behavior candidate"
+    )
+    temporal_train.add_argument("--config", type=Path, required=True)
+    temporal_train.add_argument("--manifests", type=Path, required=True)
+    temporal_train.add_argument("--run-dir", type=Path, required=True)
+    temporal_train.add_argument("--max-epochs", type=int)
+    temporal_train.add_argument("--source-onnx", type=Path)
+    temporal_export = subparsers.add_parser(
+        "temporal-export", help="fuse frame encoder and GRU into one ONNX model"
+    )
+    temporal_export.add_argument("--checkpoint", type=Path, required=True)
+    temporal_export.add_argument("--source-onnx", type=Path, required=True)
+    temporal_export.add_argument("--output", type=Path, required=True)
     evaluate = subparsers.add_parser("evaluate", help="evaluate and calibrate a checkpoint")
     evaluate.add_argument("--checkpoint", type=Path, required=True)
     evaluate.add_argument("--manifests", type=Path, required=True)
@@ -71,6 +96,35 @@ def main(argv: list[str] | None = None) -> int:
             limit_per_class=args.limit_per_class,
         )
         print(f"training complete: {checkpoint}")
+        return 0
+    if args.command == "temporal-manifest":
+        summary = build_temporal_manifests(
+            args.dataset_root,
+            args.output,
+            sequence_length=args.sequence_length,
+            stride=args.stride,
+            seed=args.seed,
+        )
+        print(
+            f"temporal manifest complete: videos={summary.video_count} "
+            f"tracks={summary.track_count} windows={summary.window_count}"
+        )
+        return 0
+    if args.command == "temporal-train":
+        checkpoint = train_temporal_model(
+            args.config,
+            args.manifests,
+            args.run_dir,
+            max_epochs_override=args.max_epochs,
+            source_onnx_override=args.source_onnx,
+        )
+        print(f"temporal training complete: {checkpoint}")
+        return 0
+    if args.command == "temporal-export":
+        onnx_path = export_fused_temporal_candidate(
+            args.checkpoint, args.source_onnx, args.output
+        )
+        print(f"temporal export complete: {onnx_path}")
         return 0
     if args.command == "evaluate":
         report = evaluate_checkpoint(

@@ -72,6 +72,42 @@ Run full training:
 
 The pipeline performs environment preflight, data audit, grouped manifest creation, tests, ROI cache generation, training, calibration, V3.2 comparison, and ONNX parity export.
 
+### Temporal MobileNetV3 + GRU candidate
+
+Build 16-frame windows from the three ordered university frame sequences. The builder merges the original image-level folders, tracks same-label boxes across adjacent frames, and assigns each complete four-digit video prefix to exactly one split:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m behavior_recognition.cli temporal-manifest `
+  --dataset-root "F:\数据集\0.671k_university_yolo_Dataset" `
+  --output manifests_temporal `
+  --sequence-length 16 `
+  --stride 8
+```
+
+Train the GRU from the current single-frame candidate's frozen 1024-dimensional ONNX features:
+
+```powershell
+python -m behavior_recognition.cli temporal-train `
+  --config configs\mobilenet_v3_gru.yaml `
+  --manifests manifests_temporal `
+  --run-dir runs_temporal\full-current-onnx-20260827 `
+  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
+```
+
+Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX model:
+
+```powershell
+python -m behavior_recognition.cli temporal-export `
+  --checkpoint runs_temporal\full-current-onnx-20260827\best.pt `
+  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
+  --output exports_temporal\full-current-onnx-20260827
+```
+
+The fused model accepts `frames` with shape `[1, 16, 3, 224, 224]` and returns four `logits`. Export fails if the source ONNX SHA-256 differs from the model used during GRU training or if fused-vs-two-stage parity exceeds `1e-4`. A successful export writes an immutable artifact set under `generations/<content-id>/` and atomically updates `current.json`; consumers should resolve the model path from that pointer.
+
+This route preserves and actually executes the current ONNX frame encoder; it does not substitute ImageNet weights under the same name. Because the original PyTorch checkpoint is unavailable, the encoder remains frozen and only the GRU and four-class head train. The three-video split is suitable for pipeline development but not production promotion or subject-independent accuracy claims.
+
 ## Local artifacts
 
 Generated content is ignored by Git:
@@ -80,6 +116,9 @@ Generated content is ignored by Git:
 artifacts/roi-cache/       derived 224x224 student crops
 manifests/                 absolute-path train/val/test manifests
 runs/                      checkpoints and histories
+manifests_temporal/        leak-free temporal window manifests
+runs_temporal/             GRU checkpoints, logs, and derived feature ONNX
+exports_temporal/          atomic pointer plus versioned fused temporal artifacts
 reports/generated/         machine-readable audit/evaluation reports
 exports/                   candidate ONNX, labels, parity, and model card
 ```

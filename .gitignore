@@ -184,6 +184,9 @@ docs/superpowers/plans/
 docs/superpowers/specs/
 wx/docs/
 ml/**/reports/*.md
+ml/**/manifests_temporal*/
+ml/**/runs_temporal*/
+ml/**/exports_temporal*/
 **/design-qa*.md
 harmony/PARITY_AUDIT.md
 wx/parity/PARITY_AUDIT.md
