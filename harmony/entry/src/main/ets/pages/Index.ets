@@ -202,12 +202,15 @@ struct Index {
 
   refreshFocusAssistState(): void {
     const signal: FocusAssistSignal | undefined = this.focusAssistProvider.latestSignal();
+    const cameraState: string = this.focusCameraPipeline?.state() ?? '';
+    const shouldPresent: boolean = signal !== undefined &&
+      FocusCameraSignalPresentation.shouldPresent(signal.isStable, cameraState);
     this.focusAssistDetail = this.focusCameraPipeline?.detail() ?? this.focusAssistProvider.detail();
     this.focusAssistLabel = signal === undefined ? '' :
-      FocusCameraSignalPresentation.label(signal.label, signal.isStable);
+      FocusCameraSignalPresentation.label(signal.label, shouldPresent);
     this.focusAssistConfidence = signal === undefined ? 0 :
-      FocusCameraSignalPresentation.confidence(signal.confidence, signal.isStable);
-    this.focusBehaviorReminder = signal?.isStable === true ? this.focusAssistProvider.currentReminder() : '';
+      FocusCameraSignalPresentation.confidence(signal.confidence, shouldPresent);
+    this.focusBehaviorReminder = shouldPresent ? this.focusAssistProvider.currentReminder() : '';
   }
 
   async applyFocusCameraLifecycle(event: string, mode: FocusMode): Promise<void> {
@@ -311,8 +314,8 @@ struct Index {
   }
 
   async handleSessionExpired(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     await this.appState.clearSession();
     this.clearRoutes();
     this.signedIn = false;
@@ -603,8 +606,8 @@ struct Index {
   }
 
   async signOut(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     this.chaoxingRepository = null;
     this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
     await this.appState.signOut();

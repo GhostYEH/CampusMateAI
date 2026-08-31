@@ -94,6 +94,9 @@ test('does not present rejected behavior output as stable', () => {
   assert.equal(FocusCameraSignalPresentation.confidence(0.91, false), 0);
   assert.equal(FocusCameraSignalPresentation.label('READ', true), 'READ');
   assert.equal(FocusCameraSignalPresentation.confidence(0.91, true), 0.91);
+  assert.equal(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.RUNNING), true);
+  assert.equal(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.WAITING_FOR_PERSON), false);
+  assert.equal(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.STOPPED), false);
 });
 
 test('displays the hybrid computer behavior with a user-facing label', () => {

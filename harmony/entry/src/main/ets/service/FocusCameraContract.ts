@@ -95,6 +95,10 @@ export class FocusCameraLifecyclePolicy {
 }
 
 export class FocusCameraSignalPresentation {
+  static shouldPresent(isStable: boolean, cameraState: string): boolean {
+    return isStable && cameraState === FocusCameraState.RUNNING;
+  }
+
   static label(label: string, isStable: boolean): string {
     return isStable ? label : '';
   }

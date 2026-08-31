@@ -253,6 +253,7 @@ export class FocusCameraPipeline {
         timestamp: timestamp
       };
       await this.provider.analyze(behaviorFrame);
+      if (!this.running) return;
       const providerStatus: FocusAssistStatus = this.provider.status();
       if (providerStatus === FocusAssistStatus.RUNNING) {
         this.setState(FocusCameraState.RUNNING);

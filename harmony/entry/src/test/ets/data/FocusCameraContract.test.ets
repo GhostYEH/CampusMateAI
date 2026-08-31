@@ -100,6 +100,9 @@ export default function focusCameraContractTest(): void {
       expect(FocusCameraSignalPresentation.confidence(0.91, false)).assertEqual(0);
       expect(FocusCameraSignalPresentation.label('READ', true)).assertEqual('READ');
       expect(FocusCameraSignalPresentation.confidence(0.91, true)).assertEqual(0.91);
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.RUNNING)).assertTrue();
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.WAITING_FOR_PERSON)).assertFalse();
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.STOPPED)).assertFalse();
     });
 
     it('displays the hybrid computer behavior with a user-facing label', 0, () => {
