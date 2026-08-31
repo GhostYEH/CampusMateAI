@@ -4,6 +4,7 @@ import {
   BehaviorTsmContract,
   BehaviorTsmResult
 } from '../../../main/ets/service/BehaviorHybridPolicy';
+import { BehaviorTemporalFrameBuffer } from '../../../main/ets/service/MindSporeBehaviorProvider';
 import { BehaviorV34Label, BehaviorV34Result } from '../../../main/ets/service/BehaviorV34Decision';
 
 function singleResult(probabilities: number[]): BehaviorV34Result {
@@ -51,6 +52,42 @@ function temporalResult(probabilities: number[]): BehaviorTsmResult {
 
 export default function behaviorHybridPolicyTest(): void {
   describe('BehaviorHybridPolicy', () => {
+    it('retains exactly the latest eight CHW tensors', 0, () => {
+      const buffer = new BehaviorTemporalFrameBuffer();
+      for (let index: number = 0; index < 10; index++) {
+        const tensor = new Float32Array(3 * 224 * 224);
+        tensor[0] = index;
+        buffer.push(tensor);
+      }
+      const snapshot: Float32Array[] = buffer.snapshot();
+      expect(snapshot.length).assertEqual(8);
+      expect(snapshot[0][0]).assertEqual(2);
+      expect(snapshot[7][0]).assertEqual(9);
+    });
+
+    it('stacks all eight tensors in insertion order', 0, () => {
+      const buffer = new BehaviorTemporalFrameBuffer();
+      for (let index: number = 0; index < 8; index++) {
+        const tensor = new Float32Array(3 * 224 * 224);
+        tensor[0] = index;
+        buffer.push(tensor);
+      }
+      const stacked: Float32Array | undefined = buffer.toModelInput();
+      expect(stacked?.length ?? 0).assertEqual(8 * 3 * 224 * 224);
+      const frameStride: number = 3 * 224 * 224;
+      expect(stacked?.[0] ?? -1).assertEqual(0);
+      expect(stacked?.[frameStride] ?? -1).assertEqual(1);
+      expect(stacked?.[frameStride * 7] ?? -1).assertEqual(7);
+    });
+
+    it('empties the temporal buffer after reset', 0, () => {
+      const buffer = new BehaviorTemporalFrameBuffer();
+      buffer.push(new Float32Array(3 * 224 * 224));
+      buffer.reset();
+      expect(buffer.snapshot().length).assertEqual(0);
+      expect(buffer.toModelInput()).assertUndefined();
+    });
+
     it('decodes TSM logits in the exported five-class order', 0, () => {
       const decoded = BehaviorTsmContract.decode([0, 0, 0, 10, 0]);
       expect(decoded.label).assertEqual(BehaviorV34Label.COMPUTER);
