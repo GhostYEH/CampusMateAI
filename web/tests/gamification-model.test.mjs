@@ -6,6 +6,7 @@ import {
   calculateStreak,
   evaluateAchievements,
   reconcileXpEvents,
+  summarizeGamification,
 } from "../src/features/gamification/gamificationModel.js";
 
 const now = new Date("2026-08-31T12:00:00+08:00");
@@ -101,4 +102,36 @@ test("achievement evaluator unlocks qualifying achievements once", () => {
 
   const second = evaluateAchievements(first, facts, new Date("2026-09-01T12:00:00+08:00"));
   assert.deepEqual(second.achievements, first.achievements);
+});
+
+test("gamification summary reports only real current-week activity", () => {
+  const snapshot = {
+    version: 1,
+    events: [
+      { id: "TASK_COMPLETED:today", xp: 30, awardedAt: "2026-08-31T08:00:00+08:00" },
+      { id: "TASK_COMPLETED:yesterday", xp: 20, awardedAt: "2026-08-30T08:00:00+08:00" },
+      { id: "FOCUS_SESSION_COMPLETED:today", xp: 15, awardedAt: "2026-08-31T09:00:00+08:00" },
+      { id: "DAILY_TASK_GOAL:2026-08-31", xp: 20, awardedAt: "2026-08-31T10:00:00+08:00" },
+      { id: "DAILY_FOCUS_GOAL:2026-08-31", xp: 30, awardedAt: "2026-08-31T11:00:00+08:00" },
+    ],
+    achievements: [{ id: "first-focus", unlockedAt: "2026-08-31T11:00:00+08:00" }],
+  };
+  const facts = {
+    completedTasks: [
+      { id: "today", status: "completed", completed_at: "2026-08-31T08:00:00+08:00" },
+      { id: "yesterday", status: "completed", completed_at: "2026-08-30T08:00:00+08:00" },
+    ],
+    completedFocusSessions: [
+      { id: "focus", mode: "focus", status: "completed", duration_seconds: 3600, ended_at: "2026-08-31T09:00:00+08:00" },
+    ],
+  };
+
+  const summary = summarizeGamification(snapshot, facts, now);
+
+  assert.equal(summary.weekXp, 95);
+  assert.equal(summary.weekFocusMinutes, 60);
+  assert.equal(summary.weekCompletedTasks, 1);
+  assert.deepEqual(summary.dailyAdventure, { completed: 2, total: 2, focusMinutes: 60, completedTasks: 1 });
+  assert.equal(summary.streak, 2);
+  assert.equal(summary.recentAchievements[0].title, "初心者");
 });

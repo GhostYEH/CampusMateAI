@@ -20,6 +20,7 @@ import {
   calculateStreak,
   evaluateAchievements,
   reconcileXpEvents,
+  summarizeGamification,
 } from "../features/gamification/gamificationModel";
 import { createLocalGamificationRepository } from "../features/gamification/gamificationRepository";
 
@@ -57,6 +58,7 @@ export function useStudentDashboardData(options = {}) {
   const overviewMetrics = computed(() => resolveHomeOverviewMetrics({ ...liveOverview.value, fallback: dashboard.value }));
   const todayCourses = computed(() => todayScheduleItems(scheduleItems.value, new Date(now.value)));
   const mainQuests = computed(() => buildMainQuests({ scheduleItems: scheduleItems.value, dueItems: dueItems.value, exams: exams.value }, new Date(now.value)));
+  const filteredMainQuests = computed(() => mainQuests.value.filter((item) => matches(item, ["title", "meta", "sourceType"])));
   const completedTasks = computed(() => personalTasks.value.filter((task) => task.status === "completed" && task.completed_at));
   const completedFocusSessions = computed(() => studySessions.value.filter((session) => session.status === "completed" && session.mode === "focus"));
   const gamificationFacts = computed(() => ({ completedTasks: completedTasks.value, completedFocusSessions: completedFocusSessions.value }));
@@ -79,6 +81,7 @@ export function useStudentDashboardData(options = {}) {
   const totalXp = computed(() => gamificationSnapshot.value.events.reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0));
   const level = computed(() => calculateLevel(totalXp.value));
   const streak = computed(() => calculateStreak(activityDatesFromFacts(gamificationFacts.value), new Date(now.value)));
+  const gamification = computed(() => summarizeGamification(gamificationSnapshot.value, gamificationFacts.value, new Date(now.value)));
 
   const accountKey = () => store.session?.id || store.session?.username || store.session?.email || store.session?.name || "anonymous";
 
@@ -119,7 +122,7 @@ export function useStudentDashboardData(options = {}) {
         getStudentNotices({ unread_only: true }),
         eduScheduleItems(),
         getStudentExams(),
-        getPersonalTasks(),
+        getPersonalTasks({ page_size: 200 }),
       ]);
       const valueAt = (index) => results[index].status === "fulfilled" ? results[index].value : null;
       const [dashboardData, courseData, hotPostData, sessionData, assignmentData, pendingTaskData, noticeData, scheduleData, examData, personalTaskData] = results.map((_, index) => valueAt(index));
@@ -154,6 +157,7 @@ export function useStudentDashboardData(options = {}) {
     studySessions: studySessions.value,
     personalTasks: personalTasks.value,
     exams: exams.value,
+    user: store.session,
     scheduleItems: scheduleItems.value,
     scheduleLoading: scheduleLoading.value,
     normalizedSearch: normalizedSearch.value,
@@ -163,6 +167,7 @@ export function useStudentDashboardData(options = {}) {
     overviewMetrics: overviewMetrics.value,
     todayCourses: todayCourses.value,
     mainQuests: mainQuests.value,
+    filteredMainQuests: filteredMainQuests.value,
     todayFocusSeconds: todayFocusSeconds.value,
     hitokoto: hitokoto.value,
     hitokotoSource: formatHitokotoSource(hitokoto.value),
@@ -174,6 +179,7 @@ export function useStudentDashboardData(options = {}) {
     totalXp: totalXp.value,
     level: level.value,
     streak: streak.value,
+    gamification: gamification.value,
   }));
 
   onMounted(() => {

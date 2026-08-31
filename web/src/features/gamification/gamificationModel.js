@@ -188,3 +188,64 @@ export function evaluateAchievements(snapshot, facts, now = new Date()) {
     achievements,
   };
 }
+
+function currentWeekBounds(now) {
+  const end = new Date(now);
+  const start = new Date(now);
+  const mondayOffset = (start.getDay() + 6) % 7;
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - mondayOffset);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function isWithin(value, bounds) {
+  const at = new Date(value).getTime();
+  return Number.isFinite(at) && at >= bounds.start && at <= bounds.end;
+}
+
+function titleForLevel(level) {
+  if (level >= 20) return "校园领航者";
+  if (level >= 10) return "成长先锋";
+  if (level >= 5) return "校园探索者";
+  return "校园新旅人";
+}
+
+export function summarizeGamification(snapshot, facts, now = new Date()) {
+  const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+  const achievements = Array.isArray(snapshot?.achievements) ? snapshot.achievements : [];
+  const tasks = completedTasks(facts);
+  const focusSessions = completedFocusSessions(facts);
+  const today = localDateKey(now);
+  const bounds = currentWeekBounds(now);
+  const totalXp = events.reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0);
+  const level = calculateLevel(totalXp);
+  const todayTasks = tasks.filter((task) => localDateKey(task.completed_at) === today);
+  const todayFocusSeconds = focusSessions
+    .filter((session) => localDateKey(session.ended_at || session.started_at) === today)
+    .reduce((sum, session) => sum + Math.max(0, Number(session.duration_seconds || 0)), 0);
+
+  const definitions = new Map(ACHIEVEMENT_DEFINITIONS.map((definition) => [definition.id, definition]));
+  const recentAchievements = achievements
+    .map((achievement) => ({ ...definitions.get(achievement.id), ...achievement }))
+    .filter((achievement) => achievement.title)
+    .sort((left, right) => new Date(right.unlockedAt || 0) - new Date(left.unlockedAt || 0))
+    .slice(0, 3);
+
+  return {
+    ...level,
+    title: titleForLevel(level.level),
+    streak: calculateStreak(activityDatesFromFacts(facts), now),
+    weekXp: events.filter((event) => isWithin(event.awardedAt, bounds)).reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0),
+    weekFocusMinutes: Math.round(focusSessions
+      .filter((session) => isWithin(session.ended_at || session.started_at, bounds))
+      .reduce((sum, session) => sum + Math.max(0, Number(session.duration_seconds || 0)), 0) / 60),
+    weekCompletedTasks: tasks.filter((task) => isWithin(task.completed_at, bounds)).length,
+    dailyAdventure: {
+      completed: Number(todayTasks.length > 0) + Number(todayFocusSeconds >= 60 * 60),
+      total: 2,
+      focusMinutes: Math.floor(todayFocusSeconds / 60),
+      completedTasks: todayTasks.length,
+    },
+    recentAchievements,
+  };
+}
