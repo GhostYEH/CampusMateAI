@@ -17,6 +17,7 @@ import notificationInboxTest from './ets/notification/NotificationInbox.test';
 import notificationNormalizerTest from './ets/notification/NotificationNormalizer.test';
 import chaoxingAccountTest from './ets/data/ChaoxingAccount.test';
 import lostFoundFeedTest from './ets/data/LostFoundFeed.test';
+import behaviorHybridPolicyTest from './ets/data/BehaviorHybridPolicy.test';
 import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
 import counselorConversationStateTest from './ets/ui/CounselorConversationState.test';
 import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
@@ -48,6 +49,7 @@ export default function testsuite(): void {
   notificationNormalizerTest();
   chaoxingAccountTest();
   lostFoundFeedTest();
+  behaviorHybridPolicyTest();
   behaviorV34DecisionTest();
   counselorConversationStateTest();
   eduLoginSecurityTest();

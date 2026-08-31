@@ -75,6 +75,39 @@ export class BehaviorRoiPreprocessor {
   }
 }
 
+export class BehaviorTemporalFrameBuffer {
+  private static readonly FRAME_COUNT: number = 8;
+  private static readonly FRAME_SIZE: number = 3 * 224 * 224;
+  private readonly frames: Float32Array[] = [];
+
+  push(frame: Float32Array): void {
+    if (frame.length !== BehaviorTemporalFrameBuffer.FRAME_SIZE) return;
+    this.frames.push(frame.slice());
+    while (this.frames.length > BehaviorTemporalFrameBuffer.FRAME_COUNT) {
+      this.frames.shift();
+    }
+  }
+
+  snapshot(): Float32Array[] {
+    return this.frames.map((frame: Float32Array) => frame.slice());
+  }
+
+  toModelInput(): Float32Array | undefined {
+    if (this.frames.length !== BehaviorTemporalFrameBuffer.FRAME_COUNT) return undefined;
+    const output: Float32Array = new Float32Array(
+      BehaviorTemporalFrameBuffer.FRAME_COUNT * BehaviorTemporalFrameBuffer.FRAME_SIZE
+    );
+    for (let index: number = 0; index < this.frames.length; index++) {
+      output.set(this.frames[index], index * BehaviorTemporalFrameBuffer.FRAME_SIZE);
+    }
+    return output;
+  }
+
+  reset(): void {
+    this.frames.length = 0;
+  }
+}
+
 export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private readonly manager: resourceManager.ResourceManager;
   private model: mindSporeLite.Model | null = null;

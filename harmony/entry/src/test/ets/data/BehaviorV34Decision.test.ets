@@ -19,6 +19,10 @@ export default function behaviorV34DecisionTest(): void {
       expect(BehaviorV34Decision.decode([0, 0, 0, 10]).label).assertEqual(BehaviorV34Label.NO_VISIBLE_STUDY);
     });
 
+    it('exports the computer label for hybrid display decisions', 0, () => {
+      expect(BehaviorV34Label.COMPUTER).assertEqual('COMPUTER');
+    });
+
     it('rejects an unreliable decision as continue observing', 0, () => {
       const result: BehaviorV34Result = BehaviorV34Decision.decode([1, 1, 0, 0]);
       expect(result.isStable).assertFalse();

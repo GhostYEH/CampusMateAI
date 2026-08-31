@@ -2,6 +2,7 @@ export enum BehaviorV34Label {
   READ = 'READ',
   WRITE = 'WRITE',
   PHONE_INTERACTION = 'PHONE_INTERACTION',
+  COMPUTER = 'COMPUTER',
   NO_VISIBLE_STUDY = 'NO_VISIBLE_STUDY',
   CONTINUE_OBSERVING = 'CONTINUE_OBSERVING'
 }
@@ -62,7 +63,7 @@ export class BehaviorV34Decision {
       confidence: best,
       margin: margin,
       isStable: accepted,
-      probabilities: probabilities
+      probabilities: probabilities.slice()
     };
   }
 
@@ -89,7 +90,9 @@ export class BehaviorReminderTracker {
     if (!result.isStable || result.label === BehaviorV34Label.CONTINUE_OBSERVING) {
       return this.reminderText;
     }
-    if (result.label === BehaviorV34Label.READ || result.label === BehaviorV34Label.WRITE) {
+    if (result.label === BehaviorV34Label.READ ||
+      result.label === BehaviorV34Label.WRITE ||
+      result.label === BehaviorV34Label.COMPUTER) {
       this.phoneSince = -1;
       this.noStudySince = -1;
       if (this.reminderKind === 'PHONE' && timestamp - this.lastPhoneSeenAt >= 1000) {
