@@ -121,6 +121,65 @@ export class BehaviorFullFramePreprocessor {
   }
 }
 
+export class BehaviorV34OutputContract {
+  private static readonly LOGIT_COUNT: number = 4;
+
+  static decode(logits: number[]): BehaviorV34Result | undefined {
+    if (logits.length !== BehaviorV34OutputContract.LOGIT_COUNT) return undefined;
+    for (let index: number = 0; index < logits.length; index++) {
+      if (!Number.isFinite(logits[index])) return undefined;
+    }
+    const result: BehaviorV34Result = BehaviorV34Decision.decode(logits);
+    if (result.probabilities.length !== BehaviorV34OutputContract.LOGIT_COUNT) return undefined;
+    let sum: number = 0;
+    for (let index: number = 0; index < result.probabilities.length; index++) {
+      const probability: number = result.probabilities[index];
+      if (!Number.isFinite(probability) || probability < 0) return undefined;
+      sum += probability;
+    }
+    return Number.isFinite(sum) && sum > 0 ? result : undefined;
+  }
+}
+
+export class BehaviorProviderRunToken {
+  private generation: number = 0;
+  private active: boolean = false;
+
+  begin(): number {
+    this.generation += 1;
+    this.active = true;
+    return this.generation;
+  }
+
+  invalidate(): void {
+    this.generation += 1;
+    this.active = false;
+  }
+
+  isCurrent(generation: number): boolean {
+    return this.active && generation === this.generation;
+  }
+}
+
+export class BehaviorProviderPresentation {
+  static detail(temporalDegraded: boolean, label: BehaviorV34Label,
+    hasTemporalEvidence: boolean = false): string {
+    if (temporalDegraded) return 'TSM V4 不可用，V3.4 正在本地识别';
+    if (label === BehaviorV34Label.CONTINUE_OBSERVING) return '结果不可靠，继续观察';
+    return hasTemporalEvidence ? 'V3.4 + TSM V4 正在本地识别' : 'V3.4 正在本地识别';
+  }
+
+  static modelVersion(hasTemporalEvidence: boolean): string {
+    return hasTemporalEvidence ? 'V3.4+TSM-V4' : 'V3.4';
+  }
+
+  static readyDetail(temporalDegraded: boolean): string {
+    return temporalDegraded ?
+      'V3.4 模型已就绪；TSM V4 不可用，使用降级行为识别' :
+      'V3.4 与 TSM V4 模型已就绪；等待本地相机人体 ROI 管线';
+  }
+}
+
 export class BehaviorTemporalFrameBuffer {
   private static readonly FRAME_COUNT: number = 8;
   private static readonly FRAME_SIZE: number = 3 * 224 * 224;
@@ -136,6 +195,10 @@ export class BehaviorTemporalFrameBuffer {
 
   snapshot(): Float32Array[] {
     return this.frames.map((frame: Float32Array) => frame.slice());
+  }
+
+  size(): number {
+    return this.frames.length;
   }
 
   toModelInput(): Float32Array | undefined {
@@ -157,8 +220,6 @@ export class BehaviorTemporalFrameBuffer {
 export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private static readonly V34_MODEL_PATH: string = 'models/behavior/campusmate_behavior_v34.ms';
   private static readonly TSM_MODEL_PATH: string = 'models/behavior/campusmate_tsm_mobilenetv2_v4.ms';
-  private static readonly V34_MODEL_VERSION: string = 'V3.4';
-  private static readonly HYBRID_MODEL_VERSION: string = 'V3.4+TSM-V4';
   private readonly manager: resourceManager.ResourceManager;
   private model: mindSporeLite.Model | null = null;
   private temporalModel: mindSporeLite.Model | null = null;
@@ -172,6 +233,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private cachedTemporal: BehaviorTsmResult | undefined = undefined;
   private computerConfirmationCount: number = 0;
   private temporalDegraded: boolean = false;
+  private readonly runToken: BehaviorProviderRunToken = new BehaviorProviderRunToken();
+  private activeRun: number = 0;
 
   constructor(manager: resourceManager.ResourceManager) {
     this.manager = manager;
@@ -184,26 +247,30 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   detail(): string { return this.providerDetail; }
 
   async start(): Promise<void> {
+    const run: number = this.runToken.begin();
+    this.activeRun = run;
+    this.clearProductState();
     if (this.model !== null) {
-      if (this.providerStatus !== FocusAssistStatus.RUNNING) {
-        this.providerStatus = FocusAssistStatus.UNAVAILABLE;
-        this.providerDetail = 'V3.4 模型已就绪；等待本地相机人体 ROI 管线';
-      }
+      this.providerStatus = FocusAssistStatus.UNAVAILABLE;
+      this.providerDetail = BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
       return;
     }
     try {
       const loaded: mindSporeLite.Model = await this.loadModel(MindSporeBehaviorProvider.V34_MODEL_PATH);
+      if (!this.runToken.isCurrent(run)) return;
       const inputs: mindSporeLite.MSTensor[] = loaded.getInputs();
       if (!this.hasInputContract(inputs, 4, BehaviorFullFramePreprocessor.FRAME_SIZE)) {
         throw new Error('V3.4 input contract mismatch');
       }
+      const temporalLoaded: mindSporeLite.Model | null = await this.loadTemporalModel();
+      if (!this.runToken.isCurrent(run)) return;
       this.model = loaded;
-      await this.loadTemporalModel();
+      this.temporalModel = temporalLoaded;
+      this.temporalDegraded = temporalLoaded === null;
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
-      this.providerDetail = this.temporalDegraded ?
-        'V3.4 模型已就绪；TSM V4 不可用，使用降级行为识别' :
-        'V3.4 与 TSM V4 模型已就绪；等待本地相机人体 ROI 管线';
+      this.providerDetail = BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
     } catch (error) {
+      if (!this.runToken.isCurrent(run)) return;
       this.model = null;
       this.temporalModel = null;
       this.providerStatus = FocusAssistStatus.ERROR;
@@ -212,18 +279,19 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   }
 
   async stop(): Promise<void> {
-    this.signal = undefined;
-    this.temporalFrames.reset();
-    this.previousSingleTop = undefined;
-    this.lastTemporalAtMs = 0;
-    this.cachedTemporal = undefined;
-    this.computerConfirmationCount = 0;
-    this.reminderTracker.reset();
+    this.runToken.invalidate();
+    this.activeRun = 0;
+    this.clearProductState();
     this.providerStatus = FocusAssistStatus.UNAVAILABLE;
+    this.providerDetail = this.model === null ? 'V3.4 本地模型尚未加载' :
+      BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
   }
 
   async analyze(frame: RgbaBehaviorFrame): Promise<FocusAssistSignal | undefined> {
-    if (this.model === null) {
+    const run: number = this.activeRun;
+    if (!this.runToken.isCurrent(run)) return undefined;
+    const model: mindSporeLite.Model | null = this.model;
+    if (model === null) {
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
       this.providerDetail = '缺少可用模型，无法进行本地行为识别';
       return undefined;
@@ -249,36 +317,41 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     this.temporalFrames.push(fullFrame);
     try {
       this.providerStatus = FocusAssistStatus.RUNNING;
-      const inputs: mindSporeLite.MSTensor[] = this.model.getInputs();
+      const inputs: mindSporeLite.MSTensor[] = model.getInputs();
       inputs[0].setData(inputData.buffer);
-      const outputs: mindSporeLite.MSTensor[] = await this.model.predict(inputs);
+      const outputs: mindSporeLite.MSTensor[] = await model.predict(inputs);
+      if (!this.runToken.isCurrent(run)) return undefined;
       const result: BehaviorV34Result | undefined = this.decodeV34(outputs);
       if (result === undefined) throw new Error('V3.4 output contract mismatch');
       const rankedSingle: BehaviorV34Label = this.topSingleLabel(result);
       const shouldRunTemporal: boolean = this.temporalModel !== null &&
         BehaviorHybridPolicy.shouldRunTemporal(
           result, this.previousSingleTop, frame.timestamp, this.lastTemporalAtMs,
-          this.temporalFrames.snapshot().length
+          this.temporalFrames.size()
         );
       this.previousSingleTop = rankedSingle;
-      if (shouldRunTemporal) await this.runTemporal(frame.timestamp);
+      if (shouldRunTemporal) {
+        await this.runTemporal(frame.timestamp, run);
+        if (!this.runToken.isCurrent(run)) return undefined;
+      }
       const fused: BehaviorV34Result = this.fuse(result);
+      const hasTemporalEvidence: boolean = this.cachedTemporal !== undefined;
       const next: FocusAssistSignal = {
         label: fused.label,
         confidence: fused.confidence,
         isStable: fused.isStable,
         timestamp: frame.timestamp,
-        modelVersion: this.cachedTemporal === undefined ? MindSporeBehaviorProvider.V34_MODEL_VERSION :
-          MindSporeBehaviorProvider.HYBRID_MODEL_VERSION
+        modelVersion: BehaviorProviderPresentation.modelVersion(hasTemporalEvidence)
       };
       this.signal = next;
       this.reminderTracker.process(fused, frame.timestamp);
       this.providerStatus = FocusAssistStatus.RUNNING;
-      this.providerDetail = fused.label === BehaviorV34Label.CONTINUE_OBSERVING ? '结果不可靠，继续观察' :
-        (this.temporalDegraded ? 'TSM V4 不可用，V3.4 正在本地识别' :
-          (this.cachedTemporal === undefined ? 'V3.4 正在本地识别' : 'V3.4 + TSM V4 正在本地识别'));
+      this.providerDetail = BehaviorProviderPresentation.detail(
+        this.temporalDegraded, fused.label, hasTemporalEvidence
+      );
       return next;
     } catch (error) {
+      if (!this.runToken.isCurrent(run)) return undefined;
       this.resetTemporalState();
       this.signal = undefined;
       this.reminderTracker.reset();
@@ -295,7 +368,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     return await mindSporeLite.loadModelFromBuffer(modelBuffer);
   }
 
-  private async loadTemporalModel(): Promise<void> {
+  private async loadTemporalModel(): Promise<mindSporeLite.Model | null> {
     try {
       const loaded: mindSporeLite.Model = await this.loadModel(MindSporeBehaviorProvider.TSM_MODEL_PATH);
       const inputs: mindSporeLite.MSTensor[] = loaded.getInputs();
@@ -303,11 +376,9 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         BehaviorFullFramePreprocessor.FRAME_SIZE)) {
         throw new Error('TSM input contract mismatch');
       }
-      this.temporalModel = loaded;
-      this.temporalDegraded = false;
+      return loaded;
     } catch (error) {
-      this.temporalModel = null;
-      this.temporalDegraded = true;
+      return null;
     }
   }
 
@@ -319,7 +390,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     if (outputs.length !== 1 || outputs[0].elementNum !== 4) return undefined;
     const raw: Float32Array = new Float32Array(outputs[0].getData());
     if (raw.length !== 4) return undefined;
-    return BehaviorV34Decision.decode([raw[0], raw[1], raw[2], raw[3]]);
+    return BehaviorV34OutputContract.decode([raw[0], raw[1], raw[2], raw[3]]);
   }
 
   private topSingleLabel(result: BehaviorV34Result): BehaviorV34Label {
@@ -337,7 +408,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     return labels[bestIndex];
   }
 
-  private async runTemporal(timestamp: number): Promise<void> {
+  private async runTemporal(timestamp: number, run: number): Promise<void> {
     const model: mindSporeLite.Model | null = this.temporalModel;
     const inputData: Float32Array | undefined = this.temporalFrames.toModelInput();
     if (model === null || inputData === undefined) return;
@@ -347,6 +418,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
       if (!this.hasInputContract(inputs, 5, inputData.length)) throw new Error('TSM input contract mismatch');
       inputs[0].setData(inputData.buffer);
       const outputs: mindSporeLite.MSTensor[] = await model.predict(inputs);
+      if (!this.runToken.isCurrent(run)) return;
       if (outputs.length !== 1 || outputs[0].elementNum !== 5) throw new Error('TSM output contract mismatch');
       const raw: Float32Array = new Float32Array(outputs[0].getData());
       if (raw.length !== 5) throw new Error('TSM output data mismatch');
@@ -359,6 +431,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         this.computerConfirmationCount = 0;
       }
     } catch (error) {
+      if (!this.runToken.isCurrent(run)) return;
       this.temporalModel = null;
       this.temporalDegraded = true;
       this.cachedTemporal = undefined;
@@ -388,5 +461,11 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     this.lastTemporalAtMs = 0;
     this.cachedTemporal = undefined;
     this.computerConfirmationCount = 0;
+  }
+
+  private clearProductState(): void {
+    this.signal = undefined;
+    this.resetTemporalState();
+    this.reminderTracker.reset();
   }
 }
