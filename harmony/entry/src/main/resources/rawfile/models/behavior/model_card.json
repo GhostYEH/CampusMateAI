@@ -22,5 +22,35 @@
     "temperature": 4.841172366232762,
     "minimum_confidence": 0.30,
     "minimum_margin": 0.05
+  },
+  "temporal_model": {
+    "name": "CampusMate TSM MobileNetV2 V4",
+    "runtime": "MindSpore Lite 2.1.0",
+    "converter_version": "MindSpore Lite 2.1.0",
+    "source_format": "ONNX",
+    "source_sha256": "f5acc4e5614a9fbfa75cd24efc550a42aa3fa56aa8c0da5c57cd7b7511eb7a66",
+    "mindir_lite_sha256": "d70b2a5c3c3d8d5a0508124e697c5b823e344df1149bb6a1a1dc24825abdbe03",
+    "output_sha256": "d70b2a5c3c3d8d5a0508124e697c5b823e344df1149bb6a1a1dc24825abdbe03",
+    "converter_archive_sha256": "5b32178f2bcb57c1a0d33f3d99a7a966527d41f0745d5879fe3ae011704f93f6",
+    "input": {
+      "name": "frames",
+      "shape": [1, 8, 3, 224, 224],
+      "color": "RGB",
+      "layout": "NCHW",
+      "domain": "raw_rgb_0_to_255",
+      "normalization": "embedded_in_onnx"
+    },
+    "output": {
+      "name": "logits",
+      "shape": [1, 5],
+      "type": "logits",
+      "labels": ["READING", "WRITING", "PHONE_USE", "COMPUTER", "IDLE"]
+    },
+    "parity": {
+      "seed": 20260830,
+      "distribution": "uniform_rgb_0_to_255",
+      "accuracy_threshold": 0.001
+    },
+    "fallback_semantics": "The TSM model confirms temporal evidence only. If it is unavailable or fewer than eight valid RGB frames exist, retain the V3.4 single-frame result. If V3.4 or its person ROI is unavailable, use V3.2 and clear TSM evidence because V3.2 has an incompatible label space."
   }
 }
