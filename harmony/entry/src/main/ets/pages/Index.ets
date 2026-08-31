@@ -41,7 +41,10 @@ import { StudyRepository } from '../repository/StudyRepository';
 import { http } from '@kit.NetworkKit';
 import { promptAction, window } from '@kit.ArkUI';
 import picker from '@ohos.file.picker';
-import { ExpressionRecognitionService } from '../service/ExpressionRecognitionService';
+import {
+  ExpressionCameraActivationPolicy,
+  ExpressionRecognitionService
+} from '../service/ExpressionRecognitionService';
 import { withExpressionSignal } from '../data/ExpressionSignalChatBridge';
 import { AppRoute, AppRouteRegistry } from '../navigation/AppRoute';
 import { EduScheduleItemDto } from '../data/ApiClient';
@@ -645,7 +648,9 @@ struct Index {
   }
 
   async requestExpressionPermissionAndStart(): Promise<void> {
-    if (!this.appState.emotionAssistanceEnabled || this.activeTab !== 3) return;
+    if (!ExpressionCameraActivationPolicy.shouldRun(
+      this.appState.emotionAssistanceEnabled, this.signedIn,
+      this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const result: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
@@ -655,7 +660,16 @@ struct Index {
         this.expressionDetail = '需要相机权限才能在本机识别表情';
         return;
       }
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
       await this.startExpressionRecognition();
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) {
+        await this.stopExpressionRecognition();
+        return;
+      }
       if (this.expressionPollingTimer < 0) {
         this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 1000);
       }
