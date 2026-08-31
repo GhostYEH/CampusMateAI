@@ -98,6 +98,7 @@ def _session_to_out(
         started_at=s.started_at,
         paused_at=s.paused_at,
         ended_at=s.ended_at,
+        planned_duration_seconds=s.planned_duration_seconds,
         duration_seconds=s.duration_seconds,
         pause_seconds=s.pause_seconds,
         status=s.status,
@@ -150,6 +151,7 @@ def create_session(
         mode=req.mode,
         goal=req.goal.strip() if req.goal else None,
         related_task_id=req.related_task_id,
+        planned_duration_seconds=req.planned_duration_seconds,
     )
     return _session_to_out(session, breaks=[])
 

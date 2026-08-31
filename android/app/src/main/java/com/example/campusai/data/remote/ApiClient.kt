@@ -106,6 +106,15 @@ object ApiClient {
 
     val api: ApiService = retrofit.create(ApiService::class.java)
 
+    /** Same authenticated backend, but converted to WebSocket only inside the voice transport. */
+    fun websocketUrl(path: String): String {
+        val root = BASE_URL.removeSuffix("/")
+        val scheme = if (root.startsWith("https://")) "wss://" else "ws://"
+        return root.replaceFirst(Regex("^https?://"), scheme) + "/" + path.removePrefix("/")
+    }
+
+    fun currentAccessToken(): String? = accessToken
+
     // 不附加 Authorization、不挂 Authenticator 的客户端，专供 auth/refresh 接口使用，
     // 避免 refresh 请求自身 401 时触发 Authenticator 形成递归。
     private val noAuthClient = OkHttpClient.Builder()

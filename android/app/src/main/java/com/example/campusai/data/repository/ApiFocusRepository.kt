@@ -52,10 +52,10 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         _loading.value = false
     }
 
-    suspend fun start(mode: FocusMode, goal: String?, taskId: String?): Result<StudySessionSnapshot> =
+    suspend fun start(mode: FocusMode, goal: String?, taskId: String?, plannedDurationSeconds: Int = mode.totalSeconds): Result<StudySessionSnapshot> =
         runCatching {
             val response = api.createStudySession(
-                StudySessionCreateRequest(mode = mode.toApiMode(), goal = goal, related_task_id = taskId),
+                StudySessionCreateRequest(mode = mode.toApiMode(), planned_duration_seconds = plannedDurationSeconds, goal = goal, related_task_id = taskId),
             )
             check(response.isSuccessful) { "无法开始专注" }
             toSnapshot(checkNotNull(response.body()))
@@ -104,9 +104,12 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         id = dto.id,
         startedAt = dto.started_at,
         endedAt = dto.ended_at,
+        plannedDurationSeconds = dto.planned_duration_seconds,
         durationSeconds = dto.duration_seconds,
         status = dto.status,
         mode = FocusMode.byName(dto.mode.uppercase()),
+        pausedAt = dto.paused_at,
+        pauseSeconds = dto.pause_seconds,
     )
 
     private fun FocusMode.toApiMode() = when (this) {

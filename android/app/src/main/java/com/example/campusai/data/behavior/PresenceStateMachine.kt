@@ -26,7 +26,10 @@ data class PresenceSnapshot(
         lastPresenceEvidenceAtMs?.let { (nowMs - it).coerceAtLeast(0L) }
 }
 
-/** Conservatively fuses independently-produced, current evidence. */
+/**
+ * Conservatively fuses independently-produced, current evidence. Either a face
+ * or an already-stable V3.2 VISIBLE_STUDY result immediately restores PRESENT.
+ */
 class PresenceStateMachine(
     private val config: PresenceConfig = PresenceConfig(),
 ) {
@@ -60,6 +63,8 @@ class PresenceStateMachine(
             state = when {
                 lastEvidenceAt == null -> PresenceState.OBSERVING
                 timestampMs - lastEvidenceAt >= config.presenceGraceMs -> PresenceState.ABSENT
+                // Once Presence has been confirmed, short total evidence loss is
+                // deliberately retained as PRESENT. OBSERVING is initialization-only.
                 else -> PresenceState.PRESENT
             }
         }

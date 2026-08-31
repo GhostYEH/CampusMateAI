@@ -74,6 +74,20 @@ class Settings(BaseSettings):
     mimo_tts_max_chars: int = 4000
     mimo_tts_sample_rate: int = 24000
 
+    # ===== Focus Realtime Voice（所有值仅后端环境变量） =====
+    # AppId 可以下发给客户端；AppKey、AK/SK 和 VoiceChat 配置绝不能离开后端。
+    volc_rtc_app_id: str = ""
+    volc_rtc_app_key: str = ""
+    volc_access_key_id: str = ""
+    volc_secret_access_key: str = ""
+    volc_rtc_voicechat_config_json: str = ""
+    volc_rtc_token_ttl_seconds: int = 1800
+    volc_rtc_agent_user_id: str = "campusmate_focus_ai"
+    # ===== Focus Realtime Voice / Seeduplex 3.0 =====
+    # Long-lived API key stays exclusively on the backend.
+    volc_seeduplex_api_key: str = ""
+    volc_seeduplex_ws_url: str = "wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue"
+
     # ===== CORS =====
     # 用字符串表示，逗号分隔；通过 cors_origins_list 属性解析为 List[str]
     # (避免 pydantic-settings 把 List[str] 当复杂类型尝试 JSON 解析)
@@ -159,6 +173,10 @@ class Settings(BaseSettings):
     def mimo_tts_available(self) -> bool:
         """MiMo TTS 是否已配置并可尝试调用。"""
         return bool(self.mimo_base_url and self.mimo_api_key and self.mimo_tts_model)
+
+    @property
+    def realtime_voice_available(self) -> bool:
+        return bool(self.volc_seeduplex_api_key)
 
     @property
     def knowledge_base_dir(self) -> Path:

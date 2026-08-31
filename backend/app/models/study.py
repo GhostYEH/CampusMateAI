@@ -45,6 +45,7 @@ class StudySessionRow:
     started_at: str
     paused_at: Optional[str]
     ended_at: Optional[str]
+    planned_duration_seconds: int
     duration_seconds: int
     pause_seconds: int
     status: str  # active | paused | completed
@@ -82,6 +83,7 @@ class StudySessionRow:
             started_at=row["started_at"],
             paused_at=row["paused_at"],
             ended_at=row["ended_at"],
+            planned_duration_seconds=int(row["planned_duration_seconds"] or 0),
             duration_seconds=int(row["duration_seconds"] or 0),
             pause_seconds=int(row["pause_seconds"] or 0),
             status=row["status"],

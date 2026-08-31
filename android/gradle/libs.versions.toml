@@ -25,6 +25,7 @@ room = "2.6.1"
 hilt = "2.50"
 hiltNavigationCompose = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
+volcRtc = "3.60.104.300"
 coil = "2.6.0"
 haze = "0.7.3"
 
@@ -70,6 +71,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+volcengine-rtc = { group = "com.volcengine", name = "VolcEngineRTC", version.ref = "volcRtc" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 

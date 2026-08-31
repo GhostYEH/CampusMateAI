@@ -41,6 +41,7 @@ enum class PersonDetectorStatus {
     ERROR,
 }
 
+/** Safe diagnostic categories shown only in the Debug developer tools. */
 enum class PersonDetectorErrorCategory {
     MODEL_OR_METADATA,
     TFLITE_RUNTIME,
@@ -49,7 +50,10 @@ enum class PersonDetectorErrorCategory {
     UNKNOWN,
 }
 
-/** Low-frequency detector that reuses the existing upright, mirrored camera frame. */
+/**
+ * Low-frequency COCO person detector. It receives the existing upright, mirrored
+ * FocusCameraPipeline frame and never owns a CameraX use case.
+ */
 class PersonAnalyzer(
     private val context: Context,
     val config: PersonDetectorConfig = PersonDetectorConfig(),
@@ -69,7 +73,9 @@ class PersonAnalyzer(
         if (initialized) return
         _snapshot.value = PersonDetectionSnapshot(status = PersonDetectorStatus.INITIALIZING)
         try {
-            val baseOptions = BaseOptions.builder().setNumThreads(config.numThreads).build()
+            val baseOptions = BaseOptions.builder()
+                .setNumThreads(config.numThreads)
+                .build()
             val options = ObjectDetector.ObjectDetectorOptions.builder()
                 .setBaseOptions(baseOptions)
                 .setScoreThreshold(config.confidenceThreshold)
@@ -93,29 +99,38 @@ class PersonAnalyzer(
 
     fun start() {
         running = initialized && detector != null
-        if (running) _snapshot.value = _snapshot.value.copy(status = PersonDetectorStatus.RUNNING, error = null)
+        if (running) {
+            _snapshot.value = _snapshot.value.copy(status = PersonDetectorStatus.RUNNING, error = null)
+        }
     }
 
     fun pause() {
         running = false
-        if (initialized) _snapshot.value = _snapshot.value.copy(status = PersonDetectorStatus.READY)
+        if (initialized) {
+            _snapshot.value = _snapshot.value.copy(status = PersonDetectorStatus.READY)
+        }
     }
 
     override fun analyze(frame: CameraFrame) {
         val currentDetector = detector ?: return
         val timestampMs = frame.timestampMs
-        if (!running || timestampMs - lastInferenceAtMs < config.inferenceIntervalMs ||
+        if (
+            !running ||
+            timestampMs - lastInferenceAtMs < config.inferenceIntervalMs ||
             !inferenceInFlight.compareAndSet(false, true)
-        ) return
+        ) {
+            return
+        }
         lastInferenceAtMs = timestampMs
         frame.retain()
         executor.execute {
             try {
-                val person = currentDetector.detect(TensorImage.fromBitmap(frame.bitmap))
+                val person = currentDetector
+                    .detect(TensorImage.fromBitmap(frame.bitmap))
                     .flatMap { detection ->
                         detection.categories
-                            .filter { it.label.equals(PERSON_LABEL, ignoreCase = true) }
-                            .map { DetectedPerson(it.score, detection.boundingBox) }
+                            .filter { category -> category.label.equals(PERSON_LABEL, ignoreCase = true) }
+                            .map { category -> DetectedPerson(category.score, detection.boundingBox) }
                     }
                     .maxByOrNull { it.confidence }
                 _snapshot.value = PersonDetectionSnapshot(
@@ -149,14 +164,20 @@ class PersonAnalyzer(
     fun close() {
         running = false
         inferenceInFlight.set(false)
-        try { detector?.close() } catch (_: Throwable) { }
+        try {
+            detector?.close()
+        } catch (_: Throwable) {
+        }
         detector = null
         initialized = false
         executor.shutdownNow()
         _snapshot.value = PersonDetectionSnapshot(status = PersonDetectorStatus.OFF)
     }
 
-    private data class DetectedPerson(val confidence: Float, val boundingBox: RectF)
+    private data class DetectedPerson(
+        val confidence: Float,
+        val boundingBox: RectF,
+    )
 
     private fun Throwable.category(): PersonDetectorErrorCategory {
         val details = generateSequence(this) { it.cause }
@@ -180,7 +201,6 @@ class PersonAnalyzer(
             // Local JVM tests do not provide Android's Log implementation.
         }
     }
-
     private companion object {
         const val TAG = "PersonAnalyzer"
         const val MODEL_ASSET_PATH = "models/person/efficientdet_lite0_int8.tflite"

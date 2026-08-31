@@ -43,14 +43,13 @@ class BehaviorAnalyzer(
     override fun analyze(frame: CameraFrame) {
         synchronized(lifecycleLock) {
             if (disposed.get()) return
-
-        // NoOp engine: do not buffer, do not resize, do not submit async work.
-        if (!engine.isAvailable) {
-            _predictions.value = BehaviorPrediction(
-                emptyMap(),
-                frame.timestampMs,
-                "MODEL_NOT_AVAILABLE",
-            )
+            // NoOp engine: do not buffer, do not resize, do not submit async work.
+            if (!engine.isAvailable) {
+                _predictions.value = BehaviorPrediction(
+                    emptyMap(),
+                    frame.timestampMs,
+                    "MODEL_NOT_AVAILABLE",
+                )
             return
         }
 
@@ -149,14 +148,12 @@ class BehaviorAnalyzer(
 
     fun ensureInitialized() {
         synchronized(lifecycleLock) {
-            if (disposed.get()) return
-            if (!initialized) {
-                if (BuildConfig.DEBUG) {
-                    initializationTimeMs = System.currentTimeMillis()
-                }
-                engine.initialize()
-                initialized = true
+            if (disposed.get() || initialized) return
+            if (BuildConfig.DEBUG) {
+                initializationTimeMs = System.currentTimeMillis()
             }
+            engine.initialize()
+            initialized = true
         }
     }
 

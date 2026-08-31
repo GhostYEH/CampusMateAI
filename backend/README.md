@@ -28,6 +28,23 @@
 | **AI 导员上下文融合** | **已实现** | 任务/通知/课程/班级 可注入 RAG,草稿对学生不可见 |
 | **数据库迁移** | **已实现** | 旧库兼容 + 幂等 |
 | **production 强约束** | **已实现** | `app_env=production` 禁止启用测试开关(详见下文) |
+| **Focus 实时语音基础** | **已实现** | Android RTC 进房、后端短期 Token 与 VoiceChat 会话生命周期；需配置火山资源后启用 |
+
+## Focus Realtime Voice（V4.0-B）
+
+Android 只请求 CampusMate 后端创建和结束实时语音会话。后端生成短期 RTC Token，并以服务端凭证调用 VoiceChat；Android 不保存 RTC AppKey、火山 AK/SK、LLM Key 或 VoiceChat 配置。
+
+本地真机验证前，将 `.env.example` 中的以下变量复制到未追踪的 `.env` 并填入真实值：
+
+```text
+VOLC_RTC_APP_ID=
+VOLC_RTC_APP_KEY=
+VOLC_ACCESS_KEY_ID=
+VOLC_SECRET_ACCESS_KEY=
+VOLC_RTC_VOICECHAT_CONFIG_JSON=
+```
+
+其中 `VOLC_RTC_VOICECHAT_CONFIG_JSON` 是 RTC VoiceChat 控制台所需的端到端实时语音配置 JSON；CampusMate 后端会填充房间、任务、目标用户与 Focus AI Prompt。未配置时接口会安全返回“实时语音尚未配置”，不会使用假 Token 或泄露配置。
 
 ## 不在本后端范围
 
