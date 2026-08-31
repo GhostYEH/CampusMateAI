@@ -6,11 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("student home renders the reference hero and visual empty states", async () => {
-  const home = await readFile(path.join(webRoot, "src", "views", "student", "StudentHomeView.vue"), "utf8");
+test("student home coordinates classic and gamified presentations", async () => {
+  const entry = await readFile(path.join(webRoot, "src", "views", "student", "StudentHomeView.vue"), "utf8");
+  const home = await readFile(path.join(webRoot, "src", "components", "home", "ClassicStudentHome.vue"), "utf8");
   const schedule = await readFile(path.join(webRoot, "src", "components", "home", "HomeSchedulePanel.vue"), "utf8");
   const styles = await readFile(path.join(webRoot, "src", "styles", "student-home.css"), "utf8");
 
+  assert.match(entry, /useStudentDashboardData/, "route view should use the shared dashboard coordinator");
+  assert.match(entry, /ClassicStudentHome/, "route view should retain the classic presentation");
+  assert.match(entry, /GamifiedStudentHome/, "route view should select the gamified presentation independently");
+  assert.doesNotMatch(entry, /getStudentDashboard/, "route view should not own API requests");
   assert.match(home, /home-reference-hero-calendar\.png/, "hero should use the reference-style calendar artwork");
   assert.match(home, /reference-hero-weather/, "hero should include the reference weather line");
   assert.match(schedule, /schedule-empty-art/, "course empty state should use a transparent inline illustration");
