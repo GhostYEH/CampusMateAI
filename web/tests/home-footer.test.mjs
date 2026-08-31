@@ -6,17 +6,21 @@ import { test } from "node:test";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("student home footer keeps the foreground inside the page gutter", async () => {
-  const [home, footer, info, brand] = await Promise.all([
+test("both student home modes keep the footer foreground inside the page gutter", async () => {
+  const [entry, classicHome, gamifiedHome, footer, info, brand] = await Promise.all([
     readFile(path.join(webRoot, "src/views/student/StudentHomeView.vue"), "utf8"),
+    readFile(path.join(webRoot, "src/components/home/ClassicStudentHome.vue"), "utf8"),
+    readFile(path.join(webRoot, "src/components/home/gamified/GamifiedStudentHome.vue"), "utf8"),
     readFile(path.join(webRoot, "src/components/home/footer/HomeFooter.vue"), "utf8"),
     readFile(path.join(webRoot, "src/components/home/footer/FooterInfo.vue"), "utf8"),
     readFile(path.join(webRoot, "src/components/home/footer/InteractiveBrand.vue"), "utf8"),
   ]);
 
-  assert.match(home, /<HomeFooter>/);
-  assert.match(home, /<\/HomeFooter>/);
-  assert.doesNotMatch(home, /student-home page-enter/);
+  assert.match(classicHome, /<HomeFooter(?:\s[^>]*)?>/);
+  assert.match(classicHome, /<\/HomeFooter>/);
+  assert.match(gamifiedHome, /<HomeFooter(?:\s[^>]*)?>/);
+  assert.match(gamifiedHome, /<\/HomeFooter>/);
+  assert.doesNotMatch(entry, /student-home page-enter/);
   assert.match(footer, /FooterInfo/);
   assert.match(footer, /InteractiveBrand/);
   assert.match(footer, /home-brand-underlay/);
