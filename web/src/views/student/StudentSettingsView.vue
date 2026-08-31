@@ -81,6 +81,11 @@ function setTheme(value) {
   flash("主题已保存");
 }
 
+function setDashboardStyle(value) {
+  store.setDashboardStyle(value);
+  flash(value === "gamified" ? "游戏化首页已启用" : "经典首页已启用");
+}
+
 function flash(msg) {
   saved.value = msg;
   window.setTimeout(() => { saved.value = ""; }, 1600);
@@ -161,6 +166,22 @@ onMounted(load);
       <section class="settings-section">
         <header><span class="settings-icon teal"><UiIcon name="PhPaintBrush" /></span><div><h2>主题与界面</h2><p>调整界面外观与交互偏好。</p></div></header>
         <div class="settings-card">
+          <fieldset class="dashboard-style-fieldset">
+            <legend>首页风格</legend>
+            <p>选择首页的信息组织方式，业务数据和功能入口保持一致。</p>
+            <div class="dashboard-style-options">
+              <button type="button" :class="{ active: store.dashboardStyle === 'classic' }" :aria-pressed="store.dashboardStyle === 'classic'" @click="setDashboardStyle('classic')">
+                <span class="dashboard-style-option-icon"><UiIcon name="PhLayout" /></span>
+                <span><strong>经典</strong><small>简洁的信息仪表盘</small></span>
+                <UiIcon v-if="store.dashboardStyle === 'classic'" name="PhCheckCircle" class="dashboard-style-check" weight="fill" />
+              </button>
+              <button type="button" :class="{ active: store.dashboardStyle === 'gamified' }" :aria-pressed="store.dashboardStyle === 'gamified'" @click="setDashboardStyle('gamified')">
+                <span class="dashboard-style-option-icon"><UiIcon name="PhPlanet" /></span>
+                <span><strong>游戏化</strong><small>等级、任务、经验和成长反馈</small></span>
+                <UiIcon v-if="store.dashboardStyle === 'gamified'" name="PhCheckCircle" class="dashboard-style-check" weight="fill" />
+              </button>
+            </div>
+          </fieldset>
           <div class="settings-row"><span>主题模式</span>
             <div class="segmented">
               <button :class="{ active: theme === 'auto' }" @click="setTheme('auto')">跟随系统</button>
@@ -211,6 +232,19 @@ onMounted(load);
 .settings-section h2 { margin: 0; font-size: 16px; }
 .settings-section p { margin: 2px 0 0; color: #6b7280; font-size: 12px; }
 .settings-card { padding: 8px 22px 18px; display: flex; flex-direction: column; gap: 4px; }
+.dashboard-style-fieldset { border: 0; padding: 12px 0 16px; margin: 0; border-bottom: 1px solid #f8fafc; }
+.dashboard-style-fieldset legend { padding: 0; color: #111827; font-size: 14px; font-weight: 600; }
+.dashboard-style-fieldset > p { margin: 3px 0 12px; color: #6b7280; font-size: 12px; }
+.dashboard-style-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dashboard-style-options > button { min-height: 72px; display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; color: #111827; text-align: left; cursor: pointer; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.dashboard-style-options > button:hover { border-color: #a5b4fc; }
+.dashboard-style-options > button:focus-visible { outline: 3px solid rgba(79, 70, 229, .25); outline-offset: 2px; }
+.dashboard-style-options > button.active { border-color: #6366f1; background: #f5f5ff; box-shadow: inset 0 0 0 1px rgba(99, 102, 241, .12); }
+.dashboard-style-option-icon { width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 9px; background: #eef2ff; color: #4f46e5; }
+.dashboard-style-options strong, .dashboard-style-options small { display: block; }
+.dashboard-style-options strong { font-size: 13px; }
+.dashboard-style-options small { margin-top: 3px; color: #6b7280; font-size: 11px; line-height: 1.35; }
+.dashboard-style-check { margin-left: auto; color: #4f46e5; flex: 0 0 auto; }
 .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f8fafc; font-size: 14px; }
 .settings-row span { color: #6b7280; }
 .settings-row strong { color: #111827; font-weight: 500; }
@@ -230,4 +264,5 @@ onMounted(load);
 .danger-button { background: #fef2f2; color: #dc2626; }
 .secondary-button:hover { background: #e5e7eb; }
 .danger-button:hover { background: #fee2e2; }
+@media (max-width: 640px) { .dashboard-style-options { grid-template-columns: 1fr; } }
 </style>
