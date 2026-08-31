@@ -1,5 +1,6 @@
 import { CampusPalette, darkPalette, lightPalette } from './Theme';
 import { MotionDuration, MotionSpec } from './MotionSpec';
+import { clampDockDragOffset, dockDragTargetIndex } from './LiquidGlassDockDrag';
 import { LiquidGlassDockStyle, liquidGlassDockStyle } from './LiquidGlassDockSpec';
 
 interface DockItem {
@@ -16,9 +17,13 @@ export struct AppDock {
   @Prop pendingCount: number = 0;
   onNavigate: (index: number) => void = () => {};
 
-  @State pressedIndex: number = -1;
-  @State pressWaveIndex: number = -1;
-  @State pressWaveExpanded: boolean = false;
+  @State clickGlowIndex: number = -1;
+  @State clickGlowExpanded: boolean = false;
+  @State dockWidth: number = 0;
+  @State dragOffset: number = 0;
+  @State dragging: boolean = false;
+  @State dragAccepted: boolean = false;
+  @State suppressClick: boolean = false;
 
   palette(): CampusPalette {
     return this.darkMode ? darkPalette : lightPalette;
@@ -29,74 +34,163 @@ export struct AppDock {
   }
 
   triggerPress(index: number): void {
+    if (this.suppressClick) {
+      return;
+    }
     this.activeTab = index;
     this.onNavigate(index);
   }
 
+  itemWidth(): number {
+    return this.dockWidth > 0 ? this.dockWidth / 5 : 0;
+  }
+
+  visualTab(): number {
+    return this.dragging ?
+      dockDragTargetIndex(this.activeTab, this.dragOffset, this.itemWidth(), 5) : this.activeTab;
+  }
+
+  isVisualTab(index: number): boolean {
+    return this.visualTab() === index;
+  }
+
+  beginDrag(index: number): void {
+    this.dragAccepted = this.itemWidth() > 0 && index === this.activeTab;
+    this.dragging = this.dragAccepted;
+    this.dragOffset = 0;
+  }
+
+  updateDrag(event: GestureEvent): void {
+    if (!this.dragAccepted) return;
+    this.dragOffset = clampDockDragOffset(this.activeTab, 5, this.itemWidth(), event.offsetX);
+  }
+
+  finishDrag(): void {
+    if (!this.dragAccepted) return;
+    const source: number = this.activeTab;
+    const target: number = dockDragTargetIndex(source, this.dragOffset, this.itemWidth(), 5);
+    this.suppressClick = true;
+    this.dragAccepted = false;
+    this.dragging = false;
+    this.activeTab = target;
+    this.dragOffset = 0;
+    if (target !== source) {
+      this.onNavigate(target);
+    }
+    setTimeout(() => {
+      this.suppressClick = false;
+    }, 120);
+  }
+
+  cancelDrag(): void {
+    this.dragAccepted = false;
+    this.dragging = false;
+    this.dragOffset = 0;
+  }
+
   beginPress(index: number): void {
-    this.pressedIndex = index;
-    this.pressWaveIndex = index;
-    this.pressWaveExpanded = false;
-    if (!this.glassStyle().pressWaveEnabled) {
+    this.clickGlowIndex = index;
+    this.clickGlowExpanded = false;
+    if (!this.glassStyle().clickGlowEnabled) {
       return;
     }
     setTimeout(() => {
-      if (this.pressWaveIndex === index) {
-        this.pressWaveExpanded = true;
+      if (this.clickGlowIndex === index) {
+        this.clickGlowExpanded = true;
       }
     }, 16);
   }
 
   endPress(index: number): void {
-    if (this.pressedIndex === index) {
-      this.pressedIndex = -1;
-    }
-    if (!this.glassStyle().pressWaveEnabled) {
-      this.pressWaveIndex = -1;
+    if (!this.glassStyle().clickGlowEnabled) {
+      this.clickGlowIndex = -1;
       return;
     }
     setTimeout(() => {
-      if (this.pressWaveIndex === index) {
-        this.pressWaveIndex = -1;
-        this.pressWaveExpanded = false;
+      if (this.clickGlowIndex === index) {
+        this.clickGlowIndex = -1;
+        this.clickGlowExpanded = false;
       }
-    }, this.glassStyle().pressWaveDuration);
+    }, this.glassStyle().clickGlowDuration);
+  }
+
+  @Builder
+  DockSelectionLens() {
+    Row()
+      .width('20%')
+      .height(60)
+      .position({ x: `${this.activeTab * 20}%`, y: 0 })
+      .translate({ x: this.dragOffset, y: 0 })
+      .scale({
+        x: this.dragging ? MotionSpec.scale(this.reduceMotion, 1.08) : 1.0,
+        y: this.dragging ? MotionSpec.scale(this.reduceMotion, 0.94) : 1.0
+      })
+      .linearGradient({
+        angle: 135,
+        colors: [
+          [this.glassStyle().highlightColor, 0.0],
+          [this.glassStyle().selectedSurfaceColor, 0.56],
+          [this.darkMode ? '#3344A8FF' : '#225B68F2', 1.0]
+        ]
+      })
+      .border({ width: this.dragging ? 1.2 : 0.7, color: this.glassStyle().selectedBorderColor })
+      .borderRadius(26)
+      .shadow({
+        radius: this.dragging ? 12 : 8,
+        color: this.darkMode ? '#3344A8FF' : '#225B68F2',
+        offsetY: 2
+      })
+      .opacity(0.96)
+      .hitTestBehavior(HitTestMode.None)
+      .animation({ duration: this.dragging ? 0 : this.glassStyle().motionDuration, curve: Curve.Smooth })
   }
 
   @Builder
   DockItemView(item: DockItem) {
     Stack({ alignContent: Alignment.Center }) {
-      if (this.pressWaveIndex === item.index) {
-        Circle()
-          .width(this.glassStyle().pressWaveEnabled ?
-            (this.pressWaveExpanded ? this.glassStyle().pressWaveDiameter : 18) : 52)
-          .height(this.glassStyle().pressWaveEnabled ?
-            (this.pressWaveExpanded ? this.glassStyle().pressWaveDiameter : 18) : 52)
-          .backgroundColor(this.glassStyle().pressWaveColor)
-          .opacity(this.glassStyle().pressWaveEnabled ? (this.pressWaveExpanded ? 0.0 : 0.48) : 0.12)
-          .border({ width: 1, color: this.glassStyle().highlightColor })
-          .animation({ duration: this.glassStyle().pressWaveDuration, curve: Curve.Smooth })
+      if (this.clickGlowIndex === item.index) {
+        Row()
+          .width(this.glassStyle().clickGlowDiameter)
+          .height(this.glassStyle().clickGlowDiameter)
+          .borderRadius(this.glassStyle().clickGlowDiameter / 2)
+          .radialGradient({
+            center: ['50%', '50%'],
+            radius: '50%',
+            colors: [
+              [this.palette().primary, 0.0],
+              [this.glassStyle().clickGlowColor, 0.40],
+              [this.darkMode ? '#389CC7D0' : '#385B68F2', 0.72],
+              [this.darkMode ? '#009CC7D0' : '#005B68F2', 1.0]
+            ]
+          })
+          .scale({
+            x: this.glassStyle().clickGlowEnabled ? (this.clickGlowExpanded ? 1.08 : 0.58) : 1.0,
+            y: this.glassStyle().clickGlowEnabled ? (this.clickGlowExpanded ? 1.08 : 0.58) : 1.0
+          })
+          .opacity(this.glassStyle().clickGlowEnabled ? (this.clickGlowExpanded ? 0.0 : 0.72) : 0.42)
+          .hitTestBehavior(HitTestMode.None)
+          .animation({ duration: this.glassStyle().clickGlowDuration, curve: Curve.Smooth })
       }
       Column({ space: 3 }) {
         Stack({ alignContent: Alignment.Center }) {
-          if (item.index === 3 && this.activeTab === item.index) {
+          if (item.index === 3 && this.isVisualTab(item.index)) {
             Image($r('app.media.ph_robot'))
-              .width(this.activeTab === item.index ? 24 : 22)
-              .height(this.activeTab === item.index ? 24 : 22)
+              .width(this.isVisualTab(item.index) ? 24 : 22)
+              .height(this.isVisualTab(item.index) ? 24 : 22)
               .objectFit(ImageFit.Contain)
               .scale({
-                x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
-                y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+                x: this.isVisualTab(item.index) ? MotionSpec.scale(this.reduceMotion, 1.12) : 1.0,
+                y: this.isVisualTab(item.index) ? MotionSpec.scale(this.reduceMotion, 1.12) : 1.0
               })
               .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
           } else {
             SymbolGlyph(item.symbol)
-              .fontSize(this.activeTab === item.index ? 23 : 21)
-              .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
-              .fontColor([this.activeTab === item.index ? this.palette().primary : this.palette().muted])
+              .fontSize(this.isVisualTab(item.index) ? 23 : 21)
+              .fontWeight(this.isVisualTab(item.index) ? FontWeight.Bold : FontWeight.Medium)
+              .fontColor([this.isVisualTab(item.index) ? this.palette().primary : this.palette().muted])
               .scale({
-                x: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0),
-                y: this.activeTab === item.index ? MotionSpec.scale(this.reduceMotion, 1.12) : (this.pressedIndex === item.index ? MotionSpec.scale(this.reduceMotion, 0.85) : 1.0)
+                x: this.isVisualTab(item.index) ? MotionSpec.scale(this.reduceMotion, 1.12) : 1.0,
+                y: this.isVisualTab(item.index) ? MotionSpec.scale(this.reduceMotion, 1.12) : 1.0
               })
               .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.Smooth })
           }
@@ -116,11 +210,11 @@ export struct AppDock {
         .width(42)
         .height(26)
         Text(item.label)
-          .fontColor(this.activeTab === item.index ? this.palette().primary : this.palette().muted)
+          .fontColor(this.isVisualTab(item.index) ? this.palette().primary : this.palette().muted)
           .fontSize(10)
-          .fontWeight(this.activeTab === item.index ? FontWeight.Bold : FontWeight.Medium)
+          .fontWeight(this.isVisualTab(item.index) ? FontWeight.Bold : FontWeight.Medium)
           .maxLines(1)
-          .opacity(this.activeTab === item.index ? 1.0 : 0.82)
+          .opacity(this.isVisualTab(item.index) ? 1.0 : 0.82)
       }
       .width('100%')
       .height('100%')
@@ -129,21 +223,6 @@ export struct AppDock {
     }
     .layoutWeight(1)
     .height(60)
-    .borderRadius(26)
-    .backgroundColor(this.activeTab === item.index ? this.glassStyle().selectedSurfaceColor : Color.Transparent)
-    .border({
-      width: this.activeTab === item.index ? 0.7 : 0,
-      color: this.activeTab === item.index ? this.glassStyle().selectedBorderColor : Color.Transparent
-    })
-    .shadow({
-      radius: this.activeTab === item.index ? 8 : 0,
-      color: this.activeTab === item.index ? (this.darkMode ? '#3344A8FF' : '#225B68F2') : Color.Transparent,
-      offsetY: 2
-    })
-    .scale({
-      x: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0,
-      y: this.pressedIndex === item.index ? this.glassStyle().pressScale : 1.0
-    })
     .clip(true)
     .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
     .onTouch((event: TouchEvent) => {
@@ -153,6 +232,13 @@ export struct AppDock {
         this.endPress(item.index);
       }
     })
+    .gesture(
+      PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: 4 })
+        .onActionStart(() => this.beginDrag(item.index))
+        .onActionUpdate((event: GestureEvent) => this.updateDrag(event))
+        .onActionEnd(() => this.finishDrag())
+        .onActionCancel(() => this.cancelDrag())
+    )
     .onClick(() => this.triggerPress(item.index))
   }
 
@@ -172,6 +258,8 @@ export struct AppDock {
           })
           .opacity(this.darkMode ? 0.38 : 0.52)
           .hitTestBehavior(HitTestMode.None)
+
+        this.DockSelectionLens()
 
         Row() {
           ForEach([
@@ -200,6 +288,11 @@ export struct AppDock {
       }
       .width('100%')
       .height(60)
+      .onAreaChange((_oldValue: Area, newValue: Area) => {
+        if (typeof newValue.width === 'number') {
+          this.dockWidth = newValue.width;
+        }
+      })
     }
     .width('100%')
     .height(80)

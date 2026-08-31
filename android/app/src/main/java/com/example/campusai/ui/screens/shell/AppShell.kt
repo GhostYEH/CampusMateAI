@@ -9,10 +9,12 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -49,7 +52,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,12 +70,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -89,6 +100,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
+import kotlin.math.roundToInt
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
@@ -307,6 +319,7 @@ private fun CampusDock(
     onNavigate: (String) -> Unit,
 ) {
     val selectedRoute = selectedStudentDockRoute(route)
+    val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     val primaryColor = Primary
     val dockSurface = Surface
     val dockLine = Line
@@ -334,7 +347,7 @@ private fun CampusDock(
             .navigationBarsPadding()
             .padding(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 10.dp),
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp)
@@ -375,27 +388,190 @@ private fun CampusDock(
                 }
                 .border(0.8.dp, dockLine.copy(alpha = .58f), dockShape)
                 .padding(horizontal = 7.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            items.forEach { item ->
-                val selected = selectedRoute == item.route
-                LiquidGlassNavItem(
-                    glassProfile = glassProfile,
-                    interactionProfile = interactionProfile,
-                    item = item,
-                    isSelected = selected,
-                    pendingCount = pendingCount,
-                    reduceMotion = reduceMotion,
-                    onNavigate = onNavigate,
-                )
+            var itemWidthPx by remember { mutableFloatStateOf(0f) }
+            var dragOffsetPx by remember(selectedIndex) { mutableFloatStateOf(0f) }
+            var settledIndex by remember(selectedIndex) { mutableIntStateOf(selectedIndex) }
+            var dragStartAccepted by remember(selectedIndex) { mutableStateOf(false) }
+            val dragging = dragStartAccepted
+            val previewIndex = if (dragging) {
+                dockDragTargetIndex(selectedIndex, dragOffsetPx, itemWidthPx, items.size)
+            } else {
+                settledIndex
+            }
+            val lensTargetX = if (dragging) {
+                selectedIndex * itemWidthPx + dragOffsetPx
+            } else {
+                settledIndex * itemWidthPx
+            }
+            val lensX by animateFloatAsState(
+                targetValue = lensTargetX,
+                animationSpec = if (dragging || reduceMotion) {
+                    snap()
+                } else {
+                    spring(dampingRatio = .72f, stiffness = 520f)
+                },
+                label = "dock-selection-lens-x",
+            )
+            val density = LocalDensity.current
+            val lensWidth = with(density) { itemWidthPx.toDp() }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { size ->
+                        itemWidthPx = if (items.isEmpty()) 0f else size.width.toFloat() / items.size
+                    }
+                    .pointerInput(selectedIndex, itemWidthPx, items.size) {
+                        detectDragGestures(
+                            onDragStart = { start ->
+                                val selectedStart = selectedIndex * itemWidthPx
+                                val startsOnSelection = itemWidthPx > 0f &&
+                                    start.x in selectedStart..(selectedStart + itemWidthPx)
+                                dragStartAccepted = startsOnSelection
+                                if (startsOnSelection) {
+                                    settledIndex = selectedIndex
+                                    dragOffsetPx = 0f
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                if (dragStartAccepted) {
+                                    change.consume()
+                                    dragOffsetPx = clampDockDragOffset(
+                                        selectedIndex = selectedIndex,
+                                        itemCount = items.size,
+                                        itemWidthPx = itemWidthPx,
+                                        requestedOffsetPx = dragOffsetPx + dragAmount.x,
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                if (dragStartAccepted) {
+                                    val targetIndex = dockDragTargetIndex(
+                                        selectedIndex = selectedIndex,
+                                        dragOffsetPx = dragOffsetPx,
+                                        itemWidthPx = itemWidthPx,
+                                        itemCount = items.size,
+                                    )
+                                    settledIndex = targetIndex
+                                    dragOffsetPx = 0f
+                                    dragStartAccepted = false
+                                    if (targetIndex != selectedIndex) {
+                                        onNavigate(items[targetIndex].route)
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                settledIndex = selectedIndex
+                                dragOffsetPx = 0f
+                                dragStartAccepted = false
+                            },
+                        )
+                    },
+            ) {
+                if (itemWidthPx > 0f) {
+                    LiquidGlassSelectionLens(
+                        modifier = Modifier
+                            .width(lensWidth)
+                            .height(58.dp)
+                            .offset {
+                                IntOffset(
+                                    x = lensX.roundToInt(),
+                                    y = 4.dp.roundToPx(),
+                                )
+                            },
+                        glassProfile = glassProfile,
+                        dragging = dragging,
+                        reduceMotion = reduceMotion,
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    items.forEachIndexed { index, item ->
+                        LiquidGlassNavItem(
+                            interactionProfile = interactionProfile,
+                            item = item,
+                            isSelected = previewIndex == index,
+                            pendingCount = pendingCount,
+                            reduceMotion = reduceMotion,
+                            onNavigate = onNavigate,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RowScope.LiquidGlassNavItem(
+private fun LiquidGlassSelectionLens(
+    modifier: Modifier,
     glassProfile: LiquidGlassDockProfile,
+    dragging: Boolean,
+    reduceMotion: Boolean,
+) {
+    val primaryColor = Primary
+    val primarySoftColor = PrimarySoft
+    val itemShape = RoundedCornerShape(27.dp)
+    val horizontalScale by animateFloatAsState(
+        targetValue = if (dragging && !reduceMotion) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = .68f, stiffness = 560f),
+        label = "dock-selection-lens-width",
+    )
+    val verticalScale by animateFloatAsState(
+        targetValue = if (dragging && !reduceMotion) .94f else 1f,
+        animationSpec = spring(dampingRatio = .68f, stiffness = 560f),
+        label = "dock-selection-lens-height",
+    )
+    Box(
+        modifier = modifier
+            .padding(horizontal = 2.dp)
+            .graphicsLayer {
+                scaleX = horizontalScale
+                scaleY = verticalScale
+            }
+            .clip(itemShape)
+            .drawBehind {
+                val dragBoost = if (dragging && !reduceMotion) .10f else 0f
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = .34f + dragBoost),
+                            primarySoftColor.copy(alpha = if (glassProfile.lensEnabled) .48f else .70f),
+                            primaryColor.copy(alpha = .16f + dragBoost),
+                        ),
+                    ),
+                    cornerRadius = CornerRadius(size.height / 2f),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = .30f), Color.Transparent),
+                        center = Offset(size.width * .28f, size.height * .16f),
+                        radius = size.width * .72f,
+                    ),
+                    radius = size.width * .72f,
+                    center = Offset(size.width * .28f, size.height * .16f),
+                )
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = .76f),
+                            primaryColor.copy(alpha = .28f),
+                            Color.White.copy(alpha = .18f),
+                        ),
+                    ),
+                    cornerRadius = CornerRadius(size.height / 2f),
+                    style = Stroke(width = (if (dragging) 1.4.dp else .8.dp).toPx()),
+                )
+            }
+            .border(1.dp, primaryColor.copy(alpha = .30f), itemShape),
+    )
+}
+
+@Composable
+private fun RowScope.LiquidGlassNavItem(
     interactionProfile: LiquidGlassDockInteractionProfile,
     item: NavItem,
     isSelected: Boolean,
@@ -405,9 +581,8 @@ private fun RowScope.LiquidGlassNavItem(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val pressWaveProgress = remember { Animatable(1f) }
+    val clickGlowProgress = remember { Animatable(1f) }
     val primaryColor = Primary
-    val primarySoftColor = PrimarySoft
     val color by animateColorAsState(
         targetValue = if (isSelected) primaryColor else Muted,
         animationSpec = tween(260, easing = FastOutSlowInEasing),
@@ -421,78 +596,30 @@ private fun RowScope.LiquidGlassNavItem(
         ),
         label = "dock-icon-scale-${item.route}",
     )
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) interactionProfile.pressScale else 1f,
-        animationSpec = tween(140),
-        label = "dock-press-scale-${item.route}",
-    )
-    LaunchedEffect(pressed, interactionProfile.pressWaveEnabled) {
-        if (!interactionProfile.pressWaveEnabled) {
-            pressWaveProgress.snapTo(if (pressed) 0f else 1f)
+    LaunchedEffect(pressed, interactionProfile.clickGlowEnabled) {
+        if (!interactionProfile.clickGlowEnabled) {
+            clickGlowProgress.snapTo(if (pressed) 0f else 1f)
         } else if (pressed) {
-            pressWaveProgress.snapTo(0f)
-            pressWaveProgress.animateTo(
+            clickGlowProgress.snapTo(0f)
+            clickGlowProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = interactionProfile.pressWaveDurationMillis,
+                    durationMillis = interactionProfile.clickGlowDurationMillis,
                     easing = FastOutSlowInEasing,
                 ),
             )
-        } else if (pressWaveProgress.value < 1f) {
-            pressWaveProgress.animateTo(
+        } else if (clickGlowProgress.value < 1f) {
+            clickGlowProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(180, easing = FastOutSlowInEasing),
+                animationSpec = tween(120, easing = FastOutSlowInEasing),
             )
         }
     }
-    val itemShape = RoundedCornerShape(27.dp)
-    val selectedGlassModifier = if (isSelected) {
-        Modifier.drawBehind {
-            val pressBoost = if (pressed && !reduceMotion) .12f else 0f
-            drawRoundRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = .34f + pressBoost),
-                        primarySoftColor.copy(alpha = if (glassProfile.lensEnabled) .48f else .70f),
-                        primaryColor.copy(alpha = .16f + pressBoost),
-                    ),
-                ),
-                cornerRadius = CornerRadius(size.height / 2f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color.White.copy(alpha = .26f), Color.Transparent),
-                    center = Offset(size.width * .28f, size.height * .18f),
-                    radius = size.width * .72f,
-                ),
-                radius = size.width * .72f,
-                center = Offset(size.width * .28f, size.height * .18f),
-            )
-            drawRoundRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = .72f),
-                        primaryColor.copy(alpha = .24f),
-                        Color.White.copy(alpha = .18f),
-                    ),
-                ),
-                cornerRadius = CornerRadius(size.height / 2f),
-                style = Stroke(width = (if (pressed) 1.4.dp else .8.dp).toPx()),
-            )
-        }
-    } else {
-        Modifier
-    }
-
     Box(
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
             .padding(horizontal = 2.dp)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -503,64 +630,47 @@ private fun RowScope.LiquidGlassNavItem(
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = selectedGlassModifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
-                .clip(itemShape)
                 .drawBehind {
-                    val activeGlow = if (isSelected) .9f else 0f
-                    if (activeGlow > 0f) {
-                        drawRoundRect(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    primaryColor.copy(alpha = .28f * activeGlow),
-                                    primaryColor.copy(alpha = .10f * activeGlow),
-                                    Color.Transparent,
-                                ),
-                                center = Offset(size.width / 2f, size.height / 2f),
-                                radius = size.width * .82f,
-                            ),
-                            cornerRadius = CornerRadius(size.height / 2f),
-                        )
-                    }
-                    if (!interactionProfile.pressWaveEnabled && pressed) {
-                        drawRoundRect(
-                            color = primaryColor.copy(alpha = .11f),
-                            cornerRadius = CornerRadius(size.height / 2f),
-                        )
-                    }
-                    val waveProgress = pressWaveProgress.value
-                    if (interactionProfile.pressWaveEnabled && waveProgress < 1f) {
-                        val waveAlpha = (1f - waveProgress) * .34f
-                        val waveRadius = interactionProfile.pressWaveRadiusDp.dp.toPx() *
-                            (.22f + .78f * waveProgress)
-                        val center = Offset(size.width / 2f, size.height / 2f)
+                    val glowProgress = clickGlowProgress.value
+                    if (pressed && !interactionProfile.clickGlowEnabled) {
+                        val center = Offset(size.width / 2f, size.height * .38f)
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    primaryColor.copy(alpha = waveAlpha * .48f),
-                                    primaryColor.copy(alpha = waveAlpha * .16f),
+                                    Color.White.copy(alpha = .26f),
+                                    primaryColor.copy(alpha = .18f),
                                     Color.Transparent,
                                 ),
                                 center = center,
-                                radius = waveRadius,
+                                radius = interactionProfile.clickGlowRadiusDp.dp.toPx(),
                             ),
-                            radius = waveRadius,
+                            radius = interactionProfile.clickGlowRadiusDp.dp.toPx(),
                             center = center,
                         )
+                    } else if (interactionProfile.clickGlowEnabled && glowProgress < 1f) {
+                        val glowAlpha = (1f - glowProgress) * .62f
+                        val glowRadius = interactionProfile.clickGlowRadiusDp.dp.toPx() *
+                            (.58f + .42f * glowProgress)
+                        val center = Offset(size.width / 2f, size.height * .38f)
                         drawCircle(
-                            color = Color.White.copy(alpha = waveAlpha),
-                            radius = waveRadius,
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = glowAlpha * .56f),
+                                    primaryColor.copy(alpha = glowAlpha * .72f),
+                                    primaryColor.copy(alpha = glowAlpha * .18f),
+                                    Color.Transparent,
+                                ),
+                                center = center,
+                                radius = glowRadius,
+                            ),
+                            radius = glowRadius,
                             center = center,
-                            style = Stroke(width = 1.2.dp.toPx()),
                         )
                     }
-                }
-                .border(
-                    width = if (isSelected) 1.dp else 0.dp,
-                    color = Primary.copy(alpha = if (isSelected) .3f else 0f),
-                    shape = itemShape,
-                ),
+                },
             contentAlignment = Alignment.Center,
         ) {
             Column(

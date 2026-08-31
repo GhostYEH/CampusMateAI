@@ -40,20 +40,19 @@ class LiquidGlassDockProfileTest {
     }
 
     @Test
-    fun pressFeedbackUsesAnExpandingWaveWhenMotionIsEnabled() {
+    fun clickFeedbackUsesANonBlockingGlowWhenMotionIsEnabled() {
         val profile = liquidGlassDockInteractionProfile(reduceMotion = false)
 
-        assertTrue(profile.pressWaveEnabled)
-        assertEquals(420, profile.pressWaveDurationMillis)
-        assertEquals(44f, profile.pressWaveRadiusDp)
+        assertTrue(profile.clickGlowEnabled)
+        assertEquals(300, profile.clickGlowDurationMillis)
+        assertEquals(30f, profile.clickGlowRadiusDp)
     }
 
     @Test
-    fun reducedMotionKeepsAStaticPressWashWithoutWaveExpansion() {
+    fun reducedMotionKeepsAStaticGlowWithoutExpansion() {
         val profile = liquidGlassDockInteractionProfile(reduceMotion = true)
 
-        assertFalse(profile.pressWaveEnabled)
-        assertEquals(0, profile.pressWaveDurationMillis)
-        assertEquals(1f, profile.pressScale)
+        assertFalse(profile.clickGlowEnabled)
+        assertEquals(0, profile.clickGlowDurationMillis)
     }
 }

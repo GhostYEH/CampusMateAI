@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@ohos/hypium';
+import { clampDockDragOffset, dockDragTargetIndex } from '../../../main/ets/ui/LiquidGlassDockDrag';
 import { liquidGlassDockStyle } from '../../../main/ets/ui/LiquidGlassDockSpec';
 
 export default function liquidGlassDockSpecTest(): void {
@@ -10,9 +11,10 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.surfaceColor).assertEqual('#66FFFFFF');
       expect(style.highlightColor).assertEqual('#99FFFFFF');
       expect(style.motionDuration).assertEqual(260);
-      expect(style.pressWaveEnabled).assertTrue();
-      expect(style.pressWaveDuration).assertEqual(420);
-      expect(style.pressWaveDiameter).assertEqual(76);
+      expect(style.clickGlowEnabled).assertTrue();
+      expect(style.clickGlowDuration).assertEqual(300);
+      expect(style.clickGlowDiameter).assertEqual(52);
+      expect(style.clickGlowColor).assertEqual('#B85B68F2');
     });
 
     it('uses a darker translucent surface in dark mode', 0, () => {
@@ -27,9 +29,22 @@ export default function liquidGlassDockSpecTest(): void {
       const style = liquidGlassDockStyle(false, true);
 
       expect(style.motionDuration).assertEqual(0);
-      expect(style.pressScale).assertEqual(1.0);
-      expect(style.pressWaveEnabled).assertFalse();
-      expect(style.pressWaveDuration).assertEqual(0);
+      expect(style.clickGlowEnabled).assertFalse();
+      expect(style.clickGlowDuration).assertEqual(0);
+    });
+
+    it('clamps the draggable selection lens to the dock bounds', 0, () => {
+      expect(clampDockDragOffset(2, 5, 100, -500)).assertEqual(-200);
+      expect(clampDockDragOffset(2, 5, 100, 500)).assertEqual(200);
+      expect(clampDockDragOffset(2, 0, 100, 80)).assertEqual(0);
+    });
+
+    it('snaps the selection lens to the nearest item on release', 0, () => {
+      expect(dockDragTargetIndex(2, 49, 100, 5)).assertEqual(2);
+      expect(dockDragTargetIndex(2, 51, 100, 5)).assertEqual(3);
+      expect(dockDragTargetIndex(2, -500, 100, 5)).assertEqual(0);
+      expect(dockDragTargetIndex(2, 500, 100, 5)).assertEqual(4);
+      expect(dockDragTargetIndex(2, 80, 0, 5)).assertEqual(2);
     });
   });
 }
