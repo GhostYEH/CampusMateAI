@@ -5,6 +5,11 @@ import {
   FocusCameraStateText,
   FocusCameraRunToken,
   FocusCameraActivationPolicy,
+  FocusCameraLifecycleEvent,
+  FocusCameraLifecycleAction,
+  FocusCameraLifecyclePolicy,
+  FocusCameraSignalPresentation,
+  FocusBehaviorLabelText,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../entry/src/main/ets/service/FocusCameraContract.ts';
@@ -40,6 +45,33 @@ test('enables the camera only for a study focus interval', () => {
   assert.equal(FocusCameraActivationPolicy.shouldRun('long_break'), false);
 });
 
+test('starts only for focus session starts and focus resumes', () => {
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus'),
+    FocusCameraLifecycleAction.START);
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break'),
+    FocusCameraLifecycleAction.STOP);
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break'),
+    FocusCameraLifecycleAction.STOP);
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus'),
+    FocusCameraLifecycleAction.START);
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break'),
+    FocusCameraLifecycleAction.STOP);
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break'),
+    FocusCameraLifecycleAction.STOP);
+});
+
+test('stops for pause, finish, hide, leave, and mode reset', () => {
+  for (const event of [
+    FocusCameraLifecycleEvent.PAUSE,
+    FocusCameraLifecycleEvent.FINISH,
+    FocusCameraLifecycleEvent.HIDE,
+    FocusCameraLifecycleEvent.LEAVE,
+    FocusCameraLifecycleEvent.RESET
+  ]) {
+    assert.equal(FocusCameraLifecyclePolicy.action(event, 'focus'), FocusCameraLifecycleAction.STOP);
+  }
+});
+
 test('drops frames while analysis is running and before the next interval', () => {
   const gate = new FrameAnalysisGate(1000);
   assert.equal(gate.tryAcquire(1000), true);
@@ -47,6 +79,25 @@ test('drops frames while analysis is running and before the next interval', () =
   gate.release();
   assert.equal(gate.tryAcquire(1999), false);
   assert.equal(gate.tryAcquire(2000), true);
+});
+
+test('admits a new frame after the default 500 ms cadence', () => {
+  const gate = new FrameAnalysisGate();
+  assert.equal(gate.tryAcquire(1000), true);
+  gate.release();
+  assert.equal(gate.tryAcquire(1499), false);
+  assert.equal(gate.tryAcquire(1500), true);
+});
+
+test('does not present rejected behavior output as stable', () => {
+  assert.equal(FocusCameraSignalPresentation.label('READ', false), '');
+  assert.equal(FocusCameraSignalPresentation.confidence(0.91, false), 0);
+  assert.equal(FocusCameraSignalPresentation.label('READ', true), 'READ');
+  assert.equal(FocusCameraSignalPresentation.confidence(0.91, true), 0.91);
+});
+
+test('displays the hybrid computer behavior with a user-facing label', () => {
+  assert.equal(FocusBehaviorLabelText.describe('COMPUTER'), '使用电脑');
 });
 
 test('reports safe user-facing states when a frame cannot be analyzed', () => {

@@ -3,6 +3,7 @@ import { FocusModeMapper } from '../../data/FocusModeMapper';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+import { FocusBehaviorLabelText } from '../../service/FocusCameraContract';
 
 @Component
 export struct FocusPage {
@@ -25,9 +26,11 @@ export struct FocusPage {
   onPause: () => void = () => {};
   onResume: () => void = () => {};
   onFinish: () => void = () => {};
+  onLeave: () => void = () => {};
+  onModeReset: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
-  aboutToDisappear(): void { this.stopClock(); }
+  aboutToDisappear(): void { this.stopClock(); this.onLeave(); }
   currentFocusMode(): FocusMode { return FocusModeMapper.fromLabel(this.mode); }
   totalSeconds(): number { return this.mode === '专注' ? 25 * 60 : this.mode === '短休息' ? 5 * 60 : 15 * 60; }
   timeText(): string {
@@ -46,14 +49,15 @@ export struct FocusPage {
       else { this.running = false; this.stopClock(); this.onFinish(); }
     }, 1000);
   }
-  resetMode(mode: string): void { this.stopClock(); this.running = false; this.mode = mode; this.secondsLeft = this.totalSeconds(); }
+  resetMode(mode: string): void {
+    this.onModeReset();
+    this.stopClock();
+    this.running = false;
+    this.mode = mode;
+    this.secondsLeft = this.totalSeconds();
+  }
   behaviorLabelText(): string {
-    if (this.focusAssistLabel === 'READ') return '阅读';
-    if (this.focusAssistLabel === 'WRITE') return '书写';
-    if (this.focusAssistLabel === 'PHONE_INTERACTION') return '使用手机';
-    if (this.focusAssistLabel === 'NO_VISIBLE_STUDY') return '未观察到学习行为';
-    if (this.focusAssistLabel === 'CONTINUE_OBSERVING') return '继续观察';
-    return '';
+    return FocusBehaviorLabelText.describe(this.focusAssistLabel);
   }
 
   @Builder ModeTabs() {

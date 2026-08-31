@@ -15,9 +15,9 @@ import {
   FocusAssistProvider,
   FocusAssistSignal,
   FocusAssistStatus,
-  PersonBox,
   RgbaBehaviorFrame
 } from './FocusAssistProvider';
+import { PersonBox } from './FocusCameraContract';
 
 export class BehaviorRoiPreprocessor {
   private static readonly SIZE: number = 224;

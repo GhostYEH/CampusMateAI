@@ -70,6 +70,51 @@ export class FocusCameraActivationPolicy {
   }
 }
 
+export class FocusCameraLifecycleEvent {
+  static readonly START: string = 'START';
+  static readonly RESUME: string = 'RESUME';
+  static readonly PAUSE: string = 'PAUSE';
+  static readonly FINISH: string = 'FINISH';
+  static readonly HIDE: string = 'HIDE';
+  static readonly LEAVE: string = 'LEAVE';
+  static readonly RESET: string = 'RESET';
+}
+
+export class FocusCameraLifecycleAction {
+  static readonly START: string = 'START';
+  static readonly STOP: string = 'STOP';
+}
+
+export class FocusCameraLifecyclePolicy {
+  static action(event: string, focusMode: string): string {
+    const sessionCanStart: boolean = event === FocusCameraLifecycleEvent.START ||
+      event === FocusCameraLifecycleEvent.RESUME;
+    return sessionCanStart && FocusCameraActivationPolicy.shouldRun(focusMode) ?
+      FocusCameraLifecycleAction.START : FocusCameraLifecycleAction.STOP;
+  }
+}
+
+export class FocusCameraSignalPresentation {
+  static label(label: string, isStable: boolean): string {
+    return isStable ? label : '';
+  }
+
+  static confidence(confidence: number, isStable: boolean): number {
+    return isStable && Number.isFinite(confidence) ? confidence : 0;
+  }
+}
+
+export class FocusBehaviorLabelText {
+  static describe(label: string): string {
+    if (label === 'READ') return '阅读';
+    if (label === 'WRITE') return '书写';
+    if (label === 'PHONE_INTERACTION') return '使用手机';
+    if (label === 'COMPUTER') return '使用电脑';
+    if (label === 'NO_VISIBLE_STUDY') return '未观察到学习行为';
+    return '';
+  }
+}
+
 export class PersonRoiSelector {
   static readonly PERSON_LABEL: number = 13;
   static readonly MIN_SCORE: number = 0.50;
@@ -113,7 +158,7 @@ export class FrameAnalysisGate {
   private inFlight: boolean = false;
   private lastStartedAt: number = Number.NEGATIVE_INFINITY;
 
-  constructor(intervalMs: number = 1000) {
+  constructor(intervalMs: number = 500) {
     this.intervalMs = Math.max(0, intervalMs);
   }
 
