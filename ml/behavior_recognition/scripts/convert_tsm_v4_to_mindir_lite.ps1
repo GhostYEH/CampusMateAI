@@ -37,16 +37,17 @@ if ($null -eq $converter) { throw "converter_lite.exe not found after extraction
 $converterLib = Join-Path $converter.Directory.Parent.FullName "lib"
 $env:PATH = "$converterLib;$env:PATH"
 
-New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-$outputBase = Join-Path $OutputDirectory "campusmate_tsm_mobilenetv2_v4"
-& $converter.FullName --fmk=ONNX --modelFile=$InputModel --outputFile=$outputBase `
+$stagingDirectory = Join-Path $ToolCache ("tsm-v4-staging-" + [System.Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $stagingDirectory | Out-Null
+$stagingBase = Join-Path $stagingDirectory "campusmate_tsm_mobilenetv2_v4"
+& $converter.FullName --fmk=ONNX --modelFile=$InputModel --outputFile=$stagingBase `
     --inputShape="frames:1,8,3,224,224" --inputDataFormat=NCHW --outputDataType=FLOAT `
     --optimize=none --infer=true
 if ($LASTEXITCODE -ne 0) { throw "MindSpore Lite conversion failed with exit code $LASTEXITCODE" }
 
-$outputModel = "$outputBase.ms"
-if (!(Test-Path -LiteralPath $outputModel)) { throw "Converted TSM V4 model not produced" }
-if ((Get-FileHash -LiteralPath $outputModel -Algorithm SHA256).Hash -ne $outputHash) {
+$stagingModel = "$stagingBase.ms"
+if (!(Test-Path -LiteralPath $stagingModel)) { throw "Converted TSM V4 model not produced" }
+if ((Get-FileHash -LiteralPath $stagingModel -Algorithm SHA256).Hash -ne $outputHash) {
     throw "Converted TSM V4 MindIR Lite SHA-256 mismatch"
 }
 
@@ -64,9 +65,16 @@ $jpegLib = Join-Path $packageRoot "runtime\third_party\libjpeg-turbo\lib"
 $env:PATH = "$runtimeLib;$glogLib;$jpegLib;$env:PATH"
 $inputFile = Join-Path $parityDirectory "input.bin"
 $expectedFile = Join-Path $parityDirectory "expected.txt"
-& $benchmark.FullName --modelFile=$outputModel `
+& $benchmark.FullName --modelFile=$stagingModel `
     --inDataFile=$inputFile --benchmarkDataFile=$expectedFile `
     --accuracyThreshold=0.001 --loopCount=1 --warmUpLoopCount=0 --numThreads=2
 if ($LASTEXITCODE -ne 0) { throw "TSM V4 ONNX/MindIR Lite parity verification failed with exit code $LASTEXITCODE" }
+
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
+$outputModel = Join-Path $OutputDirectory "campusmate_tsm_mobilenetv2_v4.ms"
+Copy-Item -LiteralPath $stagingModel -Destination $outputModel -Force
+if ((Get-FileHash -LiteralPath $outputModel -Algorithm SHA256).Hash -ne $outputHash) {
+    throw "Published TSM V4 MindIR Lite SHA-256 mismatch"
+}
 
 Get-FileHash -LiteralPath $outputModel -Algorithm SHA256

@@ -44,7 +44,7 @@
       "name": "logits",
       "shape": [1, 5],
       "type": "logits",
-      "labels": ["READING", "WRITING", "PHONE_USE", "COMPUTER", "IDLE"]
+      "labels": ["READ", "WRITE", "PHONE_INTERACTION", "COMPUTER", "NO_VISIBLE_STUDY"]
     },
     "parity": {
       "seed": 20260830,
