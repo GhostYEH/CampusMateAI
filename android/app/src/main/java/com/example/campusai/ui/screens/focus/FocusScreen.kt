@@ -265,7 +265,7 @@ private fun FocusGoalPlannerDialog(
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("先说清楚想达成什么，再把它变成今天可以完成的步骤。", color = Muted, fontSize = 12.sp)
-                OutlinedTextField(value = input, onValueChange = { input = it; error = null; plan = null }, modifier = Modifier.fillMaxWidth(), label = { Text("学习目标") }, placeholder = { Text("例如：两周内掌握 Kotlin 协程并完成一个练习项目") }, minLines = 3, maxLines = 5, enabled = !loading)
+                OutlinedTextField(value = input, onValueChange = { input = it.take(500); error = null; plan = null }, modifier = Modifier.fillMaxWidth(), label = { Text("学习目标") }, placeholder = { Text("例如：两周内掌握 Kotlin 协程并完成一个练习项目") }, minLines = 3, maxLines = 5, enabled = !loading)
                 error?.let { Text(it, color = AlertErrorText, fontSize = 12.sp) }
                 if (loading) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = FocusBlue); Text("AI 正在分析目标并拆解步骤…", color = FocusBlue, fontSize = 13.sp) }
                 plan?.let { FocusGoalPlanPreview(it) }
