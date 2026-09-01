@@ -95,6 +95,42 @@ data class FocusSessionCompletion(
     val observationSummary: String,
 )
 
+@Composable
+private fun FocusGoalProgressPanel(
+    plan: FocusGoalPlan,
+    onStepToggle: (stepNumber: Int, completed: Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Surface.copy(alpha = 0.92f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("本次目标", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(plan.goal, color = Muted, fontSize = 12.sp, maxLines = 2)
+            plan.steps.forEach { step ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Checkbox(
+                        checked = step.completed,
+                        onCheckedChange = { checked -> onStepToggle(step.number, checked) },
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(step.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${step.estimatedMinutes} 分钟 · ${step.completionCriteria}", color = Muted, fontSize = 11.sp, maxLines = 2)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /**
  * The single execution page for an active focus session.
  * Voice and camera capabilities remain explicitly opt-in for the current visit.
