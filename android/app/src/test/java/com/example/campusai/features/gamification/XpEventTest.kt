@@ -3,6 +3,7 @@ package com.example.campusai.features.gamification
 import java.time.Instant
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -97,5 +98,25 @@ class XpEventTest {
         val second = AchievementEvaluator.evaluate(first, facts, now.plusSeconds(86_400), zone)
         assertEquals(first, second)
         assertTrue(second.all { it.unlockedAt == now })
+    }
+
+    @Test
+    fun snapshotCodecRoundTripsEventIdentityAndRejectsCorruptData() {
+        val snapshot = GamificationSnapshot(
+            events = listOf(
+                XpEvent(
+                    eventType = XpEventType.TASK_COMPLETED,
+                    sourceType = XpSourceType.TASK,
+                    sourceId = "task-42",
+                    xp = 30,
+                    awardedAt = now,
+                ),
+            ),
+            achievements = listOf(AchievementUnlock("first-focus", now)),
+        )
+        val codec = GamificationSnapshotCodec()
+
+        assertEquals(snapshot, codec.decode(codec.encode(snapshot)))
+        assertNull(codec.decode("{not-json"))
     }
 }
