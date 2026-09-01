@@ -10,7 +10,7 @@ const props = defineProps({ searchQuery: { type: String, default: "" } });
 const router = useRouter();
 const store = useAppStore();
 const query = computed(() => props.searchQuery);
-const { state, load, loadHitokoto } = useStudentDashboardData({ searchQuery: query });
+const { state, load } = useStudentDashboardData({ searchQuery: query });
 
 function navigate(path) {
   void router.push(path);
@@ -20,9 +20,6 @@ function openDue(item) {
   navigate(item.route || (item.kind === "作业" ? `/tasks/assignment/${item.id}` : `/tasks/personal/${item.id}`));
 }
 
-function openPost(postId) {
-  navigate(`/community/${postId}`);
-}
 </script>
 
 <template>
@@ -38,8 +35,6 @@ function openPost(postId) {
     :search-query="searchQuery"
     @navigate="navigate"
     @open-due="openDue"
-    @open-post="openPost"
     @reload="load"
-    @refresh-quote="loadHitokoto"
   />
 </template>

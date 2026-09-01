@@ -83,7 +83,7 @@ function setTheme(value) {
 
 function setDashboardStyle(value) {
   store.setDashboardStyle(value);
-  flash(value === "gamified" ? "游戏化首页已启用" : "经典首页已启用");
+  flash(value === "gamified" ? "游戏化首页已启用" : "简洁首页已启用");
 }
 
 function flash(msg) {
@@ -172,7 +172,7 @@ onMounted(load);
             <div class="dashboard-style-options">
               <button type="button" :class="{ active: store.dashboardStyle === 'classic' }" :aria-pressed="store.dashboardStyle === 'classic'" @click="setDashboardStyle('classic')">
                 <span class="dashboard-style-option-icon"><UiIcon name="PhLayout" /></span>
-                <span><strong>经典</strong><small>简洁的信息仪表盘</small></span>
+                <span><strong>简洁</strong><small>以课程、任务和学习行动为主</small></span>
                 <UiIcon v-if="store.dashboardStyle === 'classic'" name="PhCheckCircle" class="dashboard-style-check" weight="fill" />
               </button>
               <button type="button" :class="{ active: store.dashboardStyle === 'gamified' }" :aria-pressed="store.dashboardStyle === 'gamified'" @click="setDashboardStyle('gamified')">
