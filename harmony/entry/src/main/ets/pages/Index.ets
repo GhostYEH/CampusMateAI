@@ -63,6 +63,7 @@ import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvi
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 import { PreferencesUtil } from '../util/PreferencesUtil';
 import { ForegroundRefreshGate } from '../core/ForegroundRefreshGate';
+import { AmbientMotionField } from '../ui/AmbientMotionField';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
@@ -1510,6 +1511,8 @@ struct Index {
         this.activeTab = index;
         this.syncExpressionForTab();
       })
+
+      AmbientMotionField({ darkMode: this.darkMode, reduceMotion: this.reduceMotion })
 
       this.BottomNavigation()
     }

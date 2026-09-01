@@ -1,4 +1,5 @@
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
+import { AmbientMotionField } from '../../ui/AmbientMotionField';
 
 const LOGIN_INK: string = '#111A31';
 const LOGIN_BLUE_DEEP: string = '#3E50D9';
@@ -318,6 +319,8 @@ export struct LoginScreen {
             ['#F0091632', 1.0]
           ]
         })
+
+      AmbientMotionField({ darkMode: true, reduceMotion: this.reduceMotion })
 
       this.LoginContent()
     }
