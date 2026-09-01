@@ -10,6 +10,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -101,14 +102,16 @@ private class CampusIndicationNode(
         drawContent()
         val alpha = progress.value * 0.1f
         if (alpha <= 0f) return
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.maxDimension * 0.82f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(highlight.copy(alpha = alpha), Color.Transparent),
-                center = Offset(size.width / 2f, size.height / 2f),
-                radius = size.maxDimension * 0.82f,
+                center = center,
+                radius = radius,
             ),
-            radius = size.maxDimension * 0.82f,
-            center = Offset(size.width / 2f, size.height / 2f),
+            radius = radius,
+            center = center,
         )
     }
 }
@@ -123,7 +126,7 @@ internal fun rememberCampusIndication(highlight: Color): Indication {
 
 @Composable
 internal fun ProvideCampusIndication(content: @Composable () -> Unit) {
-    androidx.compose.runtime.CompositionLocalProvider(
+    CompositionLocalProvider(
         LocalIndication provides rememberCampusIndication(Primary),
         content = content,
     )

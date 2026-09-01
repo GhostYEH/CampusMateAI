@@ -76,6 +76,27 @@ import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.CampusMotion
 import java.net.URLEncoder
 
+private fun pageEnterTransition(direction: Int): EnterTransition =
+    slideInHorizontally(
+        animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+        initialOffsetX = { width -> width / 7 * direction },
+    ) + fadeIn(
+        animationSpec = tween(CampusMotion.routeEnterDuration),
+        initialAlpha = .72f,
+    ) + scaleIn(
+        animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.enterEasing),
+        initialScale = .985f,
+    )
+
+private fun pageExitTransition(direction: Int): ExitTransition =
+    slideOutHorizontally(
+        animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+        targetOffsetX = { width -> width / 12 * direction },
+    ) + fadeOut(
+        animationSpec = tween(CampusMotion.routeExitDuration),
+        targetAlpha = .82f,
+    )
+
 @Composable
 private fun NavigationDestinationFrame(
     backStackEntry: NavBackStackEntry,
@@ -155,9 +176,9 @@ fun AppNavHost(
     }
 
     NavHost(
-                navController = navController,
-                startDestination = "home",
-                modifier = Modifier.fillMaxSize(),
+        navController = navController,
+        startDestination = "home",
+        modifier = Modifier.fillMaxSize(),
         enterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
@@ -166,16 +187,7 @@ fun AppNavHost(
                     initialRoute = initialState.destination.route,
                     targetRoute = targetState.destination.route,
                 )
-                slideInHorizontally(
-                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
-                    initialOffsetX = { width -> width / 7 * motion.enterDirection },
-                ) + fadeIn(
-                    animationSpec = tween(CampusMotion.routeEnterDuration),
-                    initialAlpha = .72f,
-                ) + scaleIn(
-                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.enterEasing),
-                    initialScale = .985f,
-                )
+                pageEnterTransition(motion.enterDirection)
             }
         },
         exitTransition = {
@@ -186,37 +198,24 @@ fun AppNavHost(
                     initialRoute = initialState.destination.route,
                     targetRoute = targetState.destination.route,
                 )
-                slideOutHorizontally(
-                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
-                    targetOffsetX = { width -> width / 12 * motion.exitDirection },
-                ) + fadeOut(animationSpec = tween(CampusMotion.routeExitDuration), targetAlpha = .82f)
+                pageExitTransition(motion.exitDirection)
             }
         },
         popEnterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                slideInHorizontally(
-                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
-                    initialOffsetX = { -it / 7 },
-                ) + fadeIn(animationSpec = tween(CampusMotion.routeEnterDuration), initialAlpha = .72f) +
-                    scaleIn(
-                        animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.enterEasing),
-                        initialScale = .985f,
-                    )
+                pageEnterTransition(direction = -1)
             }
         },
         popExitTransition = {
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                slideOutHorizontally(
-                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
-                    targetOffsetX = { it / 12 },
-                ) + fadeOut(animationSpec = tween(CampusMotion.routeExitDuration), targetAlpha = .82f)
+                pageExitTransition(direction = 1)
             }
         },
-            ) {
+    ) {
         composable("home") {
             DashboardScreen(repository) { route ->
                 navController.navigate(route) {
