@@ -69,7 +69,8 @@ def audit_temporal_artifact(
     output_shape = list(actual_output.shape)
 
     failures: list[str] = []
-    if temporal.get("source_sha256", "").lower() != model_sha256:
+    source_sha256 = temporal.get("source_sha256")
+    if not _valid_sha256(source_sha256) or source_sha256.lower() != model_sha256:
         failures.append("source_sha256")
     if actual_input.name != EXPECTED_INPUT_NAME or card_input.get("name") != actual_input.name:
         failures.append("input_name")

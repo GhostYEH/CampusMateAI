@@ -93,6 +93,20 @@ def test_temporal_artifact_rejects_sha_mismatch(tmp_path):
     assert "source_sha256" in audit.failures
 
 
+def test_temporal_artifact_reports_malformed_sha_without_crashing(tmp_path):
+    """Catches malformed model-card values escaping the structured audit result."""
+    model_path = tmp_path / "temporal.onnx"
+    card_path = tmp_path / "model_card.json"
+    card = valid_model_card(write_temporal_model(model_path))
+    card["temporal_model"]["source_sha256"] = None
+    write_model_card(card_path, card)
+
+    audit = audit_temporal_artifact(model_path, card_path)
+
+    assert audit.passed is False
+    assert "source_sha256" in audit.failures
+
+
 def test_temporal_artifact_rejects_wrong_shape_and_label_order(tmp_path):
     """Catches a valid ONNX file being consumed with an incompatible runtime contract."""
     model_path = tmp_path / "temporal.onnx"
