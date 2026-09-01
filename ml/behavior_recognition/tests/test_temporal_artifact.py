@@ -5,6 +5,7 @@ from pathlib import Path
 import onnx
 from onnx import TensorProto, helper
 
+from behavior_recognition.cli import main
 from behavior_recognition.temporal_artifact import audit_temporal_artifact
 
 
@@ -119,3 +120,23 @@ def test_temporal_artifact_reports_missing_training_provenance(tmp_path):
 
     assert audit.passed is False
     assert "training_provenance" in audit.failures
+
+
+def test_temporal_audit_cli_writes_machine_readable_result(tmp_path):
+    """Catches artifact audit being unavailable to repeatable release tooling."""
+    model_path = tmp_path / "temporal.onnx"
+    card_path = tmp_path / "model_card.json"
+    output_path = tmp_path / "audit.json"
+    write_model_card(card_path, valid_model_card(write_temporal_model(model_path)))
+
+    exit_code = main([
+        "temporal-audit",
+        "--model", str(model_path),
+        "--model-card", str(card_path),
+        "--output", str(output_path),
+    ])
+
+    result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert result["passed"] is True
+    assert result["input_shape"] == [1, 8, 3, 224, 224]
