@@ -10,9 +10,15 @@ from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 
 from .calibrate import search_rejection_thresholds
-from .constants import CLASS_NAMES
+from .constants import CLASS_NAMES, PRODUCT_CLASS_NAMES
 from .data import BehaviorDataset, materialize_roi_cache
-from .metrics import apply_rejection, classification_report, fit_temperature, softmax
+from .metrics import (
+    apply_rejection,
+    classification_report,
+    fit_temperature,
+    project_product_probabilities,
+    softmax,
+)
 from .models import build_model
 
 
@@ -44,6 +50,38 @@ def collapsed_binary_report(labels: np.ndarray, probabilities: np.ndarray) -> di
         "confusion_matrix": confusion_matrix(expected, predicted, labels=[0, 1]).tolist(),
         "sample_count": int(len(expected)),
         "note": "Candidate Top-1 collapsed to the packaged V3.2 binary semantics.",
+    }
+
+
+def build_space_reports(
+    labels: np.ndarray,
+    uncalibrated: np.ndarray,
+    calibrated: np.ndarray,
+) -> dict:
+    product_labels, product_uncalibrated = project_product_probabilities(
+        labels,
+        uncalibrated,
+        CLASS_NAMES,
+    )
+    _, product_calibrated = project_product_probabilities(
+        labels,
+        calibrated,
+        CLASS_NAMES,
+    )
+    return {
+        "test_uncalibrated": classification_report(labels, uncalibrated, CLASS_NAMES),
+        "test_calibrated": classification_report(labels, calibrated, CLASS_NAMES),
+        "product_class_names": list(PRODUCT_CLASS_NAMES),
+        "test_product_uncalibrated": classification_report(
+            product_labels,
+            product_uncalibrated,
+            PRODUCT_CLASS_NAMES,
+        ),
+        "test_product_calibrated": classification_report(
+            product_labels,
+            product_calibrated,
+            PRODUCT_CLASS_NAMES,
+        ),
     }
 
 
@@ -140,8 +178,7 @@ def evaluate_checkpoint(
         "test_sample_count": len(test_dataset),
         "temperature": temperature,
         "rejection": rejection,
-        "test_uncalibrated": classification_report(test_labels, uncalibrated, CLASS_NAMES),
-        "test_calibrated": classification_report(test_labels, calibrated, CLASS_NAMES),
+        **build_space_reports(test_labels, uncalibrated, calibrated),
         "candidate_binary_diagnostic": collapsed_binary_report(test_labels, calibrated),
         "test_rejected": rejected_report,
     }
