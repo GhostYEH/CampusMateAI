@@ -3,6 +3,7 @@ package com.example.campusai.ui.screens.profile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.BuildConfig
+import com.example.campusai.features.gamification.DashboardStyle
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.Danger
@@ -39,6 +41,7 @@ fun SettingsScreen(
 ) {
     val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    val dashboardStyle by repository.dashboardStyle.collectAsStateWithLifecycle()
     val reminders by repository.remindersEnabled.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
     val modelStatus by repository.expressionSessionManager.status.collectAsStateWithLifecycle()
@@ -75,6 +78,11 @@ fun SettingsScreen(
                         subtitle = "减少页面进入与状态切换动画",
                         checked = reduceMotion,
                     ) { scope.launch { repository.setReduceMotion(it) } }
+                    SettingsDivider()
+                    DashboardStyleSelector(
+                        selected = dashboardStyle,
+                        onSelected = { style -> scope.launch { repository.setDashboardStyle(style) } },
+                    )
                 }
             }
             if (BuildConfig.DEBUG) {
@@ -179,6 +187,55 @@ fun SettingsScreen(
                     TextButton(onClick = { showLogoutDialog = false }) { Text("取消") }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun DashboardStyleSelector(
+    selected: DashboardStyle,
+    onSelected: (DashboardStyle) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 13.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SettingsIcon(Icons.Default.DashboardCustomize)
+            Column(Modifier.padding(start = 12.dp)) {
+                Text("首页风格", color = ReferenceText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(3.dp))
+                Text("同一套校园数据，两种首页体验", color = ReferenceMuted, fontSize = 10.5.sp)
+            }
+        }
+        Spacer(Modifier.height(11.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DashboardStyle.entries.forEach { style ->
+                val active = selected == style
+                val label = if (style == DashboardStyle.CLASSIC) "经典首页" else "游戏化首页"
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (active) ReferencePrimarySoft else ReferencePageBackground)
+                        .then(if (active) Modifier.border(1.dp, ReferencePrimary.copy(alpha = .28f), RoundedCornerShape(14.dp)) else Modifier)
+                        .campusClickable { onSelected(style) }
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        if (style == DashboardStyle.CLASSIC) Icons.Default.Home else Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (active) ReferencePrimary else ReferenceMuted,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        label,
+                        color = if (active) ReferencePrimary else ReferenceMuted,
+                        fontSize = 11.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+            }
         }
     }
 }

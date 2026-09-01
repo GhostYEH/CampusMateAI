@@ -62,6 +62,11 @@ import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
+import com.example.campusai.ui.screens.services.LeaveRequestScreen
+import com.example.campusai.ui.screens.services.MyRequestsScreen
+import com.example.campusai.ui.screens.services.RepairRequestScreen
+import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
+import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
@@ -207,7 +212,11 @@ fun AppNavHost(
         },
             ) {
         composable("home") {
-            DashboardScreen(repository) { route ->
+            DashboardScreen(
+                repository = repository,
+                examRepository = modules.exams,
+                focusRepository = modules.focus,
+            ) { route ->
                 navController.navigate(route) {
                     popUpTo("home") { inclusive = false }
                     launchSingleTop = true
@@ -522,7 +531,40 @@ fun AppNavHost(
             )
         }
 
-        // Feedback remains a direct support channel; approval-style service routes are removed in V3.
+        // ── 办事大厅 ──
+        composable("services") {
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+            ServicesScreen(
+                repository = modules.services,
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> go(route) },
+            )
+        }
+        composable("service_leave") {
+            LeaveRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_repair") {
+            RepairRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
         composable(
             route = "service_form/{kind}",
             arguments = listOf(navArgument("kind") { type = NavType.StringType }),
@@ -531,7 +573,29 @@ fun AppNavHost(
                 kind = backStackEntry.arguments?.getString("kind") ?: "feedback",
                 repository = modules.services,
                 onBack = { navController.popBackStack() },
-                onSubmitted = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_mine") {
+            MyRequestsScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("service_detail/$id") },
+            )
+        }
+        composable(
+            route = "service_detail/{requestId}",
+            arguments = listOf(navArgument("requestId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            ServiceRequestDetailScreen(
+                requestId = backStackEntry.arguments?.getLong("requestId") ?: 0L,
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
             )
         }
 

@@ -55,6 +55,7 @@ class RemoteFocusRepository(
             actualMinutes = (session.durationSeconds / 60).coerceAtLeast(0),
             finished = true,
             endedAt = ended.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
+            sourceId = session.id,
         )
     }
 

@@ -8,4 +8,5 @@ data class Task(
     val done: Boolean,
     val description: String = "",
     val importance: String = "unknown",
+    val completedAt: String? = null,
 )
