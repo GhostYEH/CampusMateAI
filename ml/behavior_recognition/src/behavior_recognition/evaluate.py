@@ -57,6 +57,8 @@ def build_space_reports(
     labels: np.ndarray,
     uncalibrated: np.ndarray,
     calibrated: np.ndarray,
+    *,
+    split: str = "test",
 ) -> dict:
     product_labels, product_uncalibrated = project_product_probabilities(
         labels,
@@ -69,15 +71,15 @@ def build_space_reports(
         CLASS_NAMES,
     )
     return {
-        "test_uncalibrated": classification_report(labels, uncalibrated, CLASS_NAMES),
-        "test_calibrated": classification_report(labels, calibrated, CLASS_NAMES),
+        f"{split}_uncalibrated": classification_report(labels, uncalibrated, CLASS_NAMES),
+        f"{split}_calibrated": classification_report(labels, calibrated, CLASS_NAMES),
         "product_class_names": list(PRODUCT_CLASS_NAMES),
-        "test_product_uncalibrated": classification_report(
+        f"{split}_product_uncalibrated": classification_report(
             product_labels,
             product_uncalibrated,
             PRODUCT_CLASS_NAMES,
         ),
-        "test_product_calibrated": classification_report(
+        f"{split}_product_calibrated": classification_report(
             product_labels,
             product_calibrated,
             PRODUCT_CLASS_NAMES,
@@ -178,6 +180,12 @@ def evaluate_checkpoint(
         "test_sample_count": len(test_dataset),
         "temperature": temperature,
         "rejection": rejection,
+        **build_space_reports(
+            val_labels,
+            softmax(val_logits),
+            val_calibrated,
+            split="validation",
+        ),
         **build_space_reports(test_labels, uncalibrated, calibrated),
         "candidate_binary_diagnostic": collapsed_binary_report(test_labels, calibrated),
         "test_rejected": rejected_report,

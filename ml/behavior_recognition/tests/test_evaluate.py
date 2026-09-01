@@ -77,3 +77,19 @@ def test_space_reports_include_probability_level_product_evaluation():
         "PHONE_INTERACTION",
         "NO_VISIBLE_STUDY",
     ]
+
+
+def test_space_reports_can_label_validation_without_reusing_test_keys():
+    """Catches offline selection accidentally reading locked test metrics."""
+    labels = np.array([0, 1, 2, 3])
+    probabilities = np.eye(4, dtype=np.float32)
+
+    report = build_space_reports(
+        labels,
+        probabilities,
+        probabilities,
+        split="validation",
+    )
+
+    assert "validation_product_calibrated" in report
+    assert "test_product_calibrated" not in report
