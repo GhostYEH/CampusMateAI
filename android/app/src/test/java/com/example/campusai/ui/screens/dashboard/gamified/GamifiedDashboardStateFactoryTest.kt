@@ -37,10 +37,30 @@ class GamifiedDashboardStateFactoryTest {
         assertTrue(state.mainQuests.isEmpty())
         assertNotNull(state.mainQuestEmptyMessage)
         assertEquals(
-            listOf("focus", "counselor", "classrooms", "services", "lostfound", "exams"),
+            listOf("focus", "counselor", "classrooms", "service_form/feedback", "lostfound", "exams"),
             state.sideQuests.map(SideQuestUiState::route),
         )
         assertTrue(state.campusWorld.isEmpty())
+    }
+
+    @Test
+    fun achievementsShowMostRecentlyUnlockedFirstThenLockedProgress() {
+        val state = GamifiedDashboardStateFactory.create(
+            GamifiedDashboardInputs(
+                snapshot = GamificationSnapshot(
+                    achievements = listOf(
+                        AchievementUnlock("first-focus", Instant.parse("2026-08-30T02:00:00Z")),
+                        AchievementUnlock("focus-60", Instant.parse("2026-09-01T01:00:00Z")),
+                    ),
+                ),
+                now = now,
+                zoneId = zone,
+            ),
+        )
+
+        assertEquals("focus-60", state.achievements[0].id)
+        assertEquals("first-focus", state.achievements[1].id)
+        assertFalse(state.achievements[2].unlocked)
     }
 
     @Test

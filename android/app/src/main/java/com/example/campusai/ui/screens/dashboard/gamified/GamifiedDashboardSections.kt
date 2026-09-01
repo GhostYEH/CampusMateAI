@@ -1,6 +1,7 @@
 package com.example.campusai.ui.screens.dashboard.gamified
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -62,17 +63,26 @@ import com.example.campusai.ui.theme.TextPrimary
 internal fun MainQuestSection(
     quests: List<MainQuestUiState>,
     emptyMessage: String?,
+    reduceMotion: Boolean,
     onNavigate: (String) -> Unit,
 ) {
     DashboardPanel {
         SectionHeader("MAIN QUEST", "今日主线", Icons.AutoMirrored.Filled.Assignment)
         Spacer(Modifier.height(12.dp))
-        if (quests.isEmpty()) {
-            EmptyState(emptyMessage ?: "暂无主线", Icons.AutoMirrored.Filled.Assignment) { onNavigate("tasks") }
-        } else {
-            quests.forEachIndexed { index, quest ->
-                QuestCard(quest, onNavigate)
-                if (index != quests.lastIndex) Spacer(Modifier.height(9.dp))
+        Crossfade(
+            targetState = quests to emptyMessage,
+            animationSpec = if (reduceMotion) snap() else tween(240),
+            label = "main-quest-state",
+        ) { (visibleQuests, visibleEmptyMessage) ->
+            Column {
+                if (visibleQuests.isEmpty()) {
+                    EmptyState(visibleEmptyMessage ?: "暂无主线", Icons.AutoMirrored.Filled.Assignment) { onNavigate("tasks") }
+                } else {
+                    visibleQuests.forEachIndexed { index, quest ->
+                        QuestCard(quest, onNavigate)
+                        if (index != visibleQuests.lastIndex) Spacer(Modifier.height(9.dp))
+                    }
+                }
             }
         }
     }
@@ -155,9 +165,12 @@ private fun sideQuestVisual(route: String): Pair<ImageVector, Color> = when (rou
     "focus" -> Icons.Default.Timer to GamificationTokens.XpAmber
     "counselor" -> Icons.Default.AutoAwesome to GamificationTokens.Purple
     "classrooms" -> Icons.Default.MeetingRoom to GamificationTokens.Sky
-    "services" -> Icons.AutoMirrored.Filled.Assignment to GamificationTokens.CampusBlue
     "lostfound" -> Icons.Default.Search to GamificationTokens.SuccessGreen
-    else -> Icons.Default.Event to GamificationTokens.Indigo
+    else -> if (route.startsWith("service_")) {
+        Icons.AutoMirrored.Filled.Assignment to GamificationTokens.CampusBlue
+    } else {
+        Icons.Default.Event to GamificationTokens.Indigo
+    }
 }
 
 @Composable
@@ -221,8 +234,14 @@ internal fun AchievementSection(
                 Column(Modifier.padding(start = 12.dp).weight(1f)) {
                     Row {
                         Text(achievement.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        AnimatedVisibility(achievement.unlocked) {
-                            Icon(Icons.Default.CheckCircle, null, tint = GamificationTokens.SuccessGreen, modifier = Modifier.padding(start = 5.dp).size(15.dp))
+                        if (reduceMotion) {
+                            if (achievement.unlocked) {
+                                Icon(Icons.Default.CheckCircle, null, tint = GamificationTokens.SuccessGreen, modifier = Modifier.padding(start = 5.dp).size(15.dp))
+                            }
+                        } else {
+                            AnimatedVisibility(achievement.unlocked) {
+                                Icon(Icons.Default.CheckCircle, null, tint = GamificationTokens.SuccessGreen, modifier = Modifier.padding(start = 5.dp).size(15.dp))
+                            }
                         }
                     }
                     Text(achievement.description, color = Muted, fontSize = 9.5.sp, maxLines = 1)
