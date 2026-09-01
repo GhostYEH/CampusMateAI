@@ -13,5 +13,6 @@ import "./styles/counselor-reference.css";
 import "./styles/study-reference.css";
 import "./styles/study-secondary.css";
 import "./styles/layout-system.css";
+import "./styles/app-overlays.css";
 
 createApp(App).use(createPinia()).use(router).mount("#app");

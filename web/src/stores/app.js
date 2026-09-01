@@ -6,7 +6,7 @@ function _normalizeUser(user) {
   return {
     ...user,
     name: user.name || user.display_name || user.username,
-    detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || ({ student: "学生", admin: "管理员" }[user.role]),
+    detail: user.detail || [user.college, user.major || user.grade].filter(Boolean).join(" · ") || "学生",
   };
 }
 

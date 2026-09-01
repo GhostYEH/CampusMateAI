@@ -12,10 +12,8 @@ test("route views outside the initial shells are lazy loaded", () => {
   assert.deepEqual(eagerViewImports, [
     "./views/LoginView.vue",
     "./views/AppShell.vue",
-    "./views/admin/AdminShell.vue",
   ]);
   assert.match(routerSource, /import\("\.\/views\/student\/StudentHomeView\.vue"\)/);
-  assert.match(routerSource, /const AdminDashboardView = \(\) => import\("\.\/views\/admin\/AdminDashboardView\.vue"\)/);
 });
 
 test("production build creates stable vendor cache groups", () => {

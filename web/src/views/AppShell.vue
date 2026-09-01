@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
-import ToastHost from "../components/teacher/ToastHost.vue";
-import ConfirmHost from "../components/teacher/ConfirmHost.vue";
+import AppToastHost from "../components/AppToastHost.vue";
+import AppConfirmHost from "../components/AppConfirmHost.vue";
 import { getStudentAssignments, getStudentCourses } from "../services/studentApi";
 
 const store = useAppStore();
@@ -79,7 +79,7 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
 
 <template>
   <div class="app-layout student-layout" :class="{ collapsed, 'reduce-motion': store.reduceMotion, 'counselor-mode': route.path === '/counselor', 'study-mode': route.path === '/study' }">
-    <ToastHost /><ConfirmHost />
+    <AppToastHost /><AppConfirmHost />
     <button class="mobile-menu" aria-label="打开导航" @click="mobileOpen = true"><UiIcon name="PhList" /></button>
     <div v-if="mobileOpen" class="mobile-backdrop" @click="mobileOpen = false"></div>
     <aside class="sidebar" :class="{ open: mobileOpen }">
@@ -110,8 +110,8 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
         <button class="icon-button notification-button" aria-label="通知" @click="go('notifications')"><UiIcon name="PhBell" :size="20" /><i></i></button>
       </header>
       <div v-if="searchOpen && search.length >= 2" class="global-search-panel">
-        <div v-if="searchLoading" class="portal-empty">正在搜索真实数据…</div>
-        <div v-else-if="!searchResults.length" class="portal-empty">没有匹配结果</div>
+        <div v-if="searchLoading" class="global-search-empty">正在搜索真实数据…</div>
+        <div v-else-if="!searchResults.length" class="global-search-empty">没有匹配结果</div>
         <button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="chooseSearchResult(item)"><span><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></span><UiIcon name="PhArrowRight" :size="15" /></button>
       </div>
       <RouterView :search-query="search" />

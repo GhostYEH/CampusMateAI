@@ -315,27 +315,6 @@ export async function uploadCommunityImage(file) {
   return data;
 }
 
-export async function adminListCommunityPosts(params = {}) {
-  const { data } = await client.get("/admin/community/posts", { params });
-  return data;
-}
-export async function adminHideCommunityPost(id) {
-  const { data } = await client.post(`/admin/community/posts/${id}/hide`);
-  return data;
-}
-export async function adminListCommunityReports(params = {}) {
-  const { data } = await client.get("/admin/community/reports", { params });
-  return data;
-}
-export async function adminResolveCommunityReport(id, action) {
-  const { data } = await client.post(`/admin/community/reports/${id}/resolve`, null, { params: { action } });
-  return data;
-}
-export async function adminMigrateLostFound() {
-  const { data } = await client.post("/admin/community/migrate-lost-found");
-  return data;
-}
-
 export function resolveAssetUrl(url) {
   if (!url) return url;
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) return url;
