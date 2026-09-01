@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test src/features/digitalHuman/digitalHumanAudio.test.js src/features/digitalHuman/mobileRuntime.test.js src/components/counselor/DigitalHumanPlacement.test.js tests/performance-contract.test.mjs"
+    "test": "node --test src/features/digitalHuman/digitalHumanAudio.test.js src/features/digitalHuman/mobileRuntime.test.js src/components/counselor/DigitalHumanPlacement.test.js tests/performance-contract.test.mjs tests/gamification-model.test.mjs tests/gamification-repository.test.mjs tests/gamified-home-contract.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/vue": "^2.2.1",
