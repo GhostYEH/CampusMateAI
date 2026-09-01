@@ -16,9 +16,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
-import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
@@ -35,6 +35,30 @@ import com.kashif_e.backdrop.shadow.Shadow
 
 val LocalCampusBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
+private fun DrawScope.drawAmbientGlow(
+    color: Color,
+    center: Offset,
+    radius: Float,
+) {
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(color, Color.Transparent),
+            center = center,
+            radius = radius,
+        ),
+        radius = radius,
+        center = center,
+    )
+}
+
+@Composable
+private fun defaultGlassTint(role: CampusGlassRole): Color = when (role) {
+    CampusGlassRole.NAVIGATION -> Surface.copy(alpha = .46f)
+    CampusGlassRole.PANEL -> Surface.copy(alpha = .54f)
+    CampusGlassRole.CONTROL -> PrimarySoft.copy(alpha = .48f)
+    CampusGlassRole.DENSE -> Surface.copy(alpha = .68f)
+}
+
 @Composable
 fun CampusGlassScene(
     darkMode: Boolean,
@@ -43,7 +67,7 @@ fun CampusGlassScene(
 ) {
     val backdrop = rememberLayerBackdrop()
     val primary = Primary
-    val ambient = if (darkMode) {
+    val ambientColors = if (darkMode) {
         listOf(Color(0xFF07161D), Color(0xFF102B37), Color(0xFF183047))
     } else {
         listOf(Color(0xFFF4FAFC), Color(0xFFE4F3F7), Color(0xFFE9EEF9))
@@ -53,29 +77,17 @@ fun CampusGlassScene(
             Modifier
                 .fillMaxSize()
                 .layerBackdrop(backdrop)
-                .background(
-                    Brush.linearGradient(
-                        colors = ambient,
-                    ),
-                )
+                .background(Brush.linearGradient(ambientColors))
                 .drawBehind {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(primary.copy(alpha = if (darkMode) .24f else .18f), Color.Transparent),
-                            center = Offset(size.width * .86f, size.height * .12f),
-                            radius = size.minDimension * .78f,
-                        ),
-                        radius = size.minDimension * .78f,
+                    drawAmbientGlow(
+                        color = primary.copy(alpha = if (darkMode) .24f else .18f),
                         center = Offset(size.width * .86f, size.height * .12f),
+                        radius = size.minDimension * .78f,
                     )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0xFF8E7CFF).copy(alpha = .13f), Color.Transparent),
-                            center = Offset(size.width * .08f, size.height * .74f),
-                            radius = size.minDimension * .62f,
-                        ),
-                        radius = size.minDimension * .62f,
+                    drawAmbientGlow(
+                        color = Color(0xFF8E7CFF).copy(alpha = .13f),
                         center = Offset(size.width * .08f, size.height * .74f),
+                        radius = size.minDimension * .62f,
                     )
                 },
         )
@@ -96,14 +108,14 @@ fun Modifier.campusGlass(
     val backdrop = LocalCampusBackdrop.current
     val reduceMotion = LocalReduceMotion.current
     val profile = campusGlassProfile(Build.VERSION.SDK_INT, reduceMotion)
-    val effects = profile.effectsFor(role)
-    val resolvedTint = if (tint != Color.Unspecified) tint else when (role) {
-        CampusGlassRole.NAVIGATION -> Surface.copy(alpha = .46f)
-        CampusGlassRole.PANEL -> Surface.copy(alpha = .54f)
-        CampusGlassRole.CONTROL -> PrimarySoft.copy(alpha = .48f)
-        CampusGlassRole.DENSE -> Surface.copy(alpha = .68f)
-    }
-    val activeGlow = if (reduceMotion) 0f else interactionProgress.coerceIn(0f, 1f)
+    val roleEffects = profile.effectsFor(role)
+    val resolvedTint = if (tint == Color.Unspecified) defaultGlassTint(role) else tint
+    val glowProgress = if (reduceMotion) 0f else interactionProgress.coerceIn(0f, 1f)
+    val usesVibrancy = role == CampusGlassRole.NAVIGATION ||
+        role == CampusGlassRole.PANEL ||
+        glowProgress > 0f
+    val usesLens = profile.lensEnabled &&
+        (roleEffects.lensAtRest || roleEffects.lensOnPress && glowProgress > 0f)
 
     if (backdrop == null || profile.quality == CampusGlassQuality.PAINTED) {
         return this
@@ -111,18 +123,20 @@ fun Modifier.campusGlass(
             .background(resolvedTint)
             .border(1.dp, Color.White.copy(alpha = .38f), shape)
             .drawBehind {
-                if (activeGlow > 0f || effects.glowAtRest) {
+                if (glowProgress > 0f || roleEffects.glowAtRest) {
+                    val center = Offset(size.width * .76f, size.height * .18f)
+                    val radius = size.maxDimension * .72f
                     drawCircle(
                         brush = Brush.radialGradient(
                             listOf(
-                                glowColor.copy(alpha = .16f + activeGlow * .18f),
+                                glowColor.copy(alpha = .16f + glowProgress * .18f),
                                 Color.Transparent,
                             ),
-                            center = Offset(size.width * .76f, size.height * .18f),
-                            radius = size.maxDimension * .72f,
+                            center = center,
+                            radius = radius,
                         ),
-                        radius = size.maxDimension * .72f,
-                        center = Offset(size.width * .76f, size.height * .18f),
+                        radius = radius,
+                        center = center,
                     )
                 }
             }
@@ -132,26 +146,24 @@ fun Modifier.campusGlass(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            if (role == CampusGlassRole.NAVIGATION || role == CampusGlassRole.PANEL || activeGlow > 0f) {
-                vibrancy()
-            }
-            if (effects.blurRadiusDp > 0f) blur(effects.blurRadiusDp.dp.toPx())
-            if (profile.lensEnabled && (effects.lensAtRest || effects.lensOnPress && activeGlow > 0f)) {
-                val progress = if (effects.lensAtRest) 1f else activeGlow
+            if (usesVibrancy) vibrancy()
+            if (roleEffects.blurRadiusDp > 0f) blur(roleEffects.blurRadiusDp.dp.toPx())
+            if (usesLens) {
+                val progress = if (roleEffects.lensAtRest) 1f else glowProgress
                 lens(12.dp.toPx() * progress, 22.dp.toPx() * progress)
             }
         },
         highlight = {
-            Highlight.Ambient.copy(alpha = .58f + activeGlow * .32f)
+            Highlight.Ambient.copy(alpha = .58f + glowProgress * .32f)
         },
         shadow = {
             Shadow(
                 radius = if (role == CampusGlassRole.NAVIGATION) 14.dp else 7.dp,
-                color = glowColor.copy(alpha = .08f + activeGlow * .12f),
+                color = glowColor.copy(alpha = .08f + glowProgress * .12f),
             )
         },
         onDrawSurface = {
-            drawRect(lerp(resolvedTint, glowColor.copy(alpha = .18f), activeGlow * .22f))
+            drawRect(lerp(resolvedTint, glowColor.copy(alpha = .18f), glowProgress * .22f))
         },
     )
 }

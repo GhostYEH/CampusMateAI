@@ -5,8 +5,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonColors
@@ -19,6 +19,13 @@ import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FloatingActionButtonElevation
 import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.Button as MaterialButton
+import androidx.compose.material3.Card as MaterialCard
+import androidx.compose.material3.ExtendedFloatingActionButton as MaterialExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton as MaterialFloatingActionButton
+import androidx.compose.material3.IconButton as MaterialIconButton
+import androidx.compose.material3.OutlinedButton as MaterialOutlinedButton
+import androidx.compose.material3.TextButton as MaterialTextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -76,17 +83,17 @@ fun GlassButton(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.Button(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialButton(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, enabled, source, colors.containerColor),
+        modifier = glassControlModifier(modifier, shape, enabled, resolvedInteractionSource, colors.containerColor),
         enabled = enabled,
         shape = shape,
         colors = transparentButtonColors(colors),
         elevation = elevation,
         border = border,
         contentPadding = contentPadding,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
@@ -104,17 +111,17 @@ fun GlassOutlinedButton(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.OutlinedButton(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialOutlinedButton(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, enabled, source, PrimarySoft),
+        modifier = glassControlModifier(modifier, shape, enabled, resolvedInteractionSource, PrimarySoft),
         enabled = enabled,
         shape = shape,
         colors = transparentButtonColors(colors),
         elevation = elevation,
         border = border,
         contentPadding = contentPadding,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
@@ -132,17 +139,17 @@ fun GlassTextButton(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.TextButton(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialTextButton(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, enabled, source, PrimarySoft),
+        modifier = glassControlModifier(modifier, shape, enabled, resolvedInteractionSource, PrimarySoft),
         enabled = enabled,
         shape = shape,
         colors = transparentButtonColors(colors),
         elevation = elevation,
         border = border,
         contentPadding = contentPadding,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
@@ -156,10 +163,10 @@ fun GlassIconButton(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.IconButton(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialIconButton(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, CircleShape, enabled, source, PrimarySoft),
+        modifier = glassControlModifier(modifier, CircleShape, enabled, resolvedInteractionSource, PrimarySoft),
         enabled = enabled,
         colors = IconButtonDefaults.iconButtonColors(
             containerColor = Color.Transparent,
@@ -167,7 +174,7 @@ fun GlassIconButton(
             disabledContainerColor = Color.Transparent,
             disabledContentColor = colors.disabledContentColor,
         ),
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
@@ -183,15 +190,15 @@ fun GlassFloatingActionButton(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.FloatingActionButton(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialFloatingActionButton(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, true, source, containerColor),
+        modifier = glassControlModifier(modifier, shape, true, resolvedInteractionSource, containerColor),
         shape = shape,
         containerColor = Color.Transparent,
         contentColor = contentColor,
         elevation = elevation,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
@@ -209,18 +216,18 @@ fun GlassExtendedFloatingActionButton(
     elevation: FloatingActionButtonElevation = FloatingActionButtonDefaults.elevation(),
     interactionSource: MutableInteractionSource? = null,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.ExtendedFloatingActionButton(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialExtendedFloatingActionButton(
         text = text,
         icon = icon,
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, true, source, containerColor),
+        modifier = glassControlModifier(modifier, shape, true, resolvedInteractionSource, containerColor),
         expanded = expanded,
         shape = shape,
         containerColor = Color.Transparent,
         contentColor = contentColor,
         elevation = elevation,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
     )
 }
 
@@ -240,11 +247,11 @@ fun GlassCard(
     border: BorderStroke? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    androidx.compose.material3.Card(
+    MaterialCard(
+        // Cards are frequently repeated in lazy lists, so they use the
+        // lightweight glass stack without blur/lens at rest.
         modifier = modifier.campusGlass(
             shape = shape,
-            // Cards are frequently repeated in lazy lists, so they use the
-            // lightweight glass stack without blur/lens at rest.
             role = CampusGlassRole.DENSE,
             tint = colors.containerColor,
         ),
@@ -268,16 +275,16 @@ fun GlassCard(
     interactionSource: MutableInteractionSource? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    androidx.compose.material3.Card(
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    MaterialCard(
         onClick = onClick,
-        modifier = glassControlModifier(modifier, shape, enabled, source, colors.containerColor),
+        modifier = glassControlModifier(modifier, shape, enabled, resolvedInteractionSource, colors.containerColor),
         enabled = enabled,
         shape = shape,
         colors = transparentCardColors(colors),
         elevation = elevation,
         border = border,
-        interactionSource = source,
+        interactionSource = resolvedInteractionSource,
         content = content,
     )
 }
