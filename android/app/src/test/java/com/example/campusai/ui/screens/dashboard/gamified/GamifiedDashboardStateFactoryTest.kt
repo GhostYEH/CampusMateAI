@@ -37,7 +37,7 @@ class GamifiedDashboardStateFactoryTest {
         assertTrue(state.mainQuests.isEmpty())
         assertNotNull(state.mainQuestEmptyMessage)
         assertEquals(
-            listOf("focus", "counselor", "classrooms", "service_form/feedback", "lostfound", "exams"),
+            listOf("focus", "counselor", "classrooms", "services", "lostfound", "exams"),
             state.sideQuests.map(SideQuestUiState::route),
         )
         assertTrue(state.campusWorld.isEmpty())
