@@ -199,14 +199,14 @@ class EduCookie(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        if any(char in value for char in "()<>@,;:\\"/[]?={} \t") or _has_control_characters(value):
+        if any(char in value for char in "()<>@,;:\\\"/[]?={} \t") or _has_control_characters(value):
             raise ValueError("cookie name contains invalid characters")
         return value
 
     @field_validator("value")
     @classmethod
     def validate_value(cls, value: str) -> str:
-        if _has_control_characters(value) or any(char in value for char in ";,\\""):
+        if _has_control_characters(value) or any(char in value for char in ";,\\\""):
             raise ValueError("cookie value contains control characters")
         return value
 

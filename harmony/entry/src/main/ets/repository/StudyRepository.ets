@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ApiClient } from '../data/ApiClient';
-import { FocusMode, StudyBehaviorSummary, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish } from '../data/Models';
+import { FocusMode, StudyBehaviorSummary, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish, TaskBreakdownRequest, TaskBreakdownResponse } from '../data/Models';
 
 interface StudyGoalUpdateRequest {
   target_minutes: number;
@@ -30,8 +30,8 @@ export class StudyRepository {
     return this.client.request<StudyDailyGoal>(http.RequestMethod.PUT, 'study/goals/daily', request);
   }
 
-  async start(mode: FocusMode, goal?: string, relatedTaskId?: string): Promise<StudySession> {
-    const payload: StudySessionCreate = { mode: mode, goal: goal, related_task_id: relatedTaskId };
+  async start(mode: FocusMode, goal?: string, relatedTaskId?: string, plannedDurationSeconds?: number): Promise<StudySession> {
+    const payload: StudySessionCreate = { mode: mode, planned_duration_seconds: plannedDurationSeconds, goal: goal, related_task_id: relatedTaskId };
     return this.client.request<StudySession>(http.RequestMethod.POST, 'study/sessions', payload);
   }
 
@@ -46,5 +46,9 @@ export class StudyRepository {
   async finish(id: string, report?: string, behaviorSummary?: StudyBehaviorSummary): Promise<StudySession> {
     const body: StudySessionFinish = { self_report: report, behavior_summary: behaviorSummary };
     return this.client.request<StudySession>(http.RequestMethod.POST, `study/sessions/${id}/finish`, body);
+  }
+
+  async breakdownTask(request: TaskBreakdownRequest): Promise<TaskBreakdownResponse> {
+    return this.client.request<TaskBreakdownResponse>(http.RequestMethod.POST, 'study/task-breakdown', request);
   }
 }

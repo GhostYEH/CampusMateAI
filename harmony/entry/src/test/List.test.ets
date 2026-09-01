@@ -29,6 +29,11 @@ import focusCameraContractTest from './ets/data/FocusCameraContract.test';
 import cpmChatDataSourceTest from './ets/counselor/CpmChatDataSource.test';
 import foregroundRefreshGateTest from './ets/core/ForegroundRefreshGate.test';
 import liquidGlassDockSpecTest from './ets/ui/LiquidGlassDockSpec.test';
+import focusPresentationStateTest from './ets/focus/FocusPresentationState.test';
+import focusPlanRepositoryTest from './ets/focus/FocusPlanRepository.test';
+import focusSessionStateTest from './ets/focus/FocusSessionState.test';
+import focusVoiceStateTest from './ets/focus/FocusVoiceState.test';
+import focusRealtimeVoiceRepositoryTest from './ets/focus/FocusRealtimeVoiceRepository.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -62,4 +67,9 @@ export default function testsuite(): void {
   cpmChatDataSourceTest();
   foregroundRefreshGateTest();
   liquidGlassDockSpecTest();
+  focusPresentationStateTest();
+  focusPlanRepositoryTest();
+  focusSessionStateTest();
+  focusVoiceStateTest();
+  focusRealtimeVoiceRepositoryTest();
 }

@@ -10,6 +10,9 @@ import { EduCookieDto } from './EduCookieDto';
 
 const ENABLE_API_LOG: boolean = false;
 
+class EmptyRequest {
+}
+
 export interface SseEvent {
   event: string;
   data: string;
@@ -417,7 +420,9 @@ export class ApiClient implements ChaoxingApiClient {
     return this.request<EduConnectionDto>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/continue`, body as object);
   }
   async eduPreLogin(connectionId: string): Promise<EduPreLoginResult> {
-    return this.request<EduPreLoginResult>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/pre-login`, {} as object);
+    const body: EmptyRequest = new EmptyRequest();
+    return this.request<EduPreLoginResult>('POST' as http.RequestMethod,
+      `edu/connections/${encodeURIComponent(connectionId)}/pre-login`, body);
   }
   async eduScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
     const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';

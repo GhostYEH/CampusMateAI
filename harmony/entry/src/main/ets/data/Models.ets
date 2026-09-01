@@ -18,6 +18,10 @@ export interface PagedResponse<T> { items: T[]; total: number; page: number; pag
 export interface UserItem { id?: string; username?: string; name?: string; display_name?: string; role?: string; detail?: string; college?: string; major?: string; grade?: string; university_id?: string; university_name?: string; }
 export interface MeResponse { user: UserItem; }
 export interface ChatResponse { answer?: string; message?: string; }
+export interface FocusAiAskResponse { answer: string; }
+export interface FocusAiAskRequest { text: string; }
+export interface FocusRealtimeVoiceSession { session_id: string; websocket_path: string; }
+export interface FocusRealtimeVoiceStop { session_id: string; stopped: boolean; }
 export interface ExpressionSignalRequest { label: string; confidence: number; is_stable: boolean; timestamp: number; model_version: string; }
 export interface ChatRequest { message: string; session_id: string; stream: boolean; expression_signal?: ExpressionSignalRequest; }
 export interface ExamItem { id: string; course_name: string; exam_date: string; start_time?: string; end_time?: string; location?: string; seat_number?: string; exam_type?: string; reminder_enabled?: boolean; notes?: string; }
@@ -30,10 +34,16 @@ export interface LostFoundItem { id: string; owner_id?: string; kind: string; ti
 export interface LostFoundPayload { kind: string; title: string; content: string; location: string; contact: string; }
 export type FocusMode = 'focus' | 'short_break' | 'long_break';
 export interface StudyBehaviorSummary { observed_seconds: number; study_seconds: number; paused_seconds: number; longest_continuous_study_seconds: number; meaningful_switch_count: number; phone_interaction_count: number; possible_distraction_count: number; absent_count: number; reminder_count: number; model_version: string; }
-export interface StudySession { id: string; mode: FocusMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; duration_seconds: number; pause_seconds: number; status: string; behavior_summary?: StudyBehaviorSummary; created_at?: string; updated_at?: string; }
-export interface StudySessionCreate { mode: FocusMode; goal?: string; related_task_id?: string; }
+export interface StudySession { id: string; mode: FocusMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; planned_duration_seconds?: number; duration_seconds: number; pause_seconds: number; status: string; behavior_summary?: StudyBehaviorSummary; created_at?: string; updated_at?: string; }
+export interface StudySessionCreate { mode: FocusMode; planned_duration_seconds?: number; goal?: string; related_task_id?: string; }
 export interface StudySessionFinish { self_report?: string; self_report_tags?: string[]; behavior_summary?: StudyBehaviorSummary; }
 export interface StudyDailyGoal { target_minutes: number; updated_at: string; }
+export interface TaskBreakdownRequest { task_id?: string; goal?: string; }
+export interface TaskBreakdownStep { step_number: number; title: string; description: string; estimated_minutes: number; dependencies: number[]; completion_criteria: string; is_policy_step: boolean; knowledge_source?: string; }
+export interface TaskBreakdownResponse { mode: string; steps: TaskBreakdownStep[]; goal: string; related_task_id?: string; related_task_title?: string; warnings: string[]; }
+export type FocusPlanStepStatus = 'PENDING' | 'COMPLETED';
+export interface FocusPlanStep { stepNumber: number; title: string; description: string; estimatedMinutes: number; completionCriteria: string; dependencies: number[]; isPolicyStep: boolean; knowledgeSource?: string; status: FocusPlanStepStatus; }
+export interface FocusPlan { taskId: string; taskTitle: string; goal: string; steps: FocusPlanStep[]; updatedAtEpochMillis: number; }
 export interface PersonalFileItem { id: string; name: string; category?: string; size_label?: string; updated_at?: string; source?: string; is_favorite?: boolean; }
 export interface PersonalFileCreate { name: string; category: string; source: string; size_label: string; }
 export interface FavoriteItem { id: string; title: string; type?: string; subtitle?: string; saved_at?: string; source_route?: string; }

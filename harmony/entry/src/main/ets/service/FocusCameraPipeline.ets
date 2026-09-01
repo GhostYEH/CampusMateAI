@@ -10,6 +10,7 @@ import {
   FocusCameraStateText,
   FocusCameraRunToken,
   FrameAnalysisGate,
+  PersonAbsenceTracker,
   PersonBox,
   PersonRoiSelector
 } from './FocusCameraContract';
@@ -19,6 +20,7 @@ export class FocusCameraPipeline {
   private readonly provider: FocusAssistProvider;
   private readonly onUpdate: () => void;
   private readonly frameGate: FrameAnalysisGate = new FrameAnalysisGate();
+  private readonly absenceTracker: PersonAbsenceTracker = new PersonAbsenceTracker();
   private readonly runToken: FocusCameraRunToken = new FocusCameraRunToken();
   private pipelineState: string = FocusCameraState.STOPPED;
   private running: boolean = false;
@@ -130,6 +132,7 @@ export class FocusCameraPipeline {
   async stop(): Promise<void> {
     this.runToken.stop();
     this.running = false;
+    this.absenceTracker.suspend();
     const existing: Promise<void> | undefined = this.stopTask;
     if (existing !== undefined) {
       await existing;
@@ -145,12 +148,18 @@ export class FocusCameraPipeline {
   }
 
   private async stopInternal(): Promise<void> {
+    // stop() invalidates the provider synchronously before any wait, freezing the aggregate snapshot.
+    const providerStop: Promise<void> = this.provider.stop();
     const starting: Promise<void> | undefined = this.startTask;
     if (starting !== undefined) await starting.catch(() => {});
+    await providerStop;
     await this.releaseResources();
-    await this.provider.stop();
     this.frameGate.reset();
     this.setState(FocusCameraState.STOPPED);
+  }
+
+  resetSession(): void {
+    this.absenceTracker.reset();
   }
 
   private ensureCurrent(version: number): void {
@@ -239,10 +248,13 @@ export class FocusCameraPipeline {
       }
       const personBox: PersonBox | undefined = PersonRoiSelector.select(
         candidates, info.size.width, info.size.height);
+      if (!this.running) return;
       if (personBox === undefined) {
+        if (this.absenceTracker.process(false, timestamp)) this.provider.recordAbsence();
         this.setState(FocusCameraState.WAITING_FOR_PERSON);
         return;
       }
+      this.absenceTracker.process(true, timestamp);
       const rgbaBuffer: ArrayBuffer = new ArrayBuffer(info.size.width * info.size.height * 4);
       await pixelMap.readPixelsToBuffer(rgbaBuffer);
       const behaviorFrame: RgbaBehaviorFrame = {
@@ -256,7 +268,8 @@ export class FocusCameraPipeline {
       if (!this.running) return;
       const providerStatus: FocusAssistStatus = this.provider.status();
       if (providerStatus === FocusAssistStatus.RUNNING) {
-        this.setState(FocusCameraState.RUNNING);
+        // The state may be unchanged while the latest aggregate signal has changed.
+        this.setState(FocusCameraState.RUNNING, true);
       } else if (providerStatus === FocusAssistStatus.ERROR) {
         this.setState(FocusCameraState.ERROR);
       } else {
@@ -291,8 +304,9 @@ export class FocusCameraPipeline {
     this.analysisTask = undefined;
   }
 
-  private setState(state: string): void {
+  private setState(state: string, forceUpdate: boolean = false): void {
+    const changed: boolean = this.pipelineState !== state;
     this.pipelineState = state;
-    this.onUpdate();
+    if (changed || forceUpdate) this.onUpdate();
   }
 }

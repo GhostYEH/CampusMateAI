@@ -9,6 +9,9 @@ export enum AppRoute {
   COMMUNITY_EDIT = 'community_edit',
   ACADEMIC = 'academic',
   FOCUS = 'focus',
+  FOCUS_PLAN = 'focus_plan',
+  FOCUS_SESSION = 'focus_session',
+  FOCUS_SUMMARY = 'focus_summary',
   LOST_FOUND = 'lostfound',
   NOTIFICATIONS = 'notifications',
   NOTIFICATION_SOURCE_SETTINGS = 'notification_source_settings',
@@ -58,6 +61,9 @@ export class AppRouteRegistry {
       case AppRoute.COMMUNITY_EDIT:
       case AppRoute.ACADEMIC:
       case AppRoute.FOCUS:
+      case AppRoute.FOCUS_PLAN:
+      case AppRoute.FOCUS_SESSION:
+      case AppRoute.FOCUS_SUMMARY:
       case AppRoute.LOST_FOUND:
       case AppRoute.NOTIFICATIONS:
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS:
@@ -118,6 +124,9 @@ export class AppRouteRegistry {
       case AppRoute.COMMUNITY_EDIT: return '编辑帖子';
       case AppRoute.ACADEMIC: return '教务系统';
       case AppRoute.FOCUS: return '专注自习';
+      case AppRoute.FOCUS_PLAN: return '任务规划';
+      case AppRoute.FOCUS_SESSION: return '专注空间';
+      case AppRoute.FOCUS_SUMMARY: return '本次专注总结';
       case AppRoute.LOST_FOUND: return '失物招领';
       case AppRoute.NOTIFICATIONS: return '通知与提醒';
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS: return '通知来源设置';
@@ -176,6 +185,10 @@ export class AppRouteRegistry {
         return AppRoute.NOTIFICATIONS;
       case AppRoute.EDU_SCHEDULE_DETAIL:
         return AppRoute.EDU_SCHEDULE;
+      case AppRoute.FOCUS_SESSION:
+      case AppRoute.FOCUS_SUMMARY:
+      case AppRoute.FOCUS_PLAN:
+        return AppRoute.FOCUS;
       default:
         return '';
     }

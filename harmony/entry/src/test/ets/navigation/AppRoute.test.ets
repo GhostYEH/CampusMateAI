@@ -15,6 +15,7 @@ export default function appRouteTest(): void {
         AppRoute.COMMUNITY_EDIT,
         AppRoute.ACADEMIC,
         AppRoute.FOCUS,
+        AppRoute.FOCUS_PLAN,
         AppRoute.LOST_FOUND,
         AppRoute.NOTIFICATIONS,
         AppRoute.NOTIFICATION_SOURCE_SETTINGS,
@@ -67,6 +68,7 @@ export default function appRouteTest(): void {
       expect(AppRouteRegistry.parent(AppRoute.LOST_FOUND_MINE)).assertEqual(AppRoute.LOST_FOUND);
       expect(AppRouteRegistry.parent(AppRoute.NOTIFICATION_DETAIL)).assertEqual(AppRoute.NOTIFICATIONS);
       expect(AppRouteRegistry.parent(AppRoute.EDU_SCHEDULE_DETAIL)).assertEqual(AppRoute.EDU_SCHEDULE);
+      expect(AppRouteRegistry.parent(AppRoute.FOCUS_PLAN)).assertEqual(AppRoute.FOCUS);
       expect(AppRouteRegistry.parent(AppRoute.EXAMS)).assertEqual('');
     });
 

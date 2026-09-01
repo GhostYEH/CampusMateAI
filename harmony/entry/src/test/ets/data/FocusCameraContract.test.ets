@@ -11,6 +11,7 @@ import {
   FocusCameraSignalPresentation,
   FocusBehaviorLabelText,
   FrameAnalysisGate,
+  PersonAbsenceTracker,
   PersonRoiSelector
 } from '../../../main/ets/service/FocusCameraContract';
 
@@ -44,37 +45,57 @@ export default function focusCameraContractTest(): void {
       ], 100, 80)).assertUndefined();
     });
 
-    it('runs camera assistance only during a study focus interval', 0, () => {
-      expect(FocusCameraActivationPolicy.shouldRun('focus')).assertTrue();
-      expect(FocusCameraActivationPolicy.shouldRun('short_break')).assertFalse();
-      expect(FocusCameraActivationPolicy.shouldRun('long_break')).assertFalse();
+    it('runs camera assistance only for smart-guard focus intervals', 0, () => {
+      expect(FocusCameraActivationPolicy.shouldRun('focus', 'SMART_GUARD')).assertTrue();
+      expect(FocusCameraActivationPolicy.shouldRun('focus', 'QUIET')).assertFalse();
+      expect(FocusCameraActivationPolicy.shouldRun('focus', 'AI_COMPANION')).assertFalse();
+      expect(FocusCameraActivationPolicy.shouldRun('short_break', 'SMART_GUARD')).assertFalse();
+      expect(FocusCameraActivationPolicy.shouldRun('long_break', 'SMART_GUARD')).assertFalse();
     });
 
     it('starts only for focus session starts and focus resumes', 0, () => {
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.START);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus', 'QUIET'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break', 'SMART_GUARD'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.START);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
     });
 
+    it('resets the session aggregate for a new focus but not for resume', 0, () => {
+      expect(FocusCameraLifecyclePolicy.shouldResetSummary(FocusCameraLifecycleEvent.START, 'focus')).assertTrue();
+      expect(FocusCameraLifecyclePolicy.shouldResetSummary(FocusCameraLifecycleEvent.START, 'short_break')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResetSummary(FocusCameraLifecycleEvent.RESUME, 'focus')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResetSummary(FocusCameraLifecycleEvent.HIDE, 'focus')).assertFalse();
+    });
+
+    it('resumes from foreground only for an active focus session', 0, () => {
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('active', 'focus', 'SMART_GUARD')).assertTrue();
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('active', 'focus', 'QUIET')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('paused', 'focus', 'SMART_GUARD')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('completed', 'focus', 'SMART_GUARD')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('active', 'short_break', 'SMART_GUARD')).assertFalse();
+      expect(FocusCameraLifecyclePolicy.shouldResumeOnForeground('active', 'long_break', 'SMART_GUARD')).assertFalse();
+    });
+
     it('stops for pause finish hide leave and mode reset', 0, () => {
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.PAUSE, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.PAUSE, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.FINISH, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.FINISH, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.HIDE, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.HIDE, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.LEAVE, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.LEAVE, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
-      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESET, 'focus'))
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESET, 'focus', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
     });
 
@@ -93,6 +114,50 @@ export default function focusCameraContractTest(): void {
       gate.release();
       expect(gate.tryAcquire(1499)).assertFalse();
       expect(gate.tryAcquire(1500)).assertTrue();
+    });
+
+    it('confirms one absence only after the person is missing for five seconds', 0, () => {
+      const tracker = new PersonAbsenceTracker();
+      expect(tracker.process(false, 1000)).assertFalse();
+      expect(tracker.process(false, 5999)).assertFalse();
+      expect(tracker.process(false, 6000)).assertTrue();
+      expect(tracker.process(false, 9000)).assertFalse();
+    });
+
+    it('rearms absence counting after the person returns', 0, () => {
+      const tracker = new PersonAbsenceTracker();
+      tracker.process(false, 1000);
+      expect(tracker.process(false, 6000)).assertTrue();
+      expect(tracker.process(true, 6500)).assertFalse();
+      expect(tracker.process(true, 7499)).assertFalse();
+      expect(tracker.process(false, 8000)).assertFalse();
+      expect(tracker.process(false, 14000)).assertFalse();
+      expect(tracker.process(true, 15000)).assertFalse();
+      expect(tracker.process(true, 16000)).assertFalse();
+      expect(tracker.process(false, 17000)).assertFalse();
+      expect(tracker.process(false, 22000)).assertTrue();
+    });
+
+    it('discards an unfinished absence when camera observation stops', 0, () => {
+      const tracker = new PersonAbsenceTracker();
+      tracker.process(false, 1000);
+      tracker.suspend();
+      expect(tracker.process(false, 5000)).assertFalse();
+      expect(tracker.process(false, 9999)).assertFalse();
+      expect(tracker.process(false, 10000)).assertTrue();
+    });
+
+    it('preserves a confirmed absence across suspension until sustained recovery', 0, () => {
+      const tracker = new PersonAbsenceTracker();
+      tracker.process(false, 1000);
+      expect(tracker.process(false, 6000)).assertTrue();
+      tracker.suspend();
+      expect(tracker.process(false, 12000)).assertFalse();
+      expect(tracker.process(false, 18000)).assertFalse();
+      expect(tracker.process(true, 19000)).assertFalse();
+      expect(tracker.process(true, 20000)).assertFalse();
+      expect(tracker.process(false, 21000)).assertFalse();
+      expect(tracker.process(false, 26000)).assertTrue();
     });
 
     it('does not present rejected behavior output as stable', 0, () => {

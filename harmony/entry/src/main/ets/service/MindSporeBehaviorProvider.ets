@@ -230,6 +230,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private signal: FocusAssistSignal | undefined = undefined;
   private readonly reminderTracker: BehaviorReminderTracker = new BehaviorReminderTracker();
   private readonly sessionSummaryTracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
+  private sessionSummaryInitialized: boolean = false;
   private readonly temporalFrames: BehaviorTemporalFrameBuffer = new BehaviorTemporalFrameBuffer();
   private previousSingleTop: BehaviorV34Label | undefined = undefined;
   private lastTemporalAtMs: number = 0;
@@ -248,9 +249,18 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   latestSignal(): FocusAssistSignal | undefined { return this.signal; }
   currentReminder(): string { return this.reminderTracker.current(); }
   sessionSummary(): BehaviorSessionSummary | undefined {
-    if (this.activeRun === 0) return undefined;
+    if (!this.sessionSummaryInitialized) return undefined;
     return this.sessionSummaryTracker.summary(
       Date.now(), BehaviorProviderPresentation.modelVersion(this.cachedTemporal !== undefined));
+  }
+  resetSessionSummary(startedAt: number = Date.now()): void {
+    this.sessionSummaryTracker.reset(startedAt);
+    this.sessionSummaryInitialized = true;
+  }
+  recordAbsence(): void {
+    if (this.activeRun !== 0 && this.sessionSummaryInitialized) {
+      this.sessionSummaryTracker.recordAbsence();
+    }
   }
   detail(): string { return this.providerDetail; }
 
@@ -258,7 +268,11 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     const run: number = this.runToken.begin();
     this.activeRun = run;
     this.clearProductState();
-    this.sessionSummaryTracker.reset(Date.now());
+    if (!this.sessionSummaryInitialized) {
+      this.resetSessionSummary();
+    } else {
+      this.sessionSummaryTracker.resume(Date.now());
+    }
     if (this.model !== null) {
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
       this.providerDetail = BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
@@ -288,6 +302,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   }
 
   async stop(): Promise<void> {
+    if (this.sessionSummaryInitialized) this.sessionSummaryTracker.suspend(Date.now());
     this.runToken.invalidate();
     this.activeRun = 0;
     this.clearProductState();

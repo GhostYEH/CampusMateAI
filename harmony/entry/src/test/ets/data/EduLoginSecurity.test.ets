@@ -94,7 +94,7 @@ class DelayedPostConnectOperations implements EduPostConnectOperations {
     scheduleResult: Promise<EduSyncResult>,
     gradeResult: Promise<EduSyncResult>,
     examResult: Promise<EduSyncResult> = Promise.resolve(syncFixture('exam')),
-    scheduleItemsResult: Promise<EduScheduleItemsResponse> = Promise.resolve({ items_count: 1, items: [] })
+    scheduleItemsResult: Promise<EduScheduleItemsResponse> = Promise.resolve(scheduleItemsFixture())
   ) {
     this.bindingResult = bindingResult;
     this.scheduleResult = scheduleResult;
@@ -136,8 +136,12 @@ function bindingFixture(id: string): EduBindingDto {
   };
 }
 
-function syncFixture(type: string): EduSyncResult {
-  return { sync_type: type, status: 'success', items_count: 1, persisted: true };
+function syncFixture(type: string, persisted: boolean = true): EduSyncResult {
+  return { sync_type: type, status: 'success', items_count: 1, persisted: persisted };
+}
+
+function scheduleItemsFixture(): EduScheduleItemsResponse {
+  return { items_count: 1, items: [] };
 }
 
 export default function eduLoginSecurityTest(): void {
@@ -386,10 +390,10 @@ export default function eduLoginSecurityTest(): void {
       const state: PostConnectState = new PostConnectState();
       const operations: DelayedPostConnectOperations = new DelayedPostConnectOperations(
         Promise.resolve(bindingFixture('binding-1')),
-        Promise.resolve({ sync_type: 'schedule', status: 'success', items_count: 1, persisted: false }),
+        Promise.resolve(syncFixture('schedule', false)),
         Promise.resolve(syncFixture('grade')),
         Promise.resolve(syncFixture('exam')),
-        Promise.resolve({ items_count: 1, items: [] })
+        Promise.resolve(scheduleItemsFixture())
       );
 
       await new EduPostConnectController(guard, operations, state)
