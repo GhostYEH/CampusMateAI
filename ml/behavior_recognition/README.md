@@ -129,10 +129,22 @@ Interrupted training can be restarted safely. Existing ROI cache files and downl
 ## Interpretation and limits
 
 - Compare candidate four-class Macro-F1, Balanced Accuracy, per-class metrics, and PHONE_INTERACTION AUPRC.
+- Evaluation also reports the product space `STUDY_ACTIVITY`, `PHONE_INTERACTION`, and `NO_VISIBLE_STUDY`. It sums READ/WRITE probabilities before selecting the product prediction; it does not collapse an already selected four-class label.
 - Treat V3.2 results as a separate binary diagnostic; its Accuracy is not comparable to four-class Accuracy.
 - Validation selects checkpoints, temperature, and rejection thresholds. Test is reserved for the locked candidate.
 - The public dataset contains distant multi-student classroom views. Offline gains do not establish front-camera or real-device gains.
 - Do not copy the candidate ONNX into Android assets until real front-camera evaluation, device latency, temperature, power, and reminder replay all pass the project route criteria.
+
+Compare two evaluation reports using validation metrics only:
+
+```powershell
+python -m behavior_recognition.cli offline-compare `
+  --baseline reports\generated\baseline.json `
+  --candidate reports\generated\candidate.json `
+  --output reports\generated\offline-decision.json
+```
+
+The command checks product Macro-F1, PHONE_INTERACTION AUPRC, calibration error, and rejection coverage. `advanced=true` means only that the candidate merits another offline experiment. The output always records `production_approved=false`; production approval remains the target-domain event gate below.
 
 ## Target front-camera event workflow
 

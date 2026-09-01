@@ -1,5 +1,8 @@
+import json
+
 import pytest
 
+from behavior_recognition.cli import main
 from behavior_recognition.offline_gate import OfflinePolicy, compare_offline_candidate
 
 
@@ -104,3 +107,40 @@ def test_missing_validation_metrics_fail_loudly():
                 coverage=0.75,
             ),
         )
+
+
+def test_offline_compare_cli_writes_non_production_decision(tmp_path):
+    """Catches the comparison gate existing only as an unrepeatable Python call."""
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    output_path = tmp_path / "decision.json"
+    baseline_path.write_text(
+        json.dumps(evaluation_report(
+            product_macro_f1=0.60,
+            phone_auprc=0.70,
+            ece=0.08,
+            coverage=0.75,
+        )),
+        encoding="utf-8",
+    )
+    candidate_path.write_text(
+        json.dumps(evaluation_report(
+            product_macro_f1=0.62,
+            phone_auprc=0.70,
+            ece=0.075,
+            coverage=0.72,
+        )),
+        encoding="utf-8",
+    )
+
+    exit_code = main([
+        "offline-compare",
+        "--baseline", str(baseline_path),
+        "--candidate", str(candidate_path),
+        "--output", str(output_path),
+    ])
+
+    decision = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert decision["advanced"] is True
+    assert decision["production_approved"] is False
