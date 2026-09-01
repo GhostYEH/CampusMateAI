@@ -71,11 +71,11 @@ fun Modifier.campusClickable(
         }
     }
     return campusGlass(
-            shape = shape,
-            role = CampusGlassRole.CONTROL,
-            interactionProgress = pressGlow.value,
-            glowColor = primaryColor,
-        )
+        shape = shape,
+        role = CampusGlassRole.CONTROL,
+        interactionProgress = pressGlow.value,
+        glowColor = primaryColor,
+    )
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
