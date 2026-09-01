@@ -1,10 +1,12 @@
 package com.example.campusai.data.repository
 
 import com.example.campusai.data.remote.ApiClient
+import com.example.campusai.data.remote.ApiService
 import com.example.campusai.data.remote.EduBindingDto
 import com.example.campusai.data.remote.EduConnectionContinueRequest
 import com.example.campusai.data.remote.EduConnectionDto
 import com.example.campusai.data.remote.EduConnectionFromUrlRequest
+import com.example.campusai.data.remote.EduCookieDto
 import com.example.campusai.data.remote.EduGradeItemsResponse
 import com.example.campusai.data.remote.EduExamItemsResponse
 import com.example.campusai.data.remote.EduPreLoginResult
@@ -14,9 +16,9 @@ import com.example.campusai.data.remote.EduScheduleItemsResponse
 import com.example.campusai.data.remote.EduSyncResult
 
 /** EduRepository — 教务系统连接层仓库，封装所有 edu API 调用。 */
-class EduRepository {
-
-    private val api = ApiClient.api
+class EduRepository(
+    private val api: ApiService = ApiClient.api,
+) {
 
     suspend fun getUniversityId(): Result<String> = runCatching {
         val resp = api.me()
@@ -32,7 +34,8 @@ class EduRepository {
     }
 
     suspend fun unbind(): Result<Unit> = runCatching {
-        api.eduUnbind()
+        val resp = api.eduUnbind()
+        if (!resp.isSuccessful) throw Exception(resp.errorBody()?.string() ?: "断开连接失败 (${resp.code()})")
         Unit
     }
 
@@ -92,7 +95,7 @@ class EduRepository {
 
     suspend fun continueWithCookies(
         connectionId: String,
-        cookieJar: List<com.example.campusai.data.remote.EduCookieDto>,
+        cookieJar: List<EduCookieDto>,
         currentUrl: String?,
         userAgent: String?,
     ): Result<EduConnectionDto> = runCatching {

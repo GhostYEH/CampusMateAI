@@ -1,16 +1,7 @@
 package com.example.campusai.ui.screens.focus
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +27,7 @@ import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface as CampusSurface
 import com.example.campusai.ui.theme.TextPrimary
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 
 /** A terminal page for one completed session. It owns no timer or active-session state. */
 @Composable
@@ -52,9 +44,12 @@ fun FocusSummaryScreen(
     val minutes = actualSeconds.coerceAtLeast(0) / 60
     val seconds = actualSeconds.coerceAtLeast(0) % 60
     val duration = if (minutes > 0) "$minutes 分 ${seconds.toString().padStart(2, '0')} 秒" else "$seconds 秒"
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 12.dp
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 48.dp, end = 20.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 48.dp, end = 20.dp, bottom = bottomContentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {

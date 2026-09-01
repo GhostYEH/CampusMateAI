@@ -1,5 +1,4 @@
-import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduPreLoginResult, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduSyncResult } from '../data/ApiClient';
-import { EduExamItemsResponse } from '../data/ApiClient';
+import { ApiClient, EduBindingDto, EduConnectionDto, EduConnectionContinueRequest, EduPreLoginResult, EduProbeResult, EduScheduleItemsResponse, EduGradeItemsResponse, EduExamItemsResponse, EduSyncResult } from '../data/ApiClient';
 import { EduCookieDto } from '../data/EduCookieDto';
 
 /** EduRepository — 教务系统连接层仓库。 */

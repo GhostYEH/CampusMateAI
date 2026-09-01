@@ -1,4 +1,4 @@
-import { EduBindingDto, EduSyncResult } from '../../data/ApiClient';
+import { EduBindingDto, EduScheduleItemsResponse, EduSyncResult } from '../../data/ApiClient';
 import {
   EduConnectionRequestGuard,
   EduPostConnectRequestToken
@@ -8,6 +8,8 @@ export interface EduPostConnectOperations {
   getBinding(): Promise<EduBindingDto | undefined>;
   syncSchedule(): Promise<EduSyncResult>;
   syncGrade(): Promise<EduSyncResult>;
+  syncExam(): Promise<EduSyncResult>;
+  listScheduleItems(semester?: string): Promise<EduScheduleItemsResponse>;
 }
 
 export interface EduPostConnectStateWriter {
@@ -67,15 +69,25 @@ export class EduPostConnectController {
       if (!this.isCurrent(request)) return;
       const scheduleResult: EduSyncResult = await this.operations.syncSchedule();
       if (!this.isCurrent(request)) return;
+      const storedSchedule: EduScheduleItemsResponse = await this.operations.listScheduleItems(
+        scheduleResult.schedule?.semester || scheduleResult.semester
+      );
+      if (!this.isCurrent(request)) return;
       this.state.setSyncMessage('正在同步成绩…');
       if (!this.isCurrent(request)) return;
       const gradeResult: EduSyncResult = await this.operations.syncGrade();
       if (!this.isCurrent(request)) return;
-      const scheduleOk: boolean = scheduleResult.status === 'success';
+      this.state.setSyncMessage('正在同步考试安排…');
+      if (!this.isCurrent(request)) return;
+      const examResult: EduSyncResult = await this.operations.syncExam();
+      if (!this.isCurrent(request)) return;
+      const scheduleOk: boolean = scheduleResult.status === 'success' &&
+        scheduleResult.persisted === true && scheduleResult.items_count > 0 && storedSchedule.items_count > 0;
       const gradeOk: boolean = gradeResult.status === 'success';
+      const examOk: boolean = examResult.status === 'success';
       if (!this.isCurrent(request)) return;
       this.state.setSyncMessage(
-        `课表同步${scheduleOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}`
+        `课表同步${scheduleOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}，考试同步${examOk ? '成功' : '失败'}`
       );
       if (!this.isCurrent(request)) return;
       await this.loadBinding(request);

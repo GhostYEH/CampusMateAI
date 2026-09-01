@@ -43,6 +43,20 @@ object EduStateText {
         else -> state
     }
 
+    fun textWithErrorCode(state: String, errorCode: String?): String {
+        if (state == "waiting_user_login" && !errorCode.isNullOrBlank()) {
+            return when (errorCode) {
+                "NEED_CAPTCHA" -> "学校要求完成图片验证码"
+                "NEED_SLIDER" -> "需要完成滑块验证"
+                "NEED_SMS" -> "需要短信验证码"
+                "NEED_MFA" -> "需要多因素认证"
+                "CLIENT_WEBVIEW" -> "请在学校登录页面完成验证"
+                "NEED_CAMPUS_NETWORK" -> "请连接校园网或 VPN 后继续"
+                else -> text(state)
+            }
+        }
+        return text(state)
+    }
 }
 
 @Composable
@@ -57,42 +71,15 @@ fun EduSystemScreen(
     val universityId by viewModel.universityId.collectAsState()
 
     var portalUrl by remember { mutableStateOf("") }
-    var sensitiveState by remember { mutableStateOf(EduLoginSensitiveState()) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var captchaInput by remember { mutableStateOf("") }
     var showDisconnectDialog by remember { mutableStateOf(false) }
-
-    fun clearSensitiveState(event: EduLoginSensitiveEvent) {
-        sensitiveState = reduceEduLoginSensitiveState(sensitiveState, event)
-    }
 
     LaunchedEffect(Unit) { viewModel.loadInitial() }
     LaunchedEffect(state) {
-        when (val current = state) {
-            is EduUiState.WaitingUserLogin -> {
-                clearSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF)
-                onNavigateToLogin(current.loginUrl, current.connection.id, current.connection.allowed_origins)
-            }
-            is EduUiState.NeedCaptcha -> {
-                sensitiveState = captureEduLoginChallenge(
-                    sensitiveState,
-                    captcha = sensitiveState.captcha,
-                    preLoginToken = current.preLoginResult.pre_login_token,
-                )
-            }
-            is EduUiState.Connected, is EduUiState.Syncing, is EduUiState.Synced -> {
-                clearSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED)
-            }
-            else -> Unit
-        }
-    }
-    LaunchedEffect(binding?.connection_status) {
-        if (binding?.connection_status in setOf("active", "connected")) {
-            clearSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED)
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            sensitiveState = reduceEduLoginSensitiveState(sensitiveState, EduLoginSensitiveEvent.DISPOSE)
-        }
+        val waiting = state as? EduUiState.WaitingUserLogin ?: return@LaunchedEffect
+        onNavigateToLogin(waiting.loginUrl, waiting.connection.id, waiting.connection.allowed_origins)
     }
 
     if (showDisconnectDialog) {
@@ -103,7 +90,6 @@ fun EduSystemScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDisconnectDialog = false
-                    clearSensitiveState(EduLoginSensitiveEvent.DISCONNECT)
                     viewModel.disconnect()
                 }) { Text("确认断开") }
             },
@@ -133,7 +119,6 @@ fun EduSystemScreen(
                 state = state,
                 onSync = { viewModel.manualSync() },
                 onReconnect = {
-                    clearSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED)
                     viewModel.reset()
                     portalUrl = ""
                 },
@@ -152,10 +137,7 @@ fun EduSystemScreen(
                         busy = false,
                         onDetect = {
                             val url = portalUrl.trim()
-                            if (url.isNotEmpty()) {
-                                clearSensitiveState(EduLoginSensitiveEvent.CONNECTION_REPLACED)
-                                viewModel.probeAndCreateConnection(url)
-                            }
+                            if (url.isNotEmpty()) viewModel.probeAndCreateConnection(url)
                         },
                     )
                 }
@@ -177,12 +159,12 @@ fun EduSystemScreen(
                         )
                     )
                     CredentialFormCard(
-                        username = sensitiveState.username,
-                        password = sensitiveState.password,
-                        onUsernameChange = { sensitiveState = sensitiveState.copy(username = it) },
-                        onPasswordChange = { sensitiveState = sensitiveState.copy(password = it) },
+                        username = username,
+                        password = password,
+                        onUsernameChange = { username = it },
+                        onPasswordChange = { password = it },
                         busy = false,
-                        onSubmit = { viewModel.submitCredentials(sensitiveState.username, sensitiveState.password) },
+                        onSubmit = { viewModel.submitCredentials(username, password) },
                     )
                 }
                 is EduUiState.NeedCaptcha -> {
@@ -195,25 +177,19 @@ fun EduSystemScreen(
                         )
                     )
                     CaptchaFormCard(
-                        username = sensitiveState.username,
-                        password = sensitiveState.password,
-                        captchaInput = sensitiveState.captcha,
+                        username = username,
+                        password = password,
+                        captchaInput = captchaInput,
                         captchaImageBase64 = s.preLoginResult.captcha_image_base64,
-                        onUsernameChange = { sensitiveState = sensitiveState.copy(username = it) },
-                        onPasswordChange = { sensitiveState = sensitiveState.copy(password = it) },
-                        onCaptchaChange = { sensitiveState = sensitiveState.copy(captcha = it) },
+                        onUsernameChange = { username = it },
+                        onPasswordChange = { password = it },
+                        onCaptchaChange = { captchaInput = it },
                         onSubmit = {
                             viewModel.submitCredentialsWithCaptcha(
-                                sensitiveState.username,
-                                sensitiveState.password,
-                                sensitiveState.captcha,
-                                sensitiveState.preLoginToken ?: s.preLoginResult.pre_login_token,
+                                username, password, captchaInput, s.preLoginResult.pre_login_token
                             )
                         },
-                        onRefresh = {
-                            sensitiveState = beginEduLoginChallenge(sensitiveState)
-                            viewModel.refreshCaptcha()
-                        },
+                        onRefresh = { viewModel.refreshCaptcha() },
                     )
                 }
                 is EduUiState.WaitingUserLogin -> {
@@ -242,9 +218,10 @@ fun EduSystemScreen(
                 is EduUiState.Synced -> {
                     val schedOk = s.scheduleResult?.status == "success"
                     val gradeOk = s.gradeResult?.status == "success"
+                    val examOk = s.examResult?.status == "success"
                     Text(
-                        "课表同步${if (schedOk) "成功（已导入 ${s.scheduleResult?.items_count ?: 0} 门）" else "失败"}，成绩同步${if (gradeOk) "成功" else "失败"}",
-                        color = if (schedOk && gradeOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        "课表同步${if (schedOk) "成功（已导入 ${s.scheduleResult?.items_count ?: 0} 门）" else "失败"}，成绩同步${if (gradeOk) "成功" else "失败"}，考试同步${if (examOk) "成功" else "失败"}",
+                        color = if (schedOk && gradeOk && examOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                     )
                     s.scheduleResult?.error_message?.let { Text("课表: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -253,13 +230,7 @@ fun EduSystemScreen(
                         if (schedOk) {
                             Button(onClick = onOpenSchedule, modifier = Modifier.weight(1f)) { Text("查看课表") }
                         }
-                        OutlinedButton(
-                            onClick = {
-                                clearSensitiveState(EduLoginSensitiveEvent.CANCEL)
-                                onBack()
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("完成") }
+                        OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("完成") }
                     }
                 }
             }

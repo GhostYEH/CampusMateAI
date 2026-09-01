@@ -64,6 +64,7 @@ import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.R
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
@@ -291,7 +292,14 @@ fun FocusSessionScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 96.dp),
+                .padding(
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = floatingDockContentBottomPadding(
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    ) + 8.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("专注空间", color = TextPrimary, fontSize = 24.sp, style = MaterialTheme.typography.headlineSmall)

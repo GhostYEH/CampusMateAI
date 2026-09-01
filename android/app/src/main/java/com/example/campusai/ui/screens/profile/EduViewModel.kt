@@ -26,8 +26,12 @@ sealed interface EduUiState {
     data class NeedCaptcha(val connection: EduConnectionDto, val preLoginResult: EduPreLoginResult) : EduUiState
     data class Verifying(val message: String) : EduUiState
     data class Connected(val connection: EduConnectionDto) : EduUiState
-    data class Syncing(val message: String, val scheduleDone: Boolean, val gradeDone: Boolean) : EduUiState
-    data class Synced(val scheduleResult: EduSyncResult?, val gradeResult: EduSyncResult?) : EduUiState
+    data class Syncing(val message: String, val scheduleDone: Boolean, val gradeDone: Boolean, val examDone: Boolean) : EduUiState
+    data class Synced(
+        val scheduleResult: EduSyncResult?,
+        val gradeResult: EduSyncResult?,
+        val examResult: EduSyncResult?,
+    ) : EduUiState
     data class Error(val message: String) : EduUiState
 }
 
@@ -218,38 +222,36 @@ class EduViewModel(application: android.app.Application) : AndroidViewModel(appl
         autoSync()
     }
 
-    /** Step 3: 自动同步课表 + 成绩。 */
+    /** Step 3: 自动同步课表、成绩和考试安排。 */
     fun autoSync() {
-        viewModelScope.launch {
-            _state.value = EduUiState.Syncing("正在同步课表…", false, false)
-            val rawSchedule = repo.syncSchedule().getOrNull()
-            val storedSchedule = rawSchedule?.takeIf { it.status == "success" }
-                ?.let { repo.listScheduleItems(it.schedule?.semester).getOrNull() }
-            val schedResult = rawSchedule?.let {
-                if (isScheduleImported(it, storedSchedule)) it
-                else it.copy(status = "failed", error_message = "课表未成功导入系统，请重新同步")
-            }
-            _state.value = EduUiState.Syncing("正在同步成绩…", true, false)
-            val gradeResult = repo.syncGrade().getOrNull()
-            _state.value = EduUiState.Synced(schedResult, gradeResult)
-            repo.getBinding().onSuccess { _binding.value = it }
-        }
+        syncAll()
     }
 
     /** 手动同步（从已连接状态触发）。 */
     fun manualSync() {
+        syncAll()
+    }
+
+    private fun syncAll() {
         viewModelScope.launch {
-            _state.value = EduUiState.Syncing("正在同步课表…", false, false)
-            val rawSchedule = repo.syncSchedule().getOrNull()
-            val storedSchedule = rawSchedule?.takeIf { it.status == "success" }
-                ?.let { repo.listScheduleItems(it.schedule?.semester).getOrNull() }
-            val schedResult = rawSchedule?.let {
-                if (isScheduleImported(it, storedSchedule)) it
-                else it.copy(status = "failed", error_message = "课表未成功导入系统，请重新同步")
-            }
-            _state.value = EduUiState.Syncing("正在同步成绩…", true, false)
-            val gradeResult = repo.syncGrade().getOrNull()
-            _state.value = EduUiState.Synced(schedResult, gradeResult)
+            val result = syncAllEduData(
+                syncSchedule = { repo.syncSchedule().getOrNull() },
+                readSchedule = { semester -> repo.listScheduleItems(semester).getOrNull() },
+                syncGrade = { repo.syncGrade().getOrNull() },
+                syncExam = { repo.syncExam().getOrNull() },
+                onProgress = { message ->
+                    _state.value = when (message) {
+                        "正在同步成绩…" -> EduUiState.Syncing(message, true, false, false)
+                        "正在同步考试安排…" -> EduUiState.Syncing(message, true, true, false)
+                        else -> EduUiState.Syncing(message, false, false, false)
+                    }
+                },
+            )
+            _state.value = EduUiState.Synced(
+                result.scheduleResult,
+                result.gradeResult,
+                result.examResult,
+            )
             repo.getBinding().onSuccess { _binding.value = it }
         }
     }

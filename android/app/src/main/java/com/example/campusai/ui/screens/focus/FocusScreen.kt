@@ -83,6 +83,7 @@ import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.remainingSeconds
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -136,7 +137,9 @@ fun FocusScreen(
     LaunchedEffect(backendOnline) {
         if (backendOnline) repository.refresh()
     }
-    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 26.dp
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 16.dp
     val listState = rememberLazyListState()
     val startFocus: () -> Unit = {
         scope.launch {
@@ -499,9 +502,12 @@ private fun HallDialogueChoice(
 fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
     val records by repository.records.collectAsState()
     LaunchedEffect(Unit) { repository.refresh() }
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 16.dp
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(FocusBg),
-        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, 28.dp),
+        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {

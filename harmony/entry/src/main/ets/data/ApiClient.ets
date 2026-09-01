@@ -417,7 +417,7 @@ export class ApiClient implements ChaoxingApiClient {
     return this.request<EduConnectionDto>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/continue`, body as object);
   }
   async eduPreLogin(connectionId: string): Promise<EduPreLoginResult> {
-    return this.request<EduPreLoginResult>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/pre-login`);
+    return this.request<EduPreLoginResult>('POST' as http.RequestMethod, `edu/connections/${encodeURIComponent(connectionId)}/pre-login`, {} as object);
   }
   async eduScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
     const query = semester ? `?semester=${encodeURIComponent(semester)}` : '';
@@ -539,6 +539,14 @@ export interface EduSyncResult {
   schedule?: EduSchedule;
   grade?: EduGrade;
   exam?: EduExam;
+  inserted?: number;
+  updated?: number;
+  unchanged?: number;
+  removed?: number;
+  failed?: number;
+  sync_batch_id?: string;
+  semester?: string;
+  persisted?: boolean;
 }
 export interface EduSyncRecord {
   id: string;

@@ -80,6 +80,9 @@ import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import com.example.campusai.ui.theme.Background
 import java.net.URLEncoder
 
+internal fun eduFlowViewModelOwner(navController: NavHostController): NavBackStackEntry =
+    navController.getBackStackEntry("edu_system")
+
 @Composable
 private fun NavigationDestinationFrame(
     backStackEntry: NavBackStackEntry,
@@ -367,6 +370,9 @@ fun AppNavHost(
         }
         composable("academic") { AcademicScreen() }
         composable("edu_system") {
+            val eduViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.campusai.ui.screens.profile.EduViewModel>(
+                viewModelStoreOwner = eduFlowViewModelOwner(navController),
+            )
             com.example.campusai.ui.screens.profile.EduSystemScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToLogin = { loginUrl, connectionId, allowedOrigins ->
@@ -375,6 +381,7 @@ fun AppNavHost(
                     navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl&allowedOrigins=$encodedOrigins")
                 },
                 onOpenSchedule = { go("edu_schedule") },
+                viewModel = eduViewModel,
             )
         }
         composable("edu_schedule") {
@@ -391,10 +398,13 @@ fun AppNavHost(
             val connectionId = backStackEntry.arguments?.getString("connectionId") ?: ""
             val loginUrl = backStackEntry.arguments?.getString("loginUrl") ?: ""
             val allowedOrigins = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("allowedOrigins") ?: "", "UTF-8").split(",").filter { it.isNotBlank() }
+            val eduViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.campusai.ui.screens.profile.EduViewModel>(
+                viewModelStoreOwner = eduFlowViewModelOwner(navController),
+            )
             com.example.campusai.ui.screens.profile.EduLoginScreen(
                 loginUrl = java.net.URLDecoder.decode(loginUrl, "UTF-8"),
                 connectionId = connectionId,
-                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                viewModel = eduViewModel,
                 backendAllowedOrigins = allowedOrigins,
                 onBack = { navController.popBackStack() },
             )
