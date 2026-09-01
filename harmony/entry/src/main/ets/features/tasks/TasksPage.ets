@@ -1,4 +1,5 @@
-import { TaskItem } from '../../data/Models';
+import { TaskCreateRequest, TaskImportAnalyzeResponse, TaskImportCommitResponse, TaskImportDraft, TaskItem } from '../../data/Models';
+import { closedTaskImportState, copyImportDraft, selectedImportTasks, TaskImportClosedState } from './TaskImportModel';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
@@ -35,12 +36,63 @@ export struct TasksPage {
   @Prop darkMode: boolean = false;
   @Prop reduceMotion: boolean = false;
   @State filter: string = '待完成';
+  @State importOpen: boolean = false;
+  @State importSource: string = '学习材料';
+  @State importContent: string = '';
+  @State importBusy: boolean = false;
+  @State importError: string = '';
+  @State importResult?: TaskImportAnalyzeResponse = undefined;
+  @State importDrafts: TaskImportDraft[] = [];
   onRefresh: () => void = () => {};
   onComplete: (id: string) => void = () => {};
   onOpenDetail: (task: TaskItem) => void = (_: TaskItem) => {};
+  onAnalyzeImport: (content: string, sourceName: string) => Promise<TaskImportAnalyzeResponse> = async (_: string, __: string) => ({ mode: 'rules', split_reason: '', needs_user_confirmation: false, tasks: [] });
+  onCommitImport: (tasks: TaskCreateRequest[]) => Promise<TaskImportCommitResponse> = async (_: TaskCreateRequest[]) => ({ created: [], skipped_existing: [] });
+  onOpenFocus: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   pendingCount(): number { return this.tasks.filter((task: TaskItem) => task.status !== 'completed').length; }
+  selectedImportCount(): number { return selectedImportTasks(this.importDrafts).length; }
+
+  resetImportState(): void {
+    const state: TaskImportClosedState = closedTaskImportState();
+    this.importOpen = state.open;
+    this.importResult = state.result;
+    this.importDrafts = state.drafts;
+    this.importError = state.error;
+  }
+
+  closeImport(): void {
+    if (this.importBusy) return;
+    this.resetImportState();
+  }
+
+  updateImportDraft(index: number, draft: TaskImportDraft): void {
+    this.importDrafts = this.importDrafts.map((item: TaskImportDraft, position: number) => position === index ? draft : item);
+  }
+
+  async analyzeImport(): Promise<void> {
+    if (this.importContent.trim().length === 0 || this.importBusy) return;
+    this.importBusy = true; this.importError = '';
+    try {
+      const result: TaskImportAnalyzeResponse = await this.onAnalyzeImport(this.importContent.trim(), this.importSource.trim());
+      this.importResult = result;
+      this.importDrafts = result.tasks.map((task: TaskImportDraft): TaskImportDraft => copyImportDraft(task, task.title, task.description, task.selected));
+    } catch (_) { this.importError = '材料分析失败，请检查网络后重试'; }
+    finally { this.importBusy = false; }
+  }
+
+  async commitImport(): Promise<void> {
+    if (this.importBusy) return;
+    const selected: TaskImportDraft[] = selectedImportTasks(this.importDrafts);
+    if (selected.length === 0) return;
+    this.importBusy = true; this.importError = '';
+    try {
+      const requests: TaskCreateRequest[] = selected.map((task: TaskImportDraft): TaskCreateRequest => ({ title: task.title, description: task.description, deadline: task.deadline, source_name: task.source_name, source_text: task.source_text, priority: task.priority }));
+      await this.onCommitImport(requests); this.resetImportState();
+    } catch (_) { this.importError = '保存导入任务失败，请重试'; }
+    finally { this.importBusy = false; }
+  }
 
   @Builder Hero() {
     Row() {
@@ -107,10 +159,60 @@ export struct TasksPage {
         .fontColor(this.palette().success).fontSize(9).fontWeight(FontWeight.Bold)
         .padding({ left: 8, right: 8, top: 5, bottom: 5 })
         .backgroundColor(this.darkMode ? '#273D614A' : '#164E8C6A').borderRadius(12)
+      Button('进入专注').fontSize(11).fontWeight(FontWeight.Bold).fontColor('#FFFFFF').backgroundColor(this.palette().primary)
+        .borderRadius(12).padding({ left: 10, right: 10, top: 4, bottom: 4 }).onClick(() => this.onOpenFocus())
+      SymbolGlyph($r('sys.symbol.square_and_arrow_down')).fontSize(21).fontColor([this.palette().primary])
+        .padding(7).backgroundColor(this.palette().soft).borderRadius(11).onClick(() => this.importOpen = true)
     }.width('100%').alignItems(VerticalAlign.Top)
   }
 
+  @Builder ImportDialog() {
+    Column({ space: 14 }) {
+      Row() {
+        Column({ space: 3 }) {
+          Text('AI TASK IMPORT').fontColor(this.palette().primary).fontSize(9).fontWeight(FontWeight.Bold)
+          Text(this.importResult === undefined ? '导入学习材料' : '确认识别结果').fontColor(this.palette().text).fontSize(22).fontWeight(FontWeight.Bold)
+          Text(this.importResult === undefined ? '粘贴课程计划、作业要求或清单' : '已有任务会保留原进度').fontColor(this.palette().muted).fontSize(11)
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+        SymbolGlyph($r('sys.symbol.xmark')).fontSize(20).fontColor([this.palette().muted]).onClick(() => this.closeImport())
+      }.width('100%')
+      if (this.importResult === undefined) {
+        TextInput({ text: this.importSource, placeholder: '材料名称' }).height(44).borderRadius(13).backgroundColor(this.palette().surface).onChange((value: string) => this.importSource = value.substring(0, 256))
+        TextArea({ text: this.importContent, placeholder: '粘贴 Markdown 清单或课程通知…' }).height(210).borderRadius(13).backgroundColor(this.palette().surface).onChange((value: string) => this.importContent = value.substring(0, 20000))
+      } else {
+        Row({ space: 6 }) { SymbolGlyph($r('sys.symbol.bolt')).fontSize(17).fontColor([this.palette().primary]); Text(`识别到 ${this.importDrafts.length} 项`).fontColor(this.palette().primary).fontSize(12).fontWeight(FontWeight.Bold); Blank(); Text(this.importResult?.split_reason ?? '').fontColor(this.palette().muted).fontSize(9) }.width('100%')
+        if (this.importDrafts.length === 0) {
+          Column({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.bolt')).fontSize(30).fontColor([this.palette().primary])
+            Text('没有识别到可导入的待办').fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold)
+            Text('请点击“返回修改”补充或调整材料内容后再试').fontColor(this.palette().muted).fontSize(11)
+          }.width('100%').padding({ top: 34, bottom: 34 }).alignItems(HorizontalAlign.Center)
+        } else List({ space: 8 }) {
+          ForEach(this.importDrafts, (draft: TaskImportDraft, index: number) => {
+            ListItem() {
+              Row({ space: 8 }) {
+                Toggle({ type: ToggleType.Checkbox, isOn: draft.selected }).enabled(draft.existing_task_id === undefined).onChange((checked: boolean) => this.updateImportDraft(index, copyImportDraft(draft, draft.title, draft.description, checked)))
+                Column({ space: 5 }) {
+                  TextInput({ text: draft.title }).onChange((value: string) => this.updateImportDraft(index, copyImportDraft(draft, value.substring(0, 256), draft.description, draft.selected))).backgroundColor(Color.Transparent)
+                  TextArea({ text: draft.description ?? '', placeholder: '备注（选填）' }).height(54).onChange((value: string) => this.updateImportDraft(index, copyImportDraft(draft, draft.title, value.substring(0, 4000), draft.selected))).backgroundColor(Color.Transparent)
+                  if (draft.existing_task_id !== undefined) { Text(`已有${draft.existing_status === 'completed' ? '已完成' : '待办'}任务，保留原进度`).fontColor(this.palette().success).fontSize(9) }
+                }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+              }.width('100%').padding(10).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(16)
+            }
+          }, (draft: TaskImportDraft, index: number) => `${index}-${draft.title}`)
+        }.height(330).width('100%')
+      }
+      if (this.importError.length > 0) { Text(this.importError).fontColor('#D85D68').fontSize(10).width('100%') }
+      Row({ space: 8 }) {
+        Blank()
+        Button(this.importResult === undefined ? '取消' : '返回修改').backgroundColor(this.palette().surface).fontColor(this.palette().muted).onClick(() => { if (this.importResult === undefined) this.closeImport(); else { this.importResult = undefined; this.importDrafts = []; } })
+        Button(this.importBusy ? '处理中…' : (this.importResult === undefined ? '分析并拆分' : `保存 ${this.selectedImportCount()} 项`)).backgroundColor(this.palette().primary).fontColor('#FFFFFF').enabled(!this.importBusy && (this.importResult === undefined ? this.importContent.trim().length > 0 : this.selectedImportCount() > 0)).onClick(() => { if (this.importResult === undefined) this.analyzeImport(); else this.commitImport(); })
+      }.width('100%')
+    }.width('92%').constraintSize({ maxWidth: 720 }).padding(20).backgroundColor(this.darkMode ? '#CC17243A' : '#DDF8FBFF').backdropBlur(28).border({ width: 1, color: '#99FFFFFF' }).borderRadius(24)
+  }
+
   build() {
+    Stack({ alignContent: Alignment.Center }) {
     Column() {
       Scroll() {
         Column({ space: 14 }) {
@@ -143,5 +245,10 @@ export struct TasksPage {
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 10 })
       }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
+    if (this.importOpen) {
+      Column() {}.width('100%').height('100%').backgroundColor('#66303D5F').backdropBlur(8).onClick(() => this.closeImport())
+      this.ImportDialog()
+    }
+    }.width('100%').height('100%')
   }
 }

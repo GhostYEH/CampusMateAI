@@ -176,6 +176,60 @@ class PersonalTaskOut(BaseModel):
     deleted_at: Optional[str] = None
 
 
+class TaskImportAnalyzeRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=20000)
+    source_name: Optional[str] = Field(None, max_length=256)
+
+
+class TaskImportDraft(BaseModel):
+    title: str = Field(..., min_length=1, max_length=256)
+    description: Optional[str] = Field(None, max_length=4000)
+    deadline: Optional[str] = None
+    materials: List[str] = Field(default_factory=list, max_length=50)
+    submission_method: Optional[str] = Field(None, max_length=256)
+    location: Optional[str] = Field(None, max_length=256)
+    source_name: Optional[str] = Field(None, max_length=256)
+    source_text: Optional[str] = Field(None, max_length=20000)
+    priority: str = Field("medium", pattern="^(low|medium|high)$")
+    importance: str = Field(
+        "unknown", pattern="^(urgent|high|important|normal|low|unknown)$"
+    )
+    confidence: float = Field(1.0, ge=0.0, le=1.0)
+    needs_confirmation: bool = False
+    warnings: List[str] = Field(default_factory=list)
+    selected: bool = True
+    existing_task_id: Optional[str] = None
+    existing_status: Optional[str] = None
+
+
+class TaskImportAnalyzeResponse(BaseModel):
+    mode: str = Field(..., pattern="^(structured_text|llm|rules)$")
+    split_reason: str = ""
+    needs_user_confirmation: bool = False
+    tasks: List[TaskImportDraft] = Field(default_factory=list)
+
+
+class TaskImportCommitItem(PersonalTaskCreate):
+    source_text: Optional[str] = Field(
+        None, max_length=20000, description="导入材料原文(用于确认与追溯)"
+    )
+
+
+class TaskImportCommitRequest(BaseModel):
+    tasks: List[TaskImportCommitItem] = Field(..., min_length=1, max_length=50)
+
+
+class TaskImportExisting(BaseModel):
+    task_id: str
+    title: str
+    status: str
+
+
+class TaskImportCommitResponse(BaseModel):
+    created: List[PersonalTaskOut] = Field(default_factory=list)
+    skipped_existing: List[TaskImportExisting] = Field(default_factory=list)
+
+
 # ===== 重要程度批量重排 =====
 
 
@@ -214,6 +268,13 @@ __all__ = [
     "PersonalTaskCreate",
     "PersonalTaskUpdate",
     "PersonalTaskOut",
+    "TaskImportAnalyzeRequest",
+    "TaskImportDraft",
+    "TaskImportAnalyzeResponse",
+    "TaskImportCommitItem",
+    "TaskImportCommitRequest",
+    "TaskImportExisting",
+    "TaskImportCommitResponse",
     "ImportanceRankItem",
     "ImportanceRankRequest",
     "ImportanceRankResponse",

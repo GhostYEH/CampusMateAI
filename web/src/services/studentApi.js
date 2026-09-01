@@ -96,6 +96,16 @@ export async function createPersonalTask(payload) {
   return data;
 }
 
+export async function analyzeTaskImport(payload) {
+  const { data } = await client.post("/tasks/import/analyze", payload);
+  return data;
+}
+
+export async function commitTaskImport(payload) {
+  const { data } = await client.post("/tasks/import/commit", payload);
+  return data;
+}
+
 export async function updatePersonalTask(id, payload) {
   const { data } = await client.patch(`/tasks/${id}`, payload);
   return data;

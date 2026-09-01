@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ApiClient } from '../data/ApiClient';
-import { PagedResponse, TaskItem } from '../data/Models';
+import { PagedResponse, TaskCreateRequest, TaskImportAnalyzeRequest, TaskImportAnalyzeResponse, TaskImportCommitRequest, TaskImportCommitResponse, TaskItem } from '../data/Models';
 
 export interface TaskUpdateRequest {
   title: string;
@@ -21,6 +21,16 @@ export class TaskRepository {
 
   async update(id: string, request: TaskUpdateRequest): Promise<TaskItem> {
     return this.client.patch<TaskItem>(`tasks/${id}`, request);
+  }
+
+  async analyzeImport(content: string, sourceName: string): Promise<TaskImportAnalyzeResponse> {
+    const request: TaskImportAnalyzeRequest = { content: content, source_name: sourceName.length > 0 ? sourceName : undefined };
+    return this.client.request<TaskImportAnalyzeResponse>(http.RequestMethod.POST, 'tasks/import/analyze', request);
+  }
+
+  async commitImport(tasks: TaskCreateRequest[]): Promise<TaskImportCommitResponse> {
+    const request: TaskImportCommitRequest = { tasks: tasks };
+    return this.client.request<TaskImportCommitResponse>(http.RequestMethod.POST, 'tasks/import/commit', request);
   }
 
   async delete(id: string): Promise<void> {

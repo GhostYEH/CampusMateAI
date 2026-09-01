@@ -596,6 +596,10 @@ data class PersonalTaskCreateRequest(
     val source_name: String? = null,
     val source_text: String? = null,
     val priority: String = "medium",
+    val materials: List<String>? = null,
+    val submission_method: String? = null,
+    val location: String? = null,
+    val importance: String? = "unknown",
 )
 
 data class PersonalTaskUpdateRequest(
@@ -603,6 +607,38 @@ data class PersonalTaskUpdateRequest(
     val description: String? = null,
     val deadline: String? = null,
     val source_name: String? = null,
+)
+
+data class TaskImportAnalyzeRequest(val content: String, val source_name: String? = null)
+data class TaskImportDraftDto(
+    val title: String,
+    val description: String? = null,
+    val deadline: String? = null,
+    val source_name: String? = null,
+    val source_text: String? = null,
+    val priority: String = "medium",
+    val importance: String = "unknown",
+    val confidence: Double = 1.0,
+    val materials: List<String> = emptyList(),
+    val submission_method: String? = null,
+    val location: String? = null,
+    val needs_confirmation: Boolean = false,
+    val warnings: List<String> = emptyList(),
+    val selected: Boolean = true,
+    val existing_task_id: String? = null,
+    val existing_status: String? = null,
+)
+data class TaskImportAnalyzeResponse(
+    val mode: String,
+    val split_reason: String = "",
+    val needs_user_confirmation: Boolean = false,
+    val tasks: List<TaskImportDraftDto> = emptyList(),
+)
+data class TaskImportCommitRequest(val tasks: List<PersonalTaskCreateRequest>)
+data class TaskImportExistingDto(val task_id: String, val title: String, val status: String)
+data class TaskImportCommitResponse(
+    val created: List<PersonalTaskDto> = emptyList(),
+    val skipped_existing: List<TaskImportExistingDto> = emptyList(),
 )
 
 data class StudySessionDto(
@@ -939,6 +975,12 @@ interface ApiService {
 
     @POST("tasks")
     suspend fun createTask(@Body request: PersonalTaskCreateRequest): Response<PersonalTaskDto>
+
+    @POST("tasks/import/analyze")
+    suspend fun analyzeTaskImport(@Body request: TaskImportAnalyzeRequest): Response<TaskImportAnalyzeResponse>
+
+    @POST("tasks/import/commit")
+    suspend fun commitTaskImport(@Body request: TaskImportCommitRequest): Response<TaskImportCommitResponse>
 
     @POST("tasks/rank-importance")
     suspend fun rankTaskImportance(@Body request: ImportanceRankRequest): Response<ImportanceRankResponseDto>

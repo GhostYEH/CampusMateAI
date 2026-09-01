@@ -33,6 +33,10 @@ def _new_id() -> str:
     return f"ptask_{uuid.uuid4().hex[:16]}"
 
 
+def _normalize_title(title: str) -> str:
+    return " ".join(title.strip().casefold().split())
+
+
 def _dump_materials(materials: Optional[List[str]]) -> Optional[str]:
     if materials is None:
         return None
@@ -126,6 +130,83 @@ class PersonalTaskRepository:
                     if row:
                         return PersonalTaskRow.from_row(row)
             raise
+
+    def create_import_batch(
+        self,
+        *,
+        user_id: str,
+        tasks: List[dict[str, Any]],
+    ) -> tuple[List[PersonalTaskRow], List[PersonalTaskRow]]:
+        """原子保存导入任务，并在同一写事务内保护标题与来源去重。"""
+        created: List[PersonalTaskRow] = []
+        skipped: List[PersonalTaskRow] = []
+        now = _now_iso()
+        with self._db.transaction() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            active_rows = [
+                PersonalTaskRow.from_row(row)
+                for row in conn.execute(
+                    "SELECT * FROM personal_tasks WHERE user_id = ? AND status != 'deleted'",
+                    (user_id,),
+                ).fetchall()
+            ]
+            existing_by_title = {
+                _normalize_title(row.title): row for row in active_rows
+            }
+            existing_by_notice = {
+                row.source_notice_id: row
+                for row in (
+                    PersonalTaskRow.from_row(item)
+                    for item in conn.execute(
+                        "SELECT * FROM personal_tasks WHERE user_id = ? AND source_notice_id IS NOT NULL",
+                        (user_id,),
+                    ).fetchall()
+                )
+                if row.source_notice_id is not None
+            }
+
+            for item in tasks:
+                title = str(item["title"])
+                title_key = _normalize_title(title)
+                existing = existing_by_title.get(title_key)
+                source_notice_id = item.get("source_notice_id")
+                if existing is None and source_notice_id is not None:
+                    existing = existing_by_notice.get(str(source_notice_id))
+                if existing is not None:
+                    skipped.append(existing)
+                    continue
+
+                task_id = _new_id()
+                conn.execute(
+                    """INSERT INTO personal_tasks (
+                        id, user_id, title, description, target_students,
+                        deadline, materials, submission_method, location,
+                        source_name, source_text, source_notice_id,
+                        priority, importance, status, reminder_minutes,
+                        source, external_id, course_id, source_url, last_synced_at,
+                        created_at, updated_at, completed_at, deleted_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)""",
+                    (
+                        task_id, user_id, title, item.get("description"),
+                        item.get("target_students"), item.get("deadline"),
+                        _dump_materials(item.get("materials")),
+                        item.get("submission_method"), item.get("location"),
+                        item.get("source_name"), item.get("source_text"),
+                        source_notice_id, item.get("priority", "medium"),
+                        item.get("importance") or "unknown", "pending",
+                        item.get("reminder_minutes"), "material_import", None,
+                        None, None, None, now, now,
+                    ),
+                )
+                row = self._get_task(conn, task_id, user_id)
+                if row is None:
+                    raise RuntimeError("导入任务写入后无法读取")
+                created.append(row)
+                existing_by_title[title_key] = row
+                if source_notice_id is not None:
+                    existing_by_notice[str(source_notice_id)] = row
+
+        return created, skipped
 
     # ===== 查询 =====
 

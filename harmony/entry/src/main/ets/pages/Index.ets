@@ -32,7 +32,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskCreateRequest, TaskImportAnalyzeResponse, TaskImportCommitResponse, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
@@ -51,6 +51,7 @@ import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvi
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 import { PreferencesUtil } from '../util/PreferencesUtil';
 import { ForegroundRefreshGate } from '../core/ForegroundRefreshGate';
+import { TaskRepository } from '../repository/TaskRepository';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
@@ -469,6 +470,17 @@ struct Index {
     } catch (error) {
       toastError('更新待办状态失败，请重试');
     }
+  }
+
+  async analyzeTaskImport(content: string, sourceName: string): Promise<TaskImportAnalyzeResponse> {
+    return new TaskRepository(this.createApiClient()).analyzeImport(content, sourceName);
+  }
+
+  async commitTaskImport(tasks: TaskCreateRequest[]): Promise<TaskImportCommitResponse> {
+    const result: TaskImportCommitResponse = await new TaskRepository(this.createApiClient()).commitImport(tasks);
+    await this.refreshPrimaryData();
+    toastError(`已创建 ${result.created.length} 项，跳过已存在 ${result.skipped_existing.length} 项`);
+    return result;
   }
 
   async sendChat(): Promise<void> {
@@ -1354,6 +1366,9 @@ struct Index {
       darkMode: this.darkMode,
       onRefresh: () => this.refreshPrimaryData(),
       onOpenDetail: (task: TaskItem) => this.openTaskDetail(task),
+      onAnalyzeImport: (content: string, sourceName: string) => this.analyzeTaskImport(content, sourceName),
+      onCommitImport: (tasks: TaskCreateRequest[]) => this.commitTaskImport(tasks),
+      onOpenFocus: () => this.pushRoute(AppRoute.FOCUS),
       onComplete: (id: string) => {
         const selected = this.tasks.find((task: TaskItem) => task.id === id);
         if (selected !== undefined) {

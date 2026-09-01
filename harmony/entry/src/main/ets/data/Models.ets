@@ -45,6 +45,24 @@ export interface NoticeExtractTaskItem { title: string; task: string; actionable
 export interface MultiNoticeExtractResponse { tasks: NoticeExtractTaskItem[]; split_reason: string; needs_user_confirmation: boolean; }
 export interface ExtractResult { title: string; source: string; deadline: string; tasks: string[]; confidence: number; error?: string; saved?: boolean; }
 export interface TaskCreateRequest { title: string; description?: string; deadline?: string; source_name?: string; source_text?: string; priority?: string; }
+export interface TaskImportAnalyzeRequest { content: string; source_name?: string; }
+export interface TaskImportDraft {
+  title: string;
+  description?: string;
+  deadline?: string;
+  source_name?: string;
+  source_text?: string;
+  priority: string;
+  importance?: string;
+  confidence?: number;
+  selected: boolean;
+  existing_task_id?: string;
+  existing_status?: string;
+}
+export interface TaskImportAnalyzeResponse { mode: string; split_reason: string; needs_user_confirmation: boolean; tasks: TaskImportDraft[]; }
+export interface TaskImportCommitRequest { tasks: TaskCreateRequest[]; }
+export interface TaskImportCommitResponse { created: TaskItem[]; skipped_existing: TaskImportExisting[]; }
+export interface TaskImportExisting { task_id: string; title: string; status: string; }
 export interface LocalCapturedNotice { id: string; title: string; content: string; source: string; source_type: string; time: string; fingerprint: string; captured_at: number; }
 export interface UniversityItem { id: string; name: string; short_name?: string; province?: string; city?: string; academic_provider: string; forum_enabled: boolean; is_demo: boolean; }
 export interface UniversitySelectionResponse { university_id?: string; university?: UniversityItem; }

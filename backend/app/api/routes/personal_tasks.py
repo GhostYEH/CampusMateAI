@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -38,6 +39,12 @@ from ...schemas.personal_task import (
     ImportanceRankRequest,
     ImportanceRankResponse,
     ImportanceRankItem,
+    TaskImportAnalyzeRequest,
+    TaskImportAnalyzeResponse,
+    TaskImportCommitRequest,
+    TaskImportCommitResponse,
+    TaskImportDraft,
+    TaskImportExisting,
 )
 from ...schemas.multi_role import Page
 from ...services.container import ServiceContainer, get_container
@@ -137,6 +144,154 @@ def create_personal_task(
         reminder_minutes=req.reminder_minutes,
     )
     return _to_out(row)
+
+
+_STRUCTURED_TASK_LINE = re.compile(
+    r"^\s*(?:[-*+]\s+(?:\[[ xX]\]\s*)?|\d+[.、)]\s+)(.+?)\s*$"
+)
+_MAX_IMPORTED_TASKS = 50
+
+
+def _normalized_title(title: str) -> str:
+    return " ".join(title.strip().casefold().split())
+
+
+def _editable_import_title(title: str) -> tuple[str, list[str], bool]:
+    cleaned = title.strip()
+    if len(cleaned) <= 256:
+        return cleaned, [], False
+    return cleaned[:256].rstrip(), ["标题过长"], True
+
+
+def _existing_by_title(repo, user_id: str) -> dict[str, PersonalTaskRow]:
+    rows, total = repo.list_tasks(
+        user_id, page=1, page_size=200
+    )
+    all_rows = list(rows)
+    page = 2
+    while len(all_rows) < total:
+        next_rows, _ = repo.list_tasks(
+            user_id, page=page, page_size=200
+        )
+        if not next_rows:
+            break
+        all_rows.extend(next_rows)
+        page += 1
+    return {_normalized_title(row.title): row for row in all_rows}
+
+
+@router.post("/import/analyze", response_model=TaskImportAnalyzeResponse)
+async def analyze_task_import(
+    req: TaskImportAnalyzeRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> TaskImportAnalyzeResponse:
+    """把学习计划或课程材料转换为可编辑的个人待办草稿。"""
+    source_text = req.content.strip()
+    explicit_titles = [
+        match.group(1).strip()
+        for line in source_text.splitlines()
+        if (match := _STRUCTURED_TASK_LINE.match(line))
+    ]
+    existing = _existing_by_title(container.personal_task_repository, user.id)
+
+    if len(explicit_titles) >= 2:
+        drafts: list[TaskImportDraft] = []
+        for raw_title in explicit_titles[:_MAX_IMPORTED_TASKS]:
+            title, warnings, needs_confirmation = _editable_import_title(raw_title)
+            match = existing.get(_normalized_title(title))
+            drafts.append(TaskImportDraft(
+                title=title,
+                source_name=req.source_name,
+                source_text=source_text,
+                warnings=warnings,
+                needs_confirmation=needs_confirmation,
+                selected=match is None,
+                existing_task_id=match.id if match else None,
+                existing_status=match.status if match else None,
+            ))
+        return TaskImportAnalyzeResponse(
+            mode="structured_text",
+            split_reason=(
+                f"识别到 {len(explicit_titles)} 条清单任务；最多保留 50 项"
+                if len(explicit_titles) > _MAX_IMPORTED_TASKS
+                else f"识别到 {len(drafts)} 条清单任务"
+            ),
+            needs_user_confirmation=(
+                len(explicit_titles) > _MAX_IMPORTED_TASKS
+                or any(draft.needs_confirmation for draft in drafts)
+            ),
+            tasks=drafts,
+        )
+
+    extracted = await container.notice_extraction.extract_multi(
+        source_text,
+        source_name=req.source_name,
+        allow_multi_task=True,
+    )
+    drafts = []
+    for item in extracted.tasks:
+        title, title_warnings, title_needs_confirmation = _editable_import_title(
+            item.task or item.title
+        )
+        if not title:
+            continue
+        match = existing.get(_normalized_title(title))
+        importance = item.importance or "unknown"
+        priority = "high" if importance in {"urgent", "high"} else (
+            "low" if importance == "low" else "medium"
+        )
+        drafts.append(TaskImportDraft(
+            title=title,
+            deadline=item.deadline.isoformat() if item.deadline else None,
+            materials=[material.name for material in item.materials],
+            submission_method=item.submission_method,
+            location=item.location,
+            source_name=item.source_name or req.source_name,
+            source_text=source_text,
+            priority=priority,
+            importance=importance,
+            confidence=item.confidence,
+            needs_confirmation=item.needs_confirmation or title_needs_confirmation,
+            warnings=[*item.warnings, *title_warnings],
+            selected=match is None,
+            existing_task_id=match.id if match else None,
+            existing_status=match.status if match else None,
+        ))
+    modes = {item.extractor_mode for item in extracted.tasks}
+    truncated = len(drafts) > _MAX_IMPORTED_TASKS
+    return TaskImportAnalyzeResponse(
+        mode="llm" if "llm" in modes else "rules",
+        split_reason=(
+            f"{extracted.split_reason}；最多保留 50 项"
+            if truncated else extracted.split_reason
+        ),
+        needs_user_confirmation=extracted.needs_user_confirmation or truncated,
+        tasks=drafts[:_MAX_IMPORTED_TASKS],
+    )
+
+
+@router.post(
+    "/import/commit", response_model=TaskImportCommitResponse, status_code=201
+)
+def commit_task_import(
+    req: TaskImportCommitRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> TaskImportCommitResponse:
+    """批量保存确认后的草稿；同名任务保留原状态，不覆盖学习进度。"""
+    repo = container.personal_task_repository
+    created_rows, skipped_rows = repo.create_import_batch(
+        user_id=user.id,
+        tasks=[item.model_dump() for item in req.tasks],
+    )
+    return TaskImportCommitResponse(
+        created=[_to_out(row) for row in created_rows],
+        skipped_existing=[
+            TaskImportExisting(task_id=row.id, title=row.title, status=row.status)
+            for row in skipped_rows
+        ],
+    )
 
 
 @router.get("/{task_id}", response_model=PersonalTaskOut)

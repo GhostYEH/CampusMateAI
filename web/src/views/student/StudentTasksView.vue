@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, useTemplateRef, watch } from "vue";
 import { useRouter } from "vue-router";
 import UiIcon from "../../components/UiIcon.vue";
 import TaskMetricCard from "../../components/tasks/TaskMetricCard.vue";
@@ -7,6 +7,7 @@ import TaskFocusSection from "../../components/tasks/TaskFocusSection.vue";
 import TaskToolbar from "../../components/tasks/TaskToolbar.vue";
 import TaskList from "../../components/tasks/TaskList.vue";
 import TaskComposer from "../../components/tasks/TaskComposer.vue";
+import TaskImportDialog from "../../components/tasks/TaskImportDialog.vue";
 import {
   completePersonalTask,
   createPersonalTask,
@@ -14,7 +15,10 @@ import {
   getPersonalTasks,
   getStudentAssignments,
   updatePersonalTask,
+  analyzeTaskImport,
+  commitTaskImport,
 } from "../../services/studentApi";
+import { buildTaskImportCommit } from "../../features/tasks/taskImportModel.js";
 import {
   buildTaskModel,
   filterAndSortTasks,
@@ -35,6 +39,12 @@ const assignments = ref([]);
 const personal = ref([]);
 const composerOpen = ref(false);
 const editingTask = ref(null);
+const importOpen = ref(false);
+const importResult = ref(null);
+const importAnalyzing = ref(false);
+const importSaving = ref(false);
+const importError = ref("");
+const importTrigger = useTemplateRef("importTrigger");
 const now = ref(new Date());
 const animated = reactive({ today: 0, upcoming: 0, overdue: 0, completed: 0, completionRate: 0 });
 let clockTimer;
@@ -116,6 +126,31 @@ async function toggleTask(task) {
 }
 
 function startCreate() { editingTask.value = null; composerOpen.value = true; }
+function startImport() { importError.value = ""; importResult.value = null; importOpen.value = true; }
+function closeImport() {
+  importOpen.value = false;
+  importResult.value = null;
+  nextTick(() => importTrigger.value?.focus());
+}
+async function analyzeImport(payload) {
+  importAnalyzing.value = true; importError.value = "";
+  try { importResult.value = await analyzeTaskImport(payload); }
+  catch (e) { importError.value = e.response?.data?.detail || "材料分析失败，请检查内容后重试。"; }
+  finally { importAnalyzing.value = false; }
+}
+async function saveImport(drafts) {
+  importSaving.value = true; importError.value = "";
+  try {
+    const result = await commitTaskImport(buildTaskImportCommit(drafts));
+    closeImport(); await load();
+    const created = result.created || [];
+    const skipped = result.skipped_existing || [];
+    const skippedTitles = skipped.slice(0, 2).map((task) => task.title).filter(Boolean);
+    const titleSummary = skippedTitles.length ? `（${skippedTitles.join("、")}${skipped.length > skippedTitles.length ? "等" : ""}）` : "";
+    flash(`导入完成：新建 ${created.length} 项，跳过已有 ${skipped.length} 项${titleSummary}`);
+  } catch (e) { importError.value = e.response?.data?.detail || "保存导入任务失败。"; }
+  finally { importSaving.value = false; }
+}
 function startEdit(task) {
   if (task.kind !== "personal") { openTask(task); return; }
   editingTask.value = task;
@@ -202,7 +237,7 @@ onUnmounted(() => { window.clearInterval(clockTimer); window.clearInterval(count
     <div v-if="toast" class="task-toast" role="status"><UiIcon name="PhCheckCircle" :size="15" />{{ toast }}</div>
     <header class="task-dashboard-head">
       <div><span class="task-section-eyebrow">STUDY PLANNER</span><h1>待办与作业</h1><p>把重要的事先完成，保持高效学习节奏。</p></div>
-      <button class="task-primary-button task-create-button" type="button" @click="startCreate"><UiIcon name="PhPlus" :size="17" weight="bold" />新建待办</button>
+      <div class="task-head-actions"><button ref="importTrigger" class="task-secondary-button task-import-button" type="button" @click="startImport"><UiIcon name="PhUpload" :size="17" />导入材料</button><button class="task-primary-button task-create-button" type="button" @click="startCreate"><UiIcon name="PhPlus" :size="17" weight="bold" />新建待办</button></div>
     </header>
 
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" :size="16" />{{ error }}<button class="link-button" type="button" @click="load">重试</button></div>
@@ -217,5 +252,6 @@ onUnmounted(() => { window.clearInterval(clockTimer); window.clearInterval(count
     <TaskToolbar v-model:query="query" v-model:kind="kind" v-model:status="status" v-model:sort="sort" @refresh="load" />
     <TaskList :groups="groups" :now="now" @toggle="toggleTask" @open="openTask" @action="handleAction" @reorder="reorderTasks" />
     <TaskComposer :open="composerOpen" :task="editingTask" :saving="saving" @close="composerOpen = false" @save="saveTask" />
+    <TaskImportDialog :open="importOpen" :result="importResult" :analyzing="importAnalyzing" :saving="importSaving" :error="importError" @close="closeImport" @reset="importResult = null" @analyze="analyzeImport" @commit="saveImport" />
   </main>
 </template>

@@ -54,7 +54,9 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     var filter by remember { mutableStateOf("全部") }
     var search by remember { mutableStateOf("") }
     var showAddSheet by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
     var deletingTask by remember { mutableStateOf<Task?>(null) }
+    val importSnackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { repository.refreshTasks() }
     val pending = remember(tasks) { tasks.filterNot(Task::done) }
@@ -97,11 +99,14 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                         Spacer(Modifier.height(4.dp))
                         Text("把重要事情安排得更清楚", color = Muted, fontSize = 15.sp)
                     }
-                    Surface(shape = RoundedCornerShape(12.dp), color = Surface, shadowElevation = 2.dp) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showImportDialog = true }) { Icon(Icons.Default.UploadFile, "导入学习材料", tint = Primary) }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Surface, shadowElevation = 2.dp) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(9.dp).clip(CircleShape).background(if (backendOnline) TaskGreen else TaskOrange))
                             Spacer(Modifier.width(7.dp))
                             Text(if (backendOnline) "真实后端" else "等待后端", fontSize = 12.sp, color = TextPrimary)
+                        }
                         }
                     }
                 }
@@ -207,11 +212,33 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                 ) + 14.dp,
             ),
         )
+        SnackbarHost(
+            importSnackbar,
+            Modifier.align(Alignment.BottomCenter).padding(
+                start = 16.dp,
+                end = 16.dp,
+                bottom = floatingDockContentBottomPadding(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ) + 76.dp,
+            ),
+        )
     }
 
     if (showAddSheet) AddTaskSheet(
         onDismiss = { showAddSheet = false },
         onAdd = { title, due -> scope.launch { repository.addTask(title, due); showAddSheet = false } },
+    )
+    if (showImportDialog) TaskImportDialog(
+        repository = repository,
+        onDismiss = { showImportDialog = false },
+        onImported = { createdCount, skippedExistingCount ->
+            showImportDialog = false
+            val message = buildString {
+                append("已创建 $createdCount 项")
+                if (skippedExistingCount > 0) append("，保留已有 $skippedExistingCount 项")
+            }
+            scope.launch { importSnackbar.showSnackbar(message) }
+        },
     )
     deletingTask?.let { task ->
         AlertDialog(

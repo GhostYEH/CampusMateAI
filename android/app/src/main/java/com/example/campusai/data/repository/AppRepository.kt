@@ -19,6 +19,10 @@ import com.example.campusai.data.remote.NoticeExtractRequest
 import com.example.campusai.data.remote.PersonalTaskCreateRequest
 import com.example.campusai.data.remote.PersonalTaskUpdateRequest
 import com.example.campusai.data.remote.ImportanceRankRequest
+import com.example.campusai.data.remote.TaskImportAnalyzeRequest
+import com.example.campusai.data.remote.TaskImportAnalyzeResponse
+import com.example.campusai.data.remote.TaskImportCommitRequest
+import com.example.campusai.data.remote.TaskImportCommitResponse
 import com.example.campusai.data.remote.PersonalFileCreateRequest
 import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
@@ -763,6 +767,22 @@ class AppRepository(
             } catch (_: Exception) { /* 落入本地回退 */ }
         }
         return@withLock
+    }
+
+    suspend fun analyzeTaskImport(content: String, sourceName: String): TaskImportAnalyzeResponse {
+        val response = ApiClient.api.analyzeTaskImport(
+            TaskImportAnalyzeRequest(content = content, source_name = sourceName.ifBlank { null })
+        )
+        if (!response.isSuccessful) error("学习材料分析失败（${response.code()}）")
+        return response.body() ?: error("学习材料分析结果为空")
+    }
+
+    suspend fun commitTaskImport(request: TaskImportCommitRequest): TaskImportCommitResponse {
+        val response = ApiClient.api.commitTaskImport(request)
+        if (!response.isSuccessful) error("导入任务保存失败（${response.code()}）")
+        val result = response.body() ?: error("导入任务保存结果为空")
+        refreshTasks()
+        return result
     }
 
     suspend fun deleteTask(id: String) = taskMutex.withLock {
