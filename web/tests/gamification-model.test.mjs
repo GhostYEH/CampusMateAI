@@ -129,6 +129,7 @@ test("gamification summary reports only real current-week activity", () => {
   const summary = summarizeGamification(snapshot, facts, now);
 
   assert.equal(summary.weekXp, 95);
+  assert.deepEqual(summary.weekXpSeries, [95, 0, 0, 0, 0, 0, 0]);
   assert.equal(summary.weekFocusMinutes, 60);
   assert.equal(summary.weekCompletedTasks, 1);
   assert.deepEqual(summary.dailyAdventure, {

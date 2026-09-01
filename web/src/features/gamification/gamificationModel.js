@@ -259,6 +259,14 @@ export function summarizeGamification(snapshot, facts, now = new Date()) {
   const todayXp = events
     .filter((event) => localDateKey(event.awardedAt) === today)
     .reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0);
+  const weekXpSeries = events
+    .filter((event) => isWithin(event.awardedAt, bounds))
+    .reduce((series, event) => {
+      const awardedAt = new Date(event.awardedAt);
+      const dayIndex = (awardedAt.getDay() + 6) % 7;
+      series[dayIndex] += Math.max(0, Number(event.xp || 0));
+      return series;
+    }, [0, 0, 0, 0, 0, 0, 0]);
   const nextReward = todayTasks.length === 0
     ? { type: "task-goal", xp: 20 }
     : todayFocusSeconds < 60 * 60
@@ -270,6 +278,7 @@ export function summarizeGamification(snapshot, facts, now = new Date()) {
     title: titleForLevel(level.level),
     streak,
     weekXp: events.filter((event) => isWithin(event.awardedAt, bounds)).reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0),
+    weekXpSeries,
     weekFocusMinutes: Math.round(focusSessions
       .filter((session) => isWithin(session.ended_at || session.started_at, bounds))
       .reduce((sum, session) => sum + Math.max(0, Number(session.duration_seconds || 0)), 0) / 60),
