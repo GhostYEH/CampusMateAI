@@ -355,6 +355,8 @@ private fun CampusDock(
                     elevation = 18.dp,
                     shape = dockShape,
                     clip = false,
+                    ambientColor = Color(glassProfile.shadowColorArgb),
+                    spotColor = Color(glassProfile.shadowColorArgb),
                 )
                 .then(dockGlassModifier)
                 .drawBehind {
