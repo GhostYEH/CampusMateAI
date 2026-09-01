@@ -11,6 +11,7 @@ import notificationCapabilityTest from './ets/notification/NotificationCapabilit
 import v3CoreContractTest from './ets/data/V3CoreContract.test';
 import motionSpecTest from './ets/ui/MotionSpec.test';
 import expressionSignalProcessorTest from './ets/data/ExpressionSignalProcessor.test';
+import expressionRecognitionServiceTest from './ets/data/ExpressionRecognitionService.test';
 import expressionSignalChatBridgeTest from './ets/data/ExpressionSignalChatBridge.test';
 import appRouteTest from './ets/navigation/AppRoute.test';
 import notificationInboxTest from './ets/notification/NotificationInbox.test';
@@ -43,6 +44,7 @@ export default function testsuite(): void {
   v3CoreContractTest();
   motionSpecTest();
   expressionSignalProcessorTest();
+  expressionRecognitionServiceTest();
   expressionSignalChatBridgeTest();
   appRouteTest();
   notificationInboxTest();

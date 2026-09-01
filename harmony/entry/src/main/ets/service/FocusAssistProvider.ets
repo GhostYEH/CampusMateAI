@@ -1,4 +1,5 @@
 import { BehaviorV34Label } from './BehaviorV34Decision';
+import { PersonBox } from './FocusCameraContract';
 
 export enum FocusAssistStatus {
   AVAILABLE = 'AVAILABLE',
@@ -13,13 +14,6 @@ export interface FocusAssistSignal {
   isStable: boolean;
   timestamp: number;
   modelVersion: string;
-}
-
-export interface PersonBox {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
 }
 
 export interface RgbaBehaviorFrame {

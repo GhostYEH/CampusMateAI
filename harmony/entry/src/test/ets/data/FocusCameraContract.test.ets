@@ -5,6 +5,11 @@ import {
   FocusCameraStateText,
   FocusCameraRunToken,
   FocusCameraActivationPolicy,
+  FocusCameraLifecycleEvent,
+  FocusCameraLifecycleAction,
+  FocusCameraLifecyclePolicy,
+  FocusCameraSignalPresentation,
+  FocusBehaviorLabelText,
   FrameAnalysisGate,
   PersonRoiSelector
 } from '../../../main/ets/service/FocusCameraContract';
@@ -45,6 +50,34 @@ export default function focusCameraContractTest(): void {
       expect(FocusCameraActivationPolicy.shouldRun('long_break')).assertFalse();
     });
 
+    it('starts only for focus session starts and focus resumes', 0, () => {
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.START);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.START);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+    });
+
+    it('stops for pause finish hide leave and mode reset', 0, () => {
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.PAUSE, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.FINISH, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.HIDE, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.LEAVE, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+      expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESET, 'focus'))
+        .assertEqual(FocusCameraLifecycleAction.STOP);
+    });
+
     it('drops throttled and in-flight frames', 0, () => {
       const gate = new FrameAnalysisGate(1000);
       expect(gate.tryAcquire(1000)).assertTrue();
@@ -52,6 +85,28 @@ export default function focusCameraContractTest(): void {
       gate.release();
       expect(gate.tryAcquire(1999)).assertFalse();
       expect(gate.tryAcquire(2000)).assertTrue();
+    });
+
+    it('admits a new frame after the default 500 ms cadence', 0, () => {
+      const gate = new FrameAnalysisGate();
+      expect(gate.tryAcquire(1000)).assertTrue();
+      gate.release();
+      expect(gate.tryAcquire(1499)).assertFalse();
+      expect(gate.tryAcquire(1500)).assertTrue();
+    });
+
+    it('does not present rejected behavior output as stable', 0, () => {
+      expect(FocusCameraSignalPresentation.label('READ', false)).assertEqual('');
+      expect(FocusCameraSignalPresentation.confidence(0.91, false)).assertEqual(0);
+      expect(FocusCameraSignalPresentation.label('READ', true)).assertEqual('READ');
+      expect(FocusCameraSignalPresentation.confidence(0.91, true)).assertEqual(0.91);
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.RUNNING)).assertTrue();
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.WAITING_FOR_PERSON)).assertFalse();
+      expect(FocusCameraSignalPresentation.shouldPresent(true, FocusCameraState.STOPPED)).assertFalse();
+    });
+
+    it('displays the hybrid computer behavior with a user-facing label', 0, () => {
+      expect(FocusBehaviorLabelText.describe('COMPUTER')).assertEqual('使用电脑');
     });
 
     it('keeps unavailable camera states explicit and non-punitive', 0, () => {

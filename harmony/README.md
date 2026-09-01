@@ -25,6 +25,26 @@ $env:DEVECO_SDK_HOME = Join-Path $env:DEVECO_HOME 'sdk'
 
 构建产物：`entry/build/default/outputs/default/app/entry-default.hap`。
 
+## 本地表情与学习行为识别
+
+两条识别链路都在 HarmonyOS 设备本地执行，不上传、不保存相机画面：
+
+- 表情识别使用 `rawfile/models/expression/campusmate_expression_v2.ms`。只有在 CPM/AI 页明确同意并授予相机权限后才会启动；离开页面、应用转入后台、退出登录或组件销毁时会停止。只有通过人脸质量、置信度、连续稳定性和时效检查的标签才会随对话发送。
+- 学习行为识别使用 `rawfile/models/behavior/campusmate_behavior_v34.ms` 单帧人体 ROI 模型，并在需要时用 `rawfile/models/behavior/campusmate_tsm_mobilenetv2_v4.ms` 的 8 帧时序结果确认与融合。TSM V4 缺失或推理失败时明确降级为 V3.4；不稳定、无人或已停止的结果不会显示为稳定标签或触发提醒。
+- 行为相机只在后端成功创建或恢复 `focus` 专注会话后启动；短休息、暂停、结束、切换模式、返回、页面隐藏和组件销毁都会停止。相机或模型失败不会回滚已成功的后端会话；相机帧最快每 500 ms 分析一次。
+
+行为模型的输入/输出契约、标签、校准参数、SHA-256 和 TSM 转换对齐阈值记录在 `rawfile/models/behavior/model_card.json`。
+
+## 本地表情与学习行为识别
+
+两条识别链路都在 HarmonyOS 设备本地执行，不上传、不保存相机画面：
+
+- 表情识别使用 `rawfile/models/expression/campusmate_expression_v2.ms`。用户只有在 CPM/AI 页明确同意并授予相机权限后才会启动；离开 CPM 页、应用转入后台、退出登录或组件销毁时会停止。链路为 `MindSporeExpressionProvider -> ExpressionRecognitionService -> withExpressionSignal`；只有通过人脸质量、置信度、连续稳定性和时效检查的标签才会随对话发送。
+- 学习行为识别使用 `rawfile/models/behavior/campusmate_behavior_v34.ms` 单帧人体 ROI 模型，并在需要时用 `rawfile/models/behavior/campusmate_tsm_mobilenetv2_v4.ms` 的 8 帧时序结果做确认与融合。TSM V4 缺失或推理失败时会明确降级为 V3.4，不伪造时序结果；不稳定、无人或已停止的结果不会显示为稳定标签或触发提醒。
+- 行为相机只在后端成功创建或恢复 `focus` 专注会话后启动；短休息/长休息不启动，暂停、结束、切换模式、返回、页面隐藏和组件销毁都会停止。相机或模型失败不会回滚已成功的后端会话。相机帧最快每 500 ms 分析一次。
+
+行为模型的输入/输出契约、标签、校准参数、SHA-256 和 TSM 转换对齐阈值记录在 `rawfile/models/behavior/model_card.json`。
+
 ## 已接入页面
 
 - 与 Android 相同素材的全屏视频登录页、海报兜底、渐变、账号/密码校验和真实登录
@@ -75,6 +95,16 @@ HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` �
 
 通知可靠队列尚未完成：当前本地记录仍使用 Preferences，不是 ArkData/RDB Outbox，失败重试与 App 重启恢复不能视为已对齐。完整状态见 `PARITY_AUDIT.md`。
 
-Android 表情模型当前没有已验证可在 HarmonyOS API 24 运行的等价推理 runtime/模型产物。Harmony 已接入 `ExpressionRecognitionService` 与 AI 对话 `expression_signal` 数据通路，并使用 `UnavailableExpressionProvider` 安全降级：不会生成随机表情、不会伪装为真实识别，也不会上传相机画面；provider 不可用、信号不稳定或过期时，AI 对话会省略 `expression_signal`。后续只需实现同一 provider 契约并完成 API 24 真机验证，即可接入真实模型。
+表情与行为模型已完成本地代码接入、契约测试和 API 24 SDK 编译；这不等于已通过带前置摄像头的 API 24 真机验收。当前环境没有连接的 HDC 目标，且工程未配置签名，因此权限弹窗、摄像头帧回调、真机 MindSpore Lite 加载和前后台切换仍是发布前必验项。
 
-HAP 当前未配置项目签名；连接模拟器或真机后，可在 DevEco Studio 的 Signing Configs 中使用开发者调试证书签名运行。
+HAP 当前未配置项目签名；连接模拟器或真机后，先在 DevEco Studio 的 Signing Configs 中使用开发者调试证书重新构建，再执行：
+
+```powershell
+$hdc='D:\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe'
+& $hdc list targets
+& $hdc install -r '.\entry\build\default\outputs\default\app\entry-default.hap'
+& $hdc shell aa start -b com.example.campusmate -a EntryAbility
+& $hdc shell hilog -x | Select-String 'CampusMate|MindSpore|Camera|EntryAbility'
+```
+
+验收时应在真机上分别覆盖：首次拒绝/同意相机权限、CPM 页进出与前后台、专注开始/暂停/继续/结束、休息模式、无人体画面、TSM 降级以及 `COMPUTER` 连续确认。

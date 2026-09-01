@@ -41,12 +41,24 @@ import { StudyRepository } from '../repository/StudyRepository';
 import { http } from '@kit.NetworkKit';
 import { promptAction, window } from '@kit.ArkUI';
 import picker from '@ohos.file.picker';
-import { ExpressionRecognitionService } from '../service/ExpressionRecognitionService';
+import {
+  ExpressionCameraActivationPolicy,
+  ExpressionRecognitionService
+} from '../service/ExpressionRecognitionService';
 import { withExpressionSignal } from '../data/ExpressionSignalChatBridge';
 import { AppRoute, AppRouteRegistry } from '../navigation/AppRoute';
 import { EduScheduleItemDto } from '../data/ApiClient';
 import { abilityAccessCtrl, common, PermissionRequestResult } from '@kit.AbilityKit';
 import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
+import { MindSporeBehaviorProvider } from '../service/MindSporeBehaviorProvider';
+import { FocusCameraPipeline } from '../service/FocusCameraPipeline';
+import {
+  FocusCameraActivationPolicy,
+  FocusCameraLifecycleAction,
+  FocusCameraLifecycleEvent,
+  FocusCameraLifecyclePolicy,
+  FocusCameraSignalPresentation
+} from '../service/FocusCameraContract';
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 import { PreferencesUtil } from '../util/PreferencesUtil';
@@ -74,6 +86,7 @@ struct Index {
   private chaoxingRepository: ChaoxingRepository | null = null;
   private expressionService: ExpressionRecognitionService = new ExpressionRecognitionService();
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
+  private focusCameraPipeline: FocusCameraPipeline | null = null;
   private expressionPollingTimer: number = -1;
   private foregroundRefreshGate: ForegroundRefreshGate = new ForegroundRefreshGate(30_000);
   private expressionConsentDialogOpen: boolean = false;
@@ -178,17 +191,60 @@ struct Index {
   }
 
   async initializeFocusAssist(): Promise<void> {
-    this.focusAssistProvider = new UnavailableFocusAssistProvider();
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.focusAssistProvider = new MindSporeBehaviorProvider(context.resourceManager);
+      this.focusCameraPipeline = new FocusCameraPipeline(context, this.focusAssistProvider,
+        () => this.refreshFocusAssistState());
+    } catch (_) {
+      this.focusAssistProvider = new UnavailableFocusAssistProvider();
+      this.focusCameraPipeline = null;
+    }
     this.refreshFocusAssistState();
-    this.focusAssistDetail = '鸿蒙 V3.4 候选模型未达到生产门槛，行为提醒保持关闭';
   }
 
   refreshFocusAssistState(): void {
     const signal: FocusAssistSignal | undefined = this.focusAssistProvider.latestSignal();
-    this.focusAssistDetail = this.focusAssistProvider.detail();
-    this.focusAssistLabel = signal?.label ?? '';
-    this.focusAssistConfidence = signal?.confidence ?? 0;
-    this.focusBehaviorReminder = this.focusAssistProvider.currentReminder();
+    const cameraState: string = this.focusCameraPipeline?.state() ?? '';
+    const shouldPresent: boolean = signal !== undefined &&
+      FocusCameraSignalPresentation.shouldPresent(signal.isStable, cameraState);
+    this.focusAssistDetail = this.focusCameraPipeline?.detail() ?? this.focusAssistProvider.detail();
+    this.focusAssistLabel = signal === undefined ? '' :
+      FocusCameraSignalPresentation.label(signal.label, shouldPresent);
+    this.focusAssistConfidence = signal === undefined ? 0 :
+      FocusCameraSignalPresentation.confidence(signal.confidence, shouldPresent);
+    this.focusBehaviorReminder = shouldPresent ? this.focusAssistProvider.currentReminder() : '';
+  }
+
+  async applyFocusCameraLifecycle(event: string, mode: FocusMode): Promise<void> {
+    const action: string = FocusCameraLifecyclePolicy.action(event, mode);
+    if (action === FocusCameraLifecycleAction.START) {
+      await this.startFocusCamera(mode);
+    } else {
+      await this.stopFocusCamera();
+    }
+  }
+
+  async startFocusCamera(mode: FocusMode): Promise<void> {
+    if (!FocusCameraActivationPolicy.shouldRun(mode)) {
+      await this.stopFocusCamera();
+      return;
+    }
+    try {
+      await this.focusCameraPipeline?.start();
+    } catch (_) {
+      // Camera/model failure must not roll back the already-created backend session.
+    }
+    this.refreshFocusAssistState();
+  }
+
+  async stopFocusCamera(): Promise<void> {
+    try {
+      await this.focusCameraPipeline?.stop();
+    } catch (_) {
+      // Lifecycle cleanup remains best-effort when a device camera driver fails.
+    }
+    this.refreshFocusAssistState();
   }
 
   async onPageShow(): Promise<void> {
@@ -202,11 +258,15 @@ struct Index {
   onPageHide(): void {
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
+    this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.HIDE,
+      this.activeStudySession?.mode ?? 'focus');
   }
 
   aboutToDisappear(): void {
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
+    this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE,
+      this.activeStudySession?.mode ?? 'focus');
   }
 
   async refreshUniversityFromServer(): Promise<void> {
@@ -257,8 +317,8 @@ struct Index {
   }
 
   async handleSessionExpired(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     await this.appState.clearSession();
     this.clearRoutes();
     this.signedIn = false;
@@ -549,8 +609,8 @@ struct Index {
   }
 
   async signOut(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     this.chaoxingRepository = null;
     this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
     await this.appState.signOut();
@@ -588,7 +648,9 @@ struct Index {
   }
 
   async requestExpressionPermissionAndStart(): Promise<void> {
-    if (!this.appState.emotionAssistanceEnabled || this.activeTab !== 3) return;
+    if (!ExpressionCameraActivationPolicy.shouldRun(
+      this.appState.emotionAssistanceEnabled, this.signedIn,
+      this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const result: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
@@ -598,7 +660,16 @@ struct Index {
         this.expressionDetail = '需要相机权限才能在本机识别表情';
         return;
       }
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
       await this.startExpressionRecognition();
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) {
+        await this.stopExpressionRecognition();
+        return;
+      }
       if (this.expressionPollingTimer < 0) {
         this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 1000);
       }
@@ -1032,24 +1103,31 @@ struct Index {
       const repository = new StudyRepository(this.createApiClient());
       const goal: string = mode === 'short_break' ? '短暂休息' : mode === 'long_break' ? '长休息调整' : '完成一段专注学习';
       this.activeStudySession = await repository.start(mode, goal);
-      await this.focusAssistProvider.start();
-      this.refreshFocusAssistState();
+      await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.START, mode);
     } catch (error) {
       toastError('无法开始专注，请检查网络');
     }
   }
 
   async updateFocusSession(action: string): Promise<void> {
-    if (this.activeStudySession === undefined) return;
+    const session: StudySession | undefined = this.activeStudySession;
+    if (action === 'pause' || action === 'finish') {
+      await this.applyFocusCameraLifecycle(
+        action === 'pause' ? FocusCameraLifecycleEvent.PAUSE : FocusCameraLifecycleEvent.FINISH,
+        session?.mode ?? 'focus');
+    }
+    if (session === undefined) return;
     try {
       const repository = new StudyRepository(this.createApiClient());
       if (action === 'finish') {
-        await repository.finish(this.activeStudySession.id, '鸿蒙端完成专注');
+        await repository.finish(session.id, '鸿蒙端完成专注');
         this.activeStudySession = undefined;
       } else if (action === 'pause') {
-        this.activeStudySession = await repository.pause(this.activeStudySession.id);
+        this.activeStudySession = await repository.pause(session.id);
       } else {
-        this.activeStudySession = await repository.resume(this.activeStudySession.id);
+        this.activeStudySession = await repository.resume(session.id);
+        await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME,
+          this.activeStudySession.mode);
       }
       await this.refreshSecondaryData('focus');
     } catch (error) {
@@ -1215,7 +1293,7 @@ struct Index {
     } else if (route === AppRoute.UNIVERSITY || route === AppRoute.COMMUNITY || route === AppRoute.COMMUNITY_HOT || route === AppRoute.COMMUNITY_PUBLISH || route === AppRoute.COMMUNITY_DETAIL || route === AppRoute.COMMUNITY_EDIT || route === AppRoute.ACADEMIC) {
       V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailReport: () => this.reportCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
     } else if (route === AppRoute.FOCUS) {
-      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => this.popRoute(), onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
+      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => { this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE, this.activeStudySession?.mode ?? 'focus'); this.popRoute(); }, onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish'), onLeave: () => this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE, this.activeStudySession?.mode ?? 'focus'), onModeReset: () => this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESET, this.activeStudySession?.mode ?? 'focus') })
     } else if (route === AppRoute.LOST_FOUND || route === AppRoute.LOST_FOUND_DETAIL || route === AppRoute.LOST_FOUND_PUBLISH || route === AppRoute.LOST_FOUND_MINE) {
       LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, reduceMotion: this.reduceMotion, view: this.lostFoundView(route), selectedItemId: this.lostFoundDetailId, onBack: () => this.popRoute(), onFilter: (_kind: string) => this.refreshSecondaryData(AppRoute.LOST_FOUND), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact), onOpenDetail: (item: LostFoundItem) => this.openLostFoundDetail(item), onOpenPublish: () => this.pushRoute(AppRoute.LOST_FOUND_PUBLISH), onOpenMine: () => this.pushRoute(AppRoute.LOST_FOUND_MINE) })
     } else if (route === AppRoute.NOTIFICATIONS || route === AppRoute.NOTIFICATION_DETAIL) {

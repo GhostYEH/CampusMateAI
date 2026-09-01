@@ -18,7 +18,7 @@ export class FocusCameraPipeline {
   private readonly context: common.UIAbilityContext;
   private readonly provider: FocusAssistProvider;
   private readonly onUpdate: () => void;
-  private readonly frameGate: FrameAnalysisGate = new FrameAnalysisGate(1000);
+  private readonly frameGate: FrameAnalysisGate = new FrameAnalysisGate();
   private readonly runToken: FocusCameraRunToken = new FocusCameraRunToken();
   private pipelineState: string = FocusCameraState.STOPPED;
   private running: boolean = false;
@@ -42,6 +42,7 @@ export class FocusCameraPipeline {
   }
 
   detail(): string {
+    if (this.pipelineState === FocusCameraState.RUNNING) return this.provider.detail();
     return FocusCameraStateText.describe(this.pipelineState);
   }
 
@@ -252,6 +253,7 @@ export class FocusCameraPipeline {
         timestamp: timestamp
       };
       await this.provider.analyze(behaviorFrame);
+      if (!this.running) return;
       const providerStatus: FocusAssistStatus = this.provider.status();
       if (providerStatus === FocusAssistStatus.RUNNING) {
         this.setState(FocusCameraState.RUNNING);
