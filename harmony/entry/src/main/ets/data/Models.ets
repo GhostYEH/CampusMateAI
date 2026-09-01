@@ -29,9 +29,10 @@ export interface ServiceRequestPayload { kind: string; title: string; content: s
 export interface LostFoundItem { id: string; owner_id?: string; kind: string; title: string; content?: string; location?: string; contact?: string; status?: string; created_at?: string; }
 export interface LostFoundPayload { kind: string; title: string; content: string; location: string; contact: string; }
 export type FocusMode = 'focus' | 'short_break' | 'long_break';
-export interface StudySession { id: string; mode: FocusMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; duration_seconds: number; pause_seconds: number; status: string; created_at?: string; updated_at?: string; }
+export interface StudyBehaviorSummary { observed_seconds: number; study_seconds: number; paused_seconds: number; longest_continuous_study_seconds: number; meaningful_switch_count: number; phone_interaction_count: number; possible_distraction_count: number; absent_count: number; reminder_count: number; model_version: string; }
+export interface StudySession { id: string; mode: FocusMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; duration_seconds: number; pause_seconds: number; status: string; behavior_summary?: StudyBehaviorSummary; created_at?: string; updated_at?: string; }
 export interface StudySessionCreate { mode: FocusMode; goal?: string; related_task_id?: string; }
-export interface StudySessionFinish { self_report?: string; self_report_tags?: string[]; }
+export interface StudySessionFinish { self_report?: string; self_report_tags?: string[]; behavior_summary?: StudyBehaviorSummary; }
 export interface StudyDailyGoal { target_minutes: number; updated_at: string; }
 export interface PersonalFileItem { id: string; name: string; category?: string; size_label?: string; updated_at?: string; source?: string; is_favorite?: boolean; }
 export interface PersonalFileCreate { name: string; category: string; source: string; size_label: string; }

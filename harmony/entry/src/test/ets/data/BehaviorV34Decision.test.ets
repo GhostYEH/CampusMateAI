@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
   BehaviorReminderTracker,
+  BehaviorSessionSummaryTracker,
   BehaviorV34Decision,
   BehaviorV34Label,
   BehaviorV34Result
@@ -59,6 +60,24 @@ export default function behaviorV34DecisionTest(): void {
       expect(tracker.process(stable(BehaviorV34Label.READ), 5000)).assertEqual('');
       tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 6000);
       expect(tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 9000)).assertEqual('');
+    });
+
+    it('builds a privacy-safe session aggregate without frame data', 0, () => {
+      const tracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
+      tracker.reset(1000);
+      tracker.process(stable(BehaviorV34Label.READ), 1000, '');
+      tracker.process(stable(BehaviorV34Label.READ), 2000, '');
+      tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 3000, '');
+      tracker.process(stable(BehaviorV34Label.PHONE_INTERACTION), 6000, '手机提醒');
+      tracker.process(stable(BehaviorV34Label.NO_VISIBLE_STUDY), 7000, '');
+      const summary = tracker.summary(9000, 'V3.4+TSM-V4');
+
+      expect(summary.observed_seconds).assertEqual(8);
+      expect(summary.study_seconds).assertEqual(2);
+      expect(summary.phone_interaction_count).assertEqual(1);
+      expect(summary.possible_distraction_count).assertEqual(1);
+      expect(summary.reminder_count).assertEqual(1);
+      expect(summary.model_version).assertEqual('V3.4+TSM-V4');
     });
   });
 }

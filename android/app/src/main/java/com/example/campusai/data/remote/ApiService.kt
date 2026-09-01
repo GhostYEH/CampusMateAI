@@ -638,6 +638,7 @@ data class StudySessionDto(
     val duration_seconds: Int = 0,
     val pause_seconds: Int = 0,
     val status: String,
+    val behavior_summary: StudyBehaviorSummaryDto? = null,
 )
 
 data class StudySessionCreateRequest(
@@ -650,6 +651,20 @@ data class StudySessionCreateRequest(
 data class StudySessionFinishRequest(
     val self_report: String? = null,
     val self_report_tags: List<String>? = null,
+    val behavior_summary: StudyBehaviorSummaryDto? = null,
+)
+
+data class StudyBehaviorSummaryDto(
+    val observed_seconds: Int,
+    val study_seconds: Int,
+    val paused_seconds: Int,
+    val longest_continuous_study_seconds: Int,
+    val meaningful_switch_count: Int,
+    val phone_interaction_count: Int,
+    val possible_distraction_count: Int,
+    val absent_count: Int,
+    val reminder_count: Int,
+    val model_version: String,
 )
 
 data class StudyGoalDto(val target_minutes: Int, val updated_at: String)

@@ -23,6 +23,7 @@ data class FocusRecord(
     val finished: Boolean,
     val endedAt: String,
     val observationSummary: FocusSessionSummary? = null,
+    val behaviorSummary: FocusBehaviorSummary? = observationSummary?.behaviorSummary,
     val sourceId: String = id.toString(),
 )
 
@@ -63,5 +64,20 @@ data class FocusSessionSummary(
     val possibleDistractionDurationSeconds: Long,
     val breakSuggestionCount: Int,
     val stableExpressionDistribution: Map<String, Int>,
+    val modelVersion: String,
+    val behaviorSummary: FocusBehaviorSummary? = null,
+)
+
+/** Privacy-safe session aggregate. It never contains frames or frame-level predictions. */
+data class FocusBehaviorSummary(
+    val observedSeconds: Int,
+    val studySeconds: Int,
+    val pausedSeconds: Int,
+    val longestContinuousStudySeconds: Int,
+    val meaningfulSwitchCount: Int,
+    val phoneInteractionCount: Int,
+    val possibleDistractionCount: Int,
+    val absentCount: Int,
+    val reminderCount: Int,
     val modelVersion: String,
 )

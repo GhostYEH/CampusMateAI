@@ -2,6 +2,8 @@ import { mindSporeLite } from '@kit.MindSporeLiteKit';
 import { resourceManager } from '@kit.LocalizationKit';
 import {
   BehaviorReminderTracker,
+  BehaviorSessionSummary,
+  BehaviorSessionSummaryTracker,
   BehaviorV34Decision,
   BehaviorV34Label,
   BehaviorV34Result
@@ -227,6 +229,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private providerDetail: string = 'V3.4 本地模型尚未加载';
   private signal: FocusAssistSignal | undefined = undefined;
   private readonly reminderTracker: BehaviorReminderTracker = new BehaviorReminderTracker();
+  private readonly sessionSummaryTracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
   private readonly temporalFrames: BehaviorTemporalFrameBuffer = new BehaviorTemporalFrameBuffer();
   private previousSingleTop: BehaviorV34Label | undefined = undefined;
   private lastTemporalAtMs: number = 0;
@@ -244,12 +247,18 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   status(): FocusAssistStatus { return this.providerStatus; }
   latestSignal(): FocusAssistSignal | undefined { return this.signal; }
   currentReminder(): string { return this.reminderTracker.current(); }
+  sessionSummary(): BehaviorSessionSummary | undefined {
+    if (this.activeRun === 0) return undefined;
+    return this.sessionSummaryTracker.summary(
+      Date.now(), BehaviorProviderPresentation.modelVersion(this.cachedTemporal !== undefined));
+  }
   detail(): string { return this.providerDetail; }
 
   async start(): Promise<void> {
     const run: number = this.runToken.begin();
     this.activeRun = run;
     this.clearProductState();
+    this.sessionSummaryTracker.reset(Date.now());
     if (this.model !== null) {
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
       this.providerDetail = BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
@@ -344,7 +353,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         modelVersion: BehaviorProviderPresentation.modelVersion(hasTemporalEvidence)
       };
       this.signal = next;
-      this.reminderTracker.process(fused, frame.timestamp);
+      const reminder: string = this.reminderTracker.process(fused, frame.timestamp);
+      this.sessionSummaryTracker.process(fused, frame.timestamp, reminder);
       this.providerStatus = FocusAssistStatus.RUNNING;
       this.providerDetail = BehaviorProviderPresentation.detail(
         this.temporalDegraded, fused.label, hasTemporalEvidence

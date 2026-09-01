@@ -1,4 +1,4 @@
-import { BehaviorV34Label } from './BehaviorV34Decision';
+import { BehaviorSessionSummary, BehaviorV34Label } from './BehaviorV34Decision';
 import { PersonBox } from './FocusCameraContract';
 
 export enum FocusAssistStatus {
@@ -32,6 +32,7 @@ export interface FocusAssistProvider {
   analyze(frame: RgbaBehaviorFrame): Promise<FocusAssistSignal | undefined>;
   latestSignal(): FocusAssistSignal | undefined;
   currentReminder(): string;
+  sessionSummary(): BehaviorSessionSummary | undefined;
   detail(): string;
 }
 
@@ -47,5 +48,6 @@ export class UnavailableFocusAssistProvider implements FocusAssistProvider {
   async analyze(_frame: RgbaBehaviorFrame): Promise<FocusAssistSignal | undefined> { return undefined; }
   latestSignal(): FocusAssistSignal | undefined { return undefined; }
   currentReminder(): string { return ''; }
+  sessionSummary(): BehaviorSessionSummary | undefined { return undefined; }
   detail(): string { return '当前设备暂不支持本地学习状态辅助'; }
 }

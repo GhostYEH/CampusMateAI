@@ -53,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.R
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.behavior.BehaviorDatasetCaptureState
@@ -114,11 +115,11 @@ fun FocusScreen(
     onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode) -> Unit,
     onOpenHistory: () -> Unit,
 ) {
-    val stats by repository.stats.collectAsState()
-    val records by repository.records.collectAsState()
-    val activeSession by repository.activeSession.collectAsState()
-    val remoteError by repository.error.collectAsState()
-    val backendOnline by appRepository.backendOnline.collectAsState()
+    val stats by repository.stats.collectAsStateWithLifecycle()
+    val records by repository.records.collectAsStateWithLifecycle()
+    val activeSession by repository.activeSession.collectAsStateWithLifecycle()
+    val remoteError by repository.error.collectAsStateWithLifecycle()
+    val backendOnline by appRepository.backendOnline.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val manager = appRepository.expressionSessionManager
     val taskName = relatedTaskId?.let(appRepository::getTaskById)?.title ?: "本次专注"
@@ -500,7 +501,7 @@ private fun HallDialogueChoice(
 
 @Composable
 fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
-    val records by repository.records.collectAsState()
+    val records by repository.records.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { repository.refresh() }
     val bottomContentPadding = floatingDockContentBottomPadding(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),

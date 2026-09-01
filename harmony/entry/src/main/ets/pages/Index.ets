@@ -32,7 +32,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
@@ -1111,6 +1111,8 @@ struct Index {
 
   async updateFocusSession(action: string): Promise<void> {
     const session: StudySession | undefined = this.activeStudySession;
+    const behaviorSummary: StudyBehaviorSummary | undefined = action === 'finish' ?
+      this.focusAssistProvider.sessionSummary() : undefined;
     if (action === 'pause' || action === 'finish') {
       await this.applyFocusCameraLifecycle(
         action === 'pause' ? FocusCameraLifecycleEvent.PAUSE : FocusCameraLifecycleEvent.FINISH,
@@ -1120,7 +1122,7 @@ struct Index {
     try {
       const repository = new StudyRepository(this.createApiClient());
       if (action === 'finish') {
-        await repository.finish(session.id, '鸿蒙端完成专注');
+        await repository.finish(session.id, '鸿蒙端完成专注', behaviorSummary);
         this.activeStudySession = undefined;
       } else if (action === 'pause') {
         this.activeStudySession = await repository.pause(session.id);

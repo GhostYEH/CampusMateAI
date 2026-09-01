@@ -105,6 +105,7 @@ def _session_to_out(
         self_report=s.self_report,
         self_report_tags=list(s.self_report_tags or []),
         expression_signal=s.expression_signal,
+        behavior_summary=s.behavior_summary,
         created_at=s.created_at,
         updated_at=s.updated_at,
         breaks=[_break_to_out(b) for b in (breaks or [])],
@@ -256,6 +257,11 @@ def finish_session(
         user_id=user.id,
         self_report=req.self_report.strip() if req.self_report else None,
         self_report_tags=tags,
+        behavior_summary=(
+            req.behavior_summary.model_dump(mode="json")
+            if req.behavior_summary is not None
+            else None
+        ),
     )
     breaks = repo.list_breaks(session_id, user_id=user.id)
     return _session_to_out(session, breaks=breaks)

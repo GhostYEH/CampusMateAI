@@ -3,6 +3,7 @@ package com.example.campusai.data.repository
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusStats
+import com.example.campusai.data.model.FocusBehaviorSummary
 import java.time.Instant
 import java.time.Duration
 import java.time.LocalDate
@@ -19,6 +20,7 @@ data class StudySessionSnapshot(
     val mode: FocusMode,
     val pausedAt: String? = null,
     val pauseSeconds: Int = 0,
+    val behaviorSummary: FocusBehaviorSummary? = null,
 )
 
 /**
@@ -56,6 +58,7 @@ class RemoteFocusRepository(
             finished = true,
             endedAt = ended.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
             sourceId = session.id,
+            behaviorSummary = session.behaviorSummary,
         )
     }
 

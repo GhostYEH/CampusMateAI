@@ -349,6 +349,7 @@ CREATE TABLE IF NOT EXISTS study_sessions (
     self_report TEXT,
     self_report_tags TEXT,
     expression_signal TEXT,
+    behavior_summary TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1216,6 +1217,8 @@ class Database:
             conn.execute(
                 "ALTER TABLE study_sessions ADD COLUMN planned_duration_seconds INTEGER NOT NULL DEFAULT 0"
             )
+        if "behavior_summary" not in study_cols:
+            conn.execute("ALTER TABLE study_sessions ADD COLUMN behavior_summary TEXT")
 
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
         cur = conn.execute("PRAGMA table_info(users)")

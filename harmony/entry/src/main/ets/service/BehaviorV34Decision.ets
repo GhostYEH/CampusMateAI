@@ -15,6 +15,98 @@ export interface BehaviorV34Result {
   probabilities: number[];
 }
 
+export interface BehaviorSessionSummary {
+  observed_seconds: number;
+  study_seconds: number;
+  paused_seconds: number;
+  longest_continuous_study_seconds: number;
+  meaningful_switch_count: number;
+  phone_interaction_count: number;
+  possible_distraction_count: number;
+  absent_count: number;
+  reminder_count: number;
+  model_version: string;
+}
+
+/** Aggregates stable labels only; no frame or per-frame result leaves memory. */
+export class BehaviorSessionSummaryTracker {
+  private startedAt: number = 0;
+  private lastTimestamp: number = 0;
+  private lastLabel: BehaviorV34Label | undefined = undefined;
+  private studyMs: number = 0;
+  private pausedMs: number = 0;
+  private currentStudyMs: number = 0;
+  private longestStudyMs: number = 0;
+  private switchCount: number = 0;
+  private phoneCount: number = 0;
+  private distractionCount: number = 0;
+  private reminderCount: number = 0;
+  private reminderActive: boolean = false;
+
+  reset(startedAt: number = Date.now()): void {
+    this.startedAt = startedAt;
+    this.lastTimestamp = startedAt;
+    this.lastLabel = undefined;
+    this.studyMs = 0;
+    this.pausedMs = 0;
+    this.currentStudyMs = 0;
+    this.longestStudyMs = 0;
+    this.switchCount = 0;
+    this.phoneCount = 0;
+    this.distractionCount = 0;
+    this.reminderCount = 0;
+    this.reminderActive = false;
+  }
+
+  process(result: BehaviorV34Result, timestamp: number, reminder: string): void {
+    if (!result.isStable || result.label === BehaviorV34Label.CONTINUE_OBSERVING) return;
+    this.accumulateUntil(timestamp);
+    if (this.lastLabel !== undefined && this.lastLabel !== result.label) this.switchCount += 1;
+    if (result.label === BehaviorV34Label.PHONE_INTERACTION &&
+      this.lastLabel !== BehaviorV34Label.PHONE_INTERACTION) this.phoneCount += 1;
+    if (result.label === BehaviorV34Label.NO_VISIBLE_STUDY &&
+      this.lastLabel !== BehaviorV34Label.NO_VISIBLE_STUDY) this.distractionCount += 1;
+    const hasReminder: boolean = reminder.length > 0;
+    if (hasReminder && !this.reminderActive) this.reminderCount += 1;
+    this.reminderActive = hasReminder;
+    this.lastLabel = result.label;
+  }
+
+  summary(now: number, modelVersion: string): BehaviorSessionSummary {
+    this.accumulateUntil(now);
+    return {
+      observed_seconds: Math.max(0, Math.floor((now - this.startedAt) / 1000)),
+      study_seconds: Math.floor(this.studyMs / 1000),
+      paused_seconds: Math.floor(this.pausedMs / 1000),
+      longest_continuous_study_seconds: Math.floor(this.longestStudyMs / 1000),
+      meaningful_switch_count: this.switchCount,
+      phone_interaction_count: this.phoneCount,
+      possible_distraction_count: this.distractionCount,
+      absent_count: 0,
+      reminder_count: this.reminderCount,
+      model_version: modelVersion
+    };
+  }
+
+  private accumulateUntil(timestamp: number): void {
+    const delta: number = Math.max(0, Math.min(2000, timestamp - this.lastTimestamp));
+    if (this.isStudy(this.lastLabel)) {
+      this.studyMs += delta;
+      this.currentStudyMs += delta;
+      this.longestStudyMs = Math.max(this.longestStudyMs, this.currentStudyMs);
+    } else {
+      this.currentStudyMs = 0;
+      if (this.lastLabel === BehaviorV34Label.NO_VISIBLE_STUDY) this.pausedMs += delta;
+    }
+    this.lastTimestamp = timestamp;
+  }
+
+  private isStudy(label: BehaviorV34Label | undefined): boolean {
+    return label === BehaviorV34Label.READ || label === BehaviorV34Label.WRITE ||
+      label === BehaviorV34Label.COMPUTER;
+  }
+}
+
 export class BehaviorV34Decision {
   static readonly TEMPERATURE: number = 4.841172366232762;
   static readonly MIN_CONFIDENCE: number = 0.30;

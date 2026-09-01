@@ -4,12 +4,14 @@ import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.model.FocusStats
+import com.example.campusai.data.model.FocusBehaviorSummary
 import com.example.campusai.data.model.FocusTimerState
 import com.example.campusai.data.remote.ApiService
 import com.example.campusai.data.remote.StudyGoalUpdateRequest
 import com.example.campusai.data.remote.StudySessionCreateRequest
 import com.example.campusai.data.remote.StudySessionDto
 import com.example.campusai.data.remote.StudySessionFinishRequest
+import com.example.campusai.data.remote.StudyBehaviorSummaryDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,8 +70,11 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
 
     suspend fun resume(): Result<StudySessionSnapshot> = mutateActive { api.resumeStudySession(it.id) }
 
-    suspend fun finish(): Result<StudySessionSnapshot> = mutateActive {
-        api.finishStudySession(it.id, StudySessionFinishRequest())
+    suspend fun finish(summary: FocusSessionSummary? = null): Result<StudySessionSnapshot> = mutateActive {
+        api.finishStudySession(
+            it.id,
+            StudySessionFinishRequest(behavior_summary = summary?.behaviorSummary?.toDto()),
+        )
     }.onSuccess { refresh() }
 
     suspend fun updateGoal(minutes: Int): Result<Unit> = runCatching {
@@ -110,6 +115,7 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         mode = FocusMode.byName(dto.mode.uppercase()),
         pausedAt = dto.paused_at,
         pauseSeconds = dto.pause_seconds,
+        behaviorSummary = dto.behavior_summary?.toDomain(),
     )
 
     private fun FocusMode.toApiMode() = when (this) {
@@ -120,4 +126,30 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
 
     private fun requestError(action: String, code: Int): String =
         if (code == 401) "登录已失效，请重新登录后同步专注记录" else "无法$action ($code)"
+
+    private fun FocusBehaviorSummary.toDto() = StudyBehaviorSummaryDto(
+        observed_seconds = observedSeconds,
+        study_seconds = studySeconds,
+        paused_seconds = pausedSeconds,
+        longest_continuous_study_seconds = longestContinuousStudySeconds,
+        meaningful_switch_count = meaningfulSwitchCount,
+        phone_interaction_count = phoneInteractionCount,
+        possible_distraction_count = possibleDistractionCount,
+        absent_count = absentCount,
+        reminder_count = reminderCount,
+        model_version = modelVersion,
+    )
+
+    private fun StudyBehaviorSummaryDto.toDomain() = FocusBehaviorSummary(
+        observedSeconds = observed_seconds,
+        studySeconds = study_seconds,
+        pausedSeconds = paused_seconds,
+        longestContinuousStudySeconds = longest_continuous_study_seconds,
+        meaningfulSwitchCount = meaningful_switch_count,
+        phoneInteractionCount = phone_interaction_count,
+        possibleDistractionCount = possible_distraction_count,
+        absentCount = absent_count,
+        reminderCount = reminder_count,
+        modelVersion = model_version,
+    )
 }
