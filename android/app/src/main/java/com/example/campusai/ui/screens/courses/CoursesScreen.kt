@@ -43,7 +43,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Button
+import com.example.campusai.ui.components.GlassButton as Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon

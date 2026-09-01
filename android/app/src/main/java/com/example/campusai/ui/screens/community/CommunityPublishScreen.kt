@@ -1,5 +1,10 @@
 package com.example.campusai.ui.screens.community
 
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassCard as Card
+import com.example.campusai.ui.components.GlassIconButton as IconButton
+import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.content.Context

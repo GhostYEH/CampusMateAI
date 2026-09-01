@@ -1,5 +1,9 @@
 package com.example.campusai.ui.screens.profile
 
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassIconButton as IconButton
+import com.example.campusai.ui.components.GlassTextButton as TextButton
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

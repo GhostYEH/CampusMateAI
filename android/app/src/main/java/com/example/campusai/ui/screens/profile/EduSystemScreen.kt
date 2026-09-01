@@ -1,5 +1,10 @@
 package com.example.campusai.ui.screens.profile
 
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassCard as Card
+import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
+import com.example.campusai.ui.components.GlassTextButton as TextButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll

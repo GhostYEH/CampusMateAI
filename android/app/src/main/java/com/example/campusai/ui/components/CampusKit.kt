@@ -28,7 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.campusai.ui.components.GlassTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.ui.strings.CampusStrings
+import com.example.campusai.ui.glass.CampusGlassRole
+import com.example.campusai.ui.glass.campusGlass
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.DangerText
 import com.example.campusai.ui.theme.Line
@@ -144,12 +146,12 @@ fun CampusCard(
     padding: PaddingValues = PaddingValues(16.dp),
     content: @Composable () -> Unit,
 ) {
+    val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
+            .campusGlass(shape = shape, role = CampusGlassRole.PANEL, tint = Surface.copy(alpha = .56f))
+            .border(1.dp, Line.copy(alpha = .62f), shape)
             .padding(padding),
     ) { content() }
 }

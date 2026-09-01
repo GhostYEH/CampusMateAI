@@ -40,7 +40,9 @@ data class CampusGlassProfile(
             glowAtRest = false,
         )
         CampusGlassRole.CONTROL -> CampusGlassEffects(
-            blurRadiusDp = 3f,
+            // Controls can occur dozens of times in a lazy list. Keep their
+            // resting state shader-free; the lens is only added while pressed.
+            blurRadiusDp = 0f,
             lensAtRest = false,
             lensOnPress = lensEnabled,
             glowAtRest = false,

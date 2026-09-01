@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -16,8 +17,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import com.example.campusai.ui.glass.CampusGlassRole
+import com.example.campusai.ui.glass.campusGlass
 import com.example.campusai.ui.theme.CampusMotion
 import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.theme.Primary
@@ -30,6 +35,7 @@ import com.example.campusai.ui.theme.Primary
 fun Modifier.campusClickable(
     enabled: Boolean = true,
     role: Role? = Role.Button,
+    shape: Shape = RoundedCornerShape(16.dp),
     onClick: () -> Unit,
 ): Modifier {
     val source = remember { MutableInteractionSource() }
@@ -63,7 +69,12 @@ fun Modifier.campusClickable(
             )
         }
     }
-    return graphicsLayer {
+    return campusGlass(
+        shape = shape,
+        role = CampusGlassRole.CONTROL,
+        interactionProgress = pressGlow.value,
+        glowColor = primaryColor,
+    ).graphicsLayer {
         scaleX = scale
         scaleY = scale
         alpha = if (enabled) 1f else .52f

@@ -48,6 +48,7 @@ class CampusGlassProfileTest {
         val profile = campusGlassProfile(apiLevel = 35, reduceMotion = false)
 
         assertFalse(profile.effectsFor(CampusGlassRole.DENSE).lensAtRest)
+        assertEquals(0f, profile.effectsFor(CampusGlassRole.CONTROL).blurRadiusDp)
         assertTrue(profile.effectsFor(CampusGlassRole.NAVIGATION).lensAtRest)
         assertTrue(profile.effectsFor(CampusGlassRole.CONTROL).lensOnPress)
     }

@@ -96,10 +96,8 @@ import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import com.example.campusai.ui.theme.UnreadDot
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.haze
-import dev.chrisbanes.haze.hazeChild
+import com.example.campusai.ui.glass.CampusGlassRole
+import com.example.campusai.ui.glass.campusGlass
 import kotlin.math.roundToInt
 
 data class NavItem(val route: String, val label: String, val icon: ImageVector)
@@ -157,7 +155,6 @@ fun AppShell(
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     val navItems = studentNavItems.take(5)
-    val hazeState = remember { HazeState() }
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
@@ -196,22 +193,13 @@ fun AppShell(
         Box(
             Modifier
                 .fillMaxSize()
-                .haze(
-                    state = hazeState,
-                    style = HazeStyle(
-                        tint = Background.copy(alpha = .16f),
-                        blurRadius = 8.dp,
-                        noiseFactor = .04f,
-                    ),
-                )
-                .background(Background),
+                .background(Background.copy(alpha = .82f)),
         ) {
             content()
         }
         CampusDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter),
-            hazeState = hazeState,
             items = navItems,
             route = route,
             pendingCount = pendingCount,
@@ -310,7 +298,6 @@ private fun CampusTopBar(
 @Composable
 private fun CampusDock(
     modifier: Modifier = Modifier,
-    hazeState: HazeState,
     items: List<NavItem>,
     route: String,
     pendingCount: Int,
@@ -326,21 +313,6 @@ private fun CampusDock(
     val glassProfile = liquidGlassDockProfile(Build.VERSION.SDK_INT, darkMode)
     val interactionProfile = liquidGlassDockInteractionProfile(reduceMotion)
     val dockShape = RoundedCornerShape(38.dp)
-    val dockGlassModifier = if (glassProfile.blurEnabled) {
-        Modifier.hazeChild(
-            state = hazeState,
-            shape = dockShape,
-            style = HazeStyle(
-                tint = dockSurface.copy(alpha = glassProfile.surfaceAlpha),
-                blurRadius = glassProfile.blurRadiusDp.dp,
-                noiseFactor = .08f,
-            ),
-        )
-    } else {
-        Modifier
-            .clip(dockShape)
-            .background(dockSurface.copy(alpha = glassProfile.surfaceAlpha))
-    }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -356,7 +328,12 @@ private fun CampusDock(
                     shape = dockShape,
                     clip = false,
                 )
-                .then(dockGlassModifier)
+                .campusGlass(
+                    shape = dockShape,
+                    role = CampusGlassRole.NAVIGATION,
+                    tint = dockSurface.copy(alpha = glassProfile.surfaceAlpha),
+                    glowColor = primaryColor,
+                )
                 .drawBehind {
                     drawRoundRect(
                         color = Color.White.copy(alpha = if (darkMode) .04f else .12f),

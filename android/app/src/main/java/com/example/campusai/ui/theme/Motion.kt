@@ -31,15 +31,20 @@ import kotlinx.coroutines.launch
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
 object CampusMotion {
-    const val enterDuration = 560
-    const val routeEnterDuration = 360
-    const val routeExitDuration = 260
+    const val enterDuration = 480
+    const val routeEnterDuration = 340
+    const val routeExitDuration = 220
     const val pressDuration = 130
     const val releaseDuration = 260
+    const val staggerStep = 42
+    const val maxStaggerDelay = 252
 
     val enterEasing = CubicBezierEasing(0.22f, 0.86f, 0.2f, 1f)
     val settleEasing = CubicBezierEasing(0.18f, 0.8f, 0.24f, 1f)
     val routeEasing = FastOutSlowInEasing
+
+    fun staggerDelay(index: Int): Int =
+        (index.coerceAtLeast(0) * staggerStep).coerceAtMost(maxStaggerDelay)
 }
 
 /**

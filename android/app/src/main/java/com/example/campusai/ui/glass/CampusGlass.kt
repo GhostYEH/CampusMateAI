@@ -132,7 +132,9 @@ fun Modifier.campusGlass(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            if (role != CampusGlassRole.DENSE) vibrancy()
+            if (role == CampusGlassRole.NAVIGATION || role == CampusGlassRole.PANEL || activeGlow > 0f) {
+                vibrancy()
+            }
             if (effects.blurRadiusDp > 0f) blur(effects.blurRadiusDp.dp.toPx())
             if (profile.lensEnabled && (effects.lensAtRest || effects.lensOnPress && activeGlow > 0f)) {
                 val progress = if (effects.lensAtRest) 1f else activeGlow

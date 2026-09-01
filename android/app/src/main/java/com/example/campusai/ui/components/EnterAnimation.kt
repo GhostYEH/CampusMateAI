@@ -4,6 +4,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.example.campusai.ui.theme.CampusMotion
 import com.example.campusai.ui.theme.LocalReduceMotion
 
@@ -20,11 +22,12 @@ fun Modifier.enterAnimation(
 ): Modifier {
     if (!enabled || LocalReduceMotion.current) return this
     var hasFinished by remember { mutableStateOf(false) }
+    val slideDistancePx = with(LocalDensity.current) { slideDistance.dp.toPx() }
     val progress by animateFloatAsState(
         targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
             durationMillis = CampusMotion.enterDuration,
-            delayMillis = delayMs,
+            delayMillis = delayMs.coerceIn(0, CampusMotion.maxStaggerDelay),
             easing = CampusMotion.enterEasing,
         ),
         label = "enter-progress",
@@ -32,7 +35,7 @@ fun Modifier.enterAnimation(
     LaunchedEffect(Unit) { hasFinished = true }
     return this.graphicsLayer {
         alpha = progress
-        translationY = slideDistance * (1f - progress)
+        translationY = slideDistancePx * (1f - progress)
         scaleX = 1f - (1f - scaleFrom) * (1f - progress)
         scaleY = 1f - (1f - scaleFrom) * (1f - progress)
     }
@@ -50,21 +53,23 @@ fun Modifier.slideInAnimation(
 ): Modifier {
     if (!enabled || LocalReduceMotion.current) return this
     var hasFinished by remember { mutableStateOf(false) }
+    val slideDistancePx = with(LocalDensity.current) { 44.dp.toPx() }
+    val liftDistancePx = with(LocalDensity.current) { 6.dp.toPx() }
     val progress by animateFloatAsState(
         targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
             durationMillis = 440,
-            delayMillis = delayMs,
+            delayMillis = delayMs.coerceIn(0, CampusMotion.maxStaggerDelay),
             easing = CampusMotion.settleEasing,
         ),
         label = "slide-progress",
     )
     LaunchedEffect(Unit) { hasFinished = true }
-    val offset = 44f * (1f - progress) * if (fromLeft) -1f else 1f
+    val offset = slideDistancePx * (1f - progress) * if (fromLeft) -1f else 1f
     return this.graphicsLayer {
         alpha = progress
         translationX = offset
-        translationY = 6f * (1f - progress)
+        translationY = liftDistancePx * (1f - progress)
         scaleX = 0.985f + 0.015f * progress
         scaleY = 0.985f + 0.015f * progress
     }

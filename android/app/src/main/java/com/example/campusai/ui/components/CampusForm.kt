@@ -60,6 +60,8 @@ import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
+import com.example.campusai.ui.glass.CampusGlassRole
+import com.example.campusai.ui.glass.campusGlass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -95,12 +97,12 @@ fun CampusTextField(
     minLines: Int = 1,
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
+    val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Surface)
-            .border(1.dp, InputBorder, RoundedCornerShape(12.dp))
+            .campusGlass(shape = shape, role = CampusGlassRole.DENSE, tint = Surface.copy(alpha = .68f))
+            .border(1.dp, InputBorder, shape)
             .padding(horizontal = 13.dp, vertical = if (minLines > 1) 12.dp else 0.dp),
         contentAlignment = if (minLines > 1) Alignment.TopStart else Alignment.CenterStart,
     ) {
@@ -184,12 +186,12 @@ fun FormSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Surface)
-            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .campusGlass(shape = shape, role = CampusGlassRole.DENSE, tint = Surface.copy(alpha = .66f))
+            .border(1.dp, Line.copy(alpha = .62f), shape)
             .padding(horizontal = 13.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

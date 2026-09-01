@@ -23,6 +23,7 @@ import com.example.campusai.ui.screens.login.LoginScreen
 import com.example.campusai.ui.screens.shell.AppShell
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
+import com.example.campusai.ui.glass.CampusGlassScene
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -71,7 +72,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
             CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
-                CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                CampusGlassScene(darkMode = darkMode) {
+                    CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                }
             }
         }
     }

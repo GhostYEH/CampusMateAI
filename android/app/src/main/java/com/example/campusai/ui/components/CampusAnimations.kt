@@ -55,7 +55,7 @@ fun PulseEffect(
         initialValue = 1f,
         targetValue = 1.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
+            animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse-scale",
@@ -64,7 +64,7 @@ fun PulseEffect(
         initialValue = 1f,
         targetValue = 0.55f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
+            animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse-alpha",

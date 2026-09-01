@@ -18,14 +18,14 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
