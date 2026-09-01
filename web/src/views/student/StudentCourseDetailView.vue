@@ -157,7 +157,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page campus-redesign course-detail-redesign page-enter">
+  <main class="student-page campus-redesign course-detail-redesign">
     <button class="cd-back-link" type="button" @click="router.push('/courses')">
       <UiIcon name="PhArrowLeft" />返回课程列表
     </button>

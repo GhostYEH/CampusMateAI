@@ -6,6 +6,12 @@ import UiIcon from "../components/UiIcon.vue";
 import AppToastHost from "../components/AppToastHost.vue";
 import AppConfirmHost from "../components/AppConfirmHost.vue";
 import { getStudentAssignments, getStudentCourses } from "../services/studentApi";
+import {
+  animatePanelEnter,
+  animatePanelLeave,
+  animateRouteEnter,
+  animateRouteLeave,
+} from "../motion/gsapMotion";
 
 const store = useAppStore();
 const route = useRoute();
@@ -17,6 +23,11 @@ const searchOpen = ref(false);
 const searchResults = ref([]);
 const searchLoading = ref(false);
 let searchTimer;
+
+function routeEnter(element, done) { animateRouteEnter(element, done, store.reduceMotion); }
+function routeLeave(element, done) { animateRouteLeave(element, done, store.reduceMotion); }
+function panelEnter(element, done) { animatePanelEnter(element, done, store.reduceMotion); }
+function panelLeave(element, done) { animatePanelLeave(element, done, store.reduceMotion); }
 
 const menus = [
   ["home", "首页", "PhHouse"],
@@ -109,12 +120,18 @@ onUnmounted(() => { window.removeEventListener("keydown", keydown); clearTimeout
         <div class="sync-pill" :class="{ offline: !store.backendOnline && route.path !== '/counselor' }"><UiIcon :name="store.backendOnline || route.path === '/counselor' ? 'PhCheckCircle' : 'PhCloudSlash'" :size="18" />{{ store.backendOnline || route.path === '/counselor' ? "已同步 · 刚刚" : "后端未连接" }}</div>
         <button class="icon-button notification-button" aria-label="通知" @click="go('notifications')"><UiIcon name="PhBell" :size="20" /><i></i></button>
       </header>
-      <div v-if="searchOpen && search.length >= 2" class="global-search-panel">
-        <div v-if="searchLoading" class="global-search-empty">正在搜索真实数据…</div>
-        <div v-else-if="!searchResults.length" class="global-search-empty">没有匹配结果</div>
-        <button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="chooseSearchResult(item)"><span><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></span><UiIcon name="PhArrowRight" :size="15" /></button>
-      </div>
-      <RouterView :search-query="search" />
+      <Transition :css="false" @enter="panelEnter" @leave="panelLeave">
+        <div v-if="searchOpen && search.length >= 2" class="global-search-panel">
+          <div v-if="searchLoading" class="global-search-empty">正在搜索真实数据…</div>
+          <div v-else-if="!searchResults.length" class="global-search-empty">没有匹配结果</div>
+          <button v-for="item in searchResults" :key="`${item.type}-${item.id}`" @click="chooseSearchResult(item)"><span><strong>{{ item.title }}</strong><small>{{ item.type }} · {{ item.subtitle }}</small></span><UiIcon name="PhArrowRight" :size="15" /></button>
+        </div>
+      </Transition>
+      <RouterView v-slot="{ Component, route: viewRoute }">
+        <Transition :css="false" mode="out-in" @enter="routeEnter" @leave="routeLeave">
+          <component :is="Component" :key="viewRoute.fullPath" :search-query="search" />
+        </Transition>
+      </RouterView>
     </div>
   </div>
 </template>

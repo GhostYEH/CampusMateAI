@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import UiIcon from "../../components/UiIcon.vue";
 import StudyExperienceLayer from "../../components/study/StudyExperienceLayer.vue";
+import { usePageMotion } from "../../composables/usePageMotion";
+import { useAppStore } from "../../stores/app";
 import {
   breakdownStudyTask,
   completePersonalTask,
@@ -16,6 +18,8 @@ import {
 } from "../../services/studentApi";
 
 const loading = ref(true);
+const store = useAppStore();
+const motionRoot = ref(null);
 const error = ref("");
 const active = ref(null);
 const sessions = ref([]);
@@ -67,6 +71,17 @@ const trend = computed(() => {
 });
 const maxTrend = computed(() => Math.max(...trend.value.map((item) => item.minutes), 1));
 const selectedMinutes = computed(() => selectedPreset.value === "custom" ? Number(customMinutes.value || 45) : selectedPreset.value);
+const motionReady = computed(() => !loading.value);
+const reduceMotion = computed(() => store.reduceMotion);
+
+usePageMotion({
+  root: motionRoot,
+  ready: motionReady,
+  reduceMotion,
+  hero: [".study-reference-heading", ".focus-reference-card", ".study-reference-plan"],
+  reveal: "[data-motion-reveal]",
+  parallax: ".focus-reference-art",
+});
 
 function drawTrend() {
   const canvas = trendCanvas.value;
@@ -254,7 +269,7 @@ onBeforeUnmount(() => { window.clearInterval(ticker.value); window.removeEventLi
 </script>
 
 <template>
-  <main class="student-page study-reference page-enter">
+  <main ref="motionRoot" class="student-page study-reference">
     <header class="study-reference-heading">
       <h1>给专注留一段完整时间 <UiIcon name="PhSparkle" :size="24" weight="fill" /></h1>
       <p>学习会让自我多维记录，结束时再由你主动填写本次学习感受。</p>
@@ -303,28 +318,28 @@ onBeforeUnmount(() => { window.clearInterval(ticker.value); window.removeEventLi
           </article>
 
           <section class="study-reference-metrics">
-            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟', eyebrow: 'TODAY RHYTHM', insight: '午后是你的高效区间' }, $event)" @keydown.enter="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟' })"><i class="violet"><UiIcon name="PhClock" /></i><span><small>今日专注</small><strong>{{ todayMinutes }}<em>分钟</em></strong><b>点击查看节奏</b></span></article>
-            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次', eyebrow: 'FOCUS ARCHIVE', insight: '完成记录正在形成你的专注画像' }, $event)" @keydown.enter="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次' })"><i class="green"><UiIcon name="PhCheckCircle" /></i><span><small>已完成会话</small><strong>{{ completedSessions.length }}<em>次</em></strong><b>查看累计记录</b></span></article>
-            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '连续专注', value: completedSessions.length ? '—' : '0', unit: '天', eyebrow: 'FOCUS STREAK', insight: '保持出现，比偶尔超常更重要' }, $event)" @keydown.enter="openExperience('metric', { label: '连续专注', value: '0', unit: '天' })"><i class="amber"><UiIcon name="PhSparkle" /></i><span><small>连续专注</small><strong>{{ completedSessions.length ? "—" : "0" }}<em>天</em></strong><b>查看连续趋势</b></span></article>
-            <article class="study-reference-card study-reference-metric" role="button" tabindex="0" @click="openExperience('metric', { label: '专注评分', value: '—', unit: '/100', eyebrow: 'FOCUS SCORE', insight: '完成更多会话后生成专注评分' }, $event)" @keydown.enter="openExperience('metric', { label: '专注评分', value: '—', unit: '/100' })"><i class="lilac"><UiIcon name="PhChartLineUp" /></i><span><small>专注评分</small><strong>—<em>/100</em></strong><b>查看评分说明</b></span></article>
+            <article class="study-reference-card study-reference-metric" data-motion-reveal role="button" tabindex="0" @click="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟', eyebrow: 'TODAY RHYTHM', insight: '午后是你的高效区间' }, $event)" @keydown.enter="openExperience('metric', { label: '今日专注', value: todayMinutes, unit: '分钟' })"><i class="violet"><UiIcon name="PhClock" /></i><span><small>今日专注</small><strong>{{ todayMinutes }}<em>分钟</em></strong><b>点击查看节奏</b></span></article>
+            <article class="study-reference-card study-reference-metric" data-motion-reveal role="button" tabindex="0" @click="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次', eyebrow: 'FOCUS ARCHIVE', insight: '完成记录正在形成你的专注画像' }, $event)" @keydown.enter="openExperience('metric', { label: '已完成会话', value: completedSessions.length, unit: '次' })"><i class="green"><UiIcon name="PhCheckCircle" /></i><span><small>已完成会话</small><strong>{{ completedSessions.length }}<em>次</em></strong><b>查看累计记录</b></span></article>
+            <article class="study-reference-card study-reference-metric" data-motion-reveal role="button" tabindex="0" @click="openExperience('metric', { label: '连续专注', value: completedSessions.length ? '—' : '0', unit: '天', eyebrow: 'FOCUS STREAK', insight: '保持出现，比偶尔超常更重要' }, $event)" @keydown.enter="openExperience('metric', { label: '连续专注', value: '0', unit: '天' })"><i class="amber"><UiIcon name="PhSparkle" /></i><span><small>连续专注</small><strong>{{ completedSessions.length ? "—" : "0" }}<em>天</em></strong><b>查看连续趋势</b></span></article>
+            <article class="study-reference-card study-reference-metric" data-motion-reveal role="button" tabindex="0" @click="openExperience('metric', { label: '专注评分', value: '—', unit: '/100', eyebrow: 'FOCUS SCORE', insight: '完成更多会话后生成专注评分' }, $event)" @keydown.enter="openExperience('metric', { label: '专注评分', value: '—', unit: '/100' })"><i class="lilac"><UiIcon name="PhChartLineUp" /></i><span><small>专注评分</small><strong>—<em>/100</em></strong><b>查看评分说明</b></span></article>
           </section>
         </div>
       </section>
 
       <section class="study-reference-bottom">
-        <article class="study-reference-card study-reference-records">
+        <article class="study-reference-card study-reference-records" data-motion-reveal>
           <div class="study-reference-card-head"><h2>最近记录</h2><button @click="load">刷新 <UiIcon name="PhArrowClockwise" :size="14" /></button></div>
           <div v-if="sessions.length" class="study-reference-record-list"><div v-for="session in sessions.slice(0, 4)" :key="session.id" role="button" tabindex="0" @click="openExperience('record', session, $event)" @keydown.enter="openExperience('record', session)"><i><UiIcon name="PhCheckCircle" /></i><span><strong>{{ session.goal || "学习会话" }}</strong><small>{{ new Date(session.started_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }}</small></span><b>{{ Math.round((session.duration_seconds || 0) / 60) }} 分钟</b></div></div>
           <div v-else class="study-reference-empty"><span><UiIcon name="PhListChecks" :size="36" /></span><strong>还没有学习记录</strong><p>开始一次专注会话，你的记录会出现在这里。</p><button @click="start"><UiIcon name="PhPlay" />去开始学习</button></div>
         </article>
 
-        <article class="study-reference-card study-reference-trend">
+        <article class="study-reference-card study-reference-trend" data-motion-reveal>
           <div class="study-reference-card-head"><h2>专注趋势（本周）</h2><button class="study-reference-open-text" @click="openExperience('trend', {}, $event)">展开分析 <UiIcon name="PhArrowRight" :size="13" /></button></div>
           <div class="study-reference-chart"><div class="study-reference-y"><span>120</span><span>90</span><span>60</span><span>30</span><span>0</span></div><div class="study-reference-plot"><canvas ref="trendCanvas" aria-label="本周专注趋势图"></canvas><div><small v-for="item in trend" :key="item.label">{{ item.label }}</small></div></div></div>
           <div class="study-reference-legend"><i></i>专注时长（分钟）<span v-if="!weekMinutes">完成会话后会显示趋势</span></div>
         </article>
 
-        <article class="study-reference-card study-reference-todos">
+        <article class="study-reference-card study-reference-todos" data-motion-reveal>
           <div class="study-reference-card-head"><h2>待完成计划</h2><button @click="$router.push('/tasks')">管理全部 <UiIcon name="PhArrowRight" :size="14" /></button></div>
           <div v-if="tasks.length" class="study-reference-todo-list"><button v-for="task in tasks.slice(0, 4)" :key="task.id" @click="openExperience('task', task, $event)"><i></i><span>{{ task.title }}</span><time>{{ task.deadline ? new Date(task.deadline).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '待安排' }}</time></button></div>
           <div v-else class="study-reference-todo-empty"><UiIcon name="PhCheckSquare" :size="23" /><span>当前没有待完成计划</span></div>

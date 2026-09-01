@@ -19,6 +19,7 @@ test("route views outside the initial shells are lazy loaded", () => {
 test("production build creates stable vendor cache groups", () => {
   assert.match(viteSource, /manualChunks/);
   assert.match(viteSource, /vue-vendor/);
+  assert.match(viteSource, /gsap-vendor/);
   assert.match(viteSource, /qr-tools/);
   assert.match(viteSource, /markdown-tools/);
 });

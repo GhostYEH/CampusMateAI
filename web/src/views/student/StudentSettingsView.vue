@@ -95,7 +95,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page page-enter settings-page profile-settings-redesign">
+  <main class="student-page settings-page profile-settings-redesign">
     <div class="student-heading">
       <div>
         <button class="back-link" @click="router.push('/profile')"><UiIcon name="PhArrowLeft" />返回个人中心</button>

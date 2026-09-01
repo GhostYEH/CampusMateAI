@@ -27,7 +27,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page services-redesign page-enter">
+  <main class="student-page services-redesign">
     <!-- Hero Section -->
     <section class="sv-hero">
       <div class="sv-hero-content">

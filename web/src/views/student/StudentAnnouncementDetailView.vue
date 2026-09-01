@@ -98,7 +98,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page announcement-detail-page page-enter">
+  <main class="student-page announcement-detail-page">
     <button class="cd-back-link" @click="router.push('/notifications')"><UiIcon name="PhArrowLeft" />返回通知列表</button>
 
     <div v-if="loading" class="student-detail-loading"><div class="student-skeleton"></div></div>

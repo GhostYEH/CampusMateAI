@@ -187,7 +187,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page profile-secondary-page page-enter">
+  <main class="student-page profile-secondary-page">
     <section class="profile-secondary-hero redesign-panel">
       <div class="profile-secondary-hero-copy">
         <button class="profile-secondary-back" @click="goBack"><UiIcon name="PhArrowLeft" :size="16" />返回个人中心</button>

@@ -7,7 +7,7 @@ async function load(){loading.value=true;error.value="";try{const [list,profile]
 async function choose(item){if(current.value===item.id)return;if(!window.confirm(`切换到 ${item.name} 后，论坛和失物招领将切换到新学校。个人待办不会删除。`))return;selecting.value=item.id;try{await selectUniversity(item.id);current.value=item.id;}catch(e){error.value=e.response?.data?.message||"切换失败";}finally{selecting.value="";}}
 onMounted(load);
 </script>
-<template><main class="student-page campus-redesign page-enter"><div class="redesign-heading"><div><span class="redesign-kicker">UNIVERSITY IDENTITY</span><h1>我的大学</h1><p>搜索、选择并管理你的大学身份，校园公共内容会按学校隔离。</p></div></div>
+<template><main class="student-page campus-redesign"><div class="redesign-heading"><div><span class="redesign-kicker">UNIVERSITY IDENTITY</span><h1>我的大学</h1><p>搜索、选择并管理你的大学身份，校园公共内容会按学校隔离。</p></div></div>
 <form class="v3-search redesign-panel" @submit.prevent="load"><UiIcon name="PhMagnifyingGlass"/><input v-model="query" placeholder="搜索大学名称或简称"/><button class="redesign-button primary">搜索大学</button></form>
 <div v-if="error" class="redesign-alert error"><UiIcon name="PhWarningCircle"/>{{error}}<button @click="load">重试</button></div><div v-if="loading" class="profile-loading"><div class="profile-loading-grid"><i></i><i></i><i></i></div></div>
 <div v-else-if="!items.length" class="redesign-panel v3-empty"><UiIcon name="PhBuildings" :size="34"/><strong>无搜索结果</strong><span>换一个学校名称、省份或城市试试。</span></div>

@@ -100,7 +100,7 @@ onMounted(searchRooms);
 </script>
 
 <template>
-  <main class="student-page campus-redesign classrooms-redesign page-enter">
+  <main class="student-page campus-redesign classrooms-redesign">
     <div class="redesign-heading classrooms-heading">
       <div>
         <span class="redesign-kicker">CAMPUS SPACE / 学习空间</span>

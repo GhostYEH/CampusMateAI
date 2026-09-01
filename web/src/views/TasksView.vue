@@ -100,7 +100,7 @@ function removeTask(task) {
 </script>
 
 <template>
-  <main class="tasks-page page-enter">
+  <main class="tasks-page">
     <div v-if="toast" class="tasks-toast" role="status"><UiIcon name="PhCheckCircle" weight="fill" />{{ toast }}</div>
     <header class="tasks-heading">
       <div><span class="tasks-kicker"><i></i>今日安排</span><h1>待办</h1><p>今天先完成最重要的一小步</p></div>

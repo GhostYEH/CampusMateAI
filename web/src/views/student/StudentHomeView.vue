@@ -9,10 +9,12 @@ import { useAppStore } from "../../stores/app";
 import { eduScheduleItems, getCommunityPosts, getPersonalTasks, getStudySessions, getStudentAssignments, getStudentCourses, getStudentDashboard, getStudentNotices } from "../../services/studentApi";
 import { resolveHomeOverviewMetrics } from "../../features/home/overviewMetrics";
 import { fetchHitokoto, formatHitokotoSource } from "../../services/hitokoto";
+import { usePageMotion } from "../../composables/usePageMotion";
 
 const props = defineProps({ searchQuery: { type: String, default: "" } });
 const router = useRouter();
 const store = useAppStore();
+const motionRoot = ref(null);
 const loading = ref(true);
 const refreshing = ref(false);
 const error = ref("");
@@ -68,6 +70,17 @@ const summaryText = computed(() => totalPending.value ? `还有 ${totalPending.v
 const recentCourses = computed(() => filteredCourses.value.slice(0, 3));
 const hitokotoSource = computed(() => formatHitokotoSource(hitokoto.value));
 const hitokotoDetailUrl = computed(() => hitokoto.value.uuid ? `https://hitokoto.cn/?uuid=${encodeURIComponent(hitokoto.value.uuid)}` : "");
+const motionReady = computed(() => !loading.value);
+const reduceMotion = computed(() => store.reduceMotion);
+
+usePageMotion({
+  root: motionRoot,
+  ready: motionReady,
+  reduceMotion,
+  hero: [".student-focus-card", ".student-overview-card"],
+  reveal: "[data-motion-reveal]",
+  parallax: ".focus-hero-image",
+});
 
 const quickLinks = [
   { label: "考试安排", detail: "查看时间与地点", icon: "PhExam", path: "/exams", tone: "violet" },
@@ -163,7 +176,7 @@ onUnmounted(() => window.clearInterval(clockTimer));
 </script>
 
 <template>
-  <main class="student-page student-home">
+  <main ref="motionRoot" class="student-page student-home">
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load()">重试</button></div>
 
     <section v-if="loading" class="student-home-skeleton" aria-label="正在加载首页">
@@ -200,10 +213,10 @@ onUnmounted(() => window.clearInterval(clockTimer));
         </article>
       </section>
 
-      <div v-if="normalizedSearch" class="home-search-note"><UiIcon name="PhMagnifyingGlass" :size="16" />正在筛选“{{ props.searchQuery }}”，当前首页有 {{ filteredDueItems.length + filteredCourses.length + visibleHotPosts.length }} 条相关内容</div>
+      <div v-if="normalizedSearch" class="home-search-note" data-motion-reveal><UiIcon name="PhMagnifyingGlass" :size="16" />正在筛选“{{ props.searchQuery }}”，当前首页有 {{ filteredDueItems.length + filteredCourses.length + visibleHotPosts.length }} 条相关内容</div>
 
       <section class="student-home-columns">
-        <article class="student-home-panel task-panel">
+        <article class="student-home-panel task-panel" data-motion-reveal>
           <div class="home-panel-head"><h2><UiIcon name="PhBell" :size="19" />优先处理</h2><button @click="router.push('/tasks')">查看全部（{{ totalPending }}）</button></div>
           <div v-if="urgentItems.length" class="priority-list">
             <button v-for="(item, index) in urgentItems" :key="`${item.kind}-${item.id}`" @click="openDue(item)">
@@ -214,9 +227,9 @@ onUnmounted(() => window.clearInterval(clockTimer));
           <button class="panel-footer red" @click="router.push('/tasks')">查看全部待办与作业<UiIcon name="PhArrowRight" :size="15" /></button>
         </article>
 
-        <HomeSchedulePanel :items="scheduleItems" :loading="scheduleLoading" @open-academic="router.push('/academic')" />
+        <HomeSchedulePanel data-motion-reveal :items="scheduleItems" :loading="scheduleLoading" @open-academic="router.push('/academic')" />
 
-          <article class="student-home-panel hot-posts-panel">
+          <article class="student-home-panel hot-posts-panel" data-motion-reveal>
             <div class="home-panel-head"><h2><UiIcon name="PhFire" :size="19" weight="fill" />今日热门话题</h2><button @click="router.push('/community')">查看更多<UiIcon name="PhArrowRight" :size="15" /></button></div>
             <CampusHotPostsPanel v-if="visibleHotPosts.length" :posts="visibleHotPosts" @open-post="openHotPost" />
             <div v-else class="compact-empty home-reference-hot-empty" role="status">
@@ -252,7 +265,7 @@ onUnmounted(() => window.clearInterval(clockTimer));
         </article>
       </section>
 
-      <section class="student-quick-section">
+      <section class="student-quick-section" data-motion-reveal>
         <div class="quick-section-head"><h2>快捷入口 <UiIcon name="PhSparkle" :size="17" weight="fill" /></h2></div>
         <div class="student-quick-grid">
           <button v-for="item in quickLinks" :key="item.path" @click="router.push(item.path)"><span class="quick-icon" :class="item.tone"><UiIcon :name="item.icon" :size="20" /></span><span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span><UiIcon name="PhCaretRight" :size="15" /></button>

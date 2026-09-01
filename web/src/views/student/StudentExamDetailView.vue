@@ -61,7 +61,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page page-enter exam-detail-page">
+  <main class="student-page exam-detail-page">
     <div class="student-heading">
       <div>
         <button class="back-link" @click="router.push('/exams')"><UiIcon name="PhArrowLeft" />返回考试列表</button>

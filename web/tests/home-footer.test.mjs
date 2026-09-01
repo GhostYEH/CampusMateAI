@@ -46,7 +46,9 @@ test("student home footer keeps the foreground inside the page gutter", async ()
   assert.match(info, /邮箱已复制/);
   assert.match(info, /复制邮箱地址/);
   assert.match(brand, /canvas/);
-  assert.match(brand, /requestAnimationFrame/);
+  assert.match(brand, /gsap\.ticker\.add/);
+  assert.match(brand, /gsap\.ticker\.remove/);
+  assert.doesNotMatch(brand, /requestAnimationFrame/);
   assert.match(brand, /ResizeObserver/);
   assert.match(brand, /devicePixelRatio/);
   assert.match(brand, /pointerVelocityX/);

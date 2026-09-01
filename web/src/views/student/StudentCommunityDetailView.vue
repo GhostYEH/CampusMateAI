@@ -92,7 +92,7 @@ function fmtTime(t) { try { return new Date(t).toLocaleString("zh-CN"); } catch 
 onMounted(() => { loadCategories(); load(); });
 </script>
 <template>
-  <main class="student-page campus-redesign page-enter forum-detail-page">
+  <main class="student-page campus-redesign forum-detail-page">
     <button class="redesign-button secondary forum-back" @click="router.push('/community')"><UiIcon name="PhArrowLeft" />返回论坛</button>
     <div v-if="error" class="redesign-alert error"><UiIcon name="PhWarningCircle" />{{ error }}</div>
     <div v-if="loading" class="profile-loading"><div class="profile-loading-grid"><i></i><i></i><i></i></div></div>

@@ -306,7 +306,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page page-enter task-detail-redesign">
+  <main class="student-page task-detail-redesign">
     <button class="cd-back-link" type="button" @click="router.push('/tasks')">
       <UiIcon name="PhArrowLeft" />返回待办
     </button>

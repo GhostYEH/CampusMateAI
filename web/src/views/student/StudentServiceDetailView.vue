@@ -20,7 +20,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page services-detail-redesign page-enter">
+  <main class="student-page services-detail-redesign">
     <button class="cd-back-link" @click="router.push('/services')"><UiIcon name="PhArrowLeft" />返回办事大厅</button>
 
     <div v-if="loading" class="cd-loading">

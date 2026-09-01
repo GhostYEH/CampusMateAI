@@ -140,7 +140,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page campus-redesign profile-redesign page-enter">
+  <main class="student-page campus-redesign profile-redesign">
     <div class="redesign-heading">
       <div>
         <span class="redesign-kicker">PROFILE / 个人中心</span>

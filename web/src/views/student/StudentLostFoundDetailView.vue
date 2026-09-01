@@ -24,7 +24,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page lostfound-detail-redesign page-enter">
+  <main class="student-page lostfound-detail-redesign">
     <button class="cd-back-link" @click="router.push('/lostfound')"><UiIcon name="PhArrowLeft" />返回失物招领</button>
 
     <div v-if="loading" class="cd-loading">

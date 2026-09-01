@@ -176,7 +176,7 @@ onMounted(checkStatus);
 </script>
 
 <template>
-  <main class="student-page chaoxing-page page-enter">
+  <main class="student-page chaoxing-page">
     <div class="redesign-heading chaoxing-heading">
       <div>
         <span class="redesign-kicker">CHAOXING / 学习数据</span>

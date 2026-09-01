@@ -62,7 +62,7 @@ onMounted(() => { loadCategories(); });
 </script>
 
 <template>
-  <main class="student-page campus-redesign page-enter post-create-page">
+  <main class="student-page campus-redesign post-create-page">
     <section class="post-create-heading"><div><span class="redesign-kicker">CREATE POST / 社区发布</span><div class="student-title-line"><h1>发布帖子</h1><UiIcon name="PhSparkle" class="heading-sparkle" :size="25" /></div><p>分享校园信息，友善交流，发布前请注意保护隐私。</p></div><button class="redesign-button secondary" @click="loadDraft"><UiIcon name="PhFolderOpen" />草稿箱</button></section>
     <div v-if="notice" class="post-notice" role="status"><UiIcon name="PhCheckCircle" />{{ notice }}</div>
     <div class="post-create-columns">

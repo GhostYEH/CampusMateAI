@@ -198,7 +198,7 @@ onUnmounted(() => { window.clearInterval(clockTimer); window.clearInterval(count
 </script>
 
 <template>
-  <main class="student-page task-dashboard page-enter">
+  <main class="student-page task-dashboard">
     <div v-if="toast" class="task-toast" role="status"><UiIcon name="PhCheckCircle" :size="15" />{{ toast }}</div>
     <header class="task-dashboard-head">
       <div><span class="task-section-eyebrow">STUDY PLANNER</span><h1>待办与作业</h1><p>把重要的事先完成，保持高效学习节奏。</p></div>

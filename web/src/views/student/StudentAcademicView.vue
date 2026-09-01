@@ -427,7 +427,7 @@ onMounted(load);
 onUnmounted(stopPolling);
 </script>
 <template>
-  <main class="student-page campus-redesign page-enter">
+  <main class="student-page campus-redesign">
     <div class="redesign-heading">
       <div>
         <span class="redesign-kicker">ACADEMIC CONNECTION</span>

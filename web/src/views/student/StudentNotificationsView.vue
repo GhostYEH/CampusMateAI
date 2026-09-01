@@ -119,7 +119,7 @@ onMounted(() => load());
 </script>
 
 <template>
-  <main class="student-page notifications-page page-enter">
+  <main class="student-page notifications-page">
     <div class="student-heading page-heading-wide notice-heading">
       <div>
         <span class="eyebrow">NOTICES / 校园信息</span>

@@ -62,7 +62,7 @@ onMounted(() => { loadCategories(); load(true); });
 </script>
 
 <template>
-  <main class="student-page campus-redesign page-enter forum-page forum-page-wide">
+  <main class="student-page campus-redesign forum-page forum-page-wide">
     <section class="forum-hero"><div><span class="redesign-kicker">CAMPUSMATE FORUM</span><div class="student-title-line"><h1>校园论坛</h1><UiIcon name="PhSparkle" class="heading-sparkle" :size="25" /></div><p>校园墙 · 提问 / 招募 / 带价帮忙 / 失物招领 / 热门讨论，一站刷到。</p></div><button class="redesign-button primary forum-publish-button" @click="router.push('/community/create')"><UiIcon name="PhPlus" />发布帖子</button></section>
     <div class="forum-columns">
       <div class="forum-main-column">

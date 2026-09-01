@@ -1,8 +1,11 @@
 <script setup>
-import { onBeforeUnmount, onMounted, shallowRef } from "vue";
+import { onBeforeUnmount, onMounted, shallowRef, watch } from "vue";
+import { gsap } from "gsap";
+import { useAppStore } from "../../../stores/app";
 
 const sectionRef = shallowRef(null);
 const canvasRef = shallowRef(null);
+const store = useAppStore();
 
 const BRAND_TEXT = "CAMPUSMATE";
 const targetPointer = { x: 0, y: 0 };
@@ -16,7 +19,7 @@ let pointerReady = false;
 let lastPointerTime = 0;
 let lastPointerX = 0;
 let lastPointerY = 0;
-let animationFrame = null;
+let tickerRunning = false;
 let resizeObserver = null;
 let motionQuery = null;
 let coarseQuery = null;
@@ -33,7 +36,7 @@ function clamp(value, min, max) {
 }
 
 function prefersStaticMode() {
-  return Boolean(motionQuery?.matches || coarseQuery?.matches);
+  return Boolean(store.reduceMotion || motionQuery?.matches || coarseQuery?.matches);
 }
 
 function getTextLayout() {
@@ -141,20 +144,34 @@ function drawFrame() {
   }
 }
 
-function scheduleFrame() {
-  if (animationFrame !== null) return;
-  animationFrame = window.requestAnimationFrame(animate);
+function startTicker() {
+  if (tickerRunning) return;
+  tickerRunning = true;
+  gsap.ticker.add(animate);
 }
 
-function animate() {
-  animationFrame = null;
-  currentPointer.x += (targetPointer.x - currentPointer.x) * 0.12;
-  currentPointer.y += (targetPointer.y - currentPointer.y) * 0.12;
-  currentAmplitude += (targetAmplitude - currentAmplitude) * 0.1;
-  targetAmplitude *= pointerActive ? 0.94 : 0.78;
+function stopTicker() {
+  if (!tickerRunning) return;
+  gsap.ticker.remove(animate);
+  tickerRunning = false;
+}
+
+function animate(_time, deltaTime = 1000 / 60) {
+  if (prefersStaticMode()) {
+    stopTicker();
+    drawFrame();
+    return;
+  }
+  const frameRatio = clamp(deltaTime / (1000 / 60), 0.25, 3);
+  const pointerBlend = 1 - Math.pow(1 - 0.12, frameRatio);
+  const amplitudeBlend = 1 - Math.pow(1 - 0.1, frameRatio);
+  currentPointer.x += (targetPointer.x - currentPointer.x) * pointerBlend;
+  currentPointer.y += (targetPointer.y - currentPointer.y) * pointerBlend;
+  currentAmplitude += (targetAmplitude - currentAmplitude) * amplitudeBlend;
+  targetAmplitude *= Math.pow(pointerActive ? 0.94 : 0.78, frameRatio);
   drawFrame();
 
-  if (currentAmplitude > 0.01 || targetAmplitude > 0.01 || pointerActive) scheduleFrame();
+  if (currentAmplitude <= 0.01 && targetAmplitude <= 0.01 && !pointerActive) stopTicker();
 }
 
 function updatePointer(event) {
@@ -185,7 +202,7 @@ function updatePointer(event) {
   lastPointerY = nextY;
   lastPointerTime = now;
   pointerActive = true;
-  scheduleFrame();
+  startTicker();
 }
 
 function handlePointerEnter(event) {
@@ -203,7 +220,7 @@ function handlePointerLeave() {
   pointerActive = false;
   pointerReady = false;
   targetAmplitude = 0;
-  scheduleFrame();
+  startTicker();
 }
 
 function bindPointerEvents() {
@@ -227,9 +244,12 @@ function handleMotionPreferenceChange() {
     pointerActive = false;
     targetAmplitude = 0;
     currentAmplitude = 0;
+    stopTicker();
     drawFrame();
   }
 }
+
+watch(() => store.reduceMotion, handleMotionPreferenceChange);
 
 onMounted(() => {
   motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -247,7 +267,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+  stopTicker();
   resizeObserver?.disconnect();
   unbindPointerEvents();
   if (motionQuery?.removeEventListener) {

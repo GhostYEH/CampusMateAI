@@ -32,7 +32,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="campus-redesign lostfound-page page-enter">
+  <main class="campus-redesign lostfound-page">
     <section class="lf-showcase redesign-panel">
       <div class="lf-showcase-copy"><h1>失物招领 <UiIcon name="PhSparkle" /></h1><p>在这里发布或查找校园内的失物与招领信息，让遗失的物品早日回家。</p><div class="lf-stats"><div><UiIcon name="PhSquaresFour" /><span><strong>{{ stats.all }}</strong><small>全部信息</small></span><em>昨日 +6</em></div><div><UiIcon name="PhMagnifyingGlass" /><span><strong>{{ stats.lost }}</strong><small>正在寻找</small></span><em>昨日 +3</em></div><div><UiIcon name="PhCheckCircle" /><span><strong>{{ stats.found }}</strong><small>等待认领</small></span><em>昨日 +2</em></div><div><UiIcon name="PhShieldCheck" /><span><strong>{{ stats.claimed }}</strong><small>已认领</small></span></div></div></div>
       <div class="lf-hero-actions"><button class="redesign-button primary" @click="show = true"><UiIcon name="PhPlus" />发布信息</button><button class="redesign-button secondary" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" :class="{ spinning: loading }" />刷新</button></div>

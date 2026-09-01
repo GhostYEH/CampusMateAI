@@ -16,6 +16,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("@phosphor-icons")) return "icon-vendor";
+          if (id.includes("gsap")) return "gsap-vendor";
           if (id.includes("vue") || id.includes("pinia")) return "vue-vendor";
           if (id.includes("qrcode")) return "qr-tools";
           if (id.includes("marked")) return "markdown-tools";

@@ -64,7 +64,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page courses-redesign page-enter">
+  <main class="student-page courses-redesign">
     <section class="courses-hero courses-hero-bg">
       <div class="courses-hero-content">
         <div class="student-title-line hero-title">

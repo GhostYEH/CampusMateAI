@@ -27,7 +27,7 @@ onMounted(load);
 </script>
 
 <template>
-  <main class="student-page page-enter student-tool-page">
+  <main class="student-page student-tool-page">
     <div class="student-heading"><div><button class="back-link" @click="$router.push('/home')"><UiIcon name="PhArrowLeft" />返回首页</button><span class="eyebrow">ACADEMIC / 学业安排</span><h1>考试安排</h1><p>把重要考试集中在一个可回看的时间轴里，提醒和座位信息只属于你自己的记录。</p></div><div class="heading-actions"><button class="secondary-button" :disabled="loading" @click="load"><UiIcon name="PhArrowClockwise" />刷新</button><button class="primary-button" @click="showForm=true"><UiIcon name="PhPlus" />添加考试</button></div></div>
     <div v-if="error" class="student-alert error"><UiIcon name="PhWarningCircle" />{{ error }}<button class="link-button" @click="load">重试</button></div>
     <section class="tool-summary-grid">
