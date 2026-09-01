@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
 object CampusMotion {
+    const val ambientOrbCount = 8
     const val enterDuration = 560
     const val routeEnterDuration = 360
     const val routeExitDuration = 260
@@ -40,6 +41,14 @@ object CampusMotion {
     val enterEasing = CubicBezierEasing(0.22f, 0.86f, 0.2f, 1f)
     val settleEasing = CubicBezierEasing(0.18f, 0.8f, 0.24f, 1f)
     val routeEasing = FastOutSlowInEasing
+
+    fun ambientOpacity(reduceMotion: Boolean): Float = if (reduceMotion) 0f else 0.18f
+
+    fun parallaxAmplitude(reduceMotion: Boolean, amplitude: Float): Float =
+        if (reduceMotion) 0f else amplitude
+
+    fun enterTilt(reduceMotion: Boolean, startTilt: Float): Float =
+        if (reduceMotion) 0f else startTilt
 }
 
 /**

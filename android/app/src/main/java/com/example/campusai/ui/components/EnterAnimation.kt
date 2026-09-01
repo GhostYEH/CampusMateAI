@@ -30,9 +30,12 @@ fun Modifier.enterAnimation(
         label = "enter-progress",
     )
     LaunchedEffect(Unit) { hasFinished = true }
+    val enterTilt = CampusMotion.enterTilt(LocalReduceMotion.current, -2.5f)
     return this.graphicsLayer {
         alpha = progress
         translationY = slideDistance * (1f - progress)
+        rotationZ = enterTilt * (1f - progress)
+        cameraDistance = 12f * density
         scaleX = 1f - (1f - scaleFrom) * (1f - progress)
         scaleY = 1f - (1f - scaleFrom) * (1f - progress)
     }

@@ -78,6 +78,7 @@ import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
 import com.example.campusai.ui.screens.v3.UniversityScreen
 import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import com.example.campusai.ui.theme.Background
+import com.example.campusai.ui.theme.CampusMotion
 import java.net.URLEncoder
 
 internal fun eduFlowViewModelOwner(navController: NavHostController): NavBackStackEntry =
@@ -174,8 +175,13 @@ fun AppNavHost(
                     targetRoute = targetState.destination.route,
                 )
                 slideInHorizontally(
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
                     initialOffsetX = { width -> width * motion.enterDirection },
+                ) + fadeIn(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                ) + scaleIn(
+                    initialScale = .985f,
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
                 )
             }
         },
@@ -188,8 +194,13 @@ fun AppNavHost(
                     targetRoute = targetState.destination.route,
                 )
                 slideOutHorizontally(
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
                     targetOffsetX = { width -> width * motion.exitDirection },
+                ) + fadeOut(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                ) + scaleOut(
+                    targetScale = .985f,
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
                 )
             }
         },
@@ -198,8 +209,13 @@ fun AppNavHost(
                 EnterTransition.None
             } else {
                 slideInHorizontally(
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
                     initialOffsetX = { -it },
+                ) + fadeIn(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                ) + scaleIn(
+                    initialScale = .985f,
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
                 )
             }
         },
@@ -208,8 +224,13 @@ fun AppNavHost(
                 ExitTransition.None
             } else {
                 slideOutHorizontally(
-                    animationSpec = tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
                     targetOffsetX = { it },
+                ) + fadeOut(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                ) + scaleOut(
+                    targetScale = .985f,
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
                 )
             }
         },

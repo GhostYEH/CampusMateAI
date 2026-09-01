@@ -86,6 +86,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.core.view.WindowCompat
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.PulseEffect
+import com.example.campusai.ui.components.CampusAmbientField
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.Background
@@ -208,6 +209,10 @@ fun AppShell(
         ) {
             content()
         }
+        CampusAmbientField(
+            modifier = Modifier.fillMaxSize(),
+            darkMode = darkMode,
+        )
         CampusDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter),

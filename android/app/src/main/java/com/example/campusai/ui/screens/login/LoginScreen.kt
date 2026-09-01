@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.CampusVideoBackground
+import com.example.campusai.ui.components.CampusAmbientField
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
 import kotlinx.coroutines.launch
@@ -130,6 +131,10 @@ fun LoginScreen(repository: AppRepository, onLoginSuccess: () -> Unit) {
                     1f to Color(0xF0091632),
                 ),
             ),
+        )
+        CampusAmbientField(
+            modifier = Modifier.fillMaxSize(),
+            darkMode = true,
         )
 
         Column(
