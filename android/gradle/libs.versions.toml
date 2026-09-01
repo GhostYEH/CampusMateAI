@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.0"
-kotlin = "2.0.21"
+kotlin = "2.3.0"
 coreKtx = "1.12.0"
 junit = "4.13.2"
 junitVersion = "1.1.5"
@@ -21,13 +21,14 @@ camerax = "1.4.2"
 litert = "1.4.2"
 mlkitFaceDetection = "16.1.7"
 tfliteTaskVision = "0.4.4"
-room = "2.6.1"
+room = "2.8.4"
 hilt = "2.50"
 hiltNavigationCompose = "1.2.0"
 securityCrypto = "1.1.0-alpha06"
 volcRtc = "3.60.104.300"
 coil = "2.6.0"
 haze = "0.7.3"
+backdrop = "0.0.1-alpha02"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -74,6 +75,7 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 volcengine-rtc = { group = "com.volcengine", name = "VolcEngineRTC", version.ref = "volcRtc" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
+backdrop = { group = "io.github.kashif-mehmood-km", name = "backdrop", version.ref = "backdrop" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
