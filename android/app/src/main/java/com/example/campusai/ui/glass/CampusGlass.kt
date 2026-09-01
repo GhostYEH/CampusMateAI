@@ -63,6 +63,7 @@ private fun defaultGlassTint(role: CampusGlassRole): Color = when (role) {
 fun CampusGlassScene(
     darkMode: Boolean,
     modifier: Modifier = Modifier,
+    background: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
@@ -73,7 +74,7 @@ fun CampusGlassScene(
         listOf(Color(0xFFF4FAFC), Color(0xFFE4F3F7), Color(0xFFE9EEF9))
     }
     Box(modifier.fillMaxSize()) {
-        Box(
+        val backgroundModifier = if (background == null) {
             Modifier
                 .fillMaxSize()
                 .layerBackdrop(backdrop)
@@ -89,8 +90,15 @@ fun CampusGlassScene(
                         center = Offset(size.width * .08f, size.height * .74f),
                         radius = size.minDimension * .62f,
                     )
-                },
-        )
+                }
+        } else {
+            Modifier
+                .fillMaxSize()
+                .layerBackdrop(backdrop)
+        }
+        Box(backgroundModifier) {
+            background?.invoke(this)
+        }
         CompositionLocalProvider(LocalCampusBackdrop provides backdrop) {
             content()
         }
