@@ -3,8 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { useAppStore } from "../stores/app";
 import UiIcon from "../components/UiIcon.vue";
-import ToastHost from "../components/teacher/ToastHost.vue";
-import ConfirmHost from "../components/teacher/ConfirmHost.vue";
+import ToastHost from "../components/AppToastHost.vue";
+import ConfirmHost from "../components/AppConfirmHost.vue";
 import { getStudentAssignments, getStudentCourses } from "../services/studentApi";
 
 const store = useAppStore();
