@@ -19,6 +19,7 @@ data class StudySessionSnapshot(
     val mode: FocusMode,
     val pausedAt: String? = null,
     val pauseSeconds: Int = 0,
+    val behaviorSummary: com.example.campusai.data.model.FocusBehaviorSummary? = null,
 )
 
 /**
@@ -55,6 +56,8 @@ class RemoteFocusRepository(
             actualMinutes = (session.durationSeconds / 60).coerceAtLeast(0),
             finished = true,
             endedAt = ended.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
+            sourceId = session.id,
+            behaviorSummary = session.behaviorSummary,
         )
     }
 

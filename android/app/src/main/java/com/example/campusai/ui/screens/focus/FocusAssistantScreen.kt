@@ -67,6 +67,8 @@ import com.example.campusai.data.focus.voice.RemoteFocusAiRepository
 import com.example.campusai.data.focus.voice.RemoteRealtimeVoiceRepository
 import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
 import com.example.campusai.data.focus.scene.FocusScenePreferenceStore
+import com.example.campusai.data.focus.goal.FocusGoalPlan
+import com.example.campusai.data.focus.goal.FocusGoalPlanStore
 import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
@@ -112,6 +114,7 @@ fun FocusSessionScreen(
     val expressionResult by manager.result.collectAsStateWithLifecycle()
     val continuityState by manager.learningContinuityState.collectAsStateWithLifecycle()
     val presence by manager.presence.collectAsStateWithLifecycle()
+    val gentleReminder by manager.gentleReminder.collectAsStateWithLifecycle()
 
     var microphonePermissionGranted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -127,7 +130,9 @@ fun FocusSessionScreen(
     var showEndConfirmation by rememberSaveable { mutableStateOf(false) }
     var finishingSession by rememberSaveable { mutableStateOf(false) }
     val scenePreferenceStore = remember(context) { FocusScenePreferenceStore(context) }
+    val goalPlanStore = remember(context) { FocusGoalPlanStore(context) }
     var sceneSettings by remember(scenePreferenceStore) { mutableStateOf(scenePreferenceStore.load()) }
+    var goalPlan by remember { mutableStateOf<FocusGoalPlan?>(null) }
     val activeFocusSession by focusRepository.activeSession.collectAsStateWithLifecycle()
     val focusScope = rememberCoroutineScope()
     val totalSeconds = plannedDurationSeconds.takeIf { it > 0 }
@@ -135,6 +140,16 @@ fun FocusSessionScreen(
     var clockNow by remember { mutableStateOf(Instant.now()) }
     val focusRunning = activeFocusSession?.status == "active"
     val focusPaused = activeFocusSession?.status == "paused"
+    LaunchedEffect(activeFocusSession?.id) {
+        val stored = goalPlanStore.load()
+        goalPlan = stored?.takeIf { it.sessionId == null || it.sessionId == activeFocusSession?.id }
+    }
+    val completionCoordinator = remember(activeFocusSession?.id, manager, focusRepository) {
+        FocusCompletionCoordinator(
+            finishObservation = manager::finishFocusSession,
+            finishRemote = { summary -> focusRepository.finish(summary).isSuccess },
+        )
+    }
     // A focus visit is only left through its completion flow; it never returns to setup.
     BackHandler { showEndConfirmation = true }
     LaunchedEffect(focusRunning, activeFocusSession?.id) {
@@ -144,8 +159,8 @@ fun FocusSessionScreen(
         }
     }
     val secondsLeft = activeFocusSession?.remainingSeconds(clockNow) ?: totalSeconds
-    LaunchedEffect(activeFocusSession?.id, secondsLeft, focusRunning) {
-        if (focusRunning && secondsLeft == 0) focusRepository.finish()
+    LaunchedEffect(activeFocusSession?.id) {
+        if (activeFocusSession != null) manager.beginFocusSession()
     }
 
     val voiceController = remember(context, voiceInstance) {
@@ -295,6 +310,35 @@ fun FocusSessionScreen(
         }
     }
 
+    val completeSession: suspend () -> Unit = {
+        val actualSeconds = (totalSeconds - secondsLeft).coerceAtLeast(0)
+        val observation = completionCoordinator.complete(
+            actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
+        )
+        if (observation != null) {
+            goalPlanStore.clear()
+            val conversations = historyMessages.size + if (currentUserText.isNotBlank()) 1 else 0
+            onSessionCompleted(
+                FocusSessionCompletion(
+                    actualSeconds = actualSeconds,
+                    taskName = taskName,
+                    conversationCount = conversations,
+                    aiSummary = "你完成了“$taskName”的这段专注。${if (conversations > 0) "我们一起交流了 $conversations 次，" else "你保持了安静投入，"}继续保持这个节奏。",
+                    observationSummary = observation.toCompanionSummary(),
+                ),
+            )
+        } else if (!completionCoordinator.isCompleted) {
+            finishingSession = false
+            showEndConfirmation = false
+        }
+    }
+    LaunchedEffect(activeFocusSession?.id, secondsLeft, focusRunning) {
+        if (focusRunning && secondsLeft == 0 && !finishingSession) {
+            finishingSession = true
+            completeSession()
+        }
+    }
+
     FocusAmbientPlaybackEffect(
         settings = sceneSettings,
         sessionRunning = focusRunning,
@@ -341,6 +385,13 @@ fun FocusSessionScreen(
                 )
                 Spacer(Modifier.height(if (compactLayout) 170.dp else 198.dp))
                 FocusSpaceTimer(secondsLeft = secondsLeft, totalSeconds = totalSeconds, taskName = taskName, paused = focusPaused)
+                goalPlan?.let { plan ->
+                    FocusGoalProgressPanel(plan = plan, onStepToggle = { stepNumber, completed ->
+                        val updated = plan.copy(steps = plan.steps.map { step -> if (step.number == stepNumber) step.copy(completed = completed) else step })
+                        goalPlan = updated
+                        goalPlanStore.save(updated)
+                    })
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(
                         onClick = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
@@ -366,6 +417,7 @@ fun FocusSessionScreen(
                     expanded = observationDetailsExpanded,
                     expressionLabel = expressionResult?.label?.name,
                     presence = presence.state,
+                    reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
                     onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
                     onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
                 )
@@ -395,29 +447,7 @@ fun FocusSessionScreen(
                     enabled = !finishingSession,
                     onClick = {
                         finishingSession = true
-                        focusScope.launch {
-                            val actualSeconds = (totalSeconds - secondsLeft).coerceAtLeast(0)
-                            val observation = manager.finishFocusSession(
-                                actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
-                            )
-                            val result = focusRepository.finish()
-                            if (result.isSuccess) {
-                                val conversations = historyMessages.size + if (currentUserText.isNotBlank()) 1 else 0
-                                val observationText = observation.toCompanionSummary()
-                                onSessionCompleted(
-                                    FocusSessionCompletion(
-                                        actualSeconds = actualSeconds,
-                                        taskName = taskName,
-                                        conversationCount = conversations,
-                                        aiSummary = "你完成了“$taskName”的这段专注。${if (conversations > 0) "我们一起交流了 $conversations 次，" else "你保持了安静投入，"}继续保持这个节奏。",
-                                        observationSummary = observationText,
-                                    ),
-                                )
-                            } else {
-                                finishingSession = false
-                                showEndConfirmation = false
-                            }
-                        }
+                        focusScope.launch { completeSession() }
                     },
                 ) { Text("结束并生成总结", color = Primary) }
             },
@@ -550,6 +580,7 @@ private fun FocusSensingSystem(
     expanded: Boolean,
     expressionLabel: String?,
     presence: PresenceState,
+    reminder: String?,
     onToggleDetails: () -> Unit,
     onAttachPreview: (PreviewView) -> Unit,
 ) {
@@ -561,7 +592,7 @@ private fun FocusSensingSystem(
         FocusVoicePhase.ERROR -> "暂时未连接"
         FocusVoicePhase.IDLE -> "正在陪伴"
     }
-    val observationMessage = when {
+    val observationMessage = reminder ?: when {
         !enabled || sessionMode != FocusSessionMode.SMART_GUARD -> "需要时可开启学习状态感知。"
         presence == PresenceState.ABSENT -> "我发现你离开了一会，需要暂停吗？"
         state == LearningContinuityState.STUDYING -> "你的专注状态很好，继续保持。"
@@ -603,7 +634,12 @@ private fun FocusSensingSystem(
                 }
                 Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = Primary)
             }
-            Text("CampusMate：$observationMessage", color = Muted, fontSize = 12.sp)
+            Text(
+                "CampusMate：$observationMessage",
+                color = if (reminder != null) Primary else Muted,
+                fontSize = 12.sp,
+                fontWeight = if (reminder != null) FontWeight.SemiBold else FontWeight.Normal,
+            )
             AnimatedVisibility(visible = expanded, enter = fadeIn() + slideInVertically(), exit = fadeOut() + slideOutVertically()) {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("学习状态详情", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -1053,6 +1089,10 @@ private fun appendMissingFinalAnswer(
 }
 
 private fun com.example.campusai.data.model.FocusSessionSummary.toCompanionSummary(): String = when {
+    behaviorSummary?.phoneInteractionCount?.let { it > 0 } == true ->
+        "学习过程中检测到 ${behaviorSummary.phoneInteractionCount} 次持续手机交互；如用于查资料可忽略，否则下次可以把手机放远一些。"
+    behaviorSummary?.possibleDistractionCount?.let { it > 0 } == true ->
+        "中途有一些短暂调整，但你重新回到了学习节奏。"
     noFaceEventCount > 0 -> "学习过程中有短暂离开座位的情况，回来后你仍继续完成了这段专注。"
     breakSuggestionCount > 0 -> "你持续学习了一段时间，记得在下一次开始前让眼睛和身体稍作休息。"
     possibleDistractionDurationSeconds > 60 -> "中途有一些调整，但你重新回到了学习节奏。"

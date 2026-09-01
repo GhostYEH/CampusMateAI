@@ -52,6 +52,7 @@ class StudySessionRow:
     self_report: Optional[str]
     self_report_tags: List[str] = field(default_factory=list)
     expression_signal: Optional[Any] = None
+    behavior_summary: Optional[dict[str, Any]] = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -74,6 +75,15 @@ class StudySessionRow:
                 signal = json.loads(signal_raw)
             except (ValueError, TypeError):
                 signal = signal_raw  # 保留原始字符串
+        behavior_summary: Optional[dict[str, Any]] = None
+        summary_raw = row["behavior_summary"]
+        if summary_raw:
+            try:
+                parsed_summary = json.loads(summary_raw)
+                if isinstance(parsed_summary, dict):
+                    behavior_summary = parsed_summary
+            except (ValueError, TypeError):
+                behavior_summary = None
         return cls(
             id=row["id"],
             user_id=row["user_id"],
@@ -90,6 +100,7 @@ class StudySessionRow:
             self_report=row["self_report"],
             self_report_tags=tags,
             expression_signal=signal,
+            behavior_summary=behavior_summary,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

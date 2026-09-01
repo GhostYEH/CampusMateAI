@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ApiClient } from '../data/ApiClient';
-import { FocusMode, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish } from '../data/Models';
+import { FocusMode, StudyBehaviorSummary, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish } from '../data/Models';
 
 interface StudyGoalUpdateRequest {
   target_minutes: number;
@@ -43,8 +43,8 @@ export class StudyRepository {
     return this.client.request<StudySession>(http.RequestMethod.POST, `study/sessions/${id}/resume`);
   }
 
-  async finish(id: string, report?: string): Promise<StudySession> {
-    const body: StudySessionFinish = { self_report: report };
+  async finish(id: string, report?: string, behaviorSummary?: StudyBehaviorSummary): Promise<StudySession> {
+    const body: StudySessionFinish = { self_report: report, behavior_summary: behaviorSummary };
     return this.client.request<StudySession>(http.RequestMethod.POST, `study/sessions/${id}/finish`, body);
   }
 }

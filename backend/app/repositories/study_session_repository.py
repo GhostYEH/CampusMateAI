@@ -284,6 +284,7 @@ class StudySessionRepository:
         user_id: str,
         self_report: Optional[str] = None,
         self_report_tags: Optional[List[str]] = None,
+        behavior_summary: Optional[dict[str, Any]] = None,
     ) -> StudySessionRow:
         now = _now_iso()
         with self._db.transaction() as conn:
@@ -319,11 +320,16 @@ class StudySessionRepository:
                 if self_report_tags
                 else None
             )
+            behavior_summary_json = (
+                json.dumps(behavior_summary, ensure_ascii=False, separators=(",", ":"))
+                if behavior_summary is not None
+                else None
+            )
             conn.execute(
                 """UPDATE study_sessions
                    SET status='completed', ended_at=?, duration_seconds=?,
                        pause_seconds=?, self_report=?,
-                       self_report_tags=?, paused_at=NULL, updated_at=?
+                       self_report_tags=?, behavior_summary=?, paused_at=NULL, updated_at=?
                    WHERE id = ?""",
                 (
                     now,
@@ -331,6 +337,7 @@ class StudySessionRepository:
                     total_pause,
                     self_report,
                     tags_json,
+                    behavior_summary_json,
                     now,
                     session_id,
                 ),

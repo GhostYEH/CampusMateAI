@@ -2,6 +2,8 @@ import { mindSporeLite } from '@kit.MindSporeLiteKit';
 import { resourceManager } from '@kit.LocalizationKit';
 import {
   BehaviorReminderTracker,
+  BehaviorSessionSummary,
+  BehaviorSessionSummaryTracker,
   BehaviorV34Decision,
   BehaviorV34Label,
   BehaviorV34Result
@@ -115,6 +117,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private providerDetail: string = 'V3.4 本地模型尚未加载';
   private signal: FocusAssistSignal | undefined = undefined;
   private readonly reminderTracker: BehaviorReminderTracker = new BehaviorReminderTracker();
+  private readonly sessionSummaryTracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
+  private activeRun: boolean = false;
 
   constructor(manager: resourceManager.ResourceManager) {
     this.manager = manager;
@@ -124,9 +128,15 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   status(): FocusAssistStatus { return this.providerStatus; }
   latestSignal(): FocusAssistSignal | undefined { return this.signal; }
   currentReminder(): string { return this.reminderTracker.current(); }
+  sessionSummary(): BehaviorSessionSummary | undefined {
+    if (!this.activeRun) return undefined;
+    return this.sessionSummaryTracker.summary(Date.now(), 'V3.4');
+  }
   detail(): string { return this.providerDetail; }
 
   async start(): Promise<void> {
+    this.activeRun = true;
+    this.sessionSummaryTracker.reset(Date.now());
     if (this.model !== null) {
       if (this.providerStatus !== FocusAssistStatus.RUNNING) {
         this.providerStatus = FocusAssistStatus.UNAVAILABLE;
@@ -154,6 +164,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   }
 
   async stop(): Promise<void> {
+    this.activeRun = false;
     this.signal = undefined;
     this.reminderTracker.reset();
     this.providerStatus = FocusAssistStatus.UNAVAILABLE;
@@ -188,7 +199,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         modelVersion: 'V3.4'
       };
       this.signal = next;
-      this.reminderTracker.process(result, frame.timestamp);
+      const reminder: string = this.reminderTracker.process(result, frame.timestamp);
+      this.sessionSummaryTracker.process(result, frame.timestamp, reminder);
       this.providerStatus = FocusAssistStatus.RUNNING;
       this.providerDetail = result.label === BehaviorV34Label.CONTINUE_OBSERVING ? '结果不可靠，继续观察' : 'V3.4 正在本地识别';
       return next;

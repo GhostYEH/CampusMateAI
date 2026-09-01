@@ -654,6 +654,7 @@ data class StudySessionDto(
     val duration_seconds: Int = 0,
     val pause_seconds: Int = 0,
     val status: String,
+    val behavior_summary: StudyBehaviorSummaryDto? = null,
 )
 
 data class StudySessionCreateRequest(
@@ -666,10 +667,43 @@ data class StudySessionCreateRequest(
 data class StudySessionFinishRequest(
     val self_report: String? = null,
     val self_report_tags: List<String>? = null,
+    val behavior_summary: StudyBehaviorSummaryDto? = null,
+)
+
+data class StudyBehaviorSummaryDto(
+    val observed_seconds: Int,
+    val study_seconds: Int,
+    val paused_seconds: Int,
+    val longest_continuous_study_seconds: Int,
+    val meaningful_switch_count: Int,
+    val phone_interaction_count: Int,
+    val possible_distraction_count: Int,
+    val absent_count: Int,
+    val reminder_count: Int,
+    val model_version: String,
 )
 
 data class StudyGoalDto(val target_minutes: Int, val updated_at: String)
 data class StudyGoalUpdateRequest(val target_minutes: Int)
+data class TaskBreakdownRequest(val task_id: String? = null, val goal: String? = null)
+data class TaskBreakdownStepDto(
+    val step_number: Int,
+    val title: String,
+    val description: String,
+    val estimated_minutes: Int = 0,
+    val dependencies: List<Int> = emptyList(),
+    val completion_criteria: String = "完成这一步的产出已确认",
+    val is_policy_step: Boolean = false,
+    val knowledge_source: String? = null,
+)
+data class TaskBreakdownResponseDto(
+    val mode: String,
+    val steps: List<TaskBreakdownStepDto> = emptyList(),
+    val goal: String,
+    val related_task_id: String? = null,
+    val related_task_title: String? = null,
+    val warnings: List<String> = emptyList(),
+)
 
 // ── 个人中心：文件 / 收藏 ──
 data class PersonalFileDto(
@@ -1030,6 +1064,9 @@ interface ApiService {
 
     @PUT("study/goals/daily")
     suspend fun updateDailyStudyGoal(@Body request: StudyGoalUpdateRequest): Response<StudyGoalDto>
+
+    @POST("study/task-breakdown")
+    suspend fun breakdownStudyGoal(@Body request: TaskBreakdownRequest): Response<TaskBreakdownResponseDto>
 
     // 个人中心：文件
     @GET("personal-hub/files")

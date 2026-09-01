@@ -15,6 +15,7 @@ import com.example.campusai.data.behavior.BehaviorSignalProcessor
 import com.example.campusai.data.behavior.BehaviorV34Contract
 import com.example.campusai.data.behavior.BehaviorHybridPolicy
 import com.example.campusai.data.behavior.FocusSupervisor
+import com.example.campusai.data.behavior.FocusBehaviorSummaryBuilder
 import com.example.campusai.data.behavior.HybridBehaviorRecognitionEngine
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.LearningContinuityStateMachine
@@ -139,6 +140,7 @@ class ExpressionSessionManager(
     private var latestFaceDetected = false
     private var latestBehaviorEvidence = false
     private var behaviorObservationActive = false
+    private var behaviorObservationEverActive = false
 
     private val _gentleReminder = MutableStateFlow<String?>(null)
     val gentleReminder: StateFlow<String?> = _gentleReminder.asStateFlow()
@@ -261,6 +263,7 @@ class ExpressionSessionManager(
             _presence.value = PresenceSnapshot()
             _personDetection.value = PersonDetectionSnapshot()
             behaviorObservationActive = false
+            behaviorObservationEverActive = false
             focusSupervisor.reset()
             reminderState.clearAll()
             _gentleReminder.value = null
@@ -270,11 +273,21 @@ class ExpressionSessionManager(
     suspend fun finishFocusSession(actualFocusMinutes: Int): FocusSessionSummary {
         releaseJob?.cancel()
         return mutex.withLock {
+            val now = System.currentTimeMillis()
+            val behaviorSummary = if (behaviorObservationEverActive) {
+                FocusBehaviorSummaryBuilder.build(
+                    observation = behaviorObservationHistory.snapshot().summary(now),
+                    events = focusSupervisor.getEvents(),
+                    modelVersion = _behaviorPrediction.value?.modelState ?: "MODEL_NOT_AVAILABLE",
+                )
+            } else {
+                null
+            }
             val summary = processor.finish(
-                now = System.currentTimeMillis(),
+                now = now,
                 actualFocusMinutes = actualFocusMinutes,
                 modelVersion = latestResult.modelVersion,
-            )
+            ).copy(behaviorSummary = behaviorSummary)
             _gentleReminder.value = null
             reminderState.clearAll()
             summary
@@ -355,6 +368,7 @@ class ExpressionSessionManager(
             behaviorSignalProcessor.beginBehaviorObservation(System.currentTimeMillis())
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
             behaviorObservationActive = true
+            behaviorObservationEverActive = true
         }
 
         val target = service ?: createService(useMock).also { created ->

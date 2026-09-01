@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StudyGoalUpdate(BaseModel):
@@ -49,11 +49,29 @@ class StudySessionUpdate(BaseModel):
     )
 
 
+class StudyBehaviorSummary(BaseModel):
+    """本机行为辅助的隐私安全聚合；不接收逐帧或图像数据。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    observed_seconds: int = Field(..., ge=0, le=86400)
+    study_seconds: int = Field(..., ge=0, le=86400)
+    paused_seconds: int = Field(..., ge=0, le=86400)
+    longest_continuous_study_seconds: int = Field(..., ge=0, le=86400)
+    meaningful_switch_count: int = Field(..., ge=0, le=10000)
+    phone_interaction_count: int = Field(..., ge=0, le=10000)
+    possible_distraction_count: int = Field(..., ge=0, le=10000)
+    absent_count: int = Field(..., ge=0, le=10000)
+    reminder_count: int = Field(..., ge=0, le=10000)
+    model_version: str = Field(..., min_length=1, max_length=128)
+
+
 class StudySessionFinish(BaseModel):
     """结束会话时填写的文字感受(用户主动输入,不根据表情替用户填写)。"""
 
     self_report: Optional[str] = Field(None, max_length=2000)
     self_report_tags: Optional[List[str]] = Field(None, max_length=20)
+    behavior_summary: Optional[StudyBehaviorSummary] = None
 
 
 class StudyBreakOut(BaseModel):
@@ -85,6 +103,7 @@ class StudySessionOut(BaseModel):
     self_report: Optional[str] = None
     self_report_tags: List[str] = Field(default_factory=list)
     expression_signal: Optional[Any] = None
+    behavior_summary: Optional[StudyBehaviorSummary] = None
     created_at: str = ""
     updated_at: str = ""
     breaks: List[StudyBreakOut] = Field(default_factory=list)
