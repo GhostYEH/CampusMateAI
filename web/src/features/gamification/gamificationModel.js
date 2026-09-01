@@ -210,6 +210,17 @@ function titleForLevel(level) {
   return "校园新旅人";
 }
 
+function achievementProgress(definition, { taskCount, focusMinutes, streak }) {
+  const progress = {
+    "first-focus": { current: Math.min(1, Number(focusMinutes > 0)), target: 1, unit: "次专注" },
+    "focus-60": { current: Math.floor(focusMinutes), target: 60, unit: "分钟" },
+    "focus-600": { current: Math.floor(focusMinutes), target: 600, unit: "分钟" },
+    "task-hunter-50": { current: taskCount, target: 50, unit: "项任务" },
+    "streak-7": { current: streak, target: 7, unit: "天连续" },
+  };
+  return progress[definition.id] || { current: 0, target: 1, unit: "项" };
+}
+
 export function summarizeGamification(snapshot, facts, now = new Date()) {
   const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
   const achievements = Array.isArray(snapshot?.achievements) ? snapshot.achievements : [];
@@ -223,6 +234,12 @@ export function summarizeGamification(snapshot, facts, now = new Date()) {
   const todayFocusSeconds = focusSessions
     .filter((session) => localDateKey(session.ended_at || session.started_at) === today)
     .reduce((sum, session) => sum + Math.max(0, Number(session.duration_seconds || 0)), 0);
+  const focusMinutes = focusSessions.reduce(
+    (sum, session) => sum + Math.max(0, Number(session.duration_seconds || 0)) / 60,
+    0,
+  );
+  const streak = calculateStreak(activityDatesFromFacts(facts), now);
+  const unlockedById = new Map(achievements.map((achievement) => [achievement.id, achievement]));
 
   const definitions = new Map(ACHIEVEMENT_DEFINITIONS.map((definition) => [definition.id, definition]));
   const recentAchievements = achievements
@@ -230,11 +247,28 @@ export function summarizeGamification(snapshot, facts, now = new Date()) {
     .filter((achievement) => achievement.title)
     .sort((left, right) => new Date(right.unlockedAt || 0) - new Date(left.unlockedAt || 0))
     .slice(0, 3);
+  const achievementCollection = ACHIEVEMENT_DEFINITIONS.map((definition) => {
+    const unlocked = unlockedById.get(definition.id);
+    return {
+      ...definition,
+      ...achievementProgress(definition, { taskCount: tasks.length, focusMinutes, streak }),
+      unlocked: Boolean(unlocked),
+      unlockedAt: unlocked?.unlockedAt || "",
+    };
+  });
+  const todayXp = events
+    .filter((event) => localDateKey(event.awardedAt) === today)
+    .reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0);
+  const nextReward = todayTasks.length === 0
+    ? { type: "task-goal", xp: 20 }
+    : todayFocusSeconds < 60 * 60
+      ? { type: "focus-goal", xp: 30, remainingMinutes: Math.ceil(60 - todayFocusSeconds / 60) }
+      : null;
 
   return {
     ...level,
     title: titleForLevel(level.level),
-    streak: calculateStreak(activityDatesFromFacts(facts), now),
+    streak,
     weekXp: events.filter((event) => isWithin(event.awardedAt, bounds)).reduce((sum, event) => sum + Math.max(0, Number(event.xp || 0)), 0),
     weekFocusMinutes: Math.round(focusSessions
       .filter((session) => isWithin(session.ended_at || session.started_at, bounds))
@@ -245,7 +279,10 @@ export function summarizeGamification(snapshot, facts, now = new Date()) {
       total: 2,
       focusMinutes: Math.floor(todayFocusSeconds / 60),
       completedTasks: todayTasks.length,
+      todayXp,
+      nextReward,
     },
     recentAchievements,
+    achievementCollection,
   };
 }

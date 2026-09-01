@@ -42,17 +42,17 @@ function openPost(postId) {
 
       <section class="game-dashboard-grid">
         <MainQuestSection :quests="state.filteredMainQuests" @navigate="emit('navigate', $event)" />
-        <section class="game-panel game-side-quests" aria-labelledby="side-quest-title">
+        <section class="game-side-quests" aria-labelledby="side-quest-title">
           <header class="game-panel-head"><div><span class="game-eyebrow">SIDE QUESTS</span><h2 id="side-quest-title">校园探索</h2></div><UiIcon name="PhMapTrifold" :size="23" /></header>
           <div class="game-side-grid">
-            <button v-for="quest in sideQuests" :key="quest.route" @click="emit('navigate', quest.route)"><span :class="quest.tone"><UiIcon :name="quest.icon" :size="21" /></span><strong>{{ quest.label }}</strong><small>{{ quest.detail }}</small><UiIcon name="PhCaretRight" :size="14" /></button>
+            <button v-for="quest in sideQuests" :key="quest.route" @click="emit('navigate', quest.route)"><span :class="quest.tone"><UiIcon :name="quest.icon" :size="20" /></span><strong>{{ quest.label }}</strong><small>{{ quest.detail }}</small><UiIcon name="PhArrowUpRight" :size="14" /></button>
           </div>
         </section>
       </section>
 
       <GrowthAndAchievements :summary="state.gamification" />
 
-      <section class="game-panel game-campus-world" aria-labelledby="campus-world-title">
+      <section class="game-campus-world" aria-labelledby="campus-world-title">
         <header class="game-panel-head"><div><span class="game-eyebrow">CAMPUS WORLD</span><h2 id="campus-world-title">校园世界</h2></div><button @click="emit('navigate', '/community')">进入社区<UiIcon name="PhArrowRight" :size="15" /></button></header>
         <CampusHotPostsPanel v-if="state.visibleHotPosts.length" :posts="state.visibleHotPosts" @open-post="openPost" />
         <div v-else class="game-empty compact" role="status"><span><UiIcon name="PhChatsCircle" :size="28" /></span><strong>校园世界暂时安静</strong><p>社区出现新的公开动态后，会继续使用原数据源显示在这里。</p><button @click="emit('navigate', '/community')">去社区看看</button></div>

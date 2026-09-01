@@ -131,7 +131,47 @@ test("gamification summary reports only real current-week activity", () => {
   assert.equal(summary.weekXp, 95);
   assert.equal(summary.weekFocusMinutes, 60);
   assert.equal(summary.weekCompletedTasks, 1);
-  assert.deepEqual(summary.dailyAdventure, { completed: 2, total: 2, focusMinutes: 60, completedTasks: 1 });
+  assert.deepEqual(summary.dailyAdventure, {
+    completed: 2,
+    total: 2,
+    focusMinutes: 60,
+    completedTasks: 1,
+    todayXp: 95,
+    nextReward: null,
+  });
   assert.equal(summary.streak, 2);
   assert.equal(summary.recentAchievements[0].title, "初心者");
+  assert.deepEqual(summary.achievementCollection.slice(0, 3).map((item) => ({
+    id: item.id,
+    unlocked: item.unlocked,
+    current: item.current,
+    target: item.target,
+    unit: item.unit,
+  })), [
+    { id: "first-focus", unlocked: true, current: 1, target: 1, unit: "次专注" },
+    { id: "focus-60", unlocked: false, current: 60, target: 60, unit: "分钟" },
+    { id: "focus-600", unlocked: false, current: 60, target: 600, unit: "分钟" },
+  ]);
+});
+
+test("gamification summary exposes only the next unearned daily reward", () => {
+  const facts = {
+    completedTasks: [
+      { id: "task-today", status: "completed", completed_at: "2026-08-31T08:00:00+08:00" },
+    ],
+    completedFocusSessions: [
+      { id: "focus-50", mode: "focus", status: "completed", duration_seconds: 3000, ended_at: "2026-08-31T09:00:00+08:00" },
+    ],
+  };
+  const withEvents = reconcileXpEvents({ version: 1, events: [], achievements: [] }, facts, now);
+  const snapshot = evaluateAchievements(withEvents, facts, now);
+  const summary = summarizeGamification(snapshot, facts, now);
+
+  assert.equal(summary.dailyAdventure.todayXp, 55);
+  assert.deepEqual(summary.dailyAdventure.nextReward, { type: "focus-goal", xp: 30, remainingMinutes: 10 });
+  assert.equal(summary.achievementCollection[0].id, "first-focus");
+  assert.equal(summary.achievementCollection[0].unlocked, true);
+  assert.equal(summary.achievementCollection[1].id, "focus-60");
+  assert.equal(summary.achievementCollection[1].unlocked, false);
+  assert.equal(summary.achievementCollection[1].current, 50);
 });
