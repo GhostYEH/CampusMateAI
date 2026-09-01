@@ -23,6 +23,12 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
+    fun focusSessionOwnsImmersiveChrome() {
+        assertNull(secondaryDestinationSpec("focus_session"))
+        assertEquals(0.dp, navigationDestinationLayout("focus_session", 24.dp).contentTopPadding)
+    }
+
+    @Test
     fun secondaryDestinationKeepsNavHostAtTopAndPadsOnlyItsOwnContent() {
         val layout = navigationDestinationLayout("settings", statusBarHeight = 24.dp)
 

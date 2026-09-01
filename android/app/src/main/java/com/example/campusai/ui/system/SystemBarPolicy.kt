@@ -17,6 +17,7 @@ private val routesOwningStatusBarInset = setOf(
     "home",
     "profile",
     "lostfound",
+    "focus_session",
 )
 
 fun systemBarPolicy(
