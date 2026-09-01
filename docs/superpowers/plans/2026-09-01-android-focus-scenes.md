@@ -179,19 +179,19 @@ git commit -m "feat(android): add original immersive focus assets"
 **Files:**
 - Create: `android/app/src/main/java/com/example/campusai/data/focus/scene/FocusAmbientAudioController.kt`
 - Modify: `android/app/src/main/java/com/example/campusai/ui/glass/CampusGlass.kt`
-- Test: `android/app/src/test/java/com/example/campusai/ui/glass/GlassControlCoverageTest.kt`
+- Test: `android/app/src/androidTest/java/com/example/campusai/ui/glass/CampusGlassCustomBackgroundTest.kt`
 
 **Interfaces:**
 - Produces: `FocusAmbientAudioController.setScene(FocusScene)`, `.setTargetVolume(Float)`, and `.release()`; optional `background` content on `CampusGlassScene`.
 - Consumes: Media3, generated raw resources, and the existing adaptive glass profile.
 
-- [ ] **Step 1: Add a failing source contract test for custom glass backgrounds**
+- [ ] **Step 1: Add a failing Compose test for custom glass backgrounds**
 
-Add an assertion to `GlassControlCoverageTest` that `CampusGlass.kt` declares `background: (@Composable BoxScope.() -> Unit)? = null` and continues to call `layerBackdrop(backdrop)` exactly on the background layer.
+Use `createComposeRule()` to render `CampusGlassScene` with a tagged custom background and tagged foreground content, then assert that both nodes exist. This exercises the real composable contract instead of inspecting source text.
 
 - [ ] **Step 2: Run the glass test and confirm it fails**
 
-Run: `./gradlew.bat :app:testDebugUnitTest --tests "com.example.campusai.ui.glass.GlassControlCoverageTest"`
+Run: `./gradlew.bat :app:compileDebugAndroidTestKotlin`
 
 Expected: FAIL because the optional background parameter is absent.
 
@@ -205,12 +205,12 @@ Map each `FocusScene` to its `R.raw.focus_ambient_*` resource. Configure one `Ex
 
 - [ ] **Step 5: Run glass and ambient policy tests**
 
-Run the targeted test classes from Tasks 1 and 3; expect PASS.
+Run the targeted Task 1 tests and `:app:compileDebugAndroidTestKotlin`; expect PASS. If an emulator/device is available, also run `:app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.campusai.ui.glass.CampusGlassCustomBackgroundTest`.
 
 - [ ] **Step 6: Commit controller and glass extension**
 
 ```bash
-git add android/app/src/main/java/com/example/campusai/data/focus/scene/FocusAmbientAudioController.kt android/app/src/main/java/com/example/campusai/ui/glass/CampusGlass.kt android/app/src/test/java/com/example/campusai/ui/glass/GlassControlCoverageTest.kt
+git add android/app/src/main/java/com/example/campusai/data/focus/scene/FocusAmbientAudioController.kt android/app/src/main/java/com/example/campusai/ui/glass/CampusGlass.kt android/app/src/androidTest/java/com/example/campusai/ui/glass/CampusGlassCustomBackgroundTest.kt
 git commit -m "feat(android): connect focus audio to adaptive glass scenes"
 ```
 
@@ -221,19 +221,19 @@ git commit -m "feat(android): connect focus audio to adaptive glass scenes"
 **Files:**
 - Create: `android/app/src/main/java/com/example/campusai/ui/screens/focus/FocusSceneExperience.kt`
 - Modify: `android/app/src/main/java/com/example/campusai/ui/screens/focus/FocusAssistantScreen.kt`
-- Test: `android/app/src/test/java/com/example/campusai/ui/screens/focus/FocusSceneContinuityContractTest.kt`
+- Test: `android/app/src/androidTest/java/com/example/campusai/ui/screens/focus/FocusSceneContinuityTest.kt`
 
 **Interfaces:**
 - Produces: `FocusSceneBackdrop`, `FocusSceneToolbar`, `FocusGlassPanel`, and `FocusAmbientPlaybackEffect`.
 - Consumes: scene settings, controller, generated resources, `CampusGlassScene`, current `FocusSpaceGuide`, timer, voice phase, and lifecycle state.
 
-- [ ] **Step 1: Write a failing continuity contract test**
+- [ ] **Step 1: Write a failing Compose continuity test**
 
-The source contract must assert that `FocusSessionScreen` calls `FocusSpaceGuide` outside any `key(sceneSettings.scene)` block, that scene animation is contained inside `FocusSceneBackdrop`, and that the robot image uses `R.drawable.ai_campus_robot`. This protects the user-visible animation continuity from later refactors.
+Render `FocusSceneStage(scene = sceneState.value, robotContent = { DisposableEffect(Unit) { onDispose { disposalCount++ } } })`. Change `sceneState` from `RAINY_ROOM` to `QUIET_LIBRARY`, wait for Compose to settle, and assert `disposalCount == 0`. This fails if scene switching ever removes and recreates the robot subtree.
 
 - [ ] **Step 2: Run the continuity test and confirm it fails**
 
-Run: `./gradlew.bat :app:testDebugUnitTest --tests "com.example.campusai.ui.screens.focus.FocusSceneContinuityContractTest"`
+Run: `./gradlew.bat :app:compileDebugAndroidTestKotlin`
 
 Expected: FAIL before the scene experience is integrated.
 
@@ -243,6 +243,7 @@ Expected: FAIL before the scene experience is integrated.
 
 - a `FocusSceneResources` mapping from enum values to background/raw/accent resources;
 - `FocusSceneBackdrop` with a scene-keyed background-only crossfade and fixed readability gradients;
+- `FocusSceneStage` with `robotContent` outside the scene-keyed background transition;
 - `FocusSceneToolbar` with a scene picker bottom sheet, sound toggle, and volume slider;
 - `FocusGlassPanel` using `Modifier.campusGlass(role = CampusGlassRole.PANEL)`;
 - `FocusAmbientPlaybackEffect` that remembers one controller, loads persisted settings, applies `FocusAmbientPolicy.targetVolume`, and releases on disposal.
@@ -259,14 +260,14 @@ Keep `FocusSpaceGuide` at the same stable call position. Replace its old full-ro
 
 Pass `focusRunning`, `appForeground`, and `realtimeStatus` to `FocusAmbientPlaybackEffect`. Pausing, backgrounding, disabling sound, or volume zero must target volume zero; voice listening/thinking/speaking must target 18%; idle/connecting must restore user volume. Scene changes update audio independently of the robot.
 
-- [ ] **Step 6: Run the focused contract and unit tests**
+- [ ] **Step 6: Run the focused Compose and unit tests**
 
-Run the scene settings, ambient policy, continuity contract, existing Focus tests, and glass tests. Expect PASS.
+Run the scene settings, ambient policy, existing Focus tests, glass tests, and `:app:compileDebugAndroidTestKotlin`. If an emulator/device is available, run both new Compose tests with `connectedDebugAndroidTest`. Expect PASS.
 
 - [ ] **Step 7: Commit the immersive focus UI**
 
 ```bash
-git add android/app/src/main/java/com/example/campusai/ui/screens/focus android/app/src/test/java/com/example/campusai/ui/screens/focus
+git add android/app/src/main/java/com/example/campusai/ui/screens/focus android/app/src/androidTest/java/com/example/campusai/ui/screens/focus
 git commit -m "feat(android): make focus sessions scene immersive"
 ```
 
@@ -296,7 +297,8 @@ $env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 & "$env:JAVA_HOME\bin\java.exe" -version
 Set-Location (Join-Path $repoRoot 'android')
-.\gradlew.bat :app:testDebugUnitTest --tests "com.example.campusai.data.focus.scene.*" --tests "com.example.campusai.ui.screens.focus.FocusSceneContinuityContractTest" --tests "com.example.campusai.ui.glass.*"
+.\gradlew.bat :app:testDebugUnitTest --tests "com.example.campusai.data.focus.scene.*" --tests "com.example.campusai.ui.glass.*"
+.\gradlew.bat :app:compileDebugAndroidTestKotlin
 ```
 
 Expected JDK contains `21.0.12`; all tests PASS.
@@ -320,4 +322,4 @@ git commit -m "docs(android): document immersive focus scenes"
 
 - [ ] **Step 6: Final review**
 
-Review the full branch diff from commit `270148c5` to `HEAD`, confirm the robot continuity contract and audio lifecycle requirements are represented in code and tests, and report any verification that could not be run.
+Review the full branch diff from commit `270148c5` to `HEAD`, confirm the robot continuity Compose test and audio lifecycle requirements are represented in code and tests, and report any verification that could not be run.
