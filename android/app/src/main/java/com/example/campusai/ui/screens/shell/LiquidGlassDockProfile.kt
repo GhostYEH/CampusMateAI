@@ -6,6 +6,7 @@ internal data class LiquidGlassDockProfile(
     val vibrancyEnabled: Boolean,
     val blurRadiusDp: Float,
     val surfaceAlpha: Float,
+    val shadowColorArgb: Long,
 )
 
 internal data class LiquidGlassDockInteractionProfile(
@@ -32,6 +33,7 @@ internal fun liquidGlassDockProfile(
         vibrancyEnabled = true,
         blurRadiusDp = 8f,
         surfaceAlpha = if (darkMode) 0.34f else 0.40f,
+        shadowColorArgb = if (darkMode) 0x80000000L else 0x260B1830L,
     )
     apiLevel >= 31 -> LiquidGlassDockProfile(
         blurEnabled = true,
@@ -39,6 +41,7 @@ internal fun liquidGlassDockProfile(
         vibrancyEnabled = false,
         blurRadiusDp = 12f,
         surfaceAlpha = if (darkMode) 0.46f else 0.52f,
+        shadowColorArgb = if (darkMode) 0x80000000L else 0x260B1830L,
     )
     else -> LiquidGlassDockProfile(
         blurEnabled = false,
@@ -46,5 +49,6 @@ internal fun liquidGlassDockProfile(
         vibrancyEnabled = false,
         blurRadiusDp = 0f,
         surfaceAlpha = if (darkMode) 0.74f else 0.82f,
+        shadowColorArgb = if (darkMode) 0x80000000L else 0x260B1830L,
     )
 }

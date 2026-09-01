@@ -178,6 +178,10 @@ class EduConnectionCreate(BaseModel):
     edu_system_id: str = Field(..., min_length=1, max_length=128)
 
 
+def _has_control_characters(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
+
+
 class EduCookie(BaseModel):
     """A scoped browser cookie without pretending unavailable attributes are known."""
 
@@ -234,10 +238,6 @@ class EduCookie(BaseModel):
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or _has_control_characters(value):
             raise ValueError("cookie source_url must be an https URL without userinfo")
         return value
-
-
-def _has_control_characters(value: str) -> bool:
-    return any(ord(char) < 32 or ord(char) == 127 for char in value)
 
 
 class EduConnectionContinue(BaseModel):

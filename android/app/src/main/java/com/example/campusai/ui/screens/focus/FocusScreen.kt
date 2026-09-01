@@ -32,8 +32,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,8 +73,6 @@ import com.example.campusai.data.behavior.PersonDetectionSnapshot
 import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.behavior.isRunning
 import com.example.campusai.data.expression.ExpressionServiceStatus
-import com.example.campusai.data.focus.goal.FocusGoalPlan
-import com.example.campusai.data.focus.goal.FocusGoalPlanStore
 import com.example.campusai.data.focus.voice.AndroidSpeechRecognizerTranscriber
 import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
 import com.example.campusai.data.focus.voice.FocusVoiceController
@@ -88,11 +84,14 @@ import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
+import com.example.campusai.data.model.FocusPlan
 import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,18 +119,21 @@ fun FocusScreen(
     onBack: () -> Unit,
     relatedTaskId: String? = null,
     onOpenCounselorPlan: (String) -> Unit,
-    onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode) -> Unit,
+    onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode, relatedTaskId: String?) -> Unit,
     onOpenHistory: () -> Unit,
+    planRepository: FocusPlanRepository,
 ) {
     val stats by repository.stats.collectAsStateWithLifecycle()
     val records by repository.records.collectAsStateWithLifecycle()
     val activeSession by repository.activeSession.collectAsStateWithLifecycle()
     val remoteError by repository.error.collectAsStateWithLifecycle()
     val backendOnline by appRepository.backendOnline.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val session by appRepository.session.collectAsStateWithLifecycle()
+    val plans by planRepository.plans.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val manager = appRepository.expressionSessionManager
-    val taskName = relatedTaskId?.let(appRepository::getTaskById)?.title ?: "本次专注"
+    val effectiveTaskId = resolveFocusTaskId(activeSession, relatedTaskId)
+    val taskName = effectiveTaskId?.let(appRepository::getTaskById)?.title ?: "本次专注"
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var sessionMode by remember { mutableStateOf(FocusSessionMode.QUIET) }
     var selectedSecondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
@@ -140,31 +142,86 @@ fun FocusScreen(
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
-    var showGoalPlanner by rememberSaveable { mutableStateOf(false) }
-    var goalPlan by remember { mutableStateOf<FocusGoalPlan?>(null) }
     var guideState by rememberSaveable { mutableStateOf(GuideDialogueState.GREETING) }
     var arranging by rememberSaveable { mutableStateOf(false) }
     var countdown by rememberSaveable { mutableIntStateOf(0) }
+    var planLoading by remember { mutableStateOf(false) }
+    var planError by remember { mutableStateOf<String?>(null) }
+    var planReloadToken by remember { mutableIntStateOf(0) }
+    var sessionReady by remember { mutableStateOf(!backendOnline) }
+    val currentPlan = effectiveTaskId?.let(plans::get)
+    val currentStep = currentPlan?.currentStep
 
-    LaunchedEffect(backendOnline) {
-        if (backendOnline) repository.refresh()
+    LaunchedEffect(
+        session?.accountId,
+        session?.studentId,
+        relatedTaskId,
+        backendOnline,
+        planReloadToken,
+    ) {
+        sessionReady = !backendOnline
+        var activeSessionResolved = !backendOnline
+        planLoading = effectiveTaskId != null
+        planError = null
+        planRepository.load()
+        if (backendOnline) {
+            val activeRefreshResult = repository.refreshActiveSession()
+            activeSessionResolved = activeRefreshResult.isSuccess
+            repository.refreshHistoryAndGoal()
+            if (activeRefreshResult.isSuccess) {
+                planRepository.recoverPreparedCompletions(
+                    repository.records.value.mapNotNull { it.sourceId }.toSet(),
+                )
+            }
+            appRepository.refreshTasks()
+            planRepository.syncPendingTaskCompletions { taskId ->
+                appRepository.completeTaskStrict(taskId).isSuccess
+            }
+            val refreshedTaskId = resolveFocusTaskId(repository.activeSession.value, relatedTaskId)
+            if (refreshedTaskId != null && planRepository.getPlan(refreshedTaskId) == null) {
+                val refreshedTaskTitle = appRepository.getTaskById(refreshedTaskId)?.title ?: taskName
+                planRepository.ensurePlan(
+                    taskId = refreshedTaskId,
+                    taskTitle = refreshedTaskTitle,
+                    goal = refreshedTaskTitle,
+                ).onFailure { error ->
+                    planError = error.message ?: "暂时无法生成任务规划"
+                }
+            }
+        }
+        sessionReady = activeSessionResolved
+        planLoading = false
     }
-    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 26.dp
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 16.dp
     val listState = rememberLazyListState()
     val startFocus: () -> Unit = {
         scope.launch {
-            when (activeSession?.status) {
+            val recoverableSession = activeSession?.takeIf { it.status == "active" || it.status == "paused" }
+            when (recoverableSession) {
                 null -> {
-                    val startResult = repository.start(mode, goalPlan?.goal, relatedTaskId, selectedDurationMinutes * 60)
+                    val latestPlan = effectiveTaskId?.let { planRepository.getPlan(it) }
+                    val latestStep = latestPlan?.currentStep
+                    val sessionTaskName = latestStep?.title ?: taskName
+                    val startResult = repository.start(mode, latestStep?.title ?: sessionTaskName, effectiveTaskId, selectedDurationMinutes * 60)
                     if (startResult.isSuccess) {
-                        goalPlan?.let { plan -> FocusGoalPlanStore(context).save(plan.copy(sessionId = startResult.getOrNull()?.id)) }
-                            ?: FocusGoalPlanStore(context).clear()
                         selectedSecondsLeft = mode.totalSeconds
                         manager.beginFocusSession()
-                        onOpenAssistant(selectedDurationMinutes * 60, goalPlan?.goal ?: taskName, sessionMode)
+                        onOpenAssistant(
+                            selectedDurationMinutes * 60,
+                            sessionTaskName,
+                            sessionMode,
+                            effectiveTaskId.takeIf { latestStep != null },
+                        )
                     }
                 }
-                else -> onOpenAssistant(activeSession?.plannedDurationSeconds?.takeIf { it > 0 } ?: mode.totalSeconds, taskName, sessionMode)
+                else -> onOpenAssistant(
+                    recoverableSession.plannedDurationSeconds.takeIf { it > 0 } ?: mode.totalSeconds,
+                    currentStep?.title ?: taskName,
+                    sessionMode,
+                    effectiveTaskId.takeIf { currentStep != null },
+                )
             }
         }
         Unit
@@ -176,8 +233,8 @@ fun FocusScreen(
             guideState = GuideDialogueState.ASK_DURATION
         }
     }
-    LaunchedEffect(guideState) {
-        if (guideState == GuideDialogueState.CONFIRM) {
+    LaunchedEffect(guideState, sessionReady) {
+        if (guideState == GuideDialogueState.CONFIRM && sessionReady) {
             delay(900)
             for (number in 3 downTo 1) {
                 countdown = number
@@ -210,13 +267,22 @@ fun FocusScreen(
                 countdown = countdown,
                 selectedMinutes = selectedDurationMinutes,
                 selectedMode = sessionMode,
-                onReady = { arranging = true },
-                onPlan = { showGoalPlanner = true },
+                onReady = { if (sessionReady) arranging = true },
                 onOpenHistory = onOpenHistory,
                 onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
                 onCustom = { showCustomDurationDialog = true },
                 onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
             )
+        }
+        if (effectiveTaskId != null) {
+            item {
+                FocusPlanCard(
+                    plan = currentPlan,
+                    loading = planLoading,
+                    error = planError,
+                    onRetry = { planReloadToken++ },
+                )
+            }
         }
         item {
             Surface(shape = RoundedCornerShape(24.dp), color = Surface, border = BorderStroke(1.dp, Line)) {
@@ -235,67 +301,71 @@ fun FocusScreen(
         confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
         dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
     )
-    if (showGoalPlanner) FocusGoalPlannerDialog(
-        repository = repository,
-        initialPlan = goalPlan,
-        onDismiss = { showGoalPlanner = false },
-        onPlanReady = { plan ->
-            goalPlan = plan
-            showGoalPlanner = false
-            guideState = GuideDialogueState.ASK_DURATION
-        },
-    )
+}
+
+internal fun resolveFocusTaskId(
+    activeSession: com.example.campusai.data.repository.StudySessionSnapshot?,
+    requestedTaskId: String?,
+): String? = if (activeSession?.status == "active" || activeSession?.status == "paused") {
+    activeSession.relatedTaskId
+} else {
+    requestedTaskId
 }
 
 @Composable
-private fun FocusGoalPlannerDialog(
-    repository: ApiFocusRepository,
-    initialPlan: FocusGoalPlan?,
-    onDismiss: () -> Unit,
-    onPlanReady: (FocusGoalPlan) -> Unit,
+private fun FocusPlanCard(
+    plan: FocusPlan?,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var input by rememberSaveable { mutableStateOf(initialPlan?.goal.orEmpty()) }
-    var plan by remember { mutableStateOf(initialPlan) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = { if (!loading) onDismiss() },
-        title = { Text("设定本次学习目标") },
-        text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("先说清楚想达成什么，再把它变成今天可以完成的步骤。", color = Muted, fontSize = 12.sp)
-                OutlinedTextField(value = input, onValueChange = { input = it.take(500); error = null; plan = null }, modifier = Modifier.fillMaxWidth(), label = { Text("学习目标") }, placeholder = { Text("例如：两周内掌握 Kotlin 协程并完成一个练习项目") }, minLines = 3, maxLines = 5, enabled = !loading)
-                error?.let { Text(it, color = AlertErrorText, fontSize = 12.sp) }
-                if (loading) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = FocusBlue); Text("AI 正在分析目标并拆解步骤…", color = FocusBlue, fontSize = 13.sp) }
-                plan?.let { FocusGoalPlanPreview(it) }
+    Surface(shape = RoundedCornerShape(24.dp), color = Surface, border = BorderStroke(1.dp, Primary.copy(alpha = .18f))) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Assignment, contentDescription = null, tint = Primary)
+                Spacer(Modifier.width(8.dp))
+                Text("任务规划", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Spacer(Modifier.weight(1f))
+                if (plan?.isComplete == true) {
+                    Text(
+                        if (plan.taskCompletionPending) "待同步" else "已完成",
+                        color = if (plan.taskCompletionPending) FocusOrange else FocusGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
-        },
-        confirmButton = {
-            if (plan != null) TextButton(onClick = { onPlanReady(plan!!) }, enabled = !loading) { Text("使用这份计划", color = FocusBlue) }
-            else TextButton(onClick = {
-                val goal = input.trim()
-                if (goal.length < 4) error = "请先输入一个具体目标（至少 4 个字）"
-                else { loading = true; scope.launch { repository.breakdownGoal(goal).onSuccess { plan = it }.onFailure { error = it.message ?: "目标分析失败，请稍后重试" }; loading = false } }
-            }, enabled = !loading) { Text("分析并拆解", color = FocusBlue) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !loading) { Text("取消") } },
-    )
-}
-
-@Composable
-private fun FocusGoalPlanPreview(plan: FocusGoalPlan) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("目标分析", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) { Text(plan.analysis, modifier = Modifier.padding(12.dp), color = TextPrimary, fontSize = 12.sp, lineHeight = 18.sp) }
-        Text("执行步骤（${plan.steps.size} 步）", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        plan.steps.forEach { step ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
-                Surface(shape = CircleShape, color = FocusBlue.copy(alpha = .14f)) { Text(step.number.toString(), modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp), color = FocusBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                Column(Modifier.weight(1f)) { Text(step.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp); Text("${step.estimatedMinutes} 分钟 · ${step.description}", color = Muted, fontSize = 11.sp, lineHeight = 16.sp) }
+            when {
+                loading -> Text("正在根据任务内容生成可执行步骤…", color = Muted, fontSize = 13.sp)
+                plan != null -> {
+                    Text(plan.goal, color = Muted, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    plan.steps.forEach { step ->
+                        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(
+                                if (step.status == com.example.campusai.data.model.FocusPlanStepStatus.COMPLETED) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (step.status == com.example.campusai.data.model.FocusPlanStepStatus.COMPLETED) FocusGreen else Primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(step.title, color = TextPrimary, fontSize = 14.sp, fontWeight = if (step == plan.currentStep) FontWeight.Bold else FontWeight.Normal)
+                                Text(if (step == plan.currentStep) "当前步骤 · ${step.estimatedMinutes} 分钟" else step.completionCriteria, color = Muted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    plan.currentStep?.let { step ->
+                        Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) {
+                            Text("下一次专注：${step.title}", Modifier.padding(12.dp), color = Primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                error != null -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("暂时无法生成任务规划", Modifier.weight(1f), color = Muted, fontSize = 13.sp)
+                    TextButton(onClick = onRetry) { Text("重试", color = Primary) }
+                }
+                else -> Text("任务规划暂未生成，仍可以直接开始专注。", color = Muted, fontSize = 13.sp)
             }
         }
-        plan.warnings.firstOrNull()?.let { Text("提示：$it", color = Muted, fontSize = 11.sp) }
     }
 }
 
@@ -479,7 +549,6 @@ private fun FocusHallDialogue(
     selectedMinutes: Int,
     selectedMode: FocusSessionMode,
     onReady: () -> Unit,
-    onPlan: () -> Unit,
     onOpenHistory: () -> Unit,
     onSelectMinutes: (Int) -> Unit,
     onCustom: () -> Unit,
@@ -504,7 +573,6 @@ private fun FocusHallDialogue(
         FocusHallHero(message, npcState) { typingComplete = true }
         if (typingComplete) when (state) {
             GuideDialogueState.GREETING -> if (!arranging) {
-                HallDialogueChoice(Icons.Default.AutoAwesome, "设定目标并开始", "让 AI 分析并拆成可执行步骤", onPlan)
                 HallDialogueChoice(Icons.Default.PlayArrow, "准备好了", "让我开始安排吧", onReady)
                 HallDialogueChoice(Icons.Default.Assessment, "查看成长记录", "回顾我的专注", onOpenHistory)
             }
@@ -579,9 +647,12 @@ private fun HallDialogueChoice(
 fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
     val records by repository.records.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { repository.refresh() }
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 16.dp
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(FocusBg),
-        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, 28.dp),
+        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {

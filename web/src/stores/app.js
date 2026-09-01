@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { probeBackend, realLogin, applyTokenPair, trustedDeviceAutoLogin, revokeTrustedDevice } from "../services/api";
+import { loadDashboardStyle, persistDashboardStyle } from "../features/dashboard/dashboardStyle";
 
 function _normalizeUser(user) {
   return {
@@ -26,6 +27,7 @@ export const useAppStore = defineStore("app", () => {
   const backendOnline = ref(false);
   void probeBackend().then((online) => { backendOnline.value = online; });
   const reduceMotion = ref(localStorage.getItem("campus_reduce_motion") === "true");
+  const dashboardStyle = ref(loadDashboardStyle(localStorage));
   const tasks = ref(JSON.parse(localStorage.getItem("campus_tasks") || "null") || []);
   const notices = ref([]);
   const dashboardSummary = ref(null);
@@ -70,5 +72,6 @@ export const useAppStore = defineStore("app", () => {
     session.value = null;
   }
   function setReduceMotion(v) { reduceMotion.value = v; localStorage.setItem("campus_reduce_motion", String(v)); }
-  return { session, backendOnline, reduceMotion, tasks, notices, dashboardSummary, pendingCount, unreadCount, setDashboardSummary, login, applyQrLoginResult, tryTrustedDeviceAutoLogin, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion };
+  function setDashboardStyle(value) { dashboardStyle.value = persistDashboardStyle(localStorage, value); }
+  return { session, backendOnline, reduceMotion, dashboardStyle, tasks, notices, dashboardSummary, pendingCount, unreadCount, setDashboardSummary, login, applyQrLoginResult, tryTrustedDeviceAutoLogin, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion, setDashboardStyle };
 });

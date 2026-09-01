@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from behavior_recognition.evaluate import (
+    build_space_reports,
     collapsed_binary_report,
     collect_logits,
     evaluate_v32,
@@ -52,3 +53,43 @@ def test_candidate_binary_collapse_matches_v32_semantics():
     report = collapsed_binary_report(labels, probabilities)
     assert report["accuracy"] == 1.0
     assert report["macro_f1"] == 1.0
+
+
+def test_space_reports_include_probability_level_product_evaluation():
+    """Catches product evaluation being derived from source Top-1 labels."""
+    labels = np.array([0, 1, 2, 3])
+    probabilities = np.array(
+        [
+            [0.31, 0.30, 0.39, 0.00],
+            [0.20, 0.70, 0.10, 0.00],
+            [0.10, 0.10, 0.70, 0.10],
+            [0.10, 0.10, 0.10, 0.70],
+        ],
+        dtype=np.float32,
+    )
+
+    report = build_space_reports(labels, probabilities, probabilities)
+
+    assert report["test_calibrated"]["accuracy"] == 0.75
+    assert report["test_product_calibrated"]["accuracy"] == 1.0
+    assert report["product_class_names"] == [
+        "STUDY_ACTIVITY",
+        "PHONE_INTERACTION",
+        "NO_VISIBLE_STUDY",
+    ]
+
+
+def test_space_reports_can_label_validation_without_reusing_test_keys():
+    """Catches offline selection accidentally reading locked test metrics."""
+    labels = np.array([0, 1, 2, 3])
+    probabilities = np.eye(4, dtype=np.float32)
+
+    report = build_space_reports(
+        labels,
+        probabilities,
+        probabilities,
+        split="validation",
+    )
+
+    assert "validation_product_calibrated" in report
+    assert "test_product_calibrated" not in report

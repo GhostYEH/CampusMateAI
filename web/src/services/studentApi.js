@@ -146,6 +146,31 @@ export async function submitMySubmission(id) {
   return data;
 }
 
+export async function getStudentActivities(params = {}) {
+  const { data } = await client.get("/activities", { params: { page_size: 100, ...params } });
+  return data;
+}
+
+export async function getStudentActivity(id) {
+  const { data } = await client.get(`/activities/${id}`);
+  return data;
+}
+
+export async function getActivityRegistration(id) {
+  const { data } = await client.get(`/activities/${id}/registration`);
+  return data;
+}
+
+export async function registerActivity(id) {
+  const { data } = await client.post(`/activities/${id}/registration`);
+  return data;
+}
+
+export async function cancelActivityRegistration(id) {
+  const { data } = await client.delete(`/activities/${id}/registration`);
+  return data;
+}
+
 export async function getAnnouncement(id) {
   const { data } = await client.get(`/announcements/${id}`);
   return data;

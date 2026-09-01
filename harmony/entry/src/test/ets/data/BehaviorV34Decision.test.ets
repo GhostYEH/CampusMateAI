@@ -1,11 +1,13 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  BehaviorSessionSummary,
   BehaviorReminderTracker,
   BehaviorSessionSummaryTracker,
   BehaviorV34Decision,
   BehaviorV34Label,
   BehaviorV34Result
 } from '../../../main/ets/service/BehaviorV34Decision';
+import { toStudyBehaviorSummary } from '../../../main/ets/service/FocusAssistProvider';
 
 function stable(label: BehaviorV34Label): BehaviorV34Result {
   return { label: label, confidence: 0.8, margin: 0.6, isStable: true, probabilities: [0.8, 0.1, 0.05, 0.05] };
@@ -78,6 +80,62 @@ export default function behaviorV34DecisionTest(): void {
       expect(summary.possible_distraction_count).assertEqual(1);
       expect(summary.reminder_count).assertEqual(1);
       expect(summary.model_version).assertEqual('V3.4+TSM-V4');
+    });
+
+    it('includes confirmed absences in the session aggregate and clears them on reset', 0, () => {
+      const tracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
+      tracker.reset(1000);
+      tracker.recordAbsence();
+      tracker.recordAbsence();
+      expect(tracker.summary(2000, 'V3.4').absent_count).assertEqual(2);
+
+      tracker.reset(3000);
+      expect(tracker.summary(4000, 'V3.4').absent_count).assertEqual(0);
+    });
+
+    it('suspends observation without losing confirmed aggregate counts', 0, () => {
+      const tracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
+      tracker.reset(1000);
+      tracker.process(stable(BehaviorV34Label.READ), 1000, '');
+      tracker.process(stable(BehaviorV34Label.READ), 2000, '');
+      tracker.recordAbsence();
+      tracker.suspend(2500);
+      tracker.resume(10000);
+      tracker.process(stable(BehaviorV34Label.READ), 10000, '');
+      tracker.process(stable(BehaviorV34Label.READ), 11000, '');
+      const summary = tracker.summary(11000, 'V3.4');
+
+      expect(summary.study_seconds).assertEqual(2);
+      expect(summary.meaningful_switch_count).assertEqual(0);
+      expect(summary.absent_count).assertEqual(1);
+    });
+
+    it('maps every local aggregate field into the study finish contract', 0, () => {
+      const local: BehaviorSessionSummary = {
+        observed_seconds: 90,
+        study_seconds: 61,
+        paused_seconds: 12,
+        longest_continuous_study_seconds: 40,
+        meaningful_switch_count: 3,
+        phone_interaction_count: 1,
+        possible_distraction_count: 2,
+        absent_count: 4,
+        reminder_count: 2,
+        model_version: 'V3.4+TSM-V4'
+      };
+
+      const request = toStudyBehaviorSummary(local);
+
+      expect(request?.observed_seconds).assertEqual(90);
+      expect(request?.study_seconds).assertEqual(61);
+      expect(request?.paused_seconds).assertEqual(12);
+      expect(request?.longest_continuous_study_seconds).assertEqual(40);
+      expect(request?.meaningful_switch_count).assertEqual(3);
+      expect(request?.phone_interaction_count).assertEqual(1);
+      expect(request?.possible_distraction_count).assertEqual(2);
+      expect(request?.absent_count).assertEqual(4);
+      expect(request?.reminder_count).assertEqual(2);
+      expect(request?.model_version).assertEqual('V3.4+TSM-V4');
     });
   });
 }

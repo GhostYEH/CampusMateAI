@@ -40,6 +40,7 @@ export class BehaviorSessionSummaryTracker {
   private switchCount: number = 0;
   private phoneCount: number = 0;
   private distractionCount: number = 0;
+  private absentCount: number = 0;
   private reminderCount: number = 0;
   private reminderActive: boolean = false;
 
@@ -54,6 +55,7 @@ export class BehaviorSessionSummaryTracker {
     this.switchCount = 0;
     this.phoneCount = 0;
     this.distractionCount = 0;
+    this.absentCount = 0;
     this.reminderCount = 0;
     this.reminderActive = false;
   }
@@ -72,6 +74,24 @@ export class BehaviorSessionSummaryTracker {
     this.lastLabel = result.label;
   }
 
+  recordAbsence(): void {
+    this.absentCount += 1;
+  }
+
+  suspend(timestamp: number): void {
+    this.accumulateUntil(timestamp);
+    this.lastLabel = undefined;
+    this.currentStudyMs = 0;
+    this.reminderActive = false;
+  }
+
+  resume(timestamp: number): void {
+    this.lastTimestamp = timestamp;
+    this.lastLabel = undefined;
+    this.currentStudyMs = 0;
+    this.reminderActive = false;
+  }
+
   summary(now: number, modelVersion: string): BehaviorSessionSummary {
     this.accumulateUntil(now);
     return {
@@ -82,7 +102,7 @@ export class BehaviorSessionSummaryTracker {
       meaningful_switch_count: this.switchCount,
       phone_interaction_count: this.phoneCount,
       possible_distraction_count: this.distractionCount,
-      absent_count: 0,
+      absent_count: this.absentCount,
       reminder_count: this.reminderCount,
       model_version: modelVersion
     };

@@ -1,6 +1,6 @@
 # CampusMateAI Behavior Recognition Offline Baseline
 
-This package builds an auditable offline MobileNetV3-Small baseline from YOLO classroom annotations. It never edits `F:\数据集` and it does not replace the Android V3.2 production asset.
+This package builds an auditable offline MobileNetV3-Small baseline from YOLO classroom annotations. It treats configured source dataset directories as read-only and does not replace the Android V3.2 production asset.
 
 ## Output contract
 
@@ -22,7 +22,8 @@ The verified machine environment at implementation time was Python 3.13, PyTorch
 Install the package only when the existing environment does not already provide the requirements:
 
 ```powershell
-Set-Location D:\File\demo1\.worktrees\behavior-recognition-v34\ml\behavior_recognition
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+Set-Location (Join-Path $repoRoot 'ml\behavior_recognition')
 python -m pip install -e .
 python -m pip install -r requirements.txt
 ```
@@ -35,7 +36,7 @@ $env:PYTHONPATH = "src"
 
 ## Data sources
 
-`configs/sources.yaml` currently treats only `F:\数据集\0.671k_university_yolo_Dataset` as training-ready because its six-class mapping is verified. The larger Handrise/Read/Write and Bow/Turn sets remain audit-only until their numeric label order is verified from authoritative metadata or a reviewed visual audit.
+Copy `configs/sources.example.yaml` to the ignored local file `configs/sources.yaml`, then replace each placeholder with a local read-only dataset directory. Only the university dataset is marked training-ready because its six-class mapping is verified. The larger Handrise/Read/Write and Bow/Turn sets remain audit-only until their numeric label order is verified from authoritative metadata or a reviewed visual audit.
 
 The university mapping is:
 
@@ -79,7 +80,7 @@ Build 16-frame windows from the three ordered university frame sequences. The bu
 ```powershell
 $env:PYTHONPATH = "src"
 python -m behavior_recognition.cli temporal-manifest `
-  --dataset-root "F:\数据集\0.671k_university_yolo_Dataset" `
+  --dataset-root $env:CAMPUSMATE_BEHAVIOR_DATASET_ROOT `
   --output manifests_temporal `
   --sequence-length 16 `
   --stride 8
@@ -92,7 +93,7 @@ python -m behavior_recognition.cli temporal-train `
   --config configs\mobilenet_v3_gru.yaml `
   --manifests manifests_temporal `
   --run-dir runs_temporal\full-current-onnx-20260827 `
-  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
+  --source-onnx "exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx"
 ```
 
 Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX model:
@@ -100,13 +101,25 @@ Fuse the original frame encoder and the trained GRU into one fixed-shape ONNX mo
 ```powershell
 python -m behavior_recognition.cli temporal-export `
   --checkpoint runs_temporal\full-current-onnx-20260827\best.pt `
-  --source-onnx "D:\File\demo1\ml\behavior_recognition\exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
+  --source-onnx "exports\v34-roi-seed-20260823\campusmate_behavior_v34_candidate.onnx" `
   --output exports_temporal\full-current-onnx-20260827
 ```
 
 The fused model accepts `frames` with shape `[1, 16, 3, 224, 224]` and returns four `logits`. Export fails if the source ONNX SHA-256 differs from the model used during GRU training or if fused-vs-two-stage parity exceeds `1e-4`. A successful export writes an immutable artifact set under `generations/<content-id>/` and atomically updates `current.json`; consumers should resolve the model path from that pointer.
 
 This route preserves and actually executes the current ONNX frame encoder; it does not substitute ImageNet weights under the same name. Because the original PyTorch checkpoint is unavailable, the encoder remains frozen and only the GRU and four-class head train. The three-video split is suitable for pipeline development but not production promotion or subject-independent accuracy claims.
+
+Audit a temporal artifact without modifying it:
+
+```powershell
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+python -m behavior_recognition.cli temporal-audit `
+  --model (Join-Path $repoRoot 'android\app\src\main\assets\models\behavior\campusmate_tsm_mobilenetv2_v4.onnx') `
+  --model-card (Join-Path $repoRoot 'harmony\entry\src\main\resources\rawfile\models\behavior\model_card.json') `
+  --output reports\generated\v4-temporal-audit.json
+```
+
+The audit verifies the source hash, ONNX input/output metadata, label order, and training provenance. The currently packaged V4 records conversion parity but its ONNX graph exposes symbolic input/output dimensions while the model card declares fixed shapes, and it has no `training_provenance` block. These are reproducibility/contract failures; the audit does not invent missing dataset, checkpoint, or code-revision values.
 
 ## Local artifacts
 
@@ -128,10 +141,22 @@ Interrupted training can be restarted safely. Existing ROI cache files and downl
 ## Interpretation and limits
 
 - Compare candidate four-class Macro-F1, Balanced Accuracy, per-class metrics, and PHONE_INTERACTION AUPRC.
+- Evaluation also reports the product space `STUDY_ACTIVITY`, `PHONE_INTERACTION`, and `NO_VISIBLE_STUDY`. It sums READ/WRITE probabilities before selecting the product prediction; it does not collapse an already selected four-class label.
 - Treat V3.2 results as a separate binary diagnostic; its Accuracy is not comparable to four-class Accuracy.
 - Validation selects checkpoints, temperature, and rejection thresholds. Test is reserved for the locked candidate.
 - The public dataset contains distant multi-student classroom views. Offline gains do not establish front-camera or real-device gains.
 - Do not copy the candidate ONNX into Android assets until real front-camera evaluation, device latency, temperature, power, and reminder replay all pass the project route criteria.
+
+Compare two evaluation reports using validation metrics only:
+
+```powershell
+python -m behavior_recognition.cli offline-compare `
+  --baseline reports\generated\baseline.json `
+  --candidate reports\generated\candidate.json `
+  --output reports\generated\offline-decision.json
+```
+
+The command checks product Macro-F1, PHONE_INTERACTION AUPRC, calibration error, and rejection coverage. `advanced=true` means only that the candidate merits another offline experiment. The output always records `production_approved=false`; production approval remains the target-domain event gate below.
 
 ## Target front-camera event workflow
 

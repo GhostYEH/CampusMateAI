@@ -142,7 +142,7 @@ fun EduLoginScreen(
 
     DisposableEffect(connectionId) { onDispose { clearLoginState() } }
 
-    // 设置 connectionId 到 ViewModel（EduLoginScreen 有独立 ViewModel 实例）
+    // 与教务主页共享同一个 ViewModel，登录完成后主页能立即收到连接与同步状态。
     LaunchedEffect(connectionId) {
         viewModel.setConnectionId(connectionId)
     }

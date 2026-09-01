@@ -30,6 +30,8 @@ import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
 import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
+import com.example.campusai.features.gamification.DashboardStyle
+import com.example.campusai.features.gamification.GamificationStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -61,6 +63,7 @@ class AppRepository(
     private val credentialStore = CredentialStore(application)
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val gamificationStore = GamificationStore(dataStore)
     @Volatile
     private var autoLoginAttempted = false
     private val campusNewsPreferencesMutex = Mutex()
@@ -87,6 +90,9 @@ class AppRepository(
 
     private val _darkMode = MutableStateFlow(false)
     val darkMode: StateFlow<Boolean> = _darkMode.asStateFlow()
+
+    private val _dashboardStyle = MutableStateFlow(DashboardStyle.CLASSIC)
+    val dashboardStyle: StateFlow<DashboardStyle> = _dashboardStyle.asStateFlow()
 
     private val _remindersEnabled = MutableStateFlow(true)
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
@@ -162,6 +168,7 @@ class AppRepository(
                 val token = dataStore.readAccessToken()
                 ApiClient.setToken(token)
                 if (stored == null) {
+                    gamificationStore.activate(null)
                     // 无持久化会话：尝试用「记住的账号密码」自动登录（仅尝试一次）
                     if (!autoLoginAttempted) {
                         autoLoginAttempted = true
@@ -203,6 +210,7 @@ class AppRepository(
                 } else stored
                 _session.value = hydrated
                 if (hydrated != null && hydrated != stored) dataStore.saveSession(hydrated)
+                gamificationStore.activate(hydrated?.let(::accountStorageKey))
                 bindPersonalHub(hydrated)
                 bindTasks(hydrated)
             }
@@ -220,6 +228,7 @@ class AppRepository(
         scope.launch { loadCachedHomeBanners() }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
+        scope.launch { dataStore.dashboardStyle.collect { _dashboardStyle.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
         scope.launch {
@@ -617,6 +626,7 @@ class AppRepository(
                             done = dto.status == "completed",
                             description = dto.description ?: dto.source_text ?: "",
                             importance = dto.importance ?: "unknown",
+                            completedAt = dto.updated_at.takeIf { dto.status == "completed" },
                         )
                     })
                 _taskError.value = null
@@ -730,13 +740,58 @@ class AppRepository(
                             due = dto?.deadline ?: current.due,
                             course = dto?.source_name ?: current.course,
                             description = dto?.description ?: current.description,
+                            completedAt = dto?.updated_at.takeIf { dto?.status == "completed" },
                         )
                         _tasks.value = list
                         return@withLock
                     }
-                } catch (_: Exception) { /* 落入本地回退 */ }
+                } catch (_: Exception) { /* 保持服务端任务的权威状态 */ }
+                _taskError.value = "待办状态同步失败，请稍后重试"
+                return@withLock
             }
+            if (!_mockMode.value && !id.startsWith("local_")) {
+                _taskError.value = "当前离线，暂时无法更新云端待办"
+                return@withLock
+            }
+            list[idx] = current.copy(
+                done = newDone,
+                completedAt = if (newDone) java.time.Instant.now().toString() else null,
+            )
+            _tasks.value = list
             return@withLock
+        }
+    }
+
+    /** Completes a task only when the authoritative mutation succeeds. */
+    suspend fun completeTaskStrict(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val list = _tasks.value.toMutableList()
+            val idx = list.indexOfFirst { it.id == id }
+            check(idx >= 0) { "待办不存在" }
+            val current = list[idx]
+            if (current.done) return@runCatching
+
+            if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+                val response = ApiClient.api.completeTask(id)
+                check(response.isSuccessful) { "待办同步失败 (${response.code()})" }
+                val dto = checkNotNull(response.body()) { "待办同步响应为空" }
+                check(dto.status == "completed") { "服务端未确认待办完成" }
+                list[idx] = current.copy(
+                    done = true,
+                    title = dto.title,
+                    due = dto.deadline ?: current.due,
+                    course = dto.source_name ?: current.course,
+                    description = dto.description ?: current.description,
+                    completedAt = dto.updated_at,
+                )
+            } else {
+                check(id.startsWith("local_") || _mockMode.value) { "当前离线，待办将在联网后同步" }
+                list[idx] = current.copy(
+                    done = true,
+                    completedAt = java.time.Instant.now().toString(),
+                )
+            }
+            _tasks.value = list
         }
     }
 
@@ -760,6 +815,8 @@ class AppRepository(
                         course = dto.source_name ?: "个人待办",
                         done = dto.status == "completed",
                         description = dto.description ?: "",
+                        importance = dto.importance ?: "unknown",
+                        completedAt = dto.updated_at.takeIf { dto.status == "completed" },
                     )
                     _tasks.value = listOf(newTask) + _tasks.value
                     return@withLock
@@ -851,6 +908,11 @@ class AppRepository(
     suspend fun setDarkMode(enabled: Boolean) {
         _darkMode.value = enabled
         dataStore.setDarkMode(enabled)
+    }
+
+    suspend fun setDashboardStyle(style: DashboardStyle) {
+        _dashboardStyle.value = style
+        dataStore.setDashboardStyle(style)
     }
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
@@ -1408,6 +1470,8 @@ class AppRepository(
                 put("course", task.course)
                 put("done", task.done)
                 put("description", task.description)
+                put("importance", task.importance)
+                put("completedAt", task.completedAt)
             })
         }
     }.toString()
@@ -1424,6 +1488,8 @@ class AppRepository(
                     course = item.optString("course"),
                     done = item.optBoolean("done"),
                     description = item.optString("description"),
+                    importance = item.optString("importance", "unknown"),
+                    completedAt = item.optString("completedAt").takeIf(String::isNotBlank),
                 )
             }
         }

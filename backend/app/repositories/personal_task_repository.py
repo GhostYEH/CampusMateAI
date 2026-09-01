@@ -216,6 +216,17 @@ class PersonalTaskRepository:
         with self._db.query() as conn:
             return self._get_task(conn, task_id, user_id)
 
+    def get_task_by_source_notice_id(
+        self, source_notice_id: str, *, user_id: str
+    ) -> Optional[PersonalTaskRow]:
+        with self._db.query() as conn:
+            cur = conn.execute(
+                "SELECT * FROM personal_tasks WHERE user_id = ? AND source_notice_id = ?",
+                (user_id, source_notice_id),
+            )
+            row = cur.fetchone()
+        return PersonalTaskRow.from_row(row) if row else None
+
     def _get_task(
         self, conn, task_id: str, user_id: str
     ) -> Optional[PersonalTaskRow]:

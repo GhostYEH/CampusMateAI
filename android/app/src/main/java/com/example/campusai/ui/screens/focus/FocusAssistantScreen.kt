@@ -66,14 +66,14 @@ import com.example.campusai.data.focus.voice.FocusVoicePhase
 import com.example.campusai.data.focus.voice.RemoteFocusAiRepository
 import com.example.campusai.data.focus.voice.RemoteRealtimeVoiceRepository
 import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
-import com.example.campusai.data.focus.scene.FocusScenePreferenceStore
-import com.example.campusai.data.focus.goal.FocusGoalPlan
-import com.example.campusai.data.focus.goal.FocusGoalPlanStore
 import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.R
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
+import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
@@ -93,43 +93,10 @@ data class FocusSessionCompletion(
     val conversationCount: Int,
     val aiSummary: String,
     val observationSummary: String,
+    val planTaskId: String? = null,
+    val nextStepTitle: String? = null,
+    val planComplete: Boolean = false,
 )
-
-@Composable
-private fun FocusGoalProgressPanel(
-    plan: FocusGoalPlan,
-    onStepToggle: (stepNumber: Int, completed: Boolean) -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Surface.copy(alpha = 0.92f),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("本次目标", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(plan.goal, color = Muted, fontSize = 12.sp, maxLines = 2)
-            plan.steps.forEach { step ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Checkbox(
-                        checked = step.completed,
-                        onCheckedChange = { checked -> onStepToggle(step.number, checked) },
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(step.title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${step.estimatedMinutes} 分钟 · ${step.completionCriteria}", color = Muted, fontSize = 11.sp, maxLines = 2)
-                    }
-                }
-            }
-        }
-    }
-}
 
 /**
  * The single execution page for an active focus session.
@@ -142,6 +109,8 @@ fun FocusSessionScreen(
     plannedDurationSeconds: Int,
     taskName: String,
     sessionMode: FocusSessionMode,
+    planTaskId: String? = null,
+    planRepository: FocusPlanRepository,
     onSessionCompleted: (FocusSessionCompletion) -> Unit,
 ) {
     val context = LocalContext.current
@@ -164,11 +133,11 @@ fun FocusSessionScreen(
     var conversationExpanded by rememberSaveable { mutableStateOf(false) }
     var observationDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var showEndConfirmation by rememberSaveable { mutableStateOf(false) }
-    var finishingSession by rememberSaveable { mutableStateOf(false) }
-    val scenePreferenceStore = remember(context) { FocusScenePreferenceStore(context) }
-    val goalPlanStore = remember(context) { FocusGoalPlanStore(context) }
-    var sceneSettings by remember(scenePreferenceStore) { mutableStateOf(scenePreferenceStore.load()) }
-    var goalPlan by remember { mutableStateOf<FocusGoalPlan?>(null) }
+    var finishingSession by remember { mutableStateOf(false) }
+    var timerExpired by rememberSaveable { mutableStateOf(false) }
+    var completionPrompted by rememberSaveable { mutableStateOf(false) }
+    var selfReport by rememberSaveable { mutableStateOf("") }
+    var completionError by rememberSaveable { mutableStateOf<String?>(null) }
     val activeFocusSession by focusRepository.activeSession.collectAsStateWithLifecycle()
     val focusScope = rememberCoroutineScope()
     val totalSeconds = plannedDurationSeconds.takeIf { it > 0 }
@@ -176,14 +145,10 @@ fun FocusSessionScreen(
     var clockNow by remember { mutableStateOf(Instant.now()) }
     val focusRunning = activeFocusSession?.status == "active"
     val focusPaused = activeFocusSession?.status == "paused"
-    LaunchedEffect(activeFocusSession?.id) {
-        val stored = goalPlanStore.load()
-        goalPlan = stored?.takeIf { it.sessionId == null || it.sessionId == activeFocusSession?.id }
-    }
     val completionCoordinator = remember(activeFocusSession?.id, manager, focusRepository) {
         FocusCompletionCoordinator(
             finishObservation = manager::finishFocusSession,
-            finishRemote = { summary -> focusRepository.finish(summary).isSuccess },
+            finishRemote = { summary, report -> focusRepository.finish(summary, report).isSuccess },
         )
     }
     // A focus visit is only left through its completion flow; it never returns to setup.
@@ -195,9 +160,6 @@ fun FocusSessionScreen(
         }
     }
     val secondsLeft = activeFocusSession?.remainingSeconds(clockNow) ?: totalSeconds
-    LaunchedEffect(activeFocusSession?.id) {
-        if (activeFocusSession != null) manager.beginFocusSession()
-    }
 
     val voiceController = remember(context, voiceInstance) {
         FocusVoiceController(
@@ -323,6 +285,9 @@ fun FocusSessionScreen(
             else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
+    LaunchedEffect(activeFocusSession?.id) {
+        if (activeFocusSession != null) manager.beginFocusSession()
+    }
 
     LaunchedEffect(observationEnabled, cameraPermissionGranted, appForeground, focusRunning) {
         manager.updateEligibility(
@@ -345,14 +310,50 @@ fun FocusSessionScreen(
             manager.detachPreviewAsync()
         }
     }
-
-    val completeSession: suspend () -> Unit = {
+    val completeSession: suspend (Boolean) -> Unit = completeSession@{ completePlanStep ->
         val actualSeconds = (totalSeconds - secondsLeft).coerceAtLeast(0)
-        val observation = completionCoordinator.complete(
-            actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
-        )
-        if (observation != null) {
-            goalPlanStore.clear()
+        val taskId = planTaskId
+        val sessionId = activeFocusSession?.id
+        completionError = null
+        val intentSaved = runCatching {
+            if (completePlanStep && taskId != null && sessionId != null) {
+                checkNotNull(planRepository.prepareStepCompletion(taskId, sessionId)) {
+                    "当前没有可完成的规划步骤"
+                }
+            } else if (taskId != null && sessionId != null) {
+                planRepository.discardPreparedCompletion(taskId, sessionId)
+            }
+        }.isSuccess
+        if (!intentSaved) {
+            completionError = "暂时无法保存完成状态，请重试"
+            finishingSession = false
+            return@completeSession
+        }
+        val completion = runCatching {
+            completionCoordinator.complete(
+                actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
+                selfReport = selfReport,
+                completePlanStep = completePlanStep,
+            )
+        }.getOrElse {
+            completionError = it.message ?: "暂时无法结束专注，请重试"
+            finishingSession = false
+            return@completeSession
+        }
+        if (completion != null) {
+            val updatedPlan = taskId?.let {
+                if (completion.completePlanStep && sessionId != null) {
+                    runCatching { planRepository.commitPreparedCompletion(it, sessionId) }
+                        .getOrNull()
+                        ?: planRepository.getPlan(it)
+                }
+                else planRepository.getPlan(it)
+            }
+            if (updatedPlan?.taskCompletionPending == true) {
+                planRepository.syncPendingTaskCompletions { pendingTaskId ->
+                    appRepository.completeTaskStrict(pendingTaskId).isSuccess
+                }
+            }
             val conversations = historyMessages.size + if (currentUserText.isNotBlank()) 1 else 0
             onSessionCompleted(
                 FocusSessionCompletion(
@@ -360,151 +361,166 @@ fun FocusSessionScreen(
                     taskName = taskName,
                     conversationCount = conversations,
                     aiSummary = "你完成了“$taskName”的这段专注。${if (conversations > 0) "我们一起交流了 $conversations 次，" else "你保持了安静投入，"}继续保持这个节奏。",
-                    observationSummary = observation.toCompanionSummary(),
+                    observationSummary = completion.summary.toCompanionSummary(),
+                    planTaskId = planTaskId,
+                    nextStepTitle = updatedPlan?.currentStep?.title,
+                    planComplete = updatedPlan?.isComplete == true,
                 ),
             )
         } else if (!completionCoordinator.isCompleted) {
             finishingSession = false
-            showEndConfirmation = false
+            showEndConfirmation = true
         }
     }
     LaunchedEffect(activeFocusSession?.id, secondsLeft, focusRunning) {
-        if (focusRunning && secondsLeft == 0 && !finishingSession) {
-            finishingSession = true
-            completeSession()
+        if (focusRunning && secondsLeft == 0 && !completionPrompted) {
+            completionPrompted = true
+            timerExpired = true
+            showEndConfirmation = true
         }
     }
 
-    FocusAmbientPlaybackEffect(
-        settings = sceneSettings,
-        sessionRunning = focusRunning,
-        appForeground = appForeground,
-        phase = realtimeStatus,
-    )
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val compactLayout = maxHeight < 720.dp
-        val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        FocusSceneStage(
-            scene = sceneSettings.scene,
-            modifier = Modifier.fillMaxSize(),
-            robotContent = {
-                FocusSpaceGuide(
-                    phase = realtimeStatus,
-                    onInterrupt = voiceController::interruptRealtime,
-                    compact = compactLayout,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(start = 16.dp, top = if (compactLayout) 158.dp else 174.dp, end = 16.dp),
-                )
-            },
+    Box(modifier = Modifier.fillMaxSize().background(Background)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = floatingDockContentBottomPadding(
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    ) + 8.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, top = statusBarInset + 12.dp, end = 16.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Text(
-                    "专注空间",
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                FocusSceneToolbar(
-                    settings = sceneSettings,
-                    onSettingsChange = { updated ->
-                        sceneSettings = updated
-                        scenePreferenceStore.save(updated)
-                    },
-                )
-                Spacer(Modifier.height(if (compactLayout) 170.dp else 198.dp))
-                FocusSpaceTimer(secondsLeft = secondsLeft, totalSeconds = totalSeconds, taskName = taskName, paused = focusPaused)
-                goalPlan?.let { plan ->
-                    FocusGoalProgressPanel(plan = plan, onStepToggle = { stepNumber, completed ->
-                        val updated = plan.copy(steps = plan.steps.map { step -> if (step.number == stepNumber) step.copy(completed = completed) else step })
-                        goalPlan = updated
-                        goalPlanStore.save(updated)
-                    })
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        enabled = focusRunning || focusPaused,
-                        shape = RoundedCornerShape(18.dp),
-                    ) { Icon(if (focusRunning) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (focusRunning) "暂停" else "继续") }
-                    Button(
-                        onClick = { showEndConfirmation = true },
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        enabled = !finishingSession,
-                    ) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(if (finishingSession) "正在生成总结" else "结束专注") }
-                }
-                FocusSensingSystem(
-                    phase = realtimeStatus,
-                    errorMessage = voiceError,
-                    userText = currentUserText,
-                    aiText = currentAiText,
-                    enabled = observationEnabled,
-                    state = continuityState,
-                    sessionMode = sessionMode,
-                    expanded = observationDetailsExpanded,
-                    expressionLabel = expressionResult?.label?.name,
-                    presence = presence.state,
-                    reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
-                    onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
-                    onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
-                )
+            Text("专注空间", color = TextPrimary, fontSize = 24.sp, style = MaterialTheme.typography.headlineSmall)
+            FocusSpaceGuide(phase = realtimeStatus, onInterrupt = voiceController::interruptRealtime)
+            FocusSpaceTimer(secondsLeft = secondsLeft, totalSeconds = totalSeconds, taskName = taskName, paused = focusPaused)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    enabled = focusRunning || focusPaused,
+                    shape = RoundedCornerShape(18.dp),
+                ) { Icon(if (focusRunning) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (focusRunning) "暂停" else "继续") }
+                Button(
+                    onClick = { showEndConfirmation = true },
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    enabled = !finishingSession,
+                ) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(if (finishingSession) "正在生成总结" else "结束专注") }
             }
-            FocusChatFloatingButton(
-                messageCount = historyMessages.size + if (currentUserText.isNotBlank() || currentAiText.isNotBlank()) 1 else 0,
-                onClick = { conversationExpanded = true },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(22.dp),
-            )
-            FocusConversationOverlay(
-                visible = conversationExpanded,
+            FocusSensingSystem(
+                phase = realtimeStatus,
+                errorMessage = voiceError,
                 userText = currentUserText,
                 aiText = currentAiText,
-                phase = realtimeStatus,
-                history = historyMessages,
-                onDismiss = { conversationExpanded = false },
+                enabled = observationEnabled,
+                state = continuityState,
+                sessionMode = sessionMode,
+                expanded = observationDetailsExpanded,
+                expressionLabel = expressionResult?.label?.name,
+                presence = presence.state,
+                reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
+                onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
+                onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
             )
         }
+        FocusChatFloatingButton(
+            messageCount = historyMessages.size + if (currentUserText.isNotBlank() || currentAiText.isNotBlank()) 1 else 0,
+            onClick = { conversationExpanded = true },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(22.dp),
+        )
+        FocusConversationOverlay(
+            visible = conversationExpanded,
+            userText = currentUserText,
+            aiText = currentAiText,
+            phase = realtimeStatus,
+            history = historyMessages,
+            onDismiss = { conversationExpanded = false },
+        )
     }
     if (showEndConfirmation) {
         AlertDialog(
-            onDismissRequest = { if (!finishingSession) showEndConfirmation = false },
-            title = { Text("结束本次专注？") },
-            text = { Text("AI 将根据本次学习时长、交流和学习状态生成总结。") },
+            onDismissRequest = {
+                if (!finishingSession && !timerExpired) showEndConfirmation = false
+            },
+            title = { Text(if (timerExpired) "本次计时已完成" else "结束本次专注？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("AI 将根据本次学习时长、交流和学习状态生成总结。")
+                    OutlinedTextField(
+                        value = selfReport,
+                        onValueChange = { selfReport = it.take(2_000) },
+                        label = { Text("本次学习感受（选填）") },
+                        placeholder = { Text("例如：练习题比预想的难") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    completionError?.let { error ->
+                        Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     enabled = !finishingSession,
                     onClick = {
                         finishingSession = true
-                        focusScope.launch { completeSession() }
+                        focusScope.launch {
+                            completeSession(planTaskId != null)
+                        }
                     },
-                ) { Text("结束并生成总结", color = Primary) }
+                ) {
+                    Text(
+                        if (planTaskId != null) "完成步骤并结束" else "结束并生成总结",
+                        color = Primary,
+                    )
+                }
             },
-            dismissButton = { TextButton(enabled = !finishingSession, onClick = { showEndConfirmation = false }) { Text("继续专注") } },
+            dismissButton = {
+                Row {
+                    if (!timerExpired) {
+                        TextButton(
+                            enabled = !finishingSession,
+                            onClick = { showEndConfirmation = false },
+                        ) { Text("继续专注") }
+                    }
+                    if (planTaskId != null) {
+                        TextButton(
+                            enabled = !finishingSession,
+                            onClick = {
+                                finishingSession = true
+                                focusScope.launch { completeSession(false) }
+                            },
+                        ) { Text("仅结束专注") }
+                    }
+                }
+            },
         )
     }
 }
 
 @Composable
-private fun FocusSpaceGuide(
-    phase: FocusVoicePhase,
-    onInterrupt: () -> Unit,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-) {
+private fun FocusSpaceGuide(phase: FocusVoicePhase, onInterrupt: () -> Unit) {
     val motion = rememberInfiniteTransition(label = "focus-guide-motion")
     val floatingOffset by motion.animateFloat(
         initialValue = -4f,
         targetValue = 4f,
         animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "focus-guide-float",
+    )
+    val blink by motion.animateFloat(
+        initialValue = 1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2700),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "focus-guide-blink",
     )
     val message = when (phase) {
         FocusVoicePhase.IDLE -> "我会陪你开始这段专注"
@@ -514,40 +530,39 @@ private fun FocusSpaceGuide(
         FocusVoicePhase.CONNECTING, FocusVoicePhase.RECONNECTING -> "正在来到你的专注空间"
         FocusVoicePhase.ERROR -> "我暂时没能连接上"
     }
-    Box(modifier.fillMaxWidth().height(if (compact) 184.dp else 210.dp)) {
-        Image(
-            painter = painterResource(R.drawable.ai_campus_robot),
-            contentDescription = "CampusMate AI 导员",
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(y = floatingOffset.dp)
-                .size(if (compact) 142.dp else 168.dp),
-            contentScale = ContentScale.Fit,
-            alpha = .98f,
-        )
-        FocusGlassPanel(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 6.dp, end = if (compact) 104.dp else 118.dp),
-            tint = Color.White.copy(alpha = .56f),
-        ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text("CampusMate AI", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                GuideTypewriterText(message)
+    Surface(shape = RoundedCornerShape(28.dp), color = PrimarySoft, shadowElevation = 2.dp) {
+        Box(Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(28.dp))) {
+            Image(
+                painter = painterResource(R.drawable.focus_hall_scene),
+                contentDescription = "CampusMate AI 导员",
+                modifier = Modifier.matchParentSize().offset(y = floatingOffset.dp),
+                contentScale = ContentScale.Crop,
+                alpha = .94f,
+            )
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(14.dp, 14.dp, 88.dp, 0.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White.copy(alpha = .94f),
+                shadowElevation = 3.dp,
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text("CampusMate AI", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    GuideTypewriterText(message)
+                }
             }
+            when (phase) {
+                FocusVoicePhase.LISTENING -> VoiceWaveBadge(Modifier.align(Alignment.CenterEnd).padding(end = 15.dp))
+                FocusVoicePhase.THINKING -> Text("…", modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp), color = Primary, fontWeight = FontWeight.Black, fontSize = 34.sp)
+                FocusVoicePhase.SPEAKING -> Icon(Icons.Default.GraphicEq, null, tint = Color(0xFF54D8EB), modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(30.dp))
+                else -> Unit
+            }
+            AnimatedVisibility(
+                visible = phase == FocusVoicePhase.THINKING || phase == FocusVoicePhase.SPEAKING,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                enter = fadeIn() + slideInVertically(),
+                exit = fadeOut() + slideOutVertically(),
+            ) { TextButton(onClick = onInterrupt) { Text("打断回答", color = Primary) } }
         }
-        when (phase) {
-            FocusVoicePhase.LISTENING -> VoiceWaveBadge(Modifier.align(Alignment.CenterEnd).padding(end = 15.dp))
-            FocusVoicePhase.THINKING -> Text("…", modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp), color = Primary, fontWeight = FontWeight.Black, fontSize = 34.sp)
-            FocusVoicePhase.SPEAKING -> Icon(Icons.Default.GraphicEq, null, tint = Color(0xFF54D8EB), modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp).size(30.dp))
-            else -> Unit
-        }
-        AnimatedVisibility(
-            visible = phase == FocusVoicePhase.THINKING || phase == FocusVoicePhase.SPEAKING,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut() + slideOutVertically(),
-        ) { TextButton(onClick = onInterrupt) { Text("打断回答", color = Primary) } }
     }
 }
 
@@ -582,7 +597,7 @@ private fun FocusSpaceTimer(secondsLeft: Int, totalSeconds: Int, taskName: Strin
     val minutes = (secondsLeft.coerceAtLeast(0) / 60).toString().padStart(2, '0')
     val seconds = (secondsLeft.coerceAtLeast(0) % 60).toString().padStart(2, '0')
     val progress = (secondsLeft.toFloat() / totalSeconds.coerceAtLeast(1)).coerceIn(0f, 1f)
-    FocusGlassPanel(modifier = modifier.fillMaxWidth(), tint = Color.White.copy(alpha = .56f)) {
+    Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(32.dp), color = PrimarySoft.copy(alpha = .65f), shadowElevation = 2.dp) {
         Column(Modifier.padding(vertical = 20.dp, horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(180.dp)) {
                 CircularProgressIndicator(
@@ -635,7 +650,7 @@ private fun FocusSensingSystem(
         state == LearningContinuityState.PAUSED -> "看起来你正在短暂调整，准备好后我们继续。"
         else -> "我会安静关注你的学习状态，帮助你保持专注。"
     }
-    FocusGlassPanel(modifier = Modifier.fillMaxWidth(), tint = Color.White.copy(alpha = .58f)) {
+    Surface(shape = RoundedCornerShape(26.dp), color = Color.White.copy(alpha = .72f), border = androidx.compose.foundation.BorderStroke(1.dp, Primary.copy(alpha = .10f))) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.GraphicEq, null, tint = Primary, modifier = Modifier.padding(8.dp).size(18.dp)) }

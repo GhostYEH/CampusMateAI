@@ -20,7 +20,11 @@ import { QrConfirmPage } from '../features/profile/QrConfirmPage';
 import { ExamsPage } from '../features/exams/ExamsPage';
 import { ClassroomsPage } from '../features/classrooms/ClassroomsPage';
 import { V3CorePage } from '../features/v3/V3CorePage';
-import { FocusPage } from '../features/focus/FocusPage';
+import { FocusPage, FocusSessionMode } from '../features/focus/FocusPage';
+import { FocusSessionPage } from '../features/focus/FocusSessionPage';
+import { FocusSummaryPage } from '../features/focus/FocusSummaryPage';
+import { FocusPlanPage } from '../features/focus/FocusPlanPage';
+import { FocusSessionAction, FocusSessionActionGate } from '../features/focus/FocusPresentationState';
 import { LostFoundPage } from '../features/lostfound/LostFoundPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { NotificationSourceSettingsPage } from '../features/notifications/NotificationSourceSettingsPage';
@@ -32,26 +36,48 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusBehaviorSummary, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudySession, TaskCreateRequest, TaskImportAnalyzeResponse, TaskImportCommitResponse, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
 import { ChaoxingRepository } from '../data/chaoxing/ChaoxingRepository';
 import { StudyRepository } from '../repository/StudyRepository';
+import { FocusPlanProgress, FocusPlanRepository } from '../repository/FocusPlanRepository';
+import { FocusAiRepository } from '../repository/FocusAiRepository';
+import { FocusRealtimeVoiceRepository } from '../repository/FocusRealtimeVoiceRepository';
+import { FocusRealtimeVoiceClient } from '../service/FocusRealtimeVoiceClient';
+import { FocusVoiceEventReducer, FocusVoiceState } from '../features/focus/FocusVoiceState';
 import { http } from '@kit.NetworkKit';
 import { promptAction, window } from '@kit.ArkUI';
 import picker from '@ohos.file.picker';
-import { ExpressionRecognitionService } from '../service/ExpressionRecognitionService';
+import {
+  ExpressionCameraActivationPolicy,
+  ExpressionRecognitionService
+} from '../service/ExpressionRecognitionService';
 import { withExpressionSignal } from '../data/ExpressionSignalChatBridge';
 import { AppRoute, AppRouteRegistry } from '../navigation/AppRoute';
 import { EduScheduleItemDto } from '../data/ApiClient';
 import { abilityAccessCtrl, common, PermissionRequestResult } from '@kit.AbilityKit';
-import { FocusAssistProvider, FocusAssistSignal, UnavailableFocusAssistProvider } from '../service/FocusAssistProvider';
+import {
+  FocusAssistProvider,
+  FocusAssistSignal,
+  toStudyBehaviorSummary,
+  UnavailableFocusAssistProvider
+} from '../service/FocusAssistProvider';
+import { MindSporeBehaviorProvider } from '../service/MindSporeBehaviorProvider';
+import { FocusCameraPipeline } from '../service/FocusCameraPipeline';
+import {
+  FocusCameraActivationPolicy,
+  FocusCameraLifecycleAction,
+  FocusCameraLifecycleEvent,
+  FocusCameraLifecyclePolicy,
+  FocusCameraSignalPresentation
+} from '../service/FocusCameraContract';
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
 import { PreferencesUtil } from '../util/PreferencesUtil';
 import { ForegroundRefreshGate } from '../core/ForegroundRefreshGate';
-import { TaskRepository } from '../repository/TaskRepository';
+import { AmbientMotionField } from '../ui/AmbientMotionField';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
@@ -75,8 +101,12 @@ struct Index {
   private chaoxingRepository: ChaoxingRepository | null = null;
   private expressionService: ExpressionRecognitionService = new ExpressionRecognitionService();
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
+  private focusCameraPipeline: FocusCameraPipeline | null = null;
+  private focusVoiceClient: FocusRealtimeVoiceClient | null = null;
+  private focusVoiceSessionId: string = '';
   private expressionPollingTimer: number = -1;
   private foregroundRefreshGate: ForegroundRefreshGate = new ForegroundRefreshGate(30_000);
+  private focusSessionActionGate: FocusSessionActionGate = new FocusSessionActionGate();
   private expressionConsentDialogOpen: boolean = false;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
@@ -150,6 +180,19 @@ struct Index {
   @State focusAssistLabel: string = '';
   @State focusAssistConfidence: number = 0;
   @State focusBehaviorReminder: string = '';
+  @State focusPlannedSeconds: number = 1500;
+  @State focusSessionMode: FocusSessionMode = 'QUIET';
+  @State focusStartedAt: number = 0;
+  @State focusChatMessages: ChatMessage[] = [];
+  @State focusChatInput: string = '';
+  @State focusChatSending: boolean = false;
+  @State focusSummarySeconds: number = 0;
+  @State focusSummaryInteractions: number = 0;
+  @State focusSummaryObservation: string = '';
+  @State focusPlan?: FocusPlan = undefined;
+  @State focusPlanLoading: boolean = false;
+  @State focusPlanError: string = '';
+  @State focusVoiceState: FocusVoiceState = FocusVoiceEventReducer.initial();
 
   async aboutToAppear(): Promise<void> {
     this.foregroundRefreshGate.setVisible(true);
@@ -179,17 +222,64 @@ struct Index {
   }
 
   async initializeFocusAssist(): Promise<void> {
-    this.focusAssistProvider = new UnavailableFocusAssistProvider();
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.focusAssistProvider = new MindSporeBehaviorProvider(context.resourceManager);
+      this.focusCameraPipeline = new FocusCameraPipeline(context, this.focusAssistProvider,
+        () => this.refreshFocusAssistState());
+    } catch (_) {
+      this.focusAssistProvider = new UnavailableFocusAssistProvider();
+      this.focusCameraPipeline = null;
+    }
     this.refreshFocusAssistState();
-    this.focusAssistDetail = '鸿蒙 V3.4 候选模型未达到生产门槛，行为提醒保持关闭';
   }
 
   refreshFocusAssistState(): void {
     const signal: FocusAssistSignal | undefined = this.focusAssistProvider.latestSignal();
-    this.focusAssistDetail = this.focusAssistProvider.detail();
-    this.focusAssistLabel = signal?.label ?? '';
-    this.focusAssistConfidence = signal?.confidence ?? 0;
-    this.focusBehaviorReminder = this.focusAssistProvider.currentReminder();
+    const cameraState: string = this.focusCameraPipeline?.state() ?? '';
+    const shouldPresent: boolean = signal !== undefined &&
+      FocusCameraSignalPresentation.shouldPresent(signal.isStable, cameraState);
+    this.focusAssistDetail = this.focusCameraPipeline?.detail() ?? this.focusAssistProvider.detail();
+    this.focusAssistLabel = signal === undefined ? '' :
+      FocusCameraSignalPresentation.label(signal.label, shouldPresent);
+    this.focusAssistConfidence = signal === undefined ? 0 :
+      FocusCameraSignalPresentation.confidence(signal.confidence, shouldPresent);
+    this.focusBehaviorReminder = shouldPresent ? this.focusAssistProvider.currentReminder() : '';
+  }
+
+  async applyFocusCameraLifecycle(event: string, mode: FocusMode): Promise<void> {
+    if (FocusCameraLifecyclePolicy.shouldResetSummary(event, mode)) {
+      this.focusAssistProvider.resetSessionSummary();
+      this.focusCameraPipeline?.resetSession();
+    }
+    const action: string = FocusCameraLifecyclePolicy.action(event, mode, this.focusSessionMode);
+    if (action === FocusCameraLifecycleAction.START) {
+      await this.startFocusCamera(mode);
+    } else {
+      await this.stopFocusCamera();
+    }
+  }
+
+  async startFocusCamera(mode: FocusMode): Promise<void> {
+    if (!FocusCameraActivationPolicy.shouldRun(mode, this.focusSessionMode)) {
+      await this.stopFocusCamera();
+      return;
+    }
+    try {
+      await this.focusCameraPipeline?.start();
+    } catch (_) {
+      // Camera/model failure must not roll back the already-created backend session.
+    }
+    this.refreshFocusAssistState();
+  }
+
+  async stopFocusCamera(): Promise<void> {
+    try {
+      await this.focusCameraPipeline?.stop();
+    } catch (_) {
+      // Lifecycle cleanup remains best-effort when a device camera driver fails.
+    }
+    this.refreshFocusAssistState();
   }
 
   async onPageShow(): Promise<void> {
@@ -198,16 +288,26 @@ struct Index {
       this.refreshUniversityFromServer();
     }
     if (this.activeTab === 3) this.syncExpressionForTab();
+    const session: StudySession | undefined = this.activeStudySession;
+    if (session !== undefined &&
+      FocusCameraLifecyclePolicy.shouldResumeOnForeground(
+        session.status, session.mode, this.focusSessionMode)) {
+      await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME, session.mode);
+    }
   }
 
   onPageHide(): void {
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
+    this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.HIDE,
+      this.activeStudySession?.mode ?? 'focus');
   }
 
   aboutToDisappear(): void {
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
+    this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE,
+      this.activeStudySession?.mode ?? 'focus');
   }
 
   async refreshUniversityFromServer(): Promise<void> {
@@ -258,8 +358,8 @@ struct Index {
   }
 
   async handleSessionExpired(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     await this.appState.clearSession();
     this.clearRoutes();
     this.signedIn = false;
@@ -472,17 +572,6 @@ struct Index {
     }
   }
 
-  async analyzeTaskImport(content: string, sourceName: string): Promise<TaskImportAnalyzeResponse> {
-    return new TaskRepository(this.createApiClient()).analyzeImport(content, sourceName);
-  }
-
-  async commitTaskImport(tasks: TaskCreateRequest[]): Promise<TaskImportCommitResponse> {
-    const result: TaskImportCommitResponse = await new TaskRepository(this.createApiClient()).commitImport(tasks);
-    await this.refreshPrimaryData();
-    toastError(`已创建 ${result.created.length} 项，跳过已存在 ${result.skipped_existing.length} 项`);
-    return result;
-  }
-
   async sendChat(): Promise<void> {
     const message = this.chatInput.trim();
     if (message.length === 0 || this.chatSending) {
@@ -561,8 +650,8 @@ struct Index {
   }
 
   async signOut(): Promise<void> {
-    await this.expressionService.stop();
-    this.expressionAvailable = false;
+    await this.stopExpressionRecognition();
+    await this.stopFocusCamera();
     this.chaoxingRepository = null;
     this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
     await this.appState.signOut();
@@ -600,7 +689,9 @@ struct Index {
   }
 
   async requestExpressionPermissionAndStart(): Promise<void> {
-    if (!this.appState.emotionAssistanceEnabled || this.activeTab !== 3) return;
+    if (!ExpressionCameraActivationPolicy.shouldRun(
+      this.appState.emotionAssistanceEnabled, this.signedIn,
+      this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
     try {
       const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
       const result: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
@@ -610,7 +701,16 @@ struct Index {
         this.expressionDetail = '需要相机权限才能在本机识别表情';
         return;
       }
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) return;
       await this.startExpressionRecognition();
+      if (!ExpressionCameraActivationPolicy.shouldRun(
+        this.appState.emotionAssistanceEnabled, this.signedIn,
+        this.foregroundRefreshGate.isVisible(), this.activeTab)) {
+        await this.stopExpressionRecognition();
+        return;
+      }
       if (this.expressionPollingTimer < 0) {
         this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 1000);
       }
@@ -1038,37 +1138,190 @@ struct Index {
     } finally { this.secondarySubmitting = false; }
   }
 
-  async startFocusSession(mode: FocusMode = 'focus'): Promise<void> {
+  async startFocusSession(mode: FocusMode = 'focus', plannedSeconds: number = 1500, sessionMode: FocusSessionMode = 'QUIET', relatedTaskId?: string, goal?: string): Promise<void> {
     if (this.activeStudySession !== undefined) return;
     try {
       const repository = new StudyRepository(this.createApiClient());
-      const goal: string = mode === 'short_break' ? '短暂休息' : mode === 'long_break' ? '长休息调整' : '完成一段专注学习';
-      this.activeStudySession = await repository.start(mode, goal);
-      await this.focusAssistProvider.start();
-      this.refreshFocusAssistState();
+      const sessionGoal: string = goal ?? (mode === 'short_break' ? '短暂休息' : mode === 'long_break' ? '长休息调整' : '完成一段专注学习');
+      this.activeStudySession = await repository.start(mode, sessionGoal, relatedTaskId, plannedSeconds);
+      this.focusPlannedSeconds = this.activeStudySession.planned_duration_seconds ?? plannedSeconds;
+      this.focusSessionMode = sessionMode;
+      this.focusStartedAt = Date.now();
+      this.focusChatMessages = [];
+      this.focusChatInput = '';
+      await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.START, mode);
+      this.pushRoute(AppRoute.FOCUS_SESSION);
     } catch (error) {
       toastError('无法开始专注，请检查网络');
     }
   }
 
-  async updateFocusSession(action: string): Promise<void> {
-    if (this.activeStudySession === undefined) return;
-    const behaviorSummary: FocusBehaviorSummary | undefined = action === 'finish' ?
-      this.focusAssistProvider.sessionSummary() : undefined;
+  async toggleFocusVoice(): Promise<void> {
+    if (this.focusVoiceClient !== null && this.focusVoiceState.phase !== 'IDLE') {
+      const retryAfterError: boolean = this.focusVoiceState.phase === 'ERROR';
+      await this.stopFocusVoice();
+      if (!retryAfterError) return;
+    }
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const permission: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
+        .requestPermissionsFromUser(context, ['ohos.permission.MICROPHONE']);
+      if (permission.authResults.length !== 1 || permission.authResults[0] !== 0) {
+        this.focusVoiceState = {
+          phase: 'ERROR', message: '需要麦克风权限才能开启实时语音', transcript: '', answer: ''
+        };
+        return;
+      }
+      const repository = new FocusRealtimeVoiceRepository(this.createApiClient(), () => this.appState.getAccessToken());
+      const session = await repository.createSession();
+      this.focusVoiceSessionId = session.session_id;
+      const client = new FocusRealtimeVoiceClient(
+        (state: FocusVoiceState): void => { this.focusVoiceState = state; },
+        (): void => { this.focusVoiceState = FocusVoiceEventReducer.initial(); });
+      this.focusVoiceClient = client;
+      await client.connect(repository.websocketUrl(session.websocket_path));
+    } catch (_) {
+      this.focusVoiceState = {
+        phase: 'ERROR', message: '实时语音暂时不可用，请稍后重试', transcript: '', answer: ''
+      };
+      await this.stopFocusVoice();
+    }
+  }
+
+  async stopFocusVoice(): Promise<void> {
+    const client = this.focusVoiceClient;
+    const sessionId: string = this.focusVoiceSessionId;
+    this.focusVoiceClient = null;
+    this.focusVoiceSessionId = '';
+    if (client !== null) await client.stop();
+    this.focusVoiceState = FocusVoiceEventReducer.initial();
+    if (sessionId.length > 0) {
+      try { await new FocusRealtimeVoiceRepository(this.createApiClient(), () => this.appState.getAccessToken()).stopSession(sessionId); } catch (_) {}
+    }
+  }
+
+  async updateFocusSession(action: FocusSessionAction,
+    completePlanStep: boolean = true): Promise<boolean> {
+    const session: StudySession | undefined = this.activeStudySession;
+    if (session === undefined || !this.focusSessionActionGate.tryStart()) return false;
+    const behaviorSummary: StudyBehaviorSummary | undefined = action === 'finish' &&
+      session.mode === 'focus' && this.focusSessionMode === 'SMART_GUARD' ?
+      toStudyBehaviorSummary(this.focusAssistProvider.sessionSummary()) : undefined;
+    if (action === 'pause' || action === 'finish') {
+      await this.applyFocusCameraLifecycle(
+        action === 'pause' ? FocusCameraLifecycleEvent.PAUSE : FocusCameraLifecycleEvent.FINISH,
+        session?.mode ?? 'focus');
+    }
     try {
       const repository = new StudyRepository(this.createApiClient());
       if (action === 'finish') {
-        await repository.finish(this.activeStudySession.id, '鸿蒙端完成专注', behaviorSummary);
+        const finishedSession: StudySession = await repository.finish(
+          session.id, '鸿蒙端完成专注', behaviorSummary);
+        this.focusSummarySeconds = Math.max(0, finishedSession.duration_seconds);
+        this.focusSummaryInteractions = this.focusChatMessages.filter((message: ChatMessage) => message.role === 'assistant').length;
+        this.focusSummaryObservation = behaviorSummary === undefined ? '本次未开启学习状态辅助。' :
+          `本地聚合：专注 ${behaviorSummary.study_seconds} 秒，缺席 ${behaviorSummary.absent_count} 次，` +
+          `手机交互 ${behaviorSummary.phone_interaction_count} 次。`;
         this.activeStudySession = undefined;
+        try {
+          await this.stopFocusVoice();
+        } catch (_) {
+          // Backend finish is committed; device-resource cleanup must not roll it back.
+        }
+        try {
+          if (completePlanStep && session.related_task_id !== undefined && this.focusPlan?.taskId === session.related_task_id) {
+            const plans = new FocusPlanRepository(new StudyRepository(this.createApiClient()), () => this.appState.getAccessToken());
+            this.focusPlan = await plans.completeCurrentStep(session.related_task_id);
+            if (this.focusPlan !== undefined && FocusPlanProgress.isComplete(this.focusPlan)) {
+              const relatedTask = this.tasks.find((task: TaskItem): boolean => task.id === session.related_task_id);
+              if (relatedTask !== undefined && relatedTask.status !== 'completed') await this.toggleTask(relatedTask);
+            }
+          }
+        } catch (_) {
+          // Backend finish is the commit boundary; local plan synchronization is best-effort.
+        }
       } else if (action === 'pause') {
-        this.activeStudySession = await repository.pause(this.activeStudySession.id);
+        this.activeStudySession = await repository.pause(session.id);
       } else {
-        this.activeStudySession = await repository.resume(this.activeStudySession.id);
+        this.activeStudySession = await repository.resume(session.id);
+        await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME,
+          this.activeStudySession.mode);
       }
       await this.refreshSecondaryData('focus');
+      if (action === 'finish') {
+        this.pageStack.popToName(AppRoute.FOCUS, false);
+        this.pushRoute(AppRoute.FOCUS_SUMMARY);
+      }
+      return true;
     } catch (error) {
+      if ((action === 'pause' || action === 'finish') && session.status === 'active') {
+        await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME, session.mode);
+      }
       toastError('操作失败，请重试');
+      return false;
+    } finally {
+      this.focusSessionActionGate.complete();
     }
+  }
+
+  openFocusPlan(): void {
+    this.focusPlanError = '';
+    this.pushRoute(AppRoute.FOCUS_PLAN);
+  }
+
+  async generateFocusPlan(task: TaskItem): Promise<void> {
+    this.focusPlanLoading = true;
+    this.focusPlanError = '';
+    try {
+      const repository = new FocusPlanRepository(new StudyRepository(this.createApiClient()), () => this.appState.getAccessToken());
+      this.focusPlan = await repository.ensurePlan(task.id, task.title, task.description ?? task.title);
+    } catch (error) {
+      this.focusPlanError = error instanceof Error ? error.message : '暂时无法生成任务规划';
+    } finally { this.focusPlanLoading = false; }
+  }
+
+  startCurrentPlanStep(): void {
+    const plan: FocusPlan | undefined = this.focusPlan;
+    if (plan === undefined) return;
+    const current = FocusPlanProgress.currentStep(plan);
+    const seconds: number = Math.max(5 * 60, Math.min(240 * 60, (current?.estimatedMinutes ?? 25) * 60));
+    this.startFocusSession('focus', seconds, 'AI_COMPANION', plan.taskId, current?.title ?? plan.goal);
+  }
+
+  async reopenFocusSession(): Promise<void> {
+    const session: StudySession | undefined = this.activeStudySession;
+    if (session === undefined || (session.status !== 'active' && session.status !== 'paused')) return;
+    if (session.status === 'paused') {
+      if (!await this.updateFocusSession('resume')) return;
+    } else {
+      await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME, session.mode);
+    }
+    this.pushRoute(AppRoute.FOCUS_SESSION);
+  }
+
+  async leaveFocusSession(): Promise<void> {
+    const session: StudySession | undefined = this.activeStudySession;
+    if (session?.status === 'active') {
+      if (!await this.updateFocusSession('pause')) return;
+    } else {
+      await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE, session?.mode ?? 'focus');
+    }
+    await this.stopFocusVoice();
+    this.popRoute();
+  }
+
+  async sendFocusCompanionMessage(): Promise<void> {
+    const text: string = this.focusChatInput.trim();
+    if (text.length === 0 || this.focusChatSending) return;
+    this.focusChatMessages = [...this.focusChatMessages, new ChatMessageModel(`focus-user-${Date.now()}`, 'user', text)];
+    this.focusChatInput = '';
+    this.focusChatSending = true;
+    try {
+      const answer: string = await new FocusAiRepository(this.createApiClient()).ask(text);
+      this.focusChatMessages = [...this.focusChatMessages, new ChatMessageModel(`focus-ai-${Date.now()}`, 'assistant', answer)];
+    } catch (_) {
+      this.focusChatMessages = [...this.focusChatMessages, new ChatMessageModel(`focus-ai-${Date.now()}`, 'assistant', '我暂时无法回复，但可以先从两分钟的下一步开始。')];
+    } finally { this.focusChatSending = false; }
   }
 
   async saveExam(payload: ExamItem, id?: string): Promise<void> {
@@ -1229,7 +1482,13 @@ struct Index {
     } else if (route === AppRoute.UNIVERSITY || route === AppRoute.COMMUNITY || route === AppRoute.COMMUNITY_HOT || route === AppRoute.COMMUNITY_PUBLISH || route === AppRoute.COMMUNITY_DETAIL || route === AppRoute.COMMUNITY_EDIT || route === AppRoute.ACADEMIC) {
       V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailReport: () => this.reportCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
     } else if (route === AppRoute.FOCUS) {
-      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, onBack: () => this.popRoute(), onStart: (mode: FocusMode) => this.startFocusSession(mode), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: () => this.updateFocusSession('finish') })
+      FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, reduceMotion: this.reduceMotion, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, plan: this.focusPlan, onBack: () => { this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE, this.activeStudySession?.mode ?? 'focus'); this.popRoute(); }, onStart: (mode: FocusMode, durationSeconds: number, sessionMode: FocusSessionMode) => this.startFocusSession(mode, durationSeconds, sessionMode), onResumeActive: () => this.reopenFocusSession(), onOpenPlan: () => this.openFocusPlan() })
+    } else if (route === AppRoute.FOCUS_PLAN) {
+      FocusPlanPage({ tasks: this.tasks, plan: this.focusPlan, loading: this.focusPlanLoading, error: this.focusPlanError, darkMode: this.darkMode, onBack: () => this.popRoute(), onGenerate: (task: TaskItem) => this.generateFocusPlan(task), onStartCurrent: () => this.startCurrentPlanStep() })
+    } else if (route === AppRoute.FOCUS_SESSION) {
+      FocusSessionPage({ session: this.activeStudySession, plannedSeconds: this.focusPlannedSeconds, sessionMode: this.focusSessionMode, darkMode: this.darkMode, reduceMotion: this.reduceMotion, assistDetail: this.focusAssistDetail, assistLabel: this.focusAssistLabel, assistConfidence: this.focusAssistConfidence, messages: this.focusChatMessages, sending: this.focusChatSending, input: $focusChatInput, voiceState: this.focusVoiceState, hasPlanStep: this.focusPlan !== undefined && FocusPlanProgress.currentStep(this.focusPlan) !== undefined, onBack: () => this.leaveFocusSession(), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: (completePlanStep: boolean) => this.updateFocusSession('finish', completePlanStep), onVoiceToggle: () => this.toggleFocusVoice(), onVoiceInterrupt: async () => { await this.focusVoiceClient?.interrupt(); }, onSend: () => this.sendFocusCompanionMessage() })
+    } else if (route === AppRoute.FOCUS_SUMMARY) {
+      FocusSummaryPage({ actualSeconds: this.focusSummarySeconds, interactionCount: this.focusSummaryInteractions, observation: this.focusSummaryObservation, darkMode: this.darkMode, onReturnHome: () => { this.pageStack.popToName(AppRoute.FOCUS, !this.reduceMotion); }, onStartNext: () => { this.pageStack.popToName(AppRoute.FOCUS, !this.reduceMotion); } })
     } else if (route === AppRoute.LOST_FOUND || route === AppRoute.LOST_FOUND_DETAIL || route === AppRoute.LOST_FOUND_PUBLISH || route === AppRoute.LOST_FOUND_MINE) {
       LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, reduceMotion: this.reduceMotion, view: this.lostFoundView(route), selectedItemId: this.lostFoundDetailId, onBack: () => this.popRoute(), onFilter: (_kind: string) => this.refreshSecondaryData(AppRoute.LOST_FOUND), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact), onOpenDetail: (item: LostFoundItem) => this.openLostFoundDetail(item), onOpenPublish: () => this.pushRoute(AppRoute.LOST_FOUND_PUBLISH), onOpenMine: () => this.pushRoute(AppRoute.LOST_FOUND_MINE) })
     } else if (route === AppRoute.NOTIFICATIONS || route === AppRoute.NOTIFICATION_DETAIL) {
@@ -1368,9 +1627,6 @@ struct Index {
       darkMode: this.darkMode,
       onRefresh: () => this.refreshPrimaryData(),
       onOpenDetail: (task: TaskItem) => this.openTaskDetail(task),
-      onAnalyzeImport: (content: string, sourceName: string) => this.analyzeTaskImport(content, sourceName),
-      onCommitImport: (tasks: TaskCreateRequest[]) => this.commitTaskImport(tasks),
-      onOpenFocus: () => this.pushRoute(AppRoute.FOCUS),
       onComplete: (id: string) => {
         const selected = this.tasks.find((task: TaskItem) => task.id === id);
         if (selected !== undefined) {
@@ -1447,6 +1703,8 @@ struct Index {
         this.activeTab = index;
         this.syncExpressionForTab();
       })
+
+      AmbientMotionField({ darkMode: this.darkMode, reduceMotion: this.reduceMotion })
 
       this.BottomNavigation()
     }

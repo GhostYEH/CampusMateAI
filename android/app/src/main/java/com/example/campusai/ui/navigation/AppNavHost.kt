@@ -62,6 +62,11 @@ import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
 import com.example.campusai.ui.screens.services.GenericServiceFormScreen
+import com.example.campusai.ui.screens.services.LeaveRequestScreen
+import com.example.campusai.ui.screens.services.MyRequestsScreen
+import com.example.campusai.ui.screens.services.RepairRequestScreen
+import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
+import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
@@ -76,26 +81,8 @@ import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.CampusMotion
 import java.net.URLEncoder
 
-private fun pageEnterTransition(direction: Int): EnterTransition =
-    slideInHorizontally(
-        animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
-        initialOffsetX = { width -> width / 7 * direction },
-    ) + fadeIn(
-        animationSpec = tween(CampusMotion.routeEnterDuration),
-        initialAlpha = .72f,
-    ) + scaleIn(
-        animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.enterEasing),
-        initialScale = .985f,
-    )
-
-private fun pageExitTransition(direction: Int): ExitTransition =
-    slideOutHorizontally(
-        animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
-        targetOffsetX = { width -> width / 12 * direction },
-    ) + fadeOut(
-        animationSpec = tween(CampusMotion.routeExitDuration),
-        targetAlpha = .82f,
-    )
+internal fun eduFlowViewModelOwner(navController: NavHostController): NavBackStackEntry =
+    navController.getBackStackEntry("edu_system")
 
 @Composable
 private fun NavigationDestinationFrame(
@@ -176,9 +163,9 @@ fun AppNavHost(
     }
 
     NavHost(
-        navController = navController,
-        startDestination = "home",
-        modifier = Modifier.fillMaxSize(),
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier.fillMaxSize(),
         enterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
@@ -187,7 +174,15 @@ fun AppNavHost(
                     initialRoute = initialState.destination.route,
                     targetRoute = targetState.destination.route,
                 )
-                pageEnterTransition(motion.enterDirection)
+                slideInHorizontally(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                    initialOffsetX = { width -> width * motion.enterDirection },
+                ) + fadeIn(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                ) + scaleIn(
+                    initialScale = .985f,
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                )
             }
         },
         exitTransition = {
@@ -198,26 +193,54 @@ fun AppNavHost(
                     initialRoute = initialState.destination.route,
                     targetRoute = targetState.destination.route,
                 )
-                pageExitTransition(motion.exitDirection)
+                slideOutHorizontally(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                    targetOffsetX = { width -> width * motion.exitDirection },
+                ) + fadeOut(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                ) + scaleOut(
+                    targetScale = .985f,
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                )
             }
         },
         popEnterTransition = {
             if (reduceMotion) {
                 EnterTransition.None
             } else {
-                pageEnterTransition(direction = -1)
+                slideInHorizontally(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                    initialOffsetX = { -it },
+                ) + fadeIn(
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                ) + scaleIn(
+                    initialScale = .985f,
+                    animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
+                )
             }
         },
         popExitTransition = {
             if (reduceMotion) {
                 ExitTransition.None
             } else {
-                pageExitTransition(direction = 1)
+                slideOutHorizontally(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                    targetOffsetX = { it },
+                ) + fadeOut(
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                ) + scaleOut(
+                    targetScale = .985f,
+                    animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
+                )
             }
         },
-    ) {
+            ) {
         composable("home") {
-            DashboardScreen(repository) { route ->
+            DashboardScreen(
+                repository = repository,
+                examRepository = modules.exams,
+                focusRepository = modules.focus,
+            ) { route ->
                 navController.navigate(route) {
                     popUpTo("home") { inclusive = false }
                     launchSingleTop = true
@@ -368,6 +391,9 @@ fun AppNavHost(
         }
         composable("academic") { AcademicScreen() }
         composable("edu_system") {
+            val eduViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.campusai.ui.screens.profile.EduViewModel>(
+                viewModelStoreOwner = eduFlowViewModelOwner(navController),
+            )
             com.example.campusai.ui.screens.profile.EduSystemScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToLogin = { loginUrl, connectionId, allowedOrigins ->
@@ -376,6 +402,7 @@ fun AppNavHost(
                     navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl&allowedOrigins=$encodedOrigins")
                 },
                 onOpenSchedule = { go("edu_schedule") },
+                viewModel = eduViewModel,
             )
         }
         composable("edu_schedule") {
@@ -392,10 +419,13 @@ fun AppNavHost(
             val connectionId = backStackEntry.arguments?.getString("connectionId") ?: ""
             val loginUrl = backStackEntry.arguments?.getString("loginUrl") ?: ""
             val allowedOrigins = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("allowedOrigins") ?: "", "UTF-8").split(",").filter { it.isNotBlank() }
+            val eduViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.campusai.ui.screens.profile.EduViewModel>(
+                viewModelStoreOwner = eduFlowViewModelOwner(navController),
+            )
             com.example.campusai.ui.screens.profile.EduLoginScreen(
                 loginUrl = java.net.URLDecoder.decode(loginUrl, "UTF-8"),
                 connectionId = connectionId,
-                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+                viewModel = eduViewModel,
                 backendAllowedOrigins = allowedOrigins,
                 onBack = { navController.popBackStack() },
             )
@@ -532,7 +562,40 @@ fun AppNavHost(
             )
         }
 
-        // Feedback remains a direct support channel; approval-style service routes are removed in V3.
+        // ── 办事大厅 ──
+        composable("services") {
+            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+            ServicesScreen(
+                repository = modules.services,
+                reduceMotion = reduceMotion,
+                onBack = { navController.popBackStack() },
+                onNavigate = { route -> go(route) },
+            )
+        }
+        composable("service_leave") {
+            LeaveRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_repair") {
+            RepairRequestScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
         composable(
             route = "service_form/{kind}",
             arguments = listOf(navArgument("kind") { type = NavType.StringType }),
@@ -541,7 +604,29 @@ fun AppNavHost(
                 kind = backStackEntry.arguments?.getString("kind") ?: "feedback",
                 repository = modules.services,
                 onBack = { navController.popBackStack() },
-                onSubmitted = { navController.popBackStack() },
+                onSubmitted = { id ->
+                    navController.navigate("service_detail/$id") {
+                        popUpTo("services") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable("service_mine") {
+            MyRequestsScreen(
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
+                onOpenDetail = { id -> go("service_detail/$id") },
+            )
+        }
+        composable(
+            route = "service_detail/{requestId}",
+            arguments = listOf(navArgument("requestId") { type = NavType.LongType }),
+        ) { backStackEntry ->
+            ServiceRequestDetailScreen(
+                requestId = backStackEntry.arguments?.getLong("requestId") ?: 0L,
+                repository = modules.services,
+                onBack = { navController.popBackStack() },
             )
         }
 
@@ -565,22 +650,24 @@ fun AppNavHost(
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")
                 },
-                onOpenAssistant = { durationSeconds, taskName, sessionMode ->
+                onOpenAssistant = { durationSeconds, taskName, sessionMode, taskId ->
                     val encodedTaskName = URLEncoder.encode(taskName, Charsets.UTF_8.name())
-                    go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}")
+                    go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}&taskId=${Uri.encode(taskId.orEmpty())}")
                 },
                 onOpenHistory = { go("focus_history") },
+                planRepository = modules.focusPlans,
             )
         }
         composable("focus_history") {
             FocusHistoryScreen(repository = modules.focus, onBack = { navController.popBackStack() })
         }
         composable(
-            route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}",
+            route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}&taskId={taskId}",
             arguments = listOf(
                 navArgument("durationSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("sessionMode") { type = NavType.StringType; defaultValue = "QUIET" },
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { backStackEntry ->
             FocusSessionScreen(
@@ -588,6 +675,8 @@ fun AppNavHost(
                 focusRepository = modules.focus,
                 plannedDurationSeconds = backStackEntry.arguments?.getInt("durationSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
+                planTaskId = backStackEntry.arguments?.getString("taskId")?.takeIf { it.isNotBlank() },
+                planRepository = modules.focusPlans,
                 sessionMode = com.example.campusai.data.model.FocusSessionMode.entries.firstOrNull {
                     it.name == backStackEntry.arguments?.getString("sessionMode")
                 } ?: com.example.campusai.data.model.FocusSessionMode.QUIET,
@@ -597,18 +686,22 @@ fun AppNavHost(
                     val task = Uri.encode(completion.taskName)
                     val summary = Uri.encode(completion.aiSummary)
                     val observation = Uri.encode(completion.observationSummary)
-                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation")
+                    val nextStep = Uri.encode(completion.nextStepTitle.orEmpty())
+                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}")
                 },
             )
         }
         composable(
-            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}",
+            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}",
             arguments = listOf(
                 navArgument("actualSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("conversationCount") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("aiSummary") { type = NavType.StringType; defaultValue = "你完成了这段专注。" },
                 navArgument("observationSummary") { type = NavType.StringType; defaultValue = "你的学习状态整体稳定。" },
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("nextStepTitle") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("planComplete") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { backStackEntry ->
             val returnToFocusHome = {
@@ -619,14 +712,25 @@ fun AppNavHost(
                     launchSingleTop = true
                 }
             }
+            val startNextStep = {
+                val taskId = backStackEntry.arguments?.getString("taskId")?.takeIf { it.isNotBlank() }
+                val planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false
+                if (taskId != null && !planComplete) {
+                    navController.navigate("focus?taskId=${Uri.encode(taskId)}")
+                } else {
+                    returnToFocusHome()
+                }
+            }
             FocusSummaryScreen(
                 actualSeconds = backStackEntry.arguments?.getInt("actualSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
                 conversationCount = backStackEntry.arguments?.getInt("conversationCount") ?: 0,
                 aiSummary = backStackEntry.arguments?.getString("aiSummary") ?: "你完成了这段专注。",
                 observationSummary = backStackEntry.arguments?.getString("observationSummary") ?: "你的学习状态整体稳定。",
+                nextStepTitle = backStackEntry.arguments?.getString("nextStepTitle")?.takeIf { it.isNotBlank() },
+                planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false,
                 onReturnHome = returnToFocusHome,
-                onStartNext = returnToFocusHome,
+                onStartNext = startNextStep,
             )
         }
 

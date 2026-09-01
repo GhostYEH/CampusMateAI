@@ -65,8 +65,66 @@ export class FocusCameraRunToken {
 }
 
 export class FocusCameraActivationPolicy {
-  static shouldRun(focusMode: string): boolean {
-    return focusMode === 'focus';
+  static shouldRun(focusMode: string, sessionMode: string): boolean {
+    return focusMode === 'focus' && sessionMode === 'SMART_GUARD';
+  }
+}
+
+export class FocusCameraLifecycleEvent {
+  static readonly START: string = 'START';
+  static readonly RESUME: string = 'RESUME';
+  static readonly PAUSE: string = 'PAUSE';
+  static readonly FINISH: string = 'FINISH';
+  static readonly HIDE: string = 'HIDE';
+  static readonly LEAVE: string = 'LEAVE';
+  static readonly RESET: string = 'RESET';
+}
+
+export class FocusCameraLifecycleAction {
+  static readonly START: string = 'START';
+  static readonly STOP: string = 'STOP';
+}
+
+export class FocusCameraLifecyclePolicy {
+  static action(event: string, focusMode: string, sessionMode: string): string {
+    const sessionCanStart: boolean = event === FocusCameraLifecycleEvent.START ||
+      event === FocusCameraLifecycleEvent.RESUME;
+    return sessionCanStart && FocusCameraActivationPolicy.shouldRun(focusMode, sessionMode) ?
+      FocusCameraLifecycleAction.START : FocusCameraLifecycleAction.STOP;
+  }
+
+  static shouldResetSummary(event: string, focusMode: string): boolean {
+    return event === FocusCameraLifecycleEvent.START && focusMode === 'focus';
+  }
+
+  static shouldResumeOnForeground(sessionStatus: string, focusMode: string,
+    sessionMode: string): boolean {
+    return sessionStatus === 'active' && FocusCameraActivationPolicy.shouldRun(focusMode, sessionMode);
+  }
+}
+
+export class FocusCameraSignalPresentation {
+  static shouldPresent(isStable: boolean, cameraState: string): boolean {
+    return isStable && cameraState === FocusCameraState.RUNNING;
+  }
+
+  static label(label: string, isStable: boolean): string {
+    return isStable ? label : '';
+  }
+
+  static confidence(confidence: number, isStable: boolean): number {
+    return isStable && Number.isFinite(confidence) ? confidence : 0;
+  }
+}
+
+export class FocusBehaviorLabelText {
+  static describe(label: string): string {
+    if (label === 'READ') return '阅读';
+    if (label === 'WRITE') return '书写';
+    if (label === 'PHONE_INTERACTION') return '使用手机';
+    if (label === 'COMPUTER') return '使用电脑';
+    if (label === 'NO_VISIBLE_STUDY') return '未观察到学习行为';
+    return '';
   }
 }
 
@@ -108,12 +166,64 @@ export class PersonRoiSelector {
   }
 }
 
+/** Converts repeated no-person detections into one event per sustained absence. */
+export class PersonAbsenceTracker {
+  static readonly DEFAULT_GRACE_MS: number = 5000;
+  static readonly DEFAULT_RECOVERY_MS: number = 1000;
+  private readonly graceMs: number;
+  private readonly recoveryMs: number;
+  private missingSince: number = -1;
+  private presentSince: number = -1;
+  private confirmed: boolean = false;
+
+  constructor(graceMs: number = PersonAbsenceTracker.DEFAULT_GRACE_MS,
+    recoveryMs: number = PersonAbsenceTracker.DEFAULT_RECOVERY_MS) {
+    this.graceMs = Math.max(0, graceMs);
+    this.recoveryMs = Math.max(0, recoveryMs);
+  }
+
+  process(personPresent: boolean, timestamp: number): boolean {
+    if (personPresent) {
+      if (!this.confirmed) {
+        this.reset();
+      } else if (this.presentSince < 0) {
+        this.presentSince = timestamp;
+      } else if (timestamp - this.presentSince >= this.recoveryMs) {
+        this.reset();
+      }
+      return false;
+    }
+    this.presentSince = -1;
+    if (this.missingSince < 0) {
+      this.missingSince = timestamp;
+      return false;
+    }
+    if (!this.confirmed && timestamp - this.missingSince >= this.graceMs) {
+      this.confirmed = true;
+      return true;
+    }
+    return false;
+  }
+
+  reset(): void {
+    this.missingSince = -1;
+    this.presentSince = -1;
+    this.confirmed = false;
+  }
+
+  /** Clears incomplete timing without allowing one continuous confirmed absence to count again. */
+  suspend(): void {
+    this.missingSince = -1;
+    this.presentSince = -1;
+  }
+}
+
 export class FrameAnalysisGate {
   private readonly intervalMs: number;
   private inFlight: boolean = false;
   private lastStartedAt: number = Number.NEGATIVE_INFINITY;
 
-  constructor(intervalMs: number = 1000) {
+  constructor(intervalMs: number = 500) {
     this.intervalMs = Math.max(0, intervalMs);
   }
 

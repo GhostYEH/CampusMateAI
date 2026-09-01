@@ -3,12 +3,14 @@ import {
   EduBindingDto,
   EduConnectionDto,
   EduPreLoginResult,
+  EduScheduleItemsResponse,
   EduSyncResult
 } from '../../../main/ets/data/ApiClient';
 import {
   allowedOriginsFromEduResponse,
   cookieDtosForUrl,
-  isAllowedEduNavigation
+  isAllowedEduNavigation,
+  resolveEduLoginUrl
 } from '../../../main/ets/features/edu/EduLoginSecurity';
 import {
   captureEduLoginChallenge,
@@ -83,15 +85,22 @@ class DelayedPostConnectOperations implements EduPostConnectOperations {
   bindingResult: Promise<EduBindingDto | undefined>;
   scheduleResult: Promise<EduSyncResult>;
   gradeResult: Promise<EduSyncResult>;
+  examResult: Promise<EduSyncResult>;
+  scheduleItemsResult: Promise<EduScheduleItemsResponse>;
+  examCalls: number = 0;
 
   constructor(
     bindingResult: Promise<EduBindingDto | undefined>,
     scheduleResult: Promise<EduSyncResult>,
-    gradeResult: Promise<EduSyncResult>
+    gradeResult: Promise<EduSyncResult>,
+    examResult: Promise<EduSyncResult> = Promise.resolve(syncFixture('exam')),
+    scheduleItemsResult: Promise<EduScheduleItemsResponse> = Promise.resolve(scheduleItemsFixture())
   ) {
     this.bindingResult = bindingResult;
     this.scheduleResult = scheduleResult;
     this.gradeResult = gradeResult;
+    this.examResult = examResult;
+    this.scheduleItemsResult = scheduleItemsResult;
   }
 
   getBinding(): Promise<EduBindingDto | undefined> {
@@ -104,6 +113,15 @@ class DelayedPostConnectOperations implements EduPostConnectOperations {
 
   syncGrade(): Promise<EduSyncResult> {
     return this.gradeResult;
+  }
+
+  syncExam(): Promise<EduSyncResult> {
+    this.examCalls++;
+    return this.examResult;
+  }
+
+  listScheduleItems(_semester?: string): Promise<EduScheduleItemsResponse> {
+    return this.scheduleItemsResult;
   }
 }
 
@@ -118,8 +136,12 @@ function bindingFixture(id: string): EduBindingDto {
   };
 }
 
-function syncFixture(type: string): EduSyncResult {
-  return { sync_type: type, status: 'success', items_count: 1 };
+function syncFixture(type: string, persisted: boolean = true): EduSyncResult {
+  return { sync_type: type, status: 'success', items_count: 1, persisted: persisted };
+}
+
+function scheduleItemsFixture(): EduScheduleItemsResponse {
+  return { items_count: 1, items: [] };
 }
 
 export default function eduLoginSecurityTest(): void {
@@ -182,6 +204,14 @@ export default function eduLoginSecurityTest(): void {
       expect(isAllowedEduNavigation('http://xk.huel.edu.cn/jwglxt', loginUrl)).assertFalse();
       expect(isAllowedEduNavigation('https://xk.huel.edu.cn.attacker.example/login', loginUrl)).assertFalse();
       expect(isAllowedEduNavigation('weixin://dl/business', loginUrl)).assertFalse();
+    });
+
+    it('accepts legitimate portal hosts containing undefined and rejects blank handoffs', 0, () => {
+      expect(resolveEduLoginUrl('https://jwxt.undefined.edu.cn/login', ''))
+        .assertEqual('https://jwxt.undefined.edu.cn/login');
+      expect(resolveEduLoginUrl('  ', 'https://fallback.edu.cn/login'))
+        .assertEqual('https://fallback.edu.cn/login');
+      expect(resolveEduLoginUrl(undefined, '  ') === undefined).assertTrue();
     });
 
     it('keeps same-name cookies from distinct origins as separate DTOs', 0, () => {
@@ -350,6 +380,28 @@ export default function eduLoginSecurityTest(): void {
       expect(state.password).assertEqual('');
       expect(state.captcha).assertEqual('');
       expect(state.preLoginToken === undefined).assertTrue();
+    });
+
+    it('syncs exams and rejects a schedule that was not persisted', 0, async () => {
+      const guard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
+      const generation: number = guard.beginReplacement();
+      expect(guard.acceptCreatedConnection(generation, 'connection-1')).assertTrue();
+      const request: EduPostConnectRequestToken | undefined = guard.capturePostConnect('connection-1');
+      const state: PostConnectState = new PostConnectState();
+      const operations: DelayedPostConnectOperations = new DelayedPostConnectOperations(
+        Promise.resolve(bindingFixture('binding-1')),
+        Promise.resolve(syncFixture('schedule', false)),
+        Promise.resolve(syncFixture('grade')),
+        Promise.resolve(syncFixture('exam')),
+        Promise.resolve(scheduleItemsFixture())
+      );
+
+      await new EduPostConnectController(guard, operations, state)
+        .autoSync(request as EduPostConnectRequestToken);
+
+      expect(operations.examCalls).assertEqual(1);
+      expect(state.syncMessage.includes('课表同步失败')).assertTrue();
+      expect(state.syncMessage.includes('考试同步成功')).assertTrue();
     });
 
     it('selects exactly one credentials or captcha surface for backend login', 0, () => {

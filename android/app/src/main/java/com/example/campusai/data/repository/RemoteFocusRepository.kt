@@ -3,6 +3,7 @@ package com.example.campusai.data.repository
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusStats
+import com.example.campusai.data.model.FocusBehaviorSummary
 import java.time.Instant
 import java.time.Duration
 import java.time.LocalDate
@@ -11,6 +12,7 @@ import java.time.format.DateTimeFormatter
 
 data class StudySessionSnapshot(
     val id: String,
+    val relatedTaskId: String? = null,
     val startedAt: String,
     val endedAt: String?,
     val plannedDurationSeconds: Int = 0,
@@ -19,7 +21,7 @@ data class StudySessionSnapshot(
     val mode: FocusMode,
     val pausedAt: String? = null,
     val pauseSeconds: Int = 0,
-    val behaviorSummary: com.example.campusai.data.model.FocusBehaviorSummary? = null,
+    val behaviorSummary: FocusBehaviorSummary? = null,
 )
 
 /**

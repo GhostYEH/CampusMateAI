@@ -569,6 +569,26 @@ data class CourseContentPageDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
+// 全校活动列表（校园动态 / 我的活动）
+data class ActivityDto(
+    val id: String,
+    val author_id: String? = null,
+    val author_name: String? = null,
+    val title: String,
+    val summary: String? = null,
+    val content: String? = null,
+    val category: String? = null,
+    val location: String? = null,
+    val registration_deadline: String? = null,
+    val starts_at: String? = null,
+    val ends_at: String? = null,
+    val capacity: Int? = null,
+    val status: String? = null,
+    val published_at: String? = null,
+    val created_at: String? = null,
+    val updated_at: String? = null,
+)
+
 // ── 个人待办（云端） ──
 data class PersonalTaskDto(
     val id: String,
@@ -1000,6 +1020,13 @@ interface ApiService {
         @Path("itemId") itemId: String,
     ): Response<ResponseBody>
 
+    // 全校活动列表（校园动态 / 我的活动）
+    @GET("activities")
+    suspend fun listActivities(
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 50,
+    ): Response<PagedResponse<ActivityDto>>
+
     // 个人待办（云端同步）
     @GET("tasks")
     suspend fun listTasks(
@@ -1067,6 +1094,9 @@ interface ApiService {
 
     @POST("study/task-breakdown")
     suspend fun breakdownStudyGoal(@Body request: TaskBreakdownRequest): Response<TaskBreakdownResponseDto>
+
+    @POST("study/task-breakdown")
+    suspend fun breakdownStudyTask(@Body request: TaskBreakdownRequest): Response<TaskBreakdownResponseDto>
 
     // 个人中心：文件
     @GET("personal-hub/files")

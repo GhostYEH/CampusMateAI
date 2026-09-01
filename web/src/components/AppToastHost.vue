@@ -1,7 +1,6 @@
 <script setup>
 import UiIcon from "./UiIcon.vue";
 import { useToast } from "../composables/useToast";
-
 const { toast } = useToast();
 const iconMap = {
   success: "PhCheckCircle",
@@ -10,11 +9,10 @@ const iconMap = {
   info: "PhInfo",
 };
 </script>
-
 <template>
   <Teleport to="body">
-    <Transition name="app-toast">
-      <div v-if="toast.visible" class="app-toast" :class="`type-${toast.type}`" role="status">
+    <Transition name="tch-toast">
+      <div v-if="toast.visible" class="tch-toast" :class="`type-${toast.type}`" role="status">
         <UiIcon :name="iconMap[toast.type]" :size="18" weight="fill" />
         <span>{{ toast.message }}</span>
       </div>

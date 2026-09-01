@@ -1,17 +1,9 @@
 package com.example.campusai.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import com.example.campusai.ui.theme.CampusMotion
 import com.example.campusai.ui.theme.LocalReduceMotion
 
@@ -27,26 +19,25 @@ fun Modifier.enterAnimation(
     enabled: Boolean = true,
 ): Modifier {
     if (!enabled || LocalReduceMotion.current) return this
-
-    var animationStarted by remember { mutableStateOf(false) }
-    val slideDistancePx = with(LocalDensity.current) { slideDistance.dp.toPx() }
+    var hasFinished by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
-        targetValue = if (animationStarted) 1f else 0f,
+        targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
             durationMillis = CampusMotion.enterDuration,
-            delayMillis = delayMs.coerceIn(0, CampusMotion.maxStaggerDelay),
+            delayMillis = delayMs,
             easing = CampusMotion.enterEasing,
         ),
         label = "enter-progress",
     )
-    LaunchedEffect(Unit) { animationStarted = true }
-
+    LaunchedEffect(Unit) { hasFinished = true }
+    val enterTilt = CampusMotion.enterTilt(LocalReduceMotion.current, -2.5f)
     return this.graphicsLayer {
-        val remainingProgress = 1f - progress
         alpha = progress
-        translationY = slideDistancePx * remainingProgress
-        scaleX = 1f - (1f - scaleFrom) * remainingProgress
-        scaleY = 1f - (1f - scaleFrom) * remainingProgress
+        translationY = slideDistance * (1f - progress)
+        rotationZ = enterTilt * (1f - progress)
+        cameraDistance = 12f * density
+        scaleX = 1f - (1f - scaleFrom) * (1f - progress)
+        scaleY = 1f - (1f - scaleFrom) * (1f - progress)
     }
 }
 
@@ -61,28 +52,22 @@ fun Modifier.slideInAnimation(
     enabled: Boolean = true,
 ): Modifier {
     if (!enabled || LocalReduceMotion.current) return this
-
-    var animationStarted by remember { mutableStateOf(false) }
-    val density = LocalDensity.current
-    val slideDistancePx = with(density) { 44.dp.toPx() }
-    val liftDistancePx = with(density) { 6.dp.toPx() }
+    var hasFinished by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
-        targetValue = if (animationStarted) 1f else 0f,
+        targetValue = if (hasFinished) 1f else 0f,
         animationSpec = tween(
             durationMillis = 440,
-            delayMillis = delayMs.coerceIn(0, CampusMotion.maxStaggerDelay),
+            delayMillis = delayMs,
             easing = CampusMotion.settleEasing,
         ),
         label = "slide-progress",
     )
-    LaunchedEffect(Unit) { animationStarted = true }
-
-    val direction = if (fromLeft) -1f else 1f
+    LaunchedEffect(Unit) { hasFinished = true }
+    val offset = 44f * (1f - progress) * if (fromLeft) -1f else 1f
     return this.graphicsLayer {
-        val remainingProgress = 1f - progress
         alpha = progress
-        translationX = slideDistancePx * remainingProgress * direction
-        translationY = liftDistancePx * remainingProgress
+        translationX = offset
+        translationY = 6f * (1f - progress)
         scaleX = 0.985f + 0.015f * progress
         scaleY = 0.985f + 0.015f * progress
     }

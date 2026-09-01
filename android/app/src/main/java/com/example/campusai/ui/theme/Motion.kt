@@ -10,7 +10,6 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -32,20 +31,24 @@ import kotlinx.coroutines.launch
 val LocalReduceMotion = staticCompositionLocalOf { false }
 
 object CampusMotion {
-    const val enterDuration = 480
-    const val routeEnterDuration = 340
-    const val routeExitDuration = 220
+    const val ambientOrbCount = 8
+    const val enterDuration = 560
+    const val routeEnterDuration = 360
+    const val routeExitDuration = 260
     const val pressDuration = 130
     const val releaseDuration = 260
-    const val staggerStep = 42
-    const val maxStaggerDelay = 252
 
     val enterEasing = CubicBezierEasing(0.22f, 0.86f, 0.2f, 1f)
     val settleEasing = CubicBezierEasing(0.18f, 0.8f, 0.24f, 1f)
     val routeEasing = FastOutSlowInEasing
 
-    fun staggerDelay(index: Int): Int =
-        (index.coerceAtLeast(0) * staggerStep).coerceAtMost(maxStaggerDelay)
+    fun ambientOpacity(reduceMotion: Boolean): Float = if (reduceMotion) 0f else 0.18f
+
+    fun parallaxAmplitude(reduceMotion: Boolean, amplitude: Float): Float =
+        if (reduceMotion) 0f else amplitude
+
+    fun enterTilt(reduceMotion: Boolean, startTilt: Float): Float =
+        if (reduceMotion) 0f else startTilt
 }
 
 /**
@@ -102,16 +105,14 @@ private class CampusIndicationNode(
         drawContent()
         val alpha = progress.value * 0.1f
         if (alpha <= 0f) return
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.maxDimension * 0.82f
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(highlight.copy(alpha = alpha), Color.Transparent),
-                center = center,
-                radius = radius,
+                center = Offset(size.width / 2f, size.height / 2f),
+                radius = size.maxDimension * 0.82f,
             ),
-            radius = radius,
-            center = center,
+            radius = size.maxDimension * 0.82f,
+            center = Offset(size.width / 2f, size.height / 2f),
         )
     }
 }
@@ -126,7 +127,7 @@ internal fun rememberCampusIndication(highlight: Color): Indication {
 
 @Composable
 internal fun ProvideCampusIndication(content: @Composable () -> Unit) {
-    CompositionLocalProvider(
+    androidx.compose.runtime.CompositionLocalProvider(
         LocalIndication provides rememberCampusIndication(Primary),
         content = content,
     )

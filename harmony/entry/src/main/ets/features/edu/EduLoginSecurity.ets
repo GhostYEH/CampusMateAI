@@ -6,6 +6,13 @@ export function allowedOriginsFromEduResponse(response: EduConnectionDto): strin
   return response.allowed_origins ?? [];
 }
 
+export function resolveEduLoginUrl(portalUrl?: string, fallbackUrl: string = ''): string | undefined {
+  const portal: string = (portalUrl ?? '').trim();
+  if (portal.length > 0) return portal;
+  const fallback: string = fallbackUrl.trim();
+  return fallback.length > 0 ? fallback : undefined;
+}
+
 function canonicalHttpsOrigin(value: string): string | undefined {
   const match: RegExpExecArray | null = /^https:\/\/([a-zA-Z0-9.-]+)(?::([0-9]+))?(?:[/?#]|$)/.exec(value);
   if (match === null) return undefined;

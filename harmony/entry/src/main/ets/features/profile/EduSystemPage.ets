@@ -1,75 +1,10 @@
 import { EduRepository, eduStateText, eduStateTextWithErrorCode } from '../../repository/EduRepository';
-import { EduBindingDto, EduConnectionDto, EduPreLoginResult, EduProbeResult, EduSyncResult } from '../../data/ApiClient';
+import { EduBindingDto, EduConnectionDto, EduPreLoginResult, EduProbeResult, EduScheduleItemsResponse, EduSyncResult } from '../../data/ApiClient';
 import { CampusPalette, lightPalette, darkPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ApiClient } from '../../data/ApiClient';
 import { promptAction } from '@kit.ArkUI';
-import {
-  captureEduLoginChallenge,
-  EduLoginSensitiveEvent,
-  EduLoginSensitiveState,
-  reduceEduLoginSensitiveState
-} from '../edu/EduLoginSensitiveState';
-import {
-  EduConnectionRequestGuard,
-  EduConnectionRequestToken,
-  EduPostConnectRequestToken
-} from '../edu/EduConnectionRequestGuard';
-import { EduLoginSurface, selectEduLoginSurface } from '../edu/EduLoginSurface';
-import {
-  EduPostConnectController,
-  EduPostConnectOperations,
-  EduPostConnectStateWriter,
-  invalidateEduConnectionLifecycle
-} from '../edu/EduPostConnectController';
-
-class EduRepositoryPostConnectOperations implements EduPostConnectOperations {
-  private repository: EduRepository;
-
-  constructor(repository: EduRepository) {
-    this.repository = repository;
-  }
-
-  getBinding(): Promise<EduBindingDto | undefined> {
-    return this.repository.getBinding();
-  }
-
-  syncSchedule(): Promise<EduSyncResult> {
-    return this.repository.syncSchedule();
-  }
-
-  syncGrade(): Promise<EduSyncResult> {
-    return this.repository.syncGrade();
-  }
-}
-
-class EduPagePostConnectStateWriter implements EduPostConnectStateWriter {
-  private bindingWriter: (binding: EduBindingDto | null) => void;
-  private syncingWriter: (syncing: boolean) => void;
-  private messageWriter: (message: string) => void;
-
-  constructor(
-    bindingWriter: (binding: EduBindingDto | null) => void,
-    syncingWriter: (syncing: boolean) => void,
-    messageWriter: (message: string) => void
-  ) {
-    this.bindingWriter = bindingWriter;
-    this.syncingWriter = syncingWriter;
-    this.messageWriter = messageWriter;
-  }
-
-  setBinding(binding: EduBindingDto | null): void {
-    this.bindingWriter(binding);
-  }
-
-  setSyncing(syncing: boolean): void {
-    this.syncingWriter(syncing);
-  }
-
-  setSyncMessage(message: string): void {
-    this.messageWriter(message);
-  }
-}
+import { resolveEduLoginUrl } from '../edu/EduLoginSecurity';
 
 /** EduSystemPage — 教务系统连接主页（完整闭环）。
 
@@ -86,7 +21,6 @@ export struct EduSystemPage {
   @State username: string = '';
   @State password: string = '';
   @State captchaInput: string = '';
-  @State preLoginToken: string | undefined = undefined;
   @State preLoginResult: EduPreLoginResult | null = null;
   @State loading: boolean = false;
   @State errorMsg: string = '';
@@ -98,7 +32,6 @@ export struct EduSystemPage {
   @State syncMsg: string = '';
   @State polling: boolean = false;
   private pollTimer: number = -1;
-  private connectionGuard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
 
   onBack: () => void = () => {};
   onNavigateToLogin: (loginUrl: string, connectionId: string, allowedOrigins: string[]) => void = () => {};
@@ -117,66 +50,22 @@ export struct EduSystemPage {
   }
 
   aboutToDisappear() {
-    this.invalidateConnectionRequests(EduLoginSensitiveEvent.DISPOSE);
+    this.stopPolling();
   }
 
-  invalidateConnectionRequests(event: EduLoginSensitiveEvent): number {
-    return invalidateEduConnectionLifecycle(
-      this.connectionGuard,
-      (): void => this.stopPolling(),
-      (): void => {
-        this.resetSensitiveState(event);
-        this.binding = null;
-        this.connection = null;
-        this.probe = null;
-        this.syncing = false;
-        this.syncMsg = '';
-        this.loading = false;
-      }
-    );
-  }
-
-  resetSensitiveState(event: EduLoginSensitiveEvent) {
-    const current: EduLoginSensitiveState = {
-      username: this.username,
-      password: this.password,
-      captcha: this.captchaInput,
-      preLoginToken: this.preLoginToken
-    };
-    const cleared: EduLoginSensitiveState = reduceEduLoginSensitiveState(current, event);
-    this.username = cleared.username;
-    this.password = cleared.password;
-    this.captchaInput = cleared.captcha;
-    this.preLoginToken = cleared.preLoginToken;
-    this.preLoginResult = null;
-  }
-
-  buildPostConnectController(): EduPostConnectController {
-    const repository: EduRepository = new EduRepository(this.buildClient());
-    const operations: EduPostConnectOperations = new EduRepositoryPostConnectOperations(repository);
-    const writer: EduPostConnectStateWriter = new EduPagePostConnectStateWriter(
-      (binding: EduBindingDto | null): void => { this.binding = binding; },
-      (syncing: boolean): void => { this.syncing = syncing; },
-      (message: string): void => { this.syncMsg = message; }
-    );
-    return new EduPostConnectController(this.connectionGuard, operations, writer);
-  }
-
-  captureCurrentPostConnectRequest(): EduPostConnectRequestToken | undefined {
-    return this.connectionGuard.capturePostConnect(this.connection?.id);
-  }
-
-  async loadBinding(request?: EduPostConnectRequestToken): Promise<void> {
-    const currentRequest: EduPostConnectRequestToken | undefined =
-      request || this.captureCurrentPostConnectRequest();
-    if (currentRequest === undefined) return;
-    await this.buildPostConnectController().loadBinding(currentRequest);
+  async loadBinding() {
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      this.binding = await repo.getBinding() || null;
+    } catch (e) {
+      // 忽略初始加载错误
+    }
   }
 
   async probeAndConnect() {
     const url = this.portalUrl.trim();
     if (url.length === 0) return;
-    const generation: number = this.invalidateConnectionRequests(EduLoginSensitiveEvent.CONNECTION_REPLACED);
     this.loading = true;
     this.errorMsg = '';
     this.infoMsg = '';
@@ -184,7 +73,6 @@ export struct EduSystemPage {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       const conn = await repo.createConnectionFromUrl(url, this.universityId || undefined);
-      if (!this.connectionGuard.acceptCreatedConnection(generation, conn.id)) return;
       this.connection = conn;
       this.probe = { portal_url: url, provider: conn.provider, provider_confidence: 0, reachable: true, is_edu_page: true, suggested_login_mode: conn.login_execution_mode, evidence: [] } as EduProbeResult;
       if (conn.login_execution_mode === 'client_webview') {
@@ -194,33 +82,29 @@ export struct EduSystemPage {
         this.infoMsg = '该教务系统支持账号密码登录。';
       }
     } catch (e) {
-      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      if (this.connectionGuard.isGenerationCurrent(generation)) this.loading = false;
+      this.loading = false;
     }
   }
 
   async submitCredentials() {
     if (this.connection === null || this.username.length === 0 || this.password.length === 0) return;
-    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
-    if (request === undefined) return;
     this.loading = true;
     this.errorMsg = '';
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
-      const conn = await repo.continueWithCredentials(request.connectionId, this.username, this.password);
-      if (!this.connectionGuard.isCurrent(request, conn.id)) return;
+      const conn = await repo.continueWithCredentials(this.connection.id, this.username, this.password);
       this.connection = conn;
+      const loginUrl: string | undefined = resolveEduLoginUrl(conn.portal_url, this.portalUrl);
       if (conn.state === 'connected') {
         await this.onConnected();
       } else if (conn.state === 'waiting_user_login' && conn.error_code === 'NEED_CAPTCHA') {
         await this.fetchCaptchaImage();
-      } else if (conn.state === 'waiting_user_login' && !conn.portal_url?.includes('undefined')) {
+      } else if (conn.state === 'waiting_user_login' && loginUrl !== undefined) {
         this.infoMsg = eduStateTextWithErrorCode(conn.state, conn.error_code);
-        this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
-        this.onNavigateToLogin(conn.portal_url || this.portalUrl, conn.id, conn.allowed_origins || []);
+        this.onNavigateToLogin(loginUrl, conn.id, conn.allowed_origins || []);
         this.startPolling(conn.id);
       } else if (conn.state === 'auth_failed') {
         this.errorMsg = conn.error_message || '账号或密码错误';
@@ -228,88 +112,56 @@ export struct EduSystemPage {
         this.errorMsg = conn.error_message || '登录失败';
       }
     } catch (e) {
-      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
+      this.loading = false;
     }
   }
 
   async fetchCaptchaImage() {
     if (this.connection === null) return;
-    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
-    if (request === undefined) return;
-    const connectionId: string = request.connectionId;
     this.loading = true;
     this.errorMsg = '';
-    this.preLoginResult = null;
-    this.captchaInput = '';
-    this.preLoginToken = undefined;
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
-      const preLoginResult: EduPreLoginResult = await repo.preLogin(connectionId);
-      if (!this.connectionGuard.isCurrent(request, connectionId)) return;
-      this.preLoginResult = preLoginResult;
-      const captured: EduLoginSensitiveState = captureEduLoginChallenge(
-        {
-          username: this.username,
-          password: this.password,
-          captcha: this.captchaInput,
-          preLoginToken: this.preLoginToken
-        },
-        this.captchaInput,
-        preLoginResult.pre_login_token
-      );
-      this.captchaInput = captured.captcha;
-      this.preLoginToken = captured.preLoginToken;
-      if (!preLoginResult.captcha_required || !preLoginResult.captcha_image_base64) {
+      this.preLoginResult = await repo.preLogin(this.connection.id);
+      if (!this.preLoginResult.captcha_required || !this.preLoginResult.captcha_image_base64) {
         this.errorMsg = '无法获取验证码图片，请尝试在浏览器中完成登录';
       }
     } catch (e) {
-      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
+      this.loading = false;
     }
   }
 
   async submitCredentialsWithCaptcha() {
-    if (this.connection === null || this.preLoginResult === null || this.preLoginToken === undefined || this.captchaInput.length === 0) return;
-    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(this.connection.id);
-    if (request === undefined) return;
-    const connectionId: string = request.connectionId;
+    if (this.connection === null || this.preLoginResult === null || this.captchaInput.length === 0) return;
     this.loading = true;
     this.errorMsg = '';
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       const conn = await repo.continueWithCaptcha(
-        connectionId, this.username, this.password, this.captchaInput, this.preLoginToken
+        this.connection.id, this.username, this.password, this.captchaInput, this.preLoginResult.pre_login_token
       );
-      if (!this.connectionGuard.isCurrent(request, conn.id)) return;
       this.connection = conn;
       this.preLoginResult = null;
-      this.preLoginToken = undefined;
       this.captchaInput = '';
       if (conn.state === 'connected') {
         await this.onConnected();
       } else if (conn.state === 'waiting_user_login' && conn.error_code === 'NEED_CAPTCHA') {
         await this.fetchCaptchaImage();
-      } else if (conn.state === 'waiting_user_login' && !conn.portal_url?.includes('undefined')) {
-        this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
-        this.onNavigateToLogin(conn.portal_url || this.portalUrl, conn.id, conn.allowed_origins || []);
-        this.startPolling(conn.id);
       } else if (conn.state === 'auth_failed') {
         this.errorMsg = conn.error_message || '账号或密码错误';
       } else {
         this.errorMsg = conn.error_message || '登录失败';
       }
     } catch (e) {
-      if (!this.connectionGuard.isGenerationCurrent(request.generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      if (this.connectionGuard.isGenerationCurrent(request.generation)) this.loading = false;
+      this.loading = false;
     }
   }
 
@@ -320,8 +172,6 @@ export struct EduSystemPage {
 
   startPolling(connId: string) {
     this.stopPolling();
-    const request: EduConnectionRequestToken | undefined = this.connectionGuard.capture(connId);
-    if (request === undefined) return;
     this.polling = true;
     let count = 0;
     const poll = async () => {
@@ -331,7 +181,6 @@ export struct EduSystemPage {
         const client = this.buildClient();
         const repo = new EduRepository(client);
         const conn = await repo.pollConnection(connId);
-        if (!this.connectionGuard.isCurrent(request, conn.id)) return;
         this.connection = conn;
         if (conn.state === 'connected') {
           this.stopPolling();
@@ -350,40 +199,53 @@ export struct EduSystemPage {
     if (this.pollTimer !== -1) { clearInterval(this.pollTimer); this.pollTimer = -1; }
   }
 
-  async onConnected(): Promise<void> {
-    const request: EduPostConnectRequestToken | undefined = this.captureCurrentPostConnectRequest();
-    if (request === undefined || !this.connectionGuard.isPostConnectCurrent(request)) return;
-    this.resetSensitiveState(EduLoginSensitiveEvent.DIRECT_CONNECTED);
-    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
+  async onConnected() {
     this.infoMsg = '教务系统连接成功';
-    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
-    await this.buildPostConnectController().onConnected(request);
-    if (!this.connectionGuard.isPostConnectCurrent(request)) return;
+    await this.loadBinding();
+    await this.autoSync();
   }
 
-  async autoSync(): Promise<void> {
-    const request: EduPostConnectRequestToken | undefined = this.captureCurrentPostConnectRequest();
-    if (request === undefined) return;
-    await this.buildPostConnectController().autoSync(request);
+  async autoSync() {
+    this.syncing = true;
+    this.syncMsg = '正在同步课表…';
+    try {
+      const client = this.buildClient();
+      const repo = new EduRepository(client);
+      const schedResult = await repo.syncSchedule();
+      const storedSchedule: EduScheduleItemsResponse = await repo.listScheduleItems(
+        schedResult.schedule?.semester || schedResult.semester
+      );
+      this.syncMsg = '正在同步成绩…';
+      const gradeResult = await repo.syncGrade();
+      this.syncMsg = '正在同步考试安排…';
+      const examResult = await repo.syncExam();
+      const schedOk = schedResult.status === 'success' && schedResult.persisted === true &&
+        schedResult.items_count > 0 && storedSchedule.items_count > 0;
+      const gradeOk = gradeResult.status === 'success';
+      const examOk = examResult.status === 'success';
+      this.syncMsg = `课表同步${schedOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}，考试同步${examOk ? '成功' : '失败'}`;
+      await this.loadBinding();
+    } catch (e) {
+      this.syncMsg = '同步失败: ' + String(e).substring(0, 100);
+    } finally {
+      this.syncing = false;
+    }
   }
 
   async disconnect() {
-    const generation: number = this.invalidateConnectionRequests(EduLoginSensitiveEvent.DISCONNECT);
     this.loading = true;
     try {
       const client = this.buildClient();
       const repo = new EduRepository(client);
       await repo.unbind();
-      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.binding = null;
       this.connection = null;
       this.probe = null;
       this.infoMsg = '已断开教务系统连接';
     } catch (e) {
-      if (!this.connectionGuard.isGenerationCurrent(generation)) return;
       this.errorMsg = String(e).substring(0, 150);
     } finally {
-      if (this.connectionGuard.isGenerationCurrent(generation)) this.loading = false;
+      this.loading = false;
     }
   }
 
@@ -404,15 +266,7 @@ export struct EduSystemPage {
 
   build() {
     Column({ space: 0 }) {
-      SecondaryHeader({
-        title: '教务系统',
-        subtitle: '连接教务系统，同步课表与成绩',
-        darkMode: this.darkMode,
-        onBack: () => {
-          this.invalidateConnectionRequests(EduLoginSensitiveEvent.CANCEL);
-          this.onBack();
-        }
-      })
+      SecondaryHeader({ title: '教务系统', subtitle: '连接教务系统，同步课表与成绩', darkMode: this.darkMode, onBack: () => this.onBack() })
 
       Scroll() {
         Column({ space: 12 }) {
@@ -428,20 +282,22 @@ export struct EduSystemPage {
             if (this.probe !== null) {
               this.ProbeResultCard()
             }
-            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.CREDENTIALS) {
+            if (this.connection !== null && this.connection.login_execution_mode === 'backend_http') {
               this.CredentialFormCard()
             }
-            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.CAPTCHA) {
+            if (this.preLoginResult !== null) {
               this.CaptchaFormCard()
             }
-            if (selectEduLoginSurface(this.connection, this.preLoginResult) === EduLoginSurface.WEB_HANDOFF) {
+            if (this.connection !== null && this.connection.login_execution_mode === 'client_webview') {
               Button('打开教务登录页面')
                 .width('90%').height(44)
                 .backgroundColor(this.palette().primary).fontColor(Color.White)
                 .onClick(() => {
                   if (this.connection !== null) {
-                    this.resetSensitiveState(EduLoginSensitiveEvent.WEB_HANDOFF);
-                    this.onNavigateToLogin(this.portalUrl, this.connection.id, this.connection.allowed_origins || []);
+                    const loginUrl: string | undefined = resolveEduLoginUrl(this.connection.portal_url, this.portalUrl);
+                    if (loginUrl !== undefined) {
+                      this.onNavigateToLogin(loginUrl, this.connection.id, this.connection.allowed_origins || []);
+                    }
                   }
                 })
             }
@@ -572,7 +428,9 @@ export struct EduSystemPage {
         Row({ space: 8 }) {
           Button('立即同步').backgroundColor(this.palette().primary).fontColor(Color.White).onClick(() => this.autoSync())
           Button('重新登录').backgroundColor(this.palette().surface).fontColor(this.palette().text).onClick(() => {
-            this.invalidateConnectionRequests(EduLoginSensitiveEvent.CONNECTION_REPLACED);
+            this.binding = null;
+            this.connection = null;
+            this.probe = null;
             this.portalUrl = '';
           })
           Button('断开').backgroundColor(this.palette().surface).fontColor(this.palette().danger).onClick(() => {

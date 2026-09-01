@@ -15,6 +15,7 @@ class LiquidGlassDockProfileTest {
         assertTrue(profile.vibrancyEnabled)
         assertEquals(8f, profile.blurRadiusDp)
         assertEquals(0.40f, profile.surfaceAlpha)
+        assertEquals(0x260B1830L, profile.shadowColorArgb)
     }
 
     @Test
@@ -37,6 +38,8 @@ class LiquidGlassDockProfileTest {
         assertFalse(lightProfile.lensEnabled)
         assertEquals(0.82f, lightProfile.surfaceAlpha)
         assertEquals(0.74f, darkProfile.surfaceAlpha)
+        assertEquals(0x260B1830L, lightProfile.shadowColorArgb)
+        assertEquals(0x80000000L, darkProfile.shadowColorArgb)
     }
 
     @Test

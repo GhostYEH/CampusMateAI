@@ -1,20 +1,12 @@
 package com.example.campusai.ui.screens.focus
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
@@ -36,6 +28,7 @@ import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface as CampusSurface
 import com.example.campusai.ui.theme.TextPrimary
+import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 
 /** A terminal page for one completed session. It owns no timer or active-session state. */
 @Composable
@@ -45,6 +38,8 @@ fun FocusSummaryScreen(
     conversationCount: Int,
     aiSummary: String,
     observationSummary: String,
+    nextStepTitle: String? = null,
+    planComplete: Boolean = false,
     onReturnHome: () -> Unit,
     onStartNext: () -> Unit,
 ) {
@@ -52,9 +47,12 @@ fun FocusSummaryScreen(
     val minutes = actualSeconds.coerceAtLeast(0) / 60
     val seconds = actualSeconds.coerceAtLeast(0) % 60
     val duration = if (minutes > 0) "$minutes 分 ${seconds.toString().padStart(2, '0')} 秒" else "$seconds 秒"
+    val bottomContentPadding = floatingDockContentBottomPadding(
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+    ) + 12.dp
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 48.dp, end = 20.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 48.dp, end = 20.dp, bottom = bottomContentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -73,9 +71,18 @@ fun FocusSummaryScreen(
         item { SummaryNote(Icons.Default.AutoAwesome, "AI 学习总结", aiSummary) }
         item { SummaryNote(Icons.Default.ChatBubbleOutline, "AI 交流", "本次共交流 $conversationCount 次。") }
         item { SummaryNote(Icons.Default.Timer, "学习状态", observationSummary) }
+        if (planComplete) {
+            item { SummaryNote(Icons.Default.CheckCircle, "任务进度", "这项任务的规划步骤已全部完成。") }
+        } else {
+            nextStepTitle?.takeIf { it.isNotBlank() }?.let { next ->
+                item { SummaryNote(Icons.Default.ArrowForward, "下一步", next) }
+            }
+        }
         item {
             Spacer(Modifier.height(8.dp))
-            Button(onClick = onStartNext, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) { Text("开始下一次专注") }
+            Button(onClick = onStartNext, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(18.dp)) {
+                Text(if (planComplete) "返回专注大厅" else if (!nextStepTitle.isNullOrBlank()) "开始下一步骤" else "开始下一次专注")
+            }
         }
         item {
             OutlinedButton(onClick = onReturnHome, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(18.dp)) { Text("返回专注大厅") }

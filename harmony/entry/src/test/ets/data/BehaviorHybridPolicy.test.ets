@@ -4,7 +4,12 @@ import {
   BehaviorTsmContract,
   BehaviorTsmResult
 } from '../../../main/ets/service/BehaviorHybridPolicy';
-import { BehaviorTemporalFrameBuffer } from '../../../main/ets/service/MindSporeBehaviorProvider';
+import {
+  BehaviorProviderPresentation,
+  BehaviorProviderRunToken,
+  BehaviorTemporalFrameBuffer,
+  BehaviorV34OutputContract
+} from '../../../main/ets/service/MindSporeBehaviorProvider';
 import { BehaviorV34Label, BehaviorV34Result } from '../../../main/ets/service/BehaviorV34Decision';
 
 function singleResult(probabilities: number[]): BehaviorV34Result {
@@ -85,7 +90,51 @@ export default function behaviorHybridPolicyTest(): void {
       buffer.push(new Float32Array(3 * 224 * 224));
       buffer.reset();
       expect(buffer.snapshot().length).assertEqual(0);
+      expect(buffer.size()).assertEqual(0);
       expect(buffer.toModelInput()).assertUndefined();
+    });
+
+    it('exposes the temporal count without cloning buffered tensors', 0, () => {
+      const buffer = new BehaviorTemporalFrameBuffer();
+      expect(buffer.size()).assertEqual(0);
+      for (let index: number = 0; index < 10; index++) {
+        buffer.push(new Float32Array(3 * 224 * 224));
+      }
+      expect(buffer.size()).assertEqual(8);
+    });
+
+    it('rejects non-finite V3.4 output logits before they become a decision', 0, () => {
+      expect(BehaviorV34OutputContract.decode([])).assertUndefined();
+      expect(BehaviorV34OutputContract.decode([0, 0, 0])).assertUndefined();
+      expect(BehaviorV34OutputContract.decode([0, Number.NaN, 0, 0])).assertUndefined();
+      expect(BehaviorV34OutputContract.decode([0, Number.POSITIVE_INFINITY, 0, 0])).assertUndefined();
+    });
+
+    it('invalidates late provider work with a lifecycle generation token', 0, () => {
+      const token = new BehaviorProviderRunToken();
+      const first: number = token.begin();
+      expect(token.isCurrent(first)).assertTrue();
+      token.invalidate();
+      expect(token.isCurrent(first)).assertFalse();
+      const second: number = token.begin();
+      expect(token.isCurrent(second)).assertTrue();
+      expect(token.isCurrent(first)).assertFalse();
+      const third: number = token.begin();
+      expect(token.isCurrent(third)).assertTrue();
+      expect(token.isCurrent(second)).assertFalse();
+    });
+
+    it('keeps degraded detail precedence and model-version transitions explicit', 0, () => {
+      expect(BehaviorProviderPresentation.detail(true, BehaviorV34Label.CONTINUE_OBSERVING))
+        .assertEqual('TSM V4 不可用，V3.4 正在本地识别');
+      expect(BehaviorProviderPresentation.detail(false, BehaviorV34Label.CONTINUE_OBSERVING))
+        .assertEqual('结果不可靠，继续观察');
+      expect(BehaviorProviderPresentation.modelVersion(false)).assertEqual('V3.4');
+      expect(BehaviorProviderPresentation.modelVersion(true)).assertEqual('V3.4+TSM-V4');
+      expect(BehaviorProviderPresentation.readyDetail(true))
+        .assertEqual('V3.4 模型已就绪；TSM V4 不可用，使用降级行为识别');
+      expect(BehaviorProviderPresentation.readyDetail(false))
+        .assertEqual('V3.4 与 TSM V4 模型已就绪；等待本地相机人体 ROI 管线');
     });
 
     it('decodes TSM logits in the exported five-class order', 0, () => {

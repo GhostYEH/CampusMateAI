@@ -5,14 +5,17 @@ import org.junit.Test
 
 class CampusMotionTest {
     @Test
-    fun `stagger delay is lively but capped for long lists`() {
-        assertEquals(0, CampusMotion.staggerDelay(0))
-        assertEquals(42, CampusMotion.staggerDelay(1))
-        assertEquals(252, CampusMotion.staggerDelay(20))
+    fun ambientLayerUsesSubtleDetailWithoutMotionReduction() {
+        assertEquals(8, CampusMotion.ambientOrbCount)
+        assertEquals(0.18f, CampusMotion.ambientOpacity(false))
+        assertEquals(6f, CampusMotion.parallaxAmplitude(false, 6f))
+        assertEquals(-2.5f, CampusMotion.enterTilt(false, -2.5f))
     }
 
     @Test
-    fun `negative item indices never produce negative delays`() {
-        assertEquals(0, CampusMotion.staggerDelay(-4))
+    fun ambientLayerBecomesStaticAndNonDistractingWhenMotionIsReduced() {
+        assertEquals(0f, CampusMotion.ambientOpacity(true))
+        assertEquals(0f, CampusMotion.parallaxAmplitude(true, 6f))
+        assertEquals(0f, CampusMotion.enterTilt(true, 0f))
     }
 }

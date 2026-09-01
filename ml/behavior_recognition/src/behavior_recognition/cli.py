@@ -1,17 +1,34 @@
 from __future__ import annotations
 
 import argparse
+import json
+from dataclasses import asdict
 from pathlib import Path
 
 from .audit import audit_sources, load_source_specs
 from .constants import DEFAULT_SEED
 from .manifest import build_manifest
+from .offline_gate import compare_offline_candidate
 from .train import train_model
 from .evaluate import evaluate_checkpoint
 from .export_onnx import export_candidate
 from .export_temporal_onnx import export_fused_temporal_candidate
 from .temporal_manifest import build_temporal_manifests
 from .temporal_train import train_temporal_model
+from .temporal_artifact import audit_temporal_artifact
+
+
+def resolve_output_path(
+    parser: argparse.ArgumentParser,
+    output_path: Path,
+    input_paths: tuple[tuple[str, Path], ...],
+) -> Path:
+    """Return a safe report path without allowing it to overwrite an input."""
+    resolved_output = output_path.resolve()
+    for option, input_path in input_paths:
+        if resolved_output == input_path.resolve():
+            parser.error(f"--output must not alias {option}")
+    return resolved_output
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +83,20 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--config", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--evaluation", type=Path)
+    offline_compare = subparsers.add_parser(
+        "offline-compare",
+        help="compare validation-only offline candidate evidence",
+    )
+    offline_compare.add_argument("--baseline", type=Path, required=True)
+    offline_compare.add_argument("--candidate", type=Path, required=True)
+    offline_compare.add_argument("--output", type=Path, required=True)
+    temporal_audit = subparsers.add_parser(
+        "temporal-audit",
+        help="audit a temporal ONNX runtime contract and training provenance",
+    )
+    temporal_audit.add_argument("--model", type=Path, required=True)
+    temporal_audit.add_argument("--model-card", type=Path, required=True)
+    temporal_audit.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -145,6 +176,39 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"export complete: {onnx_path}")
         return 0
+    if args.command == "offline-compare":
+        output_path = resolve_output_path(
+            parser,
+            args.output,
+            (("--baseline", args.baseline), ("--candidate", args.candidate)),
+        )
+        baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+        candidate = json.loads(args.candidate.read_text(encoding="utf-8"))
+        decision = compare_offline_candidate(candidate, baseline)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(asdict(decision), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(
+            f"offline comparison complete: advanced={decision.advanced} "
+            f"failed_checks={decision.failed_checks}"
+        )
+        return 0 if decision.advanced else 1
+    if args.command == "temporal-audit":
+        output_path = resolve_output_path(
+            parser,
+            args.output,
+            (("--model", args.model), ("--model-card", args.model_card)),
+        )
+        audit = audit_temporal_artifact(args.model, args.model_card)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(asdict(audit), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"temporal audit complete: passed={audit.passed} failures={audit.failures}")
+        return 0 if audit.passed else 1
     parser.print_help()
     return 2
 

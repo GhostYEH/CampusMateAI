@@ -1,0 +1,20 @@
+# Copy this file to sources.yaml and replace each placeholder with a local,
+# read-only dataset directory. sources.yaml is intentionally ignored by Git.
+university_0671:
+  root: '<set-local-dataset-root>/0.671k_university_yolo_Dataset'
+  required_for_training: true
+  labels:
+    0: null
+    1: READ
+    2: WRITE
+    3: PHONE_INTERACTION
+    4: null
+    5: NO_VISIBLE_STUDY
+handrise_read_write:
+  root: '<set-local-dataset-root>/SCB5-Handrise-Read-write-2024-9-17'
+  required_for_training: false
+  labels: {0: null, 1: null, 2: null}
+bow_turn_head:
+  root: '<set-local-dataset-root>/SCB5-Turn-Bow-Head-2024-9-17'
+  required_for_training: false
+  labels: {0: null, 1: null}

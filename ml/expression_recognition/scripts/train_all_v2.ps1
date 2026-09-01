@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Continue"
-$py = "f:\demo1\ml\expression_recognition\.venv\Scripts\python.exe"
-Set-Location "f:\demo1\ml\expression_recognition"
+$moduleRoot = Split-Path -Parent $PSScriptRoot
+$py = Join-Path $moduleRoot ".venv\Scripts\python.exe"
+Set-Location $moduleRoot
 $Manifest = "manifests_v2\included.csv"
 $Epochs = 15
 

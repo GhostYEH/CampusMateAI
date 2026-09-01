@@ -1,6 +1,13 @@
 import numpy as np
+import pytest
 
-from behavior_recognition.metrics import apply_rejection, classification_report, fit_temperature
+from behavior_recognition.constants import CLASS_NAMES
+from behavior_recognition.metrics import (
+    apply_rejection,
+    classification_report,
+    fit_temperature,
+    project_product_probabilities,
+)
 from behavior_recognition.calibrate import search_rejection_thresholds
 
 
@@ -53,3 +60,56 @@ def test_rejection_search_returns_valid_threshold_contract():
     assert len(result["class_thresholds"]) == 4
     assert 0.0 <= result["margin_threshold"] <= 1.0
     assert result["coverage"] >= 0.75
+
+
+def test_rejection_search_fallback_reports_its_actual_coverage():
+    """Catches fallback thresholds claiming coverage while rejecting every sample."""
+    probabilities = np.tile(
+        np.array([[0.26, 0.25, 0.25, 0.24]], dtype=np.float32),
+        (4, 1),
+    )
+    labels = np.array([0, 1, 2, 3])
+
+    result = search_rejection_thresholds(probabilities, labels, min_coverage=0.70)
+    accepted = apply_rejection(
+        probabilities,
+        np.asarray(result["class_thresholds"], dtype=np.float32),
+        result["margin_threshold"],
+    ) >= 0
+
+    assert accepted.tolist() == [False, False, False, False]
+    assert result["coverage"] == 0.0
+
+
+def test_product_projection_sums_read_and_write_before_argmax():
+    """Catches collapsing source Top-1 instead of summing product probabilities."""
+    labels = np.array([0, 2])
+    probabilities = np.array(
+        [
+            [0.31, 0.30, 0.39, 0.00],
+            [0.10, 0.10, 0.70, 0.10],
+        ],
+        dtype=np.float32,
+    )
+
+    product_labels, product_probabilities = project_product_probabilities(
+        labels,
+        probabilities,
+        CLASS_NAMES,
+    )
+
+    assert product_labels.tolist() == [0, 1]
+    np.testing.assert_allclose(
+        product_probabilities,
+        np.array([[0.61, 0.39, 0.00], [0.20, 0.70, 0.10]], dtype=np.float32),
+    )
+
+
+def test_product_projection_rejects_incomplete_source_contract():
+    """Catches silently evaluating probabilities with a missing trainable class."""
+    with pytest.raises(ValueError, match="source class contract"):
+        project_product_probabilities(
+            np.array([0]),
+            np.array([[0.8, 0.1, 0.1]], dtype=np.float32),
+            ("READ", "WRITE", "PHONE_INTERACTION"),
+        )

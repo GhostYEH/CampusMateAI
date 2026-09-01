@@ -3,7 +3,8 @@ export enum MotionDuration {
   PRESS = 150,
   STATE = 220,
   TAB = 260,
-  PAGE = 300
+  PAGE = 300,
+  AMBIENT = 2400
 }
 
 export class MotionSpec {
@@ -39,5 +40,17 @@ export class MotionSpec {
 
   static glowBlur(reduceMotion: boolean): number {
     return reduceMotion ? 0 : 12;
+  }
+
+  static ambientOpacity(reduceMotion: boolean): number {
+    return reduceMotion ? 0 : 0.18;
+  }
+
+  static parallaxAmplitude(reduceMotion: boolean, amplitude: number): number {
+    return reduceMotion ? 0 : amplitude;
+  }
+
+  static enterTilt(reduceMotion: boolean, startTilt: number): number {
+    return reduceMotion ? 0 : startTilt;
   }
 }

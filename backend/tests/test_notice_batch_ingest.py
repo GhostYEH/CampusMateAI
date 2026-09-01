@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.llm.base import LLMResponse
 from app.services.notice_extraction_service import NoticeExtractionService
@@ -183,6 +183,28 @@ def test_twenty_message_cost_statistics() -> None:
     }
     assert sum(item["tasks_created"] for item in response.json()["items"]) == 10
     assert llm.calls == 1
+
+
+def test_tasks_created_is_correct_when_first_task_page_is_full() -> None:
+    client, headers, _ = _client_with_llm()
+    container = get_container()
+    user = container.user_repository.get_user_by_username("student_demo")
+    assert user is not None
+    for index in range(200):
+        container.personal_task_repository.create_task(
+            user_id=user.id,
+            title=f"existing-{index}",
+            source_notice_id=f"existing-notice-{index}",
+        )
+
+    response = client.post(
+        "/api/v1/notices/ingest-batch",
+        headers=headers,
+        json={"items": [_item(999, "请于8月20日17:00前提交实验报告")]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["tasks_created"] == 1
 
 
 @pytest.mark.anyio

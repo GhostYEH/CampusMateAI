@@ -3,10 +3,15 @@ package com.example.campusai.ui.screens.focus
 import com.example.campusai.data.model.FocusSessionSummary
 import java.util.concurrent.atomic.AtomicBoolean
 
+data class FocusCompletionResult(
+    val summary: FocusSessionSummary,
+    val completePlanStep: Boolean,
+)
+
 /** Owns the exactly-once boundary shared by timer expiry and explicit completion. */
 class FocusCompletionCoordinator(
     private val finishObservation: suspend (actualFocusMinutes: Int) -> FocusSessionSummary,
-    private val finishRemote: suspend (summary: FocusSessionSummary) -> Boolean,
+    private val finishRemote: suspend (summary: FocusSessionSummary, selfReport: String?) -> Boolean,
 ) {
     private val inFlight = AtomicBoolean(false)
     private var completed = false
@@ -14,14 +19,18 @@ class FocusCompletionCoordinator(
 
     val isCompleted: Boolean get() = completed
 
-    suspend fun complete(actualFocusMinutes: Int): FocusSessionSummary? {
+    suspend fun complete(
+        actualFocusMinutes: Int,
+        selfReport: String? = null,
+        completePlanStep: Boolean = false,
+    ): FocusCompletionResult? {
         if (completed || !inFlight.compareAndSet(false, true)) return null
         return try {
             val summary = pendingSummary ?: finishObservation(actualFocusMinutes)
-            if (finishRemote(summary)) {
+            if (finishRemote(summary, selfReport?.trim()?.takeIf { it.isNotEmpty() })) {
                 pendingSummary = null
                 completed = true
-                summary
+                FocusCompletionResult(summary, completePlanStep)
             } else {
                 pendingSummary = summary
                 null
