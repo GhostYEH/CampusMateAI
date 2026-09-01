@@ -7,6 +7,9 @@ from math import isfinite
 from typing import Any, Mapping
 
 
+METRIC_COMPARISON_EPSILON = 1e-12
+
+
 @dataclass(frozen=True)
 class OfflinePolicy:
     minimum_product_macro_f1_delta: float = 0.005
@@ -32,6 +35,8 @@ def _finite_metric(container: Mapping[str, Any], path: tuple[str, ...]) -> float
         if not isinstance(value, Mapping) or part not in value:
             raise ValueError(f"missing required metric: {'.'.join(path)}")
         value = value[part]
+    if isinstance(value, bool):
+        raise ValueError(f"metric must be numeric: {'.'.join(path)}")
     try:
         metric = float(value)
     except (TypeError, ValueError) as error:
@@ -67,13 +72,23 @@ def compare_offline_candidate(
         for name in candidate_metrics
     }
     failed: list[str] = []
-    if deltas["product_macro_f1"] < policy.minimum_product_macro_f1_delta:
+    # Metrics are serialized decimals; tolerate only binary-float representation noise.
+    if (
+        deltas["product_macro_f1"]
+        < policy.minimum_product_macro_f1_delta - METRIC_COMPARISON_EPSILON
+    ):
         failed.append("product_macro_f1")
-    if deltas["phone_interaction_auprc"] < -policy.maximum_phone_auprc_regression:
+    if (
+        deltas["phone_interaction_auprc"]
+        < -policy.maximum_phone_auprc_regression - METRIC_COMPARISON_EPSILON
+    ):
         failed.append("phone_interaction_auprc")
-    if deltas["ece"] > policy.maximum_ece_regression:
+    if deltas["ece"] > policy.maximum_ece_regression + METRIC_COMPARISON_EPSILON:
         failed.append("ece")
-    if candidate_metrics["rejection_coverage"] < policy.minimum_rejection_coverage:
+    if (
+        candidate_metrics["rejection_coverage"]
+        < policy.minimum_rejection_coverage - METRIC_COMPARISON_EPSILON
+    ):
         failed.append("rejection_coverage")
     return OfflineDecision(
         advanced=not failed,

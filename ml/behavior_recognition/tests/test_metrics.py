@@ -62,6 +62,25 @@ def test_rejection_search_returns_valid_threshold_contract():
     assert result["coverage"] >= 0.75
 
 
+def test_rejection_search_fallback_reports_its_actual_coverage():
+    """Catches fallback thresholds claiming coverage while rejecting every sample."""
+    probabilities = np.tile(
+        np.array([[0.26, 0.25, 0.25, 0.24]], dtype=np.float32),
+        (4, 1),
+    )
+    labels = np.array([0, 1, 2, 3])
+
+    result = search_rejection_thresholds(probabilities, labels, min_coverage=0.70)
+    accepted = apply_rejection(
+        probabilities,
+        np.asarray(result["class_thresholds"], dtype=np.float32),
+        result["margin_threshold"],
+    ) >= 0
+
+    assert accepted.tolist() == [False, False, False, False]
+    assert result["coverage"] == 0.0
+
+
 def test_product_projection_sums_read_and_write_before_argmax():
     """Catches collapsing source Top-1 instead of summing product probabilities."""
     labels = np.array([0, 2])

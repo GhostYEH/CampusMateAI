@@ -1,7 +1,9 @@
 import json
 
+import numpy as np
 import pytest
 
+from behavior_recognition.calibrate import search_rejection_thresholds
 from behavior_recognition.cli import main
 from behavior_recognition.offline_gate import OfflinePolicy, compare_offline_candidate
 
@@ -95,6 +97,99 @@ def test_candidate_below_rejection_coverage_does_not_advance():
     assert "rejection_coverage" in decision.failed_checks
 
 
+def test_near_uniform_fallback_cannot_claim_coverage_to_advance():
+    """Catches an all-rejected fallback being presented as eligible evidence."""
+    probabilities = np.tile(
+        [[0.26, 0.25, 0.25, 0.24]],
+        (4, 1),
+    )
+    rejection = search_rejection_thresholds(
+        probabilities,
+        np.array([0, 1, 2, 3]),
+        min_coverage=0.70,
+    )
+    baseline = evaluation_report(
+        product_macro_f1=0.60,
+        phone_auprc=0.70,
+        ece=0.08,
+        coverage=0.75,
+    )
+    candidate = evaluation_report(
+        product_macro_f1=0.62,
+        phone_auprc=0.70,
+        ece=0.08,
+        coverage=rejection["coverage"],
+    )
+
+    decision = compare_offline_candidate(candidate, baseline)
+
+    assert decision.advanced is False
+    assert "rejection_coverage" in decision.failed_checks
+
+
+@pytest.mark.parametrize(
+    ("baseline_value", "candidate_value", "metric"),
+    [
+        (0.70, 0.69, "phone_auprc"),
+        (0.12, 0.13, "ece"),
+    ],
+)
+def test_exact_metric_regression_tolerance_boundary_is_allowed(
+    baseline_value,
+    candidate_value,
+    metric,
+):
+    """Catches binary-float noise rejecting a candidate at the configured boundary."""
+    baseline = evaluation_report(
+        product_macro_f1=0.60,
+        phone_auprc=baseline_value if metric == "phone_auprc" else 0.70,
+        ece=baseline_value if metric == "ece" else 0.08,
+        coverage=0.75,
+    )
+    candidate = evaluation_report(
+        product_macro_f1=0.62,
+        phone_auprc=candidate_value if metric == "phone_auprc" else 0.70,
+        ece=candidate_value if metric == "ece" else 0.08,
+        coverage=0.75,
+    )
+
+    decision = compare_offline_candidate(candidate, baseline)
+
+    assert decision.advanced is True
+    assert decision.failed_checks == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("validation_product_calibrated", "macro_f1"),
+        ("validation_product_calibrated", "phone_interaction_auprc"),
+        ("validation_product_calibrated", "ece"),
+        ("rejection", "coverage"),
+    ],
+)
+def test_boolean_metric_is_rejected(path):
+    """Catches JSON booleans being coerced into numeric offline evidence."""
+    candidate = evaluation_report(
+        product_macro_f1=0.62,
+        phone_auprc=0.70,
+        ece=0.08,
+        coverage=0.75,
+    )
+    candidate[path[0]][path[1]] = True
+
+    with pytest.raises(ValueError, match="metric must be numeric"):
+        compare_offline_candidate(
+            candidate,
+            evaluation_report(
+                product_macro_f1=0.60,
+                phone_auprc=0.70,
+                ece=0.08,
+                coverage=0.75,
+            ),
+        )
+
+
 def test_missing_validation_metrics_fail_loudly():
     """Catches silently falling back to locked test metrics."""
     with pytest.raises(ValueError, match="validation_product_calibrated"):
@@ -144,3 +239,44 @@ def test_offline_compare_cli_writes_non_production_decision(tmp_path):
     assert exit_code == 0
     assert decision["advanced"] is True
     assert decision["production_approved"] is False
+
+
+@pytest.mark.parametrize("aliased_input", ("baseline", "candidate"))
+def test_offline_compare_cli_rejects_output_that_aliases_an_input(tmp_path, aliased_input):
+    """Catches a report comparison overwriting the evidence it just read."""
+    baseline_path = tmp_path / "baseline.json"
+    candidate_path = tmp_path / "candidate.json"
+    for path, report in (
+        (
+            baseline_path,
+            evaluation_report(
+                product_macro_f1=0.60,
+                phone_auprc=0.70,
+                ece=0.08,
+                coverage=0.75,
+            ),
+        ),
+        (
+            candidate_path,
+            evaluation_report(
+                product_macro_f1=0.62,
+                phone_auprc=0.70,
+                ece=0.08,
+                coverage=0.75,
+            ),
+        ),
+    ):
+        path.write_text(json.dumps(report), encoding="utf-8")
+    aliased_path = baseline_path if aliased_input == "baseline" else candidate_path
+    original_bytes = aliased_path.read_bytes()
+
+    with pytest.raises(SystemExit) as error:
+        main([
+            "offline-compare",
+            "--baseline", str(baseline_path),
+            "--candidate", str(candidate_path),
+            "--output", str(aliased_path),
+        ])
+
+    assert aliased_path.read_bytes() == original_bytes
+    assert error.value.code != 0

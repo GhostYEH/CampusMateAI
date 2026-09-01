@@ -18,6 +18,19 @@ from .temporal_train import train_temporal_model
 from .temporal_artifact import audit_temporal_artifact
 
 
+def resolve_output_path(
+    parser: argparse.ArgumentParser,
+    output_path: Path,
+    input_paths: tuple[tuple[str, Path], ...],
+) -> Path:
+    """Return a safe report path without allowing it to overwrite an input."""
+    resolved_output = output_path.resolve()
+    for option, input_path in input_paths:
+        if resolved_output == input_path.resolve():
+            parser.error(f"--output must not alias {option}")
+    return resolved_output
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="behavior-recognition",
@@ -164,11 +177,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"export complete: {onnx_path}")
         return 0
     if args.command == "offline-compare":
+        output_path = resolve_output_path(
+            parser,
+            args.output,
+            (("--baseline", args.baseline), ("--candidate", args.candidate)),
+        )
         baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
         candidate = json.loads(args.candidate.read_text(encoding="utf-8"))
         decision = compare_offline_candidate(candidate, baseline)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
             json.dumps(asdict(decision), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -178,9 +196,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0 if decision.advanced else 1
     if args.command == "temporal-audit":
+        output_path = resolve_output_path(
+            parser,
+            args.output,
+            (("--model", args.model), ("--model-card", args.model_card)),
+        )
         audit = audit_temporal_artifact(args.model, args.model_card)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
             json.dumps(asdict(audit), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
