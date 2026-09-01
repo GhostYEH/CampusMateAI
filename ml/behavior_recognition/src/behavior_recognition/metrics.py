@@ -13,6 +13,8 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
+from .constants import CLASS_NAMES, PRODUCT_CLASS_NAMES, product_label
+
 
 @dataclass(frozen=True)
 class EventInterval:
@@ -139,6 +141,37 @@ def expected_calibration_error(
 def multiclass_brier_score(probabilities: np.ndarray, labels: np.ndarray) -> float:
     one_hot = np.eye(probabilities.shape[1], dtype=np.float32)[labels]
     return float(np.mean(np.sum((probabilities - one_hot) ** 2, axis=1)))
+
+
+def project_product_probabilities(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    class_names: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Project source-class targets and probabilities into the product label space."""
+    labels = np.asarray(labels, dtype=np.int64)
+    probabilities = np.asarray(probabilities, dtype=np.float32)
+    if probabilities.ndim != 2 or labels.ndim != 1 or len(labels) != len(probabilities):
+        raise ValueError("labels and probabilities must contain the same number of samples")
+    if probabilities.shape[1] != len(class_names):
+        raise ValueError("probability columns must match the source class contract")
+    if len(class_names) != len(set(class_names)) or set(class_names) != set(CLASS_NAMES):
+        raise ValueError(f"source class contract must contain exactly {list(CLASS_NAMES)}")
+    if labels.size and (labels.min() < 0 or labels.max() >= len(class_names)):
+        raise ValueError("label index is outside the source class contract")
+
+    product_indices = {name: index for index, name in enumerate(PRODUCT_CLASS_NAMES)}
+    source_to_product = np.asarray(
+        [product_indices[product_label(name)] for name in class_names],
+        dtype=np.int64,
+    )
+    product_probabilities = np.zeros(
+        (len(probabilities), len(PRODUCT_CLASS_NAMES)),
+        dtype=np.float32,
+    )
+    for source_index, product_index in enumerate(source_to_product):
+        product_probabilities[:, product_index] += probabilities[:, source_index]
+    return source_to_product[labels], product_probabilities
 
 
 def classification_report(
