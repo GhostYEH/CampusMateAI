@@ -63,6 +63,7 @@ import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
 import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.R
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
@@ -86,6 +87,9 @@ data class FocusSessionCompletion(
     val conversationCount: Int,
     val aiSummary: String,
     val observationSummary: String,
+    val planTaskId: String? = null,
+    val nextStepTitle: String? = null,
+    val planComplete: Boolean = false,
 )
 
 /**
@@ -99,6 +103,8 @@ fun FocusSessionScreen(
     plannedDurationSeconds: Int,
     taskName: String,
     sessionMode: FocusSessionMode,
+    planTaskId: String? = null,
+    planRepository: FocusPlanRepository,
     onSessionCompleted: (FocusSessionCompletion) -> Unit,
 ) {
     val context = LocalContext.current
@@ -121,7 +127,11 @@ fun FocusSessionScreen(
     var conversationExpanded by rememberSaveable { mutableStateOf(false) }
     var observationDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var showEndConfirmation by rememberSaveable { mutableStateOf(false) }
-    var finishingSession by rememberSaveable { mutableStateOf(false) }
+    var finishingSession by remember { mutableStateOf(false) }
+    var timerExpired by rememberSaveable { mutableStateOf(false) }
+    var completionPrompted by rememberSaveable { mutableStateOf(false) }
+    var selfReport by rememberSaveable { mutableStateOf("") }
+    var completionError by rememberSaveable { mutableStateOf<String?>(null) }
     val activeFocusSession by focusRepository.activeSession.collectAsStateWithLifecycle()
     val focusScope = rememberCoroutineScope()
     val totalSeconds = plannedDurationSeconds.takeIf { it > 0 }
@@ -132,7 +142,7 @@ fun FocusSessionScreen(
     val completionCoordinator = remember(activeFocusSession?.id, manager, focusRepository) {
         FocusCompletionCoordinator(
             finishObservation = manager::finishFocusSession,
-            finishRemote = { summary -> focusRepository.finish(summary).isSuccess },
+            finishRemote = { summary, report -> focusRepository.finish(summary, report).isSuccess },
         )
     }
     // A focus visit is only left through its completion flow; it never returns to setup.
@@ -294,12 +304,50 @@ fun FocusSessionScreen(
             manager.detachPreviewAsync()
         }
     }
-    val completeSession: suspend () -> Unit = {
+    val completeSession: suspend (Boolean) -> Unit = completeSession@{ completePlanStep ->
         val actualSeconds = (totalSeconds - secondsLeft).coerceAtLeast(0)
-        val observation = completionCoordinator.complete(
-            actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
-        )
-        if (observation != null) {
+        val taskId = planTaskId
+        val sessionId = activeFocusSession?.id
+        completionError = null
+        val intentSaved = runCatching {
+            if (completePlanStep && taskId != null && sessionId != null) {
+                checkNotNull(planRepository.prepareStepCompletion(taskId, sessionId)) {
+                    "当前没有可完成的规划步骤"
+                }
+            } else if (taskId != null && sessionId != null) {
+                planRepository.discardPreparedCompletion(taskId, sessionId)
+            }
+        }.isSuccess
+        if (!intentSaved) {
+            completionError = "暂时无法保存完成状态，请重试"
+            finishingSession = false
+            return@completeSession
+        }
+        val completion = runCatching {
+            completionCoordinator.complete(
+                actualFocusMinutes = (actualSeconds / 60).coerceAtLeast(1),
+                selfReport = selfReport,
+                completePlanStep = completePlanStep,
+            )
+        }.getOrElse {
+            completionError = it.message ?: "暂时无法结束专注，请重试"
+            finishingSession = false
+            return@completeSession
+        }
+        if (completion != null) {
+            val updatedPlan = taskId?.let {
+                if (completion.completePlanStep && sessionId != null) {
+                    runCatching { planRepository.commitPreparedCompletion(it, sessionId) }
+                        .getOrNull()
+                        ?: planRepository.getPlan(it)
+                }
+                else planRepository.getPlan(it)
+            }
+            if (updatedPlan?.taskCompletionPending == true) {
+                planRepository.syncPendingTaskCompletions { pendingTaskId ->
+                    appRepository.completeTaskStrict(pendingTaskId).isSuccess
+                }
+            }
             val conversations = historyMessages.size + if (currentUserText.isNotBlank()) 1 else 0
             onSessionCompleted(
                 FocusSessionCompletion(
@@ -307,18 +355,22 @@ fun FocusSessionScreen(
                     taskName = taskName,
                     conversationCount = conversations,
                     aiSummary = "你完成了“$taskName”的这段专注。${if (conversations > 0) "我们一起交流了 $conversations 次，" else "你保持了安静投入，"}继续保持这个节奏。",
-                    observationSummary = observation.toCompanionSummary(),
+                    observationSummary = completion.summary.toCompanionSummary(),
+                    planTaskId = planTaskId,
+                    nextStepTitle = updatedPlan?.currentStep?.title,
+                    planComplete = updatedPlan?.isComplete == true,
                 ),
             )
         } else if (!completionCoordinator.isCompleted) {
             finishingSession = false
-            showEndConfirmation = false
+            showEndConfirmation = true
         }
     }
     LaunchedEffect(activeFocusSession?.id, secondsLeft, focusRunning) {
-        if (focusRunning && secondsLeft == 0 && !finishingSession) {
-            finishingSession = true
-            completeSession()
+        if (focusRunning && secondsLeft == 0 && !completionPrompted) {
+            completionPrompted = true
+            timerExpired = true
+            showEndConfirmation = true
         }
     }
 
@@ -386,21 +438,62 @@ fun FocusSessionScreen(
     }
     if (showEndConfirmation) {
         AlertDialog(
-            onDismissRequest = { if (!finishingSession) showEndConfirmation = false },
-            title = { Text("结束本次专注？") },
-            text = { Text("AI 将根据本次学习时长、交流和学习状态生成总结。") },
+            onDismissRequest = {
+                if (!finishingSession && !timerExpired) showEndConfirmation = false
+            },
+            title = { Text(if (timerExpired) "本次计时已完成" else "结束本次专注？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("AI 将根据本次学习时长、交流和学习状态生成总结。")
+                    OutlinedTextField(
+                        value = selfReport,
+                        onValueChange = { selfReport = it.take(2_000) },
+                        label = { Text("本次学习感受（选填）") },
+                        placeholder = { Text("例如：练习题比预想的难") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    completionError?.let { error ->
+                        Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     enabled = !finishingSession,
                     onClick = {
                         finishingSession = true
                         focusScope.launch {
-                            completeSession()
+                            completeSession(planTaskId != null)
                         }
                     },
-                ) { Text("结束并生成总结", color = Primary) }
+                ) {
+                    Text(
+                        if (planTaskId != null) "完成步骤并结束" else "结束并生成总结",
+                        color = Primary,
+                    )
+                }
             },
-            dismissButton = { TextButton(enabled = !finishingSession, onClick = { showEndConfirmation = false }) { Text("继续专注") } },
+            dismissButton = {
+                Row {
+                    if (!timerExpired) {
+                        TextButton(
+                            enabled = !finishingSession,
+                            onClick = { showEndConfirmation = false },
+                        ) { Text("继续专注") }
+                    }
+                    if (planTaskId != null) {
+                        TextButton(
+                            enabled = !finishingSession,
+                            onClick = {
+                                finishingSession = true
+                                focusScope.launch { completeSession(false) }
+                            },
+                        ) { Text("仅结束专注") }
+                    }
+                }
+            },
         )
     }
 }

@@ -36,23 +36,35 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    suspend fun refresh(): Result<Unit> = runCatching {
+    suspend fun refresh(): Result<Unit> {
         _loading.value = true
+        val activeResult = refreshActiveSession()
+        val historyResult = refreshHistoryAndGoal()
+        _loading.value = false
+        return activeResult.mapCatching { historyResult.getOrThrow() }
+    }
+
+    suspend fun refreshHistoryAndGoal(): Result<Unit> = runCatching {
         val completed = api.listStudySessions(status = "completed")
-        val active = api.activeStudySession()
         val goal = api.getDailyStudyGoal()
         check(completed.isSuccessful) { requestError("加载专注记录", completed.code()) }
-        check(active.isSuccessful) { requestError("恢复专注会话", active.code()) }
         check(goal.isSuccessful) { requestError("加载每日目标", goal.code()) }
         val snapshots = completed.body().orEmpty().map(::toSnapshot)
         val mapped = RemoteFocusRepository(snapshots, goal.body()!!.target_minutes)
         _records.value = mapped.records
         _stats.value = mapped.stats
-        _activeSession.value = active.body()?.let(::toSnapshot)
+    }.onFailure { _error.value = it.message ?: "网络请求失败" }
+
+    suspend fun refreshActiveSession(): Result<StudySessionSnapshot?> = runCatching {
+        // Clear first so an account transition cannot retain the previous account's session.
+        _activeSession.value = null
+        val response = api.activeStudySession()
+        check(response.isSuccessful) { requestError("恢复专注会话", response.code()) }
+        response.body()?.let(::toSnapshot)
+    }.onSuccess {
+        _activeSession.value = it
         _error.value = null
-    }.onFailure { _error.value = it.message ?: "网络请求失败" }.also {
-        _loading.value = false
-    }
+    }.onFailure { _error.value = it.message ?: "网络请求失败" }
 
     suspend fun start(mode: FocusMode, goal: String?, taskId: String?, plannedDurationSeconds: Int = mode.totalSeconds): Result<StudySessionSnapshot> =
         runCatching {
@@ -70,12 +82,35 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
 
     suspend fun resume(): Result<StudySessionSnapshot> = mutateActive { api.resumeStudySession(it.id) }
 
-    suspend fun finish(summary: FocusSessionSummary? = null): Result<StudySessionSnapshot> = mutateActive {
-        api.finishStudySession(
-            it.id,
-            StudySessionFinishRequest(behavior_summary = summary?.behaviorSummary?.toDto()),
-        )
-    }.onSuccess { refresh() }
+    suspend fun finish(
+        summary: FocusSessionSummary? = null,
+        selfReport: String? = null,
+    ): Result<StudySessionSnapshot> = runCatching {
+        val current = checkNotNull(_activeSession.value) { "当前没有进行中的专注会话" }
+        val response = runCatching {
+            api.finishStudySession(
+                current.id,
+                StudySessionFinishRequest(
+                    self_report = selfReport?.trim()?.takeIf { report -> report.isNotEmpty() },
+                    behavior_summary = summary?.behaviorSummary?.toDto(),
+                ),
+            )
+        }.getOrNull()
+        val completedDto = if (response?.isSuccessful == true) {
+            checkNotNull(response.body()) { "专注结束响应为空" }
+        } else {
+            val completed = api.listStudySessions(status = "completed")
+            check(completed.isSuccessful) { "无法确认专注会话是否已结束" }
+            checkNotNull(completed.body().orEmpty().firstOrNull { it.id == current.id }) {
+                "无法结束专注会话"
+            }
+        }
+        toSnapshot(completedDto)
+    }.onSuccess {
+        _activeSession.value = null
+        _error.value = null
+        refresh()
+    }.onFailure { _error.value = it.message ?: "网络请求失败" }
 
     suspend fun updateGoal(minutes: Int): Result<Unit> = runCatching {
         val response = api.updateDailyStudyGoal(StudyGoalUpdateRequest(minutes))
@@ -107,6 +142,7 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
 
     private fun toSnapshot(dto: StudySessionDto) = StudySessionSnapshot(
         id = dto.id,
+        relatedTaskId = dto.related_task_id,
         startedAt = dto.started_at,
         endedAt = dto.ended_at,
         plannedDurationSeconds = dto.planned_duration_seconds,

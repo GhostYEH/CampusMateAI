@@ -650,22 +650,24 @@ fun AppNavHost(
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")
                 },
-                onOpenAssistant = { durationSeconds, taskName, sessionMode ->
+                onOpenAssistant = { durationSeconds, taskName, sessionMode, taskId ->
                     val encodedTaskName = URLEncoder.encode(taskName, Charsets.UTF_8.name())
-                    go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}")
+                    go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}&taskId=${Uri.encode(taskId.orEmpty())}")
                 },
                 onOpenHistory = { go("focus_history") },
+                planRepository = modules.focusPlans,
             )
         }
         composable("focus_history") {
             FocusHistoryScreen(repository = modules.focus, onBack = { navController.popBackStack() })
         }
         composable(
-            route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}",
+            route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}&taskId={taskId}",
             arguments = listOf(
                 navArgument("durationSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("sessionMode") { type = NavType.StringType; defaultValue = "QUIET" },
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { backStackEntry ->
             FocusSessionScreen(
@@ -673,6 +675,8 @@ fun AppNavHost(
                 focusRepository = modules.focus,
                 plannedDurationSeconds = backStackEntry.arguments?.getInt("durationSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
+                planTaskId = backStackEntry.arguments?.getString("taskId")?.takeIf { it.isNotBlank() },
+                planRepository = modules.focusPlans,
                 sessionMode = com.example.campusai.data.model.FocusSessionMode.entries.firstOrNull {
                     it.name == backStackEntry.arguments?.getString("sessionMode")
                 } ?: com.example.campusai.data.model.FocusSessionMode.QUIET,
@@ -682,18 +686,22 @@ fun AppNavHost(
                     val task = Uri.encode(completion.taskName)
                     val summary = Uri.encode(completion.aiSummary)
                     val observation = Uri.encode(completion.observationSummary)
-                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation")
+                    val nextStep = Uri.encode(completion.nextStepTitle.orEmpty())
+                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}")
                 },
             )
         }
         composable(
-            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}",
+            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}",
             arguments = listOf(
                 navArgument("actualSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("conversationCount") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("aiSummary") { type = NavType.StringType; defaultValue = "你完成了这段专注。" },
                 navArgument("observationSummary") { type = NavType.StringType; defaultValue = "你的学习状态整体稳定。" },
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("nextStepTitle") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("planComplete") { type = NavType.BoolType; defaultValue = false },
             ),
         ) { backStackEntry ->
             val returnToFocusHome = {
@@ -704,14 +712,25 @@ fun AppNavHost(
                     launchSingleTop = true
                 }
             }
+            val startNextStep = {
+                val taskId = backStackEntry.arguments?.getString("taskId")?.takeIf { it.isNotBlank() }
+                val planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false
+                if (taskId != null && !planComplete) {
+                    navController.navigate("focus?taskId=${Uri.encode(taskId)}")
+                } else {
+                    returnToFocusHome()
+                }
+            }
             FocusSummaryScreen(
                 actualSeconds = backStackEntry.arguments?.getInt("actualSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
                 conversationCount = backStackEntry.arguments?.getInt("conversationCount") ?: 0,
                 aiSummary = backStackEntry.arguments?.getString("aiSummary") ?: "你完成了这段专注。",
                 observationSummary = backStackEntry.arguments?.getString("observationSummary") ?: "你的学习状态整体稳定。",
+                nextStepTitle = backStackEntry.arguments?.getString("nextStepTitle")?.takeIf { it.isNotBlank() },
+                planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false,
                 onReturnHome = returnToFocusHome,
-                onStartNext = returnToFocusHome,
+                onStartNext = startNextStep,
             )
         }
 

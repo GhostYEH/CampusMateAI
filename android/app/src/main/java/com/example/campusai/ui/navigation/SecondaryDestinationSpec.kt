@@ -57,6 +57,7 @@ private val rootRoutes = setOf(
     "tasks",
     "profile",
     "counselor",
+    "lostfound",
 )
 
 private val profileFlowRoutes = setOf(

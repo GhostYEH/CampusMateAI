@@ -13,6 +13,7 @@ class ModuleRepositories(
     val classrooms: ClassroomRepository,
     val services: ServiceRepository,
     val focus: ApiFocusRepository,
+    val focusPlans: FocusPlanRepository,
     val lostFound: LostFoundRepository,
     val community: CommunityRepository,
 ) {
@@ -27,6 +28,16 @@ class ModuleRepositories(
                 classrooms = LocalClassroomRepository(),
                 services = LocalServiceRepository(storage),
                 focus = ApiFocusRepository(ApiClient.api),
+                focusPlans = FocusPlanRepository(
+                    storage = storage,
+                    api = ApiClient.api,
+                    accountKey = {
+                        appRepository.session.value?.accountId
+                            ?.ifBlank { null }
+                            ?: appRepository.session.value?.studentId
+                            ?: "anonymous"
+                    },
+                ),
                 lostFound = LocalLostFoundRepository(storage),
                 community = CommunityRepository(),
             )

@@ -741,9 +741,53 @@ class AppRepository(
                         _tasks.value = list
                         return@withLock
                     }
-                } catch (_: Exception) { /* 落入本地回退 */ }
+                } catch (_: Exception) { /* 保持服务端任务的权威状态 */ }
+                _taskError.value = "待办状态同步失败，请稍后重试"
+                return@withLock
             }
+            if (!_mockMode.value && !id.startsWith("local_")) {
+                _taskError.value = "当前离线，暂时无法更新云端待办"
+                return@withLock
+            }
+            list[idx] = current.copy(
+                done = newDone,
+                completedAt = if (newDone) java.time.Instant.now().toString() else null,
+            )
+            _tasks.value = list
             return@withLock
+        }
+    }
+
+    /** Completes a task only when the authoritative mutation succeeds. */
+    suspend fun completeTaskStrict(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val list = _tasks.value.toMutableList()
+            val idx = list.indexOfFirst { it.id == id }
+            check(idx >= 0) { "待办不存在" }
+            val current = list[idx]
+            if (current.done) return@runCatching
+
+            if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+                val response = ApiClient.api.completeTask(id)
+                check(response.isSuccessful) { "待办同步失败 (${response.code()})" }
+                val dto = checkNotNull(response.body()) { "待办同步响应为空" }
+                check(dto.status == "completed") { "服务端未确认待办完成" }
+                list[idx] = current.copy(
+                    done = true,
+                    title = dto.title,
+                    due = dto.deadline ?: current.due,
+                    course = dto.source_name ?: current.course,
+                    description = dto.description ?: current.description,
+                    completedAt = dto.updated_at,
+                )
+            } else {
+                check(id.startsWith("local_") || _mockMode.value) { "当前离线，待办将在联网后同步" }
+                list[idx] = current.copy(
+                    done = true,
+                    completedAt = java.time.Instant.now().toString(),
+                )
+            }
+            _tasks.value = list
         }
     }
 

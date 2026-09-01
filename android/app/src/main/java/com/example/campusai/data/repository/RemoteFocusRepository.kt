@@ -12,6 +12,7 @@ import java.time.format.DateTimeFormatter
 
 data class StudySessionSnapshot(
     val id: String,
+    val relatedTaskId: String? = null,
     val startedAt: String,
     val endedAt: String?,
     val plannedDurationSeconds: Int = 0,
