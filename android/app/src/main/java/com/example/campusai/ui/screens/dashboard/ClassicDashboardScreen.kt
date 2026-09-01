@@ -98,7 +98,7 @@ private val HeroMist = Color(0xFFDCE5FF)
 private val WarmOrange = Color(0xFFFFA43A)
 
 @Composable
-fun DashboardScreen(
+fun ClassicDashboardScreen(
     repository: AppRepository,
     onNavigate: (String) -> Unit,
 ) {

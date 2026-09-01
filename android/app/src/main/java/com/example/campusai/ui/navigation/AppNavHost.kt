@@ -34,7 +34,7 @@ import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.classrooms.ClassroomsScreen
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.CoursesScreen
-import com.example.campusai.ui.screens.dashboard.DashboardScreen
+import com.example.campusai.ui.screens.dashboard.ClassicDashboardScreen
 import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
 import com.example.campusai.ui.screens.exams.ExamsScreen
@@ -207,7 +207,7 @@ fun AppNavHost(
         },
             ) {
         composable("home") {
-            DashboardScreen(repository) { route ->
+            ClassicDashboardScreen(repository) { route ->
                 navController.navigate(route) {
                     popUpTo("home") { inclusive = false }
                     launchSingleTop = true
