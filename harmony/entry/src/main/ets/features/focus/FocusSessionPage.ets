@@ -2,6 +2,7 @@ import { ChatMessage, FocusMode, StudySession } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 import { FocusPresentationState } from './FocusPresentationState';
+import { FocusDisplayMode, FocusSceneId, FocusSceneOption, FocusSceneState } from './FocusSceneState';
 import { FocusSessionMode } from './FocusPage';
 import { FocusSessionState } from './FocusSessionState';
 import { FocusRobot } from './FocusRobot';
@@ -26,6 +27,8 @@ export struct FocusSessionPage {
   @State showChat: boolean = false;
   @State actionPending: boolean = false;
   @State showFinishChoice: boolean = false;
+  @State displayMode: FocusDisplayMode = FocusSceneState.defaultDisplayMode();
+  @State selectedScene: FocusSceneId = 'RAINY_ROOM';
   private timerId: number = -1;
   onBack: () => void = () => {};
   onPause: () => Promise<boolean> = async () => false;
@@ -36,6 +39,10 @@ export struct FocusSessionPage {
   onSend: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  glassSurface(): string { return this.darkMode ? '#B8142738' : '#B8FFFFFF'; }
+  glassBorder(): string { return this.darkMode ? '#559CC7D0' : '#99FFFFFF'; }
+  glassShadow(): string { return this.darkMode ? '#66000000' : '#330D2340'; }
+  glassBlur(): number { return this.displayMode === 'IMMERSIVE' ? 24 : 16; }
   aboutToAppear(): void {
     this.secondsLeft = this.session === undefined ? this.plannedSeconds :
       FocusSessionState.remainingSeconds(this.session, Date.now(), this.plannedSeconds);
@@ -122,7 +129,7 @@ export struct FocusSessionPage {
       }.width('100%').alignItems(VerticalAlign.Center)
       if (this.voiceState.transcript.length > 0) Text(`我：${this.voiceState.transcript}`).fontColor(this.palette().muted).fontSize(11).maxLines(2).width('100%')
       if (this.voiceState.answer.length > 0) Text(`CampusMate：${this.voiceState.answer}`).fontColor(this.palette().text).fontSize(11).lineHeight(16).maxLines(3).width('100%')
-    }.width('100%').padding(12).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18)
+    }.width('100%').padding(12).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(18).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder FinishChoice() {
     if (this.showFinishChoice) {
@@ -134,7 +141,7 @@ export struct FocusSessionPage {
           Button('仅结束专注').layoutWeight(1).height(44).backgroundColor(this.palette().soft).fontColor(this.palette().primary).borderRadius(16).onClick(() => this.finishSessionWithPlan(false))
         }.width('100%')
         Button('继续专注').width('100%').height(40).backgroundColor(this.palette().background).fontColor(this.palette().muted).borderRadius(14).onClick(() => this.showFinishChoice = false)
-      }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20).position({ bottom: 18 })
+      }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(20).shadow({ radius: 20, color: this.glassShadow(), offsetY: 6 }).position({ bottom: 18 })
     }
   }
   @Builder Timer() {
@@ -145,7 +152,7 @@ export struct FocusSessionPage {
         Text(this.timeText()).fontColor(this.palette().text).fontSize(43).fontWeight(FontWeight.Bold)
         Text(this.isPaused() ? '已暂停' : '专注进行中').fontColor(this.palette().muted).fontSize(12)
       }.alignItems(HorizontalAlign.Center)
-    }.width(244).height(244)
+    }.width(244).height(244).padding(10).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(32).shadow({ radius: 24, color: this.glassShadow(), offsetY: 7 })
   }
   @Builder SensingCard() {
     Column({ space: 7 }) {
@@ -155,7 +162,7 @@ export struct FocusSessionPage {
       }.width('100%')
       Text(this.sessionMode === 'SMART_GUARD' ? this.assistDetail : '选择智能监督后，系统会在设备本地辅助观察学习状态。').fontColor(this.palette().muted).fontSize(11).lineHeight(17)
       if (this.sessionMode === 'SMART_GUARD' && this.assistLabel.length > 0) Text(`${this.assistLabel} · ${Math.round(this.assistConfidence * 100)}%`).fontColor(this.palette().primary).fontSize(11).fontWeight(FontWeight.Bold)
-    }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(19)
+    }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(19).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder ChatOverlay() {
     if (this.showChat) {
@@ -168,26 +175,56 @@ export struct FocusSessionPage {
           Stack({ alignContent: Alignment.Center }) { if (this.sending) LoadingProgress().width(17).height(17).color('#FFFFFFFF'); else SymbolGlyph($r('sys.symbol.paperplane_fill')).fontSize(18).fontColor(['#FFFFFFFF']) }.width(44).height(44).backgroundColor(this.palette().primary).borderRadius(22).onClick(() => { if (!this.sending && this.input.trim().length > 0) this.onSend(); })
         }.width('100%').alignItems(VerticalAlign.Center)
         Text('文字和实时语音共用同一位 CampusMate 陪伴。').fontColor(this.palette().muted).fontSize(10)
-      }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20).transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 12) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseOut }))
+      }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(20).shadow({ radius: 20, color: this.glassShadow(), offsetY: 6 }).transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 12) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseOut }))
     }
+  }
+  @Builder SceneBackdrop() {
+    if (this.selectedScene === 'QUIET_LIBRARY') {
+      Image($r('app.media.focus_scene_quiet_library')).width('100%').height('100%').objectFit(ImageFit.Cover)
+    } else if (this.selectedScene === 'FOREST_MORNING') {
+      Image($r('app.media.focus_scene_forest_morning')).width('100%').height('100%').objectFit(ImageFit.Cover)
+    } else {
+      Image($r('app.media.focus_scene_rainy_room')).width('100%').height('100%').objectFit(ImageFit.Cover)
+    }
+    Column() {}.width('100%').height('100%').linearGradient({ angle: 180, colors: this.darkMode ? [['#99243B59', 0], ['#1113263A', 0.35], ['#D9000000', 1]] : [['#553B5575', 0], ['#11000000', 0.5], ['#A6000000', 1]] })
+  }
+  @Builder SceneTools() {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        SymbolGlyph($r('sys.symbol.star_fill')).fontSize(17).fontColor([this.palette().primary])
+        Column({ space: 2 }) { Text(FocusSceneState.scene(this.selectedScene).title).fontColor('#FFFFFFFF').fontSize(13).fontWeight(FontWeight.Bold); Text('选择一个适合当下的专注场景').fontColor('#D9FFFFFF').fontSize(10) }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+        Text(this.displayMode === 'IMMERSIVE' ? '专注空间' : '普通模式').fontColor('#FFFFFFFF').fontSize(11).fontWeight(FontWeight.Bold).padding({ left: 9, right: 9, top: 6, bottom: 6 }).backgroundColor('#3AFFFFFF').borderRadius(12).onClick(() => { this.displayMode = FocusSceneState.toggleDisplayMode(this.displayMode); })
+      }.width('100%').alignItems(VerticalAlign.Center)
+      Row({ space: 6 }) {
+        ForEach(FocusSceneState.scenes(), (scene: FocusSceneOption) => {
+          Text(scene.title).fontColor(scene.id === this.selectedScene ? this.palette().primary : '#E6FFFFFF').fontSize(10).fontWeight(FontWeight.Bold).layoutWeight(1).textAlign(TextAlign.Center).padding({ top: 7, bottom: 7 }).backgroundColor(scene.id === this.selectedScene ? '#EEFFFFFF' : '#2EFFFFFF').borderRadius(12).onClick(() => { this.selectedScene = scene.id; })
+        }, (scene: FocusSceneOption) => scene.id)
+      }.width('100%')
+    }.width('100%').padding(12).backgroundColor('#99142738').backdropBlur(24).border({ width: 1, color: '#669CC7D0' }).borderRadius(22).shadow({ radius: 20, color: '#66000000', offsetY: 7 })
   }
   build() {
     Stack() {
-      Column({ space: 15 }) {
-      Row() { SymbolGlyph($r('sys.symbol.arrow_left')).fontSize(20).fontColor([this.palette().text]).onClick(() => this.onBack()); Blank(); Text('专注空间').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold); Blank(); SymbolGlyph($r('sys.symbol.message')).fontSize(20).fontColor([this.palette().primary]).onClick(() => this.showChat = !this.showChat) }.width('100%').padding({ left: 18, right: 18, top: 18 })
-      this.Guide(); Text(this.voiceState.phase === 'IDLE' ? this.guideStatus() : this.voiceState.message).fontColor(this.palette().muted).fontSize(13).width('100%').textAlign(TextAlign.Center)
-      this.Timer();
-      Row({ space: 10 }) {
-        Button(this.isPaused() ? '继续' : '暂停').layoutWeight(1).height(50)
-          .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(19)
-          .enabled(!this.actionPending).onClick(() => this.togglePause())
-        Button('结束').layoutWeight(1).height(50).backgroundColor(this.palette().soft)
-          .fontColor(this.palette().primary).borderRadius(19).enabled(!this.actionPending)
-          .onClick(() => this.finishSession())
-      }.width('100%')
-      this.VoiceBar(); this.SensingCard(); this.ChatOverlay(); Blank().height(4)
-      }.width('100%').height('100%').padding({ left: 18, right: 18, bottom: 22 }).alignItems(HorizontalAlign.Center).backgroundColor(this.palette().background)
+      if (this.displayMode === 'IMMERSIVE') this.SceneBackdrop()
+      Column({ space: 12 }) {
+        Row() { SymbolGlyph($r('sys.symbol.arrow_left')).fontSize(20).fontColor([this.displayMode === 'IMMERSIVE' ? '#FFFFFFFF' : this.palette().text]).onClick(() => this.onBack()); Blank(); Text(this.displayMode === 'IMMERSIVE' ? '专注空间' : '普通模式').fontColor(this.displayMode === 'IMMERSIVE' ? '#FFFFFFFF' : this.palette().text).fontSize(16).fontWeight(FontWeight.Bold); Blank(); Text(this.displayMode === 'IMMERSIVE' ? '普通模式' : '专注空间').fontColor(this.displayMode === 'IMMERSIVE' ? '#FFFFFFFF' : this.palette().primary).fontSize(11).fontWeight(FontWeight.Bold).padding({ left: 8, right: 8, top: 6, bottom: 6 }).backgroundColor(this.displayMode === 'IMMERSIVE' ? '#3AFFFFFF' : this.palette().soft).borderRadius(12).onClick(() => { this.displayMode = FocusSceneState.toggleDisplayMode(this.displayMode); }); SymbolGlyph($r('sys.symbol.message')).fontSize(20).fontColor([this.displayMode === 'IMMERSIVE' ? '#FFFFFFFF' : this.palette().primary]).margin({ left: 8 }).onClick(() => this.showChat = !this.showChat) }.width('100%').padding({ left: 18, right: 18, top: 18 })
+        if (this.displayMode === 'IMMERSIVE') this.SceneTools()
+        Scroll() {
+          Column({ space: 14 }) {
+            this.Guide(); Text(this.voiceState.phase === 'IDLE' ? this.guideStatus() : this.voiceState.message).fontColor(this.displayMode === 'IMMERSIVE' ? '#E6FFFFFF' : this.palette().muted).fontSize(13).width('100%').textAlign(TextAlign.Center)
+            this.Timer();
+            Row({ space: 10 }) {
+              Button(this.isPaused() ? '继续' : '暂停').layoutWeight(1).height(50)
+                .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(19)
+                .enabled(!this.actionPending).onClick(() => this.togglePause())
+              Button('结束').layoutWeight(1).height(50).backgroundColor(this.palette().soft)
+                .fontColor(this.palette().primary).borderRadius(19).enabled(!this.actionPending)
+                .onClick(() => this.finishSession())
+            }.width('100%')
+            this.VoiceBar(); this.SensingCard(); this.ChatOverlay(); Blank().height(4)
+          }.width('100%').padding({ left: 18, right: 18, bottom: 22 }).alignItems(HorizontalAlign.Center)
+        }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+      }.width('100%').height('100%').backgroundColor(this.displayMode === 'IMMERSIVE' ? '#33000000' : this.palette().background)
       this.FinishChoice()
-    }.width('100%').height('100%')
+    }.width('100%').height('100%').backgroundColor(this.displayMode === 'IMMERSIVE' ? '#FF0B1825' : this.palette().background)
   }
 }

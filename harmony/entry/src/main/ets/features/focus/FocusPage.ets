@@ -42,6 +42,9 @@ export struct FocusPage {
   onOpenPlan: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
+  glassSurface(): string { return this.darkMode ? '#B8142738' : '#B8FFFFFF'; }
+  glassBorder(): string { return this.darkMode ? '#559CC7D0' : '#99FFFFFF'; }
+  glassShadow(): string { return this.darkMode ? '#66000000' : '#330D2340'; }
   aboutToAppear(): void { this.playTypewriter(); }
   aboutToDisappear(): void { this.stopTypewriter(); this.stopCountdown(); }
   stopTypewriter(): void { if (this.typewriterTimer >= 0) { clearInterval(this.typewriterTimer); this.typewriterTimer = -1; } }
@@ -115,7 +118,7 @@ export struct FocusPage {
       Row({ space: 8 }) { this.DurationChip(25, '25 分钟'); this.DurationChip(45, '45 分钟'); this.DurationChip(0, '自定义') }.width('100%')
       if (this.selectedMinutes === 0) TextInput({ text: this.customMinutes, placeholder: '5–240 分钟' }).width('100%').height(46).fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().background).border({ width: 1, color: this.palette().line }).borderRadius(14).onChange((value: string) => { this.customMinutes = value.replace(/[^0-9]/g, ''); })
       Button('下一步').width('100%').height(48).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(18).onClick(() => this.changeStep(FocusPresentationState.nextLobbyStep('ASK_DURATION')))
-    }.width('100%').padding(15).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+    }.width('100%').padding(15).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder ModePicker() {
     Column({ space: 9 }) {
@@ -128,7 +131,7 @@ export struct FocusPage {
         }.width('100%').padding(11).backgroundColor(option.id === this.sessionMode ? this.palette().soft : this.palette().background).border({ width: 1, color: option.id === this.sessionMode ? this.palette().primary : this.palette().line }).borderRadius(17).alignItems(VerticalAlign.Center).onClick(() => { this.sessionMode = option.id; })
       }, (option: FocusModeOption) => option.id)
       Button('确认方式').width('100%').height(48).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(18).onClick(() => this.changeStep(FocusPresentationState.nextLobbyStep('ASK_MODE')))
-    }.width('100%').padding(15).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+    }.width('100%').padding(15).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder Confirmation() {
     Column({ space: 12 }) {
@@ -137,7 +140,7 @@ export struct FocusPage {
       if (this.countdown > 0) Text(this.countdown.toString()).fontColor(this.palette().primary).fontSize(44).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center)
       else Button('进入专注空间').width('100%').height(52).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(20).scale({ x: this.pressed ? MotionSpec.scale(this.reduceMotion, 0.95) : 1, y: this.pressed ? MotionSpec.scale(this.reduceMotion, 0.95) : 1 }).animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut }).onClick(() => { this.pressed = true; setTimeout(() => { this.pressed = false; }, MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS)); this.startCountdown(); })
       Text('学习状态辅助只在智能监督且已开始专注时运行，画面不会上传或保存。').fontColor(this.palette().muted).fontSize(10).lineHeight(15)
-    }.width('100%').padding(17).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+    }.width('100%').padding(17).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder Setup() {
     if (this.activeSession !== undefined &&
@@ -161,7 +164,7 @@ export struct FocusPage {
     Row({ space: 10 }) {
       Stack({ alignContent: Alignment.Center }) { SymbolGlyph($r('sys.symbol.eye')).fontSize(18).fontColor([this.palette().success]) }.width(40).height(40).backgroundColor(this.palette().soft).borderRadius(14)
       Column({ space: 3 }) { Text('学习状态辅助').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold); Text(this.focusAssistDetail).fontColor(this.palette().muted).fontSize(10).maxLines(2); if (this.focusAssistLabel.length > 0) Text(`${this.focusAssistLabel} · ${Math.round(this.focusAssistConfidence * 100)}%`).fontColor(this.palette().primary).fontSize(10) }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-    }.width('100%').padding(13).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18).alignItems(VerticalAlign.Center)
+    }.width('100%').padding(13).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(18).shadow({ radius: 16, color: this.glassShadow(), offsetY: 4 }).alignItems(VerticalAlign.Center)
   }
   @Builder PlanPreview() {
     Column({ space: 7 }) {
@@ -171,13 +174,13 @@ export struct FocusPage {
         Text(this.plan.taskTitle).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold).maxLines(1)
         Text(this.currentPlanStep() === undefined ? '全部步骤已完成，继续保持。' : `当前步骤 · ${this.currentPlanStep()?.title} · ${this.currentPlanStep()?.estimatedMinutes} 分钟`).fontColor(this.palette().muted).fontSize(11).maxLines(2)
       }
-    }.width('100%').padding(13).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18).onClick(() => this.onOpenPlan())
+    }.width('100%').padding(13).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(18).shadow({ radius: 16, color: this.glassShadow(), offsetY: 4 }).onClick(() => this.onOpenPlan())
   }
   @Builder Stat(label: string, value: string, unit: string, symbol: Resource) {
     Column({ space: 4 }) { SymbolGlyph(symbol).fontSize(19).fontColor([this.palette().primary]); Row({ space: 2 }) { Text(value).fontColor(this.palette().text).fontSize(20).fontWeight(FontWeight.Bold); Text(unit).fontColor(this.palette().muted).fontSize(10) }.alignItems(VerticalAlign.Bottom); Text(label).fontColor(this.palette().muted).fontSize(10) }.layoutWeight(1).alignItems(HorizontalAlign.Center)
   }
   @Builder Stats() {
-    Row({ space: 8 }) { this.Stat('累计专注', this.totalMinutes().toString(), '分钟', $r('sys.symbol.timer')); this.Stat('完成次数', this.completed().length.toString(), '次', $r('sys.symbol.checkmark_circle')); this.Stat('正在进行', this.activeSession === undefined ? '0' : '1', '次', $r('sys.symbol.flame')) }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+    Row({ space: 8 }) { this.Stat('累计专注', this.totalMinutes().toString(), '分钟', $r('sys.symbol.timer')); this.Stat('完成次数', this.completed().length.toString(), '次', $r('sys.symbol.checkmark_circle')); this.Stat('正在进行', this.activeSession === undefined ? '0' : '1', '次', $r('sys.symbol.flame')) }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   @Builder History() {
     Column({ space: 2 }) {
@@ -188,7 +191,7 @@ export struct FocusPage {
         Row({ space: 10 }) { Stack({ alignContent: Alignment.Center }) { SymbolGlyph($r('sys.symbol.stopwatch')).fontSize(18).fontColor([this.palette().primary]) }.width(39).height(39).backgroundColor(this.palette().soft).borderRadius(13); Column({ space: 3 }) { Text(item.goal ?? '专注学习').fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold).maxLines(1); Text(`${Math.max(1, Math.floor(item.duration_seconds / 60))} 分钟 · ${item.status === 'completed' ? '已完成' : '进行中'}`).fontColor(this.palette().muted).fontSize(10) }.layoutWeight(1).alignItems(HorizontalAlign.Start) }.width('100%').padding({ top: 9, bottom: 9 }).alignItems(VerticalAlign.Center)
         if (index < Math.min(this.sessions.length, 4) - 1) Divider().color(this.palette().line)
       }, (item: StudySession) => item.id)
-    }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20)
+    }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(20).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }
   build() {
     Column() {
