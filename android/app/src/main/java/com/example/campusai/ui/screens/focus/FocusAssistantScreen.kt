@@ -58,6 +58,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.PresenceState
+import com.example.campusai.data.focus.scene.FocusScenePreferenceStore
+import com.example.campusai.data.focus.scene.FocusSceneSettings
 import com.example.campusai.data.focus.voice.AndroidSpeechRecognizerTranscriber
 import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
 import com.example.campusai.data.focus.voice.FocusVoiceController
@@ -138,6 +140,14 @@ fun FocusSessionScreen(
     var completionPrompted by rememberSaveable { mutableStateOf(false) }
     var selfReport by rememberSaveable { mutableStateOf("") }
     var completionError by rememberSaveable { mutableStateOf<String?>(null) }
+    var displayMode by rememberSaveable { mutableStateOf(FocusExecutionDisplayMode.DEFAULT) }
+    val immersiveMode = displayMode == FocusExecutionDisplayMode.IMMERSIVE
+    val scenePreferenceStore = remember(context) { FocusScenePreferenceStore(context) }
+    var sceneSettings by remember(scenePreferenceStore) { mutableStateOf(scenePreferenceStore.load()) }
+    val updateSceneSettings: (FocusSceneSettings) -> Unit = { nextSettings ->
+        sceneSettings = nextSettings
+        scenePreferenceStore.save(nextSettings)
+    }
     val activeFocusSession by focusRepository.activeSession.collectAsStateWithLifecycle()
     val focusScope = rememberCoroutineScope()
     val totalSeconds = plannedDurationSeconds.takeIf { it > 0 }
@@ -380,67 +390,87 @@ fun FocusSessionScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Background)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    start = 16.dp,
-                    top = 12.dp,
-                    end = 16.dp,
-                    bottom = floatingDockContentBottomPadding(
-                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                    ) + 8.dp,
-                ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+    FocusAmbientPlaybackEffect(
+        settings = sceneSettings,
+        sessionRunning = immersiveMode && focusRunning,
+        appForeground = immersiveMode && appForeground,
+        phase = realtimeStatus,
+    )
+
+    if (immersiveMode) {
+        FocusSceneStage(
+            scene = sceneSettings.scene,
+            modifier = Modifier.fillMaxSize(),
+            robotContent = {},
         ) {
-            Text("专注空间", color = TextPrimary, fontSize = 24.sp, style = MaterialTheme.typography.headlineSmall)
-            FocusSpaceGuide(phase = realtimeStatus, onInterrupt = voiceController::interruptRealtime)
-            FocusSpaceTimer(secondsLeft = secondsLeft, totalSeconds = totalSeconds, taskName = taskName, paused = focusPaused)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    enabled = focusRunning || focusPaused,
-                    shape = RoundedCornerShape(18.dp),
-                ) { Icon(if (focusRunning) Icons.Default.Pause else Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text(if (focusRunning) "暂停" else "继续") }
-                Button(
-                    onClick = { showEndConfirmation = true },
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    enabled = !finishingSession,
-                ) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(if (finishingSession) "正在生成总结" else "结束专注") }
-            }
-            FocusSensingSystem(
-                phase = realtimeStatus,
-                errorMessage = voiceError,
-                userText = currentUserText,
-                aiText = currentAiText,
-                enabled = observationEnabled,
-                state = continuityState,
+            FocusExecutionContent(
+                immersiveMode = true,
+                sceneSettings = sceneSettings,
+                onSceneSettingsChange = updateSceneSettings,
+                onSwitchDisplayMode = { displayMode = FocusExecutionDisplayMode.toggled(displayMode) },
+                realtimeStatus = realtimeStatus,
+                voiceError = voiceError,
+                currentUserText = currentUserText,
+                currentAiText = currentAiText,
+                observationEnabled = observationEnabled,
+                continuityState = continuityState,
                 sessionMode = sessionMode,
-                expanded = observationDetailsExpanded,
+                observationDetailsExpanded = observationDetailsExpanded,
                 expressionLabel = expressionResult?.label?.name,
                 presence = presence.state,
-                reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
+                gentleReminder = gentleReminder,
                 onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
                 onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
+                onInterrupt = voiceController::interruptRealtime,
+                secondsLeft = secondsLeft,
+                totalSeconds = totalSeconds,
+                taskName = taskName,
+                focusPaused = focusPaused,
+                focusRunning = focusRunning,
+                onPauseResume = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
+                finishingSession = finishingSession,
+                onFinish = { showEndConfirmation = true },
+                historyMessages = historyMessages,
+                conversationExpanded = conversationExpanded,
+                onOpenConversation = { conversationExpanded = true },
+                onCloseConversation = { conversationExpanded = false },
             )
         }
-        FocusChatFloatingButton(
-            messageCount = historyMessages.size + if (currentUserText.isNotBlank() || currentAiText.isNotBlank()) 1 else 0,
-            onClick = { conversationExpanded = true },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(22.dp),
-        )
-        FocusConversationOverlay(
-            visible = conversationExpanded,
-            userText = currentUserText,
-            aiText = currentAiText,
-            phase = realtimeStatus,
-            history = historyMessages,
-            onDismiss = { conversationExpanded = false },
-        )
+    } else {
+        Box(modifier = Modifier.fillMaxSize().background(Background)) {
+            FocusExecutionContent(
+                immersiveMode = false,
+                sceneSettings = sceneSettings,
+                onSceneSettingsChange = updateSceneSettings,
+                onSwitchDisplayMode = { displayMode = FocusExecutionDisplayMode.toggled(displayMode) },
+                realtimeStatus = realtimeStatus,
+                voiceError = voiceError,
+                currentUserText = currentUserText,
+                currentAiText = currentAiText,
+                observationEnabled = observationEnabled,
+                continuityState = continuityState,
+                sessionMode = sessionMode,
+                observationDetailsExpanded = observationDetailsExpanded,
+                expressionLabel = expressionResult?.label?.name,
+                presence = presence.state,
+                gentleReminder = gentleReminder,
+                onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
+                onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
+                onInterrupt = voiceController::interruptRealtime,
+                secondsLeft = secondsLeft,
+                totalSeconds = totalSeconds,
+                taskName = taskName,
+                focusPaused = focusPaused,
+                focusRunning = focusRunning,
+                onPauseResume = { focusScope.launch { if (focusRunning) focusRepository.pause() else if (focusPaused) focusRepository.resume() } },
+                finishingSession = finishingSession,
+                onFinish = { showEndConfirmation = true },
+                historyMessages = historyMessages,
+                conversationExpanded = conversationExpanded,
+                onOpenConversation = { conversationExpanded = true },
+                onCloseConversation = { conversationExpanded = false },
+            )
+        }
     }
     if (showEndConfirmation) {
         AlertDialog(
@@ -500,6 +530,139 @@ fun FocusSessionScreen(
                     }
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun FocusExecutionContent(
+    immersiveMode: Boolean,
+    sceneSettings: FocusSceneSettings,
+    onSceneSettingsChange: (FocusSceneSettings) -> Unit,
+    onSwitchDisplayMode: () -> Unit,
+    realtimeStatus: FocusVoicePhase,
+    voiceError: String?,
+    currentUserText: String,
+    currentAiText: String,
+    observationEnabled: Boolean,
+    continuityState: LearningContinuityState,
+    sessionMode: FocusSessionMode,
+    observationDetailsExpanded: Boolean,
+    expressionLabel: String?,
+    presence: PresenceState,
+    gentleReminder: String?,
+    onToggleDetails: () -> Unit,
+    onAttachPreview: (PreviewView) -> Unit,
+    onInterrupt: () -> Unit,
+    secondsLeft: Int,
+    totalSeconds: Int,
+    taskName: String,
+    focusPaused: Boolean,
+    focusRunning: Boolean,
+    onPauseResume: () -> Unit,
+    finishingSession: Boolean,
+    onFinish: () -> Unit,
+    historyMessages: List<CompletedConversation>,
+    conversationExpanded: Boolean,
+    onOpenConversation: () -> Unit,
+    onCloseConversation: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 16.dp,
+                    top = 12.dp,
+                    end = 16.dp,
+                    bottom = floatingDockContentBottomPadding(
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    ) + 8.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (immersiveMode) "专注空间" else "普通专注",
+                        color = if (immersiveMode) Color.White else TextPrimary,
+                        fontSize = 24.sp,
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        if (immersiveMode) "让环境替你隔开喧闹" else "保留原有的计时与陪伴功能",
+                        color = if (immersiveMode) Color.White.copy(alpha = .76f) else Muted,
+                        fontSize = 12.sp,
+                    )
+                }
+                TextButton(onClick = onSwitchDisplayMode) {
+                    Icon(Icons.Default.Landscape, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (immersiveMode) "普通模式" else "专注空间")
+                }
+            }
+            if (immersiveMode) {
+                FocusSceneToolbar(
+                    settings = sceneSettings,
+                    onSettingsChange = onSceneSettingsChange,
+                )
+            }
+            FocusSpaceGuide(phase = realtimeStatus, onInterrupt = onInterrupt)
+            FocusSpaceTimer(secondsLeft = secondsLeft, totalSeconds = totalSeconds, taskName = taskName, paused = focusPaused)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = onPauseResume,
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    enabled = focusRunning || focusPaused,
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Icon(if (focusRunning) Icons.Default.Pause else Icons.Default.PlayArrow, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (focusRunning) "暂停" else "继续")
+                }
+                Button(
+                    onClick = onFinish,
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    enabled = !finishingSession,
+                ) {
+                    Icon(Icons.Default.Stop, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (finishingSession) "正在生成总结" else "结束专注")
+                }
+            }
+            FocusSensingSystem(
+                phase = realtimeStatus,
+                errorMessage = voiceError,
+                userText = currentUserText,
+                aiText = currentAiText,
+                enabled = observationEnabled,
+                state = continuityState,
+                sessionMode = sessionMode,
+                expanded = observationDetailsExpanded,
+                expressionLabel = expressionLabel,
+                presence = presence,
+                reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
+                onToggleDetails = onToggleDetails,
+                onAttachPreview = onAttachPreview,
+            )
+        }
+        FocusChatFloatingButton(
+            messageCount = historyMessages.size + if (currentUserText.isNotBlank() || currentAiText.isNotBlank()) 1 else 0,
+            onClick = onOpenConversation,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(22.dp),
+        )
+        FocusConversationOverlay(
+            visible = conversationExpanded,
+            userText = currentUserText,
+            aiText = currentAiText,
+            phase = realtimeStatus,
+            history = historyMessages,
+            onDismiss = onCloseConversation,
         )
     }
 }
