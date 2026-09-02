@@ -141,7 +141,7 @@ export struct DigitalHumanStage {
       }
       .width(36)
       .height(36)
-      .backgroundColor(this.palette().surface)
+      .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
       .borderRadius(18)
       .shadow({ radius: 10, color: '#244056A6', offsetY: 3 })
       .position({ x: 0, y: 116 })
@@ -161,7 +161,7 @@ export struct DigitalHumanStage {
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .backgroundColor(this.darkMode ? '#E6202A40' : '#ECFFFFFF')
-    .border({ width: 1, color: this.palette().line })
+    .border({ width: 1, color: this.palette().glass.border })
     .borderRadius(15)
     .onClick(action)
   }

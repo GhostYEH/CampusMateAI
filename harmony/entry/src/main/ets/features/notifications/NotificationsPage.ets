@@ -248,17 +248,17 @@ export struct NotificationsPage {
             Text('·').fontColor(this.palette().muted)
             Text(item.source_type).fontColor(this.palette().muted).fontSize(11)
           }
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         Column({ space: 6 }) {
           Text('通知正文').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
           Text(item.content).fontColor(this.palette().muted).fontSize(13).lineHeight(22)
-        }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+        }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
         Button('手动整理此通知').width('100%').height(44).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(12)
           .onClick(() => {
             this.onPrepareManualExtract(item.content);
             this.onBack();
           })
-        Button('删除记录').width('100%').height(42).backgroundColor(this.palette().surface).fontColor(this.palette().danger).borderRadius(12)
+        Button('删除记录').width('100%').height(42).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().danger).borderRadius(12)
           .onClick(() => this.deleteLocalNotice(item.id))
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
     }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
@@ -284,7 +284,7 @@ export struct NotificationsPage {
             Toggle({ type: ToggleType.Switch, isOn: this.sourceEnabled(source) }).selectedColor(this.palette().primary)
               .onChange((checked: boolean) => this.setSourceEnabled(source, checked))
           }.width('100%')
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
         if (source === NotificationSource.WECHAT || source === NotificationSource.WECOM || source === NotificationSource.QQ) {
           Column({ space: 11 }) {
@@ -310,12 +310,12 @@ export struct NotificationsPage {
                 if (index < this.currentWhitelist().length - 1) { Divider().color(this.palette().line) }
               }, (group: string) => group)
             }
-          }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         } else {
           Column({ space: 7 }) {
             Text('学习通来源').fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold).width('100%')
             Text('学习通通过应用内已连接的账号与后端同步，不需要配置群聊白名单。').fontColor(this.palette().muted).fontSize(11).lineHeight(18).width('100%')
-          }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
     }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
@@ -332,7 +332,7 @@ export struct NotificationsPage {
       TextArea({ text: this.manualText, placeholder: '粘贴微信、QQ或学习通通知内容，自动提取事务并新建日程...' })
         .width('100%').height(90).fontSize(13).fontColor(this.palette().text)
         .backgroundColor(this.palette().background).borderRadius(12)
-        .border({ width: 1, color: this.palette().line })
+        .border({ width: 1, color: this.palette().glass.border })
         .onChange((value: string) => { this.manualText = value; this.hasExtractResult = false; this.saved = false; })
       Button(this.extracting ? '提取中...' : '开始整理')
         .width('100%').height(44).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF')
@@ -344,7 +344,7 @@ export struct NotificationsPage {
           this.saved = false;
           this.doExtract(this.manualText.trim());
         })
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
   }
 
   @Builder ExtractResultCard() {
@@ -356,7 +356,7 @@ export struct NotificationsPage {
             Text('提取失败').fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold)
           }
           Text(this.resultError).fontColor(this.palette().muted).fontSize(12).lineHeight(20)
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
       } else {
         Column({ space: 12 }) {
           Row({ space: 8 }) {
@@ -409,7 +409,7 @@ export struct NotificationsPage {
               this.saving = true;
               this.doSaveTask(this.editTitle.trim(), this.editDeadline.trim(), this.editSource.trim());
             })
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
       }
     }
   }
@@ -439,7 +439,7 @@ export struct NotificationsPage {
               this.SourceRow($r('sys.symbol.message'), NotificationSource.QQ, 'QQ', '群聊通知', this.qqGroups.length)
               Divider().color(this.palette().line)
               this.ChaoxingSourceRow()
-            }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+            }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
             Column({ space: 8 }) {
               Row({ space: 11 }) {
@@ -453,7 +453,7 @@ export struct NotificationsPage {
               }.width('100%')
               Text('当前应用没有系统级通知订阅资质，无法直接读取微信、企业微信或 QQ 的系统通知。可使用学习通同步、后端通知或手动粘贴。')
                 .fontColor(this.palette().muted).fontSize(10).lineHeight(16).width('100%')
-            }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(18)
+            }.width('100%').padding(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
             this.ManualExtractCard()
             this.ExtractResultCard()
@@ -482,7 +482,7 @@ export struct NotificationsPage {
                   if (index < this.visibleLocalNotices().length - 1) { Divider().color(this.palette().line) }
                 }, (item: LocalCapturedNotice) => item.id)
               }
-            }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+            }.width('100%').padding({ left: 13, right: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
           }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
         }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
       }

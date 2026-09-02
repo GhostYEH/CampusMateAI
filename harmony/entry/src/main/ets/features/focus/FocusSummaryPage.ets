@@ -11,7 +11,7 @@ export struct FocusSummaryPage {
   onStartNext: () => void = () => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
   @Builder Note(symbol: Resource, title: string, content: string) {
-    Row({ space: 10 }) { Stack({ alignContent: Alignment.Center }) { SymbolGlyph(symbol).fontSize(18).fontColor([this.palette().primary]) }.width(38).height(38).backgroundColor(this.palette().soft).borderRadius(19); Column({ space: 4 }) { Text(title).fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold); Text(content).fontColor(this.palette().muted).fontSize(12).lineHeight(18) }.layoutWeight(1).alignItems(HorizontalAlign.Start) }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(19).alignItems(VerticalAlign.Top)
+    Row({ space: 10 }) { Stack({ alignContent: Alignment.Center }) { SymbolGlyph(symbol).fontSize(18).fontColor([this.palette().primary]) }.width(38).height(38).backgroundColor(this.palette().soft).borderRadius(19); Column({ space: 4 }) { Text(title).fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold); Text(content).fontColor(this.palette().muted).fontSize(12).lineHeight(18) }.layoutWeight(1).alignItems(HorizontalAlign.Start) }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(19).alignItems(VerticalAlign.Top)
   }
   build() {
     Column({ space: 15 }) {
@@ -23,7 +23,7 @@ export struct FocusSummaryPage {
       this.Note($r('sys.symbol.eye'), '学习状态', this.observation)
       Blank().layoutWeight(1)
       Button('开始下一次专注').width('100%').height(53).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(19).onClick(() => this.onStartNext())
-      Button('返回专注大厅').width('100%').height(52).backgroundColor(this.palette().surface).fontColor(this.palette().primary).border({ width: 1, color: this.palette().line }).borderRadius(19).onClick(() => this.onReturnHome())
+      Button('返回专注大厅').width('100%').height(52).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().primary).border({ width: 1, color: this.palette().glass.border }).borderRadius(19).onClick(() => this.onReturnHome())
     }.width('100%').height('100%').padding({ left: 20, right: 20, bottom: 24 }).alignItems(HorizontalAlign.Center).backgroundColor(this.palette().background)
   }
 }

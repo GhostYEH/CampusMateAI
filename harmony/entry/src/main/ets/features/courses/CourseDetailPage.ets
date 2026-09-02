@@ -73,7 +73,7 @@ export struct CourseDetailPage {
         Text(`${item.kind} · ${item.cached ? '已缓存' : item.status ?? '可查看'}`).fontColor(this.palette().muted).fontSize(10)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph(item.can_download ? $r('sys.symbol.arrow_down_circle') : $r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
-    }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(14)
+    }.width('100%').padding(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
       .onClick(async () => {
         if (item.can_download === true) {
           try {
@@ -109,7 +109,7 @@ export struct CourseDetailPage {
             this.DetailRow($r('sys.symbol.info_circle'), '课程代码', this.course.code ?? '—')
             Divider().color(this.palette().line)
             this.DetailRow($r('sys.symbol.info_circle'), '课程状态', this.course.status ?? '在修')
-          }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
           Button(this.detailLoading ? '同步中…' : '同步学习通课程内容')
             .width('100%').height(46).fontSize(13).fontWeight(FontWeight.Bold)
             .enabled(!this.detailLoading).onClick(() => this.loadContent(true))
@@ -134,7 +134,7 @@ export struct CourseDetailPage {
             Column({ space: 6 }) {
               Text('课程介绍').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
               Text(this.course.description ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(20)
-            }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+            }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
           }
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
       }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)

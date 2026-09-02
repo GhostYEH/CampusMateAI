@@ -113,7 +113,7 @@ export struct TasksPage {
           .fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold)
       }
     }.width('100%').height(164).padding(20).alignItems(VerticalAlign.Center)
-      .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(24)
+      .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(24)
   }
 
   @Builder TaskCard(task: TaskItem) {
@@ -141,7 +141,7 @@ export struct TasksPage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(18).fontColor([this.palette().muted])
     }.width('100%').padding({ left: 12, right: 12, top: 12, bottom: 12 })
-      .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(20)
+      .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(20)
       .opacity(task.status === 'completed' ? 0.6 : 1)
       .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
@@ -177,8 +177,8 @@ export struct TasksPage {
         SymbolGlyph($r('sys.symbol.xmark')).fontSize(20).fontColor([this.palette().muted]).onClick(() => this.closeImport())
       }.width('100%')
       if (this.importResult === undefined) {
-        TextInput({ text: this.importSource, placeholder: '材料名称' }).height(44).borderRadius(13).backgroundColor(this.palette().surface).onChange((value: string) => this.importSource = value.substring(0, 256))
-        TextArea({ text: this.importContent, placeholder: '粘贴 Markdown 清单或课程通知…' }).height(210).borderRadius(13).backgroundColor(this.palette().surface).onChange((value: string) => this.importContent = value.substring(0, 20000))
+        TextInput({ text: this.importSource, placeholder: '材料名称' }).height(44).borderRadius(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).onChange((value: string) => this.importSource = value.substring(0, 256))
+        TextArea({ text: this.importContent, placeholder: '粘贴 Markdown 清单或课程通知…' }).height(210).borderRadius(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).onChange((value: string) => this.importContent = value.substring(0, 20000))
       } else {
         Row({ space: 6 }) { SymbolGlyph($r('sys.symbol.bolt')).fontSize(17).fontColor([this.palette().primary]); Text(`识别到 ${this.importDrafts.length} 项`).fontColor(this.palette().primary).fontSize(12).fontWeight(FontWeight.Bold); Blank(); Text(this.importResult?.split_reason ?? '').fontColor(this.palette().muted).fontSize(9) }.width('100%')
         if (this.importDrafts.length === 0) {
@@ -197,7 +197,7 @@ export struct TasksPage {
                   TextArea({ text: draft.description ?? '', placeholder: '备注（选填）' }).height(54).onChange((value: string) => this.updateImportDraft(index, copyImportDraft(draft, draft.title, value.substring(0, 4000), draft.selected))).backgroundColor(Color.Transparent)
                   if (draft.existing_task_id !== undefined) { Text(`已有${draft.existing_status === 'completed' ? '已完成' : '待办'}任务，保留原进度`).fontColor(this.palette().success).fontSize(9) }
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-              }.width('100%').padding(10).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(16)
+              }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(16)
             }
           }, (draft: TaskImportDraft, index: number) => `${index}-${draft.title}`)
         }.height(330).width('100%')
@@ -205,7 +205,7 @@ export struct TasksPage {
       if (this.importError.length > 0) { Text(this.importError).fontColor('#D85D68').fontSize(10).width('100%') }
       Row({ space: 8 }) {
         Blank()
-        Button(this.importResult === undefined ? '取消' : '返回修改').backgroundColor(this.palette().surface).fontColor(this.palette().muted).onClick(() => { if (this.importResult === undefined) this.closeImport(); else { this.importResult = undefined; this.importDrafts = []; } })
+        Button(this.importResult === undefined ? '取消' : '返回修改').backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().muted).onClick(() => { if (this.importResult === undefined) this.closeImport(); else { this.importResult = undefined; this.importDrafts = []; } })
         Button(this.importBusy ? '处理中…' : (this.importResult === undefined ? '分析并拆分' : `保存 ${this.selectedImportCount()} 项`)).backgroundColor(this.palette().primary).fontColor('#FFFFFF').enabled(!this.importBusy && (this.importResult === undefined ? this.importContent.trim().length > 0 : this.selectedImportCount() > 0)).onClick(() => { if (this.importResult === undefined) this.analyzeImport(); else this.commitImport(); })
       }.width('100%')
     }.width('92%').constraintSize({ maxWidth: 720 }).padding(20).backgroundColor(this.darkMode ? '#CC17243A' : '#DDF8FBFF').backdropBlur(28).border({ width: 1, color: '#99FFFFFF' }).borderRadius(24)
@@ -223,7 +223,7 @@ export struct TasksPage {
               Text(item).fontColor(this.filter === item ? this.palette().primary : this.palette().muted).fontSize(12)
                 .padding({ left: 13, right: 13, top: 8, bottom: 8 })
                 .backgroundColor(this.filter === item ? this.palette().soft : this.palette().surface)
-                .border({ width: 1, color: this.palette().line }).borderRadius(12)
+                .border({ width: 1, color: this.palette().glass.border }).borderRadius(12)
                 .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut })
                 .onClick(() => this.filter = item)
             })

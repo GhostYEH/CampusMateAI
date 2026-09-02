@@ -39,10 +39,10 @@ export struct FocusSessionPage {
   onSend: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  glassSurface(): string { return this.darkMode ? '#B8142738' : '#B8FFFFFF'; }
-  glassBorder(): string { return this.darkMode ? '#559CC7D0' : '#99FFFFFF'; }
-  glassShadow(): string { return this.darkMode ? '#66000000' : '#330D2340'; }
-  glassBlur(): number { return this.displayMode === 'IMMERSIVE' ? 24 : 16; }
+  glassSurface(): string { return this.palette().glass.surface; }
+  glassBorder(): string { return this.palette().glass.border; }
+  glassShadow(): string { return this.palette().glass.shadow; }
+  glassBlur(): number { return this.palette().glass.backdropBlur + (this.displayMode === 'IMMERSIVE' ? 6 : 0); }
   aboutToAppear(): void {
     this.secondsLeft = this.session === undefined ? this.plannedSeconds :
       FocusSessionState.remainingSeconds(this.session, Date.now(), this.plannedSeconds);
@@ -171,7 +171,7 @@ export struct FocusSessionPage {
         if (this.messages.length === 0) Text('需要时可以说说你的困惑、下一步，或请我帮你重新聚焦。').fontColor(this.palette().muted).fontSize(12).lineHeight(18)
         else ForEach(this.messages.slice(-3), (message: ChatMessage) => { Text(`${message.role === 'assistant' ? 'CampusMate' : '我'}：${message.content}`).fontColor(message.role === 'assistant' ? this.palette().text : this.palette().primary).fontSize(12).lineHeight(18) }, (message: ChatMessage) => message.id)
         Row({ space: 8 }) {
-          TextInput({ text: this.input, placeholder: '输入一句话…' }).layoutWeight(1).height(44).fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().background).border({ width: 1, color: this.palette().line }).borderRadius(16).onChange((value: string) => this.input = value).onSubmit(() => { if (!this.sending && this.input.trim().length > 0) this.onSend(); })
+          TextInput({ text: this.input, placeholder: '输入一句话…' }).layoutWeight(1).height(44).fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().background).border({ width: 1, color: this.palette().glass.border }).borderRadius(16).onChange((value: string) => this.input = value).onSubmit(() => { if (!this.sending && this.input.trim().length > 0) this.onSend(); })
           Stack({ alignContent: Alignment.Center }) { if (this.sending) LoadingProgress().width(17).height(17).color('#FFFFFFFF'); else SymbolGlyph($r('sys.symbol.paperplane_fill')).fontSize(18).fontColor(['#FFFFFFFF']) }.width(44).height(44).backgroundColor(this.palette().primary).borderRadius(22).onClick(() => { if (!this.sending && this.input.trim().length > 0) this.onSend(); })
         }.width('100%').alignItems(VerticalAlign.Center)
         Text('文字和实时语音共用同一位 CampusMate 陪伴。').fontColor(this.palette().muted).fontSize(10)
@@ -200,7 +200,7 @@ export struct FocusSessionPage {
           Text(scene.title).fontColor(scene.id === this.selectedScene ? this.palette().primary : '#E6FFFFFF').fontSize(10).fontWeight(FontWeight.Bold).layoutWeight(1).textAlign(TextAlign.Center).padding({ top: 7, bottom: 7 }).backgroundColor(scene.id === this.selectedScene ? '#EEFFFFFF' : '#2EFFFFFF').borderRadius(12).onClick(() => { this.selectedScene = scene.id; })
         }, (scene: FocusSceneOption) => scene.id)
       }.width('100%')
-    }.width('100%').padding(12).backgroundColor('#99142738').backdropBlur(24).border({ width: 1, color: '#669CC7D0' }).borderRadius(22).shadow({ radius: 20, color: '#66000000', offsetY: 7 })
+    }.width('100%').padding(12).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 20, color: this.glassShadow(), offsetY: 7 })
   }
   build() {
     Stack() {

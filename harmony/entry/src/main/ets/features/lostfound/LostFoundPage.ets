@@ -93,8 +93,8 @@ export struct LostFoundPage {
           Text((item.created_at ?? '刚刚').substring(0, Math.min(10, (item.created_at ?? '刚刚').length))).fontColor(this.palette().muted).fontSize(10).maxLines(1)
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-    }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(20)
-      .border({ width: 1, color: this.palette().line })
+    }.width('100%').padding(12).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
+      .border({ width: 1, color: this.palette().glass.border })
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.onOpenDetail(item))
   }
@@ -109,7 +109,7 @@ export struct LostFoundPage {
               .padding({ left: 8, right: 8, top: 4, bottom: 4 }).backgroundColor(item.kind === 'lost' ? '#FFFFEFEA' : '#FFEAF9F3').borderRadius(10)
             Text(item.status === 'closed' ? '已解决' : '寻找中').fontColor(this.palette().muted).fontSize(11)
           }
-        }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         Column() {
           this.DetailRow($r('sys.symbol.info_circle'), '类型', item.kind === 'lost' ? '失物' : '招领')
           Divider().color(this.palette().line)
@@ -120,12 +120,12 @@ export struct LostFoundPage {
           this.DetailRow($r('sys.symbol.phone'), '联系方式', item.contact ?? '未提供')
           Divider().color(this.palette().line)
           this.DetailRow($r('sys.symbol.checkmark_circle'), '状态', item.status === 'closed' ? '已解决' : '寻找中')
-        }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(18)
+        }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         if ((item.content ?? '').length > 0) {
           Column({ space: 6 }) {
             Text('详细描述').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
             Text(item.content ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(20)
-          }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+          }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
         }
       }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
     }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
@@ -169,8 +169,8 @@ export struct LostFoundPage {
           TextInput({ placeholder: '搜索物品、地点或线索', text: this.query }).layoutWeight(1).height(52)
             .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(Color.Transparent)
             .onChange((value: string) => this.query = value)
-        }.width('100%').height(62).padding({ left: 17, right: 14 }).backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().line }).borderRadius(23)
+        }.width('100%').height(62).padding({ left: 17, right: 14 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+          .border({ width: 1, color: this.palette().glass.border }).borderRadius(23)
 
         Scroll() {
           Row({ space: 8 }) {
@@ -187,13 +187,13 @@ export struct LostFoundPage {
             SymbolGlyph($r('sys.symbol.location_up')).fontSize(17).fontColor([this.palette().muted])
             Text(this.locationLabel()).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
             SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(14).fontColor([this.palette().muted])
-          }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(17)
+          }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(17)
             .layoutWeight(1).onClick(() => this.locationIndex = (this.locationIndex + 1) % 4)
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(17).fontColor([this.palette().muted])
             Text(this.newestFirst ? '最新优先' : '最早优先').fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Medium)
             SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(14).fontColor([this.palette().muted])
-          }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(17)
+          }.padding({ left: 15, right: 13, top: 13, bottom: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(17)
             .layoutWeight(1).onClick(() => this.newestFirst = !this.newestFirst)
         }.width('100%')
 
@@ -243,15 +243,15 @@ export struct LostFoundPage {
           })
         }.width('100%')
         TextInput({ placeholder: '物品名称或信息标题', text: this.title }).height(50)
-          .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().line }).borderRadius(15).onChange((value: string) => this.title = value)
+          .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+          .border({ width: 1, color: this.palette().glass.border }).borderRadius(15).onChange((value: string) => this.title = value)
         TextArea({ placeholder: '描述物品特征、丢失或拾到的经过', text: this.content }).height(132)
-          .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().line }).borderRadius(15).onChange((value: string) => this.content = value)
+          .fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+          .border({ width: 1, color: this.palette().glass.border }).borderRadius(15).onChange((value: string) => this.content = value)
         TextInput({ placeholder: '地点', text: this.location }).height(50).fontColor(this.palette().text).placeholderColor(this.palette().muted)
-          .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(15).onChange((value: string) => this.location = value)
+          .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(15).onChange((value: string) => this.location = value)
         TextInput({ placeholder: '联系方式', text: this.contact }).height(50).fontColor(this.palette().text).placeholderColor(this.palette().muted)
-          .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(15).onChange((value: string) => this.contact = value)
+          .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(15).onChange((value: string) => this.contact = value)
         Button(this.submitting ? '发布中...' : '发布信息').width('100%').height(52).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF')
           .enabled(!this.submitting && this.title.trim().length > 0)
           .onClick(() => this.onSubmit(this.kind, this.title.trim(), this.content.trim(), this.location.trim(), this.contact.trim()))

@@ -43,7 +43,7 @@ export struct EduScheduleDetailPage {
           }
           Text('数据来源：学校教务系统').fontSize(10).fontColor(this.palette().muted)
         }.width('100%').padding({ left: 22, right: 22, top: 16, bottom: 28 })
-      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off).backgroundColor(this.palette().surface)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }
 }

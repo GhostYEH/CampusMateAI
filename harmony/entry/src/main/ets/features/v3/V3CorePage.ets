@@ -156,7 +156,7 @@ export struct V3CorePage {
     Row({ space: 10 }) {
       SymbolGlyph($r('sys.symbol.info_circle')).fontSize(24).fontColor([this.palette().primary])
       Text(text).fontSize(13).fontColor(this.palette().muted).layoutWeight(1)
-    }.width('100%').padding(18).backgroundColor(this.palette().surface).borderRadius(22)
+    }.width('100%').padding(18).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(22)
   }
 
   aboutToAppear(): void {
@@ -174,7 +174,7 @@ export struct V3CorePage {
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Button(this.selectedUniversityId === item.id ? '当前大学' : '选择').enabled(this.selectedUniversityId !== item.id)
         .onClick(() => this.onSelectUniversity(item.id))
-    }.width('100%').padding(17).backgroundColor(this.palette().surface).borderRadius(22)
+    }.width('100%').padding(17).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(22)
   }
 
   @Builder UniversityContent() {
@@ -193,7 +193,7 @@ export struct V3CorePage {
         TextInput({ text: this.uniSearch, placeholder: '搜索大学名称或拼音首字母（如 BJDX）' })
           .layoutWeight(1).fontSize(14).fontColor(this.palette().text)
           .onChange((value: string) => { this.uniSearch = value; this.rebuildUniIndex(); })
-      }.width('100%').padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(this.palette().surface).borderRadius(18)
+      }.width('100%').padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
       if (this.loading && this.universities.length === 0) {
         Column() { LoadingProgress().width(28).height(28).color(this.palette().primary) }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
@@ -222,7 +222,7 @@ export struct V3CorePage {
                   if (idx !== undefined) this.uniScroller.scrollToIndex(idx);
                 })
             }, (letter: string) => letter)
-          }.width(22).justifyContent(FlexAlign.Center).padding({ top: 4, bottom: 4 }).backgroundColor(this.palette().surface).borderRadius(11)
+          }.width(22).justifyContent(FlexAlign.Center).padding({ top: 4, bottom: 4 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(11)
         }.width('100%').layoutWeight(1).alignItems(VerticalAlign.Center)
       }
     }.width('100%').height('100%').padding({ left: 16, right: 8, top: 6, bottom: 6 })
@@ -231,7 +231,7 @@ export struct V3CorePage {
   @Builder CommunityContent() {
     Button('＋ 发布').width('100%').onClick(() => this.onOpenPublish())
     Row() { Text('🔥 今日热门话题').fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.palette().text); Blank(); Text('更多 ›').fontSize(13).fontColor(this.palette().primary).onClick(() => this.onOpenHot()) }
-      .width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(20)
+      .width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
     ForEach(this.hotPosts.slice(0, 3), (post: CommunityPostItem, index: number) => { Text(`TOP${index + 1}  ${post.title}`).fontColor(this.palette().text).fontSize(13).maxLines(1) }, (post: CommunityPostItem) => post.id)
 
     if (!this.loading && this.posts.length === 0) { this.EmptyState('暂无帖子，来发起第一场校园讨论吧') }
@@ -241,7 +241,7 @@ export struct V3CorePage {
         Text(post.title).fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
         Text(post.content).fontSize(13).fontColor(this.palette().muted).lineHeight(20).maxLines(3)
         Row({ space: 18 }) { Text(`♡ ${post.like_count}`).fontColor(this.palette().muted).onClick(() => this.onLike(post.id)); Text(`评论 ${post.comment_count}`).fontColor(this.palette().muted); Text(`收藏 ${post.favorite_count}`).fontColor(this.palette().muted) }
-      }.width('100%').alignItems(HorizontalAlign.Start).padding(18).backgroundColor(this.palette().surface).borderRadius(22).onClick(() => this.onOpenDetail(post.id))
+      }.width('100%').alignItems(HorizontalAlign.Start).padding(18).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(22).onClick(() => this.onOpenDetail(post.id))
     }, (post: CommunityPostItem) => post.id)
   }
 
@@ -250,7 +250,7 @@ export struct V3CorePage {
     if (!this.loading && this.hotPosts.length === 0) { this.EmptyState('暂无热门话题，快来发起讨论吧') }
     ForEach(this.hotPosts, (post: CommunityPostItem, index: number) => {
       Row({ space: 12 }) { Text((index + 1).toString()).fontSize(20).fontWeight(FontWeight.Bold).fontColor(index < 3 ? '#FF6B5D' : this.palette().muted).width(28); Column({ space: 5 }) { Text(post.title).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text).maxLines(1); Text(post.content).fontSize(12).fontColor(this.palette().muted).maxLines(2) }.layoutWeight(1); Text(`🔥 ${post.like_count + post.comment_count * 2}`).fontSize(11).fontColor('#FF6B5D') }
-        .width('100%').padding(17).backgroundColor(this.palette().surface).borderRadius(18)
+        .width('100%').padding(17).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
     }, (post: CommunityPostItem) => post.id)
   }
 
@@ -274,7 +274,7 @@ export struct V3CorePage {
           if (this.detailPost.is_owner) { Text('编辑').fontColor(this.palette().primary).onClick(() => this.onDetailEdit()); Text('删除').fontColor('#FF6B5D').onClick(() => this.onDetailDelete()) }
           Text('举报').fontColor(this.palette().muted).onClick(() => this.onDetailReport())
         }
-      }.width('100%').alignItems(HorizontalAlign.Start).padding(18).backgroundColor(this.palette().surface).borderRadius(22)
+      }.width('100%').alignItems(HorizontalAlign.Start).padding(18).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(22)
       Text(`评论 ${this.detailComments.length}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
       if (this.detailComments.length === 0) { Text('还没有评论，来说点什么吧。').fontSize(13).fontColor(this.palette().muted) }
       ForEach(this.detailComments, (c: CommunityComment) => {
@@ -282,13 +282,13 @@ export struct V3CorePage {
           Row() { Text(c.author_name).fontSize(12).fontColor(this.palette().primary).layoutWeight(1); Text(c.created_at).fontSize(10).fontColor(this.palette().muted) }
           Text(c.content).fontSize(13).fontColor(this.palette().text)
           Text('回复').fontSize(11).fontColor(this.palette().muted).onClick(() => { this.replyToId = c.id; this.replyToName = c.author_name; this.commentInput = `@${c.author_name} `; })
-        }.width('100%').alignItems(HorizontalAlign.Start).padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+        }.width('100%').alignItems(HorizontalAlign.Start).padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
       }, (c: CommunityComment) => c.id)
       Column({ space: 8 }) {
         if (this.replyToId.length > 0) { Row() { Text(`回复 @${this.replyToName}`).fontSize(12).fontColor(this.palette().primary); Blank(); Text('取消').fontSize(12).fontColor(this.palette().muted).onClick(() => { this.replyToId = ''; this.replyToName = ''; this.commentInput = ''; }) } }
         TextArea({ text: this.commentInput, placeholder: '写下你的评论…' }).height(80).onChange((value: string) => this.commentInput = value)
         Row() { Toggle({ type: ToggleType.Checkbox, isOn: this.commentAnonymous }).onChange((value: boolean) => this.commentAnonymous = value); Text('匿名').fontSize(12).fontColor(this.palette().muted).margin({ left: 6 }); Blank(); Button('发送').enabled(this.commentInput.trim().length > 0).onClick(() => { this.onAddComment(this.commentInput.trim(), this.commentAnonymous, this.replyToId.length > 0 ? this.replyToId : undefined); this.commentInput = ''; this.replyToId = ''; this.replyToName = ''; }) }
-      }.width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(18)
+      }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
     }
   }
 
@@ -297,9 +297,9 @@ export struct V3CorePage {
       Row({ space: 8 }) { Text('●').fontSize(20).fontColor(this.palette().primary); Text(isEdit ? '修改帖子内容，保存后即时生效' : '分享校园信息，友善交流，注意保护隐私').fontSize(13).fontColor(this.palette().text) }
         .width('100%').padding(15).backgroundColor(this.palette().soft).borderRadius(18)
       Text(`● 标题  ${this.titleInput.length}/60`).fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-      TextInput({ text: this.titleInput, placeholder: '输入一个清晰的标题' }).maxLength(60).onChange((value: string) => this.titleInput = value).height(54).backgroundColor(this.palette().surface).borderRadius(18)
+      TextInput({ text: this.titleInput, placeholder: '输入一个清晰的标题' }).maxLength(60).onChange((value: string) => this.titleInput = value).height(54).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
       Text(`● 正文  ${this.contentInput.length}/1000`).fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
-      TextArea({ text: this.contentInput, placeholder: '写下你的内容、问题或需求…' }).maxLength(1000).height(160).onChange((value: string) => this.contentInput = value).backgroundColor(this.palette().surface).borderRadius(18)
+      TextArea({ text: this.contentInput, placeholder: '写下你的内容、问题或需求…' }).maxLength(1000).height(160).onChange((value: string) => this.contentInput = value).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
       Text('● 选择分类').fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
       Row({ space: 8 }) {
         Button('提问').onClick(() => this.categoryInput = 'question').backgroundColor(this.categoryInput === 'question' ? this.palette().primary : this.palette().soft)
@@ -312,16 +312,16 @@ export struct V3CorePage {
         Button('学习资料').onClick(() => this.categoryInput = 'study').backgroundColor(this.categoryInput === 'study' ? this.palette().primary : this.palette().soft)
       }.width('100%')
       if (this.categoryInput === 'recruit') {
-        Row({ space: 8 }) { Text('招募人数').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraHeadcount, placeholder: '如 5' }).layoutWeight(1).onChange((v: string) => this.extraHeadcount = v) }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
-        Row({ space: 8 }) { Text('截止时间').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraDeadline, placeholder: '如 2026-12-31' }).layoutWeight(1).onChange((v: string) => this.extraDeadline = v) }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
+        Row({ space: 8 }) { Text('招募人数').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraHeadcount, placeholder: '如 5' }).layoutWeight(1).onChange((v: string) => this.extraHeadcount = v) }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
+        Row({ space: 8 }) { Text('截止时间').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraDeadline, placeholder: '如 2026-12-31' }).layoutWeight(1).onChange((v: string) => this.extraDeadline = v) }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
       }
       if (this.categoryInput === 'errand') {
-        Row({ space: 8 }) { Text('酬金(元)').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraPrice, placeholder: '如 10' }).layoutWeight(1).onChange((v: string) => this.extraPrice = v) }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
-        Row({ space: 8 }) { Text('截止时间').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraDeadline, placeholder: '如 2026-12-31' }).layoutWeight(1).onChange((v: string) => this.extraDeadline = v) }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
+        Row({ space: 8 }) { Text('酬金(元)').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraPrice, placeholder: '如 10' }).layoutWeight(1).onChange((v: string) => this.extraPrice = v) }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
+        Row({ space: 8 }) { Text('截止时间').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraDeadline, placeholder: '如 2026-12-31' }).layoutWeight(1).onChange((v: string) => this.extraDeadline = v) }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
       }
       if (this.categoryInput === 'lostfound') {
-        Row({ space: 8 }) { Text('类型').fontSize(14).fontColor(this.palette().text).width(70); Button('寻物').backgroundColor(this.extraKind === 'lost' ? this.palette().primary : this.palette().soft).onClick(() => this.extraKind = 'lost'); Button('招领').backgroundColor(this.extraKind === 'found' ? this.palette().primary : this.palette().soft).onClick(() => this.extraKind = 'found') }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
-        Row({ space: 8 }) { Text('联系方式').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraContact, placeholder: '可选' }).layoutWeight(1).onChange((v: string) => this.extraContact = v) }.width('100%').padding(10).backgroundColor(this.palette().surface).borderRadius(14)
+        Row({ space: 8 }) { Text('类型').fontSize(14).fontColor(this.palette().text).width(70); Button('寻物').backgroundColor(this.extraKind === 'lost' ? this.palette().primary : this.palette().soft).onClick(() => this.extraKind = 'lost'); Button('招领').backgroundColor(this.extraKind === 'found' ? this.palette().primary : this.palette().soft).onClick(() => this.extraKind = 'found') }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
+        Row({ space: 8 }) { Text('联系方式').fontSize(14).fontColor(this.palette().text).width(70); TextInput({ text: this.extraContact, placeholder: '可选' }).layoutWeight(1).onChange((v: string) => this.extraContact = v) }.width('100%').padding(10).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(14)
       }
       Text(`● 添加图片（${this.postImages.length}/9）`).fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
       Flex({ wrap: FlexWrap.Wrap }) {
@@ -336,11 +336,11 @@ export struct V3CorePage {
         }
       }.width('100%')
       Row({ space: 8 }) { Toggle({ type: ToggleType.Switch, isOn: this.anonymous }).onChange((value: boolean) => this.anonymous = value); Column({ space: 2 }) { Text('校园匿名').fontColor(this.palette().text); Text('发布后将隐藏你的姓名和个人信息').fontSize(11).fontColor(this.palette().muted) }.alignItems(HorizontalAlign.Start) }
-        .width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(18)
-      Row({ space: 8 }) { Text('⌖ 添加地点').fontSize(15).fontColor(this.palette().text); TextInput({ text: this.locationInput, placeholder: '选择校内位置' }).layoutWeight(1).onChange((value: string) => this.locationInput = value) }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(18)
-      Row({ space: 8 }) { Text('# 话题标签').fontSize(15).fontColor(this.palette().text); TextInput({ text: this.tagInput, placeholder: '添加标签' }).layoutWeight(1).onChange((value: string) => this.tagInput = value) }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(18)
+        .width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
+      Row({ space: 8 }) { Text('⌖ 添加地点').fontSize(15).fontColor(this.palette().text); TextInput({ text: this.locationInput, placeholder: '选择校内位置' }).layoutWeight(1).onChange((value: string) => this.locationInput = value) }.width('100%').padding(12).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
+      Row({ space: 8 }) { Text('# 话题标签').fontSize(15).fontColor(this.palette().text); TextInput({ text: this.tagInput, placeholder: '添加标签' }).layoutWeight(1).onChange((value: string) => this.tagInput = value) }.width('100%').padding(12).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
       Row() { Toggle({ type: ToggleType.Switch, isOn: this.allowComments }).onChange((value: boolean) => this.allowComments = value); Text('允许评论').margin({ left: 8 }).fontColor(this.palette().text); Blank(); Button(isEdit ? '保存修改' : '立即发布').enabled(this.titleInput.trim().length > 0 && this.contentInput.trim().length > 0).onClick(() => { const extra: CommunityPostExtra = { location: this.locationInput, topic_tag: this.tagInput, allow_comments: this.allowComments }; if (this.categoryInput === 'recruit') { if (this.extraHeadcount) extra.headcount = Number(this.extraHeadcount); if (this.extraDeadline) extra.deadline = this.extraDeadline; } if (this.categoryInput === 'errand') { if (this.extraPrice) extra.price = Number(this.extraPrice); if (this.extraDeadline) extra.deadline = this.extraDeadline; } if (this.categoryInput === 'lostfound') { extra.kind = this.extraKind; if (this.extraContact) extra.contact = this.extraContact; extra.contact_visibility = 'private'; } if (isEdit) { this.onEdit(this.titleInput.trim(), this.contentInput.trim(), this.anonymous, this.categoryInput, extra); } else { this.onPublish(this.titleInput.trim(), this.contentInput.trim(), this.anonymous, this.categoryInput, extra); } this.titleInput = ''; this.contentInput = ''; this.onBack(); }) }
-    }.width('100%').padding(18).backgroundColor(this.palette().surface).borderRadius(20)
+    }.width('100%').padding(18).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
   }
 
   @Builder AcademicContent() {
@@ -348,7 +348,7 @@ export struct V3CorePage {
       Text('当前连接状态').fontSize(11).fontColor(this.palette().muted)
       Text(this.academicStatus.status === 'unsupported' ? '暂未支持自动教务同步' : this.academicStatus.status).fontSize(19).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
       Text(`Provider: ${this.academicStatus.provider}`).fontSize(12).fontColor(this.palette().muted)
-    }.width('100%').alignItems(HorizontalAlign.Start).padding(20).backgroundColor(this.palette().surface).borderRadius(22)
+    }.width('100%').alignItems(HorizontalAlign.Start).padding(20).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(22)
     Column({ space: 7 }) {
       Text('凭证安全').fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
       Text('教务密码仅通过 HTTPS 发送到 Backend 完成认证，不会保存在本机、API 响应或日志中。未验证的学校不会显示假绑定或假课程。').fontSize(13).fontColor(this.palette().muted).lineHeight(20)

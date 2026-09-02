@@ -24,8 +24,8 @@ export struct SecondaryHeader {
       Stack({ alignContent: Alignment.Center }) {
         SymbolGlyph($r('sys.symbol.arrow_left')).fontSize(21).fontColor([this.palette().text])
       }
-      .width(40).height(40).backgroundColor(this.palette().surface).borderRadius(20)
-      .border({ width: 1, color: this.palette().line })
+      .width(40).height(40).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
+      .border({ width: 1, color: this.palette().glass.border })
       .scale({ x: this.backPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0, y: this.backPressed ? MotionSpec.scale(this.reduceMotion, 0.90) : 1.0 })
       .animation({ duration: MotionSpec.duration(this.reduceMotion, MotionDuration.PRESS), curve: Curve.EaseOut })
       .onClick(() => this.triggerBack())

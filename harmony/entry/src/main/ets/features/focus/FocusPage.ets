@@ -42,9 +42,9 @@ export struct FocusPage {
   onOpenPlan: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  glassSurface(): string { return this.darkMode ? '#B8142738' : '#B8FFFFFF'; }
-  glassBorder(): string { return this.darkMode ? '#559CC7D0' : '#99FFFFFF'; }
-  glassShadow(): string { return this.darkMode ? '#66000000' : '#330D2340'; }
+  glassSurface(): string { return this.palette().glass.surface; }
+  glassBorder(): string { return this.palette().glass.border; }
+  glassShadow(): string { return this.palette().glass.shadow; }
   aboutToAppear(): void { this.playTypewriter(); }
   aboutToDisappear(): void { this.stopTypewriter(); this.stopCountdown(); }
   stopTypewriter(): void { if (this.typewriterTimer >= 0) { clearInterval(this.typewriterTimer); this.typewriterTimer = -1; } }
@@ -116,7 +116,7 @@ export struct FocusPage {
     Column({ space: 10 }) {
       Text('专注时间').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Bold)
       Row({ space: 8 }) { this.DurationChip(25, '25 分钟'); this.DurationChip(45, '45 分钟'); this.DurationChip(0, '自定义') }.width('100%')
-      if (this.selectedMinutes === 0) TextInput({ text: this.customMinutes, placeholder: '5–240 分钟' }).width('100%').height(46).fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().background).border({ width: 1, color: this.palette().line }).borderRadius(14).onChange((value: string) => { this.customMinutes = value.replace(/[^0-9]/g, ''); })
+      if (this.selectedMinutes === 0) TextInput({ text: this.customMinutes, placeholder: '5–240 分钟' }).width('100%').height(46).fontColor(this.palette().text).placeholderColor(this.palette().muted).backgroundColor(this.palette().background).border({ width: 1, color: this.palette().glass.border }).borderRadius(14).onChange((value: string) => { this.customMinutes = value.replace(/[^0-9]/g, ''); })
       Button('下一步').width('100%').height(48).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(18).onClick(() => this.changeStep(FocusPresentationState.nextLobbyStep('ASK_DURATION')))
     }.width('100%').padding(15).backgroundColor(this.glassSurface()).backdropBlur(18).border({ width: 1, color: this.glassBorder() }).borderRadius(22).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })
   }

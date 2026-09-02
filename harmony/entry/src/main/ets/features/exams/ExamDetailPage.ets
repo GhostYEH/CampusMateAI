@@ -57,13 +57,13 @@ export struct ExamDetailPage {
             this.DetailRow($r('sys.symbol.location_up'), '考试地点', this.exam.location ?? '待定')
             Divider().color(this.palette().line)
             this.DetailRow($r('sys.symbol.person'), '座位号', this.exam.seat_number ?? '待定')
-          }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding({ left: 14, right: 14 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
           if ((this.exam.notes ?? '').length > 0) {
-            Text(this.exam.notes ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(19).width('100%').padding(14).backgroundColor(this.palette().surface).borderRadius(16)
+            Text(this.exam.notes ?? '').fontColor(this.palette().muted).fontSize(12).lineHeight(19).width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
           }
           Row({ space: 10 }) {
             Button('编辑').layoutWeight(1).height(46).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').onClick(() => this.onEdit())
-            Button('删除').layoutWeight(1).height(46).backgroundColor(this.palette().surface).fontColor(this.palette().danger).border({ width: 1, color: this.palette().line }).onClick(() => this.confirmDelete())
+            Button('删除').layoutWeight(1).height(46).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().danger).border({ width: 1, color: this.palette().glass.border }).onClick(() => this.confirmDelete())
           }.width('100%')
         }.width('100%').padding({ left: 14, right: 14, bottom: 24 })
       }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)

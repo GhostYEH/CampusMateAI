@@ -80,7 +80,7 @@ export struct ProfilePage {
           this.QuickAction('收藏', $r('sys.symbol.bookmark'), 'favorites', false)
           this.QuickAction('设置', $r('sys.symbol.gearshape'), 'settings', false)
         }.width('91%').height(118).padding({ left: 7, right: 7, top: 14, bottom: 14 })
-          .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(24)
+          .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(24)
           .margin({ top: -52, left: 16, right: 16 })
           .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
         Column({ space: 14 }) {
@@ -95,7 +95,7 @@ export struct ProfilePage {
             this.MenuRow('帮助与反馈', $r('sys.symbol.message'), 'counselor'); Divider().color(this.palette().line).margin({ left: 53 })
             this.MenuRow('关于 CampusMate', $r('sys.symbol.info_circle'), 'about')
           }.width('100%').padding({ left: 16, right: 16, top: 3, bottom: 3 })
-            .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+            .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(22)
         }.width('100%').padding({ left: 16, right: 16, top: 18 })
           .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
         Blank().height(112)

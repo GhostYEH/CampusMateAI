@@ -209,12 +209,12 @@ export struct EduSchedulePage {
         SecondaryHeader({ title: '教务课表', subtitle: '第 ' + this.currentWeek + ' 周', darkMode: this.darkMode, onBack: () => this.onBack() })
 
         Row({ space: 8 }) {
-          Button('上一周').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+          Button('上一周').fontSize(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
             .enabled(this.currentWeek > 1).onClick(() => { if (this.currentWeek > 1) { this.currentWeek--; this.buildScheduleGroups(); } })
           Text('第 ' + this.currentWeek + ' 周').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text).layoutWeight(1).textAlign(TextAlign.Center)
-          Button('下一周').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+          Button('下一周').fontSize(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
             .enabled(this.currentWeek < 25).onClick(() => { if (this.currentWeek < 25) { this.currentWeek++; this.buildScheduleGroups(); } })
-          Button('刷新').fontSize(13).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+          Button('刷新').fontSize(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
             .onClick(() => this.loadSchedule())
         }.width('100%').padding(12)
 
@@ -244,7 +244,7 @@ export struct EduSchedulePage {
                       if (card.section_label.length > 0) {
                         Text(card.section_label).fontSize(10).fontColor(card.color)
                       }
-                    }.width('100%').padding(12).backgroundColor(this.palette().surface).borderRadius(12)
+                    }.width('100%').padding(12).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(12)
                     .onClick(() => this.openDetailByCard(card))
                   }, (card: ScheduleCard) => card.id)
                 }.width('100%')

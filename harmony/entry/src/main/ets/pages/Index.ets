@@ -393,7 +393,7 @@ struct Index {
     } catch { /* ignore */ }
   }
 
-  surface(): string { return this.darkMode ? darkPalette.surface : lightPalette.surface; }
+  surface(): string { return this.palette().glass.surface; }
   pageBackground(): string { return this.darkMode ? darkPalette.background : lightPalette.background; }
   textColor(): string { return this.darkMode ? darkPalette.text : lightPalette.text; }
   mutedColor(): string { return this.darkMode ? darkPalette.muted : lightPalette.muted; }
@@ -1738,7 +1738,7 @@ struct Index {
                   this.signOut();
                 })
               }.width('100%').margin({ top: 24 })
-            }.width('85%').padding(24).backgroundColor(this.surface()).borderRadius(20).alignItems(HorizontalAlign.Start)
+            }.width('85%').padding(24).backgroundColor(this.surface()).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.border }).borderRadius(20).shadow({ radius: 20, color: this.palette().glass.shadow, offsetY: 6 }).alignItems(HorizontalAlign.Start)
           }.width('100%').height('100%').backgroundColor('#80000000').justifyContent(FlexAlign.Center).onClick(() => this.showLogoutDialog = false)
         }
       }

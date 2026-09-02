@@ -29,7 +29,7 @@ export struct AccountPage {
             Image($r('app.media.profile_avatar_reference')).width(86).height(86).objectFit(ImageFit.Cover).borderRadius(43)
             Text(this.name).fontColor(this.palette().text).fontSize(21).fontWeight(FontWeight.Bold)
             Text(this.detail).fontColor(this.palette().muted).fontSize(12)
-          }.width('100%').padding({ top: 22, bottom: 20 }).backgroundColor(this.palette().surface).borderRadius(20)
+          }.width('100%').padding({ top: 22, bottom: 20 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
             .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
           Column() {
             this.InfoRow('登录账号', this.name)
@@ -37,12 +37,12 @@ export struct AccountPage {
             this.InfoRow('身份信息', this.detail)
             Divider().color(this.palette().line)
             this.InfoRow('数据同步', '已连接当前账号')
-          }.width('100%').padding({ left: 15, right: 15 }).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding({ left: 15, right: 15 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
             .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 1), curve: Curve.EaseOut }))
           Row({ space: 9 }) {
             SymbolGlyph($r('sys.symbol.shield_checkered')).fontSize(18).fontColor([this.palette().success])
             Text('密码和令牌不会在界面中明文显示').fontColor(this.palette().muted).fontSize(10)
-          }.width('100%').padding(13).backgroundColor(this.palette().surface).borderRadius(15)
+          }.width('100%').padding(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(15)
             .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
           Button('退出当前账号').width('100%').height(50).backgroundColor('#FFFFECEA').fontColor('#FFC25450').onClick(() => this.onSignOut())
 

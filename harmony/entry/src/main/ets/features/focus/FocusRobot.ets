@@ -34,7 +34,7 @@ export struct FocusRobot {
       }.padding(7).backgroundColor('#D91A2C52').borderRadius(14)
     } else if (this.state === 'THINKING') {
       Text('…').fontSize(this.compact ? 18 : 26).fontWeight(FontWeight.Bold).fontColor(this.palette().primary)
-        .padding({ left: 9, right: 9, top: 1, bottom: 3 }).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().primary }).borderRadius(18)
+        .padding({ left: 9, right: 9, top: 1, bottom: 3 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().primary }).borderRadius(18)
     } else if (this.state === 'SPEAKING') {
       SymbolGlyph($r('sys.symbol.waveform')).fontSize(this.compact ? 20 : 27).fontColor([this.palette().primary])
         .padding(7).backgroundColor(this.palette().soft).borderRadius(18)

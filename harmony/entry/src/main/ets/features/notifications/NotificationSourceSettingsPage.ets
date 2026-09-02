@@ -86,7 +86,7 @@ export struct NotificationSourceSettingsPage {
             }.width('100%').alignItems(VerticalAlign.Center)
             Text('鸿蒙普通应用无法直接读取微信、企业微信或 QQ 的系统通知；此开关不会授予系统监听权限。')
               .fontColor(this.palette().muted).fontSize(10).lineHeight(17).width('100%')
-          }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
           Column({ space: 12 }) {
             Text('群聊白名单').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold).width('100%')
@@ -117,7 +117,7 @@ export struct NotificationSourceSettingsPage {
                 if (index < this.groups.length - 1) { Divider().color(this.palette().line) }
               }, (group: string) => group)
             }
-          }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
         }.width('100%').padding({ left: 14, right: 14, bottom: 28 })
       }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
     }.width('100%').height('100%').backgroundColor(this.palette().background)

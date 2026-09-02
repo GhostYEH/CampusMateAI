@@ -84,8 +84,8 @@ export struct CoursesPage {
           Circle().width(4).height(4).fill(index === 2 || index === 4 ? this.palette().accent : this.palette().line)
         }.layoutWeight(1).onClick(() => this.selectedDay = index)
       })
-    }.width('100%').padding({ top: 8, bottom: 8 }).backgroundColor(this.palette().surface)
-      .border({ width: 1, color: this.palette().line }).borderRadius(14)
+    }.width('100%').padding({ top: 8, bottom: 8 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: this.palette().glass.border }).borderRadius(14)
   }
 
   weekDateLabel(index: number): string {
@@ -102,8 +102,8 @@ export struct CoursesPage {
       this.Metric('18', '本周学时', $r('sys.symbol.clock'))
       this.Metric('26.5', '已修学分', $r('sys.symbol.checkmark_circle'))
       this.Metric('96%', '出勤率', $r('sys.symbol.calendar_badge_checkmark'))
-    }.width('100%').padding({ top: 10, bottom: 10 }).backgroundColor(this.palette().surface)
-      .border({ width: 1, color: this.palette().line }).borderRadius(14)
+    }.width('100%').padding({ top: 10, bottom: 10 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: this.palette().glass.border }).borderRadius(14)
   }
 
   @Builder Metric(value: string, label: string, symbol: Resource) {
@@ -145,7 +145,7 @@ export struct CoursesPage {
       Text('96%').fontColor(this.palette().primary).fontSize(9).fontWeight(FontWeight.Bold)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(17).fontColor([this.palette().muted])
     }.width('100%').padding({ left: 11, right: 11, top: 10, bottom: 10 })
-      .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(14)
+      .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(14)
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
       .onClick(() => this.onOpenDetail(course))
   }

@@ -184,7 +184,7 @@ export struct DashboardPage {
     }
     .width('100%')
     .padding({ left: 8, right: 8, top: 16, bottom: 16 })
-    .backgroundColor(this.palette().surface)
+    .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     .borderRadius(24)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 2), curve: Curve.EaseOut }))
   }
@@ -273,7 +273,7 @@ export struct DashboardPage {
         .height(166)
         .padding({ left: 12, right: 12 })
         .justifyContent(FlexAlign.Center)
-        .border({ width: 1, color: this.palette().line })
+        .border({ width: 1, color: this.palette().glass.border })
         .borderRadius(18)
       }
       .width('100%')
@@ -281,7 +281,7 @@ export struct DashboardPage {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor(this.palette().surface)
+    .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     .borderRadius(24)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 3), curve: Curve.EaseOut }))
   }
@@ -349,7 +349,7 @@ export struct DashboardPage {
     .layoutWeight(1)
     .height(191)
     .padding(12)
-    .backgroundColor(this.palette().surface)
+    .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     .borderRadius(22)
   }
 
@@ -394,7 +394,7 @@ export struct DashboardPage {
     .layoutWeight(1)
     .height(191)
     .padding(15)
-    .backgroundColor(this.palette().surface)
+    .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     .borderRadius(22)
   }
 
@@ -428,7 +428,7 @@ export struct DashboardPage {
       .alignItems(HorizontalAlign.Start)
     }
     .width(236)
-    .border({ width: 1, color: this.palette().line })
+    .border({ width: 1, color: this.palette().glass.border })
     .borderRadius(16)
     .clip(true)
   }
@@ -450,7 +450,7 @@ export struct DashboardPage {
     }
     .width('100%')
     .padding(16)
-    .backgroundColor(this.palette().surface)
+    .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
     .borderRadius(24)
   }
 

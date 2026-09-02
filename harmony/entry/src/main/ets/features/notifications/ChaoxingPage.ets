@@ -120,7 +120,7 @@ export struct ChaoxingPage {
               Text(this.account.rawStatus === 'expired' ? '学习通登录已失效，请重新登录后继续同步。' : '连接后可导入课程、作业与课程通知。')
                 .fontColor(this.palette().muted).fontSize(12).lineHeight(19).width('100%')
             }
-          }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+          }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
           if (!this.account.connected && !this.checking) {
             Column({ space: 12 }) {
@@ -135,7 +135,7 @@ export struct ChaoxingPage {
               Button(this.submitting ? '连接中…' : '连接学习通').width('100%').height(44).borderRadius(11)
                 .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF')
                 .enabled(!this.submitting && this.username.trim().length > 0 && this.password.length > 0).onClick(() => this.login())
-            }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(18)
+            }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
           }
 
           if (this.account.connected) {
@@ -143,7 +143,7 @@ export struct ChaoxingPage {
               Button(this.syncing ? '同步中…' : '立即同步').width('100%').height(44).borderRadius(11)
                 .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').enabled(!this.syncing).onClick(() => this.syncNow())
               Button(this.disconnecting ? '断开中…' : '断开连接').width('100%').height(42).borderRadius(11)
-                .backgroundColor(this.palette().surface).fontColor(this.palette().danger).border({ width: 1, color: this.palette().line })
+                .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().danger).border({ width: 1, color: this.palette().glass.border })
                 .enabled(!this.disconnecting && !this.syncing).onClick(() => this.confirmDisconnect())
             }.width('100%')
           }

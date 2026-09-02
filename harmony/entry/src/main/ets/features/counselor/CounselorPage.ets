@@ -142,8 +142,8 @@ export struct CounselorPage {
       }.width(42).height(42).backgroundColor(this.palette().soft).borderRadius(21)
       Text(question.label).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Medium).lineHeight(18).layoutWeight(1)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([this.palette().muted])
-    }.layoutWeight(1).height(66).padding({ left: 10, right: 8 }).backgroundColor(this.palette().surface)
-      .border({ width: 1, color: this.palette().line }).borderRadius(21)
+    }.layoutWeight(1).height(66).padding({ left: 10, right: 8 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: this.palette().glass.border }).borderRadius(21)
       .shadow({ radius: 10, color: this.darkMode ? '#22000000' : '#0D4056A6', offsetY: 3 })
       .alignItems(VerticalAlign.Center)
       .scale({ x: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0, y: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0 })
@@ -204,7 +204,7 @@ export struct CounselorPage {
       Row({ space: 7 }) {
         LoadingProgress().width(14).height(14).color(this.palette().primary)
         Text('正在查询校园知识库').fontColor(this.palette().muted).fontSize(12)
-      }.padding(11).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18).alignItems(VerticalAlign.Center)
+      }.padding(11).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(18).alignItems(VerticalAlign.Center)
     }.alignItems(VerticalAlign.Bottom)
       .transition(TransitionEffect.OPACITY.animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.STATE), curve: Curve.EaseInOut }))
   }
@@ -229,7 +229,7 @@ export struct CounselorPage {
           .onClick(() => this.triggerSend())
       }
         .width('100%').height(60).padding({ left: 9, right: 6 })
-        .backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(30)
+        .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(30)
         .shadow({ radius: 14, color: this.darkMode ? '#22000000' : '#104056A6', offsetY: 4 })
         .alignItems(VerticalAlign.Center)
       Row({ space: 5 }) {

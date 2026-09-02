@@ -49,8 +49,8 @@ export struct ClassroomsPage {
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
         Toggle({ type: ToggleType.Switch, isOn: this.multimedia }).onChange((value: boolean) => this.multimedia = value)
       }.width('100%')
-    }.width('100%').padding(14).backgroundColor(this.palette().surface)
-      .border({ width: 1, color: this.palette().line }).borderRadius(18)
+    }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: this.palette().glass.border }).borderRadius(18)
   }
 
   @Builder ClassroomCard(item: ClassroomAvailability) {
@@ -68,7 +68,7 @@ export struct ClassroomsPage {
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.checkmark_circle')).fontSize(18).fontColor([this.palette().success])
-    }.width('100%').padding(11).backgroundColor(this.palette().surface).borderRadius(18)
+    }.width('100%').padding(11).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
 
   }

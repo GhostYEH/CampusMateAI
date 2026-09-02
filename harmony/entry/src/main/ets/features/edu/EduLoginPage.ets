@@ -93,9 +93,9 @@ export struct EduLoginPage {
   build() {
     Column({ space: 0 }) {
       Row() {
-        Button('返回').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+        Button('返回').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
         Text('教务系统登录').fontSize(16).fontWeight(FontWeight.Bold).layoutWeight(1).textAlign(TextAlign.Center)
-        Button('取消').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().surface).fontColor(this.palette().text)
+        Button('取消').onClick(() => { this.clearSensitiveLoginState(); this.onBack(); }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
       }.width('100%').padding(12)
 
       Text('请在下方页面中完成学校教务系统的登录。CampusMate 不保存您的密码，仅在校验后使用登录会话同步课表和成绩。')

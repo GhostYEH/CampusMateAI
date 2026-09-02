@@ -38,14 +38,14 @@ export struct FocusPlanPage {
               Divider().color(this.palette().line)
               ForEach(this.plan.steps, (step: FocusPlanStep) => this.Step(step), (step: FocusPlanStep): string => step.stepNumber.toString())
               Button('按当前步骤开始专注').width('100%').height(50).backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').borderRadius(18).onClick(() => this.onStartCurrent())
-            }.width('100%').padding(16).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(22)
+            }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(22)
           } else {
             Text('从待办中选择一项，CampusMate 会生成可执行步骤。').fontColor(this.palette().muted).fontSize(12).lineHeight(18).width('100%')
           }
           Text('选择待办').fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold).width('100%')
           if (this.loading) LoadingProgress().width(32).height(32).color(this.palette().primary).margin(20)
           else ForEach(this.tasks.filter((task: TaskItem): boolean => task.status !== 'completed'), (task: TaskItem) => {
-            Row({ space: 10 }) { SymbolGlyph($r('sys.symbol.checkmark_circle')).fontSize(19).fontColor([this.palette().primary]); Column({ space: 4 }) { Text(task.title).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold).maxLines(1); Text(task.description ?? '生成专注步骤').fontColor(this.palette().muted).fontSize(11).maxLines(2) }.layoutWeight(1).alignItems(HorizontalAlign.Start); SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(15).fontColor([this.palette().muted]) }.width('100%').padding(14).backgroundColor(this.palette().surface).border({ width: 1, color: this.palette().line }).borderRadius(18).alignItems(VerticalAlign.Center).onClick(() => this.onGenerate(task))
+            Row({ space: 10 }) { SymbolGlyph($r('sys.symbol.checkmark_circle')).fontSize(19).fontColor([this.palette().primary]); Column({ space: 4 }) { Text(task.title).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold).maxLines(1); Text(task.description ?? '生成专注步骤').fontColor(this.palette().muted).fontSize(11).maxLines(2) }.layoutWeight(1).alignItems(HorizontalAlign.Start); SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(15).fontColor([this.palette().muted]) }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).border({ width: 1, color: this.palette().glass.border }).borderRadius(18).alignItems(VerticalAlign.Center).onClick(() => this.onGenerate(task))
           }, (task: TaskItem): string => task.id)
           if (this.error.length > 0) Text(this.error).fontColor('#FFD14343').fontSize(12).lineHeight(18).width('100%')
           Blank().height(18)

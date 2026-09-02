@@ -274,7 +274,7 @@ export struct EduSystemPage {
             Column({ space: 6 }) {
               Text('请先选择你的大学').fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)
               Text('教务系统连接需要先在个人中心选择所在大学。').fontSize(12).fontColor(this.palette().muted)
-            }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+            }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
           } else if (this.binding !== null && (this.binding.connection_status === 'active' || this.binding.connection_status === 'connected')) {
             this.ConnectedCard()
           } else {
@@ -334,7 +334,7 @@ export struct EduSystemPage {
         .backgroundColor(this.palette().primary).fontColor(Color.White)
         .enabled(!this.loading && this.portalUrl.trim().length > 0)
         .onClick(() => this.probeAndConnect())
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
   }
 
   @Builder ProbeResultCard() {
@@ -347,7 +347,7 @@ export struct EduSystemPage {
         Text('系统厂商：' + this.probe.provider).fontSize(12).fontColor(this.palette().muted)
         Text('登录方式：' + (this.probe.suggested_login_mode === 'client_webview' ? '客户端浏览器登录' : '账号密码登录')).fontSize(12).fontColor(this.palette().muted)
       }
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
   }
 
   @Builder CredentialFormCard() {
@@ -367,7 +367,7 @@ export struct EduSystemPage {
         .enabled(!this.loading && this.username.length > 0 && this.password.length > 0)
         .onClick(() => this.submitCredentials())
       Text('密码仅用于本次登录校验，不会明文保存。').fontSize(11).fontColor(this.palette().muted)
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
   }
 
   @Builder CaptchaFormCard() {
@@ -378,7 +378,7 @@ export struct EduSystemPage {
         Row({ space: 8 }) {
           Image('data:image/png;base64,' + this.preLoginResult.captcha_image_base64)
             .width(120).height(48).objectFit(ImageFit.Contain)
-          Button('换一张').backgroundColor(this.palette().surface).fontColor(this.palette().text)
+          Button('换一张').backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text)
             .onClick(() => this.refreshCaptcha())
         }.width('100%')
       } else {
@@ -402,7 +402,7 @@ export struct EduSystemPage {
         .enabled(!this.loading && this.username.length > 0 && this.password.length > 0 && this.captchaInput.length > 0)
         .onClick(() => this.submitCredentialsWithCaptcha())
       Text('密码仅用于本次登录校验，不会明文保存。').fontSize(11).fontColor(this.palette().muted)
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
   }
 
   @Builder ConnectedCard() {
@@ -427,19 +427,19 @@ export struct EduSystemPage {
       } else {
         Row({ space: 8 }) {
           Button('立即同步').backgroundColor(this.palette().primary).fontColor(Color.White).onClick(() => this.autoSync())
-          Button('重新登录').backgroundColor(this.palette().surface).fontColor(this.palette().text).onClick(() => {
+          Button('重新登录').backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().text).onClick(() => {
             this.binding = null;
             this.connection = null;
             this.probe = null;
             this.portalUrl = '';
           })
-          Button('断开').backgroundColor(this.palette().surface).fontColor(this.palette().danger).onClick(() => {
+          Button('断开').backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().danger).onClick(() => {
             this.confirmDisconnect();
           })
         }
-        Button('查看课表').width('100%').height(40).backgroundColor(this.palette().surface).fontColor(this.palette().primary)
+        Button('查看课表').width('100%').height(40).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().primary)
           .margin({ top: 8 }).onClick(() => this.onOpenSchedule())
       }
-    }.width('100%').padding(16).backgroundColor(this.palette().surface).borderRadius(16)
+    }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16)
   }
 }

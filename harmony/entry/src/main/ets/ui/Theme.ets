@@ -10,6 +10,31 @@ export interface CampusPalette {
   accent: string;
   danger: string;
   success: string;
+  glass: LiquidGlassSku;
+}
+
+/**
+ * Shared liquid-glass SKU for content cards and panels.
+ * Keep controls on their semantic colors; use these tokens for card surfaces.
+ */
+export interface LiquidGlassSku {
+  backdropBlur: number;
+  surface: string;
+  border: string;
+  shadow: string;
+  highlight: string;
+  motionDuration: number;
+}
+
+export function liquidGlassSku(darkMode: boolean, reduceMotion: boolean = false): LiquidGlassSku {
+  return {
+    backdropBlur: 18,
+    surface: darkMode ? '#B8142738' : '#B8FFFFFF',
+    border: darkMode ? '#559CC7D0' : '#99FFFFFF',
+    shadow: darkMode ? '#66000000' : '#330D2340',
+    highlight: darkMode ? '#669CC7D0' : '#CCFFFFFF',
+    motionDuration: reduceMotion ? 0 : 260
+  };
 }
 
 // Mirrors android/ui/theme/Color.kt. Keep these values in sync with the
@@ -25,7 +50,8 @@ export const lightPalette: CampusPalette = {
   line: '#E2E7EC',
   accent: '#E08A4E',
   danger: '#C25450',
-  success: '#4E8C6A'
+  success: '#4E8C6A',
+  glass: liquidGlassSku(false)
 };
 
 export const darkPalette: CampusPalette = {
@@ -39,5 +65,6 @@ export const darkPalette: CampusPalette = {
   line: '#2B424A',
   accent: '#F3B078',
   danger: '#E68780',
-  success: '#79B492'
+  success: '#79B492',
+  glass: liquidGlassSku(true)
 };

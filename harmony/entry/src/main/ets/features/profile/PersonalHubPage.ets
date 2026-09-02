@@ -58,8 +58,8 @@ export struct PersonalHubPage {
             TextInput({ placeholder: `搜索${this.title()}`, text: this.query }).layoutWeight(1).height(43).backgroundColor(Color.Transparent)
               .fontColor(this.palette().text).placeholderColor(this.palette().muted).onChange((value: string) => this.query = value)
             Text('刷新').fontColor(this.palette().primary).fontSize(11).onClick(() => this.onRefresh())
-          }.width('100%').height(50).padding({ left: 12, right: 12 }).backgroundColor(this.palette().surface)
-            .border({ width: 1, color: this.palette().line }).borderRadius(16)
+          }.width('100%').height(50).padding({ left: 12, right: 12 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+            .border({ width: 1, color: this.palette().glass.border }).borderRadius(16)
           if (this.loading) {
             LoadingProgress().width(34).height(34).color(this.palette().primary).margin({ top: 40 })
           } else if (this.section === 'files') {
@@ -67,14 +67,14 @@ export struct PersonalHubPage {
             else {
               Column() {
                 ForEach(this.files, (item: PersonalFileItem, index: number) => { this.FileRow(item); if (index < this.files.length - 1) { Divider().color(this.palette().line) } }, (item: PersonalFileItem) => item.id)
-              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
             }
           } else {
             if (this.favorites.length === 0) { Text('还没有收藏').fontColor(this.palette().muted).fontSize(12).padding(34) }
             else {
               Column() {
                 ForEach(this.favorites, (item: FavoriteItem, index: number) => { this.FavoriteRow(item); if (index < this.favorites.length - 1) { Divider().color(this.palette().line) } }, (item: FavoriteItem) => item.id)
-              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().surface).borderRadius(18)
+              }.padding({ left: 13, right: 13 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
             }
           }
           Blank().height(24)

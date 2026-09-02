@@ -26,8 +26,8 @@ export struct ExamsPage {
       Stack({ alignContent: Alignment.Center }) {
         SymbolGlyph($r('sys.symbol.arrow_left')).fontSize(21).fontColor([this.palette().text])
       }
-      .width(40).height(40).backgroundColor(this.palette().surface).borderRadius(20)
-      .border({ width: 1, color: this.palette().line })
+      .width(40).height(40).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(20)
+      .border({ width: 1, color: this.palette().glass.border })
       .onClick(() => this.onBack())
 
       Text('考试安排')
@@ -88,8 +88,8 @@ export struct ExamsPage {
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       SymbolGlyph($r('sys.symbol.bell')).fontSize(18).fontColor([exam.reminder_enabled === false ? this.palette().muted : this.palette().primary])
-    }.width('100%').padding(13).backgroundColor(this.palette().surface)
-      .border({ width: 1, color: this.palette().line }).borderRadius(18)
+    }.width('100%').padding(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: this.palette().glass.border }).borderRadius(18)
       .onClick(() => this.onOpenDetail(exam))
       .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), curve: Curve.EaseOut }))
 
