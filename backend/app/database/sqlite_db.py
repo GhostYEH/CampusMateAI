@@ -337,6 +337,7 @@ CREATE TABLE IF NOT EXISTS study_sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     mode TEXT NOT NULL DEFAULT 'focus',
+    experience_mode TEXT NOT NULL DEFAULT 'QUIET',
     goal TEXT,
     related_task_id TEXT,
     started_at TEXT NOT NULL,
@@ -1212,6 +1213,10 @@ class Database:
         if "mode" not in study_cols:
             conn.execute(
                 "ALTER TABLE study_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'focus'"
+            )
+        if "experience_mode" not in study_cols:
+            conn.execute(
+                "ALTER TABLE study_sessions ADD COLUMN experience_mode TEXT NOT NULL DEFAULT 'QUIET'"
             )
         if "planned_duration_seconds" not in study_cols:
             conn.execute(

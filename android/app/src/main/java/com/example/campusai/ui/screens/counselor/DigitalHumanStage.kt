@@ -3,11 +3,16 @@ package com.example.campusai.ui.screens.counselor
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.webkit.RenderProcessGoneDetail
 import android.view.View
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -18,11 +23,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.campusai.R
 import java.net.URI
 
 object DigitalHumanBridge {
@@ -84,6 +92,23 @@ object DigitalHumanBridge {
 
 internal enum class DigitalHumanRenderMode { LIVE_WEBGL, NATIVE_COMPAT }
 
+internal enum class DigitalHumanStageLoadState { LOADING, READY, FALLBACK }
+
+internal enum class DigitalHumanLoadEvent {
+    PAGE_STARTED,
+    TRUSTED_PAGE_FINISHED,
+    MAIN_FRAME_FAILED,
+    RENDERER_GONE,
+}
+
+internal fun nextDigitalHumanStageLoadState(event: DigitalHumanLoadEvent): DigitalHumanStageLoadState = when (event) {
+    DigitalHumanLoadEvent.PAGE_STARTED -> DigitalHumanStageLoadState.LOADING
+    DigitalHumanLoadEvent.TRUSTED_PAGE_FINISHED -> DigitalHumanStageLoadState.READY
+    DigitalHumanLoadEvent.MAIN_FRAME_FAILED,
+    DigitalHumanLoadEvent.RENDERER_GONE,
+    -> DigitalHumanStageLoadState.FALLBACK
+}
+
 internal fun selectDigitalHumanRenderMode(
     fingerprint: String,
     model: String,
@@ -125,12 +150,13 @@ fun DigitalHumanStage(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var pageReady by remember { mutableStateOf(false) }
     var lastSpokenRequestId by remember { mutableIntStateOf(0) }
     var lastCommandRequestId by remember { mutableIntStateOf(0) }
     val stageUrl = remember(apiBaseUrl, forceFallback, reduceMotion) {
         DigitalHumanBridge.stageUrl(apiBaseUrl, forceFallback, reduceMotion)
     }
+    var loadState by remember(stageUrl) { mutableStateOf(DigitalHumanStageLoadState.LOADING) }
+    val pageReady = loadState == DigitalHumanStageLoadState.READY
     val webView = remember(stageUrl) {
         WebView(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
@@ -147,14 +173,37 @@ fun DigitalHumanStage(
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                    pageReady = false
+                    loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.PAGE_STARTED)
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                     request.isForMainFrame && !DigitalHumanBridge.isTrustedStageUrl(stageUrl, request.url.toString())
 
                 override fun onPageFinished(view: WebView, url: String) {
-                    pageReady = DigitalHumanBridge.isTrustedStageUrl(stageUrl, url)
+                    if (DigitalHumanBridge.isTrustedStageUrl(stageUrl, url)) {
+                        loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.TRUSTED_PAGE_FINISHED)
+                    }
+                }
+
+                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                    if (request.isForMainFrame) {
+                        loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.MAIN_FRAME_FAILED)
+                    }
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: WebResourceResponse,
+                ) {
+                    if (request.isForMainFrame) {
+                        loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.MAIN_FRAME_FAILED)
+                    }
+                }
+
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.RENDERER_GONE)
+                    return true
                 }
             }
             loadUrl(stageUrl)
@@ -199,9 +248,20 @@ fun DigitalHumanStage(
         }
     }
 
-    AndroidView(
-        factory = { webView },
-        update = {},
-        modifier = modifier.fillMaxSize(),
-    )
+    Box(modifier.fillMaxSize()) {
+        if (loadState == DigitalHumanStageLoadState.FALLBACK) {
+            Image(
+                painter = painterResource(R.drawable.cpm_avatar_fallback),
+                contentDescription = "CPM 数字人兼容头像",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            AndroidView(
+                factory = { webView },
+                update = {},
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }

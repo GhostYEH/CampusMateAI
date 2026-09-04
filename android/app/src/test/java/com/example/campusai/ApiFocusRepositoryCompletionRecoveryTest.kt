@@ -1,6 +1,7 @@
 package com.example.campusai
 
 import com.example.campusai.data.model.FocusMode
+import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.remote.ApiService
 import com.example.campusai.data.remote.StudyGoalDto
 import com.example.campusai.data.remote.StudySessionDto
@@ -9,11 +10,31 @@ import java.lang.reflect.Proxy
 import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import retrofit2.Response
 
 class ApiFocusRepositoryCompletionRecoveryTest {
+    @Test
+    fun recoveredSessionRestoresItsSmartGuardMode() = runBlocking {
+        val api = Proxy.newProxyInstance(
+            ApiService::class.java.classLoader,
+            arrayOf(ApiService::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "activeStudySession" -> Response.success(session(status = "active", experienceMode = "SMART_GUARD"))
+                else -> error("Unexpected API call: ${method.name}")
+            }
+        } as ApiService
+        val repository = ApiFocusRepository(api)
+
+        val result = repository.refreshActiveSession()
+
+        assertTrue(result.isSuccess)
+        assertEquals(FocusSessionMode.SMART_GUARD, repository.activeSession.value?.sessionMode)
+    }
+
     @Test
     fun activeFailureRemainsVisibleWhenHistoryRefreshSucceeds() = runBlocking {
         val api = Proxy.newProxyInstance(
@@ -94,10 +115,15 @@ class ApiFocusRepositoryCompletionRecoveryTest {
         assertNull(repository.activeSession.value)
     }
 
-    private fun session(status: String, endedAt: String? = null) = StudySessionDto(
+    private fun session(
+        status: String,
+        endedAt: String? = null,
+        experienceMode: String = "QUIET",
+    ) = StudySessionDto(
         id = "session-1",
         user_id = "user-1",
         mode = "focus",
+        experience_mode = experienceMode,
         goal = "复习",
         related_task_id = "task-1",
         started_at = "2026-09-02T10:00:00Z",

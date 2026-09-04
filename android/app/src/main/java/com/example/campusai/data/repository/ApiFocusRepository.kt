@@ -1,6 +1,7 @@
 package com.example.campusai.data.repository
 
 import com.example.campusai.data.model.FocusMode
+import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.model.FocusStats
@@ -66,10 +67,22 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         _error.value = null
     }.onFailure { _error.value = it.message ?: "网络请求失败" }
 
-    suspend fun start(mode: FocusMode, goal: String?, taskId: String?, plannedDurationSeconds: Int = mode.totalSeconds): Result<StudySessionSnapshot> =
+    suspend fun start(
+        mode: FocusMode,
+        goal: String?,
+        taskId: String?,
+        plannedDurationSeconds: Int = mode.totalSeconds,
+        sessionMode: FocusSessionMode = FocusSessionMode.QUIET,
+    ): Result<StudySessionSnapshot> =
         runCatching {
             val response = api.createStudySession(
-                StudySessionCreateRequest(mode = mode.toApiMode(), planned_duration_seconds = plannedDurationSeconds, goal = goal, related_task_id = taskId),
+                StudySessionCreateRequest(
+                    mode = mode.toApiMode(),
+                    experience_mode = sessionMode.name,
+                    planned_duration_seconds = plannedDurationSeconds,
+                    goal = goal,
+                    related_task_id = taskId,
+                ),
             )
             check(response.isSuccessful) { "无法开始专注" }
             toSnapshot(checkNotNull(response.body()))
@@ -149,6 +162,7 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         durationSeconds = dto.duration_seconds,
         status = dto.status,
         mode = FocusMode.byName(dto.mode.uppercase()),
+        sessionMode = FocusSessionMode.fromApiValue(dto.experience_mode),
         pausedAt = dto.paused_at,
         pauseSeconds = dto.pause_seconds,
         behaviorSummary = dto.behavior_summary?.toDomain(),

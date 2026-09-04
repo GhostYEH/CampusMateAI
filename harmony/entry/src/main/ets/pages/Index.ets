@@ -71,7 +71,8 @@ import {
   FocusCameraLifecycleAction,
   FocusCameraLifecycleEvent,
   FocusCameraLifecyclePolicy,
-  FocusCameraSignalPresentation
+  FocusCameraSignalPresentation,
+  FocusSessionModeRecovery
 } from '../service/FocusCameraContract';
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
@@ -88,6 +89,10 @@ function toastError(message: string): void {
 
 function safeArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function restoredFocusSessionMode(session: StudySession | undefined): FocusSessionMode {
+  return FocusSessionModeRecovery.normalize(session?.experience_mode) as FocusSessionMode;
 }
 
 @Entry
@@ -909,6 +914,10 @@ struct Index {
         const repository = new StudyRepository(client);
         this.studySessions = safeArray<StudySession>(await repository.listSessions());
         this.activeStudySession = await repository.activeSession();
+        this.focusSessionMode = restoredFocusSessionMode(this.activeStudySession);
+        if (this.activeStudySession !== undefined) {
+          this.focusPlannedSeconds = this.activeStudySession.planned_duration_seconds ?? this.focusPlannedSeconds;
+        }
       } else if (target === 'files') {
         this.personalFiles = safeArray<PersonalFileItem>(await client.request<PersonalFileItem[]>(http.RequestMethod.GET, 'personal-hub/files'));
       } else if (target === 'favorites') {
@@ -1143,9 +1152,10 @@ struct Index {
     try {
       const repository = new StudyRepository(this.createApiClient());
       const sessionGoal: string = goal ?? (mode === 'short_break' ? '短暂休息' : mode === 'long_break' ? '长休息调整' : '完成一段专注学习');
-      this.activeStudySession = await repository.start(mode, sessionGoal, relatedTaskId, plannedSeconds);
+      this.activeStudySession = await repository.start(
+        mode, sessionGoal, relatedTaskId, plannedSeconds, sessionMode);
       this.focusPlannedSeconds = this.activeStudySession.planned_duration_seconds ?? plannedSeconds;
-      this.focusSessionMode = sessionMode;
+      this.focusSessionMode = restoredFocusSessionMode(this.activeStudySession);
       this.focusStartedAt = Date.now();
       this.focusChatMessages = [];
       this.focusChatInput = '';
@@ -1242,8 +1252,10 @@ struct Index {
         }
       } else if (action === 'pause') {
         this.activeStudySession = await repository.pause(session.id);
+        this.focusSessionMode = restoredFocusSessionMode(this.activeStudySession);
       } else {
         this.activeStudySession = await repository.resume(session.id);
+        this.focusSessionMode = restoredFocusSessionMode(this.activeStudySession);
         await this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.RESUME,
           this.activeStudySession.mode);
       }
@@ -1291,6 +1303,8 @@ struct Index {
   async reopenFocusSession(): Promise<void> {
     const session: StudySession | undefined = this.activeStudySession;
     if (session === undefined || (session.status !== 'active' && session.status !== 'paused')) return;
+    this.focusSessionMode = restoredFocusSessionMode(session);
+    this.focusPlannedSeconds = session.planned_duration_seconds ?? this.focusPlannedSeconds;
     if (session.status === 'paused') {
       if (!await this.updateFocusSession('resume')) return;
     } else {

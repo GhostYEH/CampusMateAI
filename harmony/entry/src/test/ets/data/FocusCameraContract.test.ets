@@ -8,6 +8,7 @@ import {
   FocusCameraLifecycleEvent,
   FocusCameraLifecycleAction,
   FocusCameraLifecyclePolicy,
+  FocusSessionModeRecovery,
   FocusCameraSignalPresentation,
   FocusBehaviorLabelText,
   FrameAnalysisGate,
@@ -68,6 +69,13 @@ export default function focusCameraContractTest(): void {
         .assertEqual(FocusCameraLifecycleAction.STOP);
       expect(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break', 'SMART_GUARD'))
         .assertEqual(FocusCameraLifecycleAction.STOP);
+    });
+
+    it('recovers only supported persisted experience modes', 0, () => {
+      expect(FocusSessionModeRecovery.normalize('SMART_GUARD')).assertEqual('SMART_GUARD');
+      expect(FocusSessionModeRecovery.normalize('AI_COMPANION')).assertEqual('AI_COMPANION');
+      expect(FocusSessionModeRecovery.normalize(undefined)).assertEqual('QUIET');
+      expect(FocusSessionModeRecovery.normalize('invalid')).assertEqual('QUIET');
     });
 
     it('resets the session aggregate for a new focus but not for resume', 0, () => {

@@ -42,6 +42,37 @@ def test_study_session_persists_its_mode() -> None:
     assert client.get("/api/v1/study/sessions", headers=headers).json()[0]["mode"] == "short_break"
 
 
+def test_study_session_persists_its_experience_mode_for_recovery() -> None:
+    client = _client()
+    headers = _headers(client)
+
+    created = client.post(
+        "/api/v1/study/sessions",
+        headers=headers,
+        json={"mode": "focus", "experience_mode": "SMART_GUARD"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["experience_mode"] == "SMART_GUARD"
+    active = client.get("/api/v1/study/sessions/active", headers=headers)
+    assert active.status_code == 200
+    assert active.json()["experience_mode"] == "SMART_GUARD"
+
+
+def test_study_session_defaults_to_quiet_experience_mode() -> None:
+    client = _client()
+    headers = _headers(client)
+
+    created = client.post(
+        "/api/v1/study/sessions",
+        headers=headers,
+        json={"mode": "focus"},
+    )
+
+    assert created.status_code == 201
+    assert created.json()["experience_mode"] == "QUIET"
+
+
 def test_study_session_rejects_an_unknown_mode() -> None:
     client = _client()
 

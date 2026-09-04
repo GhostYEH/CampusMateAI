@@ -33,9 +33,10 @@ export interface ServiceRequestPayload { kind: string; title: string; content: s
 export interface LostFoundItem { id: string; owner_id?: string; kind: string; title: string; content?: string; location?: string; contact?: string; status?: string; created_at?: string; }
 export interface LostFoundPayload { kind: string; title: string; content: string; location: string; contact: string; }
 export type FocusMode = 'focus' | 'short_break' | 'long_break';
+export type FocusExperienceMode = 'QUIET' | 'AI_COMPANION' | 'SMART_GUARD';
 export interface StudyBehaviorSummary { observed_seconds: number; study_seconds: number; paused_seconds: number; longest_continuous_study_seconds: number; meaningful_switch_count: number; phone_interaction_count: number; possible_distraction_count: number; absent_count: number; reminder_count: number; model_version: string; }
-export interface StudySession { id: string; mode: FocusMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; planned_duration_seconds?: number; duration_seconds: number; pause_seconds: number; status: string; behavior_summary?: StudyBehaviorSummary; created_at?: string; updated_at?: string; }
-export interface StudySessionCreate { mode: FocusMode; planned_duration_seconds?: number; goal?: string; related_task_id?: string; }
+export interface StudySession { id: string; mode: FocusMode; experience_mode?: FocusExperienceMode; goal?: string; related_task_id?: string; started_at: string; paused_at?: string; ended_at?: string; planned_duration_seconds?: number; duration_seconds: number; pause_seconds: number; status: string; behavior_summary?: StudyBehaviorSummary; created_at?: string; updated_at?: string; }
+export interface StudySessionCreate { mode: FocusMode; experience_mode?: FocusExperienceMode; planned_duration_seconds?: number; goal?: string; related_task_id?: string; }
 export interface StudySessionFinish { self_report?: string; self_report_tags?: string[]; behavior_summary?: StudyBehaviorSummary; }
 export interface StudyDailyGoal { target_minutes: number; updated_at: string; }
 export interface TaskBreakdownRequest { task_id?: string; goal?: string; }
@@ -56,6 +57,12 @@ export interface NoticeExtractTaskItem { title: string; task: string; actionable
 export interface MultiNoticeExtractResponse { tasks: NoticeExtractTaskItem[]; split_reason: string; needs_user_confirmation: boolean; }
 export interface ExtractResult { title: string; source: string; deadline: string; tasks: string[]; confidence: number; error?: string; saved?: boolean; }
 export interface TaskCreateRequest { title: string; description?: string; deadline?: string; source_name?: string; source_text?: string; priority?: string; }
+export interface TaskImportAnalyzeRequest { content: string; source_name?: string; }
+export interface TaskImportDraft { title: string; description?: string; deadline?: string; source_name?: string; source_text?: string; priority?: string; importance?: string; confidence: number; selected: boolean; existing_task_id?: string; existing_status?: string; }
+export interface TaskImportAnalyzeResponse { mode: string; split_reason: string; needs_user_confirmation: boolean; tasks: TaskImportDraft[]; }
+export interface TaskImportCommitRequest { tasks: TaskCreateRequest[]; }
+export interface TaskImportExisting { task_id: string; title: string; status: string; }
+export interface TaskImportCommitResponse { created: TaskItem[]; skipped_existing: TaskImportExisting[]; }
 export interface LocalCapturedNotice { id: string; title: string; content: string; source: string; source_type: string; time: string; fingerprint: string; captured_at: number; }
 export interface UniversityItem { id: string; name: string; short_name?: string; province?: string; city?: string; academic_provider: string; forum_enabled: boolean; is_demo: boolean; }
 export interface UniversitySelectionResponse { university_id?: string; university?: UniversityItem; }

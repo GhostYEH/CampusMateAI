@@ -1,7 +1,10 @@
 package com.example.campusai
 
 import com.example.campusai.ui.screens.counselor.DigitalHumanBridge
+import com.example.campusai.ui.screens.counselor.DigitalHumanLoadEvent
 import com.example.campusai.ui.screens.counselor.DigitalHumanRenderMode
+import com.example.campusai.ui.screens.counselor.DigitalHumanStageLoadState
+import com.example.campusai.ui.screens.counselor.nextDigitalHumanStageLoadState
 import com.example.campusai.ui.screens.counselor.selectDigitalHumanRenderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +12,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DigitalHumanBridgeTest {
+    @Test
+    fun `main document failure switches the stage to the bundled avatar`() {
+        assertEquals(
+            DigitalHumanStageLoadState.FALLBACK,
+            nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.MAIN_FRAME_FAILED),
+        )
+    }
+
+    @Test
+    fun `webview renderer failure switches the stage to the bundled avatar`() {
+        assertEquals(
+            DigitalHumanStageLoadState.FALLBACK,
+            nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.RENDERER_GONE),
+        )
+    }
+
+    @Test
+    fun `a trusted completed document makes the web stage ready`() {
+        assertEquals(
+            DigitalHumanStageLoadState.READY,
+            nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.TRUSTED_PAGE_FINISHED),
+        )
+    }
+
     @Test
     fun `x86 emulators use the lightweight native avatar and audio bridge`() {
         assertEquals(

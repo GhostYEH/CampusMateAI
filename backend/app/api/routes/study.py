@@ -93,6 +93,7 @@ def _session_to_out(
         id=s.id,
         user_id=s.user_id,
         mode=s.mode,
+        experience_mode=s.experience_mode,
         goal=s.goal,
         related_task_id=s.related_task_id,
         started_at=s.started_at,
@@ -150,6 +151,7 @@ def create_session(
     session = repo.create_session(
         user_id=user.id,
         mode=req.mode,
+        experience_mode=req.experience_mode,
         goal=req.goal.strip() if req.goal else None,
         related_task_id=req.related_task_id,
         planned_duration_seconds=req.planned_duration_seconds,

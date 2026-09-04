@@ -68,7 +68,7 @@ export struct TasksPage {
   }
 
   updateImportDraft(index: number, draft: TaskImportDraft): void {
-    this.importDrafts = this.importDrafts.map((item: TaskImportDraft, position: number) => position === index ? draft : item);
+    this.importDrafts = this.importDrafts.map((item: TaskImportDraft, position: number): TaskImportDraft => position === index ? draft : item);
   }
 
   async analyzeImport(): Promise<void> {

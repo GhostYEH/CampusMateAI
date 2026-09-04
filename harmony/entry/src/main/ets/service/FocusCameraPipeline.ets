@@ -10,6 +10,7 @@ import {
   FocusCameraStateText,
   FocusCameraRunToken,
   FrameAnalysisGate,
+  ImageArrivalGate,
   PersonAbsenceTracker,
   PersonBox,
   PersonRoiSelector
@@ -20,6 +21,7 @@ export class FocusCameraPipeline {
   private readonly provider: FocusAssistProvider;
   private readonly onUpdate: () => void;
   private readonly frameGate: FrameAnalysisGate = new FrameAnalysisGate();
+  private readonly imageArrivalGate: ImageArrivalGate = new ImageArrivalGate();
   private readonly absenceTracker: PersonAbsenceTracker = new PersonAbsenceTracker();
   private readonly runToken: FocusCameraRunToken = new FocusCameraRunToken();
   private pipelineState: string = FocusCameraState.STOPPED;
@@ -198,7 +200,7 @@ export class FocusCameraPipeline {
 
   private onImageArrival(): void {
     const receiver: image.ImageReceiver | undefined = this.receiver;
-    if (receiver === undefined) return;
+    if (receiver === undefined || !this.imageArrivalGate.tryAcquire()) return;
     receiver.readLatestImage().then((cameraImage: image.Image) => {
       const timestamp: number = Date.now();
       if (!this.running || !this.frameGate.tryAcquire(timestamp)) {
@@ -213,6 +215,8 @@ export class FocusCameraPipeline {
       });
     }).catch(() => {
       if (this.running) this.setState(FocusCameraState.ERROR);
+    }).finally(() => {
+      this.imageArrivalGate.release();
     });
   }
 
@@ -302,6 +306,7 @@ export class FocusCameraPipeline {
     this.receiver = undefined;
     this.detector = undefined;
     this.analysisTask = undefined;
+    this.imageArrivalGate.release();
   }
 
   private setState(state: string, forceUpdate: boolean = false): void {

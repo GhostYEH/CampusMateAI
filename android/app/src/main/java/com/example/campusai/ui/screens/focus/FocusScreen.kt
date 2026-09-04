@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -92,6 +93,9 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
+import com.example.campusai.ui.glass.CampusGlassRole
+import com.example.campusai.ui.glass.CampusGlassScene
+import com.example.campusai.ui.glass.campusGlass
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -204,7 +208,13 @@ fun FocusScreen(
                     val latestPlan = effectiveTaskId?.let { planRepository.getPlan(it) }
                     val latestStep = latestPlan?.currentStep
                     val sessionTaskName = latestStep?.title ?: taskName
-                    val startResult = repository.start(mode, latestStep?.title ?: sessionTaskName, effectiveTaskId, selectedDurationMinutes * 60)
+                    val startResult = repository.start(
+                        mode,
+                        latestStep?.title ?: sessionTaskName,
+                        effectiveTaskId,
+                        selectedDurationMinutes * 60,
+                        sessionMode,
+                    )
                     if (startResult.isSuccess) {
                         selectedSecondsLeft = mode.totalSeconds
                         manager.beginFocusSession()
@@ -219,7 +229,7 @@ fun FocusScreen(
                 else -> onOpenAssistant(
                     recoverableSession.plannedDurationSeconds.takeIf { it > 0 } ?: mode.totalSeconds,
                     currentStep?.title ?: taskName,
-                    sessionMode,
+                    recoverableSession.sessionMode,
                     effectiveTaskId.takeIf { currentStep != null },
                 )
             }
@@ -245,61 +255,127 @@ fun FocusScreen(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(FocusBg),
-        state = listState,
-        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = bottomContentPadding),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    val wallpaperResource = rememberSaveable { FocusHallWallpaperPicker.next() }
+    CampusGlassScene(
+        darkMode = false,
+        background = { FocusHallBackdrop(wallpaperResource) },
     ) {
-        (if (!backendOnline && remoteError == null) "专注大厅需要连接真实后端后才能使用" else remoteError)?.let { message ->
-            item { Surface(color = AlertErrorBg, shape = RoundedCornerShape(16.dp)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CloudOff, null, tint = AlertErrorText); Spacer(Modifier.width(8.dp)); Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp); TextButton(onClick = { scope.launch { appRepository.refreshBackendStatus(); if (appRepository.backendOnline.value) repository.refresh() } }) { Text("重试", color = FocusBlue) } } } }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("专注大厅", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
-                Text("CampusMate AI 导员", color = FocusViolet, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            (if (!backendOnline && remoteError == null) "专注大厅需要连接真实后端后才能使用" else remoteError)?.let { message ->
+                item {
+                    Surface(
+                        modifier = Modifier.campusGlass(
+                            shape = RoundedCornerShape(16.dp),
+                            role = CampusGlassRole.DENSE,
+                            tint = AlertErrorBg.copy(alpha = .76f),
+                        ),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudOff, null, tint = AlertErrorText)
+                            Spacer(Modifier.width(8.dp))
+                            Text(message, Modifier.weight(1f), color = AlertErrorText, fontSize = 12.sp)
+                            TextButton(onClick = { scope.launch { appRepository.refreshBackendStatus(); if (appRepository.backendOnline.value) repository.refresh() } }) { Text("重试", color = FocusBlue) }
+                        }
+                    }
+                }
             }
-        }
-        item {
-            FocusHallDialogue(
-                state = guideState,
-                arranging = arranging,
-                countdown = countdown,
-                selectedMinutes = selectedDurationMinutes,
-                selectedMode = sessionMode,
-                onReady = { if (sessionReady) arranging = true },
-                onOpenHistory = onOpenHistory,
-                onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
-                onCustom = { showCustomDurationDialog = true },
-                onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
-            )
-        }
-        if (effectiveTaskId != null) {
             item {
-                FocusPlanCard(
-                    plan = currentPlan,
-                    loading = planLoading,
-                    error = planError,
-                    onRetry = { planReloadToken++ },
+                Surface(
+                    modifier = Modifier.campusGlass(
+                        shape = RoundedCornerShape(50),
+                        role = CampusGlassRole.NAVIGATION,
+                        tint = Color.White.copy(alpha = .34f),
+                    ),
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(50),
+                ) {
+                    Text(
+                        "CampusMate AI 导员",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            item {
+                FocusHallDialogue(
+                    state = guideState,
+                    arranging = arranging,
+                    countdown = countdown,
+                    selectedMinutes = selectedDurationMinutes,
+                    selectedMode = sessionMode,
+                    onReady = { if (sessionReady) arranging = true },
+                    onOpenHistory = onOpenHistory,
+                    onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
+                    onCustom = { showCustomDurationDialog = true },
+                    onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
                 )
             }
-        }
-        item {
-            Surface(shape = RoundedCornerShape(24.dp), color = Surface, border = BorderStroke(1.dp, Line)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("今日学习数据 ✦", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    Spacer(Modifier.height(14.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Accent.copy(alpha = .14f)); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Background) }
+            if (effectiveTaskId != null) {
+                item {
+                    FocusPlanCard(
+                        plan = currentPlan,
+                        loading = planLoading,
+                        error = planError,
+                        onRetry = { planReloadToken++ },
+                    )
+                }
+            }
+            item {
+                Surface(
+                    modifier = Modifier.campusGlass(
+                        shape = RoundedCornerShape(24.dp),
+                        role = CampusGlassRole.PANEL,
+                        tint = Color.White.copy(alpha = .42f),
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Transparent,
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("今日学习数据 ✦", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Spacer(Modifier.height(14.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { FocusStat(Modifier.weight(1f), Icons.Default.Timer, stats.todayMinutes.toString(), "分钟", "今日专注", PrimarySoft); FocusStat(Modifier.weight(1f), Icons.Default.LocalFireDepartment, stats.streakDays.toString(), "天", "连续天数", Accent.copy(alpha = .14f)); FocusStat(Modifier.weight(1f), Icons.Default.MilitaryTech, stats.todayCount.toString(), "次", "完成次数", Background) }
+                    }
                 }
             }
         }
+        if (showCustomDurationDialog) AlertDialog(
+            onDismissRequest = { showCustomDurationDialog = false },
+            title = { Text("自定义专注时长") },
+            text = { OutlinedTextField(value = customDurationInput, onValueChange = { customDurationInput = it.filter(Char::isDigit) }, label = { Text("分钟（5–240）") }, singleLine = true) },
+            confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
+            dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
+        )
     }
-    if (showCustomDurationDialog) AlertDialog(
-        onDismissRequest = { showCustomDurationDialog = false },
-        title = { Text("自定义专注时长") },
-        text = { OutlinedTextField(value = customDurationInput, onValueChange = { customDurationInput = it.filter(Char::isDigit) }, label = { Text("分钟（5–240）") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
-        dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
+}
+
+@Composable
+private fun BoxScope.FocusHallBackdrop(@DrawableRes wallpaperResource: Int) {
+    Image(
+        painter = painterResource(wallpaperResource),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.matchParentSize(),
+    )
+    Box(
+        Modifier
+            .matchParentSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = .46f),
+                    .28f to Color.White.copy(alpha = .23f),
+                    .72f to Color.White.copy(alpha = .18f),
+                    1f to Color(0xFFF3F7F7).copy(alpha = .58f),
+                ),
+            ),
     )
 }
 
@@ -319,7 +395,16 @@ private fun FocusPlanCard(
     error: String?,
     onRetry: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(24.dp), color = Surface, border = BorderStroke(1.dp, Primary.copy(alpha = .18f))) {
+    val shape = RoundedCornerShape(24.dp)
+    Surface(
+        modifier = Modifier.campusGlass(
+            shape = shape,
+            role = CampusGlassRole.PANEL,
+            tint = Color.White.copy(alpha = .45f),
+        ),
+        shape = shape,
+        color = Color.Transparent,
+    ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Assignment, contentDescription = null, tint = Primary)
@@ -354,7 +439,15 @@ private fun FocusPlanCard(
                         }
                     }
                     plan.currentStep?.let { step ->
-                        Surface(shape = RoundedCornerShape(14.dp), color = PrimarySoft) {
+                        Surface(
+                            modifier = Modifier.campusGlass(
+                                shape = RoundedCornerShape(14.dp),
+                                role = CampusGlassRole.DENSE,
+                                tint = PrimarySoft.copy(alpha = .68f),
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.Transparent,
+                        ) {
                             Text("下一次专注：${step.title}", Modifier.padding(12.dp), color = Primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -450,7 +543,16 @@ private fun FocusHallHero(message: String, npcState: GuideNpcState, onTextComple
             Text("✦", color = Color.White.copy(alpha = .82f), fontSize = 28.sp, modifier = Modifier.align(Alignment.TopEnd))
             Text("✦", color = FocusBlue.copy(alpha = .50f), fontSize = 18.sp, modifier = Modifier.align(Alignment.CenterStart))
             AnimatedContent(targetState = message, transitionSpec = { (fadeIn() + slideInVertically { it / 3 }) togetherWith (fadeOut() + slideOutVertically { -it / 4 }) }, label = "guide-bubble", modifier = Modifier.align(Alignment.TopStart).padding(end = 30.dp)) { currentMessage ->
-                Surface(shape = RoundedCornerShape(18.dp), color = Color.White, border = BorderStroke(2.dp, FocusViolet.copy(alpha = .55f)), shadowElevation = 3.dp) { TypewriterBubble(currentMessage, onTextComplete) }
+                Surface(
+                    modifier = Modifier.campusGlass(
+                        shape = RoundedCornerShape(18.dp),
+                        role = CampusGlassRole.PANEL,
+                        tint = Color.White.copy(alpha = .72f),
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.Transparent,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = .62f)),
+                ) { TypewriterBubble(currentMessage, onTextComplete) }
             }
             GuideSceneStatus(npcState, Modifier.align(Alignment.CenterEnd).padding(top = 34.dp, end = 2.dp))
             Text("FOCUS · LEARN · GROW", color = Color.White.copy(alpha = .82f), fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp))
@@ -628,11 +730,18 @@ private fun HallDialogueChoice(
     onClick: () -> Unit,
     selected: Boolean = false,
 ) {
+    val shape = RoundedCornerShape(20.dp)
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = if (selected) PrimarySoft else Surface,
-        border = BorderStroke(1.dp, if (selected) FocusBlue else Line),
+        modifier = Modifier.campusGlass(
+            shape = shape,
+            role = CampusGlassRole.CONTROL,
+            tint = if (selected) PrimarySoft.copy(alpha = .72f) else Color.White.copy(alpha = .46f),
+            interactionProgress = if (selected) .45f else 0f,
+        ),
+        shape = shape,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) FocusBlue.copy(alpha = .74f) else Color.White.copy(alpha = .52f)),
     ) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = CircleShape, color = FocusBlue.copy(alpha = .13f)) { Icon(icon, null, tint = FocusBlue, modifier = Modifier.padding(9.dp).size(21.dp)) }
@@ -973,7 +1082,7 @@ private fun DebugBehaviorDatasetControls(
 }
 
 @Composable
-private fun FocusStat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, label: String, background: Color) { Column(modifier.clip(RoundedCornerShape(20.dp)).background(background).padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (icon == Icons.Default.LocalFireDepartment) FocusOrange else FocusBlue, modifier = Modifier.size(25.dp)); Spacer(Modifier.height(6.dp)); Row(verticalAlignment = Alignment.Bottom) { Text(value, color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.width(2.dp)); Text(unit, color = Muted, fontSize = 10.sp) }; Text(label, color = Muted, fontSize = 11.sp) } }
+private fun FocusStat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, unit: String, label: String, background: Color) { Column(modifier.campusGlass(shape = RoundedCornerShape(20.dp), role = CampusGlassRole.DENSE, tint = background.copy(alpha = .68f)).padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (icon == Icons.Default.LocalFireDepartment) FocusOrange else FocusBlue, modifier = Modifier.size(25.dp)); Spacer(Modifier.height(6.dp)); Row(verticalAlignment = Alignment.Bottom) { Text(value, color = TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.width(2.dp)); Text(unit, color = Muted, fontSize = 10.sp) }; Text(label, color = Muted, fontSize = 11.sp) } }
 
 private fun statusLabel(status: ExpressionServiceStatus) = when (status) {
     ExpressionServiceStatus.Off -> "未加载"

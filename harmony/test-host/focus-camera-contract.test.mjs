@@ -8,9 +8,11 @@ import {
   FocusCameraLifecycleEvent,
   FocusCameraLifecycleAction,
   FocusCameraLifecyclePolicy,
+  FocusSessionModeRecovery,
   FocusCameraSignalPresentation,
   FocusBehaviorLabelText,
   FrameAnalysisGate,
+  ImageArrivalGate,
   PersonRoiSelector
 } from '../entry/src/main/ets/service/FocusCameraContract.ts';
 
@@ -40,23 +42,24 @@ test('rejects non-person, low-confidence, and degenerate detections', () => {
 });
 
 test('enables the camera only for a study focus interval', () => {
-  assert.equal(FocusCameraActivationPolicy.shouldRun('focus'), true);
-  assert.equal(FocusCameraActivationPolicy.shouldRun('short_break'), false);
-  assert.equal(FocusCameraActivationPolicy.shouldRun('long_break'), false);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('focus', 'SMART_GUARD'), true);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('focus', 'QUIET'), false);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('short_break', 'SMART_GUARD'), false);
+  assert.equal(FocusCameraActivationPolicy.shouldRun('long_break', 'SMART_GUARD'), false);
 });
 
 test('starts only for focus session starts and focus resumes', () => {
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'focus', 'SMART_GUARD'),
     FocusCameraLifecycleAction.START);
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'short_break', 'SMART_GUARD'),
     FocusCameraLifecycleAction.STOP);
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.START, 'long_break', 'SMART_GUARD'),
     FocusCameraLifecycleAction.STOP);
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'focus', 'SMART_GUARD'),
     FocusCameraLifecycleAction.START);
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'short_break', 'SMART_GUARD'),
     FocusCameraLifecycleAction.STOP);
-  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break'),
+  assert.equal(FocusCameraLifecyclePolicy.action(FocusCameraLifecycleEvent.RESUME, 'long_break', 'SMART_GUARD'),
     FocusCameraLifecycleAction.STOP);
 });
 
@@ -68,8 +71,15 @@ test('stops for pause, finish, hide, leave, and mode reset', () => {
     FocusCameraLifecycleEvent.LEAVE,
     FocusCameraLifecycleEvent.RESET
   ]) {
-    assert.equal(FocusCameraLifecyclePolicy.action(event, 'focus'), FocusCameraLifecycleAction.STOP);
+    assert.equal(FocusCameraLifecyclePolicy.action(event, 'focus', 'SMART_GUARD'), FocusCameraLifecycleAction.STOP);
   }
+});
+
+test('restores only a supported persisted experience mode', () => {
+  assert.equal(FocusSessionModeRecovery.normalize('SMART_GUARD'), 'SMART_GUARD');
+  assert.equal(FocusSessionModeRecovery.normalize('AI_COMPANION'), 'AI_COMPANION');
+  assert.equal(FocusSessionModeRecovery.normalize(undefined), 'QUIET');
+  assert.equal(FocusSessionModeRecovery.normalize('unsupported'), 'QUIET');
 });
 
 test('drops frames while analysis is running and before the next interval', () => {
@@ -79,6 +89,14 @@ test('drops frames while analysis is running and before the next interval', () =
   gate.release();
   assert.equal(gate.tryAcquire(1999), false);
   assert.equal(gate.tryAcquire(2000), true);
+});
+
+test('serializes image receiver reads while a frame is being acquired', () => {
+  const gate = new ImageArrivalGate();
+  assert.equal(gate.tryAcquire(), true);
+  assert.equal(gate.tryAcquire(), false);
+  gate.release();
+  assert.equal(gate.tryAcquire(), true);
 });
 
 test('admits a new frame after the default 500 ms cadence', () => {

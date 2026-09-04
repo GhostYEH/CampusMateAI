@@ -24,6 +24,7 @@ import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
 import counselorConversationStateTest from './ets/ui/CounselorConversationState.test';
 import eduLoginSecurityTest from './ets/data/EduLoginSecurity.test';
 import expressionModelMathTest from './ets/data/ExpressionModelMath.test';
+import expressionModelContractTest from './ets/data/ExpressionModelContract.test';
 import expressionFaceQualityTest from './ets/data/ExpressionFaceQuality.test';
 import counselorVisualSpecTest from './ets/ui/CounselorVisualSpec.test';
 import focusCameraContractTest from './ets/data/FocusCameraContract.test';
@@ -35,6 +36,7 @@ import focusPlanRepositoryTest from './ets/focus/FocusPlanRepository.test';
 import focusSessionStateTest from './ets/focus/FocusSessionState.test';
 import focusVoiceStateTest from './ets/focus/FocusVoiceState.test';
 import focusRealtimeVoiceRepositoryTest from './ets/focus/FocusRealtimeVoiceRepository.test';
+import focusHallWallpaperTest from './ets/focus/FocusHallWallpaper.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -63,6 +65,7 @@ export default function testsuite(): void {
   counselorConversationStateTest();
   eduLoginSecurityTest();
   expressionModelMathTest();
+  expressionModelContractTest();
   expressionFaceQualityTest();
   counselorVisualSpecTest();
   focusCameraContractTest();
@@ -74,4 +77,5 @@ export default function testsuite(): void {
   focusSessionStateTest();
   focusVoiceStateTest();
   focusRealtimeVoiceRepositoryTest();
+  focusHallWallpaperTest();
 }

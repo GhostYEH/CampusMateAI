@@ -27,7 +27,7 @@ export class FocusSceneState {
   }
 
   static assetName(scene: FocusSceneId): string {
-    return this.scene(scene).asset;
+    return FocusSceneState.scene(scene).asset;
   }
 
   static scene(scene: FocusSceneId): FocusSceneOption {

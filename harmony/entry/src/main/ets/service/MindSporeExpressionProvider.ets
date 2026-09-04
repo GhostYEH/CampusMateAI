@@ -5,6 +5,7 @@ import { image } from '@kit.ImageKit';
 import { mindSporeLite } from '@kit.MindSporeLiteKit';
 import { ExpressionRecognitionProvider } from './ExpressionRecognitionProvider';
 import { ExpressionModelMath, ExpressionPrediction } from './ExpressionModelMath';
+import { ExpressionModelContract } from './ExpressionModelContract';
 import {
   ExpressionFaceQuality,
   ExpressionFaceQualityDecision,
@@ -77,7 +78,8 @@ export class MindSporeExpressionProvider implements ExpressionRecognitionProvide
     new Uint8Array(buffer).set(bytes);
     const loaded: mindSporeLite.Model = await mindSporeLite.loadModelFromBuffer(buffer);
     const inputs: mindSporeLite.MSTensor[] = loaded.getInputs();
-    if (inputs.length !== 1 || inputs[0].elementNum !== INPUT_SIZE * INPUT_SIZE * 3) {
+    if (inputs.length !== 1 ||
+      !ExpressionModelContract.acceptsInput(inputs[0].shape, inputs[0].elementNum)) {
       throw new Error('expression input contract mismatch');
     }
     this.model = loaded;
@@ -220,8 +222,12 @@ export class MindSporeExpressionProvider implements ExpressionRecognitionProvide
     const inputs: mindSporeLite.MSTensor[] = model.getInputs();
     inputs[0].setData(inputData.buffer);
     const outputs: mindSporeLite.MSTensor[] = await model.predict(inputs);
-    if (outputs.length !== 1 || outputs[0].elementNum !== 7) return undefined;
-    return ExpressionModelMath.decode(new Float32Array(outputs[0].getData()));
+    if (outputs.length !== 1) return undefined;
+    const data: ArrayBuffer = outputs[0].getData();
+    if (!ExpressionModelContract.acceptsOutput(outputs[0].shape, outputs[0].elementNum, data.byteLength)) {
+      return undefined;
+    }
+    return ExpressionModelMath.decode(new Float32Array(data));
   }
 
   private largestFace(faces: faceDetector.Face[]): faceDetector.Face | undefined {

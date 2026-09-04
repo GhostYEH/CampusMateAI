@@ -6,8 +6,8 @@ export default function taskImportModelTest(): void {
   describe('TaskImportModel', () => {
     it('keeps only selected non-empty drafts', 0, () => {
       const drafts: TaskImportDraft[] = [
-        { title: '已有任务', selected: false, priority: 'medium' },
-        { title: ' 课程报告 ', selected: true, priority: 'high' }
+        { title: '已有任务', selected: false, priority: 'medium', confidence: 0.82 },
+        { title: ' 课程报告 ', selected: true, priority: 'high', confidence: 0.91 }
       ];
       expect(selectedImportTasks(drafts).length).assertEqual(1);
       expect(selectedImportTasks(drafts)[0].title).assertEqual('课程报告');
@@ -24,7 +24,7 @@ export default function taskImportModelTest(): void {
 
     it('clears duplicate metadata and selects a materially renamed draft', 0, () => {
       const duplicate: TaskImportDraft = {
-        title: '课程报告', selected: false, priority: 'medium',
+        title: '课程报告', selected: false, priority: 'medium', confidence: 0.88,
         existing_task_id: 'task-1', existing_status: 'pending'
       };
 

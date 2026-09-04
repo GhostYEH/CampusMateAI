@@ -56,15 +56,6 @@
 .hero-date{display:block;color:#34537d;font-size:15px;font-weight:650}
 .focus-card-copy h1{margin:14px 0 11px;color:#12315a;font-size:38px;font-weight:850;letter-spacing:-.045em;line-height:1.08}
 .focus-card-copy>p{margin:0;color:#385578;font-size:15px}
-.hitokoto-quote{display:grid;align-content:start;min-height:128px;margin-top:14px;max-width:min(560px,calc(100% - 240px));transition:opacity .22s ease,transform .22s ease}
-.hitokoto-quote.is-loading{opacity:.62}
-.focus-card-copy .hitokoto-text{display:-webkit-box;overflow:hidden;margin:0;color:#12315a;font-size:clamp(28px,2.2vw,42px);font-weight:800;letter-spacing:-.045em;line-height:1.25;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-.hitokoto-text-link{color:inherit;text-decoration:none}.hitokoto-text-link:hover{color:#284fbe}
-.hitokoto-meta{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:12px;min-width:0}
-.hitokoto-source{min-width:0;overflow:hidden;color:#71809b;font-size:14px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
-.hitokoto-source:hover{color:#465fe2}
-.hitokoto-refresh{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;border:0;background:transparent;color:#7c89a0;font-size:12px;cursor:pointer;transition:color .18s ease}
-.hitokoto-refresh:hover{color:#465fe2}.hitokoto-refresh:disabled{cursor:wait;opacity:.75}.hitokoto-refresh .spinning{animation:home-spin .8s linear infinite}
 .focus-summary{position:absolute;left:28px;bottom:16px;width:560px;min-height:124px;display:grid;grid-template-columns:42px minmax(0,1fr);align-items:start;gap:12px;padding:18px 18px;border:1px solid rgba(255,255,255,.9);border-radius:20px;background:rgba(255,255,255,.78);box-shadow:0 10px 25px rgba(73,94,151,.06);backdrop-filter:blur(10px)}
 .summary-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:#edf0ff;color:#4164f1}
 .summary-copy{display:grid;gap:4px;min-width:0}
@@ -168,7 +159,6 @@
 @media(max-width:1180px){.student-home-hero{grid-template-columns:1fr}.student-home-columns{grid-template-columns:1fr 1fr}.hot-posts-panel{grid-column:1/-1}.focus-hero-image{right:200px}.student-home-skeleton{grid-template-columns:1fr 1fr}.student-home-skeleton .home-skeleton-panel:last-child{grid-column:1/-1}}
 @media(max-width:900px){.student-layout .topbar{padding-left:66px}.student-layout .sync-pill{display:none}.student-layout .command-search{width:100%}.student-layout .student-page.student-home{padding:0 var(--student-page-gutter) 28px}.student-home-columns{grid-template-columns:1fr}.hot-posts-panel{grid-column:auto}.focus-summary{width:520px}}
 @media(max-width:700px){.student-layout .topbar{height:72px}.student-layout .top-date{display:none}.student-layout .student-page.student-home{padding:0 var(--student-page-gutter) 24px}.student-focus-card{min-height:490px}.focus-card-copy{padding:24px 22px}.focus-card-copy h1{font-size:30px}.focus-card-copy>p{font-size:13px}.focus-hero-image{right:50%;top:148px;width:180px;height:180px;transform:translateX(25%)}.focus-progress{right:20px;top:170px;width:135px;height:135px}.focus-summary{left:16px;right:16px;bottom:16px;width:auto;grid-template-columns:38px minmax(0,1fr);min-height:138px;padding:14px}.focus-card-actions{position:static;grid-column:1/-1;margin-top:7px}.focus-card-actions button{height:40px;flex:1;padding:0 10px;font-size:12px}.overview-stats{height:auto}.overview-stats button{grid-template-columns:44px minmax(0,1fr)}.overview-icon{width:44px;height:44px}.learning-actions,.student-quick-grid{grid-template-columns:1fr 1fr}.student-home-skeleton{grid-template-columns:1fr}.student-home-skeleton .home-skeleton-panel:last-child{grid-column:auto}}
-@media(max-width:700px){.hitokoto-quote{max-width:100%;min-height:146px}.hitokoto-meta{gap:8px}.hitokoto-source{max-width:100%;white-space:normal}}
 @media(max-width:440px){.focus-hero-image{left:10px;right:auto;transform:none;width:160px;height:160px}.focus-progress{width:125px;height:125px}.learning-actions,.student-quick-grid{grid-template-columns:1fr}.overview-stats{grid-template-columns:1fr}.overview-stats button{border-right:0!important;border-bottom:1px solid #e9edf4}.overview-stats button:last-child{border-bottom:0}.student-quick-grid>button{min-height:68px}}
 @media(prefers-reduced-motion:reduce){.student-home-skeleton>div{animation:none}.student-home button{transition:none}}
 

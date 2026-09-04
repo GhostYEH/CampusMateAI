@@ -103,6 +103,16 @@ export class FocusCameraLifecyclePolicy {
   }
 }
 
+/** Maps persisted API values to a safe local experience mode for session recovery. */
+export class FocusSessionModeRecovery {
+  static normalize(value: string | undefined): string {
+    if (value === 'AI_COMPANION' || value === 'SMART_GUARD' || value === 'QUIET') {
+      return value;
+    }
+    return 'QUIET';
+  }
+}
+
 export class FocusCameraSignalPresentation {
   static shouldPresent(isStable: boolean, cameraState: string): boolean {
     return isStable && cameraState === FocusCameraState.RUNNING;
@@ -243,5 +253,20 @@ export class FrameAnalysisGate {
   reset(): void {
     this.inFlight = false;
     this.lastStartedAt = Number.NEGATIVE_INFINITY;
+  }
+}
+
+/** Prevents ImageReceiver.readLatestImage from being called concurrently. */
+export class ImageArrivalGate {
+  private acquired: boolean = false;
+
+  tryAcquire(): boolean {
+    if (this.acquired) return false;
+    this.acquired = true;
+    return true;
+  }
+
+  release(): void {
+    this.acquired = false;
   }
 }

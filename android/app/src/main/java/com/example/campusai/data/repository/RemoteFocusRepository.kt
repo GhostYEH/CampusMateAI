@@ -1,6 +1,7 @@
 package com.example.campusai.data.repository
 
 import com.example.campusai.data.model.FocusMode
+import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.model.FocusStats
 import com.example.campusai.data.model.FocusBehaviorSummary
@@ -19,6 +20,7 @@ data class StudySessionSnapshot(
     val durationSeconds: Int,
     val status: String,
     val mode: FocusMode,
+    val sessionMode: FocusSessionMode = FocusSessionMode.QUIET,
     val pausedAt: String? = null,
     val pauseSeconds: Int = 0,
     val behaviorSummary: FocusBehaviorSummary? = null,

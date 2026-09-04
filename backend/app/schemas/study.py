@@ -24,6 +24,7 @@ class StudyGoalOut(BaseModel):
 
 class StudySessionCreate(BaseModel):
     mode: Literal["focus", "short_break", "long_break"] = "focus"
+    experience_mode: Literal["QUIET", "AI_COMPANION", "SMART_GUARD"] = "QUIET"
     planned_duration_seconds: Optional[int] = Field(None, ge=300, le=14400)
     goal: Optional[str] = Field(None, max_length=500, description="本次学习目标(自由文本)")
     related_task_id: Optional[str] = Field(
@@ -91,6 +92,7 @@ class StudySessionOut(BaseModel):
     id: str
     user_id: str
     mode: str
+    experience_mode: Literal["QUIET", "AI_COMPANION", "SMART_GUARD"] = "QUIET"
     goal: Optional[str] = None
     related_task_id: Optional[str] = None
     started_at: str

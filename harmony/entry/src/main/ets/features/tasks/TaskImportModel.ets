@@ -13,7 +13,7 @@ export function closedTaskImportState(): TaskImportClosedState {
 
 export function selectedImportTasks(drafts: TaskImportDraft[]): TaskImportDraft[] {
   return drafts
-    .filter((draft: TaskImportDraft) => draft.selected && draft.title.trim().length > 0)
+    .filter((draft: TaskImportDraft): boolean => draft.selected && draft.title.trim().length > 0)
     .map((draft: TaskImportDraft): TaskImportDraft => copyImportDraft(draft, draft.title.trim(), draft.description, draft.selected));
 }
 

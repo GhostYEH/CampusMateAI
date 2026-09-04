@@ -40,6 +40,7 @@ class StudySessionRow:
     id: str
     user_id: str
     mode: str
+    experience_mode: str
     goal: Optional[str]
     related_task_id: Optional[str]
     started_at: str
@@ -88,6 +89,7 @@ class StudySessionRow:
             id=row["id"],
             user_id=row["user_id"],
             mode=row["mode"],
+            experience_mode=row["experience_mode"] or "QUIET",
             goal=row["goal"],
             related_task_id=row["related_task_id"],
             started_at=row["started_at"],

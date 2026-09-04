@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { ApiClient } from '../data/ApiClient';
-import { FocusMode, StudyBehaviorSummary, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish, TaskBreakdownRequest, TaskBreakdownResponse } from '../data/Models';
+import { FocusExperienceMode, FocusMode, StudyBehaviorSummary, StudyDailyGoal, StudySession, StudySessionCreate, StudySessionFinish, TaskBreakdownRequest, TaskBreakdownResponse } from '../data/Models';
 
 interface StudyGoalUpdateRequest {
   target_minutes: number;
@@ -30,8 +30,10 @@ export class StudyRepository {
     return this.client.request<StudyDailyGoal>(http.RequestMethod.PUT, 'study/goals/daily', request);
   }
 
-  async start(mode: FocusMode, goal?: string, relatedTaskId?: string, plannedDurationSeconds?: number): Promise<StudySession> {
-    const payload: StudySessionCreate = { mode: mode, planned_duration_seconds: plannedDurationSeconds, goal: goal, related_task_id: relatedTaskId };
+  async start(mode: FocusMode, goal?: string, relatedTaskId?: string,
+    plannedDurationSeconds?: number, experienceMode: FocusExperienceMode = 'QUIET'): Promise<StudySession> {
+    const payload: StudySessionCreate = { mode: mode, experience_mode: experienceMode,
+      planned_duration_seconds: plannedDurationSeconds, goal: goal, related_task_id: relatedTaskId };
     return this.client.request<StudySession>(http.RequestMethod.POST, 'study/sessions', payload);
   }
 

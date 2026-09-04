@@ -665,6 +665,7 @@ data class StudySessionDto(
     val id: String,
     val user_id: String,
     val mode: String,
+    val experience_mode: String = "QUIET",
     val goal: String? = null,
     val related_task_id: String? = null,
     val started_at: String,
@@ -679,6 +680,7 @@ data class StudySessionDto(
 
 data class StudySessionCreateRequest(
     val mode: String,
+    val experience_mode: String = "QUIET",
     val planned_duration_seconds: Int? = null,
     val goal: String? = null,
     val related_task_id: String? = null,
