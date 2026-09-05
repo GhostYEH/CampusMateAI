@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <link rel="icon" href="data:," />
+  <title>CampusMate Digital Human</title>
+  <style>
+    html, body, #unity-container, #unity-canvas { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: #e8edfb; }
+    #unity-container { transform-origin: 50% 78%; animation: avatar-idle 5.6s ease-in-out infinite; will-change: transform; }
+    #unity-canvas { display: block; background: #e8edfb; }
+    body.speaking #unity-container { animation: avatar-speaking .9s ease-in-out infinite alternate; }
+    #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #65739a; font: 13px system-ui, sans-serif; background: #e8edfb; }
+    #loading[hidden] { display: none; }
+    @keyframes avatar-idle {
+      0%, 100% { transform: translateY(0) rotate(-.7deg) scale(1.002); }
+      50% { transform: translateY(-.7%) rotate(.7deg) scale(1.009); }
+    }
+    @keyframes avatar-speaking {
+      0% { transform: translateY(.4%) rotate(-1.8deg) scale(1.008); }
+      100% { transform: translateY(-1.1%) rotate(1.8deg) scale(1.018); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #unity-container, body.speaking #unity-container { animation: none; }
+    }
+    body.reduced-motion #unity-container, body.reduced-motion.speaking #unity-container { animation: none; }
+  </style>
+</head>
+<body>
+  <div id="unity-container"><canvas id="unity-canvas" tabindex="-1"></canvas></div>
+  <div id="loading">正在载入数字人…</div>
+  <script>
+    document.body.classList.toggle("reduced-motion", new URLSearchParams(window.location.search).get("reduceMotion") === "1");
+    const canvas = document.querySelector("#unity-canvas");
+    const loading = document.querySelector("#loading");
+    const buildUrl = "Build";
+    const config = {
+      dataUrl: buildUrl + "/digital-human.data",
+      frameworkUrl: buildUrl + "/digital-human.framework.js",
+      codeUrl: buildUrl + "/digital-human.wasm",
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "CampusMate",
+      productName: "CampusMate Digital Human",
+      productVersion: "0.1.0"
+    };
+
+    const script = document.createElement("script");
+    script.src = buildUrl + "/digital-human.loader.js";
+    script.onload = () => createUnityInstance(canvas, config, progress => {
+      loading.textContent = `正在载入数字人… ${Math.round(progress * 100)}%`;
+    }).then(instance => {
+      loading.hidden = true;
+      const parentOrigin = window.location.origin;
+      window.addEventListener("message", event => {
+        if (event.source !== window.parent || event.origin !== parentOrigin || event.data?.source !== "campusmate") return;
+        const { type, value } = event.data;
+        if (type === "speech-level") instance.SendMessage("Rusk", "SetSpeechLevel", String(value));
+        if (type === "speech-state") {
+          document.body.classList.toggle("speaking", Boolean(value));
+          instance.SendMessage("Rusk", "SetSpeaking", value ? "1" : "0");
+        }
+        if (type === "speech-stop") {
+          document.body.classList.remove("speaking");
+          instance.SendMessage("Rusk", "StopSpeech");
+        }
+      });
+      window.parent.postMessage({ source: "campusmate-unity", type: "ready" }, parentOrigin);
+    }).catch(error => {
+      loading.textContent = "数字人载入失败";
+      window.parent.postMessage({ source: "campusmate-unity", type: "error", message: String(error) }, window.location.origin);
+    });
+    document.body.appendChild(script);
+  </script>
+</body>
+</html>

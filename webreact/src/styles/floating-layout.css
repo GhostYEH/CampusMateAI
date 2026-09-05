@@ -1,0 +1,183 @@
+:root {
+  --floating-nav-clearance: 88px;
+  --floating-nav-bottom-clearance: 112px;
+}
+
+html {
+  scroll-padding-top: calc(var(--floating-nav-clearance) + 16px);
+}
+
+.route-stage {
+  min-height: 100vh;
+  padding-top: var(--floating-nav-clearance);
+  padding-bottom: 24px;
+}
+
+.route-stage > :where(.page-frame, .forum-page, .student-page) {
+  padding-top: 0 !important;
+}
+
+.floating-nav {
+  --floating-nav-expanded-width: 900px;
+  --floating-nav-item-size: 44px;
+  --floating-nav-item-gap: 8px;
+  --floating-nav-expanded-item-gap: 26px;
+  --floating-nav-expanded-button-offset: 68px;
+  --floating-nav-gutter: 12px;
+  --floating-nav-foreground: #53627b;
+  --floating-nav-active-foreground: var(--blue);
+  --floating-nav-active-background: rgb(231 239 255 / 92%);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.floating-nav.glass-surface {
+  width: var(--floating-nav-collapsed-width);
+  max-width: calc(100vw - var(--floating-nav-gutter) * 2);
+  border: 1px solid rgb(255 255 255 / 76%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 50%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 38%) inset,
+    0 14px 34px rgb(54 79 126 / 13%),
+    0 28px 72px rgb(54 79 126 / 8%);
+}
+
+.floating-nav.glass-surface.glass-surface--svg {
+  background: light-dark(rgb(255 255 255 / 20%), rgb(12 19 34 / 30%));
+  backdrop-filter: var(--filter-id) saturate(1.18);
+}
+
+.floating-nav.glass-surface.glass-surface--fallback {
+  background: rgb(255 255 255 / 58%);
+  backdrop-filter: blur(18px) saturate(1.45) brightness(1.06);
+  -webkit-backdrop-filter: blur(18px) saturate(1.45) brightness(1.06);
+}
+
+.floating-nav-inner {
+  width: 100%;
+  min-width: 0;
+}
+
+.floating-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.floating-nav-list {
+  width: max-content;
+}
+
+.floating-nav-label {
+  width: max-content;
+  white-space: nowrap;
+}
+
+.floating-nav-button {
+  color: var(--floating-nav-foreground);
+  transition: color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.floating-nav-button:hover,
+.floating-nav-button.active {
+  color: var(--floating-nav-active-foreground);
+  background: var(--floating-nav-active-background);
+}
+
+.floating-nav--light {
+  --floating-nav-foreground: #f5f8ff;
+  --floating-nav-active-foreground: #fff;
+  --floating-nav-active-background: rgb(72 108 211 / 72%);
+  text-shadow: 0 1px 8px rgb(8 19 50 / 30%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .floating-nav {
+    overflow: visible;
+  }
+
+  .floating-nav-button {
+    transform-origin: center bottom;
+    will-change: transform;
+  }
+}
+
+.floating-nav-button.active {
+  box-shadow: 0 5px 14px rgb(50 103 214 / 14%), 0 1px 0 rgb(255 255 255 / 82%) inset;
+}
+
+.floating-nav-button.active::after {
+  position: absolute;
+  right: 9px;
+  bottom: 4px;
+  left: 9px;
+  height: 2px;
+  border-radius: 99px;
+  background: rgb(50 103 214 / 38%);
+  content: "";
+}
+
+html[data-theme="dark"] .floating-nav.glass-surface,
+html[data-theme="auto"] .floating-nav.glass-surface {
+  border-color: rgb(255 255 255 / 18%);
+  color: var(--ink);
+  background: rgb(21 30 48 / 58%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 10%) inset,
+    0 18px 38px rgb(0 0 0 / 24%);
+}
+
+html[data-theme="dark"] .floating-nav,
+html[data-theme="auto"] .floating-nav {
+  --floating-nav-foreground: #e8eeff;
+  --floating-nav-active-foreground: #fff;
+  --floating-nav-active-background: rgb(89 133 224 / 30%);
+}
+
+html[data-theme="dark"] .floating-nav-button:hover,
+html[data-theme="dark"] .floating-nav-button.active,
+html[data-theme="auto"] .floating-nav-button:hover,
+html[data-theme="auto"] .floating-nav-button.active {
+  background: rgb(89 133 224 / 22%);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] .floating-nav.glass-surface {
+    background: rgb(21 30 48 / 58%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-nav-button {
+    transition: none;
+    will-change: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --floating-nav-clearance: 76px;
+  }
+
+  .route-stage {
+    padding-bottom: calc(var(--floating-nav-bottom-clearance) + env(safe-area-inset-bottom));
+  }
+
+  .route-stage > :where(.page-frame, .forum-page, .student-page) {
+    padding-bottom: 32px !important;
+  }
+
+  .floating-nav {
+    --floating-nav-item-size: 34px;
+    --floating-nav-item-gap: 1px;
+    --floating-nav-gutter: 12px;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .floating-nav.glass-surface {
+    top: max(10px, env(safe-area-inset-top));
+    width: min(var(--floating-nav-collapsed-width), calc(100vw - var(--floating-nav-gutter) * 2));
+  }
+}

@@ -1,0 +1,62 @@
+.glass-surface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: opacity 0.26s ease-out;
+}
+
+.glass-surface__filter {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.glass-surface__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem;
+  border-radius: inherit;
+}
+
+.glass-surface--svg {
+  background: light-dark(hsl(0 0% 100% / var(--glass-frost, 0)), hsl(0 0% 0% / var(--glass-frost, 0)));
+  backdrop-filter: var(--filter-id, url(#glass-filter)) saturate(var(--glass-saturation, 1));
+  box-shadow: 0 0 2px 1px rgba(255, 255, 255, .38) inset, 0 0 12px 3px rgba(255, 255, 255, .16) inset, 0 6px 18px rgba(12, 31, 67, .12);
+}
+
+.glass-surface--fallback {
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px) saturate(1.8) brightness(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.8) brightness(1.08);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: 0 6px 22px rgba(31, 52, 103, .16), inset 0 1px 0 rgba(255, 255, 255, .42), inset 0 -1px 0 rgba(255, 255, 255, .16);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass-surface--fallback {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+}
+
+@supports not (backdrop-filter: blur(10px)) {
+  .glass-surface--fallback {
+    background: rgba(255, 255, 255, 0.34);
+  }
+}
+
+.glass-surface:focus-visible {
+  outline: 2px solid #83b7ff;
+  outline-offset: 2px;
+}

@@ -1,0 +1,63 @@
+/* React 版个人中心补丁：补齐 Vue 版 .student-layout 提供的 CSS 变量与基础布局，
+   使挪过来的 student-redesign.css / student-profile-reference.css 在 React 版生效。
+   用 .campus-redesign.profile-redesign 双类选择器（特异性 0,2,0）覆盖 .campus-redesign 的
+   max-width:1600px / margin:auto / padding，让个人中心撑满 .app-content 并对齐 Vue 版边界。 */
+.campus-redesign.profile-redesign {
+  --redesign-ink: #172b49;
+  --redesign-ink-soft: #415775;
+  --redesign-muted: #7a8ba4;
+  --redesign-primary: #5665f4;
+  --redesign-primary-deep: #4050dc;
+  --redesign-primary-soft: #eef0ff;
+  --redesign-line: #e5e9f5;
+  --redesign-surface: #ffffff;
+  --redesign-green: #3bb98a;
+  --redesign-amber: #efad4e;
+  --redesign-shadow: 0 12px 36px rgba(55, 76, 125, .06);
+  max-width: none;
+  margin: 0;
+  padding: 20px 60px 18px 40px;
+  min-height: calc(100dvh - 76px);
+  /* Keep the page canvas transparent so the Prism remains visible between panels. */
+  background: transparent;
+  color: var(--redesign-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The Prism is an ambient layer for the profile hub; panels remain the reading surface. */
+.app-layout.profile-mode {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  background:
+    radial-gradient(circle at 72% 10%, rgba(205, 216, 255, .72), transparent 34%),
+    #eef2ff;
+}
+
+.app-layout.profile-mode .app-content {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.app-profile-prism {
+  z-index: 0;
+  opacity: .9;
+  filter: saturate(1.06) contrast(1.02);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-profile-prism { opacity: .3; }
+}
+
+.student-page { width: 100%; }
+
+@media (max-width: 1180px) {
+  .campus-redesign.profile-redesign { padding: 20px 32px 18px 32px; }
+}
+
+@media (max-width: 760px) {
+  .campus-redesign.profile-redesign { padding: 18px 16px 42px; }
+}
