@@ -36,8 +36,8 @@ export function ElasticSlider({
   const percentage = useMemo(() => ((currentValue - min) / (max - min || 1)) * 100, [currentValue, min, max]);
   const trackScaleX = useTransform(overflow, [0, MAX_OVERFLOW], [1, 1.12]);
   const trackScaleY = useTransform(overflow, [0, MAX_OVERFLOW], [1, 0.82]);
-  const bodyOpacity = useTransform(scale, [1, 1.2], [0.72, 1]);
-  const trackHeight = useTransform(scale, [1, 1.2], [6, 12]);
+  const bodyOpacity = useTransform(scale, [1, 1.15], [0.82, 1]);
+  const trackHeight = useTransform(scale, [1, 1.15], [6, 10]);
   const trackOrigin = useTransform(() => {
     const rect = sliderRef.current?.getBoundingClientRect();
     return clientX.get() < (rect?.left || 0) + (rect?.width || 0) / 2 ? "right" : "left";
@@ -75,9 +75,9 @@ export function ElasticSlider({
 
   return <motion.div
     className={`elastic-slider ${className}`}
-    onHoverStart={() => animate(scale, 1.2)}
+    onHoverStart={() => animate(scale, 1.15)}
     onHoverEnd={() => animate(scale, 1)}
-    onTouchStart={() => animate(scale, 1.2)}
+    onTouchStart={() => animate(scale, 1.15)}
     onTouchEnd={() => animate(scale, 1)}
     style={{ scale, opacity: bodyOpacity }}
   >
