@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Icon } from "./Icon.jsx";
+import LiquidGlassSurface from "./LiquidGlassSurface.jsx";
 import { applyCourseCardPointer, getCourseCardPresentation, resetCourseCardPointer } from "../features/courses/courseCardInteraction.js";
 
 export function CourseCard({ course, progress = null, className = "", ...props }) {
@@ -13,7 +14,7 @@ export function CourseCard({ course, progress = null, className = "", ...props }
       onPointerMove={applyCourseCardPointer}
       onPointerLeave={resetCourseCardPointer}
     >
-      <div className="course-profile-card__surface">
+      <LiquidGlassSurface className="course-profile-card__surface">
         <header className="course-profile-card__header">
           <span className="course-cover" aria-hidden="true"><Icon name="PhBookOpenText" size={28} /></span>
           <span className="course-profile-card__code">{card.code}</span>
@@ -29,7 +30,7 @@ export function CourseCard({ course, progress = null, className = "", ...props }
           {card.progress !== null && <div className="course-progress"><i style={{ width: `${card.progress}%` }} /><span>{card.progressText}</span></div>}
           <span className="course-profile-card__action">进入课程 <Icon name="PhArrowRight" size={14} /></span>
         </footer>
-      </div>
+      </LiquidGlassSurface>
     </Link>
   );
 }

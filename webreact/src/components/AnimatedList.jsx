@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, useInView } from "motion/react";
+import { motion } from "motion/react";
 
 function AnimatedItem({ index, delay = 0.1, layoutMode = "list", animateLayout = false, reducedMotion = false, onMouseEnter, onClick, children }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { amount: 0.4, once: false });
   const wrapperStyle = layoutMode === "grid" ? { cursor: "pointer" } : { marginBottom: "1rem", cursor: "pointer" };
   const motionContent = (
     <motion.div
-      ref={ref}
       data-index={index}
       layout={animateLayout ? "position" : false}
-      initial={reducedMotion ? false : { scale: 0.7, opacity: 0 }}
-      animate={reducedMotion ? { scale: 1, opacity: 1 } : inView ? { scale: 1, opacity: 1 } : { scale: 0.7, opacity: 0 }}
+      initial={reducedMotion ? false : { scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
       transition={reducedMotion ? { duration: 0 } : {
         layout: { type: "spring", stiffness: 520, damping: 42, mass: 0.28 },
         opacity: { duration: 0.22, delay, ease: "easeOut" },
