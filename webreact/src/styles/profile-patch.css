@@ -26,30 +26,17 @@
   gap: 16px;
 }
 
-/* The Prism is an ambient layer for the profile hub; panels remain the reading surface. */
 .app-layout.profile-mode {
   position: relative;
   isolation: isolate;
   overflow-x: clip;
-  background:
-    radial-gradient(circle at 72% 10%, rgba(205, 216, 255, .72), transparent 34%),
-    #eef2ff;
+  background: #eef2ff;
 }
 
 .app-layout.profile-mode .app-content {
   position: relative;
   z-index: 1;
   background: transparent;
-}
-
-.app-profile-prism {
-  z-index: 0;
-  opacity: .9;
-  filter: saturate(1.06) contrast(1.02);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-profile-prism { opacity: .3; }
 }
 
 .student-page { width: 100%; }
