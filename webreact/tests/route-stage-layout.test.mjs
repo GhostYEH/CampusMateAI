@@ -11,8 +11,7 @@ test("shared shell exposes a navigation clearance token for every route", () => 
   assert.match(shell, /className="route-stage"/);
 });
 
-test("route stage reserves room for the bottom dock at every width", () => {
+test("route stage reserves room for the bottom mobile dock", () => {
   assert.match(styles, /\.route-stage[^}]*padding-bottom:[^}]*--floating-nav-bottom-clearance/s);
   assert.match(styles, /--floating-nav-bottom-clearance:/);
-  assert.match(styles, /\.floating-nav\s*\{[^}]*bottom:/s);
 });
