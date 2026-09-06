@@ -1163,6 +1163,15 @@ html[data-theme="auto"] .courses-page .course-card {
   }
 }
 
+/* 窄窗口（平板竖屏到旧式小屏之间）保持双列，
+   避免 auto-fill 因放不下两列 240px 卡片而变成一张超宽单列卡 */
+@media (max-width: 760px) and (min-width: 421px) {
+  .courses-page .course-grid,
+  .courses-page .course-sort-list .animated-list-scroll--grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .courses-page .course-card,
   .courses-page .course-cover,
