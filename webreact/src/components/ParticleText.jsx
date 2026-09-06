@@ -138,6 +138,7 @@ export default function ParticleText({
       pointer.smoothX += (pointer.x - pointer.smoothX) * 0.18;
       pointer.smoothY += (pointer.y - pointer.smoothY) * 0.18;
       let complete = true;
+      let particlesMoving = false;
 
       particles.forEach((particle) => {
         let baseX = particle.targetX;
@@ -171,6 +172,7 @@ export default function ParticleText({
         const follow = reducedMotion ? 1 : 0.22;
         particle.x += (baseX - particle.x) * follow;
         particle.y += (baseY - particle.y) * follow;
+        if (Math.abs(baseX - particle.x) > 0.1 || Math.abs(baseY - particle.y) > 0.1) particlesMoving = true;
         context.globalAlpha = clamp(0.35 + progress * 0.65, 0, 1);
         drawParticle(particle);
       });
@@ -178,7 +180,8 @@ export default function ParticleText({
       context.globalAlpha = 1;
       context.shadowBlur = 0;
       if (gathering && complete) gathering = false;
-      animationFrame = window.requestAnimationFrame(render);
+      const shouldContinue = !reducedMotion && (gathering || pointer.active || idleDrift > 0 || particlesMoving);
+      animationFrame = shouldContinue ? window.requestAnimationFrame(render) : null;
     };
 
     const ensureRenderLoop = () => {
@@ -308,13 +311,15 @@ export default function ParticleText({
       pointer.x = event.clientX - rect.left;
       pointer.y = event.clientY - rect.top;
       pointer.active = true;
+      ensureRenderLoop();
     };
-    const handlePointerLeave = () => { pointer.active = false; };
+    const handlePointerLeave = () => { pointer.active = false; ensureRenderLoop(); };
     const handlePointerEnter = (event) => {
       handlePointerMove(event);
       if (trigger === "hover") startGather(true);
+      ensureRenderLoop();
     };
-    const handleClick = () => { if (trigger === "click") startGather(true); };
+    const handleClick = () => { if (trigger === "click") { startGather(true); ensureRenderLoop(); } };
     const reduceMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     const handleReduceMotionChange = (event) => { reducedMotion = event.matches; sampleText(); };
 

@@ -23,7 +23,7 @@ const fragmentShader = `
   }
 `;
 
-export default function ElasticMesh({ speed = 0.55, ...props }) {
+export default function ElasticMesh({ speed = 0.55, maxFps = 60, suspendWhileScrolling = true, ...props }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -51,20 +51,29 @@ export default function ElasticMesh({ speed = 0.55, ...props }) {
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     let animationId = 0;
+    let lastRenderTime = -Infinity;
+    let scrollPauseUntil = 0;
     const render = (time) => {
-      program.uniforms.uTime.value = time * 0.001 * speed;
-      renderer.render({ scene: mesh });
+      const frameInterval = 1000 / Math.max(1, maxFps);
+      if ((!suspendWhileScrolling || time >= scrollPauseUntil) && time - lastRenderTime >= frameInterval) {
+        program.uniforms.uTime.value = time * 0.001 * speed;
+        renderer.render({ scene: mesh });
+        lastRenderTime = time;
+      }
       animationId = window.requestAnimationFrame(render);
     };
+    const handleScroll = () => { scrollPauseUntil = performance.now() + 140; };
+    if (suspendWhileScrolling) window.addEventListener("scroll", handleScroll, { passive: true });
     animationId = window.requestAnimationFrame(render);
 
     return () => {
       window.cancelAnimationFrame(animationId);
+      if (suspendWhileScrolling) window.removeEventListener("scroll", handleScroll);
       observer.disconnect();
       gl.canvas.remove();
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [speed]);
+  }, [speed, maxFps, suspendWhileScrolling]);
 
   return <div ref={containerRef} className="elastic-mesh" {...props} />;
 }

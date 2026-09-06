@@ -6,8 +6,8 @@ const styles = await readFile(new URL("../src/styles/home-classic.css", import.m
 const baseStyles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("classic homepage surfaces keep the liquid-glass treatment", () => {
-  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,.home-learning-pulse,.student-home-panel,.simple-quick-section\{[^}]*background:rgba\(/);
-  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,.home-learning-pulse,.student-home-panel,.simple-quick-section\{[^}]*backdrop-filter:blur\(/);
+  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,.home-learning-pulse,.student-home-panel,.simple-quick-section\{[^}]*background:linear-gradient\(/);
+  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,.home-learning-pulse,.student-home-panel,.simple-quick-section\{[^}]*backdrop-filter:none/);
 });
 
 test("homepage brand canvas has a visible stage instead of collapsing", () => {

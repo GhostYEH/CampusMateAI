@@ -52,6 +52,8 @@ export default function Iridescence(props) {
     amplitude = 0.1,
     mouseReact = true,
     paused = false,
+    maxFps = 60,
+    suspendWhileScrolling = true,
     ariaHidden = true,
     className = "",
     ...rest
@@ -71,6 +73,8 @@ export default function Iridescence(props) {
     let geometry;
     let mesh;
     let animationId = 0;
+    let lastRenderTime = -Infinity;
+    let scrollPauseUntil = 0;
 
     try {
       renderer = new Renderer();
@@ -113,8 +117,16 @@ export default function Iridescence(props) {
       }
 
       function update(time) {
-        render(time);
+        const frameInterval = 1000 / Math.max(1, maxFps);
+        if ((!suspendWhileScrolling || time >= scrollPauseUntil) && time - lastRenderTime >= frameInterval) {
+          render(time);
+          lastRenderTime = time;
+        }
         animationId = requestAnimationFrame(update);
+      }
+
+      function handleScroll() {
+        scrollPauseUntil = performance.now() + 140;
       }
 
       container.appendChild(gl.canvas);
@@ -133,11 +145,13 @@ export default function Iridescence(props) {
       // The page content sits above this click-through background, so the
       // background element itself cannot receive mouse events.
       if (mouseReact && !paused) window.addEventListener("mousemove", handleMouseMove);
+      if (suspendWhileScrolling && !paused) window.addEventListener("scroll", handleScroll, { passive: true });
 
       return () => {
         cancelAnimationFrame(animationId);
         window.removeEventListener("resize", resize);
         if (mouseReact && !paused) window.removeEventListener("mousemove", handleMouseMove);
+        if (suspendWhileScrolling && !paused) window.removeEventListener("scroll", handleScroll);
         if (gl?.canvas.parentNode === container) container.removeChild(gl.canvas);
         gl?.getExtension("WEBGL_lose_context")?.loseContext();
       };
@@ -145,7 +159,7 @@ export default function Iridescence(props) {
       setWebglFailed(true);
       return undefined;
     }
-  }, [color, speed, amplitude, mouseReact, paused]);
+  }, [color, speed, amplitude, mouseReact, paused, maxFps, suspendWhileScrolling]);
 
   return <div ref={containerRef} className={`iridescence-container ${className}${webglFailed ? " is-fallback" : ""}`} aria-hidden={ariaHidden} {...rest} />;
 }

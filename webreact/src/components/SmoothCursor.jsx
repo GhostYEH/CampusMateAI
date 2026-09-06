@@ -37,7 +37,7 @@ export default function SmoothCursor({
     const pointTotal = Math.max(MIN_POINTS, Math.round(pointsCount));
     const strokeColor = resolveColor(color);
     const spring = springStrength / Math.max(0.5, Math.min(2, smoothFactor));
-    let animationFrame;
+    let animationFrame = null;
     let devicePixelRatio = 1;
     let viewportWidth = window.innerWidth;
     let viewportHeight = window.innerHeight;
@@ -65,10 +65,14 @@ export default function SmoothCursor({
       pointer.x = event.clientX;
       pointer.y = event.clientY;
       pointer.active = true;
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(draw);
     };
 
     const handleWindowBlur = () => {
       pointer.active = false;
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+      context.clearRect(0, 0, viewportWidth, viewportHeight);
     };
 
     const springPoint = (point, target) => {
@@ -80,11 +84,15 @@ export default function SmoothCursor({
 
     const draw = () => {
       context.clearRect(0, 0, viewportWidth, viewportHeight);
+      let moving = false;
 
       if (pointer.active) {
         springPoint(points[0], pointer);
+        moving = Math.abs(points[0].vx) > 0.05 || Math.abs(points[0].vy) > 0.05
+          || Math.abs(pointer.x - points[0].x) > 0.1 || Math.abs(pointer.y - points[0].y) > 0.1;
         for (let index = 1; index < points.length; index += 1) {
           springPoint(points[index], points[index - 1]);
+          moving ||= Math.abs(points[index].vx) > 0.05 || Math.abs(points[index].vy) > 0.05;
         }
 
         const speed = Math.min(2, Math.hypot(points[0].vx, points[0].vy) / 18);
@@ -112,17 +120,16 @@ export default function SmoothCursor({
         context.filter = "none";
       }
 
-      animationFrame = window.requestAnimationFrame(draw);
+      animationFrame = pointer.active && moving ? window.requestAnimationFrame(draw) : null;
     };
 
     resize();
     window.addEventListener("resize", resize, { passive: true });
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("blur", handleWindowBlur, { passive: true });
-    animationFrame = window.requestAnimationFrame(draw);
 
     return () => {
-      window.cancelAnimationFrame(animationFrame);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("blur", handleWindowBlur);
