@@ -6,6 +6,7 @@ import { CounselorConversationState } from './CounselorConversationState';
 
 interface QuickQuestion {
   label: string;
+  detail: string;
   prompt: string;
   symbol: Resource;
 }
@@ -29,10 +30,10 @@ export struct CounselorPage {
   onEnableExpression: () => void = () => {};
   private scroller: Scroller = new Scroller();
   @State quickQuestions: QuickQuestion[] = [
-    { label: '大一应该\n怎么规划', prompt: '大一应该怎么规划？', symbol: $r('app.media.ph_graduation_cap') },
-    { label: '我应该读研\n还是就业', prompt: '我应该读研还是就业？', symbol: $r('app.media.ph_briefcase') },
-    { label: '社团应该\n怎么选', prompt: '大学社团应该怎么选？', symbol: $r('app.media.ph_users_three') },
-    { label: '怎么平衡\n学习和生活', prompt: '怎么平衡学习和生活？', symbol: $r('app.media.ph_scales') }
+    { label: '大一应该\n怎么规划', detail: '专业选择、学习方法、\n大学生活路线', prompt: '大一应该怎么规划？', symbol: $r('app.media.ph_graduation_cap') },
+    { label: '我应该读研\n还是就业', detail: '结合专业、兴趣和\n未来发展帮你分析', prompt: '我应该读研还是就业？', symbol: $r('app.media.ph_briefcase') },
+    { label: '社团应该\n怎么选', detail: '找到适合自己的社团，\n丰富大学生活', prompt: '大学社团应该怎么选？', symbol: $r('app.media.ph_users_three') },
+    { label: '怎么平衡\n学习和生活', detail: '时间管理、压力调节，\n做更好的自己', prompt: '怎么平衡学习和生活？', symbol: $r('app.media.ph_scales') }
   ];
 
   @State pressedPrompt: string = '';
@@ -83,7 +84,8 @@ export struct CounselorPage {
     Row({ space: 5 }) {
       Circle().width(7).height(7).fill(this.mockMode ? this.palette().accent : '#FFFF9646')
       Text(this.mockMode ? '演示模式' : '真实后端').fontColor(this.palette().text).fontSize(12)
-    }.alignItems(VerticalAlign.Center)
+    }.alignItems(VerticalAlign.Center).padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .backgroundColor(this.darkMode ? '#CC1B2436' : '#D9FFFFFF').border({ width: 1, color: '#F2FFFFFF' }).borderRadius(20)
   }
 
   @Builder ExpressionStatus() {
@@ -104,11 +106,11 @@ export struct CounselorPage {
           Text('CPM').fontColor(this.palette().text).fontSize(36).fontWeight(FontWeight.Bold)
           Image($r('app.media.ph_sparkle')).width(27).height(27).objectFit(ImageFit.Contain).margin({ left: 8, top: -3 })
         }.alignItems(VerticalAlign.Top)
-        Text('校园问题，随时来聊一聊').fontColor(this.palette().muted).fontSize(14)
+      Text('校园问题，随时来聊一聊').fontColor(this.palette().muted).fontSize(17).fontWeight(FontWeight.Medium)
       }.alignItems(HorizontalAlign.Start)
       Blank()
       this.StatusBadge()
-    }.width('100%').padding({ left: 18, right: 18, top: 18, bottom: 17 }).alignItems(VerticalAlign.Top)
+    }.width('100%').padding({ left: 18, right: 18, top: 20, bottom: 17 }).alignItems(VerticalAlign.Top)
   }
 
   @Builder HeroCard() {
@@ -140,10 +142,13 @@ export struct CounselorPage {
       Stack({ alignContent: Alignment.Center }) {
         Image(question.symbol).width(23).height(23).objectFit(ImageFit.Contain)
       }.width(42).height(42).backgroundColor(this.palette().soft).borderRadius(21)
-      Text(question.label).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Medium).lineHeight(18).layoutWeight(1)
+      Column({ space: 4 }) {
+        Text(question.label).fontColor(this.palette().text).fontSize(15).fontWeight(FontWeight.Bold).lineHeight(20)
+        Text(question.detail).fontColor(this.palette().muted).fontSize(11).lineHeight(15).maxLines(2)
+      }.layoutWeight(1)
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([this.palette().muted])
-    }.layoutWeight(1).height(66).padding({ left: 10, right: 8 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
-      .border({ width: 1, color: this.palette().glass.border }).borderRadius(21)
+    }.layoutWeight(1).height(112).padding({ left: 10, right: 8 }).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 })
+      .border({ width: 1, color: '#F2FFFFFF' }).borderRadius(24)
       .shadow({ radius: 10, color: this.darkMode ? '#22000000' : '#0D4056A6', offsetY: 3 })
       .alignItems(VerticalAlign.Center)
       .scale({ x: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0, y: this.pressedPrompt === question.prompt ? MotionSpec.scale(this.reduceMotion, 0.95) : 1.0 })
@@ -152,7 +157,7 @@ export struct CounselorPage {
   }
 
   @Builder QuestionGrid() {
-    Column({ space: 10 }) {
+    Column({ space: 12 }) {
       Row({ space: 10 }) { this.QuestionCard(this.quickQuestions[0]); this.QuestionCard(this.quickQuestions[1]); }
       Row({ space: 10 }) { this.QuestionCard(this.quickQuestions[2]); this.QuestionCard(this.quickQuestions[3]); }
     }.width('100%')
@@ -241,10 +246,12 @@ export struct CounselorPage {
   }
 
   build() {
-    Column() {
-      this.Header()
-      Scroll(this.scroller) {
-        Column({ space: 13 }) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Image($r('app.media.cpm_campus_dreamscape_v1')).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.darkMode ? 0.18 : 0.74)
+      Column() {
+        this.Header()
+        Scroll(this.scroller) {
+          Column({ space: 16 }) {
           DigitalHumanStage({
             apiBaseUrl: this.apiBaseUrl,
             authToken: this.authToken,
@@ -256,11 +263,12 @@ export struct CounselorPage {
           if (CounselorConversationState.showSuggestions(this.messages.length)) {
             Row() {
               Row({ space: 5 }) {
-                Text('你可以这样问').fontColor(this.palette().text).fontSize(20).fontWeight(FontWeight.Bold)
+            Text('你可以这样问').fontColor(this.palette().text).fontSize(24).fontWeight(FontWeight.Bold)
                 Image($r('app.media.ph_sparkle')).width(18).height(18).objectFit(ImageFit.Contain)
               }
               Blank()
-              Text('换一批  ↻').fontColor(this.palette().muted).fontSize(12)
+            Text('换一批  ↻').fontColor(this.palette().muted).fontSize(12).padding({ left: 10, right: 10, top: 7, bottom: 7 })
+              .backgroundColor(this.darkMode ? '#CC1B2436' : '#D9FFFFFF').border({ width: 1, color: '#F2FFFFFF' }).borderRadius(20)
             }.width('100%').alignItems(VerticalAlign.Center)
             this.QuestionGrid()
           } else {
@@ -269,9 +277,10 @@ export struct CounselorPage {
           }
           if (this.sending) this.TypingBubble()
           Blank().height(6)
-        }.width('100%').padding({ left: 16, right: 16, bottom: 14 })
-      }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
-      this.Composer()
-    }.width('100%').height('100%').backgroundColor(this.palette().background)
+          }.width('100%').padding({ left: 16, right: 16, bottom: 14 })
+        }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)
+        this.Composer()
+      }.width('100%').height('100%').backgroundColor(this.darkMode ? '#CC09161C' : '#33FFFFFF')
+    }.width('100%').height('100%')
   }
 }

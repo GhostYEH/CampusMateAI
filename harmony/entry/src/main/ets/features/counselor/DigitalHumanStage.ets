@@ -215,8 +215,9 @@ export struct DigitalHumanStage {
       Row({ space: 5 }) {
         this.Avatar()
         Column({ space: 9 }) {
-          Text('你好，我是CPM').fontColor(this.palette().primary).fontSize(22).fontWeight(FontWeight.Bold).maxLines(1)
-          Text('尽管提问！').fontColor(this.palette().muted).fontSize(14)
+          Text('你好，我是 CPM').fontColor(this.palette().primary).fontSize(22).fontWeight(FontWeight.Bold).maxLines(1)
+          Text('你的校园 AI 助手').fontColor(this.palette().muted).fontSize(14).fontWeight(FontWeight.Medium)
+          Text('无论是学习、生活还是未来规划\n我都在这里，随时为你解答！').fontColor(this.palette().muted).fontSize(11).lineHeight(16).maxLines(2)
           Row({ space: 6 }) {
             this.ControlButton(this.muted ? '开启' : '静音', $r('sys.symbol.speaker_slash'), () => this.toggleMute())
             this.ControlButton(this.paused ? '继续' : '暂停', $r('sys.symbol.pause_circle'), () => this.togglePause())
@@ -230,12 +231,12 @@ export struct DigitalHumanStage {
         .alignItems(HorizontalAlign.Start)
       }
       .width('100%')
-      .padding({ left: 8, right: 10, top: 37 })
+      .padding({ left: 8, right: 10, top: 30 })
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .height(CounselorVisualSpec.HERO_HEIGHT)
-    .backgroundColor(this.darkMode ? '#FF1B2436' : '#F7FFFFFF')
+    .backgroundColor(this.darkMode ? '#E61B2436' : '#D9FFFFFF')
     .border({ width: 1.5, color: this.darkMode ? '#FF33405A' : '#E9FFFFFF' })
     .borderRadius(28)
     .shadow({ radius: 20, color: this.darkMode ? '#33000000' : '#184056A6', offsetY: 7 })

@@ -1,7 +1,7 @@
 export class CounselorVisualSpec {
   static readonly DIGITAL_HUMAN_ORIGIN: string = 'https://appassets.campusmate';
-  static readonly HERO_HEIGHT: number = 240;
-  static readonly AVATAR_VIEWPORT: number = 148;
+  static readonly HERO_HEIGHT: number = 280;
+  static readonly AVATAR_VIEWPORT: number = 156;
   static readonly AVATAR_IMAGE_WIDTH: number = 249;
   static readonly AVATAR_IMAGE_HEIGHT: number = 311;
   static readonly AVATAR_IMAGE_X: number = -50.5;

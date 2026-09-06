@@ -24,6 +24,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +44,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -63,6 +66,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import com.example.campusai.BuildConfig
+import com.example.campusai.R
 import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.repository.AppRepository
@@ -206,17 +210,30 @@ private fun CpmCounselorContent(
 
     Box(
         Modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFFFBFCFF), Color(0xFFF0F2FF))))
             .padding(bottom = floatingDockContentBottomPadding(
                 WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
             )),
     ) {
+        Image(
+            painter = painterResource(R.drawable.cpm_campus_dreamscape_v1),
+            contentDescription = null,
+            modifier = Modifier.matchParentSize(),
+            contentScale = ContentScale.Crop,
+            alpha = 0.74f,
+        )
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.verticalGradient(
+                    listOf(Color(0x26FFFFFF), Color(0x66FFFFFF), Color(0xCCF7FAFF)),
+                ),
+            ),
+        )
         Column(Modifier.align(Alignment.TopCenter).fillMaxSize().widthIn(max = 760.dp)) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 state = listState,
-                contentPadding = PaddingValues(18.dp, 14.dp, 18.dp, 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(18.dp, 20.dp, 18.dp, 16.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 item("brand") {
                     AnimatedVisibility(
@@ -277,8 +294,8 @@ private fun ExpressionPrivacyStatus(
         else -> "正在本机观察表情 · 画面不上传" to CpmBlue
     }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White)
-            .border(1.dp, CpmLine, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xCCFFFFFF))
+            .border(1.dp, Color.White, RoundedCornerShape(18.dp)).padding(horizontal = 13.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Default.Visibility, null, tint = color, modifier = Modifier.size(16.dp))
@@ -287,26 +304,30 @@ private fun ExpressionPrivacyStatus(
 }
 
 @Composable
-private fun CpmHeader(mockMode: Boolean) = Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+private fun CpmHeader(mockMode: Boolean) = Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
         Row(verticalAlignment = Alignment.Top) {
             Text("CPM", color = TextPrimary, fontSize = 36.sp, fontWeight = FontWeight.Black)
             Text("✦", color = CpmBlue, fontSize = 23.sp, modifier = Modifier.padding(start = 7.dp, top = 1.dp))
         }
-        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(top = 8.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xD9FFFFFF))
+                .border(1.dp, Color.White, RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 Modifier.size(8.dp).clip(CircleShape)
-                    .background(if (mockMode) CpmViolet else Color(0xFFFF5B36)),
+                    .background(if (mockMode) CpmViolet else Color(0xFF36B879)),
             )
             Text(
-                if (mockMode) "演示模式" else "真实后端",
+                if (mockMode) "演示模式" else "真实后端在线",
                 color = TextPrimary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = 7.dp),
             )
         }
     }
-    Text("校园问题，随时来聊一聊", color = Muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    Text("校园问题，随时来聊一聊", color = Color(0xFF5D7092), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
@@ -336,7 +357,7 @@ private fun CpmDigitalHumanCard(
             Modifier.fillMaxWidth().height(cardHeight)
                 .shadow(20.dp, RoundedCornerShape(cardRadius), ambientColor = Color(0x1A4B5DAC), spotColor = Color(0x144B5DAC))
                 .clip(RoundedCornerShape(cardRadius))
-                .background(Brush.linearGradient(listOf(Color(0xF8FFFFFF), Color(0xFFF2F2FF), Color(0xF8FFFFFF))))
+                .background(Color(0xD9FFFFFF))
                 .border(1.dp, Color.White, RoundedCornerShape(cardRadius))
                 .padding(if (compact) 10.dp else metrics.contentPaddingDp.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -386,7 +407,7 @@ private fun CpmDigitalHumanCard(
             } else {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
                     Text(
-                        "你好，我是CPM",
+                        "你好，我是 CPM",
                         style = TextStyle(
                             brush = Brush.horizontalGradient(listOf(CpmBlue, CpmViolet)),
                             fontSize = 21.sp,
@@ -394,7 +415,8 @@ private fun CpmDigitalHumanCard(
                         ),
                         maxLines = 1,
                     )
-                    Text("尽管提问！", color = Muted, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp, bottom = 12.dp))
+                    Text("你的校园 AI 助手", color = Color(0xFF63779B), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp))
+                    Text("无论是学习、生活还是未来规划\n我都在这里，随时为你解答！", color = Color(0xFF627493), fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 5.dp, bottom = 10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         CpmControl(Icons.AutoMirrored.Filled.VolumeOff, "静音", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_MUTE) }
                         CpmControl(Icons.Default.PauseCircleOutline, "暂停", Modifier.weight(1f), metrics.controlHeightDp) { onPlayback(DigitalHumanCommand.TOGGLE_PAUSE) }
@@ -409,8 +431,8 @@ private fun CpmDigitalHumanCard(
 @Composable
 private fun CpmControl(icon: ImageVector, label: String, modifier: Modifier, heightDp: Int, onClick: () -> Unit) {
     Column(
-        modifier.height(heightDp.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xA6FFFFFF))
-            .border(1.dp, CpmLine, RoundedCornerShape(16.dp)).clickable(onClick = onClick),
+        modifier.height(heightDp.dp).clip(RoundedCornerShape(19.dp)).background(Color(0xEFFFFFFF))
+            .border(1.dp, Color.White, RoundedCornerShape(19.dp)).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -430,12 +452,12 @@ private fun CpmMiniControl(icon: ImageVector, label: String, onClick: () -> Unit
 private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Unit, onShuffle: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("你可以这样问", color = TextPrimary, fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Text("你可以这样问", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Black)
             Text("✦", color = CpmViolet, fontSize = 16.sp, modifier = Modifier.padding(start = 5.dp, bottom = 7.dp))
             Spacer(Modifier.weight(1f))
             Row(
-                Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onShuffle)
-                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xD9FFFFFF)).border(1.dp, Color.White, RoundedCornerShape(20.dp)).clickable(onClick = onShuffle)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("换一批", color = Muted, fontSize = 13.sp)
@@ -448,20 +470,34 @@ private fun CpmRecommendations(questions: List<CpmPrompt>, onAsk: (String) -> Un
                     Row(
                         Modifier.weight(1f).height(CPM_RECOMMENDATION_CARD_HEIGHT_DP.dp)
                             .shadow(10.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x0F41518C), spotColor = Color(0x0F41518C))
-                            .clip(RoundedCornerShape(22.dp)).background(Color(0xEFFFFFFF))
-                            .border(1.dp, CpmLine, RoundedCornerShape(22.dp)).clickable { onAsk(question.prompt) }.padding(12.dp),
+                            .clip(RoundedCornerShape(24.dp)).background(Color(0xEFFFFFFF))
+                            .border(1.dp, Color.White, RoundedCornerShape(24.dp)).clickable { onAsk(question.prompt) }.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(44.dp).clip(CircleShape).background(PrimarySoft), contentAlignment = Alignment.Center) {
                             Icon(question.icon, null, tint = CpmBlue, modifier = Modifier.size(23.dp))
                         }
-                        Text(question.label, Modifier.padding(start = 10.dp).weight(1f), color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold)
+                        Column(Modifier.padding(start = 10.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(question.label, color = TextPrimary, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(cpmPromptSupportingCopy(question.id), color = Color(0xFF7183A3), fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2)
+                        }
                         Icon(Icons.Default.ChevronRight, null, tint = Muted, modifier = Modifier.size(18.dp))
                     }
                 }
             }
         }
     }
+}
+
+private fun cpmPromptSupportingCopy(id: String): String = when (id) {
+    "freshman" -> "专业选择、学习方法、\n大学生活路线"
+    "graduate" -> "结合专业、兴趣和\n未来发展帮你分析"
+    "club" -> "找到适合自己的社团，\n丰富大学生活"
+    "balance" -> "时间管理、压力调节，\n做更好的自己"
+    "internship" -> "从能力准备到简历投递，\n提前梳理节奏"
+    "direction" -> "一起拆解迷茫，\n找到下一步方向"
+    "friendship" -> "建立舒服且健康的\n同学关系"
+    else -> "规划可持续的节奏，\n让学习更有掌控感"
 }
 
 @Composable
