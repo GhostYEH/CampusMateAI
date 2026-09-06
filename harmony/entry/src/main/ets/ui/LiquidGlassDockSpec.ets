@@ -10,6 +10,8 @@ export interface LiquidGlassDockStyle {
   clickGlowDuration: number;
   clickGlowDiameter: number;
   clickGlowColor: string;
+  chromaticEdgeOpacity: number;
+  maxWidth: number;
 }
 
 export function liquidGlassDockStyle(darkMode: boolean, reduceMotion: boolean): LiquidGlassDockStyle {
@@ -24,6 +26,8 @@ export function liquidGlassDockStyle(darkMode: boolean, reduceMotion: boolean): 
     clickGlowEnabled: !reduceMotion,
     clickGlowDuration: reduceMotion ? 0 : 300,
     clickGlowDiameter: 52,
-    clickGlowColor: darkMode ? '#B86F78FF' : '#B85B68F2'
+    clickGlowColor: darkMode ? '#B86F78FF' : '#B85B68F2',
+    chromaticEdgeOpacity: darkMode ? 0.22 : 0.16,
+    maxWidth: 560
   };
 }

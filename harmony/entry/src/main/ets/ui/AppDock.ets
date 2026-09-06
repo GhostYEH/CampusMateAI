@@ -259,6 +259,29 @@ export struct AppDock {
           .opacity(this.darkMode ? 0.38 : 0.52)
           .hitTestBehavior(HitTestMode.None)
 
+        Row()
+          .width('38%')
+          .height(60)
+          .position({ x: '62%', y: 0 })
+          .radialGradient({
+            center: ['100%', '0%'],
+            radius: '72%',
+            colors: [['#CC6DDCFF', 0.0], ['#006DDCFF', 1.0]]
+          })
+          .opacity(this.glassStyle().chromaticEdgeOpacity)
+          .hitTestBehavior(HitTestMode.None)
+
+        Row()
+          .width('34%')
+          .height(60)
+          .position({ x: 0, y: 0 })
+          .radialGradient({
+            center: ['0%', '100%'],
+            radius: '72%',
+            colors: [['#CCFF8FB8', 0.0], ['#00FF8FB8', 1.0]]
+          })
+          .opacity(this.glassStyle().chromaticEdgeOpacity * 0.72)
+          .hitTestBehavior(HitTestMode.None)
         this.DockSelectionLens()
 
         Row() {
@@ -295,6 +318,7 @@ export struct AppDock {
       })
     }
     .width('100%')
+    .constraintSize({ maxWidth: this.glassStyle().maxWidth })
     .height(80)
     .padding({ left: 6, right: 6, top: 8, bottom: 8 })
     .alignItems(HorizontalAlign.Center)

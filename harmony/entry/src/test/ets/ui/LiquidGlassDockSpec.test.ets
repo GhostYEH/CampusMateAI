@@ -15,6 +15,8 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.clickGlowDuration).assertEqual(300);
       expect(style.clickGlowDiameter).assertEqual(52);
       expect(style.clickGlowColor).assertEqual('#B85B68F2');
+      expect(style.chromaticEdgeOpacity).assertEqual(0.16);
+      expect(style.maxWidth).assertEqual(560);
     });
 
     it('uses a darker translucent surface in dark mode', 0, () => {
@@ -23,6 +25,7 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.surfaceColor).assertEqual('#73162236');
       expect(style.selectedSurfaceColor).assertEqual('#526F78FF');
       expect(style.shadowColor).assertEqual('#80000000');
+      expect(style.chromaticEdgeOpacity).assertEqual(0.22);
     });
 
     it('removes glass transition motion when reduced motion is enabled', 0, () => {
@@ -31,6 +34,7 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.motionDuration).assertEqual(0);
       expect(style.clickGlowEnabled).assertFalse();
       expect(style.clickGlowDuration).assertEqual(0);
+      expect(style.chromaticEdgeOpacity).assertEqual(0.16);
     });
 
     it('clamps the draggable selection lens to the dock bounds', 0, () => {

@@ -19,6 +19,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -112,6 +113,8 @@ val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
 
 internal fun floatingDockContentBottomPadding(navigationBarHeight: Dp): Dp =
     navigationBarHeight + BottomDockReservedHeight
+
+internal fun floatingDockWidth(availableWidth: Dp): Dp = minOf(availableWidth, 560.dp)
 
 val studentNavItems = listOf(
     NavItem("home", "首页", Icons.Default.Home),
@@ -315,7 +318,7 @@ private fun CampusDock(
     val glassProfile = liquidGlassDockProfile(Build.VERSION.SDK_INT, darkMode)
     val interactionProfile = liquidGlassDockInteractionProfile(reduceMotion)
     val dockShape = RoundedCornerShape(38.dp)
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
@@ -323,7 +326,8 @@ private fun CampusDock(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .width(floatingDockWidth(maxWidth))
+                .align(Alignment.Center)
                 .height(80.dp)
                 .shadow(
                     elevation = 18.dp,
@@ -363,6 +367,30 @@ private fun CampusDock(
                         ),
                         radius = size.width * .52f,
                         center = Offset(size.width, size.height),
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFF6DDCFF).copy(alpha = glassProfile.chromaticEdgeAlpha),
+                                Color.Transparent,
+                            ),
+                            center = Offset(size.width * .90f, 0f),
+                            radius = size.width * .28f,
+                        ),
+                        radius = size.width * .28f,
+                        center = Offset(size.width * .90f, 0f),
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFFF8FB8).copy(alpha = glassProfile.chromaticEdgeAlpha * .72f),
+                                Color.Transparent,
+                            ),
+                            center = Offset(size.width * .08f, size.height),
+                            radius = size.width * .24f,
+                        ),
+                        radius = size.width * .24f,
+                        center = Offset(size.width * .08f, size.height),
                     )
                 }
                 .border(0.8.dp, dockLine.copy(alpha = .58f), dockShape)

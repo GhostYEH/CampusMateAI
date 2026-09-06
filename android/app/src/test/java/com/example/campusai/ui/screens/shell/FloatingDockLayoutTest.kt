@@ -9,4 +9,14 @@ class FloatingDockLayoutTest {
     fun scrollableContentReservesSystemNavigationAndFloatingDockSpace() {
         assertEquals(116.dp, floatingDockContentBottomPadding(navigationBarHeight = 24.dp))
     }
+
+    @Test
+    fun phoneDockUsesTheAvailableWidth() {
+        assertEquals(332.dp, floatingDockWidth(availableWidth = 332.dp))
+    }
+
+    @Test
+    fun largeWindowDockStopsGrowingPastItsReadableWidth() {
+        assertEquals(560.dp, floatingDockWidth(availableWidth = 772.dp))
+    }
 }
