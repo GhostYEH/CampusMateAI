@@ -35,6 +35,7 @@ from ...models.edu import (
     EDU_PROVIDER_MOCK,
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_UNSUPPORTED,
+    EDU_PROVIDER_ZHENGFANG,
     EDU_SYSTEM_UNKNOWN,
     KNOWN_PROVIDERS,
     LOGIN_EXEC_BACKEND_HTTP,
@@ -241,6 +242,15 @@ class EduConnectorService:
                     result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
         except Exception as e:
             result["error"] = str(e)[:200]
+        # HUEL 的登录协议已通过精确 HTTPS 域名和路径白名单验证。上游
+        # 临时不可达时仍保留厂商类型，避免创建连接时退化成 unknown，
+        # 同时保留 reachable=false/error 让客户端继续展示真实网络故障。
+        if result["provider"] == EDU_PROVIDER_UNKNOWN:
+            known_config = detector.known_school_config(portal_url)
+            if known_config is not None:
+                result["provider"] = EDU_PROVIDER_ZHENGFANG
+                result["provider_confidence"] = 1.0
+                result["is_edu_page"] = True
         return result
 
     async def create_connection_from_url(

@@ -77,6 +77,20 @@ class _ProbeHttpClient:
         return _ProbeResponse()
 
 
+class _KnownHuelProbeHttpClient:
+    def __init__(self, **_kwargs) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args) -> None:
+        return None
+
+    async def head(self, _url: str):
+        raise OSError("temporary upstream failure")
+
+
 class _CaptchaProbeResponse(_ProbeResponse):
     text = (
         '<title>教务管理系统</title>'
@@ -106,6 +120,22 @@ def test_probe_portal_identifies_zhengfang_when_response_is_reachable(monkeypatc
     assert result["reachable"] is True
     assert result["provider"] == EDU_PROVIDER_ZHENGFANG
     assert result["suggested_login_mode"] == LOGIN_EXEC_BACKEND_HTTP
+
+
+def test_probe_portal_keeps_verified_huel_provider_when_upstream_probe_fails(monkeypatch) -> None:
+    """A transient probe failure must not turn the verified HUEL login into unknown."""
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _KnownHuelProbeHttpClient)
+    connector = object.__new__(EduConnectorService)
+
+    result = asyncio.run(
+        connector.probe_portal("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html")
+    )
+
+    assert result["reachable"] is False
+    assert result["provider"] == EDU_PROVIDER_ZHENGFANG
+    assert result["error"] == "temporary upstream failure"
 
 
 def test_probe_portal_keeps_visible_image_captcha_on_backend_challenge(monkeypatch) -> None:
