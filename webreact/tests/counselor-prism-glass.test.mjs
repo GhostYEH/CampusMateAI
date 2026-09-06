@@ -47,7 +47,7 @@ test("counselor layout enlarges the title and uses translucent glass surfaces", 
 });
 
 test("counselor workbench keeps the global AppShell controls", () => {
-  assert.match(appShell, /import GlassSurface from "\.\/GlassSurface\.jsx"/);
+  assert.match(appShell, /import LiquidGlassSurface from "\.\/LiquidGlassSurface\.jsx"/);
   assert.match(appShell, /<SearchBox \/>/);
   assert.match(appShell, /<GlassSurface[\s\S]*className="topbar-info-surface"/);
   assert.match(counselorPage, /counselor-study-status/);

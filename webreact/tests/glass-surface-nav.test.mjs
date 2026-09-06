@@ -3,22 +3,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const navSource = await readFile(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
-const glassSource = await readFile(new URL("../src/components/FloatingNav/GlassSurface.jsx", import.meta.url), "utf8");
-const glassStyles = await readFile(new URL("../src/components/FloatingNav/GlassSurface.css", import.meta.url), "utf8");
+const glassSource = await readFile(new URL("../src/components/LiquidGlassSurface.jsx", import.meta.url), "utf8");
+const glassStyles = await readFile(new URL("../src/components/LiquidGlassSurface.css", import.meta.url), "utf8");
 const gooeySource = await readFile(new URL("../src/components/FloatingNav/GooeyNav.jsx", import.meta.url), "utf8");
 const gooeyStyles = await readFile(new URL("../src/components/FloatingNav/GooeyNav.css", import.meta.url), "utf8");
 const layoutStyles = await readFile(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
 test("floating navigation is hosted by the reusable glass surface", () => {
-  assert.match(navSource, /import GlassSurface from "\.\/GlassSurface\.jsx"/);
-  assert.match(navSource, /<GlassSurface[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}/);
+  assert.match(navSource, /import LiquidGlassSurface from "\.\.\/LiquidGlassSurface\.jsx"/);
+  assert.match(navSource, /<LiquidGlassSurface[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}/);
   assert.match(gooeySource, /<nav aria-label=\{ariaLabel\}/);
 });
 
-test("glass surface keeps an SVG filter and a backdrop-filter fallback", () => {
-  assert.match(glassSource, /feDisplacementMap/);
-  assert.match(glassSource, /ResizeObserver/);
-  assert.match(glassStyles, /backdrop-filter/);
+test("liquid glass surface uses stable blur and an opaque fallback", () => {
+  assert.doesNotMatch(glassSource, /feDisplacementMap/);
+  assert.match(glassStyles, /backdrop-filter:\s*blur/);
+  assert.match(glassStyles, /@supports not \(backdrop-filter/);
   assert.match(glassStyles, /prefers-reduced-motion/);
 });
 

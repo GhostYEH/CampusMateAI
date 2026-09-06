@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
 import { Icon } from "../components/Icon.jsx";
+import GooeyNav from "../components/FloatingNav/GooeyNav.jsx";
+import TargetCursor from "../components/TargetCursor.jsx";
 import "../styles/student-redesign.css";
 import "../styles/student-profile-reference.css";
 import "../styles/profile-patch.css";
@@ -39,7 +41,7 @@ function formatSessionDate(value) {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { pendingCount, reduceMotion, setReduceMotion } = useApp();
+  const { pendingCount, reduceMotion, setReduceMotion, logout } = useApp();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -51,6 +53,11 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [noticeReminder, setNoticeReminder] = useState(() => localStorage.getItem("campus_notice_reminder") !== "false");
   const [form, setForm] = useState({ display_name: "", college: "", major: "", grade: "", email: "" });
+
+  function signOut() {
+    logout();
+    navigate("/login", { replace: true });
+  }
 
   const displayName = profile.display_name || profile.username || "同学";
   const initial = displayName.slice(0, 1);
@@ -138,6 +145,14 @@ export default function ProfilePage() {
 
   return (
     <main className="student-page campus-redesign profile-redesign">
+      <TargetCursor
+        targetSelector={'.profile-redesign button, .profile-redesign a, .profile-redesign [role="button"]'}
+        spinDuration={2}
+        hideDefaultCursor
+        parallaxOn
+        cursorColor="#ffffff"
+        cursorColorOnTarget="#8b43ce"
+      />
       <div className="redesign-heading">
         <div>
           <span className="redesign-kicker">PROFILE / 个人中心</span>
@@ -197,11 +212,23 @@ export default function ProfilePage() {
             <img className="profile-banner-art" src="/assets/campusmate-hero-illustration.png" alt="" aria-hidden="true" />
           </header>
 
-          <nav className="redesign-tabs" aria-label="个人中心分区">
-            {TABS.map((item) => (
-              <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}>{item.label}</button>
-            ))}
-          </nav>
+          <div className="redesign-tabs">
+            <GooeyNav
+              items={TABS}
+              activeIndex={TABS.findIndex((item) => item.key === tab)}
+              className="profile-gooey-nav"
+              ariaLabel="个人中心分区"
+              reduceMotion={reduceMotion}
+              onSelect={(item) => setTab(item.key)}
+              renderItem={(item) => <span className="profile-gooey-label">{item.label}</span>}
+              dockDistance={96}
+              dockMagnification={18}
+              dockBaseItemSize={42}
+              particleDistances={[34, 7]}
+              particleCount={10}
+              colors={[1, 2, 3, 4]}
+            />
+          </div>
 
           {tab === "overview" && (
             <section className="profile-overview-grid">
@@ -302,6 +329,7 @@ export default function ProfilePage() {
                 <div className="preference-row"><span className="preference-icon green"><Icon name="PhBell" /></span><span><strong>截止提醒</strong><small>控制待办与作业的提醒展示，具体通知能力以学校数据源为准。</small></span><button className={`preference-toggle ${noticeReminder ? "on" : ""}`} aria-pressed={noticeReminder} onClick={() => toggleNoticeReminder(!noticeReminder)}><i></i></button></div>
               </div>
               <div className="settings-links"><button onClick={() => navigate("/study")}><Icon name="PhChartLineUp" />查看学习统计</button><button onClick={() => navigate("/counselor")}><Icon name="PhRobot" />打开 AI 校园助手</button></div>
+              <div className="profile-signout"><button className="redesign-button danger" onClick={signOut}><Icon name="PhSignOut" />退出登录</button></div>
             </section>
           )}
         </>

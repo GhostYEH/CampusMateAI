@@ -2,7 +2,7 @@ import { memo, useLayoutEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { gsap } from "gsap";
 import { Icon } from "../Icon.jsx";
-import GlassSurface from "./GlassSurface.jsx";
+import LiquidGlassSurface from "../LiquidGlassSurface.jsx";
 import GooeyNav from "./GooeyNav.jsx";
 import { navItems } from "./navItems.js";
 import { getFloatingNavWidth } from "./layout.js";
@@ -82,7 +82,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
   const countFor = (key) => key === "tasks" ? pendingCount : key === "notifications" ? unreadCount : 0;
   const activeIndex = Math.max(0, navItems.findIndex(({ key }) => isActive(key)));
 
-  return <GlassSurface ref={dockRef} className={`floating-nav floating-nav--${tone}`} borderRadius={999} backgroundOpacity={0.035} saturation={1.18} distortionScale={0} redOffset={0} greenOffset={0} blueOffset={0}>
+  return <LiquidGlassSurface ref={dockRef} className={`floating-nav floating-nav--${tone}`}>
     <GooeyNav
       items={navItems}
       activeIndex={activeIndex}
@@ -101,7 +101,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
         </>;
       }}
     />
-  </GlassSurface>;
+  </LiquidGlassSurface>;
 });
 
 export default FloatingNav;

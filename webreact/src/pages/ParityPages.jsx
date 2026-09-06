@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Flipped, Flipper } from "react-flip-toolkit";
 import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
 import { itemsOf } from "../data/contracts.js";
@@ -9,8 +8,7 @@ import { sortCourses } from "../features/courses/courseSorting.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { CourseCard } from "../components/CourseCard.jsx";
-import Grainient from "../components/Grainient.jsx";
-import TargetCursor from "../components/TargetCursor.jsx";
+import AnimatedList from "../components/AnimatedList.jsx";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
@@ -23,10 +21,16 @@ const courseSortOptions = [
 ];
 
 export function CoursesParityPage() {
+  const navigate = useNavigate();
   const { reduceMotion } = useApp();
   const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false);
   const [data, setData] = useState([[], []]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [sort, setSort] = useState("name-asc");
+  const [, startSortTransition] = useTransition();
   const motionReduced = reduceMotion || systemReducedMotion;
+  const selectSort = (nextSort) => {
+    if (nextSort === sort) return;
+    startSortTransition(() => setSort(nextSort));
+  };
   async function load() { setLoading(true); setError(""); try { const [courses, assignments] = await Promise.all([api.getCourses(), api.getAssignments()]); setData([list(courses), list(assignments)]); } catch (err) { setError(err?.response?.data?.detail || err?.message || "课程加载失败，请重试。"); } finally { setLoading(false); } }
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -39,10 +43,9 @@ export function CoursesParityPage() {
   const [courses, assignments] = data;
   const visible = useMemo(() => sortCourses(courses, sort), [courses, sort]);
   return <PageFrame className="courses-page" eyebrow="Learning / Courses" title="我的课程" description="按课程整理公告、作业和学习资料，进入详情继续处理。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load}>刷新</Button>}>
-    <Grainient className="courses-grainient" color1="#e8f1ff" color2="#7898ee" color3="#c6b9ff" timeSpeed={0.28} warpStrength={1.15} grainAmount={0.02} contrast={1.1} saturation={0.9} renderScale={0.6} frameRate={30} paused={motionReduced} />
-    <div className="courses-page__content"><TargetCursor targetSelector="[data-target-cursor]" hideDefaultCursor cursorColor="#b0b0e3" cursorColorOnTarget="#8b43ce" />
-      <div className="filter-bar course-toolbar"><div className="sort-options" role="group" aria-label="课程排序"><span className="sort-options__label"><Icon name="PhArrowsDownUp" size={16} />排序</span>{courseSortOptions.map((option) => <button key={option.value} type="button" className={`sort-option ${sort === option.value ? "is-active" : ""}`} data-target-cursor aria-pressed={sort === option.value} onClick={() => setSort(option.value)}>{option.label}</button>)}</div><span className="toolbar-count">共 {visible.length} 门课程</span></div>
-      <AsyncState loading={loading} error={error} empty={!visible.length ? "暂时没有课程" : null} onRetry={load}><Flipper element="div" className="course-grid reveal" flipKey={motionReduced ? "reduced-motion" : `${sort}-${visible.map((course) => course.id).join("|")}`} spring="gentle" staggerConfig={{ default: { speed: 0.72 } }}>{visible.map((course) => <Flipped key={course.id} flipId={`course-${course.id}`} stagger={!motionReduced}><CourseCard course={course} progress={courseProgress(course, assignments)} /></Flipped>)}</Flipper></AsyncState>
+    <div className="courses-page__content">
+      <div className="filter-bar course-toolbar"><div className="sort-options" role="group" aria-label="课程排序"><span className="sort-options__label"><Icon name="PhArrowsDownUp" size={16} />排序</span>{courseSortOptions.map((option) => <button key={option.value} type="button" className={`sort-option ${sort === option.value ? "is-active" : ""}`} data-target-cursor aria-pressed={sort === option.value} onClick={() => selectSort(option.value)}>{option.label}</button>)}</div><span className="toolbar-count">共 {visible.length} 门课程</span></div>
+      <section className="courses-page__scroll-shell" aria-label="课程列表"><AsyncState loading={loading} error={error} empty={!visible.length ? "暂时没有课程" : null} onRetry={load}><AnimatedList items={visible} className="course-sort-list reveal" itemClassName="course-sort-item" layout="grid" maxHeight="none" displayScrollbar={false} showGradients={false} topFadeOnScroll enableArrowNavigation={!motionReduced} animateLayout={!motionReduced} reducedMotion={motionReduced} onItemSelect={(course) => navigate(`/courses/${course.id}`)} renderItem={(course) => <CourseCard course={course} progress={courseProgress(course, assignments)} />} /></AsyncState></section>
     </div>
   </PageFrame>;
 }

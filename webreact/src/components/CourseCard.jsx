@@ -13,7 +13,6 @@ export function CourseCard({ course, progress = null, className = "", ...props }
       onPointerMove={applyCourseCardPointer}
       onPointerLeave={resetCourseCardPointer}
     >
-      <span className="course-profile-card__noise" aria-hidden="true" />
       <div className="course-profile-card__surface">
         <header className="course-profile-card__header">
           <span className="course-cover" aria-hidden="true"><Icon name="PhBookOpenText" size={28} /></span>

@@ -6,6 +6,7 @@ import * as courseCardInteraction from "../src/features/courses/courseCardIntera
 
 const parityPageSource = fs.readFileSync(new URL("../src/pages/ParityPages.jsx", import.meta.url), "utf8");
 const stylesSource = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const appShellSource = fs.readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 
 test("maps the pointer to a bounded card spotlight without vertical translation", () => {
   const style = getCourseCardPointerStyle(
@@ -59,13 +60,12 @@ test("the live courses route uses the interactive course card and no legacy hero
   assert.doesNotMatch(parityPageSource, /asset-page-hero/);
 });
 
-test("the courses Grainient keeps a visible flowing texture behind the cards", () => {
-  assert.match(parityPageSource, /timeSpeed=\{0\.28\}/);
-  assert.match(parityPageSource, /warpStrength=\{1\.15\}/);
-  assert.match(parityPageSource, /grainAmount=\{0\.02\}/);
-  assert.match(parityPageSource, /renderScale=\{0\.6\}/);
-  assert.match(parityPageSource, /frameRate=\{30\}/);
-  assert.match(stylesSource, /\.courses-page \.courses-grainient \{[\s\S]*?opacity: \.72;/);
+test("the courses page shares the homepage Iridescence background and drops the local Grainient and TargetCursor", () => {
+  assert.doesNotMatch(parityPageSource, /Grainient/);
+  assert.doesNotMatch(parityPageSource, /TargetCursor/);
+  assert.match(appShellSource, /const isCourses = location\.pathname\.startsWith\("\/courses"\)/);
+  assert.match(appShellSource, /\(isHome \|\| isCourses\) && <Iridescence/);
+  assert.match(appShellSource, /\(isHome \|\| isCourses\) \? "home-background-active"/);
 });
 
 test("course cards forward FLIP data attributes to the rendered link", () => {
@@ -73,4 +73,26 @@ test("course cards forward FLIP data attributes to the rendered link", () => {
 
   assert.match(courseCardSource, /\.\.\.props/);
   assert.match(courseCardSource, /<Link[\s\S]*\.\.\.props/);
+});
+
+test("course cards use a layered liquid-glass surface treatment", () => {
+  const profileCardStyles = stylesSource.slice(
+    stylesSource.indexOf(".courses-page .course-card.course-profile-card {"),
+    stylesSource.indexOf("@media (max-width: 1800px)")
+  );
+
+  assert.match(profileCardStyles, /min-height:\s*250px/);
+  assert.match(profileCardStyles, /aspect-ratio:\s*\.95/);
+  assert.match(profileCardStyles, /background:\s*rgba\(255, 255, 255, \.1\)/);
+  assert.match(profileCardStyles, /backdrop-filter:\s*blur\(14px\) saturate\(1\.4\)/);
+  assert.match(profileCardStyles, /-webkit-backdrop-filter:\s*blur\(14px\) saturate\(1\.4\)/);
+  assert.doesNotMatch(profileCardStyles, /rgba\(12, 18, 50, \.13\)/);
+  assert.doesNotMatch(profileCardStyles, /rgba\(27, 39, 83, \.12\)/);
+  assert.doesNotMatch(profileCardStyles, /rgba\(25, 35, 75, \.92\)/);
+  assert.doesNotMatch(profileCardStyles, /rgba\(26, 38, 82, \.86\)/);
+  assert.match(profileCardStyles, /\.course-profile-card__surface::before/);
+  assert.match(profileCardStyles, /\.course-profile-card__surface::after/);
+  assert.doesNotMatch(stylesSource, /\.courses-page \.course-card::before/);
+  assert.doesNotMatch(stylesSource, /\.courses-page \.course-card\.course-profile-card::before/);
+  assert.doesNotMatch(stylesSource, /\.course-profile-card__noise\s*\{/);
 });

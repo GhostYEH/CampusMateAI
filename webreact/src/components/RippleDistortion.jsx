@@ -106,11 +106,26 @@ export default function RippleDistortion({
 
     const imageTexture = new Texture(gl, { generateMipmaps: false, minFilter: gl.LINEAR, magFilter: gl.LINEAR, wrapS: gl.CLAMP_TO_EDGE, wrapT: gl.CLAMP_TO_EDGE });
     let disposed = false;
-    const image = new window.Image();
-    image.crossOrigin = "anonymous";
-    image.decoding = "async";
-    image.onload = () => { if (!disposed) { imageTexture.image = image; compositeUniforms.uTextureSize.value = [image.naturalWidth || 1, image.naturalHeight || 1]; } };
-    image.src = src;
+    const useVideo = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(src);
+    let mediaEl = null;
+    if (useVideo) {
+      mediaEl = document.createElement("video");
+      mediaEl.src = src;
+      mediaEl.loop = true;
+      mediaEl.muted = true;
+      mediaEl.autoplay = true;
+      mediaEl.playsInline = true;
+      mediaEl.setAttribute("muted", "");
+      mediaEl.load();
+      mediaEl.addEventListener("loadeddata", () => { if (!disposed) compositeUniforms.uTextureSize.value = [mediaEl.videoWidth || 1, mediaEl.videoHeight || 1]; });
+      const playPromise = mediaEl.play(); if (playPromise && playPromise.catch) playPromise.catch(() => {});
+    } else {
+      mediaEl = new window.Image();
+      mediaEl.crossOrigin = "anonymous";
+      mediaEl.decoding = "async";
+      mediaEl.onload = () => { if (!disposed) { imageTexture.image = mediaEl; compositeUniforms.uTextureSize.value = [mediaEl.naturalWidth || 1, mediaEl.naturalHeight || 1]; } };
+      mediaEl.src = src;
+    }
 
     const offsets = new Float32Array(MAX_WAVES * 2);
     const scales = new Float32Array(MAX_WAVES * 2);
@@ -153,13 +168,14 @@ export default function RippleDistortion({
     let raf = 0; let previousTime = 0;
     const loop = (now) => {
       raf = requestAnimationFrame(loop); const delta = previousTime ? Math.min(0.05, (now - previousTime) / 1000) : 0; previousTime = now; const cfg = configRef.current;
+      if (useVideo && mediaEl && mediaEl.readyState >= 2) { if (!imageTexture.image) imageTexture.image = mediaEl; imageTexture.needsUpdate = true; }
       const growth = reduceMotion ? 0 : 1 - Math.exp(-delta * 1.09); const decay = reduceMotion ? 1 : Math.exp((-delta * LIFE_CONSTANT) / Math.max(0.15, cfg.fade));
       for (let i = 0; i < MAX_WAVES; i += 1) { const wave = waves[i]; if (wave.opacity <= 0) { opacities[i] = 0; continue; } wave.opacity *= decay; wave.scale += (wave.target - wave.scale) * growth; if (wave.opacity < 0.002) { wave.opacity = 0; opacities[i] = 0; continue; } const half = wave.scale * wave.size / 2; offsets[i * 2] = wave.x / width * 2 - 1; offsets[i * 2 + 1] = wave.y / height * 2 - 1; scales[i * 2] = half / width * 2; scales[i * 2 + 1] = half / height * 2; opacities[i] = wave.opacity; }
       geometry.attributes.iOffset.needsUpdate = true; geometry.attributes.iScale.needsUpdate = true; geometry.attributes.iOpacity.needsUpdate = true;
       renderer.render({ scene: waveMesh, target: displacementTarget, clear: true }); renderer.render({ scene: compositeMesh });
     };
     raf = requestAnimationFrame(loop);
-    return () => { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerdown", onDown); uniformsRef.current = null; if (canvas.parentNode === mount) mount.removeChild(canvas); gl.getExtension("WEBGL_lose_context")?.loseContext(); };
+    return () => { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerdown", onDown); uniformsRef.current = null; if (useVideo && mediaEl) { mediaEl.pause(); mediaEl.removeAttribute("src"); mediaEl.load(); } if (canvas.parentNode === mount) mount.removeChild(canvas); gl.getExtension("WEBGL_lose_context")?.loseContext(); };
   }, [quality, src]);
 
   useEffect(() => {

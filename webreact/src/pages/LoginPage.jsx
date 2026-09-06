@@ -9,6 +9,8 @@ import GlassSurface from "../components/GlassSurface.jsx";
 import LiquidChrome from "../components/LiquidChrome.jsx";
 import TiltedCard from "../components/TiltedCard.jsx";
 
+import RippleDistortion from "../components/RippleDistortion.jsx";
+
 export default function LoginPage() {
   const { session, login, applyQrLoginResult, tryTrustedLogin } = useApp();
   const navigate = useNavigate();
@@ -104,8 +106,9 @@ export default function LoginPage() {
 
   return (
     <main className="login-page">
-      <div className="login-media" aria-hidden="true"><video src="/assets/login-campus.mp4" autoPlay muted loop playsInline /></div>
+      <RippleDistortion className="login-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} />
       <div className="login-shade" />
+
       <section className="login-story">
         <div className="login-brand"><span className="brand-mark"><Icon name="PhGraduationCap" size={24} weight="fill" /></span><span><strong>CampusMate AI</strong><small>校园信息中枢</small></span></div>
         <div className="login-copy"><span className="eyebrow">你的校园事务工作台</span><h1>把今天的校园生活<br />理清楚。</h1><p>通知、课程、任务和 AI 导员，都在一个清晰的入口。</p></div>
