@@ -52,17 +52,20 @@ test("counselor uses the same global floating navigation as other routes", () =>
 });
 
 test("topbar side controls keep the global search and profile implementation", () => {
-  assert.match(styles, /\.topbar-search[^}]*var\(--topbar-glass-background\)/);
-  assert.match(styles, /\.topbar-info[^}]*var\(--topbar-glass-background\)/);
-  assert.doesNotMatch(appShell, /import GlassSurface from/);
+  assert.match(appShell, /import GlassSurface from "\.\/GlassSurface\.jsx"/);
+  assert.match(appShell, /<GlassSurface[\s\S]*className="topbar-search-surface"/);
+  assert.match(appShell, /<GlassSurface[\s\S]*className="topbar-info-surface"/);
   assert.match(appShell, /<div className="topbar-info">[\s\S]*<span className="topbar-date">/);
   assert.match(appShell, /<div className="topbar-actions">/);
+  assert.match(styles, /\.topbar-search-surface[^}]*position:\s*fixed/);
+  assert.match(styles, /\.topbar-info-surface[^}]*position:\s*fixed/);
 });
 
-test("counselor does not add private topbar wrappers", () => {
+test("counselor shares the global liquid-glass topbar wrappers", () => {
   assert.match(appShell, /function SearchBox\(\)/);
   assert.match(appShell, /<SearchBox \/>/);
-  assert.doesNotMatch(appShell, /topbar-glass-control|topbar-search-surface|topbar-profile-surface/);
+  assert.match(appShell, /topbar-search-surface/);
+  assert.match(appShell, /topbar-info-surface/);
 });
 
 test("active navigation item does not paint a duplicate blue ring", () => {
