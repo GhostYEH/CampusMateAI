@@ -73,14 +73,15 @@ test("active navigation item does not paint a duplicate blue ring", () => {
   assert.doesNotMatch(navStyles, /\.floating-nav-icon::after/);
 });
 
-test("topbar controls share one desktop height and top alignment", () => {
+test("topbar controls keep their height while the nav docks at the bottom", () => {
   assert.match(styles, /--topbar-control-height:\s*64px/);
   assert.match(styles, /\.topbar-search[^}]*height:\s*var\(--topbar-control-height\)/);
   assert.match(styles, /\.topbar-info[^}]*height:\s*var\(--topbar-control-height\)/);
-  assert.match(styles, /\.floating-nav\.glass-surface[^}]*min-height:\s*var\(--topbar-control-height\)/);
+  assert.match(styles, /\.floating-nav\s*\{[^}]*min-height:\s*var\(--topbar-control-height\)/s);
   assert.match(styles, /\.topbar-search[^}]*top:\s*10px/);
-  assert.match(styles, /\.floating-nav[^}]*top:\s*10px/);
   assert.match(styles, /\.topbar-info[^}]*top:\s*10px/);
+  assert.match(layoutStyles, /\.floating-nav\.glass-surface[^}]*top:\s*auto/);
+  assert.match(layoutStyles, /\.floating-nav\.glass-surface[^}]*bottom:/);
 });
 
 test("expanded navigation reserves more space for larger labels and the profile item", () => {

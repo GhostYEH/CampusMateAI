@@ -1,16 +1,17 @@
 :root {
-  --floating-nav-clearance: 88px;
+  --floating-nav-clearance: 24px;
   --floating-nav-bottom-clearance: 112px;
 }
 
 html {
   scroll-padding-top: calc(var(--floating-nav-clearance) + 16px);
+  scroll-padding-bottom: calc(var(--floating-nav-bottom-clearance) + 16px);
 }
 
 .route-stage {
   min-height: 100vh;
   padding-top: var(--floating-nav-clearance);
-  padding-bottom: 24px;
+  padding-bottom: calc(var(--floating-nav-bottom-clearance) + env(safe-area-inset-bottom));
 }
 
 .route-stage > :where(.page-frame, .forum-page, .student-page) {
@@ -37,6 +38,8 @@ html {
 .floating-nav.glass-surface {
   width: var(--floating-nav-collapsed-width);
   max-width: calc(100vw - var(--floating-nav-gutter) * 2);
+  top: auto;
+  bottom: max(16px, env(safe-area-inset-bottom));
   border: 1px solid rgb(255 255 255 / 76%);
   border-radius: 999px;
   background: rgb(255 255 255 / 50%);
@@ -160,7 +163,7 @@ html[data-theme="auto"] .floating-nav-button.active {
 
 @media (max-width: 760px) {
   :root {
-    --floating-nav-clearance: 76px;
+    --floating-nav-clearance: 24px;
   }
 
   .route-stage {
@@ -183,7 +186,8 @@ html[data-theme="auto"] .floating-nav-button.active {
   }
 
   .floating-nav.glass-surface {
-    top: max(10px, env(safe-area-inset-top));
+    top: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
     width: min(var(--floating-nav-collapsed-width), calc(100vw - var(--floating-nav-gutter) * 2));
     height: calc(var(--floating-nav-item-size) + 16px);
   }
