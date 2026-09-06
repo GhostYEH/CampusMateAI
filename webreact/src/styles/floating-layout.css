@@ -30,6 +30,8 @@ html {
   --floating-nav-foreground: #53627b;
   --floating-nav-active-foreground: var(--blue);
   --floating-nav-active-background: rgb(231 239 255 / 92%);
+  top: auto;
+  bottom: max(16px, env(safe-area-inset-bottom));
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -38,8 +40,6 @@ html {
 .floating-nav.glass-surface {
   width: var(--floating-nav-collapsed-width);
   max-width: calc(100vw - var(--floating-nav-gutter) * 2);
-  top: auto;
-  bottom: max(16px, env(safe-area-inset-bottom));
   border: 1px solid rgb(255 255 255 / 76%);
   border-radius: 999px;
   background: rgb(255 255 255 / 50%);

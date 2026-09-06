@@ -80,8 +80,8 @@ test("topbar controls keep their height while the nav docks at the bottom", () =
   assert.match(styles, /\.floating-nav\s*\{[^}]*min-height:\s*var\(--topbar-control-height\)/s);
   assert.match(styles, /\.topbar-search[^}]*top:\s*10px/);
   assert.match(styles, /\.topbar-info[^}]*top:\s*10px/);
-  assert.match(layoutStyles, /\.floating-nav\.glass-surface[^}]*top:\s*auto/);
-  assert.match(layoutStyles, /\.floating-nav\.glass-surface[^}]*bottom:/);
+  assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*top:\s*auto/);
+  assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*bottom:\s*max\(16px,\s*env\(safe-area-inset-bottom\)\)/);
 });
 
 test("expanded navigation reserves more space for larger labels and the profile item", () => {
