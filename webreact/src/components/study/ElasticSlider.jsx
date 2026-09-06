@@ -1,6 +1,5 @@
 import { animate, motion, useMotionValue, useMotionValueEvent, useTransform } from "motion/react";
-import { useMemo, useRef, useState } from "react";
-import { Icon } from "../Icon.jsx";
+import { useMemo, useRef } from "react";
 
 const MAX_OVERFLOW = 50;
 
@@ -28,11 +27,8 @@ export function ElasticSlider({
   max = 100,
   step = 1,
   className = "",
-  leftIcon = <Icon name="PhSpeakerSimpleLow" size={17} />,
-  rightIcon = <Icon name="PhSpeakerSimpleHigh" size={17} />,
 }) {
   const sliderRef = useRef(null);
-  const [region, setRegion] = useState("middle");
   const clientX = useMotionValue(0);
   const overflow = useMotionValue(0);
   const scale = useMotionValue(1);
@@ -42,8 +38,6 @@ export function ElasticSlider({
   const trackScaleY = useTransform(overflow, [0, MAX_OVERFLOW], [1, 0.82]);
   const bodyOpacity = useTransform(scale, [1, 1.2], [0.72, 1]);
   const trackHeight = useTransform(scale, [1, 1.2], [6, 12]);
-  const leftIconX = useTransform(() => region === "left" ? -overflow.get() / scale.get() : 0);
-  const rightIconX = useTransform(() => region === "right" ? overflow.get() / scale.get() : 0);
   const trackOrigin = useTransform(() => {
     const rect = sliderRef.current?.getBoundingClientRect();
     return clientX.get() < (rect?.left || 0) + (rect?.width || 0) / 2 ? "right" : "left";
@@ -53,7 +47,6 @@ export function ElasticSlider({
     if (!sliderRef.current) return;
     const { left, right } = sliderRef.current.getBoundingClientRect();
     const distance = latest < left ? left - latest : latest > right ? latest - right : 0;
-    setRegion(latest < left ? "left" : latest > right ? "right" : "middle");
     overflow.jump(decay(distance, MAX_OVERFLOW));
   });
 
@@ -88,13 +81,6 @@ export function ElasticSlider({
     onTouchEnd={() => animate(scale, 1)}
     style={{ scale, opacity: bodyOpacity }}
   >
-    <motion.button
-      type="button"
-      className="elastic-slider__icon"
-      aria-label="降低音量"
-      onClick={() => onChange?.(clampSliderValue(currentValue - step, min, max))}
-      style={{ x: leftIconX }}
-    >{leftIcon}</motion.button>
     <div
       ref={sliderRef}
       className="elastic-slider__root"
@@ -119,12 +105,5 @@ export function ElasticSlider({
         <div className="elastic-slider__track"><div className="elastic-slider__range" style={{ width: `${percentage}%` }} /><span className="elastic-slider__thumb" style={{ left: `${percentage}%` }} /></div>
       </motion.div>
     </div>
-    <motion.button
-      type="button"
-      className="elastic-slider__icon"
-      aria-label="提高音量"
-      onClick={() => onChange?.(clampSliderValue(currentValue + step, min, max))}
-      style={{ x: rightIconX }}
-    >{rightIcon}</motion.button>
   </motion.div>;
 }
