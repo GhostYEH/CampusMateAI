@@ -26,10 +26,12 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
     const expandedItemGap = Number.parseFloat(styles.getPropertyValue("--floating-nav-expanded-item-gap")) || 26;
     const expandedButtonOffset = Number.parseFloat(styles.getPropertyValue("--floating-nav-expanded-button-offset")) || 68;
     const navGutter = Number.parseFloat(styles.getPropertyValue("--floating-nav-gutter")) || 12;
+    const listPaddingStart = Number.parseFloat(styles.getPropertyValue("--floating-nav-list-start-padding")) || 8;
+    const listPaddingEnd = Number.parseFloat(styles.getPropertyValue("--floating-nav-list-end-padding")) || 8;
     const measureExpandedWidth = () => {
       const labelWidths = labels.map((label) => Math.ceil(label.scrollWidth || label.getBoundingClientRect().width));
       const itemWidths = labelWidths.map((width) => expandedButtonOffset + width);
-      const contentWidth = itemWidths.reduce((total, width) => total + width, 0) + Math.max(0, itemWidths.length - 1) * expandedItemGap + 18;
+      const contentWidth = itemWidths.reduce((total, width) => total + width, 0) + Math.max(0, itemWidths.length - 1) * expandedItemGap + listPaddingStart + listPaddingEnd + 2;
       return getFloatingNavWidth({ contentWidth, viewportWidth: window.innerWidth, gutter: navGutter });
     };
     const setExpandedWidth = () => {
@@ -80,7 +82,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
   const countFor = (key) => key === "tasks" ? pendingCount : key === "notifications" ? unreadCount : 0;
   const activeIndex = Math.max(0, navItems.findIndex(({ key }) => isActive(key)));
 
-  return <GlassSurface ref={dockRef} className={`floating-nav floating-nav--${tone}`} borderRadius={999} backgroundOpacity={0.035} saturation={1.18}>
+  return <GlassSurface ref={dockRef} className={`floating-nav floating-nav--${tone}`} borderRadius={999} backgroundOpacity={0.035} saturation={1.18} distortionScale={0} redOffset={0} greenOffset={0} blueOffset={0}>
     <GooeyNav
       items={navItems}
       activeIndex={activeIndex}

@@ -85,6 +85,7 @@ export class FocusCameraPipeline {
       await this.provider.start();
       this.ensureCurrent(version);
       if (this.provider.status() === FocusAssistStatus.ERROR) {
+        await this.cleanupFailedStart();
         this.setState(FocusCameraState.UNAVAILABLE);
         return;
       }
@@ -126,7 +127,7 @@ export class FocusCameraPipeline {
       this.frameGate.reset();
       this.setState(FocusCameraState.WAITING_FOR_PERSON);
     } catch (_) {
-      await this.releaseResources();
+      await this.cleanupFailedStart();
       if (this.runToken.isCurrent(version)) this.setState(FocusCameraState.UNAVAILABLE);
     }
   }
@@ -158,6 +159,13 @@ export class FocusCameraPipeline {
     await this.releaseResources();
     this.frameGate.reset();
     this.setState(FocusCameraState.STOPPED);
+  }
+
+  private async cleanupFailedStart(): Promise<void> {
+    this.running = false;
+    await this.provider.stop().catch(() => {});
+    await this.releaseResources();
+    this.frameGate.reset();
   }
 
   resetSession(): void {

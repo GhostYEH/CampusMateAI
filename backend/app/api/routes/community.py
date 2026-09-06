@@ -49,9 +49,6 @@ def _post_out(row: dict, c: ServiceContainer, viewer_id: str | None = None) -> d
     images = json.loads(row.pop("images_json", "[]"))
     extra = json.loads(row.pop("extra_json", "{}") or "{}")
     is_owner = viewer_id is not None and row["author_id"] == viewer_id
-    if row.get("category") == "lostfound" and not is_owner:
-        if extra.get("contact_visibility", "private") != "public":
-            extra = {**extra, "contact": None}
     liked = False
     favorited = False
     if viewer_id:
@@ -255,12 +252,6 @@ def hide(post_id: str, user: UserRow = Depends(require_role("admin")), c: Servic
     if not post:
         raise NotFoundError("帖子不存在")
     return _post_out(post, c)
-
-
-@admin_router.post("/migrate-lost-found")
-def migrate_lost_found(user: UserRow = Depends(require_role("admin")), c: ServiceContainer = Depends(_container)) -> dict:
-    count = c.community_repository.migrate_lost_found()
-    return {"migrated": count}
 
 
 @admin_router.get("/posts")

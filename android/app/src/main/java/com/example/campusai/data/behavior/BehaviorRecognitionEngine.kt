@@ -12,11 +12,11 @@ interface BehaviorRecognitionEngine {
     /** Analyze a temporal window of frames. Caller retains ownership of the bitmap list. */
     fun analyzeTemporalWindow(frames: List<Bitmap>, timestampMs: Long): BehaviorPrediction
 
-    /** ROI-aware path used by V3.4. Existing engines keep the legacy full-frame behavior. */
+    /** ROI-aware path used by V3.4. The box is in the supplied model-input bitmap coordinates. */
     fun analyzeTemporalWindow(
         frames: List<Bitmap>,
         timestampMs: Long,
-        personBoundingBox: RectF?,
+        modelInputPersonBoundingBox: RectF?,
     ): BehaviorPrediction = analyzeTemporalWindow(frames, timestampMs)
 
     /** Clears temporal state while keeping loaded model sessions warm. */

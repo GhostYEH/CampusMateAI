@@ -36,15 +36,11 @@ Page({
         icon: 'quick-calendar',
       },
       {
-        label: '空教室', detail: '', route: '/package-campus/pages/classrooms/classrooms', tab: false, tone: 'blue', icon: 'quick-classroom',
-      },
-      {
         label: '校园社区', detail: '', route: '/package-community/pages/community/community', tab: false, tone: 'teal', icon: 'quick-community',
       },
       {
         label: '专注自习', detail: '', route: '/package-study/pages/study/study', tab: false, tone: 'orange', icon: 'quick-study',
       },
-      { label: '失物招领', detail: '', route: '/package-community/pages/lostfound/lostfound', tab: false, tone: 'violet', icon: 'quick-lost' },
     ] as QuickAction[],
   },
   onLoad() {

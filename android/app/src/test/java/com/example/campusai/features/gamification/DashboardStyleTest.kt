@@ -17,4 +17,11 @@ class DashboardStyleTest {
         assertEquals(DashboardStyle.GAMIFIED, DashboardStyle.fromStoredValue("gamified"))
         assertEquals(DashboardStyle.GAMIFIED, DashboardStyle.fromStoredValue("GAMIFIED"))
     }
+
+    @Test
+    fun immersivePreferenceRoundTripsWithoutDependingOnEnumCase() {
+        assertEquals("immersive", DashboardStyle.IMMERSIVE.storedValue)
+        assertEquals(DashboardStyle.IMMERSIVE, DashboardStyle.fromStoredValue("immersive"))
+        assertEquals(DashboardStyle.IMMERSIVE, DashboardStyle.fromStoredValue("IMMERSIVE"))
+    }
 }

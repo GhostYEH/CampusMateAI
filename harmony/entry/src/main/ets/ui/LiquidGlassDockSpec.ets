@@ -25,7 +25,7 @@ export function liquidGlassDockStyle(darkMode: boolean, reduceMotion: boolean): 
     motionDuration: reduceMotion ? 0 : 260,
     clickGlowEnabled: !reduceMotion,
     clickGlowDuration: reduceMotion ? 0 : 300,
-    clickGlowDiameter: 52,
+    clickGlowDiameter: 48,
     clickGlowColor: darkMode ? '#B86F78FF' : '#B85B68F2',
     chromaticEdgeOpacity: darkMode ? 0.22 : 0.16,
     maxWidth: 560

@@ -45,8 +45,11 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
-    fun lostFoundOwnsItsImmersiveHeroNavigation() {
+    fun retiredStudentToolRoutesHaveNoSecondaryDestination() {
+        assertNull(secondaryDestinationSpec("classrooms"))
+        assertNull(secondaryDestinationSpec("services"))
         assertNull(secondaryDestinationSpec("lostfound"))
+        assertEquals("校园论坛", secondaryDestinationSpec("community")?.title)
     }
 
     @Test
@@ -77,11 +80,7 @@ class SecondaryDestinationSpecTest {
             "exams",
             "exam_detail/{examId}",
             "exam_edit/{examId}",
-            "classrooms",
             "focus",
-            "lostfound_publish",
-            "lostfound_detail/{itemId}",
-            "lostfound_mine",
         ).forEach { route ->
             assertFalse("Route $route needs a fixed navigation title", secondaryDestinationSpec(route)?.title.isNullOrBlank())
         }
@@ -100,5 +99,10 @@ class SecondaryDestinationSpecTest {
             "教务系统登录",
             secondaryDestinationSpec("edu_login/{connectionId}?loginUrl={loginUrl}")?.title,
         )
+    }
+
+    @Test
+    fun courseScheduleActionTargetsTheDedicatedScheduleRoute() {
+        assertEquals("edu_schedule", courseScheduleRoute())
     }
 }

@@ -11,17 +11,15 @@ const home = [
 
 for (const route of [
   'package-campus/pages/exams/exams',
-  'package-campus/pages/classrooms/classrooms',
   'package-community/pages/community/community',
   'package-study/pages/study/study',
-  'package-community/pages/lostfound/lostfound',
 ]) {
   const configured = appConfig.subPackages
     .flatMap(({ root, pages }) => pages.map((page) => `${root}/${page}`))
   assert.ok(configured.includes(route), `missing Android home destination ${route}`)
 }
 
-for (const label of ['考试安排', '空教室', '校园社区', '专注自习', '失物招领']) {
+for (const label of ['考试安排', '校园社区', '专注自习']) {
   assert.match(home, new RegExp(label), `home is missing ${label}`)
 }
 

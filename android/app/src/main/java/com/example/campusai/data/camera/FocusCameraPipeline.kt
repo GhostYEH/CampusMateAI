@@ -13,11 +13,13 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Lifecycle
 import com.example.campusai.data.expression.ImageProxyBitmapConverter
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 interface FrameAnalyzer {
     fun analyze(frame: CameraFrame)
@@ -39,7 +41,8 @@ class FocusCameraPipeline(
     private var lifecycleOwner: LifecycleOwner? = null
     private var previewView: PreviewView? = null
     private val analyzing = AtomicBoolean(false)
-    private var running = false
+    @Volatile private var running = false
+    private val bindingGeneration = AtomicLong(0L)
     private var lastAnalyzedAt = 0L
 
     private val analyzers = CopyOnWriteArrayList<FrameAnalyzer>()
@@ -57,21 +60,25 @@ class FocusCameraPipeline(
 
     fun start() {
         running = true
+        bindingGeneration.incrementAndGet()
         bindUseCasesIfReady()
     }
 
     fun pause() {
         running = false
+        bindingGeneration.incrementAndGet()
         cameraProvider?.unbindAll()
     }
 
     fun stop() {
         running = false
+        bindingGeneration.incrementAndGet()
         cameraProvider?.unbindAll()
     }
 
     fun dispose() {
         running = false
+        bindingGeneration.incrementAndGet()
         cameraProvider?.unbindAll()
         cameraProvider = null
         lifecycleOwner = null
@@ -87,6 +94,8 @@ class FocusCameraPipeline(
     }
 
     fun detachLifecycle() {
+        running = false
+        bindingGeneration.incrementAndGet()
         cameraProvider?.unbindAll()
         lifecycleOwner = null
     }
@@ -108,6 +117,8 @@ class FocusCameraPipeline(
     }
 
     fun unbindCamera() {
+        running = false
+        bindingGeneration.incrementAndGet()
         cameraProvider?.unbindAll()
         lifecycleOwner = null
         previewView = null
@@ -118,11 +129,16 @@ class FocusCameraPipeline(
         if (owner == null || !running) {
             return
         }
+        val generation = bindingGeneration.get()
         val future = ProcessCameraProvider.getInstance(application)
         future.addListener({
             try {
                 val provider = future.get()
                 cameraProvider = provider
+                if (!isBindingCurrent(generation, owner)) {
+                    if (!running || generation == bindingGeneration.get()) provider.unbindAll()
+                    return@addListener
+                }
 
                 val useCases = mutableListOf<androidx.camera.core.UseCase>()
 
@@ -151,10 +167,18 @@ class FocusCameraPipeline(
                         useCase.setAnalyzer(analysisExecutor) { image ->
                             processImage(image)
                         }
-                    }
+                }
                 useCases.add(analysis)
 
+                if (!isBindingCurrent(generation, owner)) {
+                    if (!running || generation == bindingGeneration.get()) provider.unbindAll()
+                    return@addListener
+                }
                 provider.unbindAll()
+                if (!isBindingCurrent(generation, owner)) {
+                    if (!running || generation == bindingGeneration.get()) provider.unbindAll()
+                    return@addListener
+                }
                 provider.bindToLifecycle(
                     owner,
                     CameraSelector.DEFAULT_FRONT_CAMERA,
@@ -166,6 +190,12 @@ class FocusCameraPipeline(
             }
         }, ContextCompat.getMainExecutor(application))
     }
+
+    private fun isBindingCurrent(generation: Long, owner: LifecycleOwner): Boolean =
+        running &&
+            generation == bindingGeneration.get() &&
+            lifecycleOwner === owner &&
+            owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
 
     private fun processImage(image: ImageProxy) {
         val now = SystemClock.elapsedRealtime()

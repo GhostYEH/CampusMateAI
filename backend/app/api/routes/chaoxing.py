@@ -521,6 +521,8 @@ async def _perform_sync_chaoxing(
             external_id = notice.get("external_id")
             if not external_id:
                 continue
+            published_at = _parse_chaoxing_datetime(notice.get("published_at"))
+            published_at_iso = published_at.isoformat() if published_at else None
                 
             # 1. 保存/更新 Notice (幂等)
             # Notice 正文变化也视为同一个 notice，用 external_id 判断
@@ -551,7 +553,7 @@ async def _perform_sync_chaoxing(
                         title=notice["title"],
                         content=notice.get("content"),
                         course_id=course.get("local_course_id"),
-                        published_at=notice.get("published_at"),
+                        published_at=published_at_iso,
                         source_url=notice.get("link"),
                         last_synced_at=now_iso,
                     )
@@ -565,7 +567,7 @@ async def _perform_sync_chaoxing(
                 title=notice["title"],
                 content=notice.get("content"),
                 course_id=course.get("local_course_id"),
-                published_at=notice.get("published_at"),
+                published_at=published_at_iso,
                 source_url=notice.get("link"),
                 last_synced_at=now_iso,
             )

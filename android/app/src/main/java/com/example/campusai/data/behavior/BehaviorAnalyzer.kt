@@ -71,12 +71,15 @@ class BehaviorAnalyzer(
                 // (see getTemporalWindow / lastFrame) for a future V4 TCN, but the ONNX
                 // model only consumes the newest frame, so we no longer deep-copy the
                 // whole window per inference.
-                val latest = frameBuffer.lastFrame() ?: run {
+                val latest = frameBuffer.latestFrame() ?: run {
                     analyzing.set(false)
                     return
                 }
                 val snapshot = listOf(
-                    latest.copy(latest.config ?: Bitmap.Config.ARGB_8888, latest.isMutable)
+                    latest.bitmap.copy(
+                        latest.bitmap.config ?: Bitmap.Config.ARGB_8888,
+                        latest.bitmap.isMutable,
+                    ),
                 )
                 val timestamp = frame.timestampMs
 
@@ -87,11 +90,20 @@ class BehaviorAnalyzer(
                             // case it is run only to release its owned snapshot; never
                             // call an engine that has already been closed.
                             if (disposed.get()) return@execute
+                            val modelInputPersonBox = personBoundingBoxProvider()?.let { sourceBox ->
+                                CoordinateMapper.mapRect(
+                                    sourceRect = sourceBox,
+                                    sourceWidth = latest.sourceWidth,
+                                    sourceHeight = latest.sourceHeight,
+                                    targetWidth = latest.bitmap.width,
+                                    targetHeight = latest.bitmap.height,
+                                )
+                            }
                             val prediction = try {
                                 engine.analyzeTemporalWindow(
                                     snapshot,
                                     timestamp,
-                                    personBoundingBoxProvider()?.let(::RectF),
+                                    modelInputPersonBox,
                                 )
                             } catch (_: Throwable) {
                                 BehaviorPrediction(

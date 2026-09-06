@@ -21,6 +21,7 @@ def test_list_notices_exposes_only_current_users_chaoxing_notice():
             external_id="same",
             title="用户一通知",
             source_url="https://example.test/1",
+            published_at="1783209663000",
         )
         notice_repo.create_or_update_notice(
             user_id="user2",
@@ -58,5 +59,6 @@ def test_list_notices_exposes_only_current_users_chaoxing_notice():
         assert [item.title for item in result.items] == ["用户一通知"]
         assert result.items[0].kind == "unified"
         assert result.items[0].source_url == "https://example.test/1"
+        assert result.items[0].time == "2026-07-05T00:01:03+00:00"
     finally:
         db.dispose()

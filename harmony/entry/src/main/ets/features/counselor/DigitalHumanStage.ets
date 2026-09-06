@@ -4,6 +4,7 @@ import { CounselorVisualSpec } from './CounselorVisualSpec';
 
 interface PageEndEvent { url: string }
 interface UrlLoadEvent { data: string | WebResourceRequest }
+interface ResourceErrorEvent { request: WebResourceRequest }
 
 @Component
 export struct DigitalHumanStage {
@@ -39,6 +40,35 @@ export struct DigitalHumanStage {
   configure(): void {
     const payload: string = JSON.stringify({ apiBaseUrl: this.apiBaseUrl, accessToken: this.authToken });
     this.run(`window.CampusMateDigitalHuman.configure(${payload});`);
+    this.run(`window.CampusMateDigitalHuman.setPresentation({zoom:1.18,idleMotion:${!this.reduceMotion}});`);
+  }
+
+  bundledResponse(path: string): WebResourceResponse | null {
+    const response: WebResourceResponse = new WebResourceResponse();
+    if (path === 'digital-human/index.html') {
+      response.setResponseData($rawfile('digital-human/index.html'));
+      response.setResponseMimeType('text/html');
+      response.setResponseEncoding('utf-8');
+    } else if (path === 'digital-human/Build/digital-human.loader.js') {
+      response.setResponseData($rawfile('digital-human/Build/digital-human.loader.js'));
+      response.setResponseMimeType('application/javascript');
+      response.setResponseEncoding('utf-8');
+    } else if (path === 'digital-human/Build/digital-human.framework.js') {
+      response.setResponseData($rawfile('digital-human/Build/digital-human.framework.js'));
+      response.setResponseMimeType('application/javascript');
+      response.setResponseEncoding('utf-8');
+    } else if (path === 'digital-human/Build/digital-human.data') {
+      response.setResponseData($rawfile('digital-human/Build/digital-human.data'));
+      response.setResponseMimeType('application/octet-stream');
+    } else if (path === 'digital-human/Build/digital-human.wasm') {
+      response.setResponseData($rawfile('digital-human/Build/digital-human.wasm'));
+      response.setResponseMimeType('application/wasm');
+    } else {
+      return null;
+    }
+    response.setResponseCode(200);
+    response.setReasonMessage('OK');
+    return response;
   }
 
   requestRuntimeIfNeeded(): void {
@@ -94,6 +124,12 @@ export struct DigitalHumanStage {
             .domStorageAccess(true)
             .databaseAccess(false)
             .mediaPlayGestureAccess(false)
+            .mixedMode(MixedMode.All)
+            .onInterceptRequest((event) => {
+              if (event === undefined) return null;
+              const path: string | null = CounselorVisualSpec.bundledResourcePath(event.request.getRequestUrl());
+              return path === null ? null : this.bundledResponse(path);
+            })
             .onUrlLoadIntercept((event?: UrlLoadEvent) => {
               if (event === undefined) return true;
               const targetUrl: string = typeof event.data === 'string'
@@ -114,9 +150,15 @@ export struct DigitalHumanStage {
               if (this.muted) this.run('window.CampusMateDigitalHuman.toggleMuted();');
               this.speakIfNeeded();
             })
-            .onErrorReceive(() => {
-              this.ready = false;
-              this.errorMessage = '数字人动画加载失败，文字聊天仍可使用';
+            .onErrorReceive((event: ResourceErrorEvent) => {
+              if (CounselorVisualSpec.shouldReportRuntimeError(
+                this.stageUrl(),
+                event.request.getRequestUrl(),
+                event.request.isMainFrame(),
+              )) {
+                this.ready = false;
+                this.errorMessage = '数字人动画加载失败，文字聊天仍可使用';
+              }
             })
             .width('100%')
             .height('100%')

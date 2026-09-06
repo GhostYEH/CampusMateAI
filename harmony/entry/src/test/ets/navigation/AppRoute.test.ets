@@ -6,7 +6,6 @@ export default function appRouteTest(): void {
     it('recognizes every retained secondary destination', 0, () => {
       const routes: string[] = [
         AppRoute.EXAMS,
-        AppRoute.CLASSROOMS,
         AppRoute.UNIVERSITY,
         AppRoute.COMMUNITY,
         AppRoute.COMMUNITY_HOT,
@@ -16,7 +15,6 @@ export default function appRouteTest(): void {
         AppRoute.ACADEMIC,
         AppRoute.FOCUS,
         AppRoute.FOCUS_PLAN,
-        AppRoute.LOST_FOUND,
         AppRoute.NOTIFICATIONS,
         AppRoute.NOTIFICATION_SOURCE_SETTINGS,
         AppRoute.CHAOXING,
@@ -34,9 +32,6 @@ export default function appRouteTest(): void {
         AppRoute.TASK_DETAIL,
         AppRoute.EXAM_DETAIL,
         AppRoute.EXAM_FORM,
-        AppRoute.LOST_FOUND_DETAIL,
-        AppRoute.LOST_FOUND_PUBLISH,
-        AppRoute.LOST_FOUND_MINE,
         AppRoute.NOTIFICATION_DETAIL,
         AppRoute.EDU_SCHEDULE_DETAIL
       ];
@@ -47,6 +42,12 @@ export default function appRouteTest(): void {
       }
       expect(AppRouteRegistry.isSecondary('missing-route')).assertEqual(false);
       expect(AppRouteRegistry.title('missing-route')).assertEqual('校园服务');
+      expect(AppRouteRegistry.isSecondary('classrooms')).assertEqual(false);
+      expect(AppRouteRegistry.isSecondary('lostfound')).assertEqual(false);
+      expect(AppRouteRegistry.title('classrooms')).assertEqual('校园服务');
+      expect(AppRouteRegistry.title('lostfound')).assertEqual('校园服务');
+      expect(AppRouteRegistry.isSecondary(AppRoute.COMMUNITY)).assertEqual(true);
+      expect(AppRouteRegistry.title(AppRoute.COMMUNITY)).assertEqual('校园社区');
     });
 
     it('models nested flows with their real back destination', 0, () => {
@@ -63,9 +64,6 @@ export default function appRouteTest(): void {
       expect(AppRouteRegistry.parent(AppRoute.TASK_DETAIL)).assertEqual('tasks');
       expect(AppRouteRegistry.parent(AppRoute.EXAM_DETAIL)).assertEqual(AppRoute.EXAMS);
       expect(AppRouteRegistry.parent(AppRoute.EXAM_FORM)).assertEqual(AppRoute.EXAMS);
-      expect(AppRouteRegistry.parent(AppRoute.LOST_FOUND_DETAIL)).assertEqual(AppRoute.LOST_FOUND);
-      expect(AppRouteRegistry.parent(AppRoute.LOST_FOUND_PUBLISH)).assertEqual(AppRoute.LOST_FOUND);
-      expect(AppRouteRegistry.parent(AppRoute.LOST_FOUND_MINE)).assertEqual(AppRoute.LOST_FOUND);
       expect(AppRouteRegistry.parent(AppRoute.NOTIFICATION_DETAIL)).assertEqual(AppRoute.NOTIFICATIONS);
       expect(AppRouteRegistry.parent(AppRoute.EDU_SCHEDULE_DETAIL)).assertEqual(AppRoute.EDU_SCHEDULE);
       expect(AppRouteRegistry.parent(AppRoute.FOCUS_PLAN)).assertEqual(AppRoute.FOCUS);
@@ -80,6 +78,14 @@ export default function appRouteTest(): void {
       expect(AppRouteRegistry.tabIndex('profile')).assertEqual(4);
       expect(AppRouteRegistry.tabIndex(AppRoute.EXAMS)).assertEqual(-1);
       expect(AppRouteRegistry.tabIndex('missing-route')).assertEqual(-1);
+    });
+
+    it('exposes the dedicated schedule route for course-page actions', 0, () => {
+      expect(AppRouteRegistry.courseScheduleRoute()).assertEqual(AppRoute.EDU_SCHEDULE);
+    });
+
+    it('routes the unread notification overview metric to tasks', 0, () => {
+      expect(AppRouteRegistry.unreadNotificationMetricRoute()).assertEqual('tasks');
     });
 
     it('loads data only for destinations backed by a list or status request', 0, () => {

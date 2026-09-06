@@ -18,12 +18,13 @@ import org.robolectric.RobolectricTestRunner
 class BehaviorAnalyzerTest {
     @Test
     fun analyzerPassesCurrentPersonBoxToRoiAwareEngine() {
-        val expected = RectF(1f, 2f, 7f, 8f)
+        val sourceCoordinates = RectF(1f, 2f, 7f, 8f)
+        val expectedModelCoordinates = RectF(.5f, 1f, 3.5f, 4f)
         val engine = RoiCapturingEngine()
         val analyzer = BehaviorAnalyzer(
             engine = engine,
             config = testConfig(),
-            personBoundingBoxProvider = { expected },
+            personBoundingBoxProvider = { sourceCoordinates },
         )
         val frame = frameAt(100L)
 
@@ -31,7 +32,7 @@ class BehaviorAnalyzerTest {
             analyzer.analyze(frame)
             frame.release()
             assertTrue(engine.completed.await(2, TimeUnit.SECONDS))
-            assertEquals(expected, engine.personBoundingBox)
+            assertEquals(expectedModelCoordinates, engine.personBoundingBox)
         } finally {
             analyzer.dispose()
         }

@@ -14,6 +14,7 @@ import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from threading import RLock
 from typing import Optional
 
 from ...models.edu import (
@@ -197,6 +198,7 @@ class PreLoginSessionStore:
     def __init__(self, ttl_seconds: int = 180) -> None:
         self._sessions: dict[str, PreLoginSession] = {}
         self._ttl = ttl_seconds
+        self._lock = RLock()
 
     def create(
         self,
@@ -221,25 +223,58 @@ class PreLoginSessionStore:
             captcha_type=captcha_type,
             expires_at=expires.isoformat(),
         )
-        self._sessions[token] = session
+        with self._lock:
+            self._sessions[token] = session
         return session
 
-    def get(self, pre_login_token: str) -> Optional[PreLoginSession]:
-        session = self._sessions.get(pre_login_token)
-        if session is None:
-            return None
-        if session.is_expired():
-            self._sessions.pop(pre_login_token, None)
-            return None
-        return session
+    def get(
+        self,
+        pre_login_token: str,
+        *,
+        user_id: Optional[str] = None,
+        connection_id: Optional[str] = None,
+    ) -> Optional[PreLoginSession]:
+        with self._lock:
+            session = self._sessions.get(pre_login_token)
+            if session is None:
+                return None
+            if session.is_expired():
+                self._sessions.pop(pre_login_token, None)
+                return None
+            if user_id is not None and session.user_id != user_id:
+                return None
+            if connection_id is not None and session.connection_id != connection_id:
+                return None
+            return session
+
+    def consume(
+        self,
+        pre_login_token: str,
+        *,
+        user_id: str,
+        connection_id: str,
+    ) -> Optional[PreLoginSession]:
+        """Return one valid owner-bound session and remove it atomically."""
+        with self._lock:
+            session = self._sessions.get(pre_login_token)
+            if session is None:
+                return None
+            if session.is_expired():
+                self._sessions.pop(pre_login_token, None)
+                return None
+            if session.user_id != user_id or session.connection_id != connection_id:
+                return None
+            return self._sessions.pop(pre_login_token, None)
 
     def destroy(self, pre_login_token: str) -> None:
-        self._sessions.pop(pre_login_token, None)
+        with self._lock:
+            self._sessions.pop(pre_login_token, None)
 
     def destroy_by_connection(self, connection_id: str) -> None:
-        for token in list(self._sessions.keys()):
-            if self._sessions[token].connection_id == connection_id:
-                self._sessions.pop(token, None)
+        with self._lock:
+            for token in list(self._sessions.keys()):
+                if self._sessions[token].connection_id == connection_id:
+                    self._sessions.pop(token, None)
 
 
 __all__ = [

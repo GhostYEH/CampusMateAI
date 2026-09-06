@@ -21,9 +21,11 @@ html {
   --floating-nav-expanded-width: 900px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
-  --floating-nav-expanded-item-gap: 26px;
-  --floating-nav-expanded-button-offset: 68px;
+  --floating-nav-expanded-item-gap: 30px;
+  --floating-nav-expanded-button-offset: 76px;
   --floating-nav-gutter: 12px;
+  --floating-nav-list-start-padding: 8px;
+  --floating-nav-list-end-padding: 30px;
   --floating-nav-foreground: #53627b;
   --floating-nav-active-foreground: var(--blue);
   --floating-nav-active-background: rgb(231 239 255 / 92%);
@@ -66,11 +68,13 @@ html {
 
 .floating-nav-list {
   width: max-content;
+  padding: 8px var(--floating-nav-list-end-padding) 8px var(--floating-nav-list-start-padding);
 }
 
 .floating-nav-label {
   width: max-content;
   white-space: nowrap;
+  font-size: 14px;
 }
 
 .floating-nav-button {
@@ -171,6 +175,8 @@ html[data-theme="auto"] .floating-nav-button.active {
     --floating-nav-item-size: 34px;
     --floating-nav-item-gap: 1px;
     --floating-nav-gutter: 12px;
+    --floating-nav-list-start-padding: 7px;
+    --floating-nav-list-end-padding: 7px;
     min-height: 0;
     overflow-x: auto;
     overflow-y: hidden;
@@ -179,5 +185,10 @@ html[data-theme="auto"] .floating-nav-button.active {
   .floating-nav.glass-surface {
     top: max(10px, env(safe-area-inset-top));
     width: min(var(--floating-nav-collapsed-width), calc(100vw - var(--floating-nav-gutter) * 2));
+    height: calc(var(--floating-nav-item-size) + 16px);
+  }
+
+  .floating-nav-list {
+    padding: 7px var(--floating-nav-list-end-padding) 7px var(--floating-nav-list-start-padding);
   }
 }

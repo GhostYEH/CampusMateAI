@@ -271,13 +271,10 @@ private fun QuickActions(
     onNavigate: (String) -> Unit,
     reduceMotion: Boolean,
 ) {
-    // 与底部导航不重复的校园能力入口；V3 不再提供审批式办事大厅。
     val actions = listOf(
         QuickAction("考试安排", "exams", Icons.Default.EventNote, Color(0xFF5B68F2)),
-        QuickAction("空教室", "classrooms", Icons.Default.MeetingRoom, Color(0xFF397CEF)),
         QuickAction("校园社区", "community", Icons.Default.Groups, Color(0xFF35B99A)),
         QuickAction("专注自习", "focus", Icons.Default.Timer, WarmOrange),
-        QuickAction("失物招领", "lostfound", Icons.Default.FindInPage, Color(0xFF7C6BE8)),
     )
     Row(
         modifier = Modifier

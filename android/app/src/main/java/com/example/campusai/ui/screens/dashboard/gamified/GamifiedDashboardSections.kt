@@ -166,9 +166,6 @@ private fun SideQuestCard(quest: SideQuestUiState, modifier: Modifier, onNavigat
 private fun sideQuestVisual(route: String): Pair<ImageVector, Color> = when (route) {
     "focus" -> Icons.Default.Timer to GamificationTokens.XpAmber
     "counselor" -> Icons.Default.AutoAwesome to GamificationTokens.Purple
-    "classrooms" -> Icons.Default.MeetingRoom to GamificationTokens.Sky
-    "services" -> Icons.AutoMirrored.Filled.Assignment to GamificationTokens.CampusBlue
-    "lostfound" -> Icons.Default.Search to GamificationTokens.SuccessGreen
     else -> Icons.Default.Event to GamificationTokens.Indigo
 }
 

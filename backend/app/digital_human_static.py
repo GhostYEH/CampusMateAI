@@ -7,7 +7,13 @@ from starlette.staticfiles import StaticFiles
 
 
 def resolve_digital_human_assets_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "web" / "public" / "digital-human"
+    repo_root = Path(__file__).resolve().parents[2]
+    # Web 端目录历史上叫 web，现名 webreact，两种都尝试
+    for web_dir in ("web", "webreact"):
+        candidate = repo_root / web_dir / "public" / "digital-human"
+        if candidate.is_dir():
+            return candidate
+    return repo_root / "webreact" / "public" / "digital-human"
 
 
 def cache_control_for_asset(path: str) -> str:

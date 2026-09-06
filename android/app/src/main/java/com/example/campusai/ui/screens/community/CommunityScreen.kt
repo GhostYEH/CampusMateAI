@@ -41,7 +41,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val CATEGORY_LABELS = mapOf(
-    "question" to "提问", "recruit" to "招募", "errand" to "带价帮忙", "lostfound" to "失物招领",
+    "question" to "提问", "recruit" to "招募", "errand" to "带价帮忙",
     "campus" to "校园动态", "study" to "学习交流", "life" to "生活随笔", "secondhand" to "二手交易",
     "activity" to "活动", "experience" to "经验分享", "other" to "其它",
 )
@@ -68,10 +68,6 @@ private fun extraTags(post: CommunityPostDto): List<String> {
             (e["price"] as? Number)?.let { tags.add("酬金 ¥$it") }
             (e["location"] as? String)?.takeIf { it.isNotBlank() }?.let { tags.add("地点：$it") }
             (e["deadline"] as? String)?.takeIf { it.isNotBlank() }?.let { tags.add("截止：$it") }
-        }
-        "lostfound" -> {
-            tags.add(if (e["kind"] == "found") "招领" else "寻物")
-            (e["location"] as? String)?.takeIf { it.isNotBlank() }?.let { tags.add("地点：$it") }
         }
     }
     return tags
@@ -113,7 +109,7 @@ fun CommunityScreen(
         ) {
             Column {
                 Text("校园论坛", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("提问 / 招募 / 带价帮忙 / 失物招领", color = Muted, fontSize = 12.sp)
+                Text("提问 / 招募 / 带价帮忙", color = Muted, fontSize = 12.sp)
             }
             Button(onClick = onOpenPublish, shape = RoundedCornerShape(12.dp)) {
                 Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("发帖")

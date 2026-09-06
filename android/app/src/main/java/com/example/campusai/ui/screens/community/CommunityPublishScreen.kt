@@ -99,11 +99,6 @@ fun CommunityPublishScreen(
                 if (extraDeadline.isNotBlank()) e["deadline"] = extraDeadline
                 if (e.isEmpty()) null else e
             }
-            "lostfound" -> {
-                mapOf("kind" to extraKind, "contact_visibility" to extraVisibility,
-                    *(if (extraLocation.isNotBlank()) arrayOf("location" to extraLocation) else arrayOf()),
-                    *(if (extraContact.isNotBlank()) arrayOf("contact" to extraContact) else arrayOf()))
-            }
             else -> null
         }
     }
@@ -173,20 +168,6 @@ fun CommunityPublishScreen(
                     OutlinedTextField(extraPrice, { extraPrice = it }, label = { Text("酬金（元）") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
                     OutlinedTextField(extraLocation, { extraLocation = it }, label = { Text("地点") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
                     OutlinedTextField(extraDeadline, { extraDeadline = it }, label = { Text("截止时间") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
-                }
-            }
-            if (category == "lostfound") {
-                ExtraSection("失物招领信息") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(extraKind == "lost", { extraKind = "lost" }, label = { Text("寻物") })
-                        FilterChip(extraKind == "found", { extraKind = "found" }, label = { Text("招领") })
-                    }
-                    OutlinedTextField(extraLocation, { extraLocation = it }, label = { Text("地点") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
-                    OutlinedTextField(extraContact, { extraContact = it }, label = { Text("联系方式") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(extraVisibility == "private", { extraVisibility = "private" }, label = { Text("仅发布者可见") })
-                        FilterChip(extraVisibility == "public", { extraVisibility = "public" }, label = { Text("公开") })
-                    }
                 }
             }
 

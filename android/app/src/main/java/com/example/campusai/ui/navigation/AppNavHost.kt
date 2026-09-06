@@ -31,7 +31,6 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.data.repository.NotificationInboxRepository
-import com.example.campusai.ui.screens.classrooms.ClassroomsScreen
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.CoursesScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
@@ -43,10 +42,6 @@ import com.example.campusai.ui.screens.focus.FocusSessionScreen
 import com.example.campusai.ui.screens.focus.FocusHistoryScreen
 import com.example.campusai.ui.screens.focus.FocusSummaryScreen
 
-import com.example.campusai.ui.screens.lostfound.LostFoundDetailScreen
-import com.example.campusai.ui.screens.lostfound.LostFoundPublishScreen
-import com.example.campusai.ui.screens.lostfound.LostFoundScreen
-import com.example.campusai.ui.screens.lostfound.MyLostFoundScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsDetailScreen
 import com.example.campusai.ui.screens.notifications.CampusNewsScreen
 import com.example.campusai.ui.screens.notifications.NotificationsScreen
@@ -61,12 +56,6 @@ import com.example.campusai.ui.screens.profile.QrScanResultHolder
 import com.example.campusai.ui.screens.profile.SettingsScreen
 import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 
-import com.example.campusai.ui.screens.services.GenericServiceFormScreen
-import com.example.campusai.ui.screens.services.LeaveRequestScreen
-import com.example.campusai.ui.screens.services.MyRequestsScreen
-import com.example.campusai.ui.screens.services.RepairRequestScreen
-import com.example.campusai.ui.screens.services.ServiceRequestDetailScreen
-import com.example.campusai.ui.screens.services.ServicesScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
@@ -96,12 +85,6 @@ private fun NavigationDestinationFrame(
     val title = when (route?.substringBefore('?')) {
         "exam_edit/{examId}" -> {
             if (backStackEntry.arguments?.getLong("examId") == 0L) "新增考试" else "编辑考试"
-        }
-        "service_form/{kind}" -> when (backStackEntry.arguments?.getString("kind")) {
-            "certificate" -> "证明申请"
-            "venue" -> "场地申请"
-            "feedback" -> "意见反馈"
-            else -> destination?.title
         }
         else -> destination?.title
     }
@@ -306,7 +289,9 @@ fun AppNavHost(
                 }
             }
         }
-        composable("courses") { CoursesScreen(repository) }
+        composable("courses") {
+            CoursesScreen(repository, onOpenSchedule = { go(courseScheduleRoute()) })
+        }
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }
         }
@@ -401,7 +386,7 @@ fun AppNavHost(
                     val encodedOrigins = URLEncoder.encode(allowedOrigins.joinToString(","), "UTF-8")
                     navController.navigate("edu_login/$connectionId?loginUrl=$encodedUrl&allowedOrigins=$encodedOrigins")
                 },
-                onOpenSchedule = { go("edu_schedule") },
+                onOpenSchedule = { go(courseScheduleRoute()) },
                 viewModel = eduViewModel,
             )
         }
@@ -434,13 +419,11 @@ fun AppNavHost(
             SettingsScreen(
                 repository = repository,
                 onOpenContribution = { navController.navigate("expression-contribution") },
-
             )
         }
         composable("help-feedback") {
             HelpFeedbackScreen(
                 repository = repository,
-                onSubmitFeedback = { go("service_form/feedback") },
             )
         }
         composable("notification-settings") {
@@ -552,84 +535,6 @@ fun AppNavHost(
             )
         }
 
-        // ── 空教室 ──
-        composable("classrooms") {
-            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
-            ClassroomsScreen(
-                repository = modules.classrooms,
-                reduceMotion = reduceMotion,
-                onBack = { navController.popBackStack() },
-            )
-        }
-
-        // ── 办事大厅 ──
-        composable("services") {
-            val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
-            ServicesScreen(
-                repository = modules.services,
-                reduceMotion = reduceMotion,
-                onBack = { navController.popBackStack() },
-                onNavigate = { route -> go(route) },
-            )
-        }
-        composable("service_leave") {
-            LeaveRequestScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable("service_repair") {
-            RepairRequestScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(
-            route = "service_form/{kind}",
-            arguments = listOf(navArgument("kind") { type = NavType.StringType }),
-        ) { backStackEntry ->
-            GenericServiceFormScreen(
-                kind = backStackEntry.arguments?.getString("kind") ?: "feedback",
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onSubmitted = { id ->
-                    navController.navigate("service_detail/$id") {
-                        popUpTo("services") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable("service_mine") {
-            MyRequestsScreen(
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-                onOpenDetail = { id -> go("service_detail/$id") },
-            )
-        }
-        composable(
-            route = "service_detail/{requestId}",
-            arguments = listOf(navArgument("requestId") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            ServiceRequestDetailScreen(
-                requestId = backStackEntry.arguments?.getLong("requestId") ?: 0L,
-                repository = modules.services,
-                onBack = { navController.popBackStack() },
-            )
-        }
-
         // ── 专注大厅 / 专注空间 / 本次专注总结 ──
         composable(
             route = "focus?taskId={taskId}",
@@ -734,45 +639,5 @@ fun AppNavHost(
             )
         }
 
-        // ── 失物招领 ──
-        composable("lostfound") {
-            LostFoundScreen(
-                repository = modules.lostFound,
-                onBack = { navController.popBackStack() },
-                onOpenDetail = { id -> go("lostfound_detail/$id") },
-                onOpenPublish = { go("lostfound_publish") },
-                onOpenMine = { go("lostfound_mine") },
-            )
-        }
-        composable("lostfound_publish") {
-            LostFoundPublishScreen(
-                repository = modules.lostFound,
-                appRepository = repository,
-                onBack = { navController.popBackStack() },
-                onPublished = { id ->
-                    navController.navigate("lostfound_detail/$id") {
-                        popUpTo("lostfound") { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(
-            route = "lostfound_detail/{itemId}",
-            arguments = listOf(navArgument("itemId") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            LostFoundDetailScreen(
-                itemId = backStackEntry.arguments?.getLong("itemId") ?: 0L,
-                repository = modules.lostFound,
-                onBack = { navController.popBackStack() },
-            )
-        }
-        composable("lostfound_mine") {
-            MyLostFoundScreen(
-                repository = modules.lostFound,
-                onBack = { navController.popBackStack() },
-                onOpenDetail = { id -> go("lostfound_detail/$id") },
-            )
-        }
             }
 }

@@ -31,6 +31,7 @@ from .routes import (
     universities,
     community,
     academic,
+    bing_daily_wallpaper,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -70,6 +71,7 @@ api_router.include_router(universities.router)
 api_router.include_router(community.router)
 api_router.include_router(community.admin_router)
 api_router.include_router(academic.router)
+api_router.include_router(bing_daily_wallpaper.router)
 # CampusMate EduConnector — 高校教务系统统一连接层
 api_router.include_router(edu.router)
 

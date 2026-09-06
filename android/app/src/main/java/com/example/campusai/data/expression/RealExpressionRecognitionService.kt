@@ -104,18 +104,19 @@ class RealExpressionRecognitionService(
 
     override suspend fun pause() {
         running = false
-        processor?.reset()
+        emitUnavailableResult()
         _status.value = ExpressionServiceStatus.Paused
     }
 
     override suspend fun stop() {
         running = false
-        processor?.reset()
+        emitUnavailableResult()
         _status.value = ExpressionServiceStatus.Ready
     }
 
     override suspend fun dispose() {
         running = false
+        emitUnavailableResult()
         synchronized(inferenceLock) {
             runner?.close()
             runner = null
@@ -169,6 +170,8 @@ class RealExpressionRecognitionService(
                 }
             }
             .addOnFailureListener(analysisExecutor) { error ->
+                if (!running) return@addOnFailureListener
+                emitUnavailableResult()
                 _status.value = ExpressionServiceStatus.Error(
                     error.message ?: "人脸检测失败",
                 )
@@ -196,6 +199,7 @@ class RealExpressionRecognitionService(
         faceDetectionMs: Long,
     ) {
         try {
+            if (!running) return
             val crop = paddedCrop(face.boundingBox, bitmap.width, bitmap.height)
             val faceBitmap = Bitmap.createBitmap(
                 bitmap,
@@ -248,6 +252,7 @@ class RealExpressionRecognitionService(
                 }
                 val modelRun = processed.first
                 val result = processed.second
+                if (!running) return
                 _results.value = result.copy(
                     facePresent = true,
                     headEulerAngleX = face.headEulerAngleX.toDouble(),
@@ -273,6 +278,8 @@ class RealExpressionRecognitionService(
                 faceBitmap.recycle()
             }
         } catch (error: Exception) {
+            if (!running) return
+            emitUnavailableResult()
             _status.value = ExpressionServiceStatus.Error(
                 error.message ?: "表情推理失败",
             )
@@ -296,6 +303,19 @@ class RealExpressionRecognitionService(
         ) ?: return
         _results.value = result.copy(facePresent = false)
         _status.value = ExpressionServiceStatus.NoFace
+    }
+
+    private fun emitUnavailableResult() {
+        processor?.reset()
+        _results.value = ExpressionResult(
+            label = ExpressionLabel.UNKNOWN,
+            confidence = 0.0,
+            probabilities = emptyMap(),
+            timestamp = System.currentTimeMillis(),
+            isStable = false,
+            modelVersion = _results.value.modelVersion,
+            facePresent = false,
+        )
     }
 
     private fun selectLargestFace(faces: List<Face>): Face =

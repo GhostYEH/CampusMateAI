@@ -61,6 +61,8 @@ def _assignment_to_out(
     *,
     author_name: Optional[str] = None,
     container: Optional[ServiceContainer] = None,
+    student_id: Optional[str] = None,
+    submission_status: Optional[str] = None,
 ) -> AssignmentOut:
     types = []
     if a.submission_types:
@@ -85,6 +87,9 @@ def _assignment_to_out(
                 created_at=r.created_at,
             ) for r in att_rows
         ]
+    if submission_status is None and container is not None and student_id is not None:
+        submission = container.assignment_repository.get_submission_for_student(a.id, student_id)
+        submission_status = submission.status if submission is not None else "not_submitted"
     return AssignmentOut(
         id=a.id,
         class_group_id=a.class_group_id,
@@ -100,6 +105,7 @@ def _assignment_to_out(
         published_at=a.published_at,
         created_at=a.created_at,
         updated_at=a.updated_at,
+        submission_status=submission_status,
         attachments=att_out,
     )
 
@@ -128,7 +134,23 @@ def list_assignments(
     rows, total = container.assignment_repository.list_assignments(
         class_id, status=status_filter, page=page, page_size=page_size,
     )
-    items = [_assignment_to_out(r, author_name=_author_name(container, r.author_id), container=container) for r in rows]
+    submission_statuses = (
+        container.assignment_repository.get_submission_statuses_for_student(
+            [row.id for row in rows], user.id,
+        )
+        if user.role == "student"
+        else {}
+    )
+    items = [
+        _assignment_to_out(
+            r,
+            author_name=_author_name(container, r.author_id),
+            container=container,
+            student_id=user.id if user.role == "student" else None,
+            submission_status=submission_statuses.get(row.id, "not_submitted") if user.role == "student" else None,
+        )
+        for r in rows
+    ]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
@@ -180,7 +202,12 @@ def get_assignment(
     _assert_can_view_class(cls, user, container)
     if user.role == "student" and a.status not in ("published", "closed"):
         raise AssignmentNotFound()
-    return _assignment_to_out(a, author_name=_author_name(container, a.author_id), container=container)
+    return _assignment_to_out(
+        a,
+        author_name=_author_name(container, a.author_id),
+        container=container,
+        student_id=user.id if user.role == "student" else None,
+    )
 
 
 

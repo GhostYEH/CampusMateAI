@@ -55,13 +55,6 @@ async def lifespan(app: FastAPI):
             logger.info("学校名单 seed 完成: 新增 {} 所，更新 {} 所", inserted, updated)
     except Exception as e:
         logger.warning("学校名单 seed 失败: {}", str(e)[:200])
-    # 失物招领旧数据迁移到论坛 lostfound 分类(幂等)
-    try:
-        migrated = container.community_repository.migrate_lost_found()
-        if migrated:
-            logger.info("失物招领旧数据迁移到论坛: {} 条", migrated)
-    except Exception as e:
-        logger.warning("失物招领迁移失败: {}", str(e)[:200])
     yield
     # 关闭
     if container.llm is not None and hasattr(container.llm, "aclose"):

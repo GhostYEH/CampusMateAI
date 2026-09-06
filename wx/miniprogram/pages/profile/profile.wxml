@@ -17,7 +17,6 @@
       <button data-kind="study" bindtap="openService"><image class="service-icon" src="/assets/icons/service-study.svg" mode="aspectFit"></image><text>学习与专注</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
       <button data-kind="notices" bindtap="openService"><image class="service-icon" src="/assets/icons/service-notices.svg" mode="aspectFit"></image><text>通知与提醒</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
       <button data-kind="account" bindtap="openService"><image class="service-icon" src="/assets/icons/service-account.svg" mode="aspectFit"></image><text>账号与隐私</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
-      <button data-kind="help" bindtap="openService"><image class="service-icon" src="/assets/icons/service-help.svg" mode="aspectFit"></image><text>帮助与反馈</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
       <button data-kind="about" bindtap="openService"><image class="service-icon" src="/assets/icons/service-about.svg" mode="aspectFit"></image><text>关于 CampusMate</text><image class="service-arrow" src="/assets/icons/arrow-right.svg" mode="aspectFit"></image></button>
     </view>
 

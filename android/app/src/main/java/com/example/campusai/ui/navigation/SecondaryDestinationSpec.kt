@@ -16,6 +16,8 @@ internal data class NavigationDestinationLayout(
     val contentTopPadding: Dp,
 )
 
+internal fun courseScheduleRoute(): String = "edu_schedule"
+
 internal fun navigationDestinationLayout(
     route: String?,
     statusBarHeight: Dp,
@@ -43,9 +45,7 @@ private fun dynamicDestinationTitle(route: String): String? = when {
     route.startsWith("campus-news-detail/") -> "通知详情"
     route.startsWith("exam_detail/") -> "考试详情"
     route.startsWith("exam_edit/") -> "编辑考试"
-    route.startsWith("service_form/") -> "意见反馈"
     route.startsWith("edu_login/") -> "教务系统登录"
-    route.startsWith("lostfound_detail/") -> "失物招领详情"
     route.startsWith("community_detail/") -> "帖子详情"
     else -> null
 }
@@ -57,7 +57,6 @@ private val rootRoutes = setOf(
     "tasks",
     "profile",
     "counselor",
-    "lostfound",
 )
 
 private val profileFlowRoutes = setOf(
@@ -91,14 +90,7 @@ private val staticDestinationTitles = mapOf(
     "edu_system" to "教务系统",
     "edu_schedule" to "教务课表",
     "exams" to "考试安排",
-    "classrooms" to "空教室",
-    "services" to "办事大厅",
-    "service_leave" to "请假申请",
-    "service_repair" to "报修申请",
-    "service_mine" to "我的申请",
     "focus" to "专注大厅",
     "focus_summary" to "本次专注总结",
     "focus_history" to "专注记录",
-    "lostfound_publish" to "发布失物招领",
-    "lostfound_mine" to "我的发布",
 )

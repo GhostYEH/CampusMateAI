@@ -43,9 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -91,6 +89,7 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val scope = rememberCoroutineScope()
     val expressionManager = repository.expressionSessionManager
     val expressionResult by expressionManager.result.collectAsStateWithLifecycle()
+    val observationActive by expressionManager.observationActive.collectAsStateWithLifecycle()
     val expressionStatus by expressionManager.status.collectAsStateWithLifecycle()
     var consentDismissed by rememberSaveable { mutableStateOf(false) }
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
@@ -102,21 +101,13 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraPermissionGranted = granted
     }
-    val renderMode = remember(context) {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        selectDigitalHumanRenderMode(
-            fingerprint = Build.FINGERPRINT,
-            model = Build.MODEL,
-            supportedAbis = Build.SUPPORTED_ABIS.toList(),
-            lowRamDevice = activityManager.isLowRamDevice,
-        )
-    }
-
     LaunchedEffect(initialPrompt) {
         if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
     }
-    LaunchedEffect(expressionResult) {
-        viewModel.updateExpression(CounselorExpressionPolicy.usableOrNull(expressionResult))
+    LaunchedEffect(expressionResult, observationActive) {
+        viewModel.updateExpression(
+            expressionResult?.takeIf { observationActive }?.let(CounselorExpressionPolicy::usableOrNull),
+        )
     }
     DisposableEffect(lifecycleOwner) {
         expressionManager.attachLifecycle(lifecycleOwner)
@@ -157,11 +148,10 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
         reduceMotion = reduceMotion,
         accessToken = accessToken.orEmpty(),
         mockMode = mockMode,
-        renderMode = renderMode,
         expressionEnabled = assistanceEnabled,
         expressionPermissionGranted = cameraPermissionGranted,
         expressionStatus = expressionStatus,
-        hasUsableExpression = CounselorExpressionPolicy.isUsable(expressionResult),
+        hasUsableExpression = observationActive && CounselorExpressionPolicy.isUsable(expressionResult),
         onInputChange = viewModel::updateInput,
         onSend = viewModel::send,
         onAsk = viewModel::send,
@@ -192,7 +182,6 @@ private fun CpmCounselorContent(
     reduceMotion: Boolean,
     accessToken: String,
     mockMode: Boolean,
-    renderMode: DigitalHumanRenderMode,
     expressionEnabled: Boolean,
     expressionPermissionGranted: Boolean,
     expressionStatus: ExpressionServiceStatus,
@@ -252,7 +241,6 @@ private fun CpmCounselorContent(
                         playbackCommand = state.playbackCommand,
                         playbackCommandId = state.playbackCommandId,
                         accessToken = accessToken,
-                        renderMode = renderMode,
                         reduceMotion = reduceMotion,
                         onPlayback = onPlayback,
                     )
@@ -329,7 +317,6 @@ private fun CpmDigitalHumanCard(
     playbackCommand: DigitalHumanCommand,
     playbackCommandId: Int,
     accessToken: String,
-    renderMode: DigitalHumanRenderMode,
     reduceMotion: Boolean,
     onPlayback: (DigitalHumanCommand) -> Unit,
 ) {
@@ -359,17 +346,11 @@ private fun CpmDigitalHumanCard(
                 Modifier.size(avatarSize),
             ) {
                 Box(
-                    Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = metrics.avatarContainerScale
-                        scaleY = metrics.avatarContainerScale
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                        shape = CircleShape
-                        clip = true
-                    }
+                    Modifier.fillMaxSize()
                         .background(Brush.radialGradient(listOf(Color.White, Color(0xFFE3E7FF))))
                         .border(2.dp, Color.White, CircleShape),
                 ) {
-                    key(renderMode, reduceMotion) {
+                    key(reduceMotion) {
                         DigitalHumanStage(
                             apiBaseUrl = BuildConfig.API_BASE_URL,
                             accessToken = accessToken,
@@ -377,7 +358,6 @@ private fun CpmDigitalHumanCard(
                             speechRequestId = speechRequestId,
                             command = playbackCommand,
                             commandRequestId = playbackCommandId,
-                            forceFallback = renderMode == DigitalHumanRenderMode.NATIVE_COMPAT,
                             reduceMotion = reduceMotion,
                         )
                     }

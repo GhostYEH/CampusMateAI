@@ -59,7 +59,6 @@ class CommunityRepository:
                 [*params, page_size, (page - 1) * page_size],
             ).fetchall()
         return [dict(row) for row in rows], total
-
     def update_post(self, post_id: str, *, title: Optional[str] = None, content: Optional[str] = None,
                     category: Optional[str] = None, images: Optional[list[str]] = None,
                     is_anonymous: Optional[bool] = None, extra: Optional[dict] = None) -> Optional[dict]:
@@ -204,39 +203,3 @@ class CommunityRepository:
                 [*params, page_size, (page - 1) * page_size],
             ).fetchall()
         return [dict(row) for row in rows], total
-
-    def migrate_lost_found(self) -> int:
-        """把 lost_found_items 旧数据迁移到 forum_posts(category=lostfound)。幂等：按 id 去重。返回迁移条数。"""
-        try:
-            with self.db.query() as conn:
-                rows = conn.execute("SELECT * FROM lost_found_items").fetchall()
-        except Exception:
-            return 0
-        if not rows:
-            return 0
-        migrated = 0
-        for row in rows:
-            r = dict(row)
-            existing = self.get_post(r["id"])
-            if existing:
-                continue
-            extra = {
-                "kind": r.get("kind", "lost"),
-                "location": r.get("location"),
-                "contact": r.get("contact"),
-                "contact_visibility": r.get("contact_visibility", "private"),
-            }
-            extra = {k: v for k, v in extra.items() if v is not None}
-            now = r.get("created_at") or _now()
-            with self.db.transaction() as conn:
-                conn.execute(
-                    """INSERT OR IGNORE INTO forum_posts
-                       (id,university_id,author_id,title,content,category,images_json,is_anonymous,status,extra_json,created_at,updated_at)
-                       VALUES (?,?,?,?,?,?,?,'[]',0,?,?,?,?)""",
-                    (r["id"], r.get("university_id") or "", r.get("owner_id", ""),
-                     r.get("title", ""), r.get("content") or "", "lostfound",
-                     json.dumps(extra, ensure_ascii=False), "published" if r.get("status", "open") == "open" else "deleted",
-                     now, r.get("updated_at") or now),
-                )
-            migrated += 1
-        return migrated

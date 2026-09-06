@@ -208,9 +208,6 @@ object GamifiedDashboardStateFactory {
     private val sideQuests = listOf(
         SideQuestUiState("专注自习", "开启一段真实专注", "focus"),
         SideQuestUiState("AI 导员", "规划下一步行动", "counselor"),
-        SideQuestUiState("空教室", "寻找安静学习地点", "classrooms"),
-        SideQuestUiState("办事大厅", "处理校园事务", "services"),
-        SideQuestUiState("失物招领", "发现与归还物品", "lostfound"),
         SideQuestUiState("考试安排", "查看下一场挑战", "exams"),
     )
 }

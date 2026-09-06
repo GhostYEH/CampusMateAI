@@ -204,14 +204,23 @@ private fun DashboardStyleSelector(
             Column(Modifier.padding(start = 12.dp)) {
                 Text("首页风格", color = ReferenceText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(3.dp))
-                Text("同一套校园数据，两种首页体验", color = ReferenceMuted, fontSize = 10.5.sp)
+                Text("同一套校园数据，三种首页体验", color = ReferenceMuted, fontSize = 10.5.sp)
             }
         }
         Spacer(Modifier.height(11.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DashboardStyle.entries.forEach { style ->
                 val active = selected == style
-                val label = if (style == DashboardStyle.CLASSIC) "经典首页" else "游戏化首页"
+                val label = when (style) {
+                    DashboardStyle.CLASSIC -> "经典"
+                    DashboardStyle.GAMIFIED -> "游戏化"
+                    DashboardStyle.IMMERSIVE -> "沉浸"
+                }
+                val icon = when (style) {
+                    DashboardStyle.CLASSIC -> Icons.Default.Home
+                    DashboardStyle.GAMIFIED -> Icons.Default.AutoAwesome
+                    DashboardStyle.IMMERSIVE -> Icons.Default.Waves
+                }
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -219,12 +228,12 @@ private fun DashboardStyleSelector(
                         .background(if (active) ReferencePrimarySoft else ReferencePageBackground)
                         .then(if (active) Modifier.border(1.dp, ReferencePrimary.copy(alpha = .28f), RoundedCornerShape(14.dp)) else Modifier)
                         .campusClickable { onSelected(style) }
-                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                        .padding(horizontal = 6.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        if (style == DashboardStyle.CLASSIC) Icons.Default.Home else Icons.Default.AutoAwesome,
+                        icon,
                         contentDescription = null,
                         tint = if (active) ReferencePrimary else ReferenceMuted,
                         modifier = Modifier.size(18.dp),

@@ -8,6 +8,7 @@ import groupNameNormalizerTest from './ets/notification/GroupNameNormalizer.test
 import notificationFingerprintTest from './ets/notification/NotificationFingerprint.test';
 import notificationBatchTest from './ets/notification/NotificationBatch.test';
 import notificationCapabilityTest from './ets/notification/NotificationCapability.test';
+import notificationSubscriberTest from './ets/notification/NotificationSubscriber.test';
 import v3CoreContractTest from './ets/data/V3CoreContract.test';
 import motionSpecTest from './ets/ui/MotionSpec.test';
 import taskImportModelTest from './ets/data/TaskImportModel.test';
@@ -18,7 +19,6 @@ import appRouteTest from './ets/navigation/AppRoute.test';
 import notificationInboxTest from './ets/notification/NotificationInbox.test';
 import notificationNormalizerTest from './ets/notification/NotificationNormalizer.test';
 import chaoxingAccountTest from './ets/data/ChaoxingAccount.test';
-import lostFoundFeedTest from './ets/data/LostFoundFeed.test';
 import behaviorHybridPolicyTest from './ets/data/BehaviorHybridPolicy.test';
 import behaviorV34DecisionTest from './ets/data/BehaviorV34Decision.test';
 import counselorConversationStateTest from './ets/ui/CounselorConversationState.test';
@@ -37,6 +37,8 @@ import focusSessionStateTest from './ets/focus/FocusSessionState.test';
 import focusVoiceStateTest from './ets/focus/FocusVoiceState.test';
 import focusRealtimeVoiceRepositoryTest from './ets/focus/FocusRealtimeVoiceRepository.test';
 import focusHallWallpaperTest from './ets/focus/FocusHallWallpaper.test';
+import hitokotoModelsTest from './ets/data/HitokotoModels.test';
+import bingDailyWallpaperModelsTest from './ets/data/BingDailyWallpaperModels.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -49,6 +51,7 @@ export default function testsuite(): void {
   notificationFingerprintTest();
   notificationBatchTest();
   notificationCapabilityTest();
+  notificationSubscriberTest();
   v3CoreContractTest();
   motionSpecTest();
   taskImportModelTest();
@@ -59,7 +62,6 @@ export default function testsuite(): void {
   notificationInboxTest();
   notificationNormalizerTest();
   chaoxingAccountTest();
-  lostFoundFeedTest();
   behaviorHybridPolicyTest();
   behaviorV34DecisionTest();
   counselorConversationStateTest();
@@ -78,4 +80,6 @@ export default function testsuite(): void {
   focusVoiceStateTest();
   focusRealtimeVoiceRepositoryTest();
   focusHallWallpaperTest();
+  hitokotoModelsTest();
+  bingDailyWallpaperModelsTest();
 }

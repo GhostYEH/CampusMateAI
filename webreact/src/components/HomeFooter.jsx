@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import QRCode from "qrcode";
 import { Icon } from "./Icon.jsx";
-import ParticleText from "./ParticleText.jsx";
 
 const contactEmail = "y3288365856@gmail.com";
 const mailtoHref = `mailto:${contactEmail}?subject=${encodeURIComponent("CampusMate 使用反馈")}`;
@@ -125,37 +124,168 @@ function FooterInfo() {
 }
 
 function HomeBrandCanvas() {
-  return <section className="home-footer-brand" aria-labelledby="react-footer-brand-effect-title">
+  const sectionRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!section || !canvas || !context) return undefined;
+
+    const sourceCanvas = document.createElement("canvas");
+    const sourceContext = sourceCanvas.getContext("2d");
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const coarseQuery = window.matchMedia("(pointer: coarse)");
+    let width = 1;
+    let height = 1;
+    let pixelRatio = 1;
+    let sliceHeight = 16;
+    let frameId = 0;
+    let pointerActive = false;
+    let lastPoint = null;
+    let targetAmplitude = 0;
+    let currentAmplitude = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+
+    const isStatic = () => motionQuery.matches || coarseQuery.matches;
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+    function paintSource() {
+      sourceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      sourceContext.clearRect(0, 0, width, height);
+      let fontSize = Math.min(height * 0.84, width / 7.1);
+      sourceContext.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
+      const metrics = sourceContext.measureText("CAMPUSMATE");
+      if (metrics.width > width * 0.94) fontSize *= width * 0.94 / metrics.width;
+      sourceContext.font = `900 ${fontSize}px Arial Black, Arial, sans-serif`;
+      const fitted = sourceContext.measureText("CAMPUSMATE");
+      const ascent = fitted.actualBoundingBoxAscent || fontSize * 0.72;
+      const descent = fitted.actualBoundingBoxDescent || fontSize * 0.18;
+      sourceContext.fillStyle = "rgba(255, 255, 255, .98)";
+      sourceContext.textBaseline = "alphabetic";
+      sourceContext.fillText("CAMPUSMATE", (width - fitted.width) / 2, height / 2 + (ascent - descent) / 2);
+    }
+
+    function draw() {
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.drawImage(sourceCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height, 0, 0, width, height);
+      if (isStatic() || !pointerActive || currentAmplitude < 0.01) return;
+      const radiusX = clamp(width * 0.2, 150, 290);
+      const radiusY = clamp(height * 0.62, 70, 155);
+      const count = Math.ceil(height / sliceHeight);
+      for (let index = 0; index < count; index += 1) {
+        const y = index * sliceHeight;
+        const heightOfSlice = Math.min(sliceHeight, height - y);
+        const verticalInfluence = Math.exp(-((Math.abs(y + heightOfSlice / 2 - currentY) ** 2) / (2 * radiusY ** 2)));
+        const horizontalInfluence = Math.exp(-((Math.abs(currentX - width / 2) ** 2) / (2 * radiusX ** 2)));
+        const influence = verticalInfluence * (0.65 + horizontalInfluence * 0.35);
+        if (influence < 0.015) continue;
+        const direction = index % 2 === 0 ? 1 : -1;
+        const offset = direction * currentAmplitude * 72 * influence;
+        context.save();
+        context.beginPath();
+        context.rect(currentX - radiusX, y, radiusX * 2, heightOfSlice);
+        context.clip();
+        context.drawImage(sourceCanvas, 0, y * pixelRatio, sourceCanvas.width, heightOfSlice * pixelRatio, offset, y, width, heightOfSlice);
+        context.restore();
+      }
+    }
+
+    function animate() {
+      frameId = 0;
+      currentX += (targetX - currentX) * 0.14;
+      currentY += (targetY - currentY) * 0.14;
+      currentAmplitude += (targetAmplitude - currentAmplitude) * 0.12;
+      targetAmplitude *= pointerActive ? 0.93 : 0.76;
+      draw();
+      if (pointerActive || currentAmplitude > 0.01 || targetAmplitude > 0.01) frameId = window.requestAnimationFrame(animate);
+    }
+
+    function schedule() {
+      if (!frameId) frameId = window.requestAnimationFrame(animate);
+    }
+
+    function resize() {
+      const bounds = section.getBoundingClientRect();
+      width = Math.max(1, Math.round(bounds.width));
+      height = Math.max(1, Math.round(bounds.height));
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      sliceHeight = clamp(Math.round(height / 11), 14, 48);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      sourceCanvas.width = canvas.width;
+      sourceCanvas.height = canvas.height;
+      targetX = currentX = width / 2;
+      targetY = currentY = height / 2;
+      paintSource();
+      draw();
+    }
+
+    function handlePointerMove(event) {
+      if (isStatic()) return;
+      const bounds = canvas.getBoundingClientRect();
+      const x = clamp(event.clientX - bounds.left, 0, width);
+      const y = clamp(event.clientY - bounds.top, 0, height);
+      const velocity = lastPoint ? Math.hypot(x - lastPoint.x, y - lastPoint.y) : 0;
+      targetX = x;
+      targetY = y;
+      targetAmplitude = clamp(velocity / 55, 0, 1.8);
+      lastPoint = { x, y };
+      pointerActive = true;
+      schedule();
+    }
+
+    function handlePointerLeave() {
+      pointerActive = false;
+      lastPoint = null;
+      targetAmplitude = 0;
+      schedule();
+    }
+
+    function updateMotionMode() {
+      if (isStatic()) {
+        pointerActive = false;
+        targetAmplitude = 0;
+        currentAmplitude = 0;
+        if (frameId) window.cancelAnimationFrame(frameId);
+        frameId = 0;
+        draw();
+      }
+    }
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(section);
+    section.addEventListener("pointermove", handlePointerMove);
+    section.addEventListener("pointerleave", handlePointerLeave);
+    motionQuery.addEventListener("change", updateMotionMode);
+    coarseQuery.addEventListener("change", updateMotionMode);
+    return () => {
+      observer.disconnect();
+      section.removeEventListener("pointermove", handlePointerMove);
+      section.removeEventListener("pointerleave", handlePointerLeave);
+      motionQuery.removeEventListener("change", updateMotionMode);
+      coarseQuery.removeEventListener("change", updateMotionMode);
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  return <section ref={sectionRef} className="home-footer-brand" aria-labelledby="react-footer-brand-effect-title">
     <h2 id="react-footer-brand-effect-title" className="home-visually-hidden">CampusMate 互动品牌区</h2>
-    <ParticleText
-      text="CAMPUSMATE"
-      particleSize={2}
-      density={4}
-      color="#f8fcff"
-      highlightColor="#c8d8ff"
-      scatter={0}
-      gatherDuration={1}
-      stagger={0}
-      pointerRepel={40}
-      repelRadius={70}
-      idleDrift={0.7}
-      animateOnMount={false}
-      trigger="hover"
-      fontSize="clamp(4.5rem, 16vw, 11rem)"
-      fontWeight={800}
-      fontFamily="inherit"
-      glow
-    />
-    <span className="home-footer-brand-caption">MOVE THROUGH CAMPUSMATE</span>
+    <canvas ref={canvasRef} role="img" aria-label="CAMPUSMATE">CAMPUSMATE</canvas>
+    <span>MOVE THROUGH CAMPUSMATE</span>
   </section>;
 }
-export default function HomeFooter({ children, fixedBrand = false }) {
-  return <section className={`home-footer${fixedBrand ? " home-footer-fixed-brand" : ""}`} aria-label="CampusMate 首页内容与品牌页脚">
-    {fixedBrand && <div className="home-brand-underlay"><HomeBrandCanvas /></div>}
-    <div className="home-foreground">
-      {children}
-      <FooterInfo />
-    </div>
-    {!fixedBrand && <HomeBrandCanvas />}
+
+export default function HomeFooter({ children }) {
+  return <section className="home-footer" aria-label="CampusMate 首页内容与品牌页脚">
+    <div className="home-foreground">{children}</div>
+    <FooterInfo />
+    <HomeBrandCanvas />
   </section>;
 }

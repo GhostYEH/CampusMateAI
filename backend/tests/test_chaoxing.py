@@ -844,7 +844,7 @@ async def test_chaoxing_sync_notices(db, mock_httpx_client):
                 "id": 1001,
                 "title": "关于期中考试的通知",
                 "content": "请大家准备期中考试",
-                "insertTime": "2026-08-01 10:00:00"
+                "insertTime": "1783209663000"
             }
         ]
     }
@@ -862,6 +862,7 @@ async def test_chaoxing_sync_notices(db, mock_httpx_client):
     assert notices[0].title == "关于期中考试的通知"
     assert notices[0].external_id == "1001"
     assert notices[0].source == "chaoxing"
+    assert notices[0].published_at == "2026-07-05T00:01:03+00:00"
     
     # User2 sync with same data (isolation)
     mock_httpx_client.side_effect = [

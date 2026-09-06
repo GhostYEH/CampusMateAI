@@ -2,7 +2,7 @@
   <secondary-nav title="校园论坛"></secondary-nav>
   <view class="campus-page-body community-body">
     <view class="community-heading campus-enter">
-      <view><view class="community-title">校园论坛</view><view class="community-subtitle">提问 / 招募 / 带价帮忙 / 失物招领，一站刷到</view></view>
+      <view><view class="community-title">校园论坛</view><view class="community-subtitle">提问 / 招募 / 带价帮忙，一站刷到</view></view>
       <button class="publish-entry" hover-class="button-pressed" bindtap="openPublish">＋ 发布</button>
     </view>
 

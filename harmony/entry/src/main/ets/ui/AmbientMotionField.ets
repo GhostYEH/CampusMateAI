@@ -23,7 +23,8 @@ const AMBIENT_ORBS: AmbientOrbSpec[] = [
 @Component
 export struct AmbientMotionField {
   @Prop darkMode: boolean = false;
-  @Prop reduceMotion: boolean = false;
+  @Prop @Watch('syncTimer') reduceMotion: boolean = false;
+  @Prop @Watch('syncTimer') active: boolean = true;
   @State phase: number = 0;
   private timerId: number = -1;
 
@@ -31,12 +32,19 @@ export struct AmbientMotionField {
     return this.darkMode ? darkPalette : lightPalette;
   }
 
-  aboutToAppear(): void {
-    if (!this.reduceMotion) {
+  syncTimer(): void {
+    if (this.active && !this.reduceMotion && this.timerId < 0) {
       this.timerId = setInterval(() => {
         this.phase = this.phase === 0 ? 1 : 0;
       }, MotionDuration.AMBIENT);
+    } else if ((!this.active || this.reduceMotion) && this.timerId >= 0) {
+      clearInterval(this.timerId);
+      this.timerId = -1;
     }
+  }
+
+  aboutToAppear(): void {
+    this.syncTimer();
   }
 
   aboutToDisappear(): void {

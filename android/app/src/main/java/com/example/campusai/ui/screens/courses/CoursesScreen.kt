@@ -96,12 +96,11 @@ private val CourseGreen = Color(0xFF37B89B)
 private val CoursePurple = Color(0xFF9369E8)
 
 @Composable
-fun CoursesScreen(repository: AppRepository) {
+fun CoursesScreen(repository: AppRepository, onOpenSchedule: () -> Unit = {}) {
     val courses by repository.courses.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
     var selectedType by remember { mutableStateOf("全部") }
     var selectedDay by remember { mutableIntStateOf(3) }
     var selectedCourse by remember { mutableStateOf<Course?>(null) }
@@ -128,7 +127,7 @@ fun CoursesScreen(repository: AppRepository) {
         modifier = Modifier.fillMaxSize().background(Background),
         contentPadding = PaddingValues(
             start = 14.dp,
-            top = 12.dp,
+            top = 0.dp,
             end = 14.dp,
             bottom = floatingDockScrollPadding,
         ),
@@ -141,7 +140,7 @@ fun CoursesScreen(repository: AppRepository) {
                 count = courses.size,
                 reduceMotion = reduceMotion,
                 onOpenDetail = { courses.firstOrNull()?.let { selectedCourse = it } },
-                onOpenWeek = { scope.launch { listState.animateScrollToItem(index = 3) } },
+                onOpenSchedule = onOpenSchedule,
             )
         }
         item {
@@ -216,7 +215,7 @@ private fun CourseHero(
     count: Int,
     reduceMotion: Boolean,
     onOpenDetail: () -> Unit,
-    onOpenWeek: () -> Unit,
+    onOpenSchedule: () -> Unit,
 ) {
     val heroShape = RoundedCornerShape(18.dp)
     Row(
@@ -250,7 +249,7 @@ private fun CourseHero(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                HeroAction(Icons.Default.CalendarMonth, "课程表", onOpenWeek)
+                HeroAction(Icons.Default.CalendarMonth, "课程表", onOpenSchedule)
                 HeroAction(Icons.Default.Info, "课程详情", onOpenDetail)
                 HeroAction(Icons.Default.TaskAlt, "待办作业", onOpenDetail)
             }

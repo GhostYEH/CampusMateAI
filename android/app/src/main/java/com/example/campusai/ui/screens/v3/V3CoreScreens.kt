@@ -73,7 +73,7 @@ fun UniversityScreen(
                             fontSize = 12.sp,
                         )
                     } else {
-                        Text("选择所在大学后，社区、失物招领与教务能力将按大学隔离。", color = Muted, fontSize = 12.sp)
+                        Text("选择所在大学后，社区与教务能力将按大学隔离。", color = Muted, fontSize = 12.sp)
                         Button(
                             onClick = { onNavigate("account") },
                             modifier = Modifier.fillMaxWidth(),

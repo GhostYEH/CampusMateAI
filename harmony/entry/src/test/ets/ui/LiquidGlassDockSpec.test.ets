@@ -13,7 +13,7 @@ export default function liquidGlassDockSpecTest(): void {
       expect(style.motionDuration).assertEqual(260);
       expect(style.clickGlowEnabled).assertTrue();
       expect(style.clickGlowDuration).assertEqual(300);
-      expect(style.clickGlowDiameter).assertEqual(52);
+      expect(style.clickGlowDiameter).assertEqual(48);
       expect(style.clickGlowColor).assertEqual('#B85B68F2');
       expect(style.chromaticEdgeOpacity).assertEqual(0.16);
       expect(style.maxWidth).assertEqual(560);

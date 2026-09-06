@@ -1,6 +1,5 @@
 export enum AppRoute {
   EXAMS = 'exams',
-  CLASSROOMS = 'classrooms',
   UNIVERSITY = 'university',
   COMMUNITY = 'community',
   COMMUNITY_HOT = 'community_hot',
@@ -12,7 +11,6 @@ export enum AppRoute {
   FOCUS_PLAN = 'focus_plan',
   FOCUS_SESSION = 'focus_session',
   FOCUS_SUMMARY = 'focus_summary',
-  LOST_FOUND = 'lostfound',
   NOTIFICATIONS = 'notifications',
   NOTIFICATION_SOURCE_SETTINGS = 'notification_source_settings',
   CHAOXING = 'chaoxing',
@@ -30,9 +28,6 @@ export enum AppRoute {
   TASK_DETAIL = 'task_detail',
   EXAM_DETAIL = 'exam_detail',
   EXAM_FORM = 'exam_form',
-  LOST_FOUND_DETAIL = 'lostfound_detail',
-  LOST_FOUND_PUBLISH = 'lostfound_publish',
-  LOST_FOUND_MINE = 'lostfound_mine',
   NOTIFICATION_DETAIL = 'notification_detail',
   EDU_SCHEDULE_DETAIL = 'edu_schedule_detail'
 }
@@ -49,10 +44,17 @@ export class AppRouteRegistry {
     }
   }
 
+  static courseScheduleRoute(): string {
+    return AppRoute.EDU_SCHEDULE;
+  }
+
+  static unreadNotificationMetricRoute(): string {
+    return 'tasks';
+  }
+
   static isSecondary(route: string): boolean {
     switch (route) {
       case AppRoute.EXAMS:
-      case AppRoute.CLASSROOMS:
       case AppRoute.UNIVERSITY:
       case AppRoute.COMMUNITY:
       case AppRoute.COMMUNITY_HOT:
@@ -64,7 +66,6 @@ export class AppRouteRegistry {
       case AppRoute.FOCUS_PLAN:
       case AppRoute.FOCUS_SESSION:
       case AppRoute.FOCUS_SUMMARY:
-      case AppRoute.LOST_FOUND:
       case AppRoute.NOTIFICATIONS:
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS:
       case AppRoute.CHAOXING:
@@ -82,9 +83,6 @@ export class AppRouteRegistry {
       case AppRoute.TASK_DETAIL:
       case AppRoute.EXAM_DETAIL:
       case AppRoute.EXAM_FORM:
-      case AppRoute.LOST_FOUND_DETAIL:
-      case AppRoute.LOST_FOUND_PUBLISH:
-      case AppRoute.LOST_FOUND_MINE:
       case AppRoute.NOTIFICATION_DETAIL:
       case AppRoute.EDU_SCHEDULE_DETAIL:
         return true;
@@ -96,12 +94,10 @@ export class AppRouteRegistry {
   static loadsOnOpen(route: string): boolean {
     switch (route) {
       case AppRoute.EXAMS:
-      case AppRoute.CLASSROOMS:
       case AppRoute.UNIVERSITY:
       case AppRoute.COMMUNITY:
       case AppRoute.ACADEMIC:
       case AppRoute.FOCUS:
-      case AppRoute.LOST_FOUND:
       case AppRoute.NOTIFICATIONS:
       case AppRoute.CHAOXING:
       case AppRoute.FILES:
@@ -115,7 +111,6 @@ export class AppRouteRegistry {
   static title(route: string): string {
     switch (route) {
       case AppRoute.EXAMS: return '考试安排';
-      case AppRoute.CLASSROOMS: return '空教室查询';
       case AppRoute.UNIVERSITY: return '我的大学';
       case AppRoute.COMMUNITY: return '校园社区';
       case AppRoute.COMMUNITY_HOT: return '热门话题';
@@ -127,7 +122,6 @@ export class AppRouteRegistry {
       case AppRoute.FOCUS_PLAN: return '任务规划';
       case AppRoute.FOCUS_SESSION: return '专注空间';
       case AppRoute.FOCUS_SUMMARY: return '本次专注总结';
-      case AppRoute.LOST_FOUND: return '失物招领';
       case AppRoute.NOTIFICATIONS: return '通知与提醒';
       case AppRoute.NOTIFICATION_SOURCE_SETTINGS: return '通知来源设置';
       case AppRoute.CHAOXING: return '学习通';
@@ -145,9 +139,6 @@ export class AppRouteRegistry {
       case AppRoute.TASK_DETAIL: return '待办详情';
       case AppRoute.EXAM_DETAIL: return '考试详情';
       case AppRoute.EXAM_FORM: return '编辑考试';
-      case AppRoute.LOST_FOUND_DETAIL: return '失物招领详情';
-      case AppRoute.LOST_FOUND_PUBLISH: return '发布失物招领';
-      case AppRoute.LOST_FOUND_MINE: return '我的发布';
       case AppRoute.NOTIFICATION_DETAIL: return '通知详情';
       case AppRoute.EDU_SCHEDULE_DETAIL: return '课程详情';
       default: return '校园服务';
@@ -177,10 +168,6 @@ export class AppRouteRegistry {
       case AppRoute.EXAM_DETAIL:
       case AppRoute.EXAM_FORM:
         return AppRoute.EXAMS;
-      case AppRoute.LOST_FOUND_DETAIL:
-      case AppRoute.LOST_FOUND_PUBLISH:
-      case AppRoute.LOST_FOUND_MINE:
-        return AppRoute.LOST_FOUND;
       case AppRoute.NOTIFICATION_DETAIL:
         return AppRoute.NOTIFICATIONS;
       case AppRoute.EDU_SCHEDULE_DETAIL:

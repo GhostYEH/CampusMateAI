@@ -6,7 +6,6 @@ import {
   CampusTask,
   CategoryMeta,
   ChatReply,
-  Classroom,
   CommunityComment,
   CommunityPost,
   ConnectionState,
@@ -21,10 +20,8 @@ import {
   FavoriteItem,
   HomeBanner,
   HomeBannerFeed,
-  LostFoundItem,
   Notice,
   PersonalFile,
-  ServiceRequest,
   StudentExam,
   University,
   User,
@@ -407,14 +404,6 @@ class CampusRepository {
     await this.request(`/student/exams/${id}`, 'DELETE')
   }
 
-  async getClassroomsAsync(date?: string, building?: string): Promise<Classroom[]> {
-    const query = [date ? `date=${encodeURIComponent(date)}` : '', building ? `building=${encodeURIComponent(building)}` : '']
-      .filter(Boolean)
-      .join('&')
-    const response = await this.request<ApiPage<Classroom>>(`/student/classrooms${query ? `?${query}` : ''}`, 'GET')
-    return response.items
-  }
-
   async getCommunityCategoriesAsync(): Promise<CategoryMeta[]> {
     const response = await this.request<{ items: CategoryMeta[] }>('/community/posts/categories', 'GET')
     return response.items
@@ -514,18 +503,6 @@ class CampusRepository {
     return url
   }
 
-  async getLostFoundAsync(mine = false): Promise<LostFoundItem[]> {
-    return this.request<LostFoundItem[]>(`/student/lost-found${mine ? '?mine=true' : ''}`, 'GET')
-  }
-
-  async createLostFound(item: Pick<LostFoundItem, 'kind' | 'title' | 'content' | 'location' | 'contact' | 'contact_visibility'>): Promise<LostFoundItem> {
-    return this.request<LostFoundItem>('/student/lost-found', 'POST', item)
-  }
-
-  async deleteLostFound(id: string): Promise<void> {
-    await this.request(`/student/lost-found/${id}`, 'DELETE')
-  }
-
   async getPersonalFilesAsync(): Promise<PersonalFile[]> {
     return this.request<PersonalFile[]>('/personal-hub/files', 'GET')
   }
@@ -552,14 +529,6 @@ class CampusRepository {
       this.persistSession(updated, mode)
     }
     return { university_id: id, university_name: name }
-  }
-
-  async getServiceRequestsAsync(): Promise<ServiceRequest[]> {
-    return this.request<ServiceRequest[]>('/student/service-requests', 'GET')
-  }
-
-  async createServiceRequest(kind: string, title: string, content: string): Promise<ServiceRequest> {
-    return this.request<ServiceRequest>('/student/service-requests', 'POST', { kind, title, content })
   }
 
   async extractNotice(text: string): Promise<ExtractResult[]> {

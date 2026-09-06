@@ -45,3 +45,36 @@ test("counselor layout enlarges the title and uses translucent glass surfaces", 
   assert.match(styles, /\.app-layout\.counselor-mode \.app-content\{[^}]*background:transparent/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)/);
 });
+
+test("counselor workbench keeps the global AppShell controls", () => {
+  assert.doesNotMatch(appShell, /import GlassSurface from/);
+  assert.match(appShell, /<SearchBox \/>/);
+  assert.match(appShell, /<div className="topbar-info">/);
+  assert.match(counselorPage, /counselor-study-status/);
+  assert.match(counselorPage, /counselor-reminders/);
+  assert.match(counselorPage, /DigitalHumanPanel/);
+  assert.match(styles, /\.counselor-reference-hero\{[^}]*width:100%/);
+  assert.match(styles, /\.counselor-study-progress/);
+  assert.match(styles, /\.app-layout\.counselor-mode \.topbar-search\{/);
+});
+
+test("counselor matches the compact reference composition with the digital human leading the right rail", () => {
+  assert.match(styles, /\.counselor-reference\{[^}]*max-width:1344px/);
+  assert.match(styles, /\.counselor-reference-hero\{[^}]*max-width:1125px/);
+  assert.match(styles, /\.counselor-reference-hero\{[^}]*height:181px/);
+  assert.match(styles, /\.counselor-reference-grid\{[^}]*grid-template-columns:308px minmax\(0,1fr\) 310px/);
+  assert.match(counselorPage, /reference-chat-heading/);
+  assert.match(counselorPage, /DigitalHumanPanel[\s\S]*counselor-study-status[\s\S]*counselor-reminders/);
+  assert.doesNotMatch(counselorPage, /counselor-campus-tip/);
+  assert.match(styles, /\.reference-chat-panel\{[^}]*height:636px/);
+  assert.match(styles, /\.digital-human-stage\{[^}]*height:242px/);
+});
+
+test("counselor expands into a spacious wide desktop layout", () => {
+  assert.match(styles, /@media\(min-width:1800px\)/);
+  assert.match(styles, /\.counselor-reference\{[^}]*width:min\(calc\(100vw - 96px\),2200px\)/);
+  assert.match(styles, /\.counselor-reference-grid\{[^}]*grid-template-columns:420px minmax\(0,1fr\) 420px/);
+  assert.match(styles, /\.counselor-reference-title h1\{[^}]*font-size:62px/);
+  assert.match(styles, /\.reference-bubble\{[^}]*font-size:15px/);
+  assert.match(styles, /\.reference-composer textarea\{[^}]*font-size:15px/);
+});

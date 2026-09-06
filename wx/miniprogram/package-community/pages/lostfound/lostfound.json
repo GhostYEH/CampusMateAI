@@ -1,6 +1,0 @@
-{
-  "usingComponents": {
-    "state-view": "/components/state-view/state-view",
-    "custom-tab-bar": "/custom-tab-bar/index"
-  }
-}

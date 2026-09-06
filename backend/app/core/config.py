@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     mimo_tts_max_chars: int = 4000
     mimo_tts_sample_rate: int = 24000
 
+    # ===== UAPI 必应每日壁纸 =====
+    # 仅后端读取；不要把 UAPI Key 下发到 Web/移动端。
+    uapi_api_key: str = ""
+    uapi_timeout_seconds: float = 8.0
+
     # ===== Focus Realtime Voice（所有值仅后端环境变量） =====
     # AppId 可以下发给客户端；AppKey、AK/SK 和 VoiceChat 配置绝不能离开后端。
     volc_rtc_app_id: str = ""

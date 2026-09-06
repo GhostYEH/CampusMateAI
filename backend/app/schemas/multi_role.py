@@ -325,6 +325,7 @@ class AssignmentOut(BaseModel):
     published_at: Optional[str] = None
     created_at: str
     updated_at: str
+    submission_status: Optional[str] = Field(None, description="当前学生的提交状态；教师和管理员为 null")
     attachments: List["AssignmentAttachmentOut"] = Field(default_factory=list)
 
 

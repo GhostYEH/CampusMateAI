@@ -36,7 +36,7 @@ def test_categories_endpoint_returns_all_meta() -> None:
     resp = client.get("/api/v1/community/posts/categories")
     assert resp.status_code == 200, resp.text
     keys = {c["key"] for c in resp.json()["items"]}
-    assert {"question", "recruit", "errand", "lostfound", "campus"}.issubset(keys)
+    assert {"question", "recruit", "errand", "campus"}.issubset(keys)
 
 
 def test_category_filter_isolates_posts() -> None:
@@ -83,36 +83,6 @@ def test_recruit_extra_is_validated_and_returned() -> None:
     extra = resp.json()["extra"]
     assert extra["headcount"] == 3
     assert extra["location"] == "教3-201"
-
-
-def test_lostfound_extra_contact_is_masked_for_non_owner() -> None:
-    client, container = _setup()
-    owner = _headers(client, "stu_forum")
-    peer_user = container.user_repository.create_user(username="stu_peer", password_hash=hash_password("Demo123456"), role="student", display_name="peer")
-    container.user_repository.update_university(peer_user.id, "uni_demo_university")
-    peer = _headers(client, "stu_peer")
-    post_id = client.post("/api/v1/community/posts", headers=owner, json={
-        "title": "丢了一本书", "content": "在图书馆", "category": "lostfound",
-        "extra": {"kind": "lost", "location": "图书馆", "contact": "13800000000", "contact_visibility": "private"},
-    }).json()["id"]
-    detail = client.get(f"/api/v1/community/posts/{post_id}", headers=peer).json()
-    assert detail["extra"]["contact"] is None
-    owner_detail = client.get(f"/api/v1/community/posts/{post_id}", headers=owner).json()
-    assert owner_detail["extra"]["contact"] == "13800000000"
-
-
-def test_lostfound_legacy_route_proxies_to_forum() -> None:
-    client, _ = _setup()
-    h = _headers(client)
-    created = client.post("/api/v1/student/lost-found", headers=h, json={
-        "kind": "lost", "title": "钥匙", "content": "丢了一把钥匙", "location": "食堂", "contact": "123", "contact_visibility": "private",
-    })
-    assert created.status_code == 201, created.text
-    assert created.json()["kind"] == "lost"
-    legacy_list = client.get("/api/v1/student/lost-found", headers=h).json()
-    assert any(i["title"] == "钥匙" for i in legacy_list)
-    forum_list = client.get("/api/v1/community/posts?category=lostfound", headers=h).json()
-    assert any(i["title"] == "钥匙" for i in forum_list["items"])
 
 
 def test_image_upload_returns_url() -> None:

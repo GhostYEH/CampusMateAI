@@ -118,8 +118,8 @@ export struct AppDock {
   DockSelectionLens() {
     Row()
       .width('20%')
-      .height(60)
-      .position({ x: `${this.activeTab * 20}%`, y: 0 })
+      .height(52)
+      .position({ x: `${this.activeTab * 20}%`, y: 2 })
       .translate({ x: this.dragOffset, y: 0 })
       .scale({
         x: this.dragging ? MotionSpec.scale(this.reduceMotion, 1.08) : 1.0,
@@ -134,7 +134,7 @@ export struct AppDock {
         ]
       })
       .border({ width: this.dragging ? 1.2 : 0.7, color: this.glassStyle().selectedBorderColor })
-      .borderRadius(26)
+      .borderRadius(24)
       .shadow({
         radius: this.dragging ? 12 : 8,
         color: this.darkMode ? '#3344A8FF' : '#225B68F2',
@@ -222,7 +222,7 @@ export struct AppDock {
       .alignItems(HorizontalAlign.Center)
     }
     .layoutWeight(1)
-    .height(60)
+    .height(56)
     .clip(true)
     .animation({ duration: this.glassStyle().motionDuration, curve: Curve.Smooth })
     .onTouch((event: TouchEvent) => {
@@ -247,7 +247,7 @@ export struct AppDock {
       Stack({ alignContent: Alignment.TopStart }) {
         Row()
           .width('100%')
-          .height(60)
+          .height(56)
           .linearGradient({
             angle: 135,
             colors: [
@@ -261,7 +261,7 @@ export struct AppDock {
 
         Row()
           .width('38%')
-          .height(60)
+          .height(56)
           .position({ x: '62%', y: 0 })
           .radialGradient({
             center: ['100%', '0%'],
@@ -273,7 +273,7 @@ export struct AppDock {
 
         Row()
           .width('34%')
-          .height(60)
+          .height(56)
           .position({ x: 0, y: 0 })
           .radialGradient({
             center: ['0%', '100%'],
@@ -282,6 +282,7 @@ export struct AppDock {
           })
           .opacity(this.glassStyle().chromaticEdgeOpacity * 0.72)
           .hitTestBehavior(HitTestMode.None)
+
         this.DockSelectionLens()
 
         Row() {
@@ -296,7 +297,7 @@ export struct AppDock {
           })
         }
         .width('100%')
-        .height(60)
+        .height(56)
 
         Row()
           .width('84%')
@@ -310,7 +311,7 @@ export struct AppDock {
           .hitTestBehavior(HitTestMode.None)
       }
       .width('100%')
-      .height(60)
+      .height(56)
       .onAreaChange((_oldValue: Area, newValue: Area) => {
         if (typeof newValue.width === 'number') {
           this.dockWidth = newValue.width;
@@ -319,18 +320,18 @@ export struct AppDock {
     }
     .width('100%')
     .constraintSize({ maxWidth: this.glassStyle().maxWidth })
-    .height(80)
-    .padding({ left: 6, right: 6, top: 8, bottom: 8 })
+    .height(72)
+    .padding({ left: 6, right: 6, top: 6, bottom: 6 })
     .alignItems(HorizontalAlign.Center)
     .backgroundColor(this.glassStyle().surfaceColor)
     .backdropBlur(this.glassStyle().backdropBlur)
     .border({ width: 0.7, color: this.glassStyle().highlightColor })
-    .borderRadius(40)
+    .borderRadius(36)
     .shadow({
       radius: 28,
       color: this.glassStyle().shadowColor,
       offsetY: 8
     })
-    .margin({ left: 14, right: 14, bottom: 10 })
+    .margin({ left: 14, right: 14, bottom: 8 })
   }
 }

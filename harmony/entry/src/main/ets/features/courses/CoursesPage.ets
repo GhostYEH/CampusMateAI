@@ -12,6 +12,7 @@ export struct CoursesPage {
   @State selectedType: string = '全部';
   onRefresh: () => void = () => {};
   onOpenDetail: (course: CourseItem) => void = (_: CourseItem) => {};
+  onOpenSchedule: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
@@ -48,7 +49,7 @@ export struct CoursesPage {
           Row({ space: 3 }) {
             SymbolGlyph($r('sys.symbol.calendar')).fontSize(11).fontColor(['#E6FFFFFF'])
             Text('课程表').fontColor('#E6FFFFFF').fontSize(9)
-          }
+          }.onClick(() => this.onOpenSchedule())
           Row({ space: 3 }) {
             SymbolGlyph($r('sys.symbol.info_circle')).fontSize(11).fontColor(['#E6FFFFFF'])
             Text('课程详情').fontColor('#E6FFFFFF').fontSize(9)
@@ -153,7 +154,7 @@ export struct CoursesPage {
   build() {
     Column() {
       Scroll() {
-        Column({ space: 10 }) {
+        Column({ space: 8 }) {
           this.Header(); this.Hero(); this.WeekStrip(); this.Metrics(); this.Filters()
           Row() {
             Column({ space: 1 }) {
@@ -171,7 +172,7 @@ export struct CoursesPage {
             ForEach(this.courses, (course: CourseItem, index: number) => { this.CourseCard(course, index) }, (course: CourseItem) => course.id)
           }
           Blank().height(112)
-        }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 10 })
+        }.width('100%').padding({ left: 14, right: 14, top: 0, bottom: 10 })
       }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
   }

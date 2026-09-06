@@ -2,7 +2,7 @@ import { repository } from '../../../services/repository'
 import { CommunityPost, CommunityComment } from '../../../services/types'
 
 const CATEGORY_LABELS: Record<string, string> = {
-  question: '提问', recruit: '招募', errand: '带价帮忙', lostfound: '失物招领',
+  question: '提问', recruit: '招募', errand: '带价帮忙',
   campus: '校园讨论', study: '学习交流', life: '生活随笔', secondhand: '二手交易',
   activity: '活动', experience: '经验分享', other: '其它',
 }
@@ -56,9 +56,6 @@ Page({
         if (e.price != null) extraTags.push(`酬金 ¥${e.price}`)
         if (e.location) extraTags.push(`地点：${e.location}`)
         if (e.deadline) extraTags.push(`截止：${e.deadline}`)
-      } else if (cat === 'lostfound') {
-        extraTags.push(e.kind === 'found' ? '招领' : '寻物')
-        if (e.location) extraTags.push(`地点：${e.location}`)
       }
       let timeText = post.created_at
       try { timeText = new Date(post.created_at).toLocaleString('zh-CN') } catch {}

@@ -4,7 +4,8 @@ import java.time.Instant
 
 enum class DashboardStyle(val storedValue: String) {
     CLASSIC("classic"),
-    GAMIFIED("gamified");
+    GAMIFIED("gamified"),
+    IMMERSIVE("immersive");
 
     companion object {
         fun fromStoredValue(value: String?): DashboardStyle =

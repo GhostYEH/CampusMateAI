@@ -123,6 +123,23 @@ object ApiClient {
         .addInterceptor(loggingInterceptor)
         .build()
 
+    private val hitokotoRetrofit = Retrofit.Builder()
+        .baseUrl("https://v1.hitokoto.cn/")
+        .client(noAuthClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+        .build()
+
+    val hitokotoApi: HitokotoApi = hitokotoRetrofit.create(HitokotoApi::class.java)
+
+    private val bingDailyWallpaperRetrofit = Retrofit.Builder()
+        .baseUrl("https://uapis.cn/")
+        .client(noAuthClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+        .build()
+
+    val bingDailyWallpaperApi: BingDailyWallpaperApi =
+        bingDailyWallpaperRetrofit.create(BingDailyWallpaperApi::class.java)
+
     val authApi: ApiService = Retrofit.Builder()
         .baseUrl(BASE_URL)
         .client(noAuthClient)

@@ -4,13 +4,12 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, ValidationError
 from fastapi import HTTPException
 
-CATEGORIES = "^(campus|study|life|secondhand|question|activity|experience|recruit|errand|lostfound|other)$"
+CATEGORIES = "^(campus|study|life|secondhand|question|activity|experience|recruit|errand|other)$"
 
 CATEGORY_META: list[dict[str, Any]] = [
     {"key": "question", "label": "提问", "description": "学习/生活求助问答", "icon": "PhQuestion", "color": "#3b82f6"},
     {"key": "recruit", "label": "招募", "description": "组队/招新/活动招募", "icon": "PhUsers", "color": "#8b5cf6"},
     {"key": "errand", "label": "带价帮忙", "description": "跑腿/代取/带价帮忙", "icon": "PhHandCoins", "color": "#f59e0b"},
-    {"key": "lostfound", "label": "失物招领", "description": "寻物/招领", "icon": "PhMagnifyingGlass", "color": "#ef4444"},
     {"key": "campus", "label": "校园动态", "description": "日常校园话题", "icon": "PhBuildings", "color": "#10b981"},
     {"key": "study", "label": "学习交流", "description": "课程/资料/学习方法", "icon": "PhBookOpen", "color": "#06b6d4"},
     {"key": "life", "label": "生活随笔", "description": "生活分享", "icon": "PhCoffee", "color": "#ec4899"},
@@ -33,17 +32,9 @@ class ErrandExtra(BaseModel):
     deadline: Optional[str] = Field(None, max_length=32)
 
 
-class LostFoundExtra(BaseModel):
-    kind: str = Field(..., pattern="^(lost|found)$")
-    location: Optional[str] = Field(None, max_length=200)
-    contact: Optional[str] = Field(None, max_length=200)
-    contact_visibility: str = Field("private", pattern="^(private|public)$")
-
-
 EXTRA_SCHEMAS: dict[str, type[BaseModel]] = {
     "recruit": RecruitExtra,
     "errand": ErrandExtra,
-    "lostfound": LostFoundExtra,
 }
 
 

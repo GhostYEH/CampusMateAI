@@ -105,11 +105,11 @@ data class NavItem(val route: String, val label: String, val icon: ImageVector)
 
 /**
  * Bottom dock visible height reserved on top of the system navigation bar.
- * Equals 76dp (dock row) + 6dp (top padding) + 10dp (bottom padding).
+ * Equals 68dp (dock row) + 4dp (top padding) + 8dp (bottom padding).
  * Screens that draw content above the dock (FABs, lists' bottom contentPadding)
  * should add this height to their own bottom insets.
  */
-val BottomDockReservedHeight = 76.dp + 6.dp + 10.dp
+val BottomDockReservedHeight = 68.dp + 4.dp + 8.dp
 
 internal fun floatingDockContentBottomPadding(navigationBarHeight: Dp): Dp =
     navigationBarHeight + BottomDockReservedHeight
@@ -140,7 +140,6 @@ private val studentProfileRoutes = setOf(
 
 internal fun selectedStudentDockRoute(route: String): String = when {
     route == "community" -> "home"
-    route == "lostfound" -> "counselor"
     route in studentProfileRoutes -> "profile"
     else -> route
 }
@@ -317,18 +316,18 @@ private fun CampusDock(
     val dockLine = Line
     val glassProfile = liquidGlassDockProfile(Build.VERSION.SDK_INT, darkMode)
     val interactionProfile = liquidGlassDockInteractionProfile(reduceMotion)
-    val dockShape = RoundedCornerShape(38.dp)
+    val dockShape = RoundedCornerShape(34.dp)
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 10.dp),
+            .padding(start = 14.dp, top = 4.dp, end = 14.dp, bottom = 8.dp),
     ) {
         Box(
             modifier = Modifier
                 .width(floatingDockWidth(maxWidth))
                 .align(Alignment.Center)
-                .height(80.dp)
+                .height(68.dp)
                 .shadow(
                     elevation = 18.dp,
                     shape = dockShape,
@@ -394,7 +393,7 @@ private fun CampusDock(
                     )
                 }
                 .border(0.8.dp, dockLine.copy(alpha = .58f), dockShape)
-                .padding(horizontal = 7.dp, vertical = 7.dp),
+                .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
             var itemWidthPx by remember { mutableFloatStateOf(0f) }
             var dragOffsetPx by remember(selectedIndex) { mutableFloatStateOf(0f) }
@@ -480,11 +479,11 @@ private fun CampusDock(
                     LiquidGlassSelectionLens(
                         modifier = Modifier
                             .width(lensWidth)
-                            .height(58.dp)
+                            .height(52.dp)
                             .offset {
                                 IntOffset(
                                     x = lensX.roundToInt(),
-                                    y = 4.dp.roundToPx(),
+                                    y = 3.dp.roundToPx(),
                                 )
                             },
                         glassProfile = glassProfile,
@@ -639,7 +638,7 @@ private fun RowScope.LiquidGlassNavItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp)
+                .height(52.dp)
                 .drawBehind {
                     val glowProgress = clickGlowProgress.value
                     if (pressed && !interactionProfile.clickGlowEnabled) {
@@ -685,7 +684,7 @@ private fun RowScope.LiquidGlassNavItem(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
-                    modifier = Modifier.height(29.dp).width(42.dp),
+                    modifier = Modifier.height(27.dp).width(42.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -717,7 +716,7 @@ private fun RowScope.LiquidGlassNavItem(
                         }
                     }
                 }
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(1.dp))
                 Text(
                     text = item.label,
                     color = color,

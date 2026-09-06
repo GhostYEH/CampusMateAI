@@ -130,14 +130,6 @@ export interface StudentExam {
   notes?: string
 }
 
-export interface Classroom {
-  id?: string
-  building?: string
-  room?: string
-  capacity?: number
-  available_slots?: string[]
-}
-
 export interface CommunityPost {
   id: string
   title: string
@@ -180,19 +172,6 @@ export interface CategoryMeta {
   color: string
 }
 
-export interface LostFoundItem {
-  id: string
-  owner_id: string
-  kind: 'lost' | 'found'
-  title: string
-  content?: string
-  location?: string
-  contact?: string
-  contact_visibility: 'private' | 'public'
-  status: string
-  created_at: string
-}
-
 export interface PersonalFile {
   id: string
   name: string
@@ -217,15 +196,6 @@ export interface University {
   name: string
   city?: string
   province?: string
-}
-
-export interface ServiceRequest {
-  id: string
-  kind: string
-  title: string
-  content?: string
-  status: string
-  created_at: string
 }
 
 export interface WeekDay {

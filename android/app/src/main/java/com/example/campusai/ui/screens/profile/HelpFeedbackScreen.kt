@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +40,6 @@ import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 @Composable
 fun HelpFeedbackScreen(
     repository: AppRepository,
-    onSubmitFeedback: () -> Unit,
 ) {
     val backendOnline by repository.backendOnline.collectAsStateWithLifecycle()
 
@@ -80,15 +78,6 @@ fun HelpFeedbackScreen(
                         Text(if (online) "当前功能可以使用真实后端数据。" else "请稍候，或检查此设备的后端地址与网络。", color = ReferenceMuted, fontSize = 11.sp)
                     }
                 }
-            }
-            item {
-                HelpActionCard(
-                    icon = Icons.Default.Send,
-                    title = "提交问题与建议",
-                    detail = "功能异常、体验建议或需要协助的校园事务",
-                    accent = ReferencePrimary,
-                    onClick = onSubmitFeedback,
-                )
             }
             item { Text("常见问题", color = ReferenceText, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp, start = 4.dp)) }
             item { HelpActionCard(Icons.Default.HelpOutline, "为什么会显示未连接？", "登录后应用会自动检查服务；真机调试需使用电脑的局域网 IP，而不是 10.0.2.2。", ReferencePrimary, onClick = {}) }

@@ -116,6 +116,7 @@ fun FocusSessionScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val manager = appRepository.expressionSessionManager
     val expressionResult by manager.result.collectAsStateWithLifecycle()
+    val observationActive by manager.observationActive.collectAsStateWithLifecycle()
     val continuityState by manager.learningContinuityState.collectAsStateWithLifecycle()
     val presence by manager.presence.collectAsStateWithLifecycle()
     val gentleReminder by manager.gentleReminder.collectAsStateWithLifecycle()
@@ -406,7 +407,7 @@ fun FocusSessionScreen(
             voiceError = voiceError,
             currentUserText = currentUserText,
             currentAiText = currentAiText,
-            observationEnabled = observationEnabled,
+            observationEnabled = observationActive,
             continuityState = continuityState,
             sessionMode = sessionMode,
             observationDetailsExpanded = observationDetailsExpanded,

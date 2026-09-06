@@ -84,13 +84,13 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
-                top = 22.dp,
+                top = 0.dp,
                 end = 16.dp,
                 bottom = floatingDockContentBottomPadding(
                     WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                 ) + 86.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {

@@ -25,13 +25,6 @@ export interface FocusRealtimeVoiceStop { session_id: string; stopped: boolean; 
 export interface ExpressionSignalRequest { label: string; confidence: number; is_stable: boolean; timestamp: number; model_version: string; }
 export interface ChatRequest { message: string; session_id: string; stream: boolean; expression_signal?: ExpressionSignalRequest; }
 export interface ExamItem { id: string; course_name: string; exam_date: string; start_time?: string; end_time?: string; location?: string; seat_number?: string; exam_type?: string; reminder_enabled?: boolean; notes?: string; }
-export interface ClassroomItem { id?: string; name?: string; building?: string; capacity?: number; has_multimedia?: boolean; }
-export interface ClassroomAvailability { classroom?: ClassroomItem; id?: string; name?: string; building?: string; capacity?: number; has_multimedia?: boolean; free_slots?: string[]; }
-export interface ClassroomResponse { items: ClassroomAvailability[]; total: number; date?: string; building?: string; source?: string; }
-export interface ServiceRequestItem { id: string; kind: string; title: string; content?: string; status: string; created_at: string; updated_at?: string; }
-export interface ServiceRequestPayload { kind: string; title: string; content: string; }
-export interface LostFoundItem { id: string; owner_id?: string; kind: string; title: string; content?: string; location?: string; contact?: string; status?: string; created_at?: string; }
-export interface LostFoundPayload { kind: string; title: string; content: string; location: string; contact: string; }
 export type FocusMode = 'focus' | 'short_break' | 'long_break';
 export type FocusExperienceMode = 'QUIET' | 'AI_COMPANION' | 'SMART_GUARD';
 export interface StudyBehaviorSummary { observed_seconds: number; study_seconds: number; paused_seconds: number; longest_continuous_study_seconds: number; meaningful_switch_count: number; phone_interaction_count: number; possible_distraction_count: number; absent_count: number; reminder_count: number; model_version: string; }

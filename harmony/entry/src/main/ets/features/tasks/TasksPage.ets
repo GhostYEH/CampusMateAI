@@ -51,7 +51,13 @@ export struct TasksPage {
   onOpenFocus: () => void = () => {};
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  pendingCount(): number { return this.tasks.filter((task: TaskItem) => task.status !== 'completed').length; }
+  pendingCount(): number {
+    let count: number = 0;
+    for (const task of this.tasks) {
+      if (task.status !== 'completed') count += 1;
+    }
+    return count;
+  }
   selectedImportCount(): number { return selectedImportTasks(this.importDrafts).length; }
 
   resetImportState(): void {
@@ -215,7 +221,7 @@ export struct TasksPage {
     Stack({ alignContent: Alignment.Center }) {
     Column() {
       Scroll() {
-        Column({ space: 14 }) {
+        Column({ space: 10 }) {
           this.Header()
           this.Hero()
           Row({ space: 8 }) {
@@ -242,7 +248,7 @@ export struct TasksPage {
               (task: TaskItem) => { this.TaskCard(task) }, (task: TaskItem) => task.id)
           }
           Blank().height(112)
-        }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 10 })
+        }.width('100%').padding({ left: 16, right: 16, top: 0, bottom: 10 })
       }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor(this.palette().background)
     }.width('100%').height('100%').backgroundColor(this.palette().background)
     if (this.importOpen) {

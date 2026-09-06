@@ -55,11 +55,11 @@ class OnnxBehaviorRecognitionEngine(private val context: Context) : BehaviorReco
     override fun analyzeTemporalWindow(
         frames: List<Bitmap>,
         timestampMs: Long,
-        personBoundingBox: RectF?,
+        modelInputPersonBoundingBox: RectF?,
     ): BehaviorPrediction {
         if (!ready) return unavailablePrediction(timestampMs)
         val frame = frames.lastOrNull() ?: return BehaviorPrediction(emptyMap(), timestampMs, "NO_FRAME")
-        val roi = personBoundingBox?.let {
+        val roi = modelInputPersonBoundingBox?.let {
             BehaviorRoi.from(it.left, it.top, it.right, it.bottom, frame.width, frame.height)
         }
         val selected = BehaviorModelSelection.select(

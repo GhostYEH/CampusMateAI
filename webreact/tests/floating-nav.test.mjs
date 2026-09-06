@@ -6,7 +6,9 @@ import { navItems } from "../src/components/FloatingNav/navItems.js";
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const layoutStyles = readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 const navStyles = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.css", import.meta.url), "utf8");
+const floatingNavSource = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 const appShell = readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
+const counselorStyles = readFileSync(new URL("../src/styles/counselor-reference.css", import.meta.url), "utf8");
 
 test("floating navigation keeps the existing eight route entries", () => {
   assert.deepEqual(
@@ -24,9 +26,9 @@ test("floating navigation keeps the existing eight route entries", () => {
   );
 });
 
-test("global search stays compact across desktop and mobile layouts", () => {
-  assert.match(styles, /\.topbar-search[^}]*width: min\(190px, calc\(100vw - 30px\)\)/);
-  assert.match(styles, /\.search-wrap[^}]*width: 190px/);
+test("global search gets a wider desktop field without changing mobile layout", () => {
+  assert.match(styles, /\.topbar-search[^}]*width: min\(240px, calc\(100vw - 30px\)\)/);
+  assert.match(styles, /\.search-wrap[^}]*width: 240px/);
   const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 760px)"), styles.indexOf("@media (max-width: 390px)"));
   assert.match(mobileStyles, /\.search-wrap[^}]*left: 15px[^}]*width: min\(190px, calc\(100vw - 30px\)\)/);
   assert.match(mobileStyles, /\.topbar-search[^}]*width: min\(190px, calc\(100vw - 30px\)\)/);
@@ -41,16 +43,26 @@ test("floating navigation foreground uses explicit contrast tokens", () => {
   assert.match(layoutStyles, /\.floating-nav--light/);
 });
 
-test("app shell selects a light foreground for dark ambient backgrounds", () => {
+test("counselor uses the same global floating navigation as other routes", () => {
   assert.match(appShell, /const floatingNavTone = isCounselor \|\| dashboardStyle === "gamified" \? "light" : "dark";/);
   assert.match(appShell, /<FloatingNav tone=\{floatingNavTone\}/);
+  assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav\{/);
+  assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-list\{/);
+  assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-button\{/);
 });
 
-test("topbar side controls share the floating navigation glass language", () => {
+test("topbar side controls keep the global search and profile implementation", () => {
   assert.match(styles, /\.topbar-search[^}]*var\(--topbar-glass-background\)/);
   assert.match(styles, /\.topbar-info[^}]*var\(--topbar-glass-background\)/);
+  assert.doesNotMatch(appShell, /import GlassSurface from/);
   assert.match(appShell, /<div className="topbar-info">[\s\S]*<span className="topbar-date">/);
   assert.match(appShell, /<div className="topbar-actions">/);
+});
+
+test("counselor does not add private topbar wrappers", () => {
+  assert.match(appShell, /function SearchBox\(\)/);
+  assert.match(appShell, /<SearchBox \/>/);
+  assert.doesNotMatch(appShell, /topbar-glass-control|topbar-search-surface|topbar-profile-surface/);
 });
 
 test("active navigation item does not paint a duplicate blue ring", () => {
@@ -66,4 +78,24 @@ test("topbar controls share one desktop height and top alignment", () => {
   assert.match(styles, /\.topbar-search[^}]*top:\s*10px/);
   assert.match(styles, /\.floating-nav[^}]*top:\s*10px/);
   assert.match(styles, /\.topbar-info[^}]*top:\s*10px/);
+});
+
+test("expanded navigation reserves more space for larger labels and the profile item", () => {
+  assert.match(layoutStyles, /--floating-nav-expanded-button-offset:\s*76px/);
+  assert.match(layoutStyles, /--floating-nav-expanded-item-gap:\s*30px/);
+  assert.match(layoutStyles, /\.floating-nav-label[^}]*font-size:\s*14px/);
+});
+
+test("centered navigation balances the first icon and final profile edge insets", () => {
+  assert.match(layoutStyles, /--floating-nav-list-start-padding:\s*8px/);
+  assert.match(layoutStyles, /--floating-nav-list-end-padding:\s*30px/);
+  assert.match(layoutStyles, /\.floating-nav-list[^}]*padding:\s*8px var\(--floating-nav-list-end-padding\) 8px var\(--floating-nav-list-start-padding\)/s);
+  assert.match(floatingNavSource, /listPaddingEnd[\s\S]*contentWidth/);
+  assert.match(styles, /\.floating-nav[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/s);
+});
+
+test("mobile floating navigation keeps its glass surface compact", () => {
+  const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 760px)"));
+
+  assert.match(mobileStyles, /\.floating-nav\.glass-surface[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });

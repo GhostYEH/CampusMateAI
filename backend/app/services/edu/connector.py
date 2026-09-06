@@ -62,6 +62,7 @@ from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
 from .adapters.zhengfang_http import NeedUserAction
 from .adapters.zhengfang_strategy import school_allowed_origins, school_config_from_dict
 from .detector import DetectResult, SystemDetector
+from .provider_detector import ProviderDetector
 from .registry import SchoolRegistry
 from .session import EduSessionStore, InMemorySessionStore, PreLoginSessionStore, SessionManager
 
@@ -82,6 +83,14 @@ _USER_ACTION_MESSAGES = {
     "CLIENT_WEBVIEW": "请在学校登录页面完成验证",
     "NEED_CAMPUS_NETWORK": "请连接校园网或 VPN 后继续",
 }
+
+
+def _challenge_type_for_user_action(action: Optional[str]) -> str:
+    if action == "NEED_CAPTCHA":
+        return "image"
+    if action:
+        return "interactive"
+    return "none"
 
 
 class EduUnsupportedError(Exception):
@@ -163,6 +172,7 @@ class EduConnectorService:
             "title": None,
             "is_edu_page": False,
             "suggested_login_mode": LOGIN_EXEC_BACKEND_HTTP,
+            "challenge_type": "none",
             "evidence": [],
             "error": None,
         }
@@ -223,10 +233,12 @@ class EduConnectorService:
             title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
             if title_match:
                 result["title"] = title_match.group(1).strip()[:200]
-            # 默认先走后端直登；仅当登录页已显示需要人工完成的验证时
-            # 才直接切到 WebView。登录后才出现的 MFA 由 adapter 再次检测。
-            if provider in KNOWN_PROVIDERS and is_edu_page and _user_action_from_login_page(content):
-                result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
+            # 图片验证码由后端挑战流程提供图片字节；只有交互挑战才使用 WebView。
+            page_action = _user_action_from_login_page(content)
+            if provider in KNOWN_PROVIDERS and is_edu_page and page_action:
+                result["challenge_type"] = _challenge_type_for_user_action(page_action)
+                if result["challenge_type"] == "interactive":
+                    result["suggested_login_mode"] = LOGIN_EXEC_CLIENT_WEBVIEW
         except Exception as e:
             result["error"] = str(e)[:200]
         return result
@@ -324,13 +336,22 @@ class EduConnectorService:
             )
             return {
                 "pre_login_token": None,
+                "verification_session_id": None,
                 "captcha_required": True,
                 "captcha_type": "none",
+                "challenge_type": _challenge_type_for_user_action(action_needed.action),
                 "captcha_image_base64": None,
+                "captcha_mime_type": None,
                 "captcha_image_url": action_needed.captcha_url,
                 "need_user_action": action_needed.action,
                 "expires_at": None,
             }
+        except AdapterNotImplemented as exc:
+            raise AppException(
+                code="UNSUPPORTED",
+                http_status=400,
+                message=f"Provider[{conn.provider}] does not support pre-login verification",
+            ) from exc
 
         pre_login_session = self._pre_login_store.create(
             connection_id=connection_id,
@@ -344,9 +365,12 @@ class EduConnectorService:
         from datetime import datetime, timezone
         return {
             "pre_login_token": pre_login_session.pre_login_token,
+            "verification_session_id": pre_login_session.pre_login_token,
             "captcha_required": pre_login_data.get("captcha_required", False),
             "captcha_type": pre_login_data.get("captcha_type", "none"),
+            "challenge_type": "image" if pre_login_data.get("captcha_type") == "image" else "none",
             "captcha_image_base64": pre_login_data.get("captcha_image_base64"),
+            "captcha_mime_type": pre_login_data.get("captcha_mime_type"),
             "captcha_image_url": pre_login_data.get("captcha_image_url"),
             "expires_at": pre_login_session.expires_at or datetime.now(timezone.utc).isoformat(),
         }
@@ -397,9 +421,47 @@ class EduConnectorService:
                 self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
             conn = self._edu_repo.get_connection(connection_id)
 
-        # CONN_AUTH_REQUIRED + username + password: 服务端代理登录
-        # 也支持 CONN_WAITING_USER_LOGIN + action=SUBMIT_WITH_CAPTCHA（验证码重试）
-        submit_with_captcha = action == "SUBMIT_WITH_CAPTCHA" and pre_login_token and captcha
+        # CONN_AUTH_REQUIRED + username + password: 服务端代理登录。
+        # 图片验证码提交先校验全部输入和连接状态，随后原子消费令牌；消费失败不改变连接状态。
+        if pre_login_token and verification_session_id and pre_login_token != verification_session_id:
+            raise AppException(
+                code="VERIFICATION_TOKEN_MISMATCH",
+                http_status=400,
+                message="验证码会话令牌不一致",
+            )
+        token = verification_session_id or pre_login_token
+        submit_with_captcha = action == "SUBMIT_WITH_CAPTCHA"
+        pre_login_data = None
+        if submit_with_captcha:
+            if conn.state not in (CONN_AUTH_REQUIRED, CONN_WAITING_USER_LOGIN):
+                raise AppException(
+                    code="VERIFICATION_STATE_CONFLICT",
+                    http_status=409,
+                    message="当前连接状态不能提交验证码",
+                )
+            if not all((username, password, captcha, token)):
+                raise AppException(
+                    code="VERIFICATION_INPUT_REQUIRED",
+                    http_status=400,
+                    message="提交验证码需要账号、密码、验证码和会话令牌",
+                )
+            pl_session = self._pre_login_store.consume(
+                token,
+                user_id=conn.user_id,
+                connection_id=connection_id,
+            )
+            if pl_session is None:
+                raise AppException(
+                    code="VERIFICATION_TOKEN_CONFLICT",
+                    http_status=409,
+                    message="验证码会话已过期或已被使用，请重新获取",
+                )
+            pre_login_data = {
+                "cookies": pl_session.cookies,
+                "csrftoken": pl_session.csrftoken,
+                "public_key_text": None,
+            }
+
         if (conn.state == CONN_AUTH_REQUIRED and username and password) or submit_with_captcha:
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
                 self._edu_repo.update_connection_state(
@@ -413,20 +475,6 @@ class EduConnectorService:
             adapter, _ = self._select_adapter(conn.provider)
             system = self._registry.get_system_by_id(conn.edu_system_id)
             config = self._build_config_dict(system, portal_url=conn.portal_url)
-            pre_login_data = None
-            if pre_login_token:
-                pl_session = self._pre_login_store.get(pre_login_token)
-                if pl_session is None:
-                    self._edu_repo.update_connection_state(
-                        connection_id, state=CONN_AUTH_FAILED, error_code="PRE_LOGIN_EXPIRED",
-                        error_message="验证码已过期，请重新获取",
-                    )
-                    return CONN_AUTH_FAILED
-                pre_login_data = {
-                    "cookies": pl_session.cookies,
-                    "csrftoken": pl_session.csrftoken,
-                    "public_key_text": None,
-                }
             try:
                 internal = await adapter.login(
                     username=username, password=password, config=config,
@@ -452,8 +500,6 @@ class EduConnectorService:
                     error_message="登录失败：用户名或密码错误",
                 )
                 return CONN_AUTH_FAILED
-            if pre_login_token:
-                self._pre_login_store.destroy(pre_login_token)
             await self._finalize_authenticated(connection_id, conn, adapter, internal, username=username)
             return CONN_CONNECTED
 
@@ -573,9 +619,11 @@ class EduConnectorService:
         """从 EduSystemRow 构造 adapter config dict。"""
         if system is None:
             return {}
-        config = {
-            "base_url": portal_url or system.base_url,
-            "login_url": portal_url or system.login_url,
+        known_config = ProviderDetector().known_school_config(portal_url) if portal_url else None
+        config = dict(known_config or {})
+        system_config = {
+            "base_url": system.base_url,
+            "login_url": system.login_url,
             "provider_version": system.provider_version,
             "sso_url": system.sso_url,
             "vpn_url": system.vpn_url,
@@ -586,6 +634,15 @@ class EduConnectorService:
             "requires_vpn": system.requires_vpn,
             "provider": system.provider,
         }
+        for key, value in system_config.items():
+            if value is None or value == "":
+                continue
+            if isinstance(value, str) and value.lower() in {"unknown", "unsupported"}:
+                continue
+            config[key] = value
+        config.setdefault("base_url", portal_url)
+        config.setdefault("login_url", portal_url)
+        config.setdefault("login_execution_mode", LOGIN_EXEC_BACKEND_HTTP)
         try:
             stored = json.loads(system.adapter_config or "{}")
         except (TypeError, ValueError):
@@ -593,8 +650,11 @@ class EduConnectorService:
         if isinstance(stored, dict):
             config.update(stored)
         if portal_url:
-            config["base_url"] = portal_url
-            config["login_url"] = portal_url
+            configured_origins = config.get("allowed_origins")
+            explicit_origins = list(configured_origins) if isinstance(configured_origins, list) else []
+            if portal_url not in explicit_origins:
+                explicit_origins.append(portal_url)
+            config["allowed_origins"] = explicit_origins
         return config
 
     def allowed_origins_for_connection(self, connection_id: str) -> list[str]:

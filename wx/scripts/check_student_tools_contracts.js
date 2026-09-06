@@ -7,13 +7,10 @@ const repository = fs.readFileSync(path.join(root, 'miniprogram/services/reposit
 
 for (const endpoint of [
   '/student/exams',
-  '/student/classrooms',
   '/community/posts',
-  '/student/lost-found',
   '/personal-hub/files',
   '/personal-hub/favorites',
   '/universities',
-  '/student/service-requests',
 ]) {
   assert.match(repository, new RegExp(endpoint.replaceAll('/', '\\/')), `missing real backend endpoint ${endpoint}`)
 }

@@ -9,14 +9,11 @@ private val lightThemeRoutesWithDarkStatusHeader = setOf(
     "profile",
 )
 
-private val routesWithAlwaysLightStatusSurface = setOf(
-    "lostfound",
-)
+private val routesWithAlwaysLightStatusSurface = emptySet<String>()
 
 private val routesOwningStatusBarInset = setOf(
     "home",
     "profile",
-    "lostfound",
     "focus_session",
 )
 

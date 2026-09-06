@@ -7,7 +7,7 @@ import org.junit.Test
 class FloatingDockLayoutTest {
     @Test
     fun scrollableContentReservesSystemNavigationAndFloatingDockSpace() {
-        assertEquals(116.dp, floatingDockContentBottomPadding(navigationBarHeight = 24.dp))
+        assertEquals(104.dp, floatingDockContentBottomPadding(navigationBarHeight = 24.dp))
     }
 
     @Test

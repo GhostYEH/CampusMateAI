@@ -6,6 +6,7 @@ import { ApiClient, ApiClientAuth, ApiError, ApiErrorCode, SseEvent } from '../d
 import { AuthTokens } from '../data/auth/TokenStore';
 import { LoginScreen } from '../features/login/LoginScreen';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { DashboardPageImmersive } from '../features/dashboard/DashboardPageImmersive';
 import { AppDock } from '../ui/AppDock';
 import { CoursesPage } from '../features/courses/CoursesPage';
 import { CourseDetailPage } from '../features/courses/CourseDetailPage';
@@ -18,14 +19,12 @@ import { ProfilePage } from '../features/profile/ProfilePage';
 import { QrScannerPage } from '../features/profile/QrScannerPage';
 import { QrConfirmPage } from '../features/profile/QrConfirmPage';
 import { ExamsPage } from '../features/exams/ExamsPage';
-import { ClassroomsPage } from '../features/classrooms/ClassroomsPage';
 import { V3CorePage } from '../features/v3/V3CorePage';
 import { FocusPage, FocusSessionMode } from '../features/focus/FocusPage';
 import { FocusSessionPage } from '../features/focus/FocusSessionPage';
 import { FocusSummaryPage } from '../features/focus/FocusSummaryPage';
 import { FocusPlanPage } from '../features/focus/FocusPlanPage';
 import { FocusSessionAction, FocusSessionActionGate } from '../features/focus/FocusPresentationState';
-import { LostFoundPage } from '../features/lostfound/LostFoundPage';
 import { NotificationsPage } from '../features/notifications/NotificationsPage';
 import { NotificationSourceSettingsPage } from '../features/notifications/NotificationSourceSettingsPage';
 import { ChaoxingPage } from '../features/notifications/ChaoxingPage';
@@ -36,9 +35,11 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, ClassroomAvailability, ClassroomResponse, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, LostFoundItem, LostFoundPayload, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
+import { NotificationCaptureCapability } from '../data/notification/NotificationCaptureCapability';
+import { NotificationSubscriberManager, notificationSubscriberManager } from '../data/notification/NotificationSubscriber';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../data/chaoxing/ChaoxingAccount';
 import { ChaoxingRepository } from '../data/chaoxing/ChaoxingRepository';
 import { StudyRepository } from '../repository/StudyRepository';
@@ -76,12 +77,13 @@ import {
 } from '../service/FocusCameraContract';
 import { MindSporeExpressionProvider } from '../service/MindSporeExpressionProvider';
 import { ExpressionGreetingPolicy } from '../service/ExpressionGreetingPolicy';
-import { PreferencesUtil } from '../util/PreferencesUtil';
 import { ForegroundRefreshGate } from '../core/ForegroundRefreshGate';
 import { AmbientMotionField } from '../ui/AmbientMotionField';
+import { HitokotoClient } from '../data/HitokotoClient';
+import { hitokotoDisplayText } from '../data/HitokotoModels';
+import { BingDailyWallpaperClient } from '../data/BingDailyWallpaperClient';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
-const HOME_BANNER_CACHE_KEY: string = 'homeBannersV1';
 
 function toastError(message: string): void {
   try { promptAction.showToast({ message: message, duration: 2200 }); } catch { /* ignore toast failure */ }
@@ -103,6 +105,7 @@ struct Index {
   private pageStack: NavPathStack = new NavPathStack();
   private requestedTab: number = -1;
   private ingestService: NotificationIngestService | null = null;
+  private notificationSubscriberManager: NotificationSubscriberManager = notificationSubscriberManager;
   private chaoxingRepository: ChaoxingRepository | null = null;
   private expressionService: ExpressionRecognitionService = new ExpressionRecognitionService();
   private focusAssistProvider: FocusAssistProvider = new UnavailableFocusAssistProvider();
@@ -111,12 +114,17 @@ struct Index {
   private focusVoiceSessionId: string = '';
   private expressionPollingTimer: number = -1;
   private foregroundRefreshGate: ForegroundRefreshGate = new ForegroundRefreshGate(30_000);
+  private hitokotoClient: HitokotoClient = new HitokotoClient();
+  private hitokotoAttempted: boolean = false;
+  private bingDailyWallpaperClient: BingDailyWallpaperClient = new BingDailyWallpaperClient();
+  private bingDailyWallpaperAttempted: boolean = false;
   private focusSessionActionGate: FocusSessionActionGate = new FocusSessionActionGate();
   private expressionConsentDialogOpen: boolean = false;
   @State signedIn: boolean = false;
   @State darkMode: boolean = false;
   @State reduceMotion: boolean = false;
   @State activeTab: number = 0;
+  @State pageVisible: boolean = true;
   @State eduLoginUrl: string = '';
   @State eduLoginConnectionId: string = '';
   @State eduLoginAllowedOrigins: string[] = [];
@@ -133,18 +141,19 @@ struct Index {
   @State primaryLoading: boolean = false;
   @State courses: CourseItem[] = [];
   @State tasks: TaskItem[] = [];
-  @State homeBanners: HomeBannerItem[] = [];
   @State chatMessages: ChatMessage[] = [];
   @State chatInput: string = '';
   @State chatSending: boolean = false;
   @State digitalHumanSpeechText: string = '';
   @State digitalHumanSpeechRequestId: number = 0;
-  @State displayName: string = '林知夏';
+  @State displayName: string = '校园同学';
+  @State hitokotoText: string = '';
+  @State hitokotoLoading: boolean = false;
+  @State bingDailyWallpaperUrl: string = '';
   @State profileDetail: string = '计算机科学与技术 · 大三';
   @State secondaryLoading: boolean = false;
   @State secondarySubmitting: boolean = false;
   @State exams: ExamItem[] = [];
-  @State classrooms: ClassroomAvailability[] = [];
   @State universities: UniversityItem[] = [];
   @State selectedUniversityId: string = '';
   @State selectedUniversityName: string = '';
@@ -157,7 +166,6 @@ struct Index {
   @State communityPostImages: string[] = [];
   @State communityEditPost: CommunityPostItem | null = null;
   @State academicStatus: AcademicStatusItem = { status: 'unsupported', provider: 'unsupported' };
-  @State lostFoundItems: LostFoundItem[] = [];
   @State studySessions: StudySession[] = [];
   @State activeStudySession?: StudySession = undefined;
   @State notices: NoticeItem[] = [];
@@ -176,7 +184,6 @@ struct Index {
   @State taskDetailId: string = '';
   @State examDetailId: string = '';
   @State examFormId: string = '';
-  @State lostFoundDetailId: string = '';
   @State notificationDetailId: string = '';
   @State notificationSettingsSource: NotificationSource | null = null;
   @State notificationManualSeed: string = '';
@@ -198,8 +205,10 @@ struct Index {
   @State focusPlanLoading: boolean = false;
   @State focusPlanError: string = '';
   @State focusVoiceState: FocusVoiceState = FocusVoiceEventReducer.initial();
+  @State notificationCapability: NotificationCaptureCapability = NotificationCaptureCapability.ordinaryPhoneBuild();
 
   async aboutToAppear(): Promise<void> {
+    this.pageVisible = true;
     this.foregroundRefreshGate.setVisible(true);
     await this.appState.restore();
     this.signedIn = this.appState.sessionToken.length > 0;
@@ -221,8 +230,35 @@ struct Index {
     }
     if (this.signedIn) {
       this.initNotificationService();
-      await this.loadCachedHomeBanners();
+      await this.refreshNotificationCapability();
       this.refreshPrimaryData();
+      this.refreshHitokoto();
+      this.refreshBingDailyWallpaper();
+    }
+  }
+
+  async refreshHitokoto(): Promise<void> {
+    if (this.hitokotoAttempted || this.hitokotoLoading || !this.signedIn) return;
+    this.hitokotoLoading = true;
+    try {
+      const quote = await this.hitokotoClient.fetch();
+      this.hitokotoText = quote.text;
+    } catch (_) {
+      this.hitokotoText = '';
+    } finally {
+      this.hitokotoLoading = false;
+      this.hitokotoAttempted = true;
+    }
+  }
+
+  async refreshBingDailyWallpaper(): Promise<void> {
+    if (this.bingDailyWallpaperAttempted || !this.signedIn) return;
+    this.bingDailyWallpaperAttempted = true;
+    try {
+      const wallpaper = await this.bingDailyWallpaperClient.fetch();
+      this.bingDailyWallpaperUrl = wallpaper.imageUrl;
+    } catch (_) {
+      this.bingDailyWallpaperUrl = '';
     }
   }
 
@@ -288,6 +324,7 @@ struct Index {
   }
 
   async onPageShow(): Promise<void> {
+    this.pageVisible = true;
     this.foregroundRefreshGate.setVisible(true);
     if (this.signedIn && this.appState.sessionToken.length > 0) {
       this.refreshUniversityFromServer();
@@ -302,6 +339,7 @@ struct Index {
   }
 
   onPageHide(): void {
+    this.pageVisible = false;
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
     this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.HIDE,
@@ -309,6 +347,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.pageVisible = false;
     this.foregroundRefreshGate.setVisible(false);
     this.stopExpressionRecognition();
     this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE,
@@ -330,7 +369,6 @@ struct Index {
         await this.appState.saveUniversity(newId, newName);
         this.communityPosts = [];
         this.communityHotPosts = [];
-        this.lostFoundItems = [];
       }
     } catch (_) { /* silent refresh, ignore errors */ }
     finally { this.foregroundRefreshGate.finish(); }
@@ -339,9 +377,28 @@ struct Index {
   initNotificationService(): void {
     if (this.ingestService === null) {
       this.ingestService = new NotificationIngestService(this.createApiClient(), () => this.appState.getAccessToken());
+      this.notificationSubscriberManager.init(this.ingestService);
     }
     if (this.chaoxingRepository === null) this.chaoxingRepository = new ChaoxingRepository(this.createApiClient());
     this.loadLocalNotices();
+  }
+
+  async refreshNotificationCapability(): Promise<void> {
+    this.notificationCapability = await this.notificationSubscriberManager.refreshPermission();
+  }
+
+  async requestNotificationPermission(): Promise<void> {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.notificationCapability = await this.notificationSubscriberManager.requestPermission(context);
+      if (this.notificationCapability.status === 'SUPPORTED') {
+        toastError('通知监听已授权');
+      } else {
+        toastError(this.notificationCapability.detail);
+      }
+    } catch (_) {
+      toastError('无法打开通知授权页');
+    }
   }
 
   async refreshChaoxingStatus(): Promise<void> {
@@ -363,11 +420,14 @@ struct Index {
   }
 
   async handleSessionExpired(): Promise<void> {
+    await this.notificationSubscriberManager.stop();
     await this.stopExpressionRecognition();
     await this.stopFocusCamera();
     await this.appState.clearSession();
     this.clearRoutes();
     this.signedIn = false;
+    this.bingDailyWallpaperUrl = '';
+    this.bingDailyWallpaperAttempted = false;
     this.chaoxingRepository = null;
     this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
   }
@@ -426,6 +486,7 @@ struct Index {
       this.signedIn = true;
       this.loginError = '';
       this.initNotificationService();
+      this.refreshBingDailyWallpaper();
       await this.refreshPrimaryData();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '暂时无法登录，请检查账号、密码和网络后重试。';
@@ -444,7 +505,6 @@ struct Index {
     try {
       // ArkTS promises begin immediately, so independent startup requests share
       // one network window while retaining explicit response types.
-      const bannerPromise: Promise<void> = this.refreshHomeBanners(client);
       const mePromise: Promise<MeResponse> = client.request<MeResponse>(http.RequestMethod.GET, 'auth/me');
       const coursesPromise: Promise<PagedResponse<CourseItem>> = client.request<PagedResponse<CourseItem>>(
         http.RequestMethod.GET, 'courses?page=1&page_size=100'
@@ -456,7 +516,6 @@ struct Index {
         http.RequestMethod.GET, 'notices?page=1&page_size=20'
       );
 
-      await bannerPromise;
       const me: MeResponse = await mePromise;
       const user = me?.user ?? {};
       const newUniversityId = user.university_id ?? '';
@@ -466,7 +525,7 @@ struct Index {
         this.selectedUniversityName = newUniversityName;
         await this.appState.saveUniversity(newUniversityId, newUniversityName);
       }
-      this.displayName = user.display_name ?? user.name ?? user.username ?? '林知夏';
+      this.displayName = user.display_name ?? user.name ?? user.username ?? '校园同学';
       const detailParts: string[] = [];
       if (user.major !== undefined && user.major.length > 0) {
         detailParts.push(user.major);
@@ -494,49 +553,6 @@ struct Index {
     } finally {
       this.primaryLoading = false;
     }
-  }
-
-  async loadCachedHomeBanners(): Promise<void> {
-    const raw: string = await PreferencesUtil.getString(HOME_BANNER_CACHE_KEY, '');
-    if (raw.length === 0) return;
-    try {
-      const cached = JSON.parse(raw) as HomeBannerItem[];
-      if (Array.isArray(cached)) this.homeBanners = cached;
-    } catch (_) { /* ignore stale cache */ }
-  }
-
-  resolveBannerUrl(url: string): string {
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    const marker: string = '/api/v1';
-    const markerIndex: number = API_BASE_URL.indexOf(marker);
-    const origin: string = markerIndex >= 0 ? API_BASE_URL.substring(0, markerIndex) : API_BASE_URL.replace(/\/$/, '');
-    return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`;
-  }
-
-  async refreshHomeBanners(client: ApiClient): Promise<void> {
-    try {
-      const feed = await client.request<HomeBannerFeed>(http.RequestMethod.GET, 'home-banners');
-      const items: HomeBannerItem[] = safeArray<HomeBannerItem>(feed?.items).map((item: HomeBannerItem): HomeBannerItem => {
-        return {
-          id: item.id,
-          eyebrow: item.eyebrow,
-          title: item.title,
-          subtitle: item.subtitle,
-          cta_label: item.cta_label,
-          image_url: this.resolveBannerUrl(item.image_url),
-          action_key: item.action_key,
-          theme_key: item.theme_key,
-          sort_order: item.sort_order,
-          status: item.status,
-          starts_at: item.starts_at,
-          ends_at: item.ends_at,
-          created_at: item.created_at,
-          updated_at: item.updated_at
-        };
-      });
-      this.homeBanners = items;
-      await PreferencesUtil.putString(HOME_BANNER_CACHE_KEY, JSON.stringify(items));
-    } catch (_) { /* retain cached banners */ }
   }
 
   async loadCourseContent(courseId: string): Promise<CourseContentBundle> {
@@ -591,6 +607,24 @@ struct Index {
     this.chatInput = '';
     this.chatSending = true;
     const client = this.createApiClient();
+    let pendingStreamText: string = '';
+    let streamFlushTimer: number = -1;
+    const assistantMessageId: string = `assistant-${Date.now()}`;
+    const flushStreamText = (): void => {
+      if (pendingStreamText.length === 0) return;
+      const delta: string = pendingStreamText;
+      pendingStreamText = '';
+      this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
+        return item.id === assistantMessageId ? new ChatMessageModel(item.id, item.role, item.content + delta) : item;
+      });
+    };
+    const scheduleStreamFlush = (): void => {
+      if (streamFlushTimer >= 0) return;
+      streamFlushTimer = setTimeout(() => {
+        streamFlushTimer = -1;
+        flushStreamText();
+      }, 50);
+    };
     try {
       const baseRequest: ChatRequest = {
         message: message,
@@ -599,7 +633,7 @@ struct Index {
       };
       const request: ChatRequest = withExpressionSignal(baseRequest, this.expressionService.latestStableSignal());
       const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: assistantMessageId,
         role: 'assistant',
         content: ''
       };
@@ -612,9 +646,8 @@ struct Index {
           const payload = JSON.parse(event.data) as Record<string, string>;
           if (event.event === 'chunk' && payload.text) {
             receivedChunk = true;
-            this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
-              return item.id === assistantMessage.id ? new ChatMessageModel(item.id, item.role, item.content + payload.text) : item;
-            });
+            pendingStreamText += payload.text;
+            scheduleStreamFlush();
           } else if (event.event === 'done' && payload.answer) {
             completedAnswer = payload.answer;
           } else if (event.event === 'error') {
@@ -624,6 +657,11 @@ struct Index {
           streamError = 'AI 服务返回格式异常';
         }
       });
+      if (streamFlushTimer >= 0) {
+        clearTimeout(streamFlushTimer);
+        streamFlushTimer = -1;
+      }
+      flushStreamText();
       if (streamError.length > 0) throw new Error(streamError);
       if (!receivedChunk && completedAnswer.length > 0) {
         this.chatMessages = this.chatMessages.map((item: ChatMessage) => {
@@ -650,17 +688,25 @@ struct Index {
         }];
       }
     } finally {
+      if (streamFlushTimer >= 0) {
+        clearTimeout(streamFlushTimer);
+        streamFlushTimer = -1;
+      }
+      flushStreamText();
       this.chatSending = false;
     }
   }
 
   async signOut(): Promise<void> {
+    await this.notificationSubscriberManager.stop();
     await this.stopExpressionRecognition();
     await this.stopFocusCamera();
     this.chaoxingRepository = null;
     this.chaoxingStatus = ChaoxingStatusMapper.unavailable();
     await this.appState.signOut();
     this.signedIn = false;
+    this.bingDailyWallpaperUrl = '';
+    this.bingDailyWallpaperAttempted = false;
     this.clearRoutes();
     this.activeTab = 0;
     this.password = '';
@@ -793,11 +839,6 @@ struct Index {
     this.pushRoute(AppRoute.EXAM_FORM);
   }
 
-  openLostFoundDetail(item: LostFoundItem): void {
-    this.lostFoundDetailId = item.id;
-    this.pushRoute(AppRoute.LOST_FOUND_DETAIL);
-  }
-
   openNotificationDetail(id: string): void {
     this.notificationDetailId = id;
     this.pushRoute(AppRoute.NOTIFICATION_DETAIL);
@@ -861,7 +902,6 @@ struct Index {
     this.taskDetailId = '';
     this.examDetailId = '';
     this.examFormId = '';
-    this.lostFoundDetailId = '';
     this.notificationDetailId = '';
     this.notificationSettingsSource = null;
     this.scheduleDetailItem = undefined;
@@ -883,9 +923,6 @@ struct Index {
     try {
       if (target === 'exams') {
         this.exams = safeArray<ExamItem>(await client.request<ExamItem[]>(http.RequestMethod.GET, 'student/exams'));
-      } else if (target === 'classrooms') {
-        const response = await client.request<ClassroomResponse>(http.RequestMethod.GET, 'student/classrooms');
-        this.classrooms = safeArray<ClassroomAvailability>(response?.items);
       } else if (target === 'university') {
         const all: UniversityItem[] = [];
         let page: number = 1;
@@ -908,8 +945,6 @@ struct Index {
         } catch (_) { this.communityHotPosts = []; }
       } else if (target === 'academic') {
         this.academicStatus = await client.request<AcademicStatusItem>(http.RequestMethod.GET, 'academic/status');
-      } else if (target === 'lostfound') {
-        this.lostFoundItems = safeArray<LostFoundItem>(await client.request<LostFoundItem[]>(http.RequestMethod.GET, 'student/lost-found'));
       } else if (target === 'focus') {
         const repository = new StudyRepository(client);
         this.studySessions = safeArray<StudySession>(await repository.listSessions());
@@ -947,7 +982,6 @@ struct Index {
       await this.appState.saveUniversity(newId, newName);
       this.communityPosts = [];
       this.communityHotPosts = [];
-      this.lostFoundItems = [];
       this.academicStatus = { status: 'unsupported', provider: 'unsupported' };
       toastError('大学已切换，校园范围数据已更新');
     } catch (error) {
@@ -1131,20 +1165,6 @@ struct Index {
     this.communityEditPost = null;
     this.communityPostImages = [];
     this.popRoute();
-  }
-
-  async publishLostFound(kind: string, title: string, content: string, location: string, contact: string): Promise<void> {
-    const payload: LostFoundPayload = { kind: kind, title: title, content: content, location: location, contact: contact };
-    this.secondarySubmitting = true;
-    try {
-      const client = this.createApiClient();
-      await client.request<LostFoundItem>(http.RequestMethod.POST, 'student/lost-found', payload);
-      await this.refreshSecondaryData('lostfound');
-      this.popRoute();
-      toastError('发布成功');
-    } catch (error) {
-      toastError('发布失败，请稍后重试');
-    } finally { this.secondarySubmitting = false; }
   }
 
   async startFocusSession(mode: FocusMode = 'focus', plannedSeconds: number = 1500, sessionMode: FocusSessionMode = 'QUIET', relatedTaskId?: string, goal?: string): Promise<void> {
@@ -1410,13 +1430,15 @@ struct Index {
   }
 
   @Builder HomePage() {
-    DashboardPage({
+    DashboardPageImmersive({
       darkMode: this.darkMode,
       userName: this.displayName,
+      hitokoto: hitokotoDisplayText(this.hitokotoText, this.hitokotoLoading),
+      wallpaperUrl: this.bingDailyWallpaperUrl,
       courses: this.courses,
       tasks: this.tasks,
       notices: this.notices,
-      banners: this.homeBanners,
+      hotPosts: this.communityHotPosts,
       reduceMotion: this.reduceMotion,
       onNavigate: (target: string) => {
         this.navigateTo(target);
@@ -1467,13 +1489,6 @@ struct Index {
     return this.exams.find((item: ExamItem) => item.id === this.examFormId) ?? { id: '', course_name: '', exam_date: '' };
   }
 
-  lostFoundView(route: string): string {
-    if (route === AppRoute.LOST_FOUND_DETAIL) return 'detail';
-    if (route === AppRoute.LOST_FOUND_PUBLISH) return 'publish';
-    if (route === AppRoute.LOST_FOUND_MINE) return 'mine';
-    return 'list';
-  }
-
   @Builder SecondaryContent(route: string) {
     if (route === AppRoute.COURSE_DETAIL) {
       if (this.courseDetailItem() !== undefined) {
@@ -1491,8 +1506,6 @@ struct Index {
       }
     } else if (route === AppRoute.EXAM_FORM) {
       ExamFormPage({ exam: this.examFormItem(), isEditing: this.examFormId.length > 0, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id) })
-    } else if (route === AppRoute.CLASSROOMS) {
-      ClassroomsPage({ classrooms: this.classrooms, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onQuery: () => this.refreshSecondaryData(AppRoute.CLASSROOMS) })
     } else if (route === AppRoute.UNIVERSITY || route === AppRoute.COMMUNITY || route === AppRoute.COMMUNITY_HOT || route === AppRoute.COMMUNITY_PUBLISH || route === AppRoute.COMMUNITY_DETAIL || route === AppRoute.COMMUNITY_EDIT || route === AppRoute.ACADEMIC) {
       V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailReport: () => this.reportCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
     } else if (route === AppRoute.FOCUS) {
@@ -1503,10 +1516,8 @@ struct Index {
       FocusSessionPage({ session: this.activeStudySession, plannedSeconds: this.focusPlannedSeconds, sessionMode: this.focusSessionMode, darkMode: this.darkMode, reduceMotion: this.reduceMotion, assistDetail: this.focusAssistDetail, assistLabel: this.focusAssistLabel, assistConfidence: this.focusAssistConfidence, messages: this.focusChatMessages, sending: this.focusChatSending, input: $focusChatInput, voiceState: this.focusVoiceState, hasPlanStep: this.focusPlan !== undefined && FocusPlanProgress.currentStep(this.focusPlan) !== undefined, onBack: () => this.leaveFocusSession(), onPause: () => this.updateFocusSession('pause'), onResume: () => this.updateFocusSession('resume'), onFinish: (completePlanStep: boolean) => this.updateFocusSession('finish', completePlanStep), onVoiceToggle: () => this.toggleFocusVoice(), onVoiceInterrupt: async () => { await this.focusVoiceClient?.interrupt(); }, onSend: () => this.sendFocusCompanionMessage() })
     } else if (route === AppRoute.FOCUS_SUMMARY) {
       FocusSummaryPage({ actualSeconds: this.focusSummarySeconds, interactionCount: this.focusSummaryInteractions, observation: this.focusSummaryObservation, darkMode: this.darkMode, onReturnHome: () => { this.pageStack.popToName(AppRoute.FOCUS, !this.reduceMotion); }, onStartNext: () => { this.pageStack.popToName(AppRoute.FOCUS, !this.reduceMotion); } })
-    } else if (route === AppRoute.LOST_FOUND || route === AppRoute.LOST_FOUND_DETAIL || route === AppRoute.LOST_FOUND_PUBLISH || route === AppRoute.LOST_FOUND_MINE) {
-      LostFoundPage({ items: this.lostFoundItems, loading: this.secondaryLoading, submitting: this.secondarySubmitting, darkMode: this.darkMode, reduceMotion: this.reduceMotion, view: this.lostFoundView(route), selectedItemId: this.lostFoundDetailId, onBack: () => this.popRoute(), onFilter: (_kind: string) => this.refreshSecondaryData(AppRoute.LOST_FOUND), onSubmit: (kind: string, title: string, content: string, location: string, contact: string) => this.publishLostFound(kind, title, content, location, contact), onOpenDetail: (item: LostFoundItem) => this.openLostFoundDetail(item), onOpenPublish: () => this.pushRoute(AppRoute.LOST_FOUND_PUBLISH), onOpenMine: () => this.pushRoute(AppRoute.LOST_FOUND_MINE) })
     } else if (route === AppRoute.NOTIFICATIONS || route === AppRoute.NOTIFICATION_DETAIL) {
-      NotificationsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, localNotices: this.localNotices, chaoxingStatus: this.chaoxingStatus, ingestService: this.ingestService, view: route === AppRoute.NOTIFICATION_DETAIL ? 'detail' : 'main', selectedLocalId: this.notificationDetailId, manualSeed: this.notificationManualSeed, onBack: () => this.popRoute(), onTaskSaved: () => this.refreshPrimaryData(), onLocalNoticesChanged: () => this.loadLocalNotices(), onOpenDetail: (id: string) => this.openNotificationDetail(id), onOpenSourceSettings: (source: NotificationSource) => this.openNotificationSourceSettings(source), onOpenChaoxing: () => this.pushRoute(AppRoute.CHAOXING), onPrepareManualExtract: (content: string) => { this.notificationManualSeed = content; } })
+      NotificationsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, localNotices: this.localNotices, chaoxingStatus: this.chaoxingStatus, notificationCapability: this.notificationCapability, ingestService: this.ingestService, view: route === AppRoute.NOTIFICATION_DETAIL ? 'detail' : 'main', selectedLocalId: this.notificationDetailId, manualSeed: this.notificationManualSeed, onBack: () => this.popRoute(), onTaskSaved: () => this.refreshPrimaryData(), onLocalNoticesChanged: () => this.loadLocalNotices(), onOpenDetail: (id: string) => this.openNotificationDetail(id), onOpenSourceSettings: (source: NotificationSource) => this.openNotificationSourceSettings(source), onOpenChaoxing: () => this.pushRoute(AppRoute.CHAOXING), onRequestNotificationAccess: () => this.requestNotificationPermission(), onPrepareManualExtract: (content: string) => { this.notificationManualSeed = content; } })
     } else if (route === AppRoute.NOTIFICATION_SOURCE_SETTINGS) {
       NotificationSourceSettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, source: this.notificationSettingsSource ?? NotificationSource.WECHAT, ingestService: this.ingestService, onBack: () => this.popRoute() })
     } else if (route === AppRoute.CHAOXING) {
@@ -1604,6 +1615,14 @@ struct Index {
     }
   }
 
+  pendingTaskCount(): number {
+    let count: number = 0;
+    for (const task of this.tasks) {
+      if (task.status !== 'completed') count += 1;
+    }
+    return count;
+  }
+
   @Builder AppDestination(name: string) {
     NavDestination() {
       this.SecondaryContent(name)
@@ -1630,7 +1649,8 @@ struct Index {
       loading: this.primaryLoading,
       darkMode: this.darkMode,
       onRefresh: () => this.refreshPrimaryData(),
-      onOpenDetail: (course: CourseItem) => this.openCourseDetail(course)
+      onOpenDetail: (course: CourseItem) => this.openCourseDetail(course),
+      onOpenSchedule: () => this.pushRoute(AppRouteRegistry.courseScheduleRoute())
     })
   }
 
@@ -1673,7 +1693,7 @@ struct Index {
       activeTab: $activeTab,
       darkMode: this.darkMode,
       reduceMotion: this.reduceMotion,
-      pendingCount: this.tasks.filter((task: TaskItem) => task.status !== 'completed').length,
+      pendingCount: this.pendingTaskCount(),
       onNavigate: (index: number) => {
         this.selectTab(index);
       }
@@ -1718,7 +1738,7 @@ struct Index {
         this.syncExpressionForTab();
       })
 
-      AmbientMotionField({ darkMode: this.darkMode, reduceMotion: this.reduceMotion })
+      AmbientMotionField({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, active: this.pageVisible })
 
       this.BottomNavigation()
     }

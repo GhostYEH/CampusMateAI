@@ -49,7 +49,7 @@ $env:DEVECO_SDK_HOME = Join-Path $env:DEVECO_HOME 'sdk'
 
 - 与 Android 相同素材的全屏视频登录页、海报兜底、渐变、账号/密码校验和真实登录
 - 首页、课程、待办、AI 校园助手、我的五栏浮动导航
-- 考试安排、空教室、办事大厅、专注自习、失物招领
+- 考试安排、专注自习
 - 通知整理、文件、校园论坛、收藏、系统设置、账号与隐私、关于
 - 深浅主题、减少动态效果、退出登录
 
@@ -57,11 +57,11 @@ $env:DEVECO_SDK_HOME = Join-Path $env:DEVECO_HOME 'sdk'
 
 登录后的五栏主界面是 ArkUI `Navigation` 的根页面，所有二级页面均由同一个 `NavPathStack` 管理，并使用标准 `NavDestination` 承载。社区详情与编辑、扫码确认、教务登录与课表等连续流程会形成真实的页面栈；页面标题栏返回、系统返回键和侧滑返回共享同一套 Pop 语义。
 
-课程详情、待办详情、考试详情/编辑、失物招领详情/发布/我的发布、通知详情/来源设置和课表课程详情也使用子路由；筛选项、确认弹窗和手动整理结果仍保留在所属页面内，不会伪装成独立页面。
+课程详情、待办详情、考试详情/编辑、通知详情/来源设置和课表课程详情也使用子路由；筛选项、确认弹窗和手动整理结果仍保留在所属页面内，不会伪装成独立页面。
 
 二级页面使用 Navigation 的系统默认 Push/Pop 转场：打开时从右向左进入，关闭时从左向右退出，并由系统处理非线性曲线和交互式返回进度。开启“减少动态效果”后，路由入栈、出栈和清栈均禁用转场动画。
 
-登录后会从真实后端读取用户、课程、待办、校园通知、论坛热门帖子、考试、空教室、服务申请、失物招领、专注记录、文件和收藏；AI 对话、待办完成/恢复、服务申请、失物发布、专注开始/暂停/继续/结束也调用真实接口。
+登录后会从真实后端读取用户、课程、待办、校园通知、论坛热门帖子、考试、专注记录、文件和收藏；AI 对话、待办完成/恢复、专注开始/暂停/继续/结束也调用真实接口。
 
 ## 后端地址
 
@@ -80,10 +80,7 @@ HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` �
 - `login_campus.mp4`
 - `campus_login_poster.png`
 - `exam_calendar_hero.png`
-- `hero_classroom.png`
-- `hero_services.png`
-- `hero_lost_found.png`
-- 失物卡片图片和个人头像参考图
+- 个人头像参考图
 
 这些资源均复制到鸿蒙目录，未修改 Android 原文件。
 
@@ -91,7 +88,7 @@ HarmonyOS Emulator 没有 Android 的 `10.0.2.2` 宿主机映射，`127.0.0.1` �
 
 认证已保存 access/refresh 双 token，并支持并发 401 的单航班刷新、刷新后原请求重放一次以及会话失效清理。敏感 token 由独立 TokenStore 使用 AssetStoreKit 保存，不写入普通 Preferences 或日志。
 
-本轮在本机 API 24 SDK 中确认：`ohos.permission.SUBSCRIBE_NOTIFICATION` 是 `system_basic`、`system_grant` 权限；当前 CampusMateAI 构建没有该资质，不能读取本机微信、企业微信、QQ/TIM 通知。工程已移除无效权限声明和 `NotificationSubscriberExtensionAbility` 注册，自动采集状态固定为 **UNAVAILABLE**。当前真实来源是后端站内通知、学习通账号同步和用户手动粘贴；学习通已接入状态、登录、立即同步与断开接口。来源解析、三个 IM 独立白名单、群名精确匹配与本地分类继续采用 fail-closed。
+本轮在本机 API 24 SDK 中确认：`ohos.permission.SUBSCRIBE_NOTIFICATION` 是 `system_basic`、`system_grant` 权限，不是普通运行时权限。工程已恢复 `NotificationSubscriberExtensionAbility` 注册、权限声明和授权入口；通知页会调用 `notificationExtensionSubscription.openSubscriptionSettings` 拉起系统授权页，并在返回后通过 `isUserGranted` 刷新状态。该能力仍需在 AGC/签名配置中获得对应资质；没有权限证书时不能安装或不能打开授权页，不能通过代码绕过。该订阅接口面向 HarmonyOS 通知扩展/穿戴同步场景，不等同于普通应用可无条件读取同一手机上的微信、企业微信、QQ/TIM 通知。当前可用来源仍包括后端站内通知、学习通账号同步和用户手动粘贴；来源解析、三个 IM 独立白名单、群名精确匹配与本地分类继续采用 fail-closed。
 
 通知可靠队列尚未完成：当前本地记录仍使用 Preferences，不是 ArkData/RDB Outbox，失败重试与 App 重启恢复不能视为已对齐。完整状态见 `PARITY_AUDIT.md`。
 

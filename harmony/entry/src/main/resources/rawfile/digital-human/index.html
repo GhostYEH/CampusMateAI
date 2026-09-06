@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { background: transparent; }
+    #unity-canvas, #unity-output { background: #e8edfb; }
+    #unity-canvas, #unity-output { position: absolute; inset: 0 auto auto 0; display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 50%; }
+    #unity-canvas { opacity: 0; pointer-events: none; }
+    #unity-output { z-index: 1; }
+  </style>
+</head>
+<body>
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
+  <canvas id="unity-output"></canvas>
+  <script>
+    const canvas = document.querySelector("#unity-canvas");
+    const outputCanvas = document.querySelector("#unity-output");
+    let config = { apiBaseUrl: "", accessToken: "" };
+    let unityInstance = null;
+    let lastText = "";
+    let muted = false;
+    let abortController = null;
+    let presentation = { zoom: 1.18, idleMotion: true };
+
+    function sizeCanvas() {
+      canvas.width = 384;
+      canvas.height = 384;
+      outputCanvas.width = canvas.width;
+      outputCanvas.height = canvas.height;
+      console.log(`[CampusMateAndroidStage] canvas=${canvas.width}x${canvas.height}`);
+    }
+
+    function sendUnity(type, value) {
+      if (!unityInstance) return;
+      if (type === "speech-level") unityInstance.SendMessage("Rusk", "SetSpeechLevel", String(value));
+      if (type === "speech-state") unityInstance.SendMessage("Rusk", "SetSpeaking", value ? "1" : "0");
+      if (type === "speech-stop") unityInstance.SendMessage("Rusk", "StopSpeech");
+    }
+
+    const player = {
+      context: null,
+      source: null,
+      frame: 0,
+      async play(bytes) {
+        this.stop();
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (!Context) return false;
+        this.context ||= new Context();
+        await this.context.resume();
+        const sampleCount = Math.floor(bytes.byteLength / 2);
+        const samples = new Float32Array(sampleCount);
+        const view = new DataView(bytes);
+        for (let index = 0; index < sampleCount; index += 1) {
+          samples[index] = Math.max(-1, view.getInt16(index * 2, true) / 32768);
+        }
+        const audioBuffer = this.context.createBuffer(1, sampleCount, 24000);
+        audioBuffer.copyToChannel(samples, 0);
+        this.source = this.context.createBufferSource();
+        this.source.buffer = audioBuffer;
+        this.source.connect(this.context.destination);
+        this.source.onended = () => { this.source = null; sendUnity("speech-state", false); };
+        sendUnity("speech-state", true);
+        this.source.start();
+        const startedAt = performance.now();
+        const animateLevel = now => {
+          if (!this.source) return;
+          sendUnity("speech-level", 0.42 + Math.sin((now - startedAt) / 90) * 0.18);
+          this.frame = requestAnimationFrame(animateLevel);
+        };
+        this.frame = requestAnimationFrame(animateLevel);
+        return true;
+      },
+      async togglePaused() {
+        if (!this.context) return false;
+        if (this.context.state === "running") { await this.context.suspend(); return true; }
+        await this.context.resume();
+        return false;
+      },
+      stop() {
+        cancelAnimationFrame(this.frame);
+        this.frame = 0;
+        try { this.source?.stop(); } catch (_) {}
+        this.source = null;
+        sendUnity("speech-level", 0);
+        sendUnity("speech-state", false);
+      },
+    };
+
+    function stop() {
+      abortController?.abort();
+      abortController = null;
+      player.stop();
+      sendUnity("speech-stop");
+    }
+
+    async function speak(text) {
+      const cleanText = String(text || "").trim();
+      if (!cleanText) return false;
+      lastText = cleanText;
+      if (muted) return false;
+      stop();
+      const request = new AbortController();
+      abortController = request;
+      try {
+        const response = await fetch(`${config.apiBaseUrl.replace(/\/+$/, "")}/assistant/tts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.accessToken}` },
+          body: JSON.stringify({ text: cleanText }),
+          signal: request.signal,
+        });
+        if (!response.ok) throw new Error(`speech ${response.status}`);
+        return player.play(await response.arrayBuffer());
+      } catch (error) {
+        if (error?.name !== "AbortError") console.error("[CampusMateSpeech]", error);
+        if (abortController === request) player.stop();
+        return false;
+      } finally {
+        if (abortController === request) abortController = null;
+      }
+    }
+
+    window.CampusMateDigitalHuman = {
+      configure(value) {
+        config = {
+          apiBaseUrl: String(value?.apiBaseUrl || "").trim(),
+          accessToken: String(value?.accessToken || "").trim(),
+        };
+        return true;
+      },
+      speak,
+      stop,
+      setPresentation(value) {
+        const requestedZoom = Number(value?.zoom);
+        presentation.zoom = Number.isFinite(requestedZoom) ? Math.min(1.3, Math.max(1, requestedZoom)) : 1.18;
+        presentation.idleMotion = value?.idleMotion !== false;
+        return true;
+      },
+      toggleMuted() { muted = !muted; if (muted) stop(); return muted; },
+      togglePaused() { return player.togglePaused(); },
+      replay() { return speak(lastText); },
+    };
+
+    const loader = document.createElement("script");
+    loader.src = "./Build/digital-human.loader.js";
+    loader.onload = async () => {
+      sizeCanvas();
+      unityInstance = await createUnityInstance(canvas, {
+        dataUrl: "./Build/digital-human.data",
+        frameworkUrl: "./Build/digital-human.framework.js",
+        codeUrl: "./Build/digital-human.wasm",
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "CampusMate",
+        productName: "CampusMate Digital Human",
+        productVersion: "0.1.0",
+        matchWebGLToCanvasSize: false,
+        devicePixelRatio: 1,
+        webglContextAttributes: {
+          alpha: false,
+          antialias: false,
+          preserveDrawingBuffer: false,
+          powerPreference: "low-power",
+        },
+      });
+      const copyUnityFrame = () => {
+        const gl = canvas.getContext("webgl2");
+        const output = outputCanvas.getContext("2d", { alpha: false });
+        if (!gl || !output) return;
+        const raw = new Uint8Array(canvas.width * canvas.height * 4);
+        const frame = output.createImageData(canvas.width, canvas.height);
+        const sourceCanvas = document.createElement("canvas");
+        sourceCanvas.width = canvas.width;
+        sourceCanvas.height = canvas.height;
+        const source = sourceCanvas.getContext("2d", { alpha: false });
+        const rowBytes = canvas.width * 4;
+        const draw = () => {
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+          for (let row = 0; row < canvas.height; row += 1) {
+            const sourceStart = row * rowBytes;
+            const targetStart = (canvas.height - row - 1) * rowBytes;
+            frame.data.set(raw.subarray(sourceStart, sourceStart + rowBytes), targetStart);
+          }
+          source.putImageData(frame, 0, 0);
+          const seconds = performance.now() / 1000;
+          const breath = presentation.idleMotion ? Math.sin(seconds * 1.25) * 0.009 : 0;
+          const sway = presentation.idleMotion ? Math.sin(seconds * 0.46) * 0.012 : 0;
+          const driftX = presentation.idleMotion ? Math.sin(seconds * 0.34) * 2.2 : 0;
+          const driftY = presentation.idleMotion ? Math.sin(seconds * 0.72) * 1.5 : 0;
+          const gesturePhase = seconds % 12;
+          const gestureEnvelope = presentation.idleMotion && gesturePhase > 8
+            ? Math.sin(Math.min(1, (gesturePhase - 8) / 3.2) * Math.PI)
+            : 0;
+          const scale = presentation.zoom * (1 + breath + gestureEnvelope * 0.012);
+          output.setTransform(1, 0, 0, 1, 0, 0);
+          output.clearRect(0, 0, canvas.width, canvas.height);
+          output.translate(canvas.width / 2 + driftX, canvas.height / 2 + driftY - gestureEnvelope * 2.5);
+          output.rotate(sway + gestureEnvelope * 0.009);
+          output.scale(scale, scale);
+          output.drawImage(sourceCanvas, -canvas.width / 2, -canvas.height / 2);
+          setTimeout(() => requestAnimationFrame(draw), 50);
+        };
+        draw();
+      };
+      copyUnityFrame();
+    };
+    loader.onerror = error => console.error("[CampusMateUnityLoader]", error);
+    document.body.appendChild(loader);
+    window.addEventListener("pagehide", () => { stop(); unityInstance?.Quit?.(); });
+  </script>
+</body>
+</html>

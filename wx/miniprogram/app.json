@@ -14,7 +14,6 @@
       "root": "package-campus",
       "pages": [
         "pages/notices/notices",
-        "pages/classrooms/classrooms",
         "pages/exams/exams"
       ]
     },
@@ -24,8 +23,7 @@
         "pages/community/community",
         "pages/community-detail/community-detail",
         "pages/hot-topics/hot-topics",
-        "pages/community-publish/community-publish",
-        "pages/lostfound/lostfound"
+        "pages/community-publish/community-publish"
       ]
     },
     {

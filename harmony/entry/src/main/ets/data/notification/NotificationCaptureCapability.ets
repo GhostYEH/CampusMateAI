@@ -22,6 +22,16 @@ export class NotificationCaptureCapability {
     );
   }
 
+  static fromUserGrant(granted: boolean): NotificationCaptureCapability {
+    return granted
+      ? new NotificationCaptureCapability(NotificationCaptureStatus.SUPPORTED, '系统通知监听已授权。')
+      : new NotificationCaptureCapability(NotificationCaptureStatus.NEEDS_PERMISSION, '请在系统弹窗中允许获取本机通知。');
+  }
+
+  static error(detail: string): NotificationCaptureCapability {
+    return new NotificationCaptureCapability(NotificationCaptureStatus.ERROR, detail);
+  }
+
   canStart(): boolean {
     return this.status === NotificationCaptureStatus.SUPPORTED;
   }

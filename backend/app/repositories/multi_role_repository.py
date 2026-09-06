@@ -1382,6 +1382,22 @@ class SubmissionRepository:
             row = cur.fetchone()
             return SubmissionRow.from_row(row) if row else None
 
+    def get_submission_statuses_for_student(
+        self, assignment_ids: List[str], student_id: str,
+    ) -> dict[str, str]:
+        """一次读取学生对一组作业的提交状态，供课程作业列表使用。"""
+        ids = list(dict.fromkeys(assignment_ids))
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        with self._db.query() as conn:
+            cur = conn.execute(
+                f"""SELECT assignment_id, status FROM submissions
+                    WHERE student_id = ? AND assignment_id IN ({placeholders})""",
+                [student_id, *ids],
+            )
+            return {row["assignment_id"]: row["status"] for row in cur.fetchall()}
+
     def list_submissions(
         self,
         assignment_id: str,

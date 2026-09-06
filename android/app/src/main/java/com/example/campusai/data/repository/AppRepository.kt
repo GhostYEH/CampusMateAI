@@ -32,6 +32,8 @@ import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
 import com.example.campusai.features.gamification.DashboardStyle
 import com.example.campusai.features.gamification.GamificationStore
+import com.example.campusai.data.hitokoto.HitokotoRepository
+import com.example.campusai.data.wallpaper.BingDailyWallpaperRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -64,6 +66,9 @@ class AppRepository(
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val gamificationStore = GamificationStore(dataStore)
+    private companion object {
+        const val HOME_BANNER_CACHE_KEY = "home_banners_v1"
+    }
     @Volatile
     private var autoLoginAttempted = false
     private val campusNewsPreferencesMutex = Mutex()
@@ -72,6 +77,12 @@ class AppRepository(
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
+
+    private val hitokotoRepository = HitokotoRepository()
+    val hitokoto = hitokotoRepository.state
+
+    private val bingDailyWallpaperRepository = BingDailyWallpaperRepository()
+    val bingDailyWallpaper = bingDailyWallpaperRepository.state
 
     val accessToken: StateFlow<String?> = dataStore.accessToken.stateIn(
         scope,
@@ -301,6 +312,10 @@ class AppRepository(
         return user
     }
 
+    suspend fun refreshHitokoto() = hitokotoRepository.refresh()
+
+    suspend fun refreshBingDailyWallpaper() = bingDailyWallpaperRepository.refresh()
+
     suspend fun loginChaoxing(username: String, password: String): Pair<Boolean, String> {
         return try {
             val req = com.example.campusai.data.remote.ChaoxingLoginRequest(username, password)
@@ -493,7 +508,7 @@ class AppRepository(
         }
     }
 
-    /** 拉取课程列表。 */
+    /** 拉取首页 Banner。 */
     suspend fun refreshHomeBanners() {
         try {
             val response = ApiClient.api.homeBanners()
@@ -597,10 +612,6 @@ class AppRepository(
                 }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
-    }
-
-    private companion object {
-        const val HOME_BANNER_CACHE_KEY = "home_banners_v1"
     }
 
     /** 拉取云端任务并合并到本地缓存。 */

@@ -1,7 +1,7 @@
 package com.example.campusai.ui.strings
 
 /**
- * 新增五个模块（考试安排 / 空教室 / 办事大厅 / 专注自习 / 失物招领）的中文文案集中管理。
+ * 核心模块的中文文案集中管理。
  * 页面中不再散落硬编码字符串。
  */
 object CampusStrings {
@@ -57,88 +57,6 @@ object CampusStrings {
         const val TYPES = "期末考试,期中考试,随堂测验,补考"
     }
 
-    object Classrooms {
-        const val TITLE = "空教室查询"
-        const val SUBTITLE = "根据课程占用表推算空闲节次（演示数据）"
-        const val CAMPUS = "校区"
-        const val BUILDING = "教学楼"
-        const val DATE = "日期"
-        const val SLOTS = "节次"
-        const val CAPACITY = "容量"
-        const val MULTIMEDIA = "仅显示有多媒体设备"
-        const val QUERY = "查询空闲教室"
-        const val INCOMPLETE = "请先选择校区、教学楼和日期"
-        const val RESULT_TITLE = "查询结果"
-        const val EMPTY = "该条件下没有空闲教室，换个条件试试"
-        const val CAPACITY_ALL = "全部容量"
-        const val FREE_SLOTS = "空闲节次"
-        const val SEAT_UNIT = "座"
-        const val FLOOR_UNIT = "层"
-        const val HAS_MULTIMEDIA = "多媒体"
-        const val NO_MULTIMEDIA = "无多媒体"
-        const val DETAIL_FREE = "当日空闲时间"
-    }
-
-    object Services {
-        const val TITLE = "办事大厅"
-        const val SUBTITLE = "常用校园事务一站办理"
-        const val LEAVE = "请假申请"
-        const val REPAIR = "宿舍报修"
-        const val CERTIFICATE = "证明申请"
-        const val VENUE = "场地申请"
-        const val FEEDBACK = "意见反馈"
-        const val MINE = "我的申请"
-        const val MINE_TITLE = "我的申请"
-        const val TAB_ALL = "全部"
-        const val TAB_PENDING = "审核中"
-        const val TAB_APPROVED = "已通过"
-        const val TAB_REJECTED = "已驳回"
-        const val TAB_COMPLETED = "已完成"
-        const val STATUS_PENDING = "审核中"
-        const val STATUS_APPROVED = "已通过"
-        const val STATUS_REJECTED = "已驳回"
-        const val STATUS_COMPLETED = "已完成"
-        const val EMPTY = "暂无相关申请"
-        const val DETAIL_TITLE = "申请详情"
-        const val TIMELINE = "处理进度"
-        const val SUBMITTED_AT = "提交时间"
-
-        // 请假
-        const val LEAVE_TITLE = "请假申请"
-        const val LEAVE_TYPE = "请假类型"
-        const val LEAVE_TYPES = "病假,事假,公假"
-        const val LEAVE_START = "开始时间"
-        const val LEAVE_END = "结束时间"
-        const val LEAVE_REASON = "请假原因"
-        const val LEAVE_REASON_HINT = "请说明请假事由（至少 10 个字）"
-        const val LEAVE_PHONE = "联系方式"
-        const val LEAVE_PHONE_HINT = "11 位手机号"
-        const val LEAVE_ATTACHMENT = "附件"
-        const val LEAVE_ATTACHMENT_HINT = "病历单、证明等（本地选择，不上传）"
-        const val LEAVE_SUBMIT_CONFIRM = "确认提交请假申请吗？提交后进入审核流程。"
-
-        // 报修
-        const val REPAIR_TITLE = "宿舍报修"
-        const val REPAIR_BUILDING = "宿舍楼"
-        const val REPAIR_BUILDINGS = "竹园 1 栋,竹园 2 栋,竹园 3 栋,梅园 1 栋,梅园 2 栋"
-        const val REPAIR_ROOM = "房间号"
-        const val REPAIR_TYPE = "报修类型"
-        const val REPAIR_TYPES = "水电维修,家具门窗,网络故障,空调卫浴,其他"
-        const val REPAIR_DESC = "问题描述"
-        const val REPAIR_DESC_HINT = "请描述具体问题（至少 10 个字）"
-        const val REPAIR_IMAGE = "现场图片"
-        const val REPAIR_IMAGE_HINT = "本地选择并预览，不上传"
-        const val REPAIR_URGENCY = "紧急程度"
-        const val REPAIR_URGENCIES = "一般,较急,非常紧急"
-        const val REPAIR_PHONE = "联系电话"
-        const val REPAIR_SUBMIT_CONFIRM = "确认提交报修单吗？"
-
-        // 通用简易表单（证明 / 场地 / 反馈）
-        const val GENERIC_DESC = "具体说明"
-        const val GENERIC_DESC_HINT = "请描述需求或建议（至少 10 个字）"
-        const val GENERIC_CONTACT = "联系方式"
-    }
-
     object Focus {
         const val TITLE = "专注自习"
         const val SUBTITLE = "番茄钟计时，状态本地保存，退出不丢失"
@@ -173,50 +91,4 @@ object CampusStrings {
         const val UNFINISHED_TAG = "提前结束"
     }
 
-    object LostFound {
-        const val TITLE = "失物招领"
-        const val SUBTITLE = "本地演示数据，接入后端后可全校同步"
-        const val TAB_LOST = "失物"
-        const val TAB_FOUND = "招领"
-        const val SEARCH_HINT = "搜索物品、地点"
-        const val PUBLISH = "发布"
-        const val MINE = "我的发布"
-        const val MINE_TITLE = "我的发布"
-        const val CATEGORY_ALL = "全部"
-        const val CATEGORIES = "证件卡片,电子产品,书籍资料,生活用品,其他"
-        const val LOCATIONS = "教学楼,图书馆,食堂,宿舍,操场,其他"
-        const val SORT_NEW = "最新优先"
-        const val SORT_OLD = "最早优先"
-        const val EMPTY = "暂无相关信息"
-        const val LOAD_ERROR = "加载失败，请检查网络后重试"
-        const val DETAIL_TITLE = "信息详情"
-        const val CONTACT = "联系发布者"
-        const val CONTACT_ANONYMOUS = "发布者选择匿名，联系方式已隐藏"
-        const val CONTACT_COPIED = "联系方式已复制到剪贴板"
-        const val MARK_CLOSED_LOST = "标记已找到"
-        const val MARK_CLOSED_FOUND = "标记已归还"
-        const val STATUS_OPEN_LOST = "寻找中"
-        const val STATUS_OPEN_FOUND = "待认领"
-        const val STATUS_CLOSED_LOST = "已找到"
-        const val STATUS_CLOSED_FOUND = "已归还"
-        const val DELETE_TITLE = "删除发布"
-        const val DELETE_MESSAGE = "删除后无法恢复，确定删除这条信息吗？"
-        const val PUBLISH_TITLE = "发布信息"
-        const val KIND_LOST = "丢失物品"
-        const val KIND_FOUND = "捡到物品"
-        const val FIELD_TITLE = "标题"
-        const val FIELD_TITLE_HINT = "例如：黑色小米充电宝"
-        const val FIELD_CATEGORY = "物品分类"
-        const val FIELD_DESC = "详细描述"
-        const val FIELD_DESC_HINT = "外观特征、丢失/拾获经过等（至少 10 个字）"
-        const val FIELD_TIME = "时间"
-        const val FIELD_LOCATION = "地点"
-        const val FIELD_CONTACT = "联系方式"
-        const val FIELD_IMAGE = "图片"
-        const val FIELD_IMAGE_HINT = "本地选择并预览，不上传"
-        const val FIELD_ANONYMOUS = "匿名展示联系方式"
-        const val ANONYMOUS_ON = "列表与详情页将隐藏你的联系方式"
-        const val ANONYMOUS_OFF = "其他同学可以看到你填写的联系方式"
-        const val PUBLISH_SUCCESS = "发布成功"
-    }
 }

@@ -1,12 +1,11 @@
-from pathlib import Path
-
 from app.digital_human_static import cache_control_for_asset, resolve_digital_human_assets_dir
 
 
 def test_resolves_checked_in_unity_webgl_build() -> None:
     assets = resolve_digital_human_assets_dir()
 
-    assert assets == Path(__file__).resolve().parents[2] / "web" / "public" / "digital-human"
+    assert assets.name == "digital-human"
+    assert assets.parent.name == "public"
     assert (assets / "index.html").is_file()
     assert (assets / "mobile.html").is_file()
 

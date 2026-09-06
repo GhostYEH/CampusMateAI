@@ -119,6 +119,8 @@ class ExpressionSessionManager(
     val status: StateFlow<ExpressionServiceStatus> = _status.asStateFlow()
     private val _result = MutableStateFlow(latestResult)
     val result: StateFlow<ExpressionResult> = _result.asStateFlow()
+    private val _observationActive = MutableStateFlow(false)
+    val observationActive: StateFlow<Boolean> = _observationActive.asStateFlow()
     private val _focusState = MutableStateFlow(FocusState.UNAVAILABLE)
     val focusState: StateFlow<FocusState> = _focusState.asStateFlow()
 
@@ -148,6 +150,9 @@ class ExpressionSessionManager(
 
     init {
         cameraPipeline.errorListener = CameraErrorListener { message ->
+            focusAnalysisActive = false
+            clearTransientObservationState()
+            cameraPipeline.pause()
             _status.value = ExpressionServiceStatus.Error(message)
         }
     }
@@ -313,8 +318,7 @@ class ExpressionSessionManager(
         service = null
         serviceInitialized = false
         behaviorAnalyzersAttached = false
-        focusAnalysisActive = false
-        behaviorObservationActive = false
+        clearTransientObservationState()
         _status.value = ExpressionServiceStatus.Off
         _focusState.value = FocusState.UNAVAILABLE
     }
@@ -337,6 +341,7 @@ class ExpressionSessionManager(
             counselorPageVisible && counselorAppForeground
         val shouldRun = focusShouldRun || counselorShouldRun
         focusAnalysisActive = focusShouldRun
+        _observationActive.value = shouldRun
 
         if (!shouldRun) {
             cameraPipeline.pause()
@@ -344,8 +349,7 @@ class ExpressionSessionManager(
             personAnalyzer.pause()
             behaviorTemporalSmoother.reset()
             behaviorSignalProcessor.reset()
-            _behaviorDisplayState.value = BehaviorDisplayState.Observing
-            behaviorObservationActive = false
+            clearTransientObservationState()
             val fallbackStatus: ExpressionServiceStatus = when {
                 !assistanceEnabled && !counselorAssistanceEnabled -> ExpressionServiceStatus.Off
                 (assistanceEnabled && !cameraPermissionGranted) ||
@@ -380,6 +384,7 @@ class ExpressionSessionManager(
             behaviorCollectorJob = scope.launch {
                 var lastUiBehaviorUpdateMs = 0L
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
+                    if (!focusAnalysisActive) return@collectLatest
                     val smoothedPrediction = behaviorTemporalSmoother.smooth(prediction)
                     // Inference may complete at the camera cadence. Keep the
                     // visible status calm while the signal processor receives
@@ -423,6 +428,7 @@ class ExpressionSessionManager(
 
             personCollectorJob = scope.launch {
                 personAnalyzer.snapshot.collectLatest { detection ->
+                    if (!_observationActive.value) return@collectLatest
                     _personDetection.value = detection
                     if (detection.timestampMs > 0L) {
                         updatePresence(
@@ -441,6 +447,7 @@ class ExpressionSessionManager(
 
             resultCollectorJob = scope.launch {
                 created.results().collectLatest { result ->
+                    if (!_observationActive.value) return@collectLatest
                     latestResult = result
                     _result.value = result
                     if (!focusAnalysisActive) return@collectLatest
@@ -509,6 +516,28 @@ class ExpressionSessionManager(
         isStable = false,
         modelVersion = "not-loaded",
     )
+
+    private fun clearTransientObservationState() {
+        _observationActive.value = false
+        focusAnalysisActive = false
+        latestResult = initialResult()
+        _result.value = latestResult
+        _behaviorPrediction.value = null
+        _behaviorDisplayState.value = BehaviorDisplayState.Observing
+        learningContinuityStateMachine.reset()
+        _learningContinuityState.value = LearningContinuityState.OBSERVING
+        _personDetection.value = PersonDetectionSnapshot()
+        synchronized(presenceLock) {
+            presenceStateMachine.reset()
+            latestPersonDetected = false
+            latestFaceDetected = false
+            latestBehaviorEvidence = false
+        }
+        _presence.value = PresenceSnapshot()
+        behaviorObservationActive = false
+        reminderState.clearAll()
+        _gentleReminder.value = null
+    }
 
     private fun updatePresence(
         timestampMs: Long,

@@ -2,7 +2,7 @@ import { LocalCapturedNotice, ExtractResult, TaskItem } from '../../data/Models'
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { NotificationIngestService } from '../../data/notification/NotificationIngestService';
-import { NotificationCaptureCapability } from '../../data/notification/NotificationCaptureCapability';
+import { NotificationCaptureCapability, NotificationCaptureStatus } from '../../data/notification/NotificationCaptureCapability';
 import { MotionDuration, MotionSpec } from '../../ui/MotionSpec';
 import { NotificationInbox } from '../../data/notification/NotificationInbox';
 import { DEFAULT_SOURCE_SETTINGS, NotificationSource, NotificationSourceResolver, NotificationSourceSettings } from '../../data/notification/NotificationSource';
@@ -18,6 +18,7 @@ export struct NotificationsPage {
   @Prop view: string = 'main';
   @Prop selectedLocalId: string = '';
   @Prop settingsSource: NotificationSource | null = null;
+  @Prop notificationCapability: NotificationCaptureCapability = NotificationCaptureCapability.ordinaryPhoneBuild();
   @Prop @Watch('onManualSeedChange') manualSeed: string = '';
   @State filterSource: NotificationSource | null = null;
   @State sourceSettings: NotificationSourceSettings = {
@@ -52,9 +53,16 @@ export struct NotificationsPage {
   onOpenDetail: (id: string) => void = (_: string) => {};
   onOpenSourceSettings: (source: NotificationSource) => void = (_: NotificationSource) => {};
   onOpenChaoxing: () => void = () => {};
+  onRequestNotificationAccess: () => void = () => {};
   onPrepareManualExtract: (content: string) => void = (_: string) => {};
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
-  captureCapability(): NotificationCaptureCapability { return NotificationCaptureCapability.ordinaryPhoneBuild(); }
+  captureCapability(): NotificationCaptureCapability { return this.notificationCapability; }
+  captureStatusLabel(): string {
+    if (this.captureCapability().status === NotificationCaptureStatus.SUPPORTED) return '已授权';
+    if (this.captureCapability().status === NotificationCaptureStatus.NEEDS_PERMISSION) return '需授权';
+    if (this.captureCapability().status === NotificationCaptureStatus.ERROR) return '授权失败';
+    return '不可用';
+  }
   visibleLocalNotices(): LocalCapturedNotice[] { return NotificationInbox.filter(this.localNotices, this.filterSource); }
   selectedLocalNotice(): LocalCapturedNotice | undefined {
     return this.localNotices.find((item: LocalCapturedNotice) => item.id === this.selectedLocalId);
@@ -449,9 +457,16 @@ export struct NotificationsPage {
                   Text('系统通知监听').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
                   Text(this.captureCapability().detail).fontColor(this.palette().muted).fontSize(10).lineHeight(15).maxLines(3)
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-                Text('不可用').fontColor(this.palette().muted).fontSize(9).fontWeight(FontWeight.Medium)
+                if (this.captureCapability().status === NotificationCaptureStatus.NEEDS_PERMISSION) {
+                  Button('请求权限').fontColor(this.palette().primary).fontSize(10).height(34).backgroundColor('#00000000').padding({ left: 7, right: 7 })
+                    .onClick(() => this.onRequestNotificationAccess())
+                } else {
+                  Text(this.captureStatusLabel()).fontColor(this.captureCapability().canStart() ? this.palette().success : this.palette().muted).fontSize(9).fontWeight(FontWeight.Medium)
+                }
               }.width('100%')
-              Text('当前应用没有系统级通知订阅资质，无法直接读取微信、企业微信或 QQ 的系统通知。可使用学习通同步、后端通知或手动粘贴。')
+              Text(this.captureCapability().status === NotificationCaptureStatus.SUPPORTED
+                ? '已获得系统授权，通知扩展收到消息后会自动收集；来源开关和群聊白名单仍会继续过滤。'
+                : this.captureCapability().detail)
                 .fontColor(this.palette().muted).fontSize(10).lineHeight(16).width('100%')
             }.width('100%').padding(13).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 

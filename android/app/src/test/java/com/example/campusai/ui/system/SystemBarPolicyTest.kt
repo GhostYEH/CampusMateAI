@@ -38,18 +38,9 @@ class SystemBarPolicyTest {
     }
 
     @Test
-    fun lostFoundUsesDarkStatusIconsOverItsAlwaysLightHeroInDarkTheme() {
-        val policy = systemBarPolicy(route = "lostfound", darkTheme = true, authenticated = true)
-
-        assertTrue(policy.darkStatusBarIcons)
-        assertFalse(policy.darkNavigationBarIcons)
-    }
-
-    @Test
     fun fullBleedAndSelfInsetRoutesAreExplicit() {
         assertTrue(routeOwnsStatusBarInset("home"))
         assertTrue(routeOwnsStatusBarInset("profile"))
-        assertTrue(routeOwnsStatusBarInset("lostfound"))
         assertFalse(routeOwnsStatusBarInset("courses"))
         assertFalse(routeOwnsStatusBarInset("task_detail/{taskId}"))
     }

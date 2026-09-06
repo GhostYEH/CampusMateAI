@@ -154,10 +154,8 @@ export struct DashboardPage {
     Row() {
       ForEach([
         { title: '考试安排', route: 'exams', symbol: $r('sys.symbol.calendar'), color: '#5B68F2' },
-        { title: '空教室', route: 'classrooms', symbol: $r('sys.symbol.doors_and_windows_open'), color: '#397CEF' },
         { title: '校园社区', route: 'community', symbol: $r('sys.symbol.person_2'), color: '#35B99A' },
         { title: '专注自习', route: 'focus', symbol: $r('sys.symbol.timer'), color: '#FFA43A' },
-        { title: '失物招领', route: 'lostfound', symbol: $r('sys.symbol.magnifyingglass'), color: '#7C6BE8' }
       ], (action: DashboardAction) => {
         Column({ space: 8 }) {
           Stack({ alignContent: Alignment.Center }) {
@@ -387,9 +385,9 @@ export struct DashboardPage {
     Column() {
       this.SectionTitle('近期截止', '更多', 'tasks')
       Blank().height(9)
-      this.DeadlineRow(this.pendingTasks().length > 0 ? this.pendingTasks()[0].title : '暂无近期截止', this.pendingTasks().length > 0 ? (this.pendingTasks()[0].deadline ?? this.pendingTasks()[0].due ?? '待设置') : '可以放松一下', true)
+      this.DeadlineRow(this.pendingTask(0)?.title ?? '暂无近期截止', this.pendingTask(0) !== undefined ? (this.pendingTask(0)?.deadline ?? this.pendingTask(0)?.due ?? '待设置') : '可以放松一下', true)
       Blank().height(7)
-      this.DeadlineRow(this.pendingTasks().length > 1 ? this.pendingTasks()[1].title : '下一项待办', this.pendingTasks().length > 1 ? (this.pendingTasks()[1].deadline ?? this.pendingTasks()[1].due ?? '暂无') : '暂无', false)
+      this.DeadlineRow(this.pendingTask(1)?.title ?? '下一项待办', this.pendingTask(1) !== undefined ? (this.pendingTask(1)?.deadline ?? this.pendingTask(1)?.due ?? '暂无') : '暂无', false)
     }
     .layoutWeight(1)
     .height(191)
@@ -398,8 +396,16 @@ export struct DashboardPage {
     .borderRadius(22)
   }
 
-  pendingTasks(): TaskItem[] {
-    return this.tasks.filter((task: TaskItem) => task.status !== 'completed').slice(0, 2);
+  pendingTask(index: number): TaskItem | undefined {
+    if (index < 0) return undefined;
+    let pendingIndex: number = 0;
+    for (const task of this.tasks) {
+      if (task.status !== 'completed') {
+        if (pendingIndex === index) return task;
+        pendingIndex += 1;
+      }
+    }
+    return undefined;
   }
 
   @Builder

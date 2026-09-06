@@ -5,11 +5,6 @@ import org.junit.Test
 
 class DockSelectionPolicyTest {
     @Test
-    fun lostFoundKeepsAiCampusAssistantSelected() {
-        assertEquals("counselor", selectedStudentDockRoute("lostfound"))
-    }
-
-    @Test
     fun profileFlowKeepsProfileSelected() {
         assertEquals("profile", selectedStudentDockRoute("settings"))
         assertEquals("profile", selectedStudentDockRoute("university"))

@@ -103,6 +103,13 @@ export class MindSporeExpressionProvider implements ExpressionRecognitionProvide
     const output: camera.PreviewOutput = manager.createPreviewOutput(profile, surfaceId);
     const captureSession: camera.PhotoSession = manager.createSession<camera.PhotoSession>(camera.SceneMode.NORMAL_PHOTO);
 
+    try {
+      const rotation: camera.ImageRotation = output.getPreviewRotation(0);
+      output.setPreviewRotation(rotation, true);
+    } catch (_) {
+      // Keep the device default only when the capability is unavailable.
+    }
+
     receiver.on('imageArrival', () => { this.consumeLatestFrame(); });
     await input.open();
     captureSession.beginConfig();

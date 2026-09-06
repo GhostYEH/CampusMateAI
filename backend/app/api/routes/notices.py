@@ -40,6 +40,20 @@ router = APIRouter()
 _RELATIVE_TIME_RE = re.compile(r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天])")
 
 
+def _notice_time(value: object) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().replace(".", "", 1).isdigit()):
+        timestamp = float(value)
+        if abs(timestamp) >= 10_000_000_000:
+            timestamp /= 1000
+        try:
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    return str(value)
+
+
 def _ai_cache_key(item: NoticeBatchItem, container: ServiceContainer) -> Optional[str]:
     normalized = re.sub(r"\s+", " ", item.content).strip()
     if item.published_at is None and _RELATIVE_TIME_RE.search(normalized):
@@ -288,7 +302,7 @@ def list_notices(
                 id=n.id,
                 title=n.title,
                 source=n.source,
-                time=n.published_at or n.created_at,
+                time=_notice_time(n.published_at or n.created_at),
                     unread=False,
                     category=n.source,
                     content=n.content,

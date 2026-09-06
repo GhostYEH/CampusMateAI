@@ -28,5 +28,10 @@ fun DashboardScreen(
             val state by dashboardViewModel.state.collectAsStateWithLifecycle()
             GamifiedDashboardScreen(state = state, onNavigate = onNavigate)
         }
+        DashboardStyle.IMMERSIVE -> ImmersiveDashboardScreen(
+            repository = repository,
+            focusRepository = focusRepository,
+            onNavigate = onNavigate,
+        )
     }
 }

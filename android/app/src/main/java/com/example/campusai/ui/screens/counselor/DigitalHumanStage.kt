@@ -4,14 +4,12 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.webkit.RenderProcessGoneDetail
-import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -23,28 +21,28 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.campusai.R
 import java.net.URI
 
 object DigitalHumanBridge {
-    fun stageUrl(apiBaseUrl: String, forceFallback: Boolean = false, reduceMotion: Boolean = false): String =
-        apiBaseUrl.trim().trimEnd('/').removeSuffix("/api/v1") +
-            "/digital-human/mobile.html?embed=1" +
-            (if (forceFallback) "&fallback=1" else "") +
-            (if (reduceMotion) "&reduceMotion=1" else "")
+    const val BUNDLED_ASSET_ORIGIN = "https://appassets.androidplatform.net"
+    private const val BUNDLED_STAGE_URL = "$BUNDLED_ASSET_ORIGIN/assets/digital-human/index.html"
+
+    fun stageUrl(apiBaseUrl: String, reduceMotion: Boolean = false): String =
+        BUNDLED_STAGE_URL + (if (reduceMotion) "?reduceMotion=1" else "")
 
     fun configureScript(apiBaseUrl: String, accessToken: String): String =
         "window.CampusMateDigitalHuman.configure({apiBaseUrl:${jsString(apiBaseUrl)},accessToken:${jsString(accessToken)}});"
 
     fun speakScript(text: String): String =
         "window.CampusMateDigitalHuman.speak(${jsString(text)});"
+
+    fun presentationScript(reduceMotion: Boolean): String =
+        "window.CampusMateDigitalHuman.setPresentation({zoom:1.18,idleMotion:${!reduceMotion}});"
 
     fun commandScript(command: DigitalHumanCommand): String = when (command) {
         DigitalHumanCommand.TOGGLE_MUTE -> "window.CampusMateDigitalHuman.toggleMuted();"
@@ -90,8 +88,6 @@ object DigitalHumanBridge {
     }
 }
 
-internal enum class DigitalHumanRenderMode { LIVE_WEBGL, NATIVE_COMPAT }
-
 internal enum class DigitalHumanStageLoadState { LOADING, READY, FALLBACK }
 
 internal enum class DigitalHumanLoadEvent {
@@ -109,32 +105,6 @@ internal fun nextDigitalHumanStageLoadState(event: DigitalHumanLoadEvent): Digit
     -> DigitalHumanStageLoadState.FALLBACK
 }
 
-internal fun selectDigitalHumanRenderMode(
-    fingerprint: String,
-    model: String,
-    supportedAbis: List<String>,
-    lowRamDevice: Boolean,
-): DigitalHumanRenderMode {
-    val emulator = fingerprint.contains("generic", ignoreCase = true) ||
-        model.contains("sdk_gphone", ignoreCase = true) ||
-        model.contains("Android SDK built", ignoreCase = true) ||
-        model.contains("Emulator", ignoreCase = true)
-    val hasArm64 = supportedAbis.any { it.equals("arm64-v8a", ignoreCase = true) }
-    return if (emulator || lowRamDevice || !hasArm64) {
-        DigitalHumanRenderMode.NATIVE_COMPAT
-    } else {
-        DigitalHumanRenderMode.LIVE_WEBGL
-    }
-}
-
-internal fun shouldUseNativeDigitalHuman(fingerprint: String, model: String): Boolean =
-    selectDigitalHumanRenderMode(
-        fingerprint = fingerprint,
-        model = model,
-        supportedAbis = android.os.Build.SUPPORTED_ABIS.toList(),
-        lowRamDevice = false,
-    ) == DigitalHumanRenderMode.NATIVE_COMPAT
-
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun DigitalHumanStage(
@@ -144,7 +114,6 @@ fun DigitalHumanStage(
     speechRequestId: Int,
     command: DigitalHumanCommand = DigitalHumanCommand.NONE,
     commandRequestId: Int = 0,
-    forceFallback: Boolean = false,
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -152,15 +121,15 @@ fun DigitalHumanStage(
     val lifecycleOwner = LocalLifecycleOwner.current
     var lastSpokenRequestId by remember { mutableIntStateOf(0) }
     var lastCommandRequestId by remember { mutableIntStateOf(0) }
-    val stageUrl = remember(apiBaseUrl, forceFallback, reduceMotion) {
-        DigitalHumanBridge.stageUrl(apiBaseUrl, forceFallback, reduceMotion)
+    val stageUrl = remember(apiBaseUrl, reduceMotion) {
+        DigitalHumanBridge.stageUrl(apiBaseUrl, reduceMotion)
     }
     var loadState by remember(stageUrl) { mutableStateOf(DigitalHumanStageLoadState.LOADING) }
     val pageReady = loadState == DigitalHumanStageLoadState.READY
     val webView = remember(stageUrl) {
         WebView(context).apply {
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
             setBackgroundColor(Color.TRANSPARENT)
-            setLayerType(if (forceFallback) View.LAYER_TYPE_NONE else View.LAYER_TYPE_HARDWARE, null)
             setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, false)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -170,8 +139,28 @@ fun DigitalHumanStage(
             settings.setSupportZoom(false)
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest,
+                ): WebResourceResponse? {
+                    val uri = request.url
+                    if (uri.scheme != "https" || uri.host != "appassets.androidplatform.net") return null
+                    val assetPath = uri.path?.removePrefix("/assets/") ?: return null
+                    if (assetPath.contains("..")) return null
+                    return runCatching {
+                        val mimeType = when {
+                            assetPath.endsWith(".html") -> "text/html"
+                            assetPath.endsWith(".js") -> "application/javascript"
+                            assetPath.endsWith(".wasm") -> "application/wasm"
+                            else -> "application/octet-stream"
+                        }
+                        WebResourceResponse(mimeType, null, context.assets.open(assetPath))
+                    }.getOrNull()
+                }
+
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                     loadState = nextDigitalHumanStageLoadState(DigitalHumanLoadEvent.PAGE_STARTED)
                 }
@@ -215,6 +204,11 @@ fun DigitalHumanStage(
             webView.evaluateJavascript(DigitalHumanBridge.configureScript(apiBaseUrl, accessToken), null)
         }
     }
+    LaunchedEffect(pageReady, reduceMotion) {
+        if (pageReady) {
+            webView.evaluateJavascript(DigitalHumanBridge.presentationScript(reduceMotion), null)
+        }
+    }
     LaunchedEffect(pageReady, speechRequestId) {
         if (pageReady && speechRequestId > 0 && speechRequestId != lastSpokenRequestId && speechText.isNotBlank()) {
             lastSpokenRequestId = speechRequestId
@@ -249,14 +243,7 @@ fun DigitalHumanStage(
     }
 
     Box(modifier.fillMaxSize()) {
-        if (loadState == DigitalHumanStageLoadState.FALLBACK) {
-            Image(
-                painter = painterResource(R.drawable.cpm_avatar_fallback),
-                contentDescription = "CPM 数字人兼容头像",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
+        if (loadState != DigitalHumanStageLoadState.FALLBACK) {
             AndroidView(
                 factory = { webView },
                 update = {},
