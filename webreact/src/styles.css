@@ -136,7 +136,7 @@ html[data-theme="dark"] .topbar-search input, html[data-theme="dark"] .field inp
 .white-noise-control__copy { min-width: 0; display: grid; gap: 4px; }
 .white-noise-control__copy strong { color: #2b4163; font-size: 12px; font-weight: 760; }
 .white-noise-control__copy span { overflow: hidden; color: #8492aa; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.white-noise-control__slider { min-width: 0; margin-right: 32px; }
+.white-noise-control__slider { min-width: 0; margin-right: 14px; }
 .white-noise-control__value { min-width: 40px; color: #5368d8; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 800; text-align: right; }
 .elastic-slider { display: flex; align-items: center; gap: 8px; width: 100%; touch-action: none; user-select: none; }
 .elastic-slider__icon { width: 24px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; color: #7180a0; background: transparent; }
@@ -686,7 +686,11 @@ html[data-theme="dark"] .is-muted .white-noise-control__toggle { background: #2c
   position: relative;
   isolation: isolate;
   display: flex;
-  height: 100dvh;
+  /* .app-content reserves space for the fixed topbar (88px top padding)
+     plus a 24px bottom padding, so a full 100dvh would push the page past
+     the fold and make the whole page scroll. Size to the remaining viewport
+     so only the course list scrolls. */
+  height: calc(100dvh - 112px);
   min-height: 0;
   flex-direction: column;
   max-width: none;
@@ -1532,6 +1536,10 @@ html[data-theme="auto"] .courses-page .course-card {
 
 .study-page .stat-card {
   min-height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: left;
   border: 0;
   border-right: 1px solid rgba(255, 255, 255, .16);
   border-radius: 0;
