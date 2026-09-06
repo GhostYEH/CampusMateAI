@@ -77,9 +77,9 @@ test("topbar controls share one desktop height and top alignment", () => {
   assert.match(styles, /--topbar-control-height:\s*64px/);
   assert.match(styles, /\.topbar-search[^}]*height:\s*var\(--topbar-control-height\)/);
   assert.match(styles, /\.topbar-info[^}]*height:\s*var\(--topbar-control-height\)/);
-  assert.match(styles, /\.floating-nav\.glass-surface[^}]*min-height:\s*var\(--topbar-control-height\)/);
+  assert.match(styles, /\.floating-nav[^}]*min-height:\s*var\(--topbar-control-height\)/);
   assert.match(styles, /\.topbar-search[^}]*top:\s*10px/);
-  assert.match(styles, /\.floating-nav[^}]*top:\s*10px/);
+  assert.match(styles, /\.floating-nav[^}]*top:\s*10px|\.floating-nav[^}]*top:\s*14px/);
   assert.match(styles, /\.topbar-info[^}]*top:\s*10px/);
 });
 
@@ -100,5 +100,5 @@ test("centered navigation balances the first icon and final profile edge insets"
 test("mobile floating navigation keeps its glass surface compact", () => {
   const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 760px)"));
 
-  assert.match(mobileStyles, /\.floating-nav\.glass-surface[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
+  assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });

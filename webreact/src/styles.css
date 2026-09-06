@@ -1289,6 +1289,35 @@ html[data-theme="auto"] .courses-page .course-card {
   gap: 16px;
 }
 
+.study-page .study-tilted-card {
+  min-width: 0;
+  width: 100%;
+  align-self: stretch;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.study-page .study-tilted-card > .tilted-card-inner,
+.study-page .study-tilted-card > .tilted-card-inner > .panel,
+.study-page .study-tilted-card > .tilted-card-inner > .stat-card {
+  width: 100%;
+}
+
+.study-page .study-focus-card { grid-column: span 7; }
+.study-page .study-report-card { grid-column: 1 / -1; }
+.study-page .study-plan-card { grid-column: span 5; }
+.study-page .study-trend-card { grid-column: span 4; }
+.study-page .study-experience-card { grid-column: span 2; }
+
+.study-page > .stack > .grid-2 > .study-tilted-card {
+  min-width: 0;
+}
+
+.study-page > .stack > .grid-2 .study-tilted-card > .tilted-card-inner > .panel {
+  height: 100%;
+  padding: 18px;
+}
+
 .study-page .panel,
 .study-page .stat-grid {
   color: var(--study-text);
@@ -1813,15 +1842,19 @@ html[data-theme="auto"] .courses-page .course-card {
   }
 
   .study-page .focus-hero,
-  .study-page .study-plan-panel {
+  .study-page .study-plan-panel,
+  .study-page .study-focus-card,
+  .study-page .study-plan-card {
     grid-column: 1 / -1;
   }
 
-  .study-page .study-trend-panel {
+  .study-page .study-trend-panel,
+  .study-page .study-trend-card {
     grid-column: span 7;
   }
 
-  .study-page .study-experience-entry {
+  .study-page .study-experience-entry,
+  .study-page .study-experience-card {
     grid-column: span 5;
   }
 
@@ -1847,6 +1880,11 @@ html[data-theme="auto"] .courses-page .course-card {
   .study-page .study-plan-panel,
   .study-page .study-trend-panel,
   .study-page .study-experience-entry,
+  .study-page .study-focus-card,
+  .study-page .study-report-card,
+  .study-page .study-plan-card,
+  .study-page .study-trend-card,
+  .study-page .study-experience-card,
   .study-page > .stack > .grid-2 {
     grid-column: 1 / -1;
   }

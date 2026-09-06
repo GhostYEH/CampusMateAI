@@ -25,8 +25,9 @@
   content: "";
   border-radius: inherit;
   background:
-    radial-gradient(circle at 18% 0%, rgb(255 255 255 / 42%), transparent 42%),
-    linear-gradient(120deg, transparent 20%, rgb(255 255 255 / 10%) 48%, transparent 76%);
+    radial-gradient(120% 92% at 16% -12%, rgb(255 255 255 / 66%), transparent 46%),
+    radial-gradient(circle at 50% -18%, rgb(255 255 255 / 55%), transparent 40%),
+    linear-gradient(115deg, transparent 16%, rgb(255 255 255 / 17%) 44%, rgb(255 255 255 / 8%) 56%, transparent 80%);
   pointer-events: none;
 }
 
