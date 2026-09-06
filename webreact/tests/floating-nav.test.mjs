@@ -57,6 +57,8 @@ test("topbar side controls keep the global search and profile implementation", (
   assert.match(appShell, /<GlassSurface[\s\S]*className="topbar-info-surface"/);
   assert.match(appShell, /className="topbar-search-surface"[\s\S]*redOffset=\{0\}[\s\S]*greenOffset=\{0\}[\s\S]*blueOffset=\{0\}/);
   assert.match(appShell, /className="topbar-info-surface"[\s\S]*redOffset=\{0\}[\s\S]*greenOffset=\{0\}[\s\S]*blueOffset=\{0\}/);
+  assert.match(appShell, /className="topbar-search-surface"[\s\S]*distortionScale=\{0\}/);
+  assert.match(appShell, /className="topbar-info-surface"[\s\S]*distortionScale=\{0\}/);
   assert.match(appShell, /<div className="topbar-info">[\s\S]*<span className="topbar-date">/);
   assert.match(appShell, /<div className="topbar-actions">/);
   assert.match(styles, /\.topbar-search-surface[^}]*position:\s*fixed/);
