@@ -18,7 +18,7 @@ export function WhiteNoiseControl({ enabled, volume, onToggle, onVolumeChange })
       <span>{enabled ? (volume === 0 ? "已静音 · 点击恢复" : "柔和播放中") : "点击左侧开始播放"}</span>
     </div>
     <div className="white-noise-control__slider">
-      <ElasticSlider value={volume} onChange={onVolumeChange} min={0} max={100} step={5} />
+      <ElasticSlider value={volume} onChange={onVolumeChange} min={0} max={100} step={1} />
     </div>
     <span className="white-noise-control__value" aria-live="polite">{volume}%</span>
   </div>;

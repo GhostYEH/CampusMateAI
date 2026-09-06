@@ -40,7 +40,6 @@ export function ElasticSlider({
   const percentage = useMemo(() => ((currentValue - min) / (max - min || 1)) * 100, [currentValue, min, max]);
   const trackScaleX = useTransform(overflow, [0, MAX_OVERFLOW], [1, 1.12]);
   const trackScaleY = useTransform(overflow, [0, MAX_OVERFLOW], [1, 0.82]);
-  const bodyScale = useTransform(scale, [1, 1.2], [1, 1.2]);
   const bodyOpacity = useTransform(scale, [1, 1.2], [0.72, 1]);
   const trackHeight = useTransform(scale, [1, 1.2], [6, 12]);
   const leftIconX = useTransform(() => region === "left" ? -overflow.get() / scale.get() : 0);
@@ -81,15 +80,20 @@ export function ElasticSlider({
     onChange?.(clampSliderValue(min + Math.round((nextValue - min) / step) * step, min, max));
   }
 
-  return <div className={`elastic-slider ${className}`}>
+  return <motion.div
+    className={`elastic-slider ${className}`}
+    onHoverStart={() => animate(scale, 1.2)}
+    onHoverEnd={() => animate(scale, 1)}
+    onTouchStart={() => animate(scale, 1.2)}
+    onTouchEnd={() => animate(scale, 1)}
+    style={{ scale, opacity: bodyOpacity }}
+  >
     <motion.button
       type="button"
       className="elastic-slider__icon"
       aria-label="降低音量"
       onClick={() => onChange?.(clampSliderValue(currentValue - step, min, max))}
-      onHoverStart={() => animate(scale, 1.2)}
-      onHoverEnd={() => animate(scale, 1)}
-      style={{ scale: bodyScale, opacity: bodyOpacity, x: leftIconX }}
+      style={{ x: leftIconX }}
     >{leftIcon}</motion.button>
     <div
       ref={sliderRef}
@@ -120,9 +124,7 @@ export function ElasticSlider({
       className="elastic-slider__icon"
       aria-label="提高音量"
       onClick={() => onChange?.(clampSliderValue(currentValue + step, min, max))}
-      onHoverStart={() => animate(scale, 1.2)}
-      onHoverEnd={() => animate(scale, 1)}
-      style={{ scale: bodyScale, opacity: bodyOpacity, x: rightIconX }}
+      style={{ x: rightIconX }}
     >{rightIcon}</motion.button>
-  </div>;
+  </motion.div>;
 }
