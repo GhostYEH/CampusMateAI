@@ -294,7 +294,18 @@ class EduConnectorService:
         existing = self._edu_repo.get_active_connection_by_user(user_id, edu_system.id)
         if existing is not None:
             binding = self._edu_repo.get_binding_by_user(user_id, edu_system.id)
-            if existing.state == CONN_CONNECTED and binding is None:
+            provider_recovered = (
+                existing.provider in (EDU_PROVIDER_UNKNOWN, EDU_PROVIDER_UNSUPPORTED)
+                and provider in KNOWN_PROVIDERS
+            )
+            if provider_recovered:
+                self._edu_repo.update_connection_state(
+                    existing.id,
+                    state=CONN_AUTH_FAILED,
+                    error_code="PROVIDER_REDETECTED",
+                    error_message="已重新识别教务系统厂商，请重新完成教务登录",
+                )
+            elif existing.state == CONN_CONNECTED and binding is None:
                 self._edu_repo.update_connection_state(
                     existing.id,
                     state=CONN_AUTH_FAILED,

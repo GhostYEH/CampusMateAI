@@ -1317,6 +1317,39 @@ def test_from_url_replaces_connected_connection_without_binding(monkeypatch) -> 
     assert stale.error_code == "BINDING_MISSING"
 
 
+def test_from_url_replaces_stale_unknown_connection_when_provider_is_resolved(monkeypatch) -> None:
+    """A retry must not reuse an old unknown connection after provider recovery."""
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    portal_url = "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+    monkeypatch.setattr(
+        EduConnectorService,
+        "probe_portal",
+        AsyncMock(
+            side_effect=[
+                {"portal_url": portal_url, "provider": "unknown", "suggested_login_mode": "unsupported"},
+                {"portal_url": portal_url, "provider": EDU_PROVIDER_ZHENGFANG, "suggested_login_mode": LOGIN_EXEC_BACKEND_HTTP},
+            ]
+        ),
+    )
+
+    first = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    ).json()
+    second = client.post(
+        "/api/v1/edu/connections/from-url",
+        headers=headers,
+        json={"portal_url": portal_url},
+    )
+
+    assert second.status_code == 200, second.text
+    assert second.json()["id"] != first["id"]
+    assert second.json()["provider"] == EDU_PROVIDER_ZHENGFANG
+
+
 def test_from_url_reuses_verified_public_system(monkeypatch) -> None:
     client = _client()
     headers = _headers(client)
