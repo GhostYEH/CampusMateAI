@@ -1,6 +1,9 @@
 import { BehaviorSessionSummary, BehaviorV34Label } from './BehaviorV34Decision';
 import { PersonBox } from './FocusCameraContract';
 import { StudyBehaviorSummary } from '../data/Models';
+import { BehaviorDisplayStateKind } from './LearningContinuityStateMachine';
+import { LearningContinuityState } from './LearningContinuityStateMachine';
+import { PresenceState } from './PresenceStateMachine';
 
 export function toStudyBehaviorSummary(
   summary: BehaviorSessionSummary | undefined
@@ -34,6 +37,9 @@ export interface FocusAssistSignal {
   isStable: boolean;
   timestamp: number;
   modelVersion: string;
+  displayStateKind?: BehaviorDisplayStateKind;
+  continuityState?: LearningContinuityState;
+  presenceState?: PresenceState;
 }
 
 export interface RgbaBehaviorFrame {

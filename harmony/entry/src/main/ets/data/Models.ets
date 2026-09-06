@@ -23,6 +23,7 @@ export interface FocusAiAskRequest { text: string; }
 export interface FocusRealtimeVoiceSession { session_id: string; websocket_path: string; }
 export interface FocusRealtimeVoiceStop { session_id: string; stopped: boolean; }
 export interface ExpressionSignalRequest { label: string; confidence: number; is_stable: boolean; timestamp: number; model_version: string; }
+export interface ExpressionContributionResponse { sample_id: string; label: string; status: string; message: string; }
 export interface ChatRequest { message: string; session_id: string; stream: boolean; expression_signal?: ExpressionSignalRequest; }
 export interface ExamItem { id: string; course_name: string; exam_date: string; start_time?: string; end_time?: string; location?: string; seat_number?: string; exam_type?: string; reminder_enabled?: boolean; notes?: string; }
 export type FocusMode = 'focus' | 'short_break' | 'long_break';

@@ -1210,6 +1210,7 @@ class AppRepository(
             val resp = ApiClient.api.chat(
                 ChatRequest(
                     message = message,
+                    session_id = "android-${_session.value?.name ?: "anonymous"}",
                     stream = false,
                     expression_signal = expressionSignal,
                 ),
@@ -1249,6 +1250,7 @@ class AppRepository(
         ApiClient.streamCounselor(
             request = ChatRequest(
                 message = message,
+                session_id = "android-${_session.value?.name ?: "anonymous"}",
                 stream = true,
                 expression_signal = expressionSignal,
             ),

@@ -20,6 +20,20 @@ import {
   RgbaBehaviorFrame
 } from './FocusAssistProvider';
 import { PersonBox } from './FocusCameraContract';
+import { BehaviorModelSelection, BehaviorRuntimeModel } from './BehaviorModelSelection';
+import { BehaviorPredictionTemporalSmoother } from './BehaviorPredictionTemporalSmoother';
+import {
+  BehaviorSignalProcessor,
+  StableBehaviorEvent
+} from './BehaviorSignalProcessor';
+import {
+  BehaviorDisplayState,
+  BehaviorDisplayStates,
+  BehaviorDisplayStateKind,
+  LearningContinuityState,
+  LearningContinuityStateMachine
+} from './LearningContinuityStateMachine';
+import { PresenceState, PresenceStateMachine } from './PresenceStateMachine';
 
 export class BehaviorRoiPreprocessor {
   private static readonly SIZE: number = 224;
@@ -221,9 +235,11 @@ export class BehaviorTemporalFrameBuffer {
 
 export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private static readonly V34_MODEL_PATH: string = 'models/behavior/campusmate_behavior_v34.ms';
+  private static readonly V32_MODEL_PATH: string = 'models/behavior/campusmate_visible_study_v32.ms';
   private static readonly TSM_MODEL_PATH: string = 'models/behavior/campusmate_tsm_mobilenetv2_v4.ms';
   private readonly manager: resourceManager.ResourceManager;
   private model: mindSporeLite.Model | null = null;
+  private v32Model: mindSporeLite.Model | null = null;
   private temporalModel: mindSporeLite.Model | null = null;
   private providerStatus: FocusAssistStatus = FocusAssistStatus.UNAVAILABLE;
   private providerDetail: string = 'V3.4 本地模型尚未加载';
@@ -239,6 +255,13 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private temporalDegraded: boolean = false;
   private readonly runToken: BehaviorProviderRunToken = new BehaviorProviderRunToken();
   private activeRun: number = 0;
+  private readonly temporalSmoother: BehaviorPredictionTemporalSmoother = new BehaviorPredictionTemporalSmoother(0.35);
+  private readonly signalProcessor: BehaviorSignalProcessor = new BehaviorSignalProcessor();
+  private readonly continuityStateMachine: LearningContinuityStateMachine = new LearningContinuityStateMachine();
+  private readonly presenceStateMachine: PresenceStateMachine = new PresenceStateMachine();
+  private currentDisplayState: BehaviorDisplayState = BehaviorDisplayStates.observing();
+  private currentContinuityState: LearningContinuityState = LearningContinuityState.OBSERVING;
+  private currentPresenceState: PresenceState = PresenceState.OBSERVING;
 
   constructor(manager: resourceManager.ResourceManager) {
     this.manager = manager;
@@ -287,8 +310,11 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
       }
       const temporalLoaded: mindSporeLite.Model | null = await this.loadTemporalModel();
       if (!this.runToken.isCurrent(run)) return;
+      const v32Loaded: mindSporeLite.Model | null = await this.loadV32Model();
+      if (!this.runToken.isCurrent(run)) return;
       this.model = loaded;
       this.temporalModel = temporalLoaded;
+      this.v32Model = v32Loaded;
       this.temporalDegraded = temporalLoaded === null;
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
       this.providerDetail = BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
@@ -296,6 +322,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
       if (!this.runToken.isCurrent(run)) return;
       this.model = null;
       this.temporalModel = null;
+      this.v32Model = null;
       this.providerStatus = FocusAssistStatus.ERROR;
       this.providerDetail = 'V3.4 本地模型不可用，已停止行为提醒';
     }
@@ -306,6 +333,13 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     this.runToken.invalidate();
     this.activeRun = 0;
     this.clearProductState();
+    this.temporalSmoother.reset();
+    this.signalProcessor.reset();
+    this.continuityStateMachine.reset();
+    this.presenceStateMachine.reset();
+    this.currentDisplayState = BehaviorDisplayStates.observing();
+    this.currentContinuityState = LearningContinuityState.OBSERVING;
+    this.currentPresenceState = PresenceState.OBSERVING;
     this.providerStatus = FocusAssistStatus.UNAVAILABLE;
     this.providerDetail = this.model === null ? 'V3.4 本地模型尚未加载' :
       BehaviorProviderPresentation.readyDetail(this.temporalDegraded);
@@ -315,64 +349,93 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     const run: number = this.activeRun;
     if (!this.runToken.isCurrent(run)) return undefined;
     const model: mindSporeLite.Model | null = this.model;
-    if (model === null) {
+    const v32Model: mindSporeLite.Model | null = this.v32Model;
+    const hasPersonRoi: boolean = frame.personBox.right - frame.personBox.left >= 2 &&
+      frame.personBox.bottom - frame.personBox.top >= 2;
+    const selected: BehaviorRuntimeModel = BehaviorModelSelection.select(
+      model !== null, v32Model !== null, hasPersonRoi
+    );
+    if (selected === BehaviorRuntimeModel.UNAVAILABLE) {
+      this.resetTemporalState();
+      this.signal = undefined;
+      this.reminderTracker.reset();
       this.providerStatus = FocusAssistStatus.UNAVAILABLE;
       this.providerDetail = '缺少可用模型，无法进行本地行为识别';
       return undefined;
     }
-    const inputData: Float32Array | undefined = BehaviorRoiPreprocessor.toNchw(frame);
-    if (inputData === undefined) {
-      this.resetTemporalState();
-      this.signal = undefined;
-      this.reminderTracker.reset();
-      this.providerStatus = FocusAssistStatus.UNAVAILABLE;
-      this.providerDetail = '未获得有效人体框，暂不进行行为识别';
-      return undefined;
-    }
-    const fullFrame: Float32Array | undefined = BehaviorFullFramePreprocessor.toChw(frame);
-    if (fullFrame === undefined) {
-      this.resetTemporalState();
-      this.signal = undefined;
-      this.reminderTracker.reset();
-      this.providerStatus = FocusAssistStatus.UNAVAILABLE;
-      this.providerDetail = '未获得有效相机帧，暂不进行行为识别';
-      return undefined;
-    }
-    this.temporalFrames.push(fullFrame);
     try {
       this.providerStatus = FocusAssistStatus.RUNNING;
-      const inputs: mindSporeLite.MSTensor[] = model.getInputs();
-      inputs[0].setData(inputData.buffer);
-      const outputs: mindSporeLite.MSTensor[] = await model.predict(inputs);
-      if (!this.runToken.isCurrent(run)) return undefined;
-      const result: BehaviorV34Result | undefined = this.decodeV34(outputs);
-      if (result === undefined) throw new Error('V3.4 output contract mismatch');
-      const rankedSingle: BehaviorV34Label = this.topSingleLabel(result);
-      const shouldRunTemporal: boolean = this.temporalModel !== null &&
-        BehaviorHybridPolicy.shouldRunTemporal(
-          result, this.previousSingleTop, frame.timestamp, this.lastTemporalAtMs,
-          this.temporalFrames.size()
-        );
-      this.previousSingleTop = rankedSingle;
-      if (shouldRunTemporal) {
-        await this.runTemporal(frame.timestamp, run);
+      let fused: BehaviorV34Result;
+      let hasTemporalEvidence: boolean = false;
+      if (selected === BehaviorRuntimeModel.V34 && model !== null) {
+        const inputData: Float32Array | undefined = BehaviorRoiPreprocessor.toNchw(frame);
+        if (inputData === undefined) throw new Error('V3.4 ROI preprocessing failed');
+        const fullFrame: Float32Array | undefined = BehaviorFullFramePreprocessor.toChw(frame);
+        if (fullFrame === undefined) throw new Error('full frame preprocessing failed');
+        this.temporalFrames.push(fullFrame);
+        const inputs: mindSporeLite.MSTensor[] = model.getInputs();
+        inputs[0].setData(inputData.buffer);
+        const outputs: mindSporeLite.MSTensor[] = await model.predict(inputs);
         if (!this.runToken.isCurrent(run)) return undefined;
+        const result: BehaviorV34Result | undefined = this.decodeV34(outputs);
+        if (result === undefined) throw new Error('V3.4 output contract mismatch');
+        const rankedSingle: BehaviorV34Label = this.topSingleLabel(result);
+        const shouldRunTemporal: boolean = this.temporalModel !== null &&
+          BehaviorHybridPolicy.shouldRunTemporal(
+            result, this.previousSingleTop, frame.timestamp, this.lastTemporalAtMs,
+            this.temporalFrames.size()
+          );
+        this.previousSingleTop = rankedSingle;
+        if (shouldRunTemporal) {
+          await this.runTemporal(frame.timestamp, run);
+          if (!this.runToken.isCurrent(run)) return undefined;
+        }
+        fused = this.fuse(result);
+        hasTemporalEvidence = this.cachedTemporal !== undefined;
+      } else {
+        const v32Result: BehaviorV34Result | undefined = await this.runV32(v32Model, frame);
+        if (!this.runToken.isCurrent(run)) return undefined;
+        if (v32Result === undefined) throw new Error('V3.2 output contract mismatch');
+        fused = v32Result;
+        this.previousSingleTop = this.topSingleLabel(fused);
       }
-      const fused: BehaviorV34Result = this.fuse(result);
-      const hasTemporalEvidence: boolean = this.cachedTemporal !== undefined;
-      const next: FocusAssistSignal = {
+      const smoothedProbabilities: number[] = this.temporalSmoother.smooth(fused.probabilities);
+      const smoothedFused: BehaviorV34Result = {
         label: fused.label,
         confidence: fused.confidence,
+        margin: fused.margin,
         isStable: fused.isStable,
+        probabilities: smoothedProbabilities
+      };
+      const displayState: BehaviorDisplayState = this.signalProcessor.processDisplayState(
+        smoothedFused, frame.timestamp
+      );
+      const continuityResult = this.continuityStateMachine.process(displayState, frame.timestamp);
+      const behaviorEvidence: boolean = smoothedFused.isStable &&
+        this.isStudyBehavior(smoothedFused.label);
+      const presenceSnapshot = this.presenceStateMachine.process(
+        frame.timestamp, hasPersonRoi, false, behaviorEvidence
+      );
+      this.signalProcessor.process(smoothedFused, frame.timestamp);
+      this.currentDisplayState = displayState;
+      this.currentContinuityState = continuityResult.state;
+      this.currentPresenceState = presenceSnapshot.state;
+      const next: FocusAssistSignal = {
+        label: smoothedFused.label,
+        confidence: smoothedFused.confidence,
+        isStable: smoothedFused.isStable,
         timestamp: frame.timestamp,
-        modelVersion: BehaviorProviderPresentation.modelVersion(hasTemporalEvidence)
+        modelVersion: BehaviorProviderPresentation.modelVersion(hasTemporalEvidence),
+        displayStateKind: displayState.kind,
+        continuityState: continuityResult.state,
+        presenceState: presenceSnapshot.state
       };
       this.signal = next;
-      const reminder: string = this.reminderTracker.process(fused, frame.timestamp);
-      this.sessionSummaryTracker.process(fused, frame.timestamp, reminder);
+      const reminder: string = this.reminderTracker.process(smoothedFused, frame.timestamp);
+      this.sessionSummaryTracker.process(smoothedFused, frame.timestamp, reminder);
       this.providerStatus = FocusAssistStatus.RUNNING;
       this.providerDetail = BehaviorProviderPresentation.detail(
-        this.temporalDegraded, fused.label, hasTemporalEvidence
+        this.temporalDegraded, smoothedFused.label, hasTemporalEvidence
       );
       return next;
     } catch (error) {
@@ -407,6 +470,19 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     }
   }
 
+  private async loadV32Model(): Promise<mindSporeLite.Model | null> {
+    try {
+      const loaded: mindSporeLite.Model = await this.loadModel(MindSporeBehaviorProvider.V32_MODEL_PATH);
+      const inputs: mindSporeLite.MSTensor[] = loaded.getInputs();
+      if (!this.hasInputContract(inputs, 4, BehaviorFullFramePreprocessor.FRAME_SIZE)) {
+        throw new Error('V3.2 input contract mismatch');
+      }
+      return loaded;
+    } catch (error) {
+      return null;
+    }
+  }
+
   private hasInputContract(inputs: mindSporeLite.MSTensor[], rank: number, elementNum: number): boolean {
     return inputs.length === 1 && inputs[0].shape.length === rank && inputs[0].elementNum === elementNum;
   }
@@ -416,6 +492,64 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     const raw: Float32Array = new Float32Array(outputs[0].getData());
     if (raw.length !== 4) return undefined;
     return BehaviorV34OutputContract.decode([raw[0], raw[1], raw[2], raw[3]]);
+  }
+
+  private decodeV32(outputs: mindSporeLite.MSTensor[]): BehaviorV34Result | undefined {
+    if (outputs.length !== 1 || outputs[0].elementNum !== 2) return undefined;
+    const raw: Float32Array = new Float32Array(outputs[0].getData());
+    if (raw.length !== 2) return undefined;
+    if (!Number.isFinite(raw[0]) || !Number.isFinite(raw[1])) return undefined;
+    const maxLogit: number = Math.max(raw[0], raw[1]);
+    const exp0: number = Math.exp(raw[0] - maxLogit);
+    const exp1: number = Math.exp(raw[1] - maxLogit);
+    const sum: number = exp0 + exp1;
+    if (!Number.isFinite(sum) || sum <= 0) return undefined;
+    const probIdle: number = exp0 / sum;
+    const probVisibleStudy: number = exp1 / sum;
+    const probabilities: number[] = [probVisibleStudy, 0, 0, probIdle];
+    const best: number = Math.max(probVisibleStudy, probIdle);
+    const margin: number = Math.abs(probVisibleStudy - probIdle);
+    const accepted: boolean = best >= BehaviorV34Decision.MIN_CONFIDENCE &&
+      margin >= BehaviorV34Decision.MIN_MARGIN;
+    const label: BehaviorV34Label = probVisibleStudy >= probIdle ?
+      BehaviorV34Label.READ : BehaviorV34Label.NO_VISIBLE_STUDY;
+    return {
+      label: accepted ? label : BehaviorV34Label.CONTINUE_OBSERVING,
+      confidence: best,
+      margin: margin,
+      isStable: accepted,
+      probabilities: probabilities
+    };
+  }
+
+  private preprocessFullFrameNchw(frame: RgbaBehaviorFrame): Float32Array | undefined {
+    const fullBox: PersonBox = {
+      left: 0, top: 0, right: frame.width, bottom: frame.height
+    };
+    const fullFrame: RgbaBehaviorFrame = {
+      pixels: frame.pixels,
+      width: frame.width,
+      height: frame.height,
+      personBox: fullBox,
+      timestamp: frame.timestamp
+    };
+    return BehaviorRoiPreprocessor.toNchw(fullFrame);
+  }
+
+  private async runV32(v32Model: mindSporeLite.Model | null,
+    frame: RgbaBehaviorFrame): Promise<BehaviorV34Result | undefined> {
+    if (v32Model === null) return undefined;
+    const inputData: Float32Array | undefined = this.preprocessFullFrameNchw(frame);
+    if (inputData === undefined) return undefined;
+    const inputs: mindSporeLite.MSTensor[] = v32Model.getInputs();
+    inputs[0].setData(inputData.buffer);
+    const outputs: mindSporeLite.MSTensor[] = await v32Model.predict(inputs);
+    return this.decodeV32(outputs);
+  }
+
+  private isStudyBehavior(label: BehaviorV34Label): boolean {
+    return label === BehaviorV34Label.READ || label === BehaviorV34Label.WRITE ||
+      label === BehaviorV34Label.COMPUTER;
   }
 
   private topSingleLabel(result: BehaviorV34Result): BehaviorV34Label {

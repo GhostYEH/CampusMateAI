@@ -12,6 +12,7 @@ import {
   ExpressionPixelQuality
 } from './ExpressionFaceQuality';
 import { ExpressionSignalProcessor, StableExpressionSignal } from './ExpressionSignalProcessor';
+import { ExpressionPreprocessingLoader } from './ExpressionPreprocessingLoader';
 
 const MODEL_PATH: string = 'models/expression/campusmate_expression_v2.ms';
 const MODEL_VERSION: string = 'expression-resnet18-multiv2-v1-mslite';
@@ -24,7 +25,7 @@ const MIN_FRAME_INTERVAL_MS: number = 450;
  */
 export class MindSporeExpressionProvider implements ExpressionRecognitionProvider {
   private readonly context: common.UIAbilityContext;
-  private readonly processor: ExpressionSignalProcessor = new ExpressionSignalProcessor(
+  private processor: ExpressionSignalProcessor = new ExpressionSignalProcessor(
     undefined, 0.7, 3, 0.4, 5000, MODEL_VERSION
   );
   private model: mindSporeLite.Model | null = null;
@@ -49,6 +50,7 @@ export class MindSporeExpressionProvider implements ExpressionRecognitionProvide
     if (this.running) return;
     try {
       await this.ensureModel();
+      await this.applyPreprocessingConfig();
       const detectorReady: boolean = await faceDetector.init();
       if (!detectorReady) throw new Error('face detector unavailable');
       await this.openFrontCamera();
@@ -59,6 +61,22 @@ export class MindSporeExpressionProvider implements ExpressionRecognitionProvide
       await this.releaseCamera();
       try { await faceDetector.release(); } catch (_) { /* already unavailable */ }
       throw new Error('local expression pipeline failed');
+    }
+  }
+
+  private async applyPreprocessingConfig(): Promise<void> {
+    try {
+      const config = await ExpressionPreprocessingLoader.load(this.context.resourceManager);
+      this.processor = new ExpressionSignalProcessor(
+        config.class_thresholds,
+        config.confidence_threshold,
+        config.stable_frame_count,
+        config.ema_alpha,
+        config.max_age_ms,
+        config.model_version
+      );
+    } catch (_) {
+      // Keep default processor if config is unavailable.
     }
   }
 

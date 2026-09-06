@@ -4,7 +4,7 @@ import fs from '@ohos.file.fs';
 import { ApiResponseParser } from './ApiResponse';
 import { RefreshCoordinator } from './AuthRefresh';
 import { AuthTokens, AuthTokensModel } from './auth/TokenStore';
-import { UploadImageResult } from './Models';
+import { UploadImageResult, ExpressionContributionResponse } from './Models';
 import { ChaoxingApiClient } from './chaoxing/ChaoxingRepository';
 import { EduCookieDto } from './EduCookieDto';
 
@@ -239,6 +239,52 @@ export class ApiClient implements ChaoxingApiClient {
     } finally {
       client.destroy();
     }
+  }
+
+  async uploadExpressionContribution(fileUri: string, fileName: string, contentType: string,
+    label: string, consent: string, modelVersion: string): Promise<ExpressionContributionResponse> {
+    const boundary: string = `----CampusMateBoundary${Date.now().toString(36)}`;
+    const file = fs.openSync(fileUri, fs.OpenMode.READ_ONLY);
+    let fileBuffer: ArrayBuffer;
+    try {
+      const stat = fs.statSync(file.fd);
+      fileBuffer = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, fileBuffer);
+    } finally {
+      fs.closeSync(file);
+    }
+    const fileBytes: Uint8Array = new Uint8Array(fileBuffer);
+    const encoder: util.TextEncoder = new util.TextEncoder();
+    const imageHeader: string = `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`;
+    const labelPart: string = `--${boundary}\r\nContent-Disposition: form-data; name="label"\r\n\r\n${label}\r\n`;
+    const consentPart: string = `--${boundary}\r\nContent-Disposition: form-data; name="consent"\r\n\r\n${consent}\r\n`;
+    const modelVersionPart: string = `--${boundary}\r\nContent-Disposition: form-data; name="model_version"\r\n\r\n${modelVersion}\r\n`;
+    const footerPart: string = `--${boundary}--\r\n`;
+    const imageHeaderBytes: Uint8Array = encoder.encode(imageHeader);
+    const labelBytes: Uint8Array = encoder.encode(labelPart);
+    const consentBytes: Uint8Array = encoder.encode(consentPart);
+    const modelVersionBytes: Uint8Array = encoder.encode(modelVersionPart);
+    const footerBytes: Uint8Array = encoder.encode(footerPart);
+    const totalLength: number = imageHeaderBytes.length + fileBytes.length +
+      labelBytes.length + consentBytes.length + modelVersionBytes.length + footerBytes.length;
+    const bodyBytes: Uint8Array = new Uint8Array(totalLength);
+    let offset: number = 0;
+    bodyBytes.set(imageHeaderBytes, offset); offset += imageHeaderBytes.length;
+    bodyBytes.set(fileBytes, offset); offset += fileBytes.length;
+    bodyBytes.set(labelBytes, offset); offset += labelBytes.length;
+    bodyBytes.set(consentBytes, offset); offset += consentBytes.length;
+    bodyBytes.set(modelVersionBytes, offset); offset += modelVersionBytes.length;
+    bodyBytes.set(footerBytes, offset);
+    const bodyBuffer: ArrayBuffer = bodyBytes.buffer as ArrayBuffer;
+    return this.executeUpload<ExpressionContributionResponse>(
+      'contributions/expression-samples', bodyBuffer, boundary, true
+    );
+  }
+
+  async deleteExpressionContribution(sampleId: string): Promise<ExpressionContributionResponse> {
+    return this.request<ExpressionContributionResponse>(
+      'DELETE' as http.RequestMethod, `contributions/expression-samples/${encodeURIComponent(sampleId)}`
+    );
   }
 
   async uploadImage(fileUri: string, fileName: string, contentType: string): Promise<UploadImageResult> {

@@ -30,6 +30,7 @@ import { NotificationSourceSettingsPage } from '../features/notifications/Notifi
 import { ChaoxingPage } from '../features/notifications/ChaoxingPage';
 import { PersonalHubPage } from '../features/profile/PersonalHubPage';
 import { SettingsPage } from '../features/profile/SettingsPage';
+import { ExpressionContributionPage } from '../features/profile/ExpressionContributionPage';
 import { AccountPage } from '../features/profile/AccountPage';
 import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
@@ -593,6 +594,12 @@ struct Index {
     }
   }
 
+  private chatSessionId(): string {
+    const raw: string = this.username.length > 0 ? this.username : this.appState.savedUsername;
+    const safe: string = raw.trim().length > 0 ? raw.trim() : 'anonymous';
+    return `harmony-${safe}`;
+  }
+
   async sendChat(): Promise<void> {
     const message = this.chatInput.trim();
     if (message.length === 0 || this.chatSending) {
@@ -628,7 +635,7 @@ struct Index {
     try {
       const baseRequest: ChatRequest = {
         message: message,
-        session_id: 'harmony-session',
+        session_id: this.chatSessionId(),
         stream: true
       };
       const request: ChatRequest = withExpressionSignal(baseRequest, this.expressionService.latestStableSignal());
@@ -1526,6 +1533,8 @@ struct Index {
       PersonalHubPage({ section: route, files: this.personalFiles, favorites: this.favorites, loading: this.secondaryLoading, darkMode: this.darkMode, onBack: () => this.popRoute(), onRefresh: () => this.refreshSecondaryData(route) })
     } else if (route === AppRoute.SETTINGS) {
       SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.popRoute(), onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
+    } else if (route === AppRoute.EXPRESSION_CONTRIBUTION) {
+      ExpressionContributionPage({ authToken: this.appState.getAccessToken(), apiBaseUrl: API_BASE_URL })
     } else if (route === AppRoute.QR_SCANNER) {
       QrScannerPage({
         darkMode: this.darkMode,
