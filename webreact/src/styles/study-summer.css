@@ -158,8 +158,56 @@
   .study-summer-options { grid-template-columns: 1fr; }
 }
 
+/* 移植自 Summer Checkin 顶栏（top-nav）的底部导航 dock */
+.study-summer-dock {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 40;
+  width: min(680px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(7, 23, 17, .68);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+}
+
+.study-summer-dock__inner { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px 8px 16px; }
+.study-summer-dock__brand { display: inline-flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, .92); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.study-summer-dock__brand:hover { color: var(--summer-primary); }
+.study-summer-dock__logo { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 50%; color: #0a1c12; background: var(--summer-primary); }
+.study-summer-dock__links { display: flex; flex: 1; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .07); }
+.study-summer-dock__links a { padding: 7px 14px; border-radius: 999px; color: rgba(255, 255, 255, .55); font-size: 12px; font-weight: 600; white-space: nowrap; transition: color .15s ease, background .15s ease; }
+.study-summer-dock__links a:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+.study-summer-dock__links a.is-active { color: #0a1c12; background: var(--summer-primary); }
+.study-summer-dock__tools button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 999px; color: rgba(255, 255, 255, .62); background: rgba(255, 255, 255, .06); font-size: 11px; }
+.study-summer-dock__tools button:hover,
+.study-summer-dock__tools button.is-active { color: var(--summer-primary); border-color: rgba(215, 239, 131, .32); }
+
+/* 学习陪伴页为底部 dock 预留空间，避免内容被盖住 */
+.study-page { padding-bottom: 108px; }
+
+@media (max-width: 640px) {
+  .study-summer-dock { width: calc(100vw - 20px); }
+  .study-summer-dock__inner { padding-left: 12px; }
+  .study-summer-dock__links a { padding: 7px 10px; font-size: 11px; }
+  .study-summer-dock__tools button span { display: none; }
+  .study-summer-dock__tools button { padding: 0 11px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .study-summer-room__backdrop,
   .study-summer-todos__progress span { transition: none; }
   .study-summer-room:hover .study-summer-room__backdrop { transform: none; }
+}
+
+/* 放在文件末尾以覆盖上方基础规则：移动端全局导航浮在底部（项目原有），夏季 dock 避让到它上方 */
+@media (max-width: 760px) {
+  .study-summer-dock {
+    bottom: calc(16px + 64px);
+  }
+  .study-page { padding-bottom: 186px; }
 }

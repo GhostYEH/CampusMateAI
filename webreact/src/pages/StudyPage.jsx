@@ -12,6 +12,7 @@ import { studyExperienceModel, weeklyTrend } from "../data/alignment.js";
 import { useWhiteNoise } from "../features/study/whiteNoise.js";
 import { pickStudyBackground } from "../features/study/backgrounds.js";
 import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
+import SummerNavDock from "../components/study/SummerNavDock.jsx";
 
 const list = itemsOf;
 const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
@@ -101,5 +102,6 @@ export default function StudyPage() {
       <div className="grid grid-2"><Panel><SectionHeading title="最近记录" detail="每一次完成都会留下轨迹" />{sessions.slice(0, 4).length ? <div className="list-stack">{sessions.slice(0, 4).map((item) => <button type="button" className="list-row" key={item.id} onClick={() => setExperience(studyExperienceModel("record", item))}><span className="row-icon tone-green"><Icon name="PhCheckCircle" size={18} /></span><span className="row-copy"><strong>{item.goal || "一次学习陪伴"}</strong><small>{dateText(item.started_at)} · {item.status === "completed" ? "已完成" : item.status}</small></span><span className="row-meta">{Math.round(Number(item.duration_seconds || 0) / 60)} 分钟</span></button>)}</div> : <div className="inline-empty"><Icon name="PhChartLineUp" size={30} />还没有学习记录</div>}</Panel><Panel><SectionHeading title="待完成计划" action={<Link className="text-link" to="/tasks">管理全部</Link>} />{tasks.slice(0, 4).length ? <div className="list-stack">{tasks.slice(0, 4).map((item) => <button type="button" className="list-row" key={item.id} onClick={() => setExperience(studyExperienceModel("task", { title: "计划详情", value: item.title || "学习计划", detail: item.deadline ? `计划截止 ${dateText(item.deadline)}` : "打开任务页可以继续编辑和完成计划。", task: item }))}><span className="row-icon tone-blue"><Icon name="PhCheckSquare" size={18} /></span><span className="row-copy"><strong>{item.title}</strong><small>{item.deadline ? dateText(item.deadline) : "待安排"}</small></span><Icon name="PhArrowsOut" size={16} /></button>)}</div> : <div className="inline-empty">当前没有待完成计划</div>}</Panel></div>
       {experience && <ExperienceLayer experience={experience} active={active} seconds={seconds} goal={goal} mode={mode} soundOn={whiteNoise.enabled} blockNotifications={blockNotifications} breaking={breaking} breakdown={breakdown} onClose={() => setExperience(null)} onStart={() => { start(experience.goal || goal); setExperience(null); }} onTogglePause={togglePause} onFinish={finish} onBreakdown={planBreakdown} onGoalChange={setGoal} onModeChange={setMode} onToggleSound={whiteNoise.toggle} onToggleNotifications={() => setBlockNotifications((value) => !value)} onReuse={reuseExperience} onSaveTask={saveTaskFromLayer} onCompleteTask={completeTaskFromLayer} />}
     </div>}
+    <SummerNavDock whiteNoise={whiteNoise} />
   </PageFrame></>;
 }
