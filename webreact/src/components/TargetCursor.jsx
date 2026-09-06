@@ -167,6 +167,13 @@ const TargetCursor = ({
     window.addEventListener("mousedown", mouseDownHandler);
     window.addEventListener("mouseup", mouseUpHandler);
 
+    const targetObserver = new MutationObserver(() => {
+      if (activeTarget && !activeTarget.isConnected && currentLeaveHandler) {
+        currentLeaveHandler();
+      }
+    });
+    targetObserver.observe(document.body, { childList: true, subtree: true });
+
     const enterHandler = (e) => {
       const directTarget = e.target;
       const allTargets = [];
@@ -301,6 +308,7 @@ const TargetCursor = ({
       window.removeEventListener("resize", resizeHandler);
       window.removeEventListener("mousedown", mouseDownHandler);
       window.removeEventListener("mouseup", mouseUpHandler);
+      targetObserver.disconnect();
       if (activeTarget) {
         cleanupTarget(activeTarget);
       }
