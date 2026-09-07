@@ -41,3 +41,9 @@ test("study styles keep the room borderless and lay out three columns on desktop
   assert.match(gridRule, /grid-template-columns:\s*minmax\(280px,\s*24%\)\s+1fr\s+minmax\(240px,\s*22%\)/);
   assert.match(styles, /@media \(max-width:\s*760px\)[\s\S]*\.study-summer-grid\s*\{\s*grid-template-columns:\s*1fr/);
 });
+
+test("study room keeps supporting text readable", () => {
+  assert.match(styles, /\.study-summer-todos__list > button[^}]*font-size:\s*13px/);
+  assert.match(styles, /\.study-summer-dock__links a[^}]*font-size:\s*13px/);
+  assert.match(styles, /\.study-summer-start input[^}]*font-size:\s*13px/);
+});
