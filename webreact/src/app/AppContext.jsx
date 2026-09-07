@@ -44,12 +44,18 @@ export function AppProvider({ children }) {
 
   const applyQrLoginResult = useCallback((tokenPair) => {
     applyTokenPair(tokenPair);
+    localStorage.setItem("campus_trusted_device_enabled", "true");
     return persistSession(tokenPair.user);
   }, [persistSession]);
 
   const tryTrustedLogin = useCallback(async () => {
+    if (localStorage.getItem("campus_trusted_device_enabled") !== "true") return false;
     try {
       const tokenPair = await trustedDeviceAutoLogin();
+      if (!tokenPair) {
+        localStorage.removeItem("campus_trusted_device_enabled");
+        return false;
+      }
       applyTokenPair(tokenPair);
       persistSession(tokenPair.user);
       return true;
@@ -58,6 +64,7 @@ export function AppProvider({ children }) {
 
   const logout = useCallback(() => {
     void revokeTrustedDevice();
+    localStorage.removeItem("campus_trusted_device_enabled");
     clearStoredSession();
     setSession(null);
   }, []);

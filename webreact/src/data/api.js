@@ -103,7 +103,10 @@ export function getDeviceId(storage = globalThis.localStorage) {
 export async function qrCreate() { return dataOf(await client.post("/auth/qr/create", { device_id: getDeviceId() })); }
 export async function qrStatus(sessionId, browserToken) { return dataOf(await client.get(`/auth/qr/${sessionId}/status`, { headers: { "x-browser-token": browserToken } })); }
 export async function qrExchange(sessionId, browserToken) { return dataOf(await client.post("/auth/qr/exchange", { session_id: sessionId, browser_token: browserToken })); }
-export async function trustedDeviceAutoLogin() { return dataOf(await client.post("/auth/trusted-device/auto-login", { device_id: getDeviceId() })); }
+export async function trustedDeviceAutoLogin() {
+  const response = await client.post("/auth/trusted-device/auto-login", { device_id: getDeviceId() }, { validateStatus: (status) => status === 200 || status === 401 });
+  return response.status === 401 ? null : dataOf(response);
+}
 export async function revokeTrustedDevice() { try { await client.post("/auth/trusted-device/revoke", {}); } catch { /* a missing cookie is valid */ } }
 
 export async function getDashboard() { return dataOf(await client.get("/dashboard/student")); }
@@ -179,6 +182,7 @@ export async function finishStudySession(id, payload = {}) { return dataOf(await
 export async function breakdownStudyTask(payload) { return dataOf(await client.post("/study/task-breakdown", payload)); }
 export async function getStudyCheckins() { return dataOf(await client.get("/study/checkins")); }
 export async function createStudyCheckin(payload = {}) { return dataOf(await client.post("/study/checkins", payload)); }
+export async function getKnowledgeDocuments() { return dataOf(await client.get("/knowledge/documents")); }
 
 export async function getExams(params = {}) { return itemsOf(dataOf(await client.get("/student/exams", { params }))); }
 export async function saveExam(payload, id) { return dataOf(await (id ? client.patch(`/student/exams/${id}`, payload) : client.post("/student/exams", payload))); }

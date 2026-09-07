@@ -50,7 +50,7 @@ export default function AppShell() {
   const isCourses = location.pathname.startsWith("/courses");
   const isCounselor = location.pathname.startsWith("/counselor");
   const isProfile = location.pathname === "/profile";
-  const isStudy = location.pathname.startsWith("/study") || location.pathname.startsWith("/island");
+  const isStudy = ["/study", "/island", "/plans", "/docs", "/statistics"].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
   const floatingNavTone = isCounselor || dashboardStyle === "gamified" ? "light" : "dark";
   const motionPaused = reduceMotion || systemReducedMotion;
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date()).replace("星期", "周"), []);

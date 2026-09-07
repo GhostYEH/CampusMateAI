@@ -68,6 +68,15 @@ def run():
         island.wait_for_load_state("networkidle")
         island.get_by_role("button", name="今天签到").click()
         island.get_by_text("今天签过了").wait_for()
+
+        for path, heading in (("/plans", "计划"), ("/docs", "阅读"), ("/statistics", "主页")):
+            subpage = browser.new_page(viewport={"width": 1280, "height": 900})
+            install_api_fakes(subpage)
+            subpage.goto(f"http://127.0.0.1:5173{path}")
+            subpage.wait_for_load_state("networkidle")
+            subpage.get_by_role("heading", name=heading, exact=True).wait_for()
+            assert subpage.locator(".study-summer-dock").is_visible()
+            subpage.close()
         browser.close()
 
 
