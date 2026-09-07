@@ -45,7 +45,7 @@ test("homepage renders the CampusMate first-screen workbench above the backgroun
   const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
   const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
 
-  assert.match(homeSource, /<div className=["']sylva-home-foreground["']>/);
+  assert.match(homeSource, /<section[^>]*className=["']home-stage["']/);
   assert.match(homeSource, /<SylvaCampusOverview\s+state=\{state\}[^>]*onNavigate=\{handleNavigate\}[^>]*onOpenDue=\{handleOpenDue\}[^>]*\/>/);
   assert.match(homeSource, /SylvaCampusOverview/);
   assert.match(overviewSource, /import SylvaPriorityCard from ["']\.\/SylvaPriorityCard\.jsx["']/);
