@@ -141,11 +141,13 @@
 .study-summer-subpage[data-study-scene="rain"] .study-summer-subpage__backdrop { background-image: url('/assets/study/summer-rain.webp'); }
 .study-summer-subpage[data-study-scene="snow"] .study-summer-subpage__backdrop { background-image: url('/assets/study/summer-snow.webp'); }
 .study-summer-subpage[data-study-scene="cloud"] .study-summer-subpage__backdrop { background-image: url('/assets/study/summer-cloud.webp'); }
+.study-summer-subpage[data-study-scene="bamboo"] .study-summer-subpage__backdrop { background-image: url('/assets/study/study-bamboo-mist.png'); }
+.study-summer-subpage[data-study-scene="coast"] .study-summer-subpage__backdrop { background-image: url('/assets/study/study-coastal-dusk.png'); }
 .study-summer-subpage__shade { z-index: -1; background: linear-gradient(180deg, rgba(3, 15, 10, .86), rgba(4, 19, 13, .72) 44%, rgba(2, 11, 8, .94)); }
 .study-summer-subpage__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: 1180px; margin: 0 auto 26px; }
 .study-summer-subpage__header h1 { margin: 8px 0 6px; color: #f5fbf6; font-size: clamp(32px, 4vw, 50px); letter-spacing: -.055em; line-height: 1; }
 .study-summer-subpage__header p { max-width: 560px; margin: 0; color: rgba(220, 239, 227, .62); font-size: 13px; line-height: 1.75; }
-.study-summer-subpage__scene-picker { display: flex; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.13); border-radius: 13px; background: rgba(4,16,12,.42); backdrop-filter: blur(18px); }
+.study-summer-subpage__scene-picker { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid rgba(255,255,255,.13); border-radius: 13px; background: rgba(4,16,12,.42); backdrop-filter: blur(18px); }
 .study-summer-subpage__scene-picker button { display: grid; gap: 2px; min-width: 65px; padding: 7px 9px; border: 0; border-radius: 9px; color: rgba(255,255,255,.55); background: transparent; text-align: left; font-size: 11px; }
 .study-summer-subpage__scene-picker button small { color: inherit; opacity: .58; font-size: 9px; }
 .study-summer-subpage__scene-picker button:hover, .study-summer-subpage__scene-picker button.is-active { color: #07120e; background: var(--summer-primary); }
@@ -271,6 +273,8 @@
 .study-summer-immersive[data-immersive-scene="rain"]::after { background-image: url('/assets/study/summer-rain.webp'); }
 .study-summer-immersive[data-immersive-scene="snow"]::after { background-image: url('/assets/study/summer-snow.webp'); }
 .study-summer-immersive[data-immersive-scene="cloud"]::after { background-image: url('/assets/study/summer-cloud.webp'); }
+.study-summer-immersive[data-immersive-scene="bamboo"]::after { background-image: url('/assets/study/study-bamboo-mist.png'); }
+.study-summer-immersive[data-immersive-scene="coast"]::after { background-image: url('/assets/study/study-coastal-dusk.png'); }
 .study-summer-immersive__eyebrow { color: var(--summer-primary); font-size: 11px; font-weight: 700; letter-spacing: .24em; text-transform: uppercase; }
 .study-summer-immersive__time { font-size: clamp(64px, 17vw, 148px); font-weight: 200; letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 8px 40px rgba(0, 0, 0, .42); }
 .study-summer-immersive__quote { max-width: 580px; margin: 6px 0 0; color: rgba(237, 251, 238, .82); font-size: 14px; line-height: 1.9; text-align: center; text-shadow: 0 3px 18px rgba(0, 0, 0, .4); }

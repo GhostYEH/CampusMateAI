@@ -7,6 +7,8 @@ const SCENE_TONE = Object.freeze({
   rain: { frequency: 1200, gain: 0.34 },
   snow: { frequency: 700, gain: 0.16 },
   cloud: null, // 暖云暂未配置音效，保持静默
+  bamboo: { frequency: 900, gain: 0.24 },
+  coast: { frequency: 480, gain: 0.14 },
 });
 
 export function useAmbientSound(scene) {

@@ -6,10 +6,9 @@ import { Icon } from "../components/Icon.jsx";
 import { Button } from "../components/Primitives.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 import { useAmbientSound } from "../features/study/ambientSound.js";
-import { saveStudyScene } from "../features/study/scenes.js";
+import { saveStudyScene, STUDY_SCENES } from "../features/study/scenes.js";
 
-const SCENES = ["rain", "snow", "cloud"];
-const sceneLabel = { rain: "雨景", snow: "雪景", cloud: "暖云" };
+const SCENE_KEYS = STUDY_SCENES.map((item) => item.key);
 const isDone = (task) => ["completed", "done", "closed"].includes(String(task?.status || "").toLowerCase());
 const minutesOf = (session) => Math.max(0, Math.round(Number(session?.duration_seconds || 0) / 60));
 const dateLabel = (value) => value ? new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value)) : "待安排";
@@ -17,7 +16,7 @@ const dateLabel = (value) => value ? new Intl.DateTimeFormat("zh-CN", { month: "
 function useStudyScene() {
   const [scene, setScene] = useState(() => {
     const value = window.localStorage.getItem("campus_study_scene");
-    return SCENES.includes(value) ? value : "rain";
+    return SCENE_KEYS.includes(value) ? value : "rain";
   });
   const audio = useAmbientSound(scene);
   const select = (next) => { setScene(saveStudyScene(next)); };
@@ -31,7 +30,7 @@ function StudyShell({ eyebrow, title, description, scene, onSelectScene, audio, 
     <header className="study-summer-subpage__header">
       <div><span className="study-summer-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
       <div className="study-summer-subpage__scene-picker" aria-label="场景切换">
-        {SCENES.map((item) => <button key={item} type="button" className={scene === item ? "is-active" : ""} onClick={() => onSelectScene(item)}>{sceneLabel[item]}<small>{item === "rain" ? "森林回声" : item === "snow" ? "安静一点" : "暖融静谧"}</small></button>)}
+        {STUDY_SCENES.map((item) => <button key={item.key} type="button" className={scene === item.key ? "is-active" : ""} aria-pressed={scene === item.key} onClick={() => onSelectScene(item.key)}>{item.label}<small>{item.caption}</small></button>)}
       </div>
     </header>
     <div className="study-summer-subpage__content">{children}</div>

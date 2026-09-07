@@ -4,13 +4,9 @@ import { Link } from "react-router-dom";
 import { Button } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import { WhiteNoiseControl } from "./WhiteNoiseControl.jsx";
+import AccordionGallery from "./AccordionGallery.jsx";
 import { randomQuote } from "../../features/study/summerQuotes.js";
-
-const SCENES = Object.freeze([
-  { key: "rain", label: "雨景", caption: "林间雨声", asset: "/assets/study/summer-rain.webp" },
-  { key: "snow", label: "雪景", caption: "安静一点", asset: "/assets/study/summer-snow.webp" },
-  { key: "cloud", label: "暖云", caption: "松弛推进", asset: "/assets/study/summer-cloud.webp" },
-]);
+import { STUDY_SCENES } from "../../features/study/scenes.js";
 
 const EXIT_HOLD_MS = 1400;
 
@@ -106,6 +102,7 @@ export default function SummerFocusRoom({
   const focusTitle = isBreak ? "给自己几分钟喘口气" : active?.goal || "开始专注";
   const ambientText = isBreak ? "let the mind reset" : isRunning ? "stay with it" : "a quiet place for today";
   const activeTodos = tasks.filter((item) => String(item.status || "pending").toLowerCase() !== "completed");
+  const sceneIndex = Math.max(0, STUDY_SCENES.findIndex((item) => item.key === scene));
 
   return (
     <section className="study-summer-room" data-study-scene={scene} aria-labelledby="study-summer-title">
@@ -116,9 +113,7 @@ export default function SummerFocusRoom({
           <p>给眼前的事一段完整的时间，慢慢把今天推进下去。</p>
         </div>
         <div className="study-summer-header__actions">
-          <div className="study-summer-scenes" role="group" aria-label="选择学习场景">
-            {SCENES.map((item) => <button key={item.key} type="button" className={scene === item.key ? "is-active" : ""} aria-pressed={scene === item.key} onClick={() => onSelectScene(item.key)}><span>{item.label}</span><small>{item.caption}</small></button>)}
-          </div>
+          <AccordionGallery className="study-scene-gallery study-summer-scenes" items={STUDY_SCENES} activeIndex={sceneIndex} onChange={onSelectScene} trigger="click" height={52} gap={4} radius={10} expandRatio={0.38} accentColor="#d7ef83" overlayColor="#07120e" textColor="#f5fff5" parallax={0.18} tilt={0} />
           <button type="button" className="study-summer-immersive-trigger" onClick={enterImmersive} aria-label="进入沉浸模式"><Icon name="PhArrowsOut" size={15} /><span>沉浸模式</span></button>
           <button type="button" className="study-summer-refresh" onClick={onRefresh} aria-label="刷新学习记录"><Icon name="PhArrowClockwise" size={16} /></button>
         </div>
