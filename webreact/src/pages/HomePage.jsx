@@ -20,6 +20,9 @@ import ClassicHome from "./home/ClassicHome.jsx";
 import GamifiedHome from "./home/GamifiedHome.jsx";
 import SylvaCampusOverview from "./home/SylvaCampusOverview.jsx";
 import SylvaHomeHero from "../components/SylvaHomeHero.jsx";
+import Iridescence from "../components/Iridescence.jsx";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 const HOME_BOOT_TIMEOUT_MS = 1200;
 const HOME_CACHE_TTL_MS = 30_000;
@@ -240,11 +243,57 @@ export default function HomePage() {
     ? <GamifiedHome state={state} onNavigate={handleNavigate} onReload={reload} />
     : <ClassicHome state={state} searchQuery={query} onNavigate={handleNavigate} onOpenDue={handleOpenDue} onReload={reload} />;
 
+  const stageRef = useRef(null);
+  const sheetRef = useRef(null);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    const sheet = sheetRef.current;
+    if (!stage || !sheet) return undefined;
+
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (reducedMotion) return undefined;
+
+    gsap.registerPlugin(ScrollTrigger);
+    const glass = sheet.querySelector(".rising-sheet-glass");
+    const ctx = gsap.context(() => {
+      gsap.fromTo(stage,
+        { opacity: 1 },
+        {
+          opacity: 0.45,
+          ease: "none",
+          scrollTrigger: { trigger: stage, start: "top top", end: "bottom top", scrub: true },
+        }
+      );
+      if (glass) {
+        gsap.fromTo(glass,
+          { opacity: 0.72 },
+          {
+            opacity: 0.9,
+            ease: "none",
+            scrollTrigger: { trigger: stage, start: "top top", end: "bottom top", scrub: true },
+          }
+        );
+      }
+    }, stageRef);
+
+    const refreshTimer = window.setTimeout(() => ScrollTrigger.refresh(), 800);
+    return () => { window.clearTimeout(refreshTimer); ctx.revert(); };
+  }, []);
+
   return <div className="sylva-home-page">
     <SylvaHomeHero />
-    <div className="sylva-home-foreground">
+    <section ref={stageRef} className="home-stage">
       <SylvaCampusOverview state={state} onNavigate={handleNavigate} onOpenDue={handleOpenDue} />
-      <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
-    </div>
+    </section>
+    <section ref={sheetRef} className="rising-sheet" aria-label="CampusMate 学习工作台">
+      <div className="rising-sheet-iridescence" aria-hidden="true">
+        <Iridescence color={[0.92, 0.98, 0.90]} mouseReact={false} amplitude={0.06} speed={0.25} />
+      </div>
+      <div className="rising-sheet-glass" aria-hidden="true" />
+      <div className="rising-sheet-content">
+        <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
+      </div>
+    </section>
   </div>;
 }

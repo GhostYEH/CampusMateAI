@@ -1234,3 +1234,97 @@
     display: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Rising Content Sheet — fixed stage + scroll-driven rising layer.
+
+   .home-stage 是第一屏 sticky 舞台（SylvaCampusOverview），滚动期间
+   固定在视窗顶部；.rising-sheet 是紧随其后的第二层，随文档流从视窗
+   底部整体升起来覆盖舞台。背景由 SylvaHomeHero 的 fixed 全视窗层提
+   供，永不随文档滚动。GSAP ScrollTrigger 仅联动舞台 opacity 与玻璃
+   实度，主动画由 sticky 文档流天然完成，GPU 友好且完全可逆。
+   ───────────────────────────────────────────────────────────────────── */
+
+.home-stage {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  z-index: 5;
+  isolation: isolate;
+}
+
+.rising-sheet {
+  position: relative;
+  z-index: 20;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: clamp(24px, 3vw, 34px) clamp(24px, 3vw, 34px) 0 0;
+  background: transparent;
+  box-shadow: 0 -24px 64px -30px rgba(8, 18, 12, .5);
+}
+
+.rising-sheet-iridescence {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .14;
+  mix-blend-mode: soft-light;
+}
+
+.rising-sheet-iridescence .iridescence-container {
+  background: transparent;
+}
+
+.rising-sheet-glass {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: .72;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .92) 0%, rgba(244, 247, 239, .82) 20%, rgba(244, 247, 239, .82) 100%);
+  backdrop-filter: blur(18px) saturate(118%);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
+}
+
+.rising-sheet-glass::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85) 30%, rgba(201, 227, 106, .5) 50%, rgba(255, 255, 255, .85) 70%, transparent);
+}
+
+.rising-sheet-glass::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  content: "";
+  background: linear-gradient(180deg, rgba(255, 255, 255, .5), transparent);
+}
+
+.rising-sheet-content {
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 760px) {
+  .rising-sheet {
+    border-radius: 24px 24px 0 0;
+  }
+
+  .rising-sheet-glass {
+    backdrop-filter: blur(14px) saturate(112%);
+    -webkit-backdrop-filter: blur(14px) saturate(112%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rising-sheet-glass {
+    opacity: .9;
+  }
+}
