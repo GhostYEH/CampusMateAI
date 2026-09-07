@@ -6,6 +6,7 @@ import { STUDY_SCENE_ASSETS, STUDY_SCENES, readStudyScene, saveStudyScene } from
 
 const roomSource = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
 const studyStyles = await readFile(new URL("../src/styles/study-summer.css", import.meta.url), "utf8");
+const galleryStyles = await readFile(new URL("../src/components/study/AccordionGallery.css", import.meta.url), "utf8");
 
 test("study scene metadata keeps the original three scenes and adds two natural backgrounds", () => {
   assert.deepEqual(STUDY_SCENES.map((scene) => scene.key), ["rain", "snow", "cloud", "bamboo", "coast"]);
@@ -27,11 +28,16 @@ test("study scene persistence accepts both generated scenes", () => {
   assert.equal(readStudyScene(storage), "coast");
 });
 
-test("focus room uses the supplied AccordionGallery as its scene switcher", () => {
+test("focus room uses hover expansion for the AccordionGallery scene switcher", () => {
   assert.match(roomSource, /import AccordionGallery from ["']\.\/AccordionGallery\.jsx["']/);
   assert.match(roomSource, /<AccordionGallery/);
   assert.match(roomSource, /onChange=\{onSelectScene\}/);
-  assert.match(roomSource, /trigger=["']click["']/);
+  assert.match(roomSource, /trigger=["']hover["']/);
+});
+
+test("focus room gives the scene gallery enough space for its hover expansion", () => {
+  assert.match(roomSource, /height=\{62\}/);
+  assert.match(galleryStyles, /\.study-scene-gallery\s*\{[^}]*flex:\s*0\s+1\s+520px/);
 });
 
 test("all five study scenes are available to full-page and immersive backgrounds", () => {

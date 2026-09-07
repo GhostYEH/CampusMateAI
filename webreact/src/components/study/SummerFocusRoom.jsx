@@ -113,7 +113,7 @@ export default function SummerFocusRoom({
           <p>给眼前的事一段完整的时间，慢慢把今天推进下去。</p>
         </div>
         <div className="study-summer-header__actions">
-          <AccordionGallery className="study-scene-gallery study-summer-scenes" items={STUDY_SCENES} activeIndex={sceneIndex} onChange={onSelectScene} trigger="click" height={52} gap={4} radius={10} expandRatio={0.38} accentColor="#d7ef83" overlayColor="#07120e" textColor="#f5fff5" parallax={0.18} tilt={0} />
+          <AccordionGallery className="study-scene-gallery study-summer-scenes" items={STUDY_SCENES} activeIndex={sceneIndex} onChange={onSelectScene} trigger="hover" height={62} gap={4} radius={10} expandRatio={0.38} accentColor="#d7ef83" overlayColor="#07120e" textColor="#f5fff5" parallax={0.18} tilt={0} />
           <button type="button" className="study-summer-immersive-trigger" onClick={enterImmersive} aria-label="进入沉浸模式"><Icon name="PhArrowsOut" size={15} /><span>沉浸模式</span></button>
           <button type="button" className="study-summer-refresh" onClick={onRefresh} aria-label="刷新学习记录"><Icon name="PhArrowClockwise" size={16} /></button>
         </div>
