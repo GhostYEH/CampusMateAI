@@ -1,4 +1,7 @@
+import json
 import os
+import time
+from datetime import datetime, timedelta
 
 from playwright.sync_api import sync_playwright
 
@@ -6,7 +9,49 @@ from playwright.sync_api import sync_playwright
 BASE_URL = os.environ.get("WEB_BASE_URL", "http://127.0.0.1:5174")
 
 
+def wait_visible(page, locator, timeout_ms=15000, what="element"):
+    """Poll until the first matching element is visible. Deterministic
+    replacement for locator.wait_for(state='visible'), which is flaky under
+    Vite dev-server latency on this setup."""
+    deadline = time.monotonic() + timeout_ms / 1000
+    while time.monotonic() < deadline:
+        try:
+            if locator.count() > 0 and locator.first.is_visible():
+                return
+        except Exception:
+            pass
+        page.wait_for_timeout(200)
+    raise AssertionError(f"{what} not visible within {timeout_ms}ms")
+
+
+def build_fixture():
+    now = datetime.now()
+    deadline_a = (now + timedelta(hours=2)).isoformat()
+    deadline_p = (now + timedelta(hours=5)).isoformat()
+    weekday = now.isoweekday()  # 1 = Monday ... 7 = Sunday
+    dashboard = {
+        "due_soon_assignments": [
+            {"id": "a1", "title": "高等数学作业", "course_name": "高等数学", "deadline": deadline_a},
+        ],
+        "due_soon_personal_tasks": [
+            {"id": "p1", "title": "整理课堂笔记", "deadline": deadline_p},
+        ],
+        "pending_assignment_count": 1,
+        "pending_personal_task_count": 1,
+        "unread_announcement_count": 2,
+        "enrolled_course_count": 4,
+    }
+    schedule_items = {
+        "items": [
+            {"id": "s1", "course_name": "高等数学", "weekday": weekday, "start_section": 1, "end_section": 2, "location": "教1-201"},
+            {"id": "s2", "course_name": "大学英语", "weekday": weekday, "start_section": 3, "end_section": 3, "location": "教2-305"},
+        ]
+    }
+    return dashboard, schedule_items
+
+
 def run():
+    dashboard_fixture, schedule_fixture = build_fixture()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 900})
@@ -19,14 +64,17 @@ def run():
             if "/landing-pages/inner-green" in request.url
             else None,
         )
-        page.route(
-            "**/api/**",
-            lambda route: route.fulfill(
-                status=404,
-                content_type="application/json",
-                body='{"detail":"sylva smoke fixture"}',
-            ),
-        )
+
+        def api_route(route):
+            url = route.request.url
+            if "/dashboard/student" in url:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(dashboard_fixture))
+            elif "/edu/schedule/items" in url:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(schedule_fixture))
+            else:
+                route.fulfill(status=404, content_type="application/json", body='{"detail":"sylva smoke fixture"}')
+
+        page.route("**/api/**", api_route)
         page.add_init_script(
             """
             // Keep the exact scene responsive under headless Chromium's software renderer.
@@ -39,6 +87,7 @@ def run():
         )
 
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        page.wait_for_timeout(2500)
         print("desktop page loaded", flush=True)
 
         # ── fixed background layer + three.js scene ──────────────────────
@@ -53,7 +102,7 @@ def run():
                 }
             )
         iframe = page.locator(".sylva-scene-background iframe")
-        iframe.wait_for(state="visible", timeout=15_000)
+        wait_visible(page, iframe, 15000, "sylva iframe")
         assert iframe.get_attribute("src") == "/landing-pages/inner-green-3d.html"
 
         scene = iframe.element_handle().content_frame()
@@ -65,13 +114,10 @@ def run():
         )
         assert scene_pixels["width"] > 0 and scene_pixels["height"] > 0
         assert scene_pixels["engine"] == "three.js r149"
-        # the English editorial layer is hidden; only the living scene remains
         headline = scene.query_selector(".headline")
         assert headline is not None
         assert headline.evaluate("el => getComputedStyle(el).display") == "none"
         assert scene.query_selector(".dock-wrap") is None
-        assert not scene.query_selector_all(".dock [data-dock]")
-        # background is truly fixed at the viewport origin
         bg_style = background.evaluate("el => getComputedStyle(el).position")
         assert bg_style == "fixed"
         bg_box = background.bounding_box()
@@ -79,34 +125,55 @@ def run():
         assert abs(bg_box["width"] - 1440) < 2 and abs(bg_box["height"] - 900) < 2
         print("desktop scene verified", flush=True)
 
-        # ── first viewport shows CampusMate business content ─────────────
+        # ── first viewport: CampusMate workbench ─────────────────────────
         overview = page.locator(".sylva-campus-overview")
-        overview.wait_for(state="visible", timeout=10_000)
+        wait_visible(page, overview, 10000, "campus overview")
         title = page.locator(".sylva-overview-title")
-        assert title.is_visible()
-        assert len(title.inner_text().strip()) > 0
+        assert title.is_visible() and len(title.inner_text().strip()) > 0
         primary = page.locator(".sylva-overview-primary")
         assert primary.is_visible()
-        assert page.locator(".sylva-rhythm-card").count() == 1
-        assert page.locator(".sylva-next-card").count() == 1
-        assert page.locator(".sylva-scene-stat").count() >= 2
-        assert page.get_by_role("heading", name="今日学习节奏").count() == 1
-        assert page.get_by_role("heading", name="下一件事").count() == 1
+        assert page.locator(".sylva-priority-card").count() == 1
+        assert page.get_by_role("heading", name="优先事项").count() == 1
+        assert page.locator(".sylva-priority-list > button").count() >= 1
+        assert page.locator(".sylva-schedule-card").count() == 1
+        assert page.locator(".sylva-schedule-card").inner_text().startswith("今日课程表")
+        assert page.locator(".sylva-schedule-days > span.today").count() == 1
+        assert page.locator(".sylva-schedule-today > button").count() == 2
+        assert page.locator(".sylva-scene-stat").count() == 3
+        print("first viewport workbench verified", flush=True)
 
-        # ── existing global navigation preserved ─────────────────────────
+        # ── adaptive navigation contrast ─────────────────────────────────
         global_nav = page.locator(".floating-nav")
         global_nav.wait_for(state="visible")
         assert global_nav.locator(".floating-nav-button").count() == 8
         assert global_nav.get_by_role("button", name="首页").get_attribute("aria-current") == "page"
+        nav_contrast = global_nav.get_attribute("data-contrast")
+        assert nav_contrast in ("light", "dark"), nav_contrast
+        nav_color = page.locator(".floating-nav-button").first.evaluate("el => getComputedStyle(el).color")
+        assert nav_color and nav_color != "rgba(0, 0, 0, 0)", nav_color
+        nav_label_shadow = page.evaluate(
+            "getComputedStyle(document.querySelector('.floating-nav-label')).textShadow"
+        )
+        print(f"nav contrast={nav_contrast} color={nav_color}", flush=True)
 
-        # ── primary action navigates to a real existing route ────────────
-        primary.click()
-        page.wait_for_url(f"{BASE_URL}/study", timeout=10_000)
-        print("primary action route verified", flush=True)
+        # ── clicking a priority item opens its task route ────────────────
+        page.locator(".sylva-priority-list > button").first.click()
+        page.wait_for_url(f"{BASE_URL}/tasks/assignment/a1", timeout=10_000)
+        print("priority item route verified", flush=True)
+
+        # ── schedule card leads to the academic schedule ─────────────────
+        page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        page.wait_for_timeout(2500)
+        schedule_button = page.locator(".sylva-schedule-today > button").first
+        wait_visible(page, schedule_button, 10000, "schedule course button")
+        schedule_button.click()
+        page.wait_for_url(f"{BASE_URL}/profile/academic", timeout=10_000)
+        print("schedule card route verified", flush=True)
 
         # ── after scrolling one viewport the background stays pinned ─────
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
-        background.wait_for(state="visible", timeout=15_000)
+        page.wait_for_timeout(2500)
+        wait_visible(page, background, 15000, "fixed background")
         before_box = background.bounding_box()
         page.evaluate("window.scrollTo(0, window.innerHeight)")
         page.wait_for_timeout(300)
@@ -121,9 +188,10 @@ def run():
         # ── mobile: 390×844 ──────────────────────────────────────────────
         page.set_viewport_size({"width": 390, "height": 844})
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        page.wait_for_timeout(2500)
         print("mobile page loaded", flush=True)
         mobile_bg = page.locator(".sylva-home-hero.sylva-scene-background")
-        mobile_bg.wait_for(state="visible", timeout=15_000)
+        wait_visible(page, mobile_bg, 15000, "mobile background")
         mobile_iframe = mobile_bg.locator("iframe")
         mobile_scene = mobile_iframe.element_handle().content_frame()
         mobile_scene.wait_for_load_state("domcontentloaded")
@@ -134,6 +202,7 @@ def run():
         assert page.locator(".floating-nav").is_visible()
         assert page.locator(".floating-nav-button").count() == 8
         assert page.locator(".sylva-overview-primary").is_visible()
+        assert page.locator(".sylva-priority-card").is_visible()
         overflow_m = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         assert overflow_m <= 0, f"mobile horizontal overflow: {overflow_m}"
         print("mobile scene verified", flush=True)
@@ -141,11 +210,13 @@ def run():
         # ── narrow: 320×720 ──────────────────────────────────────────────
         page.set_viewport_size({"width": 320, "height": 720})
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        page.wait_for_timeout(2500)
         narrow_bg = page.locator(".sylva-home-hero.sylva-scene-background")
-        narrow_bg.wait_for(state="visible", timeout=15_000)
+        wait_visible(page, narrow_bg, 15000, "narrow background")
         narrow_box = narrow_bg.bounding_box()
         assert narrow_box and abs(narrow_box["width"] - 320) < 2
         assert page.locator(".sylva-overview-primary").is_visible()
+        assert page.locator(".sylva-schedule-card").is_visible()
         overflow_n = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         assert overflow_n <= 0, f"narrow horizontal overflow: {overflow_n}"
         print("narrow scene verified", flush=True)

@@ -4,6 +4,7 @@ import HomeLearningCommand from "./HomeLearningCommand.jsx";
 import HomeLearningPulse from "./HomeLearningPulse.jsx";
 import HomeSchedulePanel from "./HomeSchedulePanel.jsx";
 import HomeFooter from "../../components/HomeFooter.jsx";
+import { deadlineLabel } from "./homeTime.js";
 
 const quickLinks = [
   { label: "通知整理", detail: "课程与校园通知", icon: "PhBell", path: "/notifications", tone: "amber" },
@@ -11,24 +12,9 @@ const quickLinks = [
   { label: "学校与专业", detail: "查看校园背景信息", icon: "PhBuildings", path: "/university", tone: "rose" },
 ];
 
-function dateText(value) {
-  if (!value) return "未设置截止时间";
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "截止时间待确认" : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function deadlineLabel(value, now) {
-  if (!value) return "未设置截止";
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "截止时间待确认";
-  const current = new Date(now);
-  const sameDay = date.toDateString() === current.toDateString();
-  return sameDay ? `今日截止 ${date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : dateText(value);
-}
-
 export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue, onReload }) {
   const totalPending = state.overviewMetrics.pendingCount;
-  const urgentItems = useMemo(() => state.filteredDueItems.slice(0, 3), [state.filteredDueItems]);
+  const dueItems = useMemo(() => state.filteredDueItems, [state.filteredDueItems]);
 
   return (
     <main className="student-page student-home simple-student-home">
@@ -60,14 +46,14 @@ export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue,
           <section className="simple-home-grid">
             <article className="student-home-panel task-panel simple-priority-panel">
               <div className="home-panel-head">
-                <h2><Icon name="PhFlag" size={19} />优先处理</h2>
+                <h2><Icon name="PhListChecks" size={19} />待办与作业</h2>
                 <button onClick={() => onNavigate?.("/tasks")}>全部 {totalPending} 项</button>
               </div>
-              {urgentItems.length ? (
+              {dueItems.length ? (
                 <div className="priority-list">
-                  {urgentItems.map((item, index) => (
+                  {dueItems.map((item) => (
                     <button key={`${item.kind}-${item.id}`} onClick={() => onOpenDue?.(item)}>
-                      {index === 0 && <span className="urgent-tag">优先</span>}
+                      <span className={`priority-kind ${item.kind === "作业" ? "assignment" : "personal"}`}>{item.kind}</span>
                       <strong>{item.title}</strong>
                       <time className={deadlineLabel(item.due, state.now).startsWith("今日") ? "today" : ""}>{deadlineLabel(item.due, state.now)}</time>
                     </button>
@@ -76,11 +62,11 @@ export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue,
               ) : (
                 <div className="compact-empty">
                   <Icon name="PhCheckCircle" size={26} />
-                  <strong>没有临近截止事项</strong>
+                  <strong>全部完成</strong>
                   <span>新的课程作业和个人待办会自动汇合到这里。</span>
                 </div>
               )}
-              <button className="panel-footer simple" onClick={() => onNavigate?.("/tasks")}>进入待办与作业<Icon name="PhArrowRight" size={15} /></button>
+              <button className="panel-footer simple" onClick={() => onNavigate?.("/tasks")}>进入待办管理<Icon name="PhArrowRight" size={15} /></button>
             </article>
             <HomeSchedulePanel items={state.scheduleItems} loading={state.scheduleLoading} onOpenAcademic={() => onNavigate?.("/profile/academic")} />
           </section>

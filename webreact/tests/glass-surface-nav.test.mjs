@@ -11,7 +11,7 @@ const layoutStyles = await readFile(new URL("../src/styles/floating-layout.css",
 
 test("floating navigation is hosted by the reusable glass surface", () => {
   assert.match(navSource, /import LiquidGlassSurface from "\.\.\/LiquidGlassSurface\.jsx"/);
-  assert.match(navSource, /<LiquidGlassSurface[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}/);
+  assert.match(navSource, /<LiquidGlassSurface[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}\s+floating-nav-surface`\}/);
   assert.match(gooeySource, /<nav aria-label=\{ariaLabel\}/);
 });
 

@@ -41,18 +41,50 @@ test("homepage keeps the Sylva hero as the fixed living-scene background", async
   assert.match(homeSource, /<ClassicHome|<GamifiedHome/);
 });
 
-test("homepage renders the CampusMate first-screen layer above the background", async () => {
+test("homepage renders the CampusMate first-screen workbench above the background", async () => {
   const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
+  const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
 
   assert.match(homeSource, /<div className=["']sylva-home-foreground["']>/);
   assert.match(homeSource, /<SylvaCampusOverview\s+state=\{state\}[^>]*onNavigate=\{handleNavigate\}[^>]*onOpenDue=\{handleOpenDue\}[^>]*\/>/);
   assert.match(homeSource, /SylvaCampusOverview/);
-  const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
+  assert.match(overviewSource, /import SylvaPriorityCard from ["']\.\/SylvaPriorityCard\.jsx["']/);
+  assert.match(overviewSource, /import SylvaScheduleCard from ["']\.\/SylvaScheduleCard\.jsx["']/);
   assert.match(overviewSource, /learningCommand/);
-  assert.match(overviewSource, /filteredDueItems/);
+  assert.match(overviewSource, /todayCourses/);
+  assert.match(overviewSource, /overviewMetrics/);
   assert.match(overviewSource, /todayFocusSeconds/);
   assert.match(overviewSource, /onNavigate/);
   assert.match(overviewSource, /onOpenDue/);
+});
+
+test("the first-screen priority and schedule modules use real state fields", async () => {
+  const [prioritySource, scheduleSource] = await Promise.all([
+    readFile(new URL("src/pages/home/SylvaPriorityCard.jsx", webRoot), "utf8"),
+    readFile(new URL("src/pages/home/SylvaScheduleCard.jsx", webRoot), "utf8"),
+  ]);
+
+  assert.match(prioritySource, /filteredDueItems/);
+  assert.match(prioritySource, /overviewMetrics\.pendingCount/);
+  assert.match(prioritySource, /onOpenDue/);
+  assert.match(prioritySource, /onNavigate\?\.\(\s*["']\/tasks["']/);
+  assert.doesNotMatch(prioritySource, /Canopy|Native species|Explore the work/);
+
+  assert.match(scheduleSource, /scheduleItems|todayCourses/);
+  assert.match(scheduleSource, /scheduleLoading/);
+  assert.match(scheduleSource, /onNavigate\?\.\(\s*["']\/profile\/academic["']/);
+  assert.match(scheduleSource, /今天没有排课|管理我的课表/);
+});
+
+test("the dashboard below changes responsibility instead of repeating the first screen", async () => {
+  const classicSource = await readFile(new URL("src/pages/home/ClassicHome.jsx", webRoot), "utf8");
+
+  // The full management list below uses a different heading and keeps the
+  // detailed weekly schedule panel; the first screen keeps the compact cards.
+  assert.match(classicSource, /待办与作业/);
+  assert.match(classicSource, /priority-kind/);
+  assert.match(classicSource, /HomeSchedulePanel/);
+  assert.doesNotMatch(classicSource, /今日学习节奏/);
 });
 
 test("the Sylva scene hides its editorial layer and keeps only the living scene", async () => {
