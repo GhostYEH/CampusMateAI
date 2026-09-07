@@ -15,7 +15,7 @@ test("React home mounts the service and brand footer", async () => {
 
   assert.match(`${classicHome}\n${gamifiedHome}`, /<HomeFooter>/);
   assert.match(`${classicHome}\n${gamifiedHome}`, /<\/HomeFooter>/);
-  assert.match(`${classicHome}\n${gamifiedHome}\n${footer}`, /需要时再打开/);
+  assert.doesNotMatch(classicHome, /需要时再打开/);
   assert.match(footer, /我的课程/);
   assert.match(footer, /校园社区/);
   assert.match(footer, /关注微信公众号/);

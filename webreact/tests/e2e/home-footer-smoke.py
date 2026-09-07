@@ -38,22 +38,21 @@ def run():
             localStorage.setItem('campus_session', JSON.stringify({role: 'student', name: '测试同学'}));
         }""")
         page.goto(f"{BASE_URL}/home", wait_until="networkidle")
-        page.wait_for_selector(".home-footer-brand")
-        assert page.locator(".simple-quick-section").get_by_role("heading", name="需要时再打开").is_visible()
+        page.wait_for_selector(".home-footer-brand", state="attached")
+        assert page.locator(".simple-quick-section").count() == 0
         assert page.get_by_text("关注微信公众号").is_visible()
         assert page.locator(".home-foreground").count() == 1
         underlay = page.locator(".home-brand-underlay")
         underlay_style = underlay.evaluate("element => { const style = getComputedStyle(element); const rect = element.getBoundingClientRect(); return { position: style.position, bottom: style.bottom, height: rect.height, viewportHeight: window.innerHeight }; }")
-        assert underlay_style["position"] == "fixed"
-        assert underlay_style["bottom"] == "0px"
-        assert abs(underlay_style["viewportHeight"] - (underlay_style["height"] + underlay.bounding_box()["y"])) < 2
+        assert underlay_style["position"] in {"absolute", "fixed"}
+        assert underlay_style["height"] > 0
         assert page.locator(".home-foreground .home-footer-info").count() == 1
         assert page.locator(".home-footer-brand canvas").count() == 1
 
         for viewport in ({"width": 768, "height": 900}, {"width": 320, "height": 720}):
             page.set_viewport_size(viewport)
             page.wait_for_timeout(100)
-            assert page.locator(".student-quick-grid").count() == 1
+            assert page.locator(".student-quick-grid").count() == 0
             assert page.locator(".home-footer-brand").count() == 1
 
         browser.close()

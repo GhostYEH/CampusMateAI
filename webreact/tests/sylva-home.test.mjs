@@ -80,13 +80,14 @@ test("the dashboard below changes responsibility instead of repeating the first 
   const classicSource = await readFile(new URL("src/pages/home/ClassicHome.jsx", webRoot), "utf8");
   const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
 
-  // The detailed weekly schedule remains below, while the pulse moves into
-  // the first-screen workbench and the duplicate task panel is removed.
+  // The pulse moves into the first-screen workbench and the redundant lower
+  // command, schedule, and services blocks stay removed.
   assert.match(overviewSource, /HomeLearningPulse/);
   assert.match(overviewSource, /<HomeLearningPulse\s+items=\{command\.pulse\}/);
   assert.doesNotMatch(classicSource, /HomeLearningPulse/);
   assert.doesNotMatch(classicSource, /simple-priority-panel/);
-  assert.match(classicSource, /HomeSchedulePanel/);
+  assert.doesNotMatch(classicSource, /HomeLearningCommand|HomeSchedulePanel|simple-home-command-stack|simple-home-grid|simple-quick-section/);
+  assert.match(classicSource, /<HomeFooter fixedBrand>/);
 });
 
 test("the first-screen workbench uses four desktop columns and larger side cards", async () => {

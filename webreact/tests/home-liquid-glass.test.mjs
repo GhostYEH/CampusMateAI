@@ -12,14 +12,7 @@ test("classic homepage exposes a reduced-motion safe elastic mesh accent", () =>
 });
 
 test("classic homepage cards use a translucent glass treatment without scroll-time backdrop filtering", () => {
-  for (const selector of [
-    ".simple-home-command-stack",
-    ".simple-home-grid",
-    ".simple-quick-section",
-  ]) {
-    assert.ok(styles.includes(selector), selector);
-  }
-  assert.match(styles, /\.home-learning-command,\.home-learning-pulse,\.student-home-panel,\.simple-quick-section\{[^}]*background:linear-gradient\(/);
-  assert.match(styles, /\.home-learning-command,\.home-learning-pulse,\.student-home-panel,\.simple-quick-section\{[^}]*backdrop-filter:none/);
+  assert.match(styles, /\.home-learning-command,\.home-learning-pulse,\.student-home-panel\{[^}]*background:linear-gradient\(/);
+  assert.match(styles, /\.home-learning-command,\.home-learning-pulse,\.student-home-panel\{[^}]*backdrop-filter:none/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)/);
 });

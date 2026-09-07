@@ -5,11 +5,8 @@ import test from "node:test";
 const source = await readFile(new URL("../src/styles/home-classic.css", import.meta.url), "utf8");
 
 test("classic homepage layout components have their visual styles", () => {
-  assert.match(source, /\.simple-home-command-stack\s*\{[^}]*display:grid/);
-  assert.match(source, /\.simple-home-grid\s*\{[^}]*display:grid/);
   assert.match(source, /\.home-learning-command\s*\{[^}]*position:relative[^}]*min-height:/);
   assert.match(source, /\.home-command-mesh\s*\{[^}]*position:absolute[^}]*inset:0/);
   assert.doesNotMatch(source, /\.simple-priority-panel/);
-  assert.match(source, /\.simple-quick-section\s*\{/);
-  assert.match(source, /\.student-quick-grid\s*\{[^}]*display:grid/);
+  assert.doesNotMatch(source, /\.simple-home-command-stack|\.simple-home-grid|\.simple-quick-section/);
 });
