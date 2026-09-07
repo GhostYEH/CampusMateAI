@@ -64,13 +64,19 @@ def run():
         assert scene_pixels["engine"] == "three.js r149"
         dock_items = scene.query_selector_all(".dock [data-dock]")
         assert len(dock_items) == 5
+        assert scene.query_selector(".dock-wrap").evaluate(
+            "element => getComputedStyle(element).display"
+        ) == "none"
         scene_copy = scene.query_selector(".headline")
         assert scene_copy is not None
         assert "Step into" in scene_copy.inner_text()
         assert "the living world" in scene_copy.inner_text()
         explore_button = scene.query_selector(".liquid-button--explore")
         assert explore_button is not None
-        assert page.locator(".topbar").evaluate("element => getComputedStyle(element).display") == "none"
+        global_nav = page.locator(".floating-nav")
+        global_nav.wait_for(state="visible")
+        assert global_nav.locator(".floating-nav-button").count() == 8
+        assert global_nav.get_by_role("button", name="首页").get_attribute("aria-current") == "page"
 
         hero_box = page.locator(".sylva-home-hero").bounding_box()
         assert hero_box and abs(hero_box["height"] - 900) < 2
@@ -82,7 +88,7 @@ def run():
         print("explore bridge verified", flush=True)
 
         page.evaluate("window.scrollTo(0, 0)")
-        dock_items[1].evaluate("item => item.click()")
+        global_nav.get_by_role("button", name="我的课程").click()
         page.wait_for_url(f"{BASE_URL}/courses", timeout=10_000)
         print("dock bridge verified", flush=True)
 
@@ -97,6 +103,11 @@ def run():
         assert mobile_box and abs(mobile_box["width"] - 320) < 2
         assert mobile_box["height"] >= 560
         assert len(mobile_scene.query_selector_all(".dock [data-dock]")) == 5
+        assert mobile_scene.query_selector(".dock-wrap").evaluate(
+            "element => getComputedStyle(element).display"
+        ) == "none"
+        assert page.locator(".floating-nav").is_visible()
+        assert page.locator(".floating-nav-button").count() == 8
         print("mobile scene verified", flush=True)
 
         assert not failed_local_assets, failed_local_assets

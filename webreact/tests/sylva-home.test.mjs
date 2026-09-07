@@ -36,6 +36,8 @@ test("homepage opens with the configured Living Green hero before the existing d
   assert.match(heroSource, /headingSize=\{63\}/);
   assert.match(heroSource, /bodySize=\{16\.5\}/);
   assert.match(heroSource, /headingLetterSpacing=\{-0\.006\}/);
+  assert.match(heroSource, /data-campusmate-nav/);
+  assert.match(heroSource, /\.dock-wrap\{display:none!important\}/);
   assert.match(homeSource, /<SylvaHomeHero/);
   assert.match(homeSource, /id=["']campus-dashboard["']/);
   assert.match(homeSource, /<ClassicHome|<GamifiedHome/);

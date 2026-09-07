@@ -6,10 +6,17 @@
   padding: 0;
 }
 
-.app-layout:has(.sylva-home-page) .topbar,
 .app-layout:has(.sylva-home-page) .app-iridescence,
 .app-layout:has(.sylva-home-page) .smooth-cursor-layer {
   display: none;
+}
+
+.app-layout:has(.sylva-home-page) .topbar > :not(.floating-nav) {
+  display: none;
+}
+
+.app-layout:has(.sylva-home-page) .floating-nav {
+  top: clamp(24px, 4.22svh, 42px);
 }
 
 .sylva-home-page {
