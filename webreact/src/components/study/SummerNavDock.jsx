@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Icon } from "../Icon.jsx";
 
 const DOCK_LINKS = Object.freeze([
-  { to: "/study", label: "小岛" },
+  { to: "/island", label: "小岛" },
   { to: "/tasks", label: "计划" },
   { to: "/courses", label: "阅读" },
   { to: "/home", label: "主页" },

@@ -175,3 +175,41 @@
   .study-summer-immersive-trigger span { display: none; }
   .study-summer-immersive-trigger { padding: 0 11px; }
 }
+
+/* ── 小岛页（夏季岛屿主页） ── */
+.island-room { min-height: calc(100vh - 148px); padding-bottom: 118px; }
+.island-loading { position: relative; z-index: 1; display: grid; min-height: 320px; place-items: center; align-content: center; gap: 12px; color: rgba(255,255,255,.6); font-size: 13px; }
+.island-body { position: relative; z-index: 1; display: grid; gap: 18px; margin-top: 22px; }
+.island-landscape { position: relative; min-height: 250px; overflow: hidden; border: 1px solid var(--summer-border); border-radius: 18px; background: linear-gradient(180deg, rgba(126, 196, 178, .18), rgba(10, 44, 32, .4)); }
+.island-landscape__sun { position: absolute; top: 34px; left: 50%; width: 92px; height: 92px; border-radius: 50%; background: radial-gradient(circle at 38% 34%, #fdf3c9, rgba(215, 239, 131, .85) 58%, rgba(215, 239, 131, .15)); box-shadow: 0 0 60px rgba(215, 239, 131, .35); transform: translateX(-50%); }
+.island-landscape::after { position: absolute; inset: auto -6% -18% -6%; height: 46%; content: "小岛"; display: grid; place-items: center; color: rgba(215, 239, 131, .5); background: radial-gradient(circle at 50% 28%, rgba(52, 116, 82, .9), rgba(7, 32, 22, .95)); border-radius: 50% 50% 0 0 / 34% 34% 0 0; font-size: 42px; font-weight: 700; letter-spacing: .2em; }
+.island-landscape__label { position: absolute; right: 18px; top: 16px; color: rgba(255,255,255,.55); font-size: 11px; }
+.island-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.island-stat { display: grid; gap: 6px; padding: 16px; border: 1px solid var(--summer-border); border-radius: 15px; background: rgba(6, 24, 17, .42); backdrop-filter: blur(14px); }
+.island-stat span { color: rgba(255,255,255,.5); font-size: 10px; }
+.island-stat strong { color: #f3fce8; font-size: 24px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.island-stat small { margin-left: 3px; color: var(--summer-muted); font-size: 11px; font-weight: 400; }
+.island-foot { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 14px; align-items: stretch; }
+.island-week, .island-checkin { border: 1px solid var(--summer-border); border-radius: 15px; background: rgba(6, 24, 17, .42); backdrop-filter: blur(14px); }
+.island-week { padding: 15px 16px 12px; }
+.island-week h2 { margin: 0 0 12px; color: rgba(255,255,255,.85); font-size: 12px; font-weight: 600; }
+.island-week__bars { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; height: 110px; }
+.island-week__col { display: grid; grid-template-rows: 1fr auto auto; gap: 3px; flex: 1; align-items: end; text-align: center; height: 100%; }
+.island-week__col i { display: block; width: 100%; max-width: 26px; margin: 0 auto; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--summer-primary), rgba(215, 239, 131, .35)); box-shadow: 0 0 12px rgba(215, 239, 131, .18); }
+.island-week__col small { color: rgba(255,255,255,.45); font-size: 9px; }
+.island-week__col b { color: rgba(255,255,255,.6); font-size: 9px; font-weight: 500; min-height: 12px; }
+.island-checkin { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px; text-align: center; }
+.island-checkin__button { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 20px; border: 1px solid rgba(215, 239, 131, .3); border-radius: 999px; color: #0a1c12; background: var(--summer-primary); font-size: 13px; font-weight: 700; box-shadow: 0 10px 26px rgba(215, 239, 131, .18); }
+.island-checkin__button:hover { background: #e5f89f; }
+.island-checkin__done { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border: 1px solid rgba(215, 239, 131, .22); border-radius: 14px; background: rgba(215, 239, 131, .08); text-align: left; }
+.island-checkin__done > span { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; color: #0a1c12; background: var(--summer-primary); }
+.island-checkin__done strong { display: block; color: var(--summer-primary); font-size: 13px; }
+.island-checkin__done small { display: block; margin-top: 2px; color: rgba(255,255,255,.5); font-size: 11px; }
+.island-checkin__hint { color: rgba(255,255,255,.42); font-size: 10px; line-height: 1.6; }
+@media (max-width: 760px) {
+  .island-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .island-stat { padding: 12px 10px; }
+  .island-foot { grid-template-columns: 1fr; }
+  .island-landscape { min-height: 180px; }
+  .island-landscape::after { height: 40%; font-size: 30px; }
+}
