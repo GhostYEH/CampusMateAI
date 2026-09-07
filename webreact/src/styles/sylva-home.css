@@ -46,10 +46,371 @@
 
 .sylva-dashboard {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   min-height: 100vh;
-  background: var(--page);
+  margin-top: -22svh;
+  padding-top: clamp(18px, 3vw, 46px);
+  background:
+    linear-gradient(180deg, transparent 0, rgba(23, 28, 21, .7) 9rem, #171c15 31rem),
+    #171c15;
   scroll-margin-top: 1px;
+  isolation: isolate;
+}
+
+.sylva-dashboard::before {
+  position: absolute;
+  z-index: -1;
+  inset: 7rem 0 0;
+  content: "";
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 12%, rgba(201, 227, 106, .1), transparent 23rem),
+    radial-gradient(circle at 88% 46%, rgba(96, 114, 74, .16), transparent 32rem),
+    linear-gradient(112deg, transparent 12%, rgba(255, 255, 255, .025) 49%, transparent 72%);
+}
+
+.sylva-dashboard .student-page.student-home {
+  max-width: none;
+  padding: 0 clamp(18px, 4.4vw, 88px);
+}
+
+.sylva-dashboard .home-footer {
+  margin-top: 0;
+}
+
+.sylva-dashboard .home-foreground {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: clamp(22px, 4vw, 64px) clamp(12px, 2vw, 30px);
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.sylva-dashboard .home-foreground::before {
+  position: absolute;
+  z-index: -1;
+  top: 10rem;
+  bottom: 22rem;
+  left: 51%;
+  width: 16rem;
+  content: "";
+  pointer-events: none;
+  border-left: 1px solid rgba(201, 227, 106, .22);
+  border-radius: 52% 0 0 46%;
+  transform: rotate(5deg);
+  box-shadow: -4px 0 34px rgba(201, 227, 106, .045);
+}
+
+.sylva-dashboard .simple-home-command-stack {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.sylva-dashboard .home-learning-command {
+  z-index: 1;
+  grid-column: 1 / 10;
+  grid-row: 1;
+  min-height: 350px;
+  border-radius: 38px 78px 42px 48px;
+  transform: rotate(-.35deg);
+}
+
+.sylva-dashboard .home-learning-pulse {
+  z-index: 2;
+  grid-column: 7 / 13;
+  grid-row: 2;
+  margin-top: -54px;
+  border-radius: 48px 34px 76px 38px;
+  transform: rotate(.45deg);
+}
+
+.sylva-dashboard .pulse-heading {
+  align-items: start;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sylva-dashboard .pulse-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sylva-dashboard .home-search-note {
+  grid-column: 2 / 11;
+  margin: -18px 0 0;
+  border-color: rgba(222, 227, 214, .72);
+  border-radius: 28px 42px 34px 24px;
+  background: rgba(244, 245, 239, .88);
+  box-shadow: 0 26px 68px rgba(7, 12, 6, .28);
+  backdrop-filter: blur(18px);
+}
+
+.sylva-dashboard .student-alert {
+  width: min(720px, calc(100% - 2rem));
+  margin: 0 auto 18px;
+  border-color: rgba(255, 255, 255, .54);
+  border-radius: 999px;
+  background: rgba(239, 241, 233, .9);
+  color: #4f5d46;
+  box-shadow: 0 18px 42px rgba(7, 12, 6, .24);
+}
+
+.sylva-dashboard .student-alert .link-button {
+  border-radius: 999px;
+  color: #314027;
+}
+
+.sylva-dashboard .simple-home-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.sylva-dashboard .simple-priority-panel {
+  z-index: 2;
+  grid-column: 1 / 6;
+  grid-row: 1;
+  align-self: start;
+  min-height: 390px;
+  margin-top: 24px;
+  border-radius: 34px 62px 32px 74px;
+  transform: rotate(.55deg);
+}
+
+.sylva-dashboard .simple-home-grid > .course-panel {
+  z-index: 1;
+  grid-column: 5 / 13;
+  grid-row: 1;
+  min-height: 430px;
+  margin-top: 136px;
+  padding-left: clamp(112px, 9.5vw, 154px);
+  border-radius: 72px 36px 58px 40px;
+  transform: rotate(-.35deg);
+}
+
+.sylva-dashboard .simple-quick-section {
+  grid-column: 2 / 12;
+  width: 92%;
+  margin: -8px 0 24px auto;
+  border-radius: 54px 30px 66px 38px;
+  transform: rotate(.28deg);
+}
+
+.sylva-dashboard .student-quick-grid {
+  grid-template-columns: 1.08fr .92fr 1.16fr;
+}
+
+.sylva-dashboard .student-quick-grid > button:nth-child(2) {
+  translate: 0 7px;
+}
+
+.sylva-dashboard .student-quick-grid > button:nth-child(3) {
+  translate: 0 -4px;
+}
+
+.sylva-dashboard :is(
+  .home-learning-command,
+  .home-learning-pulse,
+  .student-home-panel,
+  .simple-quick-section,
+  .home-footer-info
+) {
+  border: 1px solid rgba(255, 255, 255, .64);
+  background: linear-gradient(145deg, rgba(248, 249, 243, .94), rgba(232, 235, 225, .88));
+  box-shadow:
+    0 34px 86px rgba(6, 10, 5, .35),
+    inset 0 1px 0 rgba(255, 255, 255, .96);
+  backdrop-filter: blur(24px) saturate(.82);
+  -webkit-backdrop-filter: blur(24px) saturate(.82);
+}
+
+.sylva-dashboard .command-copy {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(201, 227, 106, .18), transparent 15rem),
+    linear-gradient(112deg, rgba(255, 255, 255, .48), transparent 76%);
+}
+
+.sylva-dashboard .home-agent-loop {
+  border-left-color: rgba(91, 103, 80, .16);
+  background: rgba(255, 255, 255, .22);
+}
+
+.sylva-dashboard :is(.command-copy h1, .pulse-heading h2, .home-panel-head h2, .quick-section-head h2) {
+  color: #273023;
+}
+
+.sylva-dashboard :is(.command-eyebrow, .pulse-heading span, .simple-quick-section .quick-section-head span) {
+  color: #60724a;
+}
+
+.sylva-dashboard .command-eyebrow i {
+  background: #91a75f;
+  box-shadow: 0 0 0 4px rgba(145, 167, 95, .16);
+}
+
+.sylva-dashboard :is(.command-copy p, .command-trust, .pulse-heading small, .quick-section-head > small) {
+  color: #687064;
+}
+
+.sylva-dashboard :is(.command-trust svg, .pulse-arrow) {
+  color: #788a5d;
+}
+
+.sylva-dashboard .home-agent-loop li.active {
+  border-color: rgba(126, 147, 88, .32);
+  background: rgba(224, 233, 203, .78);
+  box-shadow: 0 8px 18px rgba(75, 92, 52, .12);
+}
+
+.sylva-dashboard .home-agent-loop li.active i {
+  background: #66784f;
+}
+
+.sylva-dashboard .home-agent-loop li.active strong,
+.sylva-dashboard .home-agent-loop li.active svg {
+  color: #4e6237;
+}
+
+.sylva-dashboard :is(.pulse-grid button, .priority-list button, .home-schedule-grid > section, .home-schedule-grid button, .student-quick-grid > button) {
+  border-color: rgba(92, 104, 81, .14);
+  background: rgba(255, 255, 255, .5);
+}
+
+.sylva-dashboard :is(.pulse-grid button, .priority-list button, .student-quick-grid > button) {
+  transition: translate .22s ease, rotate .22s ease, box-shadow .22s ease, background .22s ease;
+}
+
+.sylva-dashboard :is(.pulse-grid button, .priority-list button, .student-quick-grid > button):hover {
+  translate: 0 -4px;
+  rotate: -.35deg;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 16px 30px rgba(35, 44, 28, .12);
+}
+
+.sylva-dashboard .pulse-icon {
+  background: #e6ecd8;
+  color: #5e7543;
+}
+
+.sylva-dashboard .pulse-grid button:nth-child(2) .pulse-icon {
+  background: #dceadf;
+  color: #50755b;
+}
+
+.sylva-dashboard .pulse-grid button:nth-child(3) .pulse-icon {
+  background: #ede6cd;
+  color: #87743e;
+}
+
+.sylva-dashboard .pulse-grid button:nth-child(4) .pulse-icon {
+  background: #e7e3d8;
+  color: #6e6856;
+}
+
+.sylva-dashboard :is(.pulse-copy strong, .student-quick-grid strong, .priority-list strong) {
+  color: #31392d;
+}
+
+.sylva-dashboard :is(
+  .command-primary,
+  .command-secondary,
+  .home-panel-head > button,
+  .panel-footer,
+  .reference-empty-action,
+  .student-alert .link-button,
+  .home-footer-mail-button,
+  .home-footer-copy-button,
+  .home-footer-copy-icon,
+  .home-footer-top
+) {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  background: rgba(35, 41, 32, .9);
+  color: #f7f8f2;
+  box-shadow: 0 12px 26px rgba(17, 22, 14, .22), inset 0 1px 0 rgba(255, 255, 255, .14);
+  transition: translate .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+.sylva-dashboard :is(
+  .command-primary,
+  .command-secondary,
+  .home-panel-head > button,
+  .panel-footer,
+  .reference-empty-action,
+  .student-alert .link-button,
+  .home-footer-mail-button,
+  .home-footer-copy-button,
+  .home-footer-copy-icon,
+  .home-footer-top
+):hover {
+  translate: 0 -2px;
+  border-color: rgba(255, 255, 255, .28);
+  background: #30382b;
+  color: #fff;
+  box-shadow: 0 16px 30px rgba(17, 22, 14, .3), inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.sylva-dashboard :is(button, a):focus-visible {
+  outline: 3px solid #c9e36a;
+  outline-offset: 3px;
+}
+
+.sylva-dashboard .panel-footer {
+  width: max-content;
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, .2);
+}
+
+.sylva-dashboard .home-footer-info {
+  grid-column: 1 / -1;
+  margin-top: 26px;
+  border-radius: 70px 42px 0 0;
+  background: rgba(231, 234, 224, .9);
+}
+
+.sylva-dashboard .home-footer-about h2,
+.sylva-dashboard .home-footer-links a:hover {
+  color: #5b7040;
+}
+
+.sylva-dashboard .home-footer-fixed-brand .home-foreground {
+  margin-bottom: var(--home-brand-stage-height);
+}
+
+.sylva-dashboard .home-brand-underlay {
+  position: absolute;
+  background: #171c15;
+}
+
+.sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+  animation: sylva-card-arrive .8s both cubic-bezier(.2, .8, .2, 1);
+}
+
+.sylva-dashboard .home-learning-pulse { animation-delay: 90ms; }
+.sylva-dashboard .simple-priority-panel { animation-delay: 150ms; }
+.sylva-dashboard .simple-home-grid > .course-panel { animation-delay: 210ms; }
+.sylva-dashboard .simple-quick-section { animation-delay: 270ms; }
+.sylva-dashboard .home-footer-info { animation-delay: 330ms; }
+
+@keyframes sylva-card-arrive {
+  from {
+    opacity: 0;
+    translate: 0 32px;
+    filter: blur(7px);
+  }
 }
 
 @media (max-width: 760px) {
@@ -57,10 +418,83 @@
   .sylva-home-hero .shader-frame {
     min-height: 560px;
   }
+
+  .sylva-dashboard {
+    margin-top: -12svh;
+    padding-top: 16px;
+  }
+
+  .sylva-dashboard .student-page.student-home {
+    padding-inline: 12px;
+  }
+
+  .sylva-dashboard .home-foreground,
+  .sylva-dashboard .simple-home-command-stack,
+  .sylva-dashboard .simple-home-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .home-search-note, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    transform: none;
+  }
+
+  .sylva-dashboard .home-learning-command,
+  .sylva-dashboard .home-learning-pulse,
+  .sylva-dashboard .simple-priority-panel,
+  .sylva-dashboard .simple-home-grid > .course-panel,
+  .sylva-dashboard .simple-quick-section {
+    border-radius: 30px;
+  }
+
+  .sylva-dashboard .simple-home-grid > .course-panel {
+    padding-left: 16px;
+  }
+
+  .sylva-dashboard .student-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sylva-dashboard .student-quick-grid > button:nth-child(n) {
+    translate: none;
+  }
+
+  .sylva-dashboard .home-footer-info {
+    border-radius: 38px 38px 0 0;
+  }
+
+  .sylva-dashboard .student-alert {
+    width: calc(100% - 24px);
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 24px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .sylva-dashboard .student-alert .link-button {
+    min-height: 32px;
+    padding-inline: 12px;
+  }
+
+  .sylva-dashboard .home-foreground::before {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sylva-home-page {
     scroll-behavior: auto;
+  }
+
+  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+    animation: none;
   }
 }
