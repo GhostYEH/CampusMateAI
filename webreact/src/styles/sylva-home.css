@@ -1026,55 +1026,10 @@
   background: transparent;
 }
 
-/* ── entrance motion ─────────────────────────────────────────────── */
-
-.sylva-overview-copy > * {
-  animation: sylva-copy-rise .7s both cubic-bezier(.2, .8, .2, 1);
-}
-
-.sylva-overview-copy > *:nth-child(2) { animation-delay: 80ms; }
-.sylva-overview-copy > *:nth-child(3) { animation-delay: 150ms; }
-.sylva-overview-copy > *:nth-child(4) { animation-delay: 220ms; }
-.sylva-overview-copy > *:nth-child(5) { animation-delay: 290ms; }
-.sylva-overview-copy > *:nth-child(6) { animation-delay: 340ms; }
-
-.sylva-priority-card,
-.sylva-schedule-card {
-  animation: sylva-card-arrive .8s both cubic-bezier(.2, .8, .2, 1);
-}
-
-.sylva-priority-card { animation-delay: 120ms; }
-.sylva-schedule-card { animation-delay: 200ms; }
-
-@keyframes sylva-copy-rise {
-  from {
-    opacity: 0;
-    translate: 0 20px;
-    filter: blur(6px);
-  }
-}
-
-@keyframes sylva-card-arrive {
-  from {
-    opacity: 0;
-    translate: 0 30px;
-    filter: blur(7px);
-  }
-}
-
 @keyframes sylva-shimmer {
   0% { background-position: 120% 0; }
   100% { background-position: -120% 0; }
 }
-
-.sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
-  animation: sylva-card-arrive .8s both cubic-bezier(.2, .8, .2, 1);
-}
-
-.sylva-dashboard .home-learning-pulse { animation-delay: 90ms; }
-.sylva-dashboard .simple-home-grid > .course-panel { animation-delay: 210ms; }
-.sylva-dashboard .simple-quick-section { animation-delay: 270ms; }
-.sylva-dashboard .home-footer-info { animation-delay: 330ms; }
 
 /* ── responsive ──────────────────────────────────────────────────── */
 

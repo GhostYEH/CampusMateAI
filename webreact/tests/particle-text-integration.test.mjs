@@ -21,7 +21,7 @@ test("homepage brand footer integrates the React Bits particle text contract", (
   assert.match(footer, /highlightColor="#9a7ae4"/);
   assert.match(footer, /fontSize="clamp\(3rem, 12vw, 8rem\)"/);
   assert.match(footer, /fontWeight=\{900\}/);
-  assert.doesNotMatch(footer, /animateOnMount=/);
+  assert.match(footer, /animateOnMount=\{false\}/);
   assert.match(particleText, /const sampleText = async \(\) =>/);
   assert.match(particleText, /animateOnMount = true/);
   assert.match(particleText, /getImageData\(/);

@@ -23,3 +23,9 @@ test("homepage brand canvas keeps only the particle field without a backdrop", (
   assert.match(baseStyles, /\.home-footer-fixed-brand \.home-brand-underlay \.home-footer-brand > \.particle-text\s*\{[^}]*filter:\s*drop-shadow/);
   assert.match(sylvaStyles, /\.sylva-dashboard \.home-brand-underlay\s*\{[^}]*background:\s*transparent/);
 });
+
+test("homepage surfaces render without entrance animations", () => {
+  assert.doesNotMatch(sylvaStyles, /sylva-copy-rise/);
+  assert.doesNotMatch(sylvaStyles, /sylva-card-arrive/);
+  assert.doesNotMatch(sylvaStyles, /animation-delay:\s*330ms/);
+});
