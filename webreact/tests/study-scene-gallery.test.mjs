@@ -7,6 +7,7 @@ import { STUDY_SCENE_ASSETS, STUDY_SCENES, readStudyScene, saveStudyScene } from
 const roomSource = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
 const studyStyles = await readFile(new URL("../src/styles/study-summer.css", import.meta.url), "utf8");
 const galleryStyles = await readFile(new URL("../src/components/study/AccordionGallery.css", import.meta.url), "utf8");
+const gallerySource = await readFile(new URL("../src/components/study/AccordionGallery.jsx", import.meta.url), "utf8");
 
 test("study scene metadata keeps the original three scenes and adds two natural backgrounds", () => {
   assert.deepEqual(STUDY_SCENES.map((scene) => scene.key), ["rain", "snow", "cloud", "bamboo", "coast"]);
@@ -33,6 +34,16 @@ test("focus room uses hover expansion for the AccordionGallery scene switcher", 
   assert.match(roomSource, /<AccordionGallery/);
   assert.match(roomSource, /onChange=\{onSelectScene\}/);
   assert.match(roomSource, /trigger=["']hover["']/);
+});
+
+test("hovering a scene previews the panel without committing a background change", () => {
+  assert.match(gallerySource, /const \[hoveredIndex, setHoveredIndex\] = useState\(null\)/);
+  assert.match(gallerySource, /const visualActive = trigger === "hover" && hoveredIndex !== null \? hoveredIndex : active/);
+  assert.match(gallerySource, /onClick=\{\(\) => selectIndex\(index\)\}/);
+  assert.match(gallerySource, /onMouseEnter=\{\(\) => trigger === "hover" && setHoveredIndex\(index\)\}/);
+  assert.match(gallerySource, /onMouseLeave=\{\(\) => setHoveredIndex\(null\)\}/);
+  assert.doesNotMatch(gallerySource, /onMouseEnter=\{\(\) => trigger === "hover" && selectIndex\(index\)\}/);
+  assert.doesNotMatch(gallerySource, /onFocus=\{\(\) => selectIndex\(index\)\}/);
 });
 
 test("focus room gives the scene gallery enough space for its hover expansion", () => {

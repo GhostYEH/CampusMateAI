@@ -49,12 +49,15 @@ export default function AccordionGallery({
   const count = items.length;
   const controlled = Number.isInteger(activeIndex);
   const [uncontrolledActive, setUncontrolledActive] = useState(() => clampIndex(defaultIndex, count));
+  const [hoveredIndex, setHoveredIndex] = useState(null);
   const active = controlled ? clampIndex(activeIndex, count) : clampIndex(uncontrolledActive, count);
+  const visualActive = trigger === "hover" && hoveredIndex !== null ? hoveredIndex : active;
   const vertical = orientation === "vertical";
   const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
   const selectIndex = useCallback((nextIndex) => {
     const next = clampIndex(nextIndex, count);
+    setHoveredIndex(null);
     if (!controlled) setUncontrolledActive(next);
     const item = items[next];
     if (item) onChange?.(item.key ?? item.value ?? next, item, next);
@@ -73,16 +76,16 @@ export default function AccordionGallery({
 
     panels.forEach((panel, index) => {
       if (!panel) return;
-      const isActive = index === active;
+      const isActive = index === visualActive;
       const media = mediaRefs.current[index];
       const bar = barRefs.current[index];
       const text = textRefs.current[index];
-      const rotation = isActive ? 0 : index < active ? tilt : -tilt;
+      const rotation = isActive ? 0 : index < visualActive ? tilt : -tilt;
       const rotationProps = vertical ? { rotateX: -rotation } : { rotateY: rotation };
 
       timeline.to(panel, { flexGrow: isActive ? grow : 1, ...rotationProps, duration: stepDuration, ease }, 0);
       if (media) {
-        const drift = Math.max(-1.5, Math.min(1.5, active - index));
+        const drift = Math.max(-1.5, Math.min(1.5, visualActive - index));
         const shift = drift * parallax * mediaSize * 0.06;
         timeline.to(media, {
           xPercent: -50,
@@ -106,7 +109,7 @@ export default function AccordionGallery({
       }
     });
     timelineRef.current = timeline;
-  }, [active, count, duration, ease, expandRatio, grayscale, parallax, prefersReduced, showLabels, stagger, tilt, vertical]);
+  }, [count, duration, ease, expandRatio, grayscale, parallax, prefersReduced, showLabels, stagger, tilt, vertical, visualActive]);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -166,9 +169,10 @@ export default function AccordionGallery({
       }}
       role="group"
       aria-label="选择学习场景"
+      onMouseLeave={() => setHoveredIndex(null)}
     >
       {items.map((item, index) => {
-        const isActive = index === active;
+        const isActive = index === visualActive;
         return (
           <button
             key={item.key ?? item.value ?? index}
@@ -177,10 +181,11 @@ export default function AccordionGallery({
             className={`ag-panel${isActive ? " ag-panel--active" : ""}`}
             style={{ borderRadius: `${radius}px` }}
             onClick={() => selectIndex(index)}
-            onMouseEnter={() => trigger === "hover" && selectIndex(index)}
-            onFocus={() => selectIndex(index)}
+            onMouseEnter={() => trigger === "hover" && setHoveredIndex(index)}
+            onFocus={() => trigger === "hover" && setHoveredIndex(index)}
+            onBlur={() => setHoveredIndex(null)}
             onKeyDown={(event) => handleKeyDown(index, event)}
-            aria-current={isActive ? "true" : undefined}
+            aria-current={index === active ? "true" : undefined}
             aria-label={item.ariaLabel || `${item.label || "场景"}${item.caption ? `，${item.caption}` : ""}`}
           >
             <span className="ag-panel__frame">
