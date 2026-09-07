@@ -19,14 +19,6 @@
   display: none;
 }
 
-.app-layout:has(.sylva-home-page) .topbar > :not(.floating-nav) {
-  display: none;
-}
-
-.app-layout:has(.sylva-home-page) .floating-nav {
-  top: clamp(24px, 4.22svh, 42px);
-}
-
 /* ── page shell ──────────────────────────────────────────────────── */
 
 .sylva-home-page {

@@ -9,6 +9,7 @@ const navStyles = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.c
 const floatingNavSource = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 const appShell = readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const counselorStyles = readFileSync(new URL("../src/styles/counselor-reference.css", import.meta.url), "utf8");
+const sylvaStyles = readFileSync(new URL("../src/styles/sylva-home.css", import.meta.url), "utf8");
 
 test("floating navigation keeps the existing eight route entries", () => {
   assert.deepEqual(
@@ -66,6 +67,11 @@ test("counselor shares the global liquid-glass topbar wrappers", () => {
   assert.match(appShell, /<SearchBox \/>/);
   assert.match(appShell, /topbar-search-surface/);
   assert.match(appShell, /topbar-info-surface/);
+});
+
+test("Sylva home keeps the shared side controls and navigation baseline", () => {
+  assert.doesNotMatch(sylvaStyles, /\.app-layout:has\(\.sylva-home-page\) \.topbar > :not\(\.floating-nav\)\s*\{\s*display:\s*none/);
+  assert.doesNotMatch(sylvaStyles, /\.app-layout:has\(\.sylva-home-page\) \.floating-nav\s*\{\s*top:\s*clamp\(/);
 });
 
 test("active navigation item does not paint a duplicate blue ring", () => {
