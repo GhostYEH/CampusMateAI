@@ -360,6 +360,18 @@ CREATE INDEX IF NOT EXISTS idx_study_sessions_status ON study_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_user_status ON study_sessions(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_started_at ON study_sessions(started_at);
 
+CREATE TABLE IF NOT EXISTS study_checkins (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    date_key TEXT NOT NULL,
+    scene TEXT NOT NULL DEFAULT 'rain',
+    mood TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, date_key)
+);
+CREATE INDEX IF NOT EXISTS idx_study_checkins_user_date ON study_checkins(user_id, date_key);
+
 CREATE TABLE IF NOT EXISTS study_breaks (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,

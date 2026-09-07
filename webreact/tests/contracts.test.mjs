@@ -19,6 +19,12 @@ test("study session payload matches the backend state machine schema", () => {
   });
 });
 
+test("study session payload keeps the linked personal task", () => {
+  assert.deepEqual(studySessionPayload({ goal: "复习", relatedTaskId: "task-1" }), {
+    mode: "focus", experience_mode: "QUIET", related_task_id: "task-1", goal: "复习",
+  });
+});
+
 test("submission payload preserves backend field names", () => {
   assert.deepEqual(submissionPayload("正文"), { text_content: "正文", submit: false });
   assert.deepEqual(submissionPayload("正文", true), { text_content: "正文", submit: true });

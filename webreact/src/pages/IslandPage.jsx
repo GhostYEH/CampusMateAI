@@ -13,8 +13,6 @@ const SCENES = Object.freeze([
   { key: "cloud", label: "暖云", caption: "松弛推进" },
 ]);
 
-const CHECKIN_KEY = "campus_island_checkin";
-
 const dayKey = (value) => {
   const date = value ? new Date(value) : new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -33,13 +31,11 @@ export default function IslandPage() {
   });
   const ambient = useAmbientSound(scene);
   const [sessions, setSessions] = useState([]);
-  const [checkin, setCheckin] = useState(() => {
-    try { return JSON.parse(window.localStorage.getItem(CHECKIN_KEY) || "null"); } catch { return null; }
-  });
+  const [checkins, setCheckins] = useState({ items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false });
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api.getStudySessions().then((value) => setSessions(itemsOf(value))).catch(() => {}).finally(() => setLoaded(true));
+    Promise.all([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => { setSessions(itemsOf(studySessions)); setCheckins(studyCheckinSummary || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false }); }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
   // 3D 小岛按 html[data-scene] 换肤，与场景按钮保持同步
@@ -56,6 +52,7 @@ export default function IslandPage() {
     const now = new Date();
     const todayKey = dayKey();
     const days = new Set();
+    const checkinDays = new Set((checkins.items || []).map((item) => item.date));
     let totalMinutes = 0;
     let todayCompleted = 0;
     sessions.forEach((item) => {
@@ -80,7 +77,7 @@ export default function IslandPage() {
     const heatData = [];
     for (let d = new Date(yearStart); d.getTime() <= now.getTime(); d.setDate(d.getDate() + 1)) {
       const key = dayKey(d);
-      heatData.push({ date: key, checked: days.has(key) || (checkin && checkin.date === key) });
+      heatData.push({ date: key, checked: days.has(key) || checkinDays.has(key) });
     }
 
     // 今年探索天数与最长连续
@@ -103,17 +100,23 @@ export default function IslandPage() {
       if (days.has(key)) weekDays.add(key);
     }
 
-    return { todayKey, streak, year, heatData, exploredDays: yearSet.size, longestStreak, weekDays: weekDays.size, islandAge: days.size, totalMinutes, todayCompleted };
-  }, [sessions, checkin]);
+    return { todayKey, streak, year, heatData, exploredDays: yearSet.size, longestStreak: Math.max(longestStreak, checkins.longest_streak || 0), weekDays: Math.max(weekDays.size, checkins.week_count || 0), islandAge: Math.max(days.size, checkins.total || 0), totalMinutes, todayCompleted };
+  }, [sessions, checkins]);
 
-  const checkedToday = Boolean(checkin && checkin.date === data.todayKey);
-  const showStreak = checkedToday ? checkin.count : data.streak || 0;
+  const checkedToday = Boolean(checkins.today_checked);
+  const showStreak = Math.max(checkins.streak || 0, data.streak || 0);
 
-  function doCheckin() {
-    const count = (data.streak || 0) > 0 ? data.streak + 1 : 1;
-    const next = { date: data.todayKey, count };
-    setCheckin(next);
-    window.localStorage.setItem(CHECKIN_KEY, JSON.stringify(next));
+  async function doCheckin() {
+    try {
+      const result = await api.createStudyCheckin({ scene });
+      if (result?.checkin) {
+        const nextItems = [result.checkin, ...(checkins.items || []).filter((item) => item.date !== result.checkin.date)];
+        const next = { ...checkins, items: nextItems, total: Math.max(checkins.total || 0, nextItems.length), today_checked: true, streak: checkins.today_checked ? (checkins.streak || 1) : (checkins.streak || 0) + 1 };
+        setCheckins(next);
+      }
+    } catch {
+      // 网络恢复后可再次签到，避免把本地假状态当作已持久化记录。
+    }
   }
 
   const todayText = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());

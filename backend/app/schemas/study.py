@@ -19,6 +19,34 @@ class StudyGoalOut(BaseModel):
     updated_at: str
 
 
+class StudyCheckinCreate(BaseModel):
+    scene: Literal["rain", "snow", "cloud"] = "rain"
+    mood: Optional[str] = Field(None, max_length=100)
+
+
+class StudyCheckinOut(BaseModel):
+    id: str
+    user_id: str
+    date: str
+    scene: Literal["rain", "snow", "cloud"]
+    mood: Optional[str] = None
+    created_at: str
+
+
+class StudyCheckinResponse(BaseModel):
+    checkin: StudyCheckinOut
+    created: bool
+
+
+class StudyCheckinSummary(BaseModel):
+    items: List[StudyCheckinOut]
+    total: int
+    streak: int
+    longest_streak: int
+    week_count: int
+    today_checked: bool
+
+
 # ===== 学习会话 =====
 
 
@@ -161,6 +189,10 @@ class TaskBreakdownResponse(BaseModel):
 
 
 __all__ = [
+    "StudyCheckinCreate",
+    "StudyCheckinOut",
+    "StudyCheckinResponse",
+    "StudyCheckinSummary",
     "StudySessionCreate",
     "StudySessionUpdate",
     "StudySessionFinish",

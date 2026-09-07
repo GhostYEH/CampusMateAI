@@ -22,9 +22,10 @@ API:
 """
 from __future__ import annotations
 
+from datetime import date as date_type, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from ...core.exceptions import (
     StudySessionNotFound,
@@ -33,7 +34,12 @@ from ...core.exceptions import (
 from ...models.multi_role import UserRow
 from ...models.study import StudyBreakRow, StudySessionRow
 from ...repositories.study_session_repository import StudySessionRepository
+from ...repositories.study_checkin_repository import StudyCheckinRepository
 from ...schemas.study import (
+    StudyCheckinCreate,
+    StudyCheckinOut,
+    StudyCheckinResponse,
+    StudyCheckinSummary,
     StudyGoalOut,
     StudyGoalUpdate,
     StudyBreakOut,
@@ -62,6 +68,10 @@ def _repo(c: ServiceContainer = Depends(_container)) -> StudySessionRepository:
 
 def _goal_repo(c: ServiceContainer = Depends(_container)) -> StudyGoalRepository:
     return c.study_goal_repository
+
+
+def _checkin_repo(c: ServiceContainer = Depends(_container)) -> StudyCheckinRepository:
+    return c.study_checkin_repository
 
 
 def _breakdown_service(
@@ -130,6 +140,73 @@ def update_daily_goal(
 ) -> StudyGoalOut:
     goal = repo.set_target(user.id, req.target_minutes)
     return StudyGoalOut(target_minutes=goal.target_minutes, updated_at=goal.updated_at)
+
+
+def _checkin_to_out(row) -> StudyCheckinOut:
+    return StudyCheckinOut(
+        id=row.id,
+        user_id=row.user_id,
+        date=row.date,
+        scene=row.scene,
+        mood=row.mood,
+        created_at=row.created_at,
+    )
+
+
+def _checkin_stats(rows) -> tuple[int, int, int, bool]:
+    dates = {date_type.fromisoformat(row.date) for row in rows}
+    today = date_type.today()
+    today_checked = today in dates
+    cursor = today if today_checked else today - timedelta(days=1)
+    streak = 0
+    while cursor in dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    longest = 0
+    run = 0
+    previous = None
+    for current in sorted(dates):
+        if previous is not None and current == previous + timedelta(days=1):
+            run += 1
+        else:
+            run = 1
+        longest = max(longest, run)
+        previous = current
+
+    monday = today - timedelta(days=today.weekday())
+    week_count = sum(monday <= item <= today for item in dates)
+    return streak, longest, week_count, today_checked
+
+
+@router.post("/checkins", response_model=StudyCheckinResponse, status_code=201)
+def create_checkin(
+    req: StudyCheckinCreate,
+    response: Response,
+    user: UserRow = Depends(current_user),
+    repo: StudyCheckinRepository = Depends(_checkin_repo),
+) -> StudyCheckinResponse:
+    row, created = repo.create_today(user.id, scene=req.scene, mood=req.mood)
+    if not created:
+        response.status_code = 200
+    return StudyCheckinResponse(checkin=_checkin_to_out(row), created=created)
+
+
+@router.get("/checkins", response_model=StudyCheckinSummary)
+def list_checkins(
+    user: UserRow = Depends(current_user),
+    repo: StudyCheckinRepository = Depends(_checkin_repo),
+) -> StudyCheckinSummary:
+    rows = repo.list_checkins(user.id)
+    streak, longest, week_count, today_checked = _checkin_stats(rows)
+    return StudyCheckinSummary(
+        items=[_checkin_to_out(row) for row in rows],
+        total=len(rows),
+        streak=streak,
+        longest_streak=longest,
+        week_count=week_count,
+        today_checked=today_checked,
+    )
 
 
 # ===== 会话 CRUD =====

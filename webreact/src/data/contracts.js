@@ -12,7 +12,7 @@ export function normalizeNotice(item = {}) {
   };
 }
 
-export function studySessionPayload({ goal, mode = "quiet", minutes = null } = {}) {
+export function studySessionPayload({ goal, mode = "quiet", minutes = null, relatedTaskId = null } = {}) {
   const experienceMode = {
     deep: "SMART_GUARD",
     steady: "AI_COMPANION",
@@ -22,6 +22,7 @@ export function studySessionPayload({ goal, mode = "quiet", minutes = null } = {
     mode: "focus",
     experience_mode: experienceMode,
     ...(minutes ? { planned_duration_seconds: Math.round(Number(minutes) * 60) } : {}),
+    ...(relatedTaskId ? { related_task_id: relatedTaskId } : {}),
     ...(goal ? { goal } : {}),
   };
 }

@@ -29,8 +29,13 @@ export default function SummerFocusRoom({
   blockNotifications,
   whiteNoise,
   tasks,
+  taskTotal = 0,
+  taskCompleted = 0,
+  dailyGoalMinutes = 60,
+  todayFocusMinutes = 0,
   scene,
   onSelectScene,
+  onSaveDailyGoal,
   onGoalChange,
   onPresetChange,
   onCustomMinutesChange,
@@ -47,6 +52,7 @@ export default function SummerFocusRoom({
 }) {
   const [immersive, setImmersive] = useState(false);
   const [quote, setQuote] = useState(() => randomQuote(scene));
+  const [goalDraft, setGoalDraft] = useState(String(dailyGoalMinutes));
   const exitTimerRef = useRef(null);
   const isBreak = pomodoro?.mode === "break";
   const isRunning = Boolean(pomodoro?.isRunning);
@@ -83,6 +89,8 @@ export default function SummerFocusRoom({
   const focusTitle = isBreak ? "给自己几分钟喘口气" : active?.goal || "开始专注";
   const immersiveTime = timerText(seconds);
 
+  useEffect(() => setGoalDraft(String(dailyGoalMinutes)), [dailyGoalMinutes]);
+
   return (
     <section className="study-summer-room" data-study-scene={scene} style={{ "--study-scene-image": `url("${sceneAsset}")` }} aria-labelledby="study-summer-title">
       <div className="study-summer-room__backdrop" aria-hidden="true" />
@@ -104,6 +112,7 @@ export default function SummerFocusRoom({
       <div className="study-summer-grid">
         <section className={`study-summer-focus ${isRunning ? "is-active" : ""}`} aria-label="专注计时">
           <div className="study-summer-focus__heading"><div><span className="study-summer-eyebrow">{isBreak ? "Break time" : active ? "Focus in progress" : "Ready when you are"}</span><h2>{focusTitle}</h2></div><span className="study-summer-focus__status">第 {pomodoro?.round || 1} 轮 · {status}</span></div>
+          <form className="study-summer-goal" onSubmit={(event) => { event.preventDefault(); onSaveDailyGoal?.(goalDraft); }}><span>今日目标 <strong>{todayFocusMinutes}/{dailyGoalMinutes} 分钟</strong></span><label htmlFor="study-daily-goal">目标分钟数</label><input id="study-daily-goal" type="number" min="15" max="480" step="15" value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} /><button type="submit">保存</button></form>
           <div className="study-summer-timer" aria-live="polite"><strong style={{ "--study-progress": `${progress}%` }}>{timerText(seconds)}</strong><span>{isBreak ? "休息计时" : status}</span></div>
 
           {!active && !isBreak && <div className="study-summer-presets" role="group" aria-label="选择专注时长">{[25, 45, 60].map((minutes) => <button key={minutes} type="button" className={preset === minutes ? "is-active" : ""} onClick={() => onPresetChange(minutes)}>{minutes} 分钟</button>)}<button type="button" className={preset === "custom" ? "is-active" : ""} onClick={() => onPresetChange("custom")}>自定义</button>{preset === "custom" && <input type="number" min="5" max="180" aria-label="自定义专注分钟数" value={customMinutes} onChange={(event) => onCustomMinutesChange(event.target.value)} />}</div>}
@@ -116,7 +125,7 @@ export default function SummerFocusRoom({
 
         <div className="study-summer-atmosphere" aria-hidden="true"><div className="study-summer-atmosphere__ring study-summer-atmosphere__ring--outer" /><div className="study-summer-atmosphere__ring study-summer-atmosphere__ring--inner" /><span>{isBreak ? "let the mind reset" : isRunning ? "stay with it" : "a quiet place for today"}</span></div>
 
-        <section className="study-summer-todos" aria-labelledby="study-summer-todos-title"><header><div><span className="study-summer-todos__icon"><Icon name="PhListChecks" size={16} /></span><div><h2 id="study-summer-todos-title">今日待办</h2><p>{tasks.length ? `${tasks.length} 件等待完成` : "从一件小事开始"}</p></div></div><strong>{tasks.length}</strong></header><div className="study-summer-todos__progress"><span style={{ width: tasks.length ? "18%" : "0%" }} /></div><div className="study-summer-todos__list">{tasks.length ? tasks.slice(0, 6).map((task) => <button type="button" key={task.id} onClick={() => onTaskSelect(task)}><span className="study-summer-todo-check"><Icon name="PhCircle" size={15} /></span><span>{task.title}</span><Icon name="PhArrowUpRight" size={14} /></button>) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}</div><div className="study-summer-todos__footer"><button type="button" onClick={onOpenPlan}><Icon name="PhSparkle" size={14} />打开 AI 学习路线</button><Link to="/tasks">查看完整计划 <Icon name="PhArrowRight" size={13} /></Link></div></section>
+        <section className="study-summer-todos" aria-labelledby="study-summer-todos-title"><header><div><span className="study-summer-todos__icon"><Icon name="PhListChecks" size={16} /></span><div><h2 id="study-summer-todos-title">今日待办</h2><p>{tasks.length ? `${tasks.length} 件等待完成 · ${taskCompleted}/${taskTotal} 已完成` : taskTotal ? `${taskCompleted}/${taskTotal} 已完成` : "从一件小事开始"}</p></div></div><strong>{tasks.length}</strong></header><div className="study-summer-todos__progress"><span style={{ width: `${taskTotal ? Math.round((taskCompleted / taskTotal) * 100) : 0}%` }} /></div><div className="study-summer-todos__list">{tasks.length ? tasks.slice(0, 6).map((task) => <button type="button" key={task.id} onClick={() => onTaskSelect(task)}><span className="study-summer-todo-check"><Icon name="PhCircle" size={15} /></span><span>{task.title}</span><Icon name="PhArrowUpRight" size={14} /></button>) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}</div><div className="study-summer-todos__footer"><button type="button" onClick={onOpenPlan}><Icon name="PhSparkle" size={14} />打开 AI 学习路线</button><Link to="/tasks">查看完整计划 <Icon name="PhArrowRight" size={13} /></Link></div></section>
       </div>
 
       {immersive && createPortal(

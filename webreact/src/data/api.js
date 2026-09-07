@@ -170,11 +170,15 @@ export async function updateProfile(payload) { return dataOf(await client.patch(
 
 export async function getStudySessions(params = {}) { return itemsOf(dataOf(await client.get("/study/sessions", { params: { page_size: 100, ...params } }))); }
 export async function getActiveStudySession() { return dataOf(await client.get("/study/sessions/active")); }
+export async function getDailyStudyGoal() { return dataOf(await client.get("/study/goals/daily")); }
+export async function updateDailyStudyGoal(targetMinutes) { return dataOf(await client.put("/study/goals/daily", { target_minutes: targetMinutes })); }
 export async function startStudySession(payload) { return dataOf(await client.post("/study/sessions", studySessionPayload(payload))); }
 export async function pauseStudySession(id, reason) { return dataOf(await client.post(`/study/sessions/${id}/pause`, null, { params: reason ? { reason } : {} })); }
 export async function resumeStudySession(id) { return dataOf(await client.post(`/study/sessions/${id}/resume`)); }
 export async function finishStudySession(id, payload = {}) { return dataOf(await client.post(`/study/sessions/${id}/finish`, payload)); }
 export async function breakdownStudyTask(payload) { return dataOf(await client.post("/study/task-breakdown", payload)); }
+export async function getStudyCheckins() { return dataOf(await client.get("/study/checkins")); }
+export async function createStudyCheckin(payload = {}) { return dataOf(await client.post("/study/checkins", payload)); }
 
 export async function getExams(params = {}) { return itemsOf(dataOf(await client.get("/student/exams", { params }))); }
 export async function saveExam(payload, id) { return dataOf(await (id ? client.patch(`/student/exams/${id}`, payload) : client.post("/student/exams", payload))); }
