@@ -17,13 +17,6 @@ export default function SylvaHomeHero({ onNavigate, onExplore }) {
       if (!frameDocument) return;
 
       const cleanups = [];
-      if (!frameDocument.querySelector("style[data-campusmate-nav]")) {
-        const embeddedDockOverride = frameDocument.createElement("style");
-        embeddedDockOverride.dataset.campusmateNav = "hidden";
-        embeddedDockOverride.textContent = ".dock-wrap{display:none!important}";
-        frameDocument.head.appendChild(embeddedDockOverride);
-      }
-
       const exploreButton = frameDocument.querySelector(".liquid-button--explore");
       if (exploreButton) {
         const handleExplore = () => onExplore();

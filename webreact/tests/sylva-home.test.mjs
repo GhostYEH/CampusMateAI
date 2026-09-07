@@ -6,7 +6,6 @@ import test from "node:test";
 const webRoot = new URL("../", import.meta.url);
 
 const requiredAssets = Object.freeze([
-  ["public/landing-pages/inner-green-3d.html", "69c3694bd63f44ef9f007ebe4dac57a83e4402e0cdf6b54dd10b96dd4f05e197"],
   ["public/landing-pages/inner-green-assets/three.min.js", "8a5f7249903b54d30f79f708699d2fed2d6a1d0741a4cd41377d1f01bb5a2271"],
   ["public/landing-pages/inner-green-assets/card-ecostove.jpg", "70ce084084902bc502f00c366405b661ecdff90dee95d363b36a6e146829e433"],
   ["public/landing-pages/inner-green-assets/card-ethos.jpg", "337627390f499b3ae272cec9e2f83c817694a82f42e1aa10a7b26a2c7d679dff"],
@@ -36,11 +35,16 @@ test("homepage opens with the configured Living Green hero before the existing d
   assert.match(heroSource, /headingSize=\{63\}/);
   assert.match(heroSource, /bodySize=\{16\.5\}/);
   assert.match(heroSource, /headingLetterSpacing=\{-0\.006\}/);
-  assert.match(heroSource, /data-campusmate-nav/);
-  assert.match(heroSource, /\.dock-wrap\{display:none!important\}/);
   assert.match(homeSource, /<SylvaHomeHero/);
   assert.match(homeSource, /id=["']campus-dashboard["']/);
   assert.match(homeSource, /<ClassicHome|<GamifiedHome/);
+});
+
+test("the bundled Sylva scene removes its native dock in favor of the campus navigation", async () => {
+  const sceneSource = await readFile(new URL("public/landing-pages/inner-green-3d.html", webRoot), "utf8");
+
+  assert.doesNotMatch(sceneSource, /<div class="dock-wrap">/);
+  assert.doesNotMatch(sceneSource, /initDock\(\);/);
 });
 
 test("global navigation preserves the project's original blue liquid-glass states", async () => {

@@ -62,11 +62,8 @@ def run():
         )
         assert scene_pixels["width"] > 0 and scene_pixels["height"] > 0
         assert scene_pixels["engine"] == "three.js r149"
-        dock_items = scene.query_selector_all(".dock [data-dock]")
-        assert len(dock_items) == 5
-        assert scene.query_selector(".dock-wrap").evaluate(
-            "element => getComputedStyle(element).display"
-        ) == "none"
+        assert scene.query_selector(".dock-wrap") is None
+        assert not scene.query_selector_all(".dock [data-dock]")
         scene_copy = scene.query_selector(".headline")
         assert scene_copy is not None
         assert "Step into" in scene_copy.inner_text()
@@ -80,6 +77,17 @@ def run():
 
         hero_box = page.locator(".sylva-home-hero").bounding_box()
         assert hero_box and abs(hero_box["height"] - 900) < 2
+
+        learning_command = page.locator(".home-learning-command")
+        learning_command.wait_for(state="visible", timeout=10_000)
+        command_box = learning_command.bounding_box()
+        assert command_box and command_box["y"] < hero_box["height"]
+        assert page.locator(".home-learning-pulse").count() == 1
+        assert page.get_by_role("heading", name="优先处理").count() == 1
+        assert page.get_by_role("heading", name="课程表").count() == 1
+        assert page.get_by_role("button", name="通知整理 课程与校园通知").count() == 1
+        assert page.get_by_role("button", name="校园社区 交流学习与生活").count() == 1
+        assert page.get_by_role("button", name="学校与专业 查看校园背景信息").count() == 1
         print("desktop scene verified", flush=True)
 
         explore_button.evaluate("button => button.click()")
@@ -102,10 +110,8 @@ def run():
         mobile_box = page.locator(".sylva-home-hero").bounding_box()
         assert mobile_box and abs(mobile_box["width"] - 320) < 2
         assert mobile_box["height"] >= 560
-        assert len(mobile_scene.query_selector_all(".dock [data-dock]")) == 5
-        assert mobile_scene.query_selector(".dock-wrap").evaluate(
-            "element => getComputedStyle(element).display"
-        ) == "none"
+        assert mobile_scene.query_selector(".dock-wrap") is None
+        assert not mobile_scene.query_selector_all(".dock [data-dock]")
         assert page.locator(".floating-nav").is_visible()
         assert page.locator(".floating-nav-button").count() == 8
         print("mobile scene verified", flush=True)

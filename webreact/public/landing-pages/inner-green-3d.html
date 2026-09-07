@@ -716,41 +716,6 @@
 <main class="hero" id="hero">
   <canvas id="scene"></canvas>
 
-  <div class="dock-wrap">
-    <nav class="dock par-dock" style="--pd:5" data-spec aria-label="Primary">
-      <a class="dock-item dock-mark" data-dock data-spec data-burst href="#" style="--d:120ms" aria-label="Sylva — home">
-        <svg viewBox="0 0 22 24" aria-hidden="true">
-          <path d="M11 1.3c-2.1 0-3.95 1.2-4.75 2.95C3.95 4.55 2.3 6.25 2.3 8.35c0 2.3 1.9 4.2 4.3 4.2h8.8c2.4 0 4.3-1.9 4.3-4.2 0-2.1-1.65-3.8-4-4.1C14.95 2.5 13.1 1.3 11 1.3Z"/>
-          <path d="M9.6 12.55h2.8v4.2c1.35.3 2.45 1.15 3.15 2.4-1.35.4-2.4.15-3.15-.4v4.15H9.6v-4.15c-.75.55-1.8.8-3.15.4.7-1.25 1.8-2.1 3.15-2.4v-4.2Z"/>
-        </svg>
-      </a>
-      <a class="dock-item is-active" data-dock data-spec data-burst href="#" style="--d:180ms">
-        <span class="glyph" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path d="M8 14V9"/><path d="M8 9c0-2.4 1.7-4.3 4-4.3.2 2.6-1.6 4.6-4 4.3Z"/><path d="M8 10.5C7.9 8.4 6.4 6.8 4.4 6.8 4.3 8.9 5.9 10.6 8 10.5Z"/></svg>
-        </span>
-        <span>Grove</span>
-      </a>
-      <a class="dock-item" data-dock data-spec data-burst href="#" style="--d:230ms">
-        <span class="glyph" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path d="M1.6 12.4c2.4-3.4 4.3-5.1 5.7-5.1 2 0 3 3.6 5 3.6 1.1 0 1.9-.5 2.4-1.4"/><path d="M4.3 6.2C5.5 4.4 6.6 3.5 7.6 3.5c1.5 0 2.2 2.4 3.7 2.4"/></svg>
-        </span>
-        <span>Habitats</span>
-      </a>
-      <a class="dock-item" data-dock data-spec data-burst href="#" style="--d:280ms">
-        <span class="glyph" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path d="M4 2.4h5.3L12 5.1v8.5H4z"/><path d="M9.2 2.4V5h2.7"/><path d="M6 8.4h4M6 10.8h2.8"/></svg>
-        </span>
-        <span>Journal</span>
-      </a>
-      <a class="dock-item dock-item--enter" data-dock data-spec data-burst href="#" style="--d:330ms">
-        <span class="glyph" aria-hidden="true">
-          <svg viewBox="0 0 16 16"><path d="M6.6 2.5h5.1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6.6"/><path d="M2.6 8h6.6"/><path d="m7 5.6 2.4 2.4L7 10.4"/></svg>
-        </span>
-        <span>Enter</span>
-      </a>
-    </nav>
-  </div>
-
   <div class="stage" id="stage">
 
     <div class="guides fade" style="--d:900ms" aria-hidden="true">
@@ -1720,7 +1685,7 @@ window.__seek   = v => { clock = v; drawn = null; };
      they are the furthest plane, their travel would be a few pixels, and
      promoting two near-full-stage boxes to composited layers cost more
      frames than the effect was worth. */
-  var PARALLAX = '.dock,.headline,.lede,.pill,.play-wrap,' +
+  var PARALLAX = '.headline,.lede,.pill,.play-wrap,' +
                  '.stat--a,.stat--b,.card--about,.knob-float,.card--stove,.scroll';
 
   var pointer = { x: 0, y: 0 }, smooth = { x: 0, y: 0 };
@@ -1741,9 +1706,6 @@ window.__seek   = v => { clock = v; drawn = null; };
     var now = performance.now();
     var dtUI = lastTick ? Math.min((now - lastTick) / 1000, 0.05) : 0.016;
     lastTick = now;
-    drawDock(dtUI);
-    drawSpec(dtUI);
-    aimMoved = false;
     if (parOn) {
       smooth.x += (pointer.x - smooth.x) * 0.055;
       smooth.y += (pointer.y - smooth.y) * 0.055;
@@ -2140,7 +2102,6 @@ window.__seek   = v => { clock = v; drawn = null; };
     document.body.classList.add('is-ready');
     startParallax();
     startPortalReveal();
-    initDock();
     /* the wipes are done — drop the clips so nothing keeps a stacking
        context alive (the About knob has to stay above the moss) */
     setTimeout(function () { document.body.classList.add('intro-done'); }, REDUCED ? 0 : 2900);
