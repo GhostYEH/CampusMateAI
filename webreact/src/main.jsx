@@ -11,6 +11,7 @@ import "./styles/home-gamified.css";
 import "./styles/floating-layout.css";
 import "./styles/study-summer.css";
 import "./styles/sylva-home.css";
+import "./styles/button-effects.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

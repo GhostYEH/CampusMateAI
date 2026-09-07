@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Icon } from "../../components/Icon.jsx";
+import LiquidMetalButton from "../../components/LiquidMetalButton.jsx";
 import HomeLearningPulse from "./HomeLearningPulse.jsx";
 import SylvaPriorityCard from "./SylvaPriorityCard.jsx";
 import SylvaScheduleCard from "./SylvaScheduleCard.jsx";
@@ -37,14 +38,14 @@ export default function SylvaCampusOverview({ state, onNavigate, onOpenDue }) {
           <h1 className="sylva-overview-title">{command?.headline || "给今天安排一段完整的学习时间"}</h1>
           <p className="sylva-overview-detail">{command?.detail || "当前没有紧迫的校园事项，选一个明确目标开始今天的学习。"}</p>
           <div className="sylva-overview-actions">
-            <button className="sylva-overview-primary" onClick={() => onNavigate?.(command?.primaryAction?.path)}>
+            <LiquidMetalButton className="sylva-overview-primary" onClick={() => onNavigate?.(command?.primaryAction?.path)}>
               {command?.primaryAction?.label || "开始专注"}
               <Icon name={command?.primaryAction?.icon || "PhPlay"} size={17} weight="bold" />
-            </button>
-            <button className="sylva-overview-secondary" onClick={() => onNavigate?.(command?.secondaryAction?.path)}>
+            </LiquidMetalButton>
+            <LiquidMetalButton className="sylva-overview-secondary" onClick={() => onNavigate?.(command?.secondaryAction?.path)}>
               <Icon name={command?.secondaryAction?.icon || "PhSparkle"} size={16} />
               {command?.secondaryAction?.label || "整理本周计划"}
-            </button>
+            </LiquidMetalButton>
           </div>
           <div className="sylva-scene-stats" aria-label="今日学习指标">
             {sceneStats.map((stat) => (

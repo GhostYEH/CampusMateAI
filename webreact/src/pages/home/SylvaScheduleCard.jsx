@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Icon } from "../../components/Icon.jsx";
+import LiquidMetalButton from "../../components/LiquidMetalButton.jsx";
 import { scheduleWeekOf, sectionLabel } from "./homeTime.js";
 
 /**
@@ -15,7 +16,7 @@ export default function SylvaScheduleCard({ state, onNavigate }) {
     <article className="sylva-schedule-card sylva-cursor-reactive" aria-labelledby="sylva-schedule-title">
       <header className="sylva-card-head">
         <div><span>今日课程表</span><h2 id="sylva-schedule-title">今天有 {todayItems.length} 门课</h2></div>
-        <button className="sylva-card-link" onClick={() => onNavigate?.("/profile/academic")}>查看课表<Icon name="PhArrowRight" size={14} /></button>
+        <LiquidMetalButton className="sylva-card-link" onClick={() => onNavigate?.("/profile/academic")}>查看课表<Icon name="PhArrowRight" size={14} /></LiquidMetalButton>
       </header>
 
       <div className="sylva-schedule-week" aria-hidden="true">

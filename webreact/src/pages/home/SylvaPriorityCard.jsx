@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Icon } from "../../components/Icon.jsx";
+import LiquidMetalButton from "../../components/LiquidMetalButton.jsx";
 import { deadlineLabel } from "./homeTime.js";
 
 /**
@@ -14,7 +15,7 @@ export default function SylvaPriorityCard({ state, onNavigate, onOpenDue }) {
     <article className="sylva-priority-card sylva-cursor-reactive" aria-labelledby="sylva-priority-title">
       <header className="sylva-card-head">
         <div><span>优先处理</span><h2 id="sylva-priority-title">优先事项</h2></div>
-        <button className="sylva-card-link" onClick={() => onNavigate?.("/tasks")}>全部待办<Icon name="PhArrowRight" size={14} /></button>
+        <LiquidMetalButton className="sylva-card-link" onClick={() => onNavigate?.("/tasks")}>全部待办<Icon name="PhArrowRight" size={14} /></LiquidMetalButton>
       </header>
 
       {items.length ? (
@@ -38,11 +39,11 @@ export default function SylvaPriorityCard({ state, onNavigate, onOpenDue }) {
         </div>
       )}
 
-      <button className="sylva-priority-more" onClick={() => onNavigate?.("/tasks")}>
+      <LiquidMetalButton className="sylva-priority-more" onClick={() => onNavigate?.("/tasks")}>
         <span>进入待办与作业</span>
         <i>{state.overviewMetrics.pendingCount} 项</i>
         <Icon name="PhArrowRight" size={14} />
-      </button>
+      </LiquidMetalButton>
     </article>
   );
 }
