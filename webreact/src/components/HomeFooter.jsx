@@ -128,25 +128,24 @@ function HomeBrandCanvas() {
   return <section className="home-footer-brand" aria-labelledby="react-footer-brand-effect-title">
     <h2 id="react-footer-brand-effect-title" className="home-visually-hidden">CampusMate 互动品牌区</h2>
     <ParticleText
-      text="CAMPUSMATE"
-      particleSize={2}
-      density={4}
-      color="#f8fcff"
-      highlightColor="#c8d8ff"
-      scatter={0}
-      gatherDuration={1}
-      stagger={0}
-      pointerRepel={40}
-      repelRadius={70}
-      idleDrift={0}
-      animateOnMount={false}
+      text="Campus Mate"
+      particleSize={2.3}
+      density={6}
+      color="#ffffff"
+      highlightColor="#9a7ae4"
+      scatter={180}
+      gatherDuration={1600}
+      stagger={780}
+      pointerRepel={52}
+      repelRadius={110}
+      idleDrift={0.7}
       trigger="hover"
-      fontSize="clamp(4.5rem, 16vw, 11rem)"
-      fontWeight={800}
+      fontSize="clamp(3rem, 12vw, 8rem)"
+      fontWeight={900}
       fontFamily="inherit"
       glow
     />
-    <span className="home-footer-brand-caption">MOVE THROUGH CAMPUSMATE</span>
+    <span className="home-footer-brand-caption">MOVE THROUGH CAMPUS MATE</span>
   </section>;
 }
 

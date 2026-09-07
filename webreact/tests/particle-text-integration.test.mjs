@@ -7,15 +7,21 @@ const particleText = await readFile(new URL("../src/components/ParticleText.jsx"
 
 test("homepage brand footer integrates the React Bits particle text contract", () => {
   assert.match(footer, /import ParticleText from ["']\.\/ParticleText\.jsx["']/);
-  assert.match(footer, /<ParticleText[\s\S]*text="CAMPUSMATE"/);
+  assert.match(footer, /<ParticleText[\s\S]*text="Campus Mate"/);
   assert.match(footer, /trigger="hover"/);
-  assert.match(footer, /animateOnMount=\{false\}/);
-  assert.match(footer, /scatter=\{0\}/);
-  assert.match(footer, /gatherDuration=\{1\}/);
-  assert.match(footer, /stagger=\{0\}/);
-  assert.match(footer, /color="#f8fcff"/);
-  assert.match(footer, /highlightColor="#c8d8ff"/);
-  assert.match(footer, /fontSize="clamp\(4\.5rem, 16vw, 11rem\)"/);
+  assert.match(footer, /particleSize=\{2\.3\}/);
+  assert.match(footer, /density=\{6\}/);
+  assert.match(footer, /scatter=\{180\}/);
+  assert.match(footer, /gatherDuration=\{1600\}/);
+  assert.match(footer, /stagger=\{780\}/);
+  assert.match(footer, /pointerRepel=\{52\}/);
+  assert.match(footer, /repelRadius=\{110\}/);
+  assert.match(footer, /idleDrift=\{0\.7\}/);
+  assert.match(footer, /color="#ffffff"/);
+  assert.match(footer, /highlightColor="#9a7ae4"/);
+  assert.match(footer, /fontSize="clamp\(3rem, 12vw, 8rem\)"/);
+  assert.match(footer, /fontWeight=\{900\}/);
+  assert.doesNotMatch(footer, /animateOnMount=/);
   assert.match(particleText, /const sampleText = async \(\) =>/);
   assert.match(particleText, /animateOnMount = true/);
   assert.match(particleText, /getImageData\(/);

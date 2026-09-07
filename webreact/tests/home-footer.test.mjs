@@ -31,7 +31,7 @@ test("React footer keeps its visual system responsive", async () => {
   assert.match(css, /\.home-footer-info/);
   assert.match(css, /\.home-footer-main/);
   assert.match(css, /\.home-footer-brand \{[^}]*height: clamp\(/);
-  assert.match(css, /\.home-footer-brand \{[^}]*background: linear-gradient\(/);
+  assert.match(css, /\.home-footer-brand \{[^}]*background: radial-gradient\(/);
   assert.match(css, /\.home-footer-brand > \.particle-text \{[^}]*position: absolute/);
   assert.match(css, /\.home-footer-brand-caption \{/);
   assert.match(css, /\.home-foreground \{/);
