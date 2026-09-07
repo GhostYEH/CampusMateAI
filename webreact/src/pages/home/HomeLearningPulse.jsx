@@ -3,7 +3,7 @@ import { Icon } from "../../components/Icon.jsx";
 export default function HomeLearningPulse({ items, onNavigate }) {
   function navigate(path) { if (path) onNavigate?.(path); }
   return (
-    <section className="home-learning-pulse" aria-labelledby="learning-pulse-title">
+    <section className="home-learning-pulse sylva-cursor-reactive" aria-labelledby="learning-pulse-title">
       <header className="pulse-heading">
         <div><span>今日数据</span><h2 id="learning-pulse-title">校园学习脉搏</h2></div>
         <small>课程、任务、考试与学习记录实时汇合</small>

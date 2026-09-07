@@ -11,7 +11,7 @@ export default function SylvaPriorityCard({ state, onNavigate, onOpenDue }) {
   const items = useMemo(() => state.filteredDueItems.slice(0, 3), [state.filteredDueItems]);
 
   return (
-    <article className="sylva-priority-card" aria-labelledby="sylva-priority-title">
+    <article className="sylva-priority-card sylva-cursor-reactive" aria-labelledby="sylva-priority-title">
       <header className="sylva-card-head">
         <div><span>优先处理</span><h2 id="sylva-priority-title">优先事项</h2></div>
         <button className="sylva-card-link" onClick={() => onNavigate?.("/tasks")}>全部待办<Icon name="PhArrowRight" size={14} /></button>

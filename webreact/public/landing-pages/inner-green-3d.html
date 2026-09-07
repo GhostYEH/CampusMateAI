@@ -1768,6 +1768,21 @@ window.__seek   = v => { clock = v; drawn = null; };
     });
   }
 
+  /* The CampusMate shell owns the pointer because the scene iframe is
+     intentionally click-through. Keep the original local pointer path for
+     editorial mode, and accept the shell's normalized coordinates in the
+     background-only mode. */
+  window.addEventListener('message', function (event) {
+    if (event.origin !== window.location.origin || event.data?.type !== 'campusmate:pointer') return;
+    var x = Number(event.data.x), y = Number(event.data.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    pointer.x = x * 2 - 1;
+    pointer.y = y * 2 - 1;
+    var r = hero.getBoundingClientRect();
+    ndc.x = ((x * window.innerWidth - r.left) / Math.max(1, r.width)) * 2 - 1;
+    ndc.y = -((y * window.innerHeight - r.top) / Math.max(1, r.height)) * 2 + 1;
+  });
+
   var canvas   = document.getElementById('scene');
   var hero     = document.getElementById('hero');
   var stageEl  = document.getElementById('stage');

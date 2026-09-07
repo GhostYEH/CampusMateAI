@@ -26,6 +26,10 @@
   min-height: 100%;
   background: #171c15;
   isolation: isolate;
+  --cursor-x: 50%;
+  --cursor-y: 42%;
+  --cursor-dx: 0;
+  --cursor-dy: 0;
 }
 
 /* ── fixed background layer ─────────────────────────────────────────
@@ -44,6 +48,43 @@
   overflow: hidden;
   pointer-events: none;
   background: #171c15;
+}
+
+.sylva-cursor-aura {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(32rem circle at var(--cursor-x) var(--cursor-y), rgba(201, 227, 106, .16), transparent 68%);
+  opacity: .9;
+  mix-blend-mode: screen;
+  transform: translate3d(calc(var(--cursor-dx) * 4px), calc(var(--cursor-dy) * 3px), 0);
+  transition: opacity .35s ease;
+}
+
+.sylva-cursor-reactive {
+  --pane-x: 50%;
+  --pane-y: 50%;
+  --pane-glow: .08;
+  --pane-shift-x: 0px;
+  --pane-shift-y: 0px;
+  position: relative;
+  translate: var(--pane-shift-x) var(--pane-shift-y);
+  transition: translate .22s ease, box-shadow .22s ease;
+  will-change: translate;
+}
+
+.sylva-cursor-reactive::before {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(260px circle at var(--pane-x) var(--pane-y), rgba(255, 255, 255, .34), transparent 70%);
+  opacity: var(--pane-glow);
+  mix-blend-mode: screen;
+  transition: opacity .22s ease;
 }
 
 /* ── foreground content layer ───────────────────────────────────────
@@ -1225,5 +1266,16 @@
   .sylva-schedule-loading i,
   .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
     animation: none;
+  }
+
+  .sylva-cursor-aura,
+  .sylva-cursor-reactive {
+    translate: none;
+    transform: none;
+    transition: none;
+  }
+
+  .sylva-cursor-reactive::before {
+    display: none;
   }
 }
