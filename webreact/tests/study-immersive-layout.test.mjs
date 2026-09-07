@@ -47,3 +47,7 @@ test("study room keeps supporting text readable", () => {
   assert.match(styles, /\.study-summer-dock__links a[^}]*font-size:\s*13px/);
   assert.match(styles, /\.study-summer-start input[^}]*font-size:\s*13px/);
 });
+
+test("study page expands its desktop content area without changing the shared page frame", () => {
+  assert.match(styles, /\.study-page\s*\{\s*max-width:\s*2048px;\s*padding-bottom:\s*108px;/);
+});
