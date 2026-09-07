@@ -3,23 +3,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const navSource = await readFile(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
-const glassSource = await readFile(new URL("../src/components/LiquidGlassSurface.jsx", import.meta.url), "utf8");
-const glassStyles = await readFile(new URL("../src/components/LiquidGlassSurface.css", import.meta.url), "utf8");
 const gooeySource = await readFile(new URL("../src/components/FloatingNav/GooeyNav.jsx", import.meta.url), "utf8");
 const gooeyStyles = await readFile(new URL("../src/components/FloatingNav/GooeyNav.css", import.meta.url), "utf8");
 const layoutStyles = await readFile(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
-test("floating navigation is hosted by the reusable glass surface", () => {
-  assert.match(navSource, /import LiquidGlassSurface from "\.\.\/LiquidGlassSurface\.jsx"/);
-  assert.match(navSource, /<LiquidGlassSurface[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}\s+floating-nav-surface`\}/);
+test("floating navigation is hosted by the OpenGlass surface", () => {
+  assert.match(navSource, /import \{ Glass \} from "open-glass-ui"/);
+  assert.match(navSource, /<Glass[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}[\s\S]*material="regular"[\s\S]*interactive/);
+  assert.doesNotMatch(navSource, /LiquidGlassSurface/);
   assert.match(gooeySource, /<nav aria-label=\{ariaLabel\}/);
 });
 
-test("liquid glass surface uses stable blur and an opaque fallback", () => {
-  assert.doesNotMatch(glassSource, /feDisplacementMap/);
-  assert.match(glassStyles, /backdrop-filter:\s*blur/);
-  assert.match(glassStyles, /@supports not \(backdrop-filter/);
-  assert.match(glassStyles, /prefers-reduced-motion/);
+test("navigation delegates optical material and accessibility fallbacks to OpenGlass", () => {
+  assert.doesNotMatch(layoutStyles, /\.floating-nav\.floating-nav-surface/);
+  assert.doesNotMatch(layoutStyles, /liquid glass material \(nav only\)/i);
 });
 
 test("floating navigation uses a route-safe gooey click effect in the existing palette", () => {

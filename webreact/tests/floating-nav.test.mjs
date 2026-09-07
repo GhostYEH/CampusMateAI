@@ -53,16 +53,19 @@ test("counselor uses the same global floating navigation as other routes", () =>
 });
 
 test("topbar side controls keep the global search and profile implementation", () => {
-  assert.match(appShell, /import LiquidGlassSurface from "\.\/LiquidGlassSurface\.jsx"/);
-  assert.match(appShell, /<LiquidGlassSurface[\s\S]*className="topbar-search-surface"/);
-  assert.match(appShell, /<LiquidGlassSurface[\s\S]*className="topbar-info-surface"/);
+  assert.match(appShell, /import \{ Avatar, Glass, IconButton, SearchField \} from "open-glass-ui"/);
+  assert.match(appShell, /<Glass[\s\S]*className="topbar-search-surface"/);
+  assert.match(appShell, /<SearchField[\s\S]*name="global-search"/);
+  assert.match(appShell, /<Glass[\s\S]*className="topbar-info-surface"/);
+  assert.match(appShell, /<IconButton[\s\S]*aria-label="通知"/);
+  assert.match(appShell, /<Avatar[\s\S]*name=\{displayName\}/);
   assert.match(appShell, /<div className="topbar-info">[\s\S]*<span className="topbar-date">/);
   assert.match(appShell, /<div className="topbar-actions">/);
   assert.match(styles, /\.topbar-search-surface[^}]*position:\s*fixed/);
   assert.match(styles, /\.topbar-info-surface[^}]*position:\s*fixed/);
 });
 
-test("counselor shares the global liquid-glass topbar wrappers", () => {
+test("counselor shares the global OpenGlass topbar wrappers", () => {
   assert.match(appShell, /function SearchBox\(\)/);
   assert.match(appShell, /<SearchBox \/>/);
   assert.match(appShell, /topbar-search-surface/);

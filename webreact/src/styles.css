@@ -1,3 +1,4 @@
+@import "open-glass-ui/styles.css";
 @font-face { font-family: CampusSans; src: url('/assets/NotoSansSC-VF.ttf') format('truetype'); font-display: swap; }
 :root { color-scheme: light; font-family: CampusSans, 'Noto Sans SC', system-ui, sans-serif; color: #182134; background: #f5f7fb; font-synthesis: none; --ink: #182134; --muted: #6e788b; --line: #e3e8f0; --surface: #fff; --wash: #f5f7fb; --blue: #3267d6; --blue-soft: #eaf0ff; --violet: #765eea; --orange: #ed8b3a; --green: #3a9b78; --red: #d45d63; --shadow: 0 16px 44px rgba(40, 53, 82, .08); --radius: 18px; }
 * { box-sizing: border-box; } html { scroll-padding-top: 96px; } html, body, #root { min-height: 100%; margin: 0; } body { min-width: 320px; background: var(--wash); } button, input, textarea, select { font: inherit; } button, a { -webkit-tap-highlight-color: transparent; } a { color: inherit; text-decoration: none; }
@@ -1917,4 +1918,45 @@ html[data-theme="auto"] .courses-page .course-card {
   .study-page-backdrop {
     transform: none;
   }
+}
+
+/* OpenGlass owns the optical material; these rules only position CampusMate's shell controls. */
+.topbar-search-surface,
+.topbar-info-surface {
+  isolation: isolate;
+}
+
+.topbar-search-surface .topbar-search {
+  padding-right: 3.5rem;
+}
+
+.topbar-search-shortcut {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 1;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--ogui-color-border), transparent 16%);
+  border-radius: 5px;
+  color: var(--ogui-color-muted);
+  background: color-mix(in srgb, var(--ogui-color-canvas), transparent 18%);
+  font-size: 10px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.topbar-search-surface:has(.topbar-search input:focus) .topbar-search-shortcut,
+.topbar-search-surface:has(.topbar-search input:not(:placeholder-shown)) .topbar-search-shortcut {
+  display: none;
+}
+
+.topbar-actions .topbar-notification {
+  min-width: 40px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar-account .ogui-avatar {
+  flex: 0 0 auto;
 }

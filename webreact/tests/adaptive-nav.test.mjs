@@ -6,7 +6,6 @@ import { navItems } from "../src/components/FloatingNav/navItems.js";
 const layoutStyles = readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 const gooeyStyles = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.css", import.meta.url), "utf8");
 const floatingNavSource = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
-const liquidGlassSource = readFileSync(new URL("../src/components/LiquidGlassSurface.jsx", import.meta.url), "utf8");
 const appShell = readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 
 test("adaptive navigation exposes a data-contrast state with light and dark tokens", () => {
@@ -42,12 +41,11 @@ test("adaptive navigation uses explicit contrast tokens and no mix-blend differe
   assert.doesNotMatch(gooeyStyles, /mix-blend-mode:\s*difference/);
 });
 
-test("navigation keeps its liquid-glass surface and the existing eight entries", () => {
-  assert.match(floatingNavSource, /import LiquidGlassSurface from ["']\.\.\/LiquidGlassSurface\.jsx["']/);
-  assert.match(floatingNavSource, /floating-nav-surface/);
-  assert.match(layoutStyles, /\.floating-nav\.floating-nav-surface/);
-  assert.match(layoutStyles, /backdrop-filter:\s*blur\(18px\)\s*saturate\(1\.4\)/);
-  assert.match(layoutStyles, /@supports not \(backdrop-filter: blur\(10px\)\)/);
+test("navigation uses OpenGlass while preserving the existing eight entries", () => {
+  assert.match(floatingNavSource, /import \{ Glass \} from ["']open-glass-ui["']/);
+  assert.match(floatingNavSource, /<Glass[\s\S]*material="regular"[\s\S]*interactive/);
+  assert.doesNotMatch(floatingNavSource, /LiquidGlassSurface/);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav\.floating-nav-surface/);
   assert.equal(navItems.length, 8);
 });
 

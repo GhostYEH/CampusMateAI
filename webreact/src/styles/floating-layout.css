@@ -100,79 +100,6 @@ html {
   background: var(--floating-nav-active-background);
 }
 
-/* ── liquid glass material (nav only) ───────────────────────────────
-   Layers clear highlights, edge lines and an inner depth shadow on the
-   existing LiquidGlassSurface so the nav reads as true liquid glass
-   without changing the shared component's global look. */
-
-.floating-nav.floating-nav-surface {
-  border-color: var(--floating-nav-border);
-  background: var(--floating-nav-surface-fill);
-  backdrop-filter: blur(18px) saturate(1.4);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-}
-
-.floating-nav.floating-nav-surface[data-contrast="light"] {
-  box-shadow:
-    var(--floating-nav-shadow),
-    inset 0 1px 0 rgb(255 255 255 / 70%),
-    inset 0 -1px 0 rgb(255 255 255 / 34%),
-    inset 0 -10px 22px rgb(255 255 255 / 8%);
-}
-
-.floating-nav.floating-nav-surface[data-contrast="dark"] {
-  box-shadow:
-    var(--floating-nav-shadow),
-    inset 0 1px 0 rgb(255 255 255 / 22%),
-    inset 0 -1px 0 rgb(255 255 255 / 10%),
-    inset 0 -10px 24px rgb(8 13 8 / 22%);
-}
-
-.floating-nav.floating-nav-surface.floating-nav--light {
-  box-shadow:
-    var(--floating-nav-shadow),
-    inset 0 1px 0 rgb(255 255 255 / 24%),
-    inset 0 -1px 0 rgb(255 255 255 / 12%),
-    inset 0 -10px 24px rgb(6 12 24 / 26%);
-}
-
-.floating-nav.floating-nav-surface::after {
-  position: absolute;
-  inset: 1px;
-  z-index: 0;
-  content: "";
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(120% 90% at 22% -14%, rgb(255 255 255 / var(--floating-nav-highlight, 20%)), transparent 46%),
-    linear-gradient(115deg, transparent 20%, rgb(255 255 255 / 7%) 46%, transparent 74%);
-}
-
-.floating-nav[data-contrast="light"] { --floating-nav-highlight: 36%; }
-.floating-nav[data-contrast="dark"] { --floating-nav-highlight: 16%; }
-.floating-nav--light { --floating-nav-highlight: 16%; }
-
-/* active item gets its own glass tint */
-
-.floating-nav-button.active {
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 38%),
-    inset 0 -6px 12px rgb(20 32 60 / 16%),
-    0 5px 14px rgb(50 103 214 / 14%);
-}
-
-.floating-nav[data-contrast="dark"] .floating-nav-button.active,
-.floating-nav.floating-nav--light .floating-nav-button.active {
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 30%),
-    inset 0 -6px 12px rgb(8 14 28 / 26%),
-    0 6px 16px rgb(6 10 18 / 28%);
-}
-
-.floating-nav-button:hover {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 42%), 0 4px 12px rgb(17 26 44 / 10%);
-}
-
 .floating-nav--light {
   --floating-nav-foreground: #f5f8ff;
   --floating-nav-active-foreground: #fff;
@@ -232,22 +159,6 @@ html[data-theme="auto"] .floating-nav-button.active {
   .floating-nav-button {
     transition: none;
     will-change: auto;
-  }
-}
-
-/* solid fallback when backdrop blur is unsupported */
-
-@supports not (backdrop-filter: blur(10px)) {
-  .floating-nav.floating-nav-surface[data-contrast="light"] {
-    background: rgb(248 250 255 / 94%);
-  }
-
-  .floating-nav.floating-nav-surface[data-contrast="dark"] {
-    background: rgb(21 27 18 / 94%);
-  }
-
-  .floating-nav.floating-nav-surface.floating-nav--light {
-    background: rgb(26 38 60 / 94%);
   }
 }
 
