@@ -180,8 +180,26 @@ export async function pauseStudySession(id, reason) { return dataOf(await client
 export async function resumeStudySession(id) { return dataOf(await client.post(`/study/sessions/${id}/resume`)); }
 export async function finishStudySession(id, payload = {}) { return dataOf(await client.post(`/study/sessions/${id}/finish`, payload)); }
 export async function breakdownStudyTask(payload) { return dataOf(await client.post("/study/task-breakdown", payload)); }
-export async function getStudyCheckins() { return dataOf(await client.get("/study/checkins")); }
-export async function createStudyCheckin(payload = {}) { return dataOf(await client.post("/study/checkins", payload)); }
+async function studyCheckinsSupported() {
+  try {
+    const response = await client.get("/health");
+    return response.data?.study_checkins_supported === true;
+  } catch {
+    return false;
+  }
+}
+export async function getStudyCheckins() {
+  if (!(await studyCheckinsSupported())) return { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false, unsupported: true };
+  return dataOf(await client.get("/study/checkins"));
+}
+export async function createStudyCheckin(payload = {}) {
+  if (!(await studyCheckinsSupported())) {
+    const error = new Error("签到服务尚未加载，请重启当前后端服务后重试。");
+    error.code = "STUDY_CHECKINS_UNAVAILABLE";
+    throw error;
+  }
+  return dataOf(await client.post("/study/checkins", payload));
+}
 export async function getKnowledgeDocuments() { return dataOf(await client.get("/knowledge/documents")); }
 
 export async function getExams(params = {}) { return itemsOf(dataOf(await client.get("/student/exams", { params }))); }

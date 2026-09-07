@@ -6,6 +6,7 @@ import { Heatmap } from "../components/island/Heatmap.jsx";
 import { useAmbientSound } from "../features/study/ambientSound.js";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
+import { saveStudyScene } from "../features/study/scenes.js";
 
 const SCENES = Object.freeze([
   { key: "rain", label: "雨景", caption: "林间雨声" },
@@ -33,15 +34,16 @@ export default function IslandPage() {
   const [sessions, setSessions] = useState([]);
   const [checkins, setCheckins] = useState({ items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false });
   const [loaded, setLoaded] = useState(false);
+  const [checkinError, setCheckinError] = useState("");
 
   useEffect(() => {
-    Promise.all([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => { setSessions(itemsOf(studySessions)); setCheckins(studyCheckinSummary || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false }); }).catch(() => {}).finally(() => setLoaded(true));
+    Promise.all([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => { setSessions(itemsOf(studySessions)); setCheckins(studyCheckinSummary || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false }); if (studyCheckinSummary?.unsupported) setCheckinError("签到服务尚未加载，请重启后端后再签到。"); }).catch(() => setCheckinError("签到数据加载失败，请稍后重试。")).finally(() => setLoaded(true));
   }, []);
 
   // 3D 小岛按 html[data-scene] 换肤，与场景按钮保持同步
   function selectScene(nextScene) {
     setSceneState(nextScene);
-    window.localStorage.setItem("campus_study_scene", nextScene);
+    saveStudyScene(nextScene);
     if (document.documentElement) document.documentElement.dataset.scene = nextScene;
   }
   useEffect(() => {
@@ -114,8 +116,8 @@ export default function IslandPage() {
         const next = { ...checkins, items: nextItems, total: Math.max(checkins.total || 0, nextItems.length), today_checked: true, streak: checkins.today_checked ? (checkins.streak || 1) : (checkins.streak || 0) + 1 };
         setCheckins(next);
       }
-    } catch {
-      // 网络恢复后可再次签到，避免把本地假状态当作已持久化记录。
+    } catch (error) {
+      setCheckinError(error?.code === "STUDY_CHECKINS_UNAVAILABLE" ? "签到服务尚未加载，请重启后端后再签到。" : "签到失败，请稍后重试。");
     }
   }
 
@@ -173,6 +175,7 @@ export default function IslandPage() {
                 <span>今天签到</span>
               </button>
             )}
+            {checkinError && <p className="island-sign__error" role="alert">{checkinError}</p>}
           </div>
         </div>
       </footer>

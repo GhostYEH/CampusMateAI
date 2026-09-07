@@ -26,4 +26,5 @@ async def health() -> dict:
         "llm_available": bool(container.llm and s.llm_available),
         "fallback_enabled": s.enable_fallback_mode,
         "retrieval_method": "bm25",
+        "study_checkins_supported": True,
     }

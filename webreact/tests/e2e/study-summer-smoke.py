@@ -6,7 +6,7 @@ def install_api_fakes(page):
         request = route.request
         url = request.url
         if url.endswith("/health"):
-            route.fulfill(status=200, content_type="application/json", body="{}")
+            route.fulfill(status=200, content_type="application/json", body='{"study_checkins_supported":true}')
         elif url.endswith("/study/sessions/active"):
             route.fulfill(status=200, content_type="application/json", body="null")
         elif url.endswith("/study/sessions") and request.method == "GET":
@@ -42,6 +42,7 @@ def run():
         page.goto("http://127.0.0.1:5173/study")
         page.wait_for_load_state("networkidle")
         page.locator(".study-summer-room").wait_for()
+        assert "summer-" in page.locator(".app-layout.study-mode").evaluate("node => getComputedStyle(node, '::before').backgroundImage")
         assert page.get_by_role("heading", name="学习陪伴").count() == 1
         assert page.get_by_role("button", name="选择学习场景").count() == 0
         page.get_by_role("button", name="雪景 安静一点").click()
@@ -63,11 +64,14 @@ def run():
         assert mobile.locator(".study-summer-dock").is_visible()
 
         island = browser.new_page(viewport={"width": 1280, "height": 900})
+        island_console = []
+        island.on("console", lambda message: island_console.append(message.text))
         install_api_fakes(island)
         island.goto("http://127.0.0.1:5173/island")
         island.wait_for_load_state("networkidle")
         island.get_by_role("button", name="今天签到").click()
         island.get_by_text("今天签过了").wait_for()
+        assert not any("PCFSoftShadowMap" in message or "Context Lost" in message for message in island_console), island_console
 
         for path, heading in (("/plans", "计划"), ("/docs", "阅读"), ("/statistics", "主页")):
             subpage = browser.new_page(viewport={"width": 1280, "height": 900})

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { ContactShadows, OrbitControls } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import { MathUtils, type Group } from "three";
 
 // ── 小单元、绵密感 ──
@@ -758,7 +758,7 @@ export function LearningIsland({
       >
         <Canvas
           dpr={[1, 1.65]}
-          shadows
+          shadows="basic"
           orthographic
           camera={{ position: [8, 8, 9], zoom: 62, near: 0.1, far: 120 }}
           gl={{ antialias: true, alpha: true }}
@@ -778,14 +778,6 @@ export function LearningIsland({
             shadow-camera-bottom={-8}
           />
           <Island unlockedCount={unlockedCount} todayCount={todayCheckins} />
-          <ContactShadows
-            position={[0, -1.2, 0]}
-            opacity={0.35}
-            scale={14}
-            blur={2.8}
-            far={6}
-            color="#010906"
-          />
           <OrbitControls
             makeDefault
             enablePan={false}

@@ -31,6 +31,10 @@ def test_checkin_is_persisted_and_daily_duplicate_is_idempotent() -> None:
     client = _client()
     headers = _headers(client)
 
+    health = client.get("/api/v1/health")
+    assert health.status_code == 200
+    assert health.json()["study_checkins_supported"] is True
+
     created = client.post(
         "/api/v1/study/checkins",
         headers=headers,

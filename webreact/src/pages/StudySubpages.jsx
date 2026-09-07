@@ -5,6 +5,7 @@ import { itemsOf } from "../data/contracts.js";
 import { Icon } from "../components/Icon.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 import { useAmbientSound } from "../features/study/ambientSound.js";
+import { saveStudyScene } from "../features/study/scenes.js";
 
 const SCENES = ["rain", "snow", "cloud"];
 const sceneLabel = { rain: "雨景", snow: "雪景", cloud: "暖云" };
@@ -19,7 +20,7 @@ function useStudyScene() {
     return SCENES.includes(value) ? value : "rain";
   });
   const audio = useAmbientSound(scene);
-  const select = (next) => { setScene(next); window.localStorage.setItem("campus_study_scene", next); };
+  const select = (next) => { setScene(saveStudyScene(next)); };
   return { scene, select, audio };
 }
 

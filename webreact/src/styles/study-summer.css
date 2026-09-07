@@ -1,4 +1,13 @@
 /* Summer Checkin focus room: a dark, quiet surface that gives the study page one clear center. */
+.app-layout.study-mode { position: relative; isolation: isolate; min-height: 100vh; color: #f2f8f4; background: #04140d; }
+.app-layout.study-mode::before { position: fixed; z-index: 0; inset: 0; content: ""; background: var(--study-global-image) center / cover no-repeat; filter: saturate(.72) brightness(.52); opacity: .72; pointer-events: none; }
+.app-layout.study-mode::after { position: fixed; z-index: 0; inset: 0; content: ""; background: linear-gradient(180deg, rgba(3, 14, 9, .78), rgba(3, 18, 12, .48) 45%, rgba(2, 11, 8, .9)); pointer-events: none; }
+.app-layout.study-mode .app-content, .app-layout.study-mode .route-stage { position: relative; z-index: 1; background: transparent; }
+.app-layout.study-mode .topbar-search-surface, .app-layout.study-mode .topbar-info-surface { color: rgba(239, 250, 242, .82); background: rgba(7, 23, 17, .68); border-color: rgba(255,255,255,.16); box-shadow: 0 16px 36px rgba(0,0,0,.22); }
+.app-layout.study-mode .topbar-search input, .app-layout.study-mode .topbar-date { color: rgba(239, 250, 242, .78); }
+.app-layout.study-mode .topbar-search input::placeholder { color: rgba(239, 250, 242, .44); }
+.app-layout.study-mode .floating-nav { color: rgba(239, 250, 242, .72); background: rgba(7, 23, 17, .72); border-color: rgba(255,255,255,.15); }
+.app-layout.study-mode .floating-nav-button:hover, .app-layout.study-mode .floating-nav-button.active { color: #08150e; background: #d7ef83; }
 .study-summer-room {
   --summer-primary: #d7ef83;
   --summer-foreground: #f2f8f4;
@@ -297,6 +306,7 @@
 .island-sign__done > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; color: #0a1c12; background: var(--summer-primary); }
 .island-sign__done strong { display: block; color: var(--summer-primary); font-size: 12px; }
 .island-sign__done small { display: block; margin-top: 2px; color: rgba(255, 255, 255, .52); font-size: 10px; }
+.island-sign__error { max-width: 190px; margin: 7px 0 0; color: #ffcabf; font-size: 10px; line-height: 1.5; text-align: center; }
 
 /* 热力图（移植 heatmap.tsx） */
 .hm-months { display: flex; margin-bottom: 6px; }

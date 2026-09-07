@@ -12,6 +12,7 @@ import { studyExperienceModel, weeklyTrend } from "../data/alignment.js";
 import { useWhiteNoise } from "../features/study/whiteNoise.js";
 import { advancePomodoro, createPomodoroState, isPomodoroState, pausePomodoro, remainingAt, resetPomodoro, skipPomodoro, startPomodoro } from "../features/study/pomodoro.js";
 import { useAmbientSound } from "../features/study/ambientSound.js";
+import { saveStudyScene } from "../features/study/scenes.js";
 import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 
@@ -67,7 +68,7 @@ export default function StudyPage() {
     return known.includes(stored) ? stored : "rain";
   });
   const ambient = useAmbientSound(scene);
-  function selectScene(nextScene) { setScene(nextScene); window.localStorage.setItem("campus_study_scene", nextScene); }
+  function selectScene(nextScene) { setScene(saveStudyScene(nextScene)); }
   const commitPomodoro = (next) => { pomodoroRef.current = next; setPomodoro(next); setSeconds(remainingAt(next, Date.now())); try { window.localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(next)); } catch {} };
   function syncPomodoroWithSession(current) {
     if (current) {

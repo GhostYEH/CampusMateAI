@@ -9,6 +9,7 @@ import SmoothCursor from "./SmoothCursor.jsx";
 import LiquidGlassSurface from "./LiquidGlassSurface.jsx";
 import { Icon } from "./Icon.jsx";
 import FloatingNav from "./FloatingNav/FloatingNav.jsx";
+import { readStudyScene, STUDY_SCENE_ASSETS } from "../features/study/scenes.js";
 
 const list = itemsOf;
 const IRIDESCENCE_COLOR = Object.freeze([0.68, 0.78, 1]);
@@ -51,6 +52,7 @@ export default function AppShell() {
   const isCounselor = location.pathname.startsWith("/counselor");
   const isProfile = location.pathname === "/profile";
   const isStudy = ["/study", "/island", "/plans", "/docs", "/statistics"].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
+  const [studyScene, setStudyScene] = useState(() => readStudyScene());
   const floatingNavTone = isCounselor || dashboardStyle === "gamified" ? "light" : "dark";
   const motionPaused = reduceMotion || systemReducedMotion;
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date()).replace("星期", "周"), []);
@@ -62,7 +64,13 @@ export default function AppShell() {
     mediaQuery.addEventListener?.("change", syncMotionPreference);
     return () => mediaQuery.removeEventListener?.("change", syncMotionPreference);
   }, []);
-  return <div className={`app-layout ${(isHome || isCourses) ? "home-background-active" : ""} ${isCounselor ? "counselor-mode" : ""} ${isProfile ? "profile-mode" : ""} ${isStudy ? "study-mode" : ""} ${reduceMotion ? "reduce-motion" : ""}`}>{(isHome || isCourses) && <Iridescence className="app-iridescence" color={IRIDESCENCE_COLOR} speed={0.38} amplitude={0.14} mouseReact={!motionPaused} paused={motionPaused} />}{isCounselor && <Prism className="app-counselor-prism" animationType="3drotate" timeScale={0.34} height={4.8} baseWidth={7.4} scale={2.2} hueShift={-0.12} colorFrequency={1.05} noise={0.012} glow={0.75} bloom={1.1} suspendWhenOffscreen={false} paused={motionPaused} />}{isProfile && <Prism className="app-profile-prism" animationType="3drotate" timeScale={0.2} height={4.3} baseWidth={5.8} scale={1.25} hueShift={0.1} colorFrequency={0.95} noise={0.008} glow={0.9} bloom={1.05} suspendWhenOffscreen={false} paused={motionPaused} />}<SmoothCursor pointsCount={32} lineWidth={0.45} springStrength={0.38} dampening={0.52} color="var(--blue)" blur={3} mixBlendMode="screen" velocityScale trailOpacity={0.24} smoothFactor={1.4} paused={motionPaused} /><a className="skip-link" href="#main-content">跳到主要内容</a>
+  useEffect(() => {
+    const syncStudyScene = (event) => setStudyScene(event.detail || readStudyScene());
+    window.addEventListener("campus-study-scene-change", syncStudyScene);
+    return () => window.removeEventListener("campus-study-scene-change", syncStudyScene);
+  }, []);
+  const studyBackgroundStyle = isStudy ? { "--study-global-image": `url("${STUDY_SCENE_ASSETS[studyScene]}")` } : undefined;
+  return <div style={studyBackgroundStyle} className={`app-layout ${(isHome || isCourses) ? "home-background-active" : ""} ${isCounselor ? "counselor-mode" : ""} ${isProfile ? "profile-mode" : ""} ${isStudy ? "study-mode" : ""} ${reduceMotion ? "reduce-motion" : ""}`}>{(isHome || isCourses) && <Iridescence className="app-iridescence" color={IRIDESCENCE_COLOR} speed={0.38} amplitude={0.14} mouseReact={!motionPaused} paused={motionPaused} />}{isCounselor && <Prism className="app-counselor-prism" animationType="3drotate" timeScale={0.34} height={4.8} baseWidth={7.4} scale={2.2} hueShift={-0.12} colorFrequency={1.05} noise={0.012} glow={0.75} bloom={1.1} suspendWhenOffscreen={false} paused={motionPaused} />}{isProfile && <Prism className="app-profile-prism" animationType="3drotate" timeScale={0.2} height={4.3} baseWidth={5.8} scale={1.25} hueShift={0.1} colorFrequency={0.95} noise={0.008} glow={0.9} bloom={1.05} suspendWhenOffscreen={false} paused={motionPaused} />}<SmoothCursor pointsCount={32} lineWidth={0.45} springStrength={0.38} dampening={0.52} color="var(--blue)" blur={3} mixBlendMode="screen" velocityScale trailOpacity={0.24} smoothFactor={1.4} paused={motionPaused} /><a className="skip-link" href="#main-content">跳到主要内容</a>
     <div className="app-content"><header className="topbar"><SearchBox /><FloatingNav tone={floatingNavTone} pendingCount={pendingCount} unreadCount={unreadCount} reduceMotion={reduceMotion} /><LiquidGlassSurface className="topbar-info-surface"><div className="topbar-info"><span className="topbar-date">{today}</span><div className="topbar-actions"><button className="icon-button" aria-label="通知" onClick={() => navigate("/notifications")}><Icon name="PhBell" size={18} /></button><button className="topbar-account" aria-label="个人中心" onClick={() => navigate("/profile")}><span className="avatar"><img src={session?.avatar_url || "/assets/generated/home-reference-student-avatar.png"} alt="" width="30" height="30" /></span><Icon name="PhCaretDown" size={14} /></button></div></div></LiquidGlassSurface></header><div className="route-stage"><Outlet /></div></div>
   </div>;
 }
