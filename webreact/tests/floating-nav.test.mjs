@@ -83,32 +83,22 @@ test("topbar controls share one desktop height and top alignment", () => {
   assert.match(styles, /\.topbar-info[^}]*top:\s*10px/);
 });
 
-test("Sylva navigation keeps compact dock geometry with readable labels", () => {
-  assert.match(layoutStyles, /--floating-nav-item-size:\s*36px/);
-  assert.match(layoutStyles, /--floating-nav-item-gap:\s*3px/);
-  assert.match(layoutStyles, /\.floating-nav-label[^}]*font-size:\s*11px/);
-  assert.match(layoutStyles, /\.floating-nav-button[^}]*padding:\s*0 13px/);
+test("expanded navigation reserves more space for larger labels and the profile item", () => {
+  assert.match(layoutStyles, /--floating-nav-expanded-button-offset:\s*76px/);
+  assert.match(layoutStyles, /--floating-nav-expanded-item-gap:\s*30px/);
+  assert.match(layoutStyles, /\.floating-nav-label[^}]*font-size:\s*14px/);
 });
 
-test("centered navigation fits its eight labels without a second expansion state", () => {
-  assert.match(layoutStyles, /--floating-nav-list-start-padding:\s*5px/);
-  assert.match(layoutStyles, /--floating-nav-list-end-padding:\s*5px/);
-  assert.match(layoutStyles, /\.floating-nav[^}]*width:\s*max-content/);
-  assert.doesNotMatch(floatingNavSource, /gsap|timeline|mouseenter/);
+test("centered navigation balances the first icon and final profile edge insets", () => {
+  assert.match(layoutStyles, /--floating-nav-list-start-padding:\s*8px/);
+  assert.match(layoutStyles, /--floating-nav-list-end-padding:\s*30px/);
+  assert.match(layoutStyles, /\.floating-nav-list[^}]*padding:\s*8px var\(--floating-nav-list-end-padding\) 8px var\(--floating-nav-list-start-padding\)/s);
+  assert.match(floatingNavSource, /listPaddingEnd[\s\S]*contentWidth/);
   assert.match(styles, /\.floating-nav[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/s);
 });
 
 test("mobile floating navigation keeps its glass surface compact", () => {
   const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 760px)"));
 
-  assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 12px\)/s);
-  assert.match(mobileStyles, /\.floating-nav-label[^}]*display:\s*none/s);
-});
-
-test("medium viewports collapse labels before the navigation can overlap side controls", () => {
-  const mediumStyles = layoutStyles.slice(layoutStyles.indexOf("@media (max-width: 1200px)"));
-
-  assert.match(mediumStyles, /\.floating-nav-button[^}]*width:\s*var\(--floating-nav-item-size\)/s);
-  assert.match(mediumStyles, /\.floating-nav-label[^}]*position:\s*absolute/s);
-  assert.match(mediumStyles, /\.floating-nav-list li:hover \.floating-nav-label[^}]*opacity:\s*1/s);
+  assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });

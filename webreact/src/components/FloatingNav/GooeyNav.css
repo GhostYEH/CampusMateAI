@@ -19,12 +19,12 @@
   position: relative;
   z-index: 3;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--floating-nav-item-gap, 8px);
   width: max-content;
-  min-width: 0;
+  min-width: 100%;
   margin: 0;
-  padding: 5px;
+  padding: 8px;
   color: var(--floating-nav-foreground, #53627b);
   list-style: none;
 }
@@ -32,7 +32,7 @@
 .gooey-nav-container nav ul li {
   position: relative;
   flex: 0 0 auto;
-  border-radius: 10px;
+  border-radius: 100vw;
   cursor: pointer;
   transition: color .3s ease, box-shadow .3s ease;
 }
@@ -44,38 +44,29 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: auto;
-  min-width: var(--floating-nav-item-size, 36px);
-  height: var(--floating-nav-item-size, 36px);
-  overflow: visible;
-  padding: 0 13px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  width: var(--floating-nav-item-size, 44px);
+  height: var(--floating-nav-item-size, 44px);
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
   color: inherit;
-  background: rgba(255, 255, 255, .04);
+  background: transparent;
   white-space: nowrap;
 }
 
-.gooey-nav-container nav ul li:hover button {
-  color: #fff;
-}
-
+.gooey-nav-container nav ul li:hover button,
 .gooey-nav-container nav ul li.active button {
-  color: var(--floating-nav-active-foreground, #23261f);
+  color: inherit;
 }
 
 .gooey-nav-container .floating-nav-icon {
   display: inline-grid;
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
+  flex: 0 0 var(--floating-nav-item-size, 44px);
+  width: var(--floating-nav-item-size, 44px);
+  height: var(--floating-nav-item-size, 44px);
   place-items: center;
   border-radius: 50%;
-}
-
-.gooey-nav-container .floating-nav-icon svg {
-  width: 100%;
-  height: 100%;
 }
 
 .gooey-nav-container .floating-nav-button:focus-visible {
@@ -171,24 +162,6 @@
 @media (prefers-reduced-motion: reduce) {
   .gooey-nav-container nav ul li {
     transition: none;
-  }
-}
-
-@media (max-width: 1200px) {
-  .gooey-nav-container nav ul li button {
-    width: var(--floating-nav-item-size, 36px);
-    min-width: var(--floating-nav-item-size, 36px);
-    padding: 0;
-  }
-}
-
-@media (max-width: 760px) {
-  .gooey-nav-container nav ul { padding: 5px; }
-
-  .gooey-nav-container nav ul li button {
-    width: var(--floating-nav-item-size, 32px);
-    min-width: var(--floating-nav-item-size, 32px);
-    padding: 0;
   }
 }
 

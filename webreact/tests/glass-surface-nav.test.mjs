@@ -29,7 +29,7 @@ test("floating navigation uses a route-safe gooey click effect in the Living Gre
   assert.match(gooeySource, /onSelect/);
   assert.match(gooeyStyles, /--color-1:\s*#f2f3ef/);
   assert.match(gooeyStyles, /--color-3:\s*#87927c/);
-  assert.match(layoutStyles, /--floating-nav-active-background:\s*#f2f3ef/);
+  assert.doesNotMatch(gooeyStyles, /(?:color|background):\s*white\b|#fff\b/i);
 });
 
 test("gooey selection backdrop stays transparent so the glass nav is not painted white", () => {
@@ -41,5 +41,5 @@ test("gooey selection backdrop stays transparent so the glass nav is not painted
 
 test("desktop hover scaling can render the edge selection marker without clipping", () => {
   assert.match(layoutStyles, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow:\s*visible;/);
-  assert.match(layoutStyles, /@media \(max-width: 760px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow:\s*visible;/);
+  assert.match(layoutStyles, /@media \(max-width: 760px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow-x:\s*auto;/);
 });

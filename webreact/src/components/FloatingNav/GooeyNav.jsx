@@ -127,37 +127,6 @@ export default function GooeyNav({
     timersRef.current.push(...particleTimers);
   };
 
-  const getSpecularElements = () => [
-    containerRef.current?.closest(".floating-nav"),
-    ...(containerRef.current?.querySelectorAll(".floating-nav-button") || []),
-  ].filter(Boolean);
-
-  const updateSpecular = (event) => {
-    mouseX.set(event.clientX);
-    const measurements = getSpecularElements().map((element) => {
-      const rect = element.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
-      const reach = element.classList.contains("floating-nav") ? 250 : 185;
-      return {
-        element,
-        angle: Math.atan2(centerY - event.clientY, event.clientX - centerX),
-        brightness: Math.max(0, 1 - distance / reach) ** 2,
-      };
-    });
-
-    measurements.forEach(({ element, angle, brightness }) => {
-      element.style.setProperty("--spec-angle", `${angle}rad`);
-      element.style.setProperty("--spec-bright", `${Math.min(.92, brightness * .92)}`);
-    });
-  };
-
-  const clearSpecular = () => {
-    mouseX.set(Number.POSITIVE_INFINITY);
-    getSpecularElements().forEach((element) => element.style.setProperty("--spec-bright", "0"));
-  };
-
   const handleClick = (event, index) => {
     event.preventDefault();
     const item = items[index];
@@ -199,8 +168,8 @@ export default function GooeyNav({
       ref={containerRef}
       className={`gooey-nav-container ${className}`}
       data-reduce-motion={reduceMotion ? "true" : undefined}
-      onPointerMove={updateSpecular}
-      onPointerLeave={clearSpecular}
+      onMouseMove={(event) => mouseX.set(event.clientX)}
+      onMouseLeave={() => mouseX.set(Number.POSITIVE_INFINITY)}
     >
       <nav aria-label={ariaLabel}>
         <ul ref={navRef} className="floating-nav-list">
