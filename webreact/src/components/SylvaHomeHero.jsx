@@ -1,14 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SylvaHero } from "@designcodeio/threeui";
 
-const SYLVA_DOCK_ROUTES = Object.freeze([
-  "/home",
-  "/courses",
-  "/community",
-  "/tasks",
-  "/profile",
-]);
-
 export default function SylvaHomeHero({ onNavigate, onExplore }) {
   const heroRef = useRef(null);
 
@@ -25,17 +17,12 @@ export default function SylvaHomeHero({ onNavigate, onExplore }) {
       if (!frameDocument) return;
 
       const cleanups = [];
-      const dockItems = [...frameDocument.querySelectorAll("[data-dock]")];
-      dockItems.forEach((item, index) => {
-        const route = SYLVA_DOCK_ROUTES[index];
-        if (!route) return;
-        const handleDockClick = (event) => {
-          event.preventDefault();
-          onNavigate(route);
-        };
-        item.addEventListener("click", handleDockClick);
-        cleanups.push(() => item.removeEventListener("click", handleDockClick));
-      });
+      if (!frameDocument.querySelector("style[data-campusmate-nav]")) {
+        const embeddedDockOverride = frameDocument.createElement("style");
+        embeddedDockOverride.dataset.campusmateNav = "hidden";
+        embeddedDockOverride.textContent = ".dock-wrap{display:none!important}";
+        frameDocument.head.appendChild(embeddedDockOverride);
+      }
 
       const exploreButton = frameDocument.querySelector(".liquid-button--explore");
       if (exploreButton) {

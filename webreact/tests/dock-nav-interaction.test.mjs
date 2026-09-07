@@ -10,10 +10,10 @@ test("floating navigation applies spring proximity scaling to every dock item", 
   assert.match(source, /useSpring/);
   assert.match(source, /useTransform/);
   assert.match(source, /getDockScale/);
-  assert.match(source, /onMouseMove/);
+  assert.match(source, /onPointerMove/);
   assert.match(source, /style=\{\{ scale:/);
-  assert.match(source, /dockMagnification = 60/);
-  assert.match(source, /dockBaseItemSize = 44/);
+  assert.match(source, /--spec-angle/);
+  assert.match(source, /--spec-bright/);
 });
 
 test("floating navigation disables proximity scaling when reduced motion is enabled", () => {

@@ -18,22 +18,22 @@ html {
 }
 
 .floating-nav {
-  --floating-nav-expanded-width: 900px;
-  --floating-nav-item-size: 44px;
-  --floating-nav-item-gap: 8px;
-  --floating-nav-expanded-item-gap: 30px;
-  --floating-nav-expanded-button-offset: 76px;
+  --floating-nav-item-size: 36px;
+  --floating-nav-item-gap: 3px;
   --floating-nav-gutter: 12px;
-  --floating-nav-list-start-padding: 8px;
-  --floating-nav-list-end-padding: 30px;
+  --floating-nav-list-start-padding: 5px;
+  --floating-nav-list-end-padding: 5px;
   --floating-nav-foreground: rgba(255, 255, 255, .62);
   --floating-nav-active-foreground: #23261f;
   --floating-nav-active-background: #f2f3ef;
-  overflow-x: auto;
-  overflow-y: hidden;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  min-height: 46px;
+  height: 46px;
+  overflow: visible;
   scrollbar-width: none;
   border: 1px solid rgba(255, 255, 255, .11);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 42%),
     rgba(34, 40, 31, .74);
@@ -42,6 +42,7 @@ html {
     inset 0 1px rgba(255, 255, 255, .06);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  isolation: isolate;
 }
 
 .floating-nav.liquid-glass-surface::before {
@@ -65,34 +66,59 @@ html {
 
 .floating-nav-list {
   width: max-content;
-  padding: 8px var(--floating-nav-list-end-padding) 8px var(--floating-nav-list-start-padding);
+  min-width: 0;
+  gap: var(--floating-nav-item-gap);
+  padding: 5px var(--floating-nav-list-end-padding) 5px var(--floating-nav-list-start-padding);
 }
 
 .floating-nav-label {
+  display: inline-block;
   width: max-content;
+  max-width: none;
+  overflow: visible;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
 }
 
 .floating-nav-button {
+  position: relative;
+  z-index: 6;
+  width: auto;
+  min-width: var(--floating-nav-item-size);
+  height: var(--floating-nav-item-size);
+  overflow: visible;
+  padding: 0 13px;
+  gap: 8px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: 10px;
   color: var(--floating-nav-foreground);
   background: rgba(255, 255, 255, .04);
+  transform-origin: 50% 0;
+  will-change: transform;
   transition: color .18s cubic-bezier(.22, .61, .36, 1), border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
 }
 
-.floating-nav-button:hover {
+.floating-nav-list li:hover {
+  z-index: 7;
+}
+
+.floating-nav-list li:hover .floating-nav-button {
   color: #fff;
   border-color: rgba(255, 255, 255, .19);
   background: rgba(31, 37, 28, .94);
   box-shadow: 0 7px 16px rgba(10, 14, 8, .30);
 }
 
-.floating-nav-button.active {
+.floating-nav-list li.active .floating-nav-button {
   color: var(--floating-nav-active-foreground);
   border-color: var(--floating-nav-active-background);
   background: var(--floating-nav-active-background);
+  box-shadow: 0 6px 16px rgba(12, 17, 9, .24);
 }
 
 .floating-nav--light {
@@ -107,24 +133,40 @@ html {
     overflow: visible;
   }
 
-  .floating-nav-button {
-    transform-origin: center bottom;
-    will-change: transform;
-  }
+  .floating-nav-button { transform-origin: 50% 0; }
 }
 
-.floating-nav-button.active {
-  box-shadow: 0 6px 16px rgba(12, 17, 9, .24), 0 1px rgba(255, 255, 255, .82) inset;
+.floating-nav,
+.floating-nav-button {
+  --spec-angle: 2.4rad;
+  --spec-bright: 0;
 }
 
-.floating-nav-button.active::after {
+.floating-nav::after,
+.floating-nav-button::after {
   position: absolute;
-  right: 9px;
-  bottom: 4px;
-  left: 9px;
-  height: 2px;
-  border-radius: 99px;
-  background: rgba(35, 38, 31, .28);
+  inset: -1px;
+  z-index: 8;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--spec-bright);
+  background: conic-gradient(from var(--spec-angle) at 50% 50%,
+    rgba(240, 246, 232, 0) 0deg,
+    rgba(240, 246, 232, .08) 14deg,
+    rgba(240, 246, 232, .95) 28deg,
+    rgba(240, 246, 232, .16) 46deg,
+    rgba(240, 246, 232, 0) 68deg,
+    rgba(240, 246, 232, 0) 180deg,
+    rgba(240, 246, 232, .08) 194deg,
+    rgba(240, 246, 232, .95) 208deg,
+    rgba(240, 246, 232, .16) 226deg,
+    rgba(240, 246, 232, 0) 248deg,
+    rgba(240, 246, 232, 0) 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
   content: "";
 }
 
@@ -135,10 +177,13 @@ html[data-theme="auto"] .floating-nav {
   --floating-nav-active-background: #f2f3ef;
 }
 
-html[data-theme="dark"] .floating-nav-button:hover,
-html[data-theme="dark"] .floating-nav-button.active,
-html[data-theme="auto"] .floating-nav-button:hover,
-html[data-theme="auto"] .floating-nav-button.active {
+html[data-theme="dark"] .floating-nav-list li:hover .floating-nav-button,
+html[data-theme="auto"] .floating-nav-list li:hover .floating-nav-button {
+  background: rgba(31, 37, 28, .94);
+}
+
+html[data-theme="dark"] .floating-nav-list li.active .floating-nav-button,
+html[data-theme="auto"] .floating-nav-list li.active .floating-nav-button {
   background: var(--floating-nav-active-background);
 }
 
@@ -151,6 +196,38 @@ html[data-theme="auto"] .floating-nav-button.active {
   .floating-nav-button {
     transition: none;
     will-change: auto;
+  }
+}
+
+@media (max-width: 1200px) {
+  .floating-nav-button {
+    width: var(--floating-nav-item-size);
+    min-width: var(--floating-nav-item-size);
+    padding: 0;
+  }
+
+  .floating-nav-label {
+    position: absolute;
+    top: calc(100% + 9px);
+    left: 50%;
+    width: max-content;
+    padding: 6px 9px;
+    border: 1px solid rgba(255, 255, 255, .11);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, .86);
+    background: rgba(31, 37, 28, .96);
+    box-shadow: 0 7px 16px rgba(10, 14, 8, .3);
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, -4px);
+    transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+  }
+
+  .floating-nav-list li:hover .floating-nav-label,
+  .floating-nav-list li:focus-within .floating-nav-label {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
   }
 }
 
@@ -168,18 +245,27 @@ html[data-theme="auto"] .floating-nav-button.active {
   }
 
   .floating-nav {
-    --floating-nav-item-size: 34px;
-    --floating-nav-item-gap: 1px;
+    --floating-nav-item-size: 32px;
+    --floating-nav-item-gap: 3px;
     --floating-nav-gutter: 12px;
-    --floating-nav-list-start-padding: 7px;
-    --floating-nav-list-end-padding: 7px;
+    --floating-nav-list-start-padding: 5px;
+    --floating-nav-list-end-padding: 5px;
     min-height: 0;
-    height: calc(var(--floating-nav-item-size) + 16px);
-    overflow-x: auto;
-    overflow-y: hidden;
+    height: calc(var(--floating-nav-item-size) + 12px);
+    overflow: visible;
   }
 
   .floating-nav-list {
-    padding: 7px var(--floating-nav-list-end-padding) 7px var(--floating-nav-list-start-padding);
+    padding: 5px var(--floating-nav-list-end-padding);
+  }
+
+  .floating-nav-button {
+    width: var(--floating-nav-item-size);
+    min-width: var(--floating-nav-item-size);
+    padding: 0;
+  }
+
+  .floating-nav-label {
+    display: none;
   }
 }
