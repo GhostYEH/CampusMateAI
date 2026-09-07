@@ -20,6 +20,10 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
   client.interceptors.response.use((response) => response, async (error) => {
     const original = error.config;
     const url = original?.url || "";
+    // 5xx 只写开发诊断日志，不向用户展示原始英文（UI 使用 userErrorMessage 取中文文案）
+    if (error.response?.status >= 500) {
+      console.warn("[api] 5xx", url, error.response.status, error.message);
+    }
     const detail = error.response?.data?.detail;
     const chaoxingAuthError = url.includes("/chaoxing/") && (
       detail === "reauth_required" || detail === "Chaoxing credentials not found"

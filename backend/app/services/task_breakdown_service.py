@@ -244,6 +244,20 @@ class TaskBreakdownService:
                     goal_text, policy_kb=policy_kb
                 )
                 mode = "rule_fallback"
+            except Exception as e:  # noqa: BLE001
+                # 任何未预期的生成失败都不向用户抛 500,
+                # 遵循本服务的契约: LLM 失败一律降级为规则拆解。
+                logger.warning(
+                    "task_breakdown.llm_unexpected fallback=rule error=%s",
+                    type(e).__name__,
+                )
+                warnings.append(
+                    f"LLM 生成失败({type(e).__name__}),已降级为规则拆解"
+                )
+                steps = self._build_rule_steps(
+                    goal_text, policy_kb=policy_kb
+                )
+                mode = "rule_fallback"
         else:
             warnings.append("未配置 LLM 或 LLM 不可用,使用规则拆解")
             steps = self._build_rule_steps(goal_text, policy_kb=policy_kb)

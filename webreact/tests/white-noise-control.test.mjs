@@ -10,10 +10,13 @@ const studyPage = readFileSync(resolve(root, "src/pages/StudyPage.jsx"), "utf8")
 const control = readFileSync(resolve(root, "src/components/study/WhiteNoiseControl.jsx"), "utf8");
 const styles = readFileSync(resolve(root, "src/styles.css"), "utf8");
 
-test("study page includes a functional white-noise control in focus mode", () => {
-  assert.match(studyPage, /WhiteNoiseControl/);
+test("study page keeps white-noise state and the room renders the control", () => {
   assert.match(studyPage, /useWhiteNoise/);
+  assert.match(studyPage, /whiteNoise=\{whiteNoise\}/);
   assert.match(control, /white-noise-control/);
+  const room = readFileSync(resolve(root, "src/components/study/SummerFocusRoom.jsx"), "utf8");
+  assert.match(room, /WhiteNoiseControl/);
+  assert.match(room, /whiteNoise\.setVolume/);
 });
 
 test("white-noise control has the elastic slider visual contract", () => {

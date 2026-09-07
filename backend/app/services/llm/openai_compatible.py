@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 from typing import AsyncIterator, List, Optional
 
 import httpx
@@ -84,7 +85,10 @@ class OpenAICompatibleClient:
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError("LLM 请求超时") from e
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, ssl.SSLError, OSError) as e:
+            # ssl.SSLError 是 OSError 子类；代理/网关偶发的 TLS 失败会以
+            # 原始 ssl 异常穿透 httpx 包装层,这里统一归一为 LLMError,
+            # 让上层"LLM 失败 → 规则降级"路径真正生效,而不是抛 500。
             raise LLMError(f"LLM 网络错误: {e}") from e
         if resp.status_code != 200:
             raise LLMError(f"LLM HTTP {resp.status_code}: {resp.text[:200]}")
@@ -165,7 +169,7 @@ class OpenAICompatibleClient:
                         yield text
         except httpx.TimeoutException as e:
             raise LLMTimeoutError("LLM 流式请求超时") from e
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, ssl.SSLError, OSError) as e:
             raise LLMError(f"LLM 流式网络错误: {e}") from e
 
 

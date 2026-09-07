@@ -3,6 +3,34 @@ export function itemsOf(value) {
   return Array.isArray(value?.items) ? value.items : [];
 }
 
+// 统一学习模块 API 错误解析：
+// - 后端错误结构为 { code, message, details }，message 已是中文文案，优先展示。
+// - 兼容旧的 { detail } 结构。
+// - 网络层错误（超时/后端未启动）不把 Axios 原始英文抛给用户，用中文兜底。
+// - 原始错误保留在 console（见 logApiError），仅供开发诊断。
+export function userErrorMessage(error, fallback = "操作失败，请稍后重试") {
+  const data = error?.response?.data;
+  if (data && typeof data === "object" && typeof data.message === "string" && data.message.trim()) {
+    return data.message;
+  }
+  if (data && typeof data === "object" && typeof data.detail === "string" && data.detail.trim()) {
+    return data.detail;
+  }
+  if (error?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(error?.message))) {
+    return "请求超时，请稍后重试";
+  }
+  if (!error?.response && error?.request) {
+    return "无法连接到服务，请确认后端已启动后重试";
+  }
+  return fallback;
+}
+
+export function logApiError(scope, error) {
+  if (typeof console !== "undefined") {
+    console.warn(`[api:${scope}]`, error?.config?.url || "", error?.message || error);
+  }
+}
+
 export function normalizeNotice(item = {}) {
   return {
     ...item,

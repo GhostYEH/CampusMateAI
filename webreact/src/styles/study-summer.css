@@ -11,28 +11,21 @@
 .study-summer-room {
   --summer-primary: #d7ef83;
   --summer-foreground: #f2f8f4;
-  --summer-muted: rgba(220, 239, 227, .58);
-  --summer-border: rgba(255, 255, 255, .13);
+  --summer-muted: rgba(220, 239, 227, .68);
+  --summer-border: rgba(255, 255, 255, .14);
   position: relative;
   isolation: isolate;
-  min-height: min(720px, calc(100vh - 116px));
-  overflow: hidden;
-  padding: 30px clamp(18px, 3vw, 48px) 32px;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 3.5vh, 36px);
+  min-height: calc(100dvh - 96px);
+  padding: clamp(22px, 3.4vw, 46px) clamp(20px, 3vw, 56px) clamp(20px, 4vh, 40px);
   color: var(--summer-foreground);
-  border: 1px solid rgba(255, 255, 255, .1);
-  border-radius: 22px;
-  background: rgba(9, 27, 21, .45);
-  box-shadow: 0 24px 70px rgba(4, 16, 11, .24);
 }
-.study-summer-room__backdrop { position: absolute; z-index: -2; inset: 0; background: var(--study-scene-image) center / cover no-repeat; filter: saturate(.84); transform: scale(1.03); transition: transform 8s ease; }
-.study-summer-room::before, .study-summer-room::after { position: absolute; z-index: -1; inset: 0; pointer-events: none; content: ""; }
-.study-summer-room::before { background: linear-gradient(180deg, rgba(5, 21, 16, .75) 0%, rgba(8, 28, 20, .3) 46%, rgba(4, 14, 10, .92) 100%); }
-.study-summer-room::after { background: radial-gradient(circle at 54% 55%, rgba(215, 239, 131, .13), transparent 30%); }
-.study-summer-room:hover .study-summer-room__backdrop { transform: scale(1.06); }
-.study-summer-header, .study-summer-grid { position: relative; z-index: 1; }
-.study-summer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+/* 背景统一由全局场景提供(AppShell .study-mode::before)，本房间不再绘制内部背景 */
+.study-summer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; position: relative; z-index: 1; }
 .study-summer-eyebrow { display: block; color: var(--summer-primary); font-size: 10px; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; }
-.study-summer-header h1 { margin: 8px 0 5px; color: #f5fbf6; font-size: clamp(30px, 4vw, 48px); letter-spacing: -.055em; line-height: 1; }
+.study-summer-header h1 { margin: 8px 0 5px; color: #f5fbf6; font-size: clamp(30px, 3.4vw, 46px); letter-spacing: -.055em; line-height: 1; }
 .study-summer-header p { max-width: 430px; margin: 0; color: var(--summer-muted); font-size: 13px; line-height: 1.7; }
 .study-summer-header__actions { display: flex; align-items: flex-start; gap: 8px; }
 .study-summer-scenes { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--summer-border); border-radius: 13px; background: rgba(4, 16, 12, .38); backdrop-filter: blur(18px); }
@@ -41,25 +34,28 @@
 .study-summer-scenes small { font-size: 9px; opacity: .65; }
 .study-summer-refresh { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--summer-border); border-radius: 11px; color: rgba(255,255,255,.75); background: rgba(4, 16, 12, .38); }
 .study-summer-refresh:hover { color: var(--summer-primary); border-color: rgba(215, 239, 131, .34); }
-.study-summer-grid { display: grid; grid-template-columns: minmax(280px, 25%) 1fr minmax(220px, 25%); align-items: center; gap: clamp(16px, 3vw, 50px); min-height: 510px; }
-.study-summer-focus, .study-summer-todos { border: 1px solid var(--summer-border); background: rgba(5, 18, 13, .5); box-shadow: 0 18px 55px rgba(0, 0, 0, .16); backdrop-filter: blur(22px); }
-.study-summer-focus { min-width: 0; padding: 22px; border-radius: 18px; }
+/* 桌面三栏：左计时站 / 中场景留白 / 右待办 */
+.study-summer-grid { position: relative; z-index: 1; display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(280px, 24%) 1fr minmax(240px, 22%); align-items: stretch; gap: clamp(20px, 3vw, 44px); }
+.study-summer-focus { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 18px; padding: 0; }
 .study-summer-focus__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .study-summer-focus h2 { min-height: 22px; margin: 7px 0 0; color: #f3fbf5; font-size: 18px; letter-spacing: -.025em; }
-.study-summer-focus__status { flex: 0 0 auto; max-width: 130px; padding: 5px 8px; border: 1px solid rgba(215, 239, 131, .2); border-radius: 999px; color: var(--summer-primary); font-size: 9px; text-align: center; }
-.study-summer-goal { display: flex; align-items: center; gap: 7px; margin-top: 14px; padding: 8px 9px; border: 1px solid rgba(215, 239, 131, .14); border-radius: 9px; color: rgba(255, 255, 255, .56); background: rgba(215, 239, 131, .05); font-size: 10px; }
+.study-summer-focus__status { flex: 0 0 auto; max-width: 130px; padding: 5px 8px; border: 1px solid rgba(215, 239, 131, .24); border-radius: 999px; color: var(--summer-primary); font-size: 9px; text-align: center; }
+.study-summer-meta { display: grid; gap: 14px; }
+.study-summer-goal { display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid rgba(215, 239, 131, .14); border-radius: 9px; color: rgba(255, 255, 255, .56); background: rgba(215, 239, 131, .05); font-size: 10px; }
 .study-summer-goal span { margin-right: auto; }
 .study-summer-goal strong { color: var(--summer-primary); font-weight: 600; }
 .study-summer-goal label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .study-summer-goal input { width: 54px; min-height: 25px; padding: 0 5px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #fff; background: rgba(0,0,0,.18); font-size: 10px; text-align: center; }
 .study-summer-goal button { min-height: 25px; padding: 0 7px; border: 1px solid rgba(215, 239, 131, .24); border-radius: 6px; color: var(--summer-primary); background: rgba(215, 239, 131, .08); font-size: 10px; }
 .study-summer-goal button:hover { background: rgba(215, 239, 131, .16); }
-.study-summer-timer { display: grid; justify-items: center; gap: 2px; margin: 25px auto 18px; }
-.study-summer-timer strong { display: grid; place-items: center; width: 166px; height: 166px; border: 1px solid rgba(215, 239, 131, .4); border-radius: 50%; color: #f3fce8; background: radial-gradient(circle, rgba(215, 239, 131, .14), rgba(7, 27, 18, .08) 64%); box-shadow: 0 0 0 12px rgba(215, 239, 131, .06), inset 0 0 30px rgba(215, 239, 131, .08); font-size: 31px; font-weight: 500; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
-.study-summer-timer strong::after { position: absolute; width: 166px; height: 166px; border: 3px solid transparent; border-top-color: var(--summer-primary); border-radius: 50%; transform: rotate(calc(-90deg + var(--study-progress) * 3.6)); opacity: .8; content: ""; transition: transform .25s linear; }
-.study-summer-timer span { margin-top: -28px; color: var(--summer-muted); font-size: 10px; }
-.study-summer-presets { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 8px 0 16px; }
-.study-summer-presets button { padding: 6px 8px; border: 1px solid transparent; border-radius: 7px; color: rgba(255,255,255,.55); background: transparent; font-size: 10px; }
+/* 大号无框计时数字 + 细进度线 */
+.study-summer-timer { display: grid; justify-items: start; gap: 9px; }
+.study-summer-timer strong { position: relative; color: #f3fce8; font-size: clamp(58px, 7.2vw, 88px); font-weight: 200; letter-spacing: -.06em; line-height: .95; font-variant-numeric: tabular-nums; text-shadow: 0 10px 42px rgba(0, 0, 0, .35); }
+.study-summer-timer__track { display: block; width: min(100%, 340px); height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .14); }
+.study-summer-timer__track b { display: block; height: 100%; border-radius: inherit; background: var(--summer-primary); box-shadow: 0 0 12px rgba(215, 239, 131, .5); transition: width .3s linear; }
+.study-summer-timer span { color: var(--summer-muted); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+.study-summer-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.study-summer-presets button { padding: 6px 9px; border: 1px solid transparent; border-radius: 7px; color: rgba(255,255,255,.55); background: transparent; font-size: 10px; }
 .study-summer-presets button:hover, .study-summer-presets button.is-active { border-color: rgba(215,239,131,.35); color: var(--summer-primary); background: rgba(215,239,131,.1); }
 .study-summer-presets input { width: 65px; padding: 5px 7px; border: 1px solid rgba(215,239,131,.28); border-radius: 7px; color: #fff; background: rgba(0,0,0,.2); font-size: 11px; }
 .study-summer-start { display: grid; gap: 7px; }
@@ -69,43 +65,51 @@
 .study-summer-start input:focus { border-color: rgba(215,239,131,.5); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
 .study-summer-start .button, .study-summer-focus__actions .button { min-height: 38px; border-radius: 9px; color: #07120e; background: var(--summer-primary); box-shadow: none; font-size: 11px; }
 .study-summer-start .button:hover, .study-summer-focus__actions .button:hover { background: #e5f89f; }
-.study-summer-focus__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; margin: 18px 0; }
+.study-summer-focus__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .study-summer-focus__actions .button-secondary { color: rgba(255,255,255,.78); border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.08); }
 .study-summer-icon-action { display: grid; place-items: center; width: 38px; min-height: 38px; border: 1px solid rgba(255,255,255,.13); border-radius: 9px; color: rgba(255,255,255,.68); background: rgba(255,255,255,.06); }
 .study-summer-icon-action:hover { color: var(--summer-primary); border-color: rgba(215,239,131,.34); }
-.study-summer-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.08); }
+.study-summer-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); }
 .study-summer-options label { display: grid; gap: 6px; color: rgba(255,255,255,.45); font-size: 10px; }
 .study-summer-options label > span { display: flex; align-items: center; gap: 5px; }
 .study-summer-options select, .study-summer-options button { min-height: 28px; padding: 0 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 7px; color: rgba(255,255,255,.76); background: rgba(0,0,0,.15); font-size: 10px; text-align: left; }
 .study-summer-options button:hover { border-color: rgba(215,239,131,.3); color: var(--summer-primary); }
-.study-summer-focus .white-noise-control { margin-top: 14px; border-color: rgba(255,255,255,.08); background: rgba(0,0,0,.14); }
-.study-summer-atmosphere { position: relative; display: grid; min-height: 300px; place-items: center; color: rgba(237, 251, 238, .42); font-size: 11px; letter-spacing: .08em; text-align: center; }
+.study-summer-focus .white-noise-control { border-color: rgba(255,255,255,.08); background: rgba(0,0,0,.14); }
+/* 中间场景留白 */
+.study-summer-atmosphere { position: relative; display: grid; min-height: 0; place-items: center; align-content: center; gap: 20px; color: rgba(237, 251, 238, .5); font-size: 11px; letter-spacing: .08em; text-align: center; }
 .study-summer-atmosphere__ring { position: absolute; border: 1px solid rgba(215,239,131,.2); border-radius: 50%; box-shadow: 0 0 50px rgba(215,239,131,.08); }
-.study-summer-atmosphere__ring--outer { width: min(28vw, 280px); height: min(28vw, 280px); }
-.study-summer-atmosphere__ring--inner { width: min(16vw, 155px); height: min(16vw, 155px); border-color: rgba(215,239,131,.38); }
-.study-summer-atmosphere span { position: relative; z-index: 1; max-width: 120px; line-height: 1.7; }
-.study-summer-todos { display: flex; min-width: 0; min-height: 390px; flex-direction: column; overflow: hidden; border-radius: 16px; }
+.study-summer-atmosphere__ring--outer { width: min(30vw, 300px); height: min(30vw, 300px); }
+.study-summer-atmosphere__ring--inner { width: min(17vw, 165px); height: min(17vw, 165px); border-color: rgba(215,239,131,.38); }
+.study-summer-atmosphere__quote { position: relative; z-index: 1; max-width: 400px; color: rgba(237, 251, 238, .84); font-size: 13px; line-height: 2; letter-spacing: .04em; }
+.study-summer-atmosphere small { position: relative; z-index: 1; color: rgba(215, 239, 131, .48); font-size: 9px; letter-spacing: .26em; text-transform: uppercase; }
+/* 右：今日待办（唯一保留的玻璃面板，参考 local-todo-panel） */
+.study-summer-todos { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--summer-border); border-radius: 18px; background: rgba(5, 18, 13, .5); box-shadow: 0 18px 55px rgba(0, 0, 0, .16); backdrop-filter: blur(22px); }
 .study-summer-todos > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 17px 16px 13px; }
 .study-summer-todos > header > div { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .study-summer-todos__icon { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(215,239,131,.16); border-radius: 8px; color: var(--summer-primary); background: rgba(215,239,131,.1); }
 .study-summer-todos h2 { margin: 0; color: rgba(255,255,255,.88); font-size: 13px; }
 .study-summer-todos p { margin: 3px 0 0; color: rgba(255,255,255,.42); font-size: 10px; }
-.study-summer-todos > header strong { color: rgba(255,255,255,.72); font-size: 15px; font-weight: 600; }
+.study-summer-todos > header strong { color: rgba(255,255,255,.72); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .study-summer-todos__progress { height: 1px; margin: 0 16px; background: rgba(255,255,255,.08); }
 .study-summer-todos__progress span { display: block; height: 100%; background: var(--summer-primary); transition: width .3s ease; }
-.study-summer-todos__list { min-height: 0; flex: 1; padding: 9px 9px 3px; overflow-y: auto; }
+.study-summer-todos__add { display: flex; align-items: center; gap: 7px; margin: 12px 12px 4px; padding: 6px 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; color: rgba(215,239,131,.55); background: rgba(0,0,0,.14); }
+.study-summer-todos__add input { min-width: 0; flex: 1; height: 28px; border: 0; outline: 0; color: #fff; background: transparent; font-size: 11px; }
+.study-summer-todos__add input::placeholder { color: rgba(255,255,255,.34); }
+.study-summer-todos__add button { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; color: #0a1c12; background: var(--summer-primary); }
+.study-summer-todos__add button:disabled { opacity: .3; }
+.study-summer-todos__list { min-height: 0; flex: 1; padding: 4px 9px 3px; overflow-y: auto; }
 .study-summer-todos__list > button { display: flex; width: 100%; align-items: center; gap: 8px; min-height: 38px; padding: 6px 8px; border: 0; border-radius: 8px; color: rgba(255,255,255,.78); background: transparent; font-size: 11px; text-align: left; }
 .study-summer-todos__list > button:hover { background: rgba(255,255,255,.06); }
 .study-summer-todos__list > button > span:nth-child(2) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.study-summer-todos__list > button small { flex: 0 0 auto; color: rgba(255,255,255,.32); font-size: 9px; }
+.study-summer-todos__list > button.is-done > span:nth-child(2) { color: rgba(255,255,255,.38); text-decoration: line-through; }
 .study-summer-todo-check { color: rgba(215,239,131,.6); }
-.study-summer-todos__empty { display: grid; min-height: 220px; place-items: center; align-content: center; gap: 7px; color: rgba(215,239,131,.6); text-align: center; }
+.study-summer-todos__empty { display: grid; min-height: 180px; place-items: center; align-content: center; gap: 7px; color: rgba(215,239,131,.6); text-align: center; }
 .study-summer-todos__empty p { margin: 4px 0 0; color: rgba(255,255,255,.7); font-size: 12px; }
 .study-summer-todos__empty small { color: rgba(255,255,255,.38); font-size: 10px; }
 .study-summer-todos__footer { display: grid; gap: 4px; padding: 8px 12px 12px; border-top: 1px solid rgba(255,255,255,.07); }
 .study-summer-todos__footer button, .study-summer-todos__footer a { display: inline-flex; align-items: center; gap: 5px; padding: 4px; border: 0; color: rgba(215,239,131,.8); background: transparent; font-size: 10px; text-align: left; }
 .study-summer-todos__footer button:hover, .study-summer-todos__footer a:hover { color: var(--summer-primary); }
-.study-page > .stack > .study-focus-card { grid-column: 1 / -1; width: 100%; }
-.study-page > .stack > .study-focus-card > .study-summer-room { width: 100%; }
 .study-summer-timer strong { position: relative; }
 .study-summer-room .white-noise-control__copy strong { color: rgba(255, 255, 255, .88); }
 .study-summer-room .white-noise-control__copy span { color: rgba(255, 255, 255, .45); }
@@ -125,10 +129,10 @@
 .study-summer-dock__tools button:hover, .study-summer-dock__tools button.is-active { color: var(--summer-primary); border-color: rgba(215, 239, 131, .32); }
 @media (max-width: 760px) { .study-summer-dock { bottom: calc(16px + 64px); width: calc(100vw - 20px); } .study-page { padding-bottom: 186px; } }
 @media (max-width: 640px) { .study-summer-dock__inner { padding-left: 12px; } .study-summer-dock__links a { padding: 7px 10px; font-size: 11px; } .study-summer-dock__tools button span { display: none; } .study-summer-dock__tools button { padding: 0 11px; } }
-@media (max-width: 1100px) { .study-summer-grid { grid-template-columns: minmax(270px, 36%) 1fr; } .study-summer-todos { grid-column: 1 / -1; min-height: 230px; } .study-summer-todos__list { max-height: 150px; } }
-@media (max-width: 760px) { .study-summer-room { min-height: 0; padding: 22px 15px 24px; border-radius: 16px; } .study-summer-header { display: grid; gap: 16px; } .study-summer-header__actions { justify-content: space-between; } .study-summer-scenes { flex: 1; } .study-summer-scenes button { flex: 1; min-width: 0; } .study-summer-grid { grid-template-columns: 1fr; gap: 14px; min-height: 0; margin-top: 26px; } .study-summer-atmosphere { display: none; } .study-summer-todos { grid-column: auto; min-height: 260px; } .study-summer-todos__list { max-height: 190px; } .study-summer-room:hover .study-summer-room__backdrop { transform: none; } }
-@media (max-width: 390px) { .study-summer-header h1 { font-size: 34px; } .study-summer-scenes button { padding-right: 6px; padding-left: 6px; } .study-summer-scenes small { display: none; } .study-summer-start > div { display: grid; } .study-summer-start .button { width: 100%; } .study-summer-options { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .study-summer-room__backdrop, .study-summer-todos__progress span { transition: none; } .study-summer-room:hover .study-summer-room__backdrop { transform: none; } }
+@media (max-width: 1100px) { .study-summer-grid { grid-template-columns: minmax(280px, 40%) 1fr; } .study-summer-todos { grid-column: 1 / -1; min-height: 240px; } .study-summer-todos__list { max-height: 150px; } .study-summer-atmosphere { display: none; } }
+@media (max-width: 760px) { .study-summer-room { min-height: 0; padding: 16px 14px 20px; gap: 22px; } .study-summer-header { display: grid; gap: 14px; } .study-summer-header__actions { justify-content: space-between; } .study-summer-scenes { flex: 1; } .study-summer-scenes button { flex: 1; min-width: 0; } .study-summer-grid { grid-template-columns: 1fr; gap: 26px; min-height: 0; } .study-summer-focus { justify-content: flex-start; } .study-summer-todos { grid-column: auto; min-height: 300px; } .study-summer-todos__list { max-height: 210px; } }
+@media (max-width: 390px) { .study-summer-header h1 { font-size: 34px; } .study-summer-scenes button { padding-right: 6px; padding-left: 6px; } .study-summer-scenes small { display: none; } .study-summer-start > div { display: grid; } .study-summer-start .button { width: 100%; } .study-summer-options { grid-template-columns: 1fr; } .study-summer-timer strong { font-size: 62px; } }
+@media (prefers-reduced-motion: reduce) { .study-summer-todos__progress span, .study-summer-timer__track b { transition: none; } }
 
 /* ── Summer Checkin secondary routes: plans / reading / statistics ── */
 .study-summer-subpage { --summer-primary: #d7ef83; position: relative; isolation: isolate; min-height: calc(100dvh - 88px); overflow: hidden; padding: 28px clamp(16px, 4vw, 64px) 132px; color: #f2f8f4; }
@@ -197,12 +201,45 @@
 @media (max-width: 860px) { .study-summer-subpage__header { display: grid; } .study-summer-subpage__scene-picker { justify-self: start; } .study-sub-stats { grid-template-columns: repeat(2, 1fr); } .study-reading-grid, .study-stat-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .study-summer-subpage { padding-right: 12px; padding-left: 12px; } .study-sub-panel { padding: 15px; } .study-sub-stats { gap: 7px; } .study-sub-stat { min-height: 68px; padding: 10px; } .study-sub-stat strong { font-size: 18px; } .study-resource-grid { grid-template-columns: 1fr; } }
 
-/* ── 整页全局应用：夏季专注室铺满学习陪伴首屏 ── */
-.study-page > .stack > .study-focus-card { margin-top: 0; }
-.study-page > .stack > .study-focus-card > .study-summer-room {
-  min-height: calc(100vh - 148px);
-  border-radius: 20px;
-}
+/* ── 计划页：诚实任务清单 + AI 拆解工作台 ── */
+.study-plan-note { margin: 12px 0 0; color: rgba(215, 239, 131, .62); font-size: 10px; line-height: 1.7; }
+.study-sub-link-button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: rgba(215, 239, 131, .82); background: transparent; font-size: 11px; }
+.study-sub-link-button:hover { color: var(--summer-primary); }
+.study-ai-planner { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.08); }
+.study-ai-planner__input { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.study-ai-planner__input textarea { width: 100%; padding: 10px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; outline: none; color: #fff; background: rgba(0,0,0,.18); font-size: 12px; line-height: 1.7; resize: vertical; }
+.study-ai-planner__input textarea:focus { border-color: rgba(215,239,131,.5); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
+.study-ai-planner__input textarea::placeholder { color: rgba(255,255,255,.38); }
+.study-ai-planner__input .button { min-height: 42px; border-radius: 10px; color: #07120e; background: var(--summer-primary); box-shadow: none; font-size: 11px; white-space: nowrap; }
+.study-ai-planner__input .button:hover { background: #e5f89f; }
+.study-ai-planner__input .button:disabled { opacity: .45; cursor: not-allowed; }
+.study-ai-planner__note { margin: 0; color: rgba(240, 208, 120, .85); font-size: 10px; line-height: 1.7; }
+.study-ai-planner__warnings { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.study-ai-planner__warnings li { padding: 7px 9px; border-radius: 8px; color: rgba(255,255,255,.6); background: rgba(215,239,131,.06); font-size: 10px; line-height: 1.6; }
+.study-ai-planner__notice { margin: 0; color: var(--summer-primary); font-size: 11px; }
+.study-ai-steps { display: grid; gap: 10px; }
+.study-ai-step { display: flex; gap: 12px; padding: 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: rgba(0,0,0,.14); }
+.study-ai-step__num { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #0a1c12; background: var(--summer-primary); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.study-ai-step__fields { display: grid; min-width: 0; flex: 1; gap: 7px; }
+.study-ai-step__fields input, .study-ai-step__fields textarea { width: 100%; padding: 8px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; outline: none; color: #fff; background: rgba(0,0,0,.16); font-size: 11px; line-height: 1.7; }
+.study-ai-step__fields input:focus, .study-ai-step__fields textarea:focus { border-color: rgba(215,239,131,.5); }
+.study-ai-step__fields textarea { resize: vertical; }
+.study-ai-step__fields label { display: inline-flex; align-items: center; gap: 6px; justify-self: start; color: rgba(255,255,255,.5); font-size: 10px; }
+.study-ai-step__fields label input { width: 58px; padding: 4px 6px; text-align: center; }
+.study-ai-step__fields label em { color: rgba(255,255,255,.4); font-style: normal; }
+.study-ai-step__remove { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; align-self: start; border: 0; border-radius: 8px; color: rgba(255,255,255,.32); background: transparent; }
+.study-ai-step__remove:hover { color: #ffaaa0; background: rgba(255,138,128,.12); }
+.study-ai-planner__save { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.study-ai-planner__save .button { min-height: 38px; border-radius: 9px; color: #07120e; background: var(--summer-primary); box-shadow: none; font-size: 11px; }
+.study-ai-planner__save .button:disabled { opacity: .45; cursor: not-allowed; }
+.study-ai-planner__save span { color: rgba(255,255,255,.45); font-size: 10px; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .study-ai-planner__input { grid-template-columns: 1fr; } .study-ai-planner__input .button { width: 100%; } }
+
+/* ── 学习复盘弹窗 ── */
+.study-review-dialog { display: grid; gap: 12px; }
+.study-review-dialog p { margin: 0; color: rgba(20, 34, 27, .66); font-size: 12px; line-height: 1.7; }
+.study-review-dialog textarea { width: 100%; min-height: 76px; padding: 10px 12px; border: 1px solid rgba(20, 34, 27, .16); border-radius: 10px; outline: none; color: inherit; background: #fbfcfa; font-size: 12px; line-height: 1.7; resize: vertical; }
+.study-review-dialog textarea:focus { border-color: var(--summer-primary, #7f9e5a); box-shadow: 0 0 0 3px rgba(215, 239, 131, .25); }
 
 .study-summer-immersive-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 13px; border: 1px solid rgba(215, 239, 131, .28); border-radius: 999px; color: #0a1c12; background: var(--summer-primary); font-size: 11px; font-weight: 700; box-shadow: 0 10px 24px rgba(215, 239, 131, .18); }
 .study-summer-immersive-trigger:hover { background: #e5f89f; }
