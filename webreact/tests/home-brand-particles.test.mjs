@@ -6,7 +6,7 @@ const homeFooter = await readFile(new URL("../src/components/HomeFooter.jsx", im
 const particleText = await readFile(new URL("../src/components/ParticleText.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 
-test("homepage brand footer keeps its particle field without a brand backdrop", () => {
+test("homepage brand footer keeps its particle field without any backdrop", () => {
   assert.match(homeFooter, /<ParticleText[\s\S]*highlightColor="#9a7ae4"/);
   assert.match(particleText, /const targets = \[\];/);
   assert.match(particleText, /getImageData\(/);
@@ -14,5 +14,5 @@ test("homepage brand footer keeps its particle field without a brand backdrop", 
   assert.match(particleText, /requestAnimationFrame\(render\)/);
   assert.doesNotMatch(styles, /\.home-footer-brand::before/);
   assert.doesNotMatch(styles, /\.home-footer-brand::after/);
-  assert.match(styles, /\.home-footer-brand \{[^}]*background: radial-gradient/);
+  assert.match(styles, /\.home-footer-brand \{[^}]*background: transparent/);
 });

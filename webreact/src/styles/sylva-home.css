@@ -1023,7 +1023,7 @@
 
 .sylva-dashboard .home-brand-underlay {
   position: absolute;
-  background: linear-gradient(180deg, rgba(23, 28, 21, 0) 0%, rgba(23, 28, 21, .42) 52%, rgba(23, 28, 21, .74) 100%);
+  background: transparent;
 }
 
 /* ── entrance motion ─────────────────────────────────────────────── */
