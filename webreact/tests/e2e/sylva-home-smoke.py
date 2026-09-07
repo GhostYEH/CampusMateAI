@@ -139,6 +139,9 @@ def run():
         assert page.locator(".sylva-schedule-card").inner_text().startswith("今日课程表")
         assert page.locator(".sylva-schedule-days > span.today").count() == 1
         assert page.locator(".sylva-schedule-today > button").count() == 2
+        assert page.locator(".sylva-overview-pulse").count() == 1
+        assert page.locator(".sylva-overview-pulse .home-learning-pulse").count() == 1
+        assert page.locator(".sylva-dashboard .simple-priority-panel").count() == 0
         assert page.locator(".sylva-scene-stat").count() == 3
         print("first viewport workbench verified", flush=True)
 

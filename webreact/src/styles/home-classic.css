@@ -218,8 +218,7 @@
 .home-foreground{width:100%;position:relative;z-index:1;min-width:0;background:#f8faff;border-radius:22px 22px 0 0;padding:6px 6px 0}
 .simple-home-command-stack{display:grid;gap:16px;margin-bottom:18px}
 .simple-home-grid{display:grid;grid-template-columns:minmax(320px,.82fr) minmax(0,1.45fr);gap:18px;margin-bottom:18px}
-.simple-home-grid .student-home-panel,.simple-priority-panel{min-height:350px}
-.simple-priority-panel{border-color:#e1e7ed;background:#fff}
+.simple-home-grid .student-home-panel{min-height:350px}
 .panel-footer.simple{background:#edf5f3;color:#2f6f69}
 .simple-quick-section{border-color:#e2e8ef;box-shadow:none}
 .simple-quick-section .quick-section-head{display:flex;align-items:end;justify-content:space-between;gap:18px}
@@ -291,7 +290,7 @@
 .pulse-grid button,.priority-list button,.home-schedule-grid>section,.home-schedule-grid button,.student-quick-grid>button{background:rgba(255,255,255,.5)}
 .pulse-grid button:hover,.priority-list button:hover,.home-schedule-grid button:hover,.student-quick-grid>button:hover{background:rgba(255,255,255,.78)}
 .priority-list{border-color:rgba(255,255,255,.7);background:rgba(255,255,255,.34)}
-.simple-priority-panel,.simple-quick-section{background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.44))}
+.simple-quick-section{background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(255,255,255,.44))}
 .panel-footer.simple{background:rgba(221,243,239,.62)}
 .simple-quick-section{box-shadow:0 18px 46px rgba(58,77,132,.1)}
 @media(prefers-reduced-motion:reduce){.home-foreground,.home-learning-command,.home-learning-pulse,.student-home-panel,.simple-quick-section,.command-copy,.home-agent-loop{backdrop-filter:none;-webkit-backdrop-filter:none}}

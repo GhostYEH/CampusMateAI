@@ -11,7 +11,6 @@ test("classic React home has styles for its current layout", () => {
   for (const selector of [
     ".simple-home-command-stack",
     ".simple-home-grid",
-    ".simple-priority-panel",
     ".simple-quick-section",
     ".simple-home-skeleton",
   ]) {

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Icon } from "../../components/Icon.jsx";
+import HomeLearningPulse from "./HomeLearningPulse.jsx";
 import SylvaPriorityCard from "./SylvaPriorityCard.jsx";
 import SylvaScheduleCard from "./SylvaScheduleCard.jsx";
 
@@ -14,9 +15,9 @@ function formatFocusMinutes(seconds) {
 /**
  * First-viewport CampusMate workbench over the fixed Sylva scene.
  *
- * Three columns: priorities (left), the today action narrative plus real
- * metrics (center), and the compact today schedule (right). Everything is
- * wired to existing state and callbacks — no fake data.
+ * Four columns: priorities (left), the today action narrative plus real
+ * metrics, the learning pulse, and the compact today schedule (right).
+ * Everything is wired to existing state and callbacks — no fake data.
  */
 export default function SylvaCampusOverview({ state, onNavigate, onOpenDue }) {
   const command = state.learningCommand;
@@ -53,6 +54,10 @@ export default function SylvaCampusOverview({ state, onNavigate, onOpenDue }) {
             ))}
           </div>
           <small className="sylva-overview-trust"><Icon name="PhShieldCheck" size={14} />建议来自你已同步的校园数据，执行仍由你决定</small>
+        </div>
+
+        <div className="sylva-overview-pulse">
+          <HomeLearningPulse items={command.pulse} onNavigate={onNavigate} />
         </div>
 
         <SylvaScheduleCard state={state} onNavigate={onNavigate} />

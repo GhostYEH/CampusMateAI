@@ -56,7 +56,7 @@
 }
 
 /* ── first-viewport CampusMate workbench ────────────────────────────
-   priorities (left) · today action + metrics (center) · today
+   priorities (left) · today action + metrics · learning pulse · today
    schedule (right), all arranged on the fixed scene with CSS Grid. */
 
 .sylva-campus-overview {
@@ -66,10 +66,10 @@
 .sylva-overview-layout {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(420px, 1.35fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(280px, 1fr) minmax(480px, 1.25fr) minmax(300px, 1fr) minmax(300px, 1fr);
   align-items: start;
-  gap: clamp(20px, 3vw, 44px);
-  width: min(1400px, 100%);
+  gap: clamp(16px, 2.2vw, 32px);
+  width: min(1800px, 100%);
   min-height: calc(100svh - 170px);
   margin: 0 auto;
   padding: clamp(112px, 14svh, 160px) clamp(20px, 3.4vw, 60px) clamp(36px, 5svh, 64px);
@@ -89,12 +89,14 @@
 }
 
 .sylva-priority-card {
-  padding: 18px 16px 14px;
+  min-height: 390px;
+  padding: 22px 20px 18px;
   transform: rotate(-.4deg);
 }
 
 .sylva-schedule-card {
-  padding: 18px 16px 16px;
+  min-height: 390px;
+  padding: 22px 20px 20px;
   transform: rotate(.35deg);
 }
 
@@ -165,7 +167,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px 10px;
-  padding: 10px 12px;
+  padding: 13px 14px;
   border: 1px solid rgba(92, 104, 81, .16);
   border-radius: 14px;
   background: rgba(255, 255, 255, .55);
@@ -201,7 +203,7 @@
 
 .sylva-priority-copy strong {
   color: #31392d;
-  font-size: 13px;
+  font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -353,7 +355,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
-  padding: 9px 10px;
+  padding: 12px 12px;
   border: 1px solid rgba(92, 104, 81, .16);
   border-radius: 13px;
   background: rgba(255, 255, 255, .55);
@@ -384,7 +386,7 @@
 
 .sylva-schedule-copy strong {
   color: #31392d;
-  font-size: 13px;
+  font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -413,6 +415,82 @@
 
 .sylva-schedule-empty > svg { color: #6f8a4d; }
 .sylva-schedule-empty > span { font-size: 12px; }
+
+/* ── learning pulse: the third first-screen column ──────────────── */
+
+.sylva-overview-pulse {
+  min-width: 0;
+  min-height: 390px;
+}
+
+.sylva-overview-pulse .home-learning-pulse {
+  display: grid;
+  height: 100%;
+  align-content: start;
+  gap: 18px;
+  padding: 22px 20px;
+  border: 1px solid rgba(255, 255, 255, .64);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(248, 249, 243, .94), rgba(231, 234, 224, .9));
+  box-shadow: 0 30px 72px rgba(6, 10, 5, .34), inset 0 1px 0 rgba(255, 255, 255, .96);
+  backdrop-filter: blur(22px) saturate(.9);
+  -webkit-backdrop-filter: blur(22px) saturate(.9);
+  transform: rotate(-.25deg);
+}
+
+.sylva-overview-pulse .pulse-heading {
+  align-items: start;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sylva-overview-pulse .pulse-heading h2 {
+  color: #273023;
+  font-size: 18px;
+}
+
+.sylva-overview-pulse .pulse-heading span {
+  color: #60724a;
+}
+
+.sylva-overview-pulse .pulse-heading small {
+  color: #687064;
+  line-height: 1.45;
+}
+
+.sylva-overview-pulse .pulse-grid {
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+
+.sylva-overview-pulse .pulse-grid button {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  padding: 10px;
+  border-color: rgba(92, 104, 81, .14);
+  background: rgba(255, 255, 255, .52);
+}
+
+.sylva-overview-pulse .pulse-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #e6ecd8;
+  color: #5e7543;
+}
+
+.sylva-overview-pulse .pulse-copy strong {
+  color: #31392d;
+  font-size: 16px;
+}
+
+.sylva-overview-pulse .pulse-copy small,
+.sylva-overview-pulse .pulse-copy em {
+  color: #687064;
+}
+
+.sylva-overview-pulse .pulse-arrow {
+  color: #788a5d;
+}
 
 /* ── center: the today action narrative ──────────────────────────── */
 
@@ -688,24 +766,13 @@
   margin: 0;
 }
 
-.sylva-dashboard .simple-priority-panel {
-  z-index: 2;
-  grid-column: 1 / 6;
-  grid-row: 1;
-  align-self: start;
-  min-height: 390px;
-  margin-top: 24px;
-  border-radius: 34px 62px 32px 74px;
-  transform: rotate(.55deg);
-}
-
 .sylva-dashboard .simple-home-grid > .course-panel {
   z-index: 1;
-  grid-column: 5 / 13;
+  grid-column: 2 / 12;
   grid-row: 1;
   min-height: 430px;
-  margin-top: 136px;
-  padding-left: clamp(112px, 9.5vw, 154px);
+  margin-top: 0;
+  padding-left: clamp(24px, 4vw, 64px);
   border-radius: 72px 36px 58px 40px;
   transform: rotate(-.35deg);
 }
@@ -730,28 +797,7 @@
   translate: 0 -4px;
 }
 
-/* the below dashboard's task panel is the full management list, so its
-   entries carry a kind badge to read differently from the first screen */
-
-.sylva-dashboard .priority-kind {
-  grid-column: 1 / -1;
-  width: max-content;
-  padding: 3px 7px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 750;
-  line-height: 1.3;
-}
-
-.sylva-dashboard .priority-kind.assignment {
-  background: #f7dfe1;
-  color: #b04a52;
-}
-
-.sylva-dashboard .priority-kind.personal {
-  background: #f3e9d2;
-  color: #8a7239;
-}
+/* the detailed schedule remains below the first-screen workbench */
 
 .sylva-dashboard :is(
   .home-learning-command,
@@ -976,12 +1022,11 @@
   100% { background-position: -120% 0; }
 }
 
-.sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+.sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
   animation: sylva-card-arrive .8s both cubic-bezier(.2, .8, .2, 1);
 }
 
 .sylva-dashboard .home-learning-pulse { animation-delay: 90ms; }
-.sylva-dashboard .simple-priority-panel { animation-delay: 150ms; }
 .sylva-dashboard .simple-home-grid > .course-panel { animation-delay: 210ms; }
 .sylva-dashboard .simple-quick-section { animation-delay: 270ms; }
 .sylva-dashboard .home-footer-info { animation-delay: 330ms; }
@@ -990,7 +1035,8 @@
 
 @media (min-width: 1280px) {
   .sylva-overview-layout {
-    grid-template-columns: minmax(220px, 0.8fr) minmax(420px, 1.35fr) minmax(280px, 0.9fr);
+    gap: clamp(12px, 1.4vw, 20px);
+    padding-inline: 10px;
   }
 }
 
@@ -1009,9 +1055,21 @@
     grid-row: 1;
   }
 
-  .sylva-schedule-card {
+  .sylva-overview-pulse {
     grid-column: 2;
     grid-row: 2;
+  }
+
+  .sylva-schedule-card {
+    grid-column: 2;
+    grid-row: 3;
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1439px) {
+  .sylva-overview-layout {
+    grid-template-columns: minmax(220px, .9fr) minmax(360px, 1.25fr) minmax(240px, .9fr) minmax(240px, .9fr);
+    gap: 16px;
   }
 }
 
@@ -1024,6 +1082,7 @@
   }
 
   .sylva-overview-copy,
+  .sylva-overview-pulse,
   .sylva-priority-card,
   .sylva-schedule-card {
     grid-column: 1;
@@ -1032,7 +1091,8 @@
 
   .sylva-overview-copy { order: 1; }
   .sylva-priority-card { order: 2; }
-  .sylva-schedule-card { order: 3; }
+  .sylva-overview-pulse { order: 3; }
+  .sylva-schedule-card { order: 4; }
 
   .sylva-overview-title {
     font-size: clamp(26px, 7.6vw, 34px);
@@ -1054,6 +1114,7 @@
   }
 
   .sylva-priority-card,
+  .sylva-overview-pulse .home-learning-pulse,
   .sylva-schedule-card {
     transform: none;
     border-radius: 22px;
@@ -1075,7 +1136,7 @@
     gap: 16px;
   }
 
-  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .home-search-note, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .home-search-note, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
     grid-column: 1;
     grid-row: auto;
     width: 100%;
@@ -1086,13 +1147,13 @@
 
   .sylva-dashboard .home-learning-command,
   .sylva-dashboard .home-learning-pulse,
-  .sylva-dashboard .simple-priority-panel,
   .sylva-dashboard .simple-home-grid > .course-panel,
   .sylva-dashboard .simple-quick-section {
     border-radius: 30px;
   }
 
   .sylva-dashboard .simple-home-grid > .course-panel {
+    grid-column: 1;
     padding-left: 16px;
   }
 
@@ -1154,10 +1215,11 @@
   }
 
   .sylva-overview-copy > *,
+  .sylva-overview-pulse,
   .sylva-priority-card,
   .sylva-schedule-card,
   .sylva-schedule-loading i,
-  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
     animation: none;
   }
 }

@@ -78,13 +78,24 @@ test("the first-screen priority and schedule modules use real state fields", asy
 
 test("the dashboard below changes responsibility instead of repeating the first screen", async () => {
   const classicSource = await readFile(new URL("src/pages/home/ClassicHome.jsx", webRoot), "utf8");
+  const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
 
-  // The full management list below uses a different heading and keeps the
-  // detailed weekly schedule panel; the first screen keeps the compact cards.
-  assert.match(classicSource, /待办与作业/);
-  assert.match(classicSource, /priority-kind/);
+  // The detailed weekly schedule remains below, while the pulse moves into
+  // the first-screen workbench and the duplicate task panel is removed.
+  assert.match(overviewSource, /HomeLearningPulse/);
+  assert.match(overviewSource, /<HomeLearningPulse\s+items=\{command\.pulse\}/);
+  assert.doesNotMatch(classicSource, /HomeLearningPulse/);
+  assert.doesNotMatch(classicSource, /simple-priority-panel/);
   assert.match(classicSource, /HomeSchedulePanel/);
-  assert.doesNotMatch(classicSource, /今日学习节奏/);
+});
+
+test("the first-screen workbench uses four desktop columns and larger side cards", async () => {
+  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
+
+  assert.match(sylvaStyles, /grid-template-columns:\s*minmax\(280px,\s*1fr\)\s+minmax\(480px,\s*1\.25fr\)\s+minmax\(300px,\s*1fr\)\s+minmax\(300px,\s*1fr\)/);
+  assert.match(sylvaStyles, /\.sylva-priority-card[\s\S]*?min-height:\s*390px/);
+  assert.match(sylvaStyles, /\.sylva-schedule-card[\s\S]*?min-height:\s*390px/);
+  assert.match(sylvaStyles, /\.sylva-overview-pulse/);
 });
 
 test("the Sylva scene hides its editorial layer and keeps only the living scene", async () => {

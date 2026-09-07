@@ -1,10 +1,7 @@
-import { useMemo } from "react";
 import { Icon } from "../../components/Icon.jsx";
 import HomeLearningCommand from "./HomeLearningCommand.jsx";
-import HomeLearningPulse from "./HomeLearningPulse.jsx";
 import HomeSchedulePanel from "./HomeSchedulePanel.jsx";
 import HomeFooter from "../../components/HomeFooter.jsx";
-import { deadlineLabel } from "./homeTime.js";
 
 const quickLinks = [
   { label: "通知整理", detail: "课程与校园通知", icon: "PhBell", path: "/notifications", tone: "amber" },
@@ -13,9 +10,6 @@ const quickLinks = [
 ];
 
 export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue, onReload }) {
-  const totalPending = state.overviewMetrics.pendingCount;
-  const dueItems = useMemo(() => state.filteredDueItems, [state.filteredDueItems]);
-
   return (
     <main className="student-page student-home simple-student-home">
       {state.error && (
@@ -35,7 +29,6 @@ export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue,
         <HomeFooter fixedBrand>
           <section className="simple-home-command-stack">
             <HomeLearningCommand command={state.learningCommand} onNavigate={onNavigate} />
-            <HomeLearningPulse items={state.learningCommand.pulse} onNavigate={onNavigate} />
           </section>
           {state.normalizedSearch && (
             <section className="home-search-note" aria-label="首页搜索结果">
@@ -44,30 +37,6 @@ export default function ClassicHome({ state, searchQuery, onNavigate, onOpenDue,
             </section>
           )}
           <section className="simple-home-grid">
-            <article className="student-home-panel task-panel simple-priority-panel">
-              <div className="home-panel-head">
-                <h2><Icon name="PhListChecks" size={19} />待办与作业</h2>
-                <button onClick={() => onNavigate?.("/tasks")}>全部 {totalPending} 项</button>
-              </div>
-              {dueItems.length ? (
-                <div className="priority-list">
-                  {dueItems.map((item) => (
-                    <button key={`${item.kind}-${item.id}`} onClick={() => onOpenDue?.(item)}>
-                      <span className={`priority-kind ${item.kind === "作业" ? "assignment" : "personal"}`}>{item.kind}</span>
-                      <strong>{item.title}</strong>
-                      <time className={deadlineLabel(item.due, state.now).startsWith("今日") ? "today" : ""}>{deadlineLabel(item.due, state.now)}</time>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="compact-empty">
-                  <Icon name="PhCheckCircle" size={26} />
-                  <strong>全部完成</strong>
-                  <span>新的课程作业和个人待办会自动汇合到这里。</span>
-                </div>
-              )}
-              <button className="panel-footer simple" onClick={() => onNavigate?.("/tasks")}>进入待办管理<Icon name="PhArrowRight" size={15} /></button>
-            </article>
             <HomeSchedulePanel items={state.scheduleItems} loading={state.scheduleLoading} onOpenAcademic={() => onNavigate?.("/profile/academic")} />
           </section>
           <section className="student-quick-section simple-quick-section">

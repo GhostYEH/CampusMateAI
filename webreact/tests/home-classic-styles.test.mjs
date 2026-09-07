@@ -9,7 +9,7 @@ test("classic homepage layout components have their visual styles", () => {
   assert.match(source, /\.simple-home-grid\s*\{[^}]*display:grid/);
   assert.match(source, /\.home-learning-command\s*\{[^}]*position:relative[^}]*min-height:/);
   assert.match(source, /\.home-command-mesh\s*\{[^}]*position:absolute[^}]*inset:0/);
-  assert.match(source, /\.simple-priority-panel\s*\{/);
+  assert.doesNotMatch(source, /\.simple-priority-panel/);
   assert.match(source, /\.simple-quick-section\s*\{/);
   assert.match(source, /\.student-quick-grid\s*\{[^}]*display:grid/);
 });

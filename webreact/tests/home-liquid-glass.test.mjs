@@ -15,7 +15,6 @@ test("classic homepage cards use a translucent glass treatment without scroll-ti
   for (const selector of [
     ".simple-home-command-stack",
     ".simple-home-grid",
-    ".simple-priority-panel",
     ".simple-quick-section",
   ]) {
     assert.ok(styles.includes(selector), selector);
