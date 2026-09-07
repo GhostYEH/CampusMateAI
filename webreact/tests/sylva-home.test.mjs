@@ -41,13 +41,12 @@ test("homepage opens with the configured Living Green hero before the existing d
   assert.match(homeSource, /<ClassicHome|<GamifiedHome/);
 });
 
-test("global navigation carries the authored Living Green glass and paper states", async () => {
+test("global navigation preserves the project's original blue liquid-glass states", async () => {
   const navStyles = await readFile(new URL("src/styles/floating-layout.css", webRoot), "utf8");
 
-  assert.match(navStyles, /--floating-nav-foreground:\s*rgba\(255,\s*255,\s*255,\s*\.62\)/);
-  assert.match(navStyles, /--floating-nav-active-background:\s*#f2f3ef/);
-  assert.match(navStyles, /border:\s*1px solid rgba\(255,\s*255,\s*255,\s*\.11\)/);
-  assert.match(navStyles, /rgba\(34,\s*40,\s*31,\s*\.74\)/);
-  assert.match(navStyles, /rgba\(10,\s*14,\s*8,\s*\.30\)/);
-  assert.match(navStyles, /\.floating-nav-button:focus-visible/);
+  assert.match(navStyles, /--floating-nav-foreground:\s*#53627b/);
+  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(231\s+239\s+255\s*\/\s*92%\)/);
+  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(72\s+108\s+211\s*\/\s*72%\)/);
+  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(89\s+133\s+224\s*\/\s*30%\)/);
+  assert.doesNotMatch(navStyles, /rgba\(34,\s*40,\s*31,\s*\.74\)/);
 });

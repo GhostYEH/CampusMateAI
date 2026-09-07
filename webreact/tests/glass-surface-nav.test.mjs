@@ -22,13 +22,13 @@ test("liquid glass surface uses stable blur and an opaque fallback", () => {
   assert.match(glassStyles, /prefers-reduced-motion/);
 });
 
-test("floating navigation uses a route-safe gooey click effect in the Living Green palette", () => {
+test("floating navigation uses a route-safe gooey click effect in the existing palette", () => {
   assert.match(navSource, /import GooeyNav from "\.\/GooeyNav\.jsx"/);
   assert.match(navSource, /<GooeyNav[\s\S]*items=\{navItems\}/);
   assert.match(gooeySource, /requestAnimationFrame/);
   assert.match(gooeySource, /onSelect/);
-  assert.match(gooeyStyles, /--color-1:\s*#f2f3ef/);
-  assert.match(gooeyStyles, /--color-3:\s*#87927c/);
+  assert.match(gooeyStyles, /--color-1:\s*#3267d6/);
+  assert.match(gooeyStyles, /--color-3:\s*#765eea/);
   assert.doesNotMatch(gooeyStyles, /(?:color|background):\s*white\b|#fff\b/i);
 });
 
