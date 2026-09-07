@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
 import { Icon } from "../components/Icon.jsx";
+import SkeuomorphicGlassToggle from "../components/settings/SkeuomorphicGlassToggle.jsx";
 import GooeyNav from "../components/FloatingNav/GooeyNav.jsx";
 import TargetCursor from "../components/TargetCursor.jsx";
 import "../styles/student-redesign.css";
@@ -325,8 +326,8 @@ export default function ProfilePage() {
             <section className="redesign-panel profile-settings-panel">
               <div className="redesign-panel-head"><div><span className="redesign-label">PREFERENCES</span><h2>陪伴偏好</h2></div><span className="panel-hint">设置会保存在当前设备</span></div>
               <div className="preference-list">
-                <div className="preference-row"><span className="preference-icon blue"><Icon name="PhSparkle" /></span><span><strong>减少动态效果</strong><small>关闭页面进入动画和不必要的过渡，适合需要更稳定界面的场景。</small></span><button className={`preference-toggle ${reduceMotion ? "on" : ""}`} aria-pressed={reduceMotion} onClick={() => setReduceMotion(!reduceMotion)}><i></i></button></div>
-                <div className="preference-row"><span className="preference-icon green"><Icon name="PhBell" /></span><span><strong>截止提醒</strong><small>控制待办与作业的提醒展示，具体通知能力以学校数据源为准。</small></span><button className={`preference-toggle ${noticeReminder ? "on" : ""}`} aria-pressed={noticeReminder} onClick={() => toggleNoticeReminder(!noticeReminder)}><i></i></button></div>
+                <div className="preference-row"><span className="preference-icon blue"><Icon name="PhSparkle" /></span><span><strong>减少动态效果</strong><small>关闭页面进入动画和不必要的过渡，适合需要更稳定界面的场景。</small></span><SkeuomorphicGlassToggle className="preference-toggle preference-toggle-shell" label="减少动态效果" value={reduceMotion} onChange={setReduceMotion} /></div>
+                <div className="preference-row"><span className="preference-icon green"><Icon name="PhBell" /></span><span><strong>截止提醒</strong><small>控制待办与作业的提醒展示，具体通知能力以学校数据源为准。</small></span><SkeuomorphicGlassToggle className="preference-toggle preference-toggle-shell" label="截止提醒" value={noticeReminder} onChange={toggleNoticeReminder} /></div>
               </div>
               <div className="settings-links"><button onClick={() => navigate("/study")}><Icon name="PhChartLineUp" />查看学习统计</button><button onClick={() => navigate("/counselor")}><Icon name="PhRobot" />打开 AI 校园助手</button></div>
               <div className="profile-signout"><button className="redesign-button danger" onClick={signOut}><Icon name="PhSignOut" />退出登录</button></div>

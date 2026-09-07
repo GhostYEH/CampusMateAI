@@ -1,0 +1,51 @@
+.skeuomorphic-glass-toggle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 176px;
+  height: 148px;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 8px 18px rgba(54, 77, 125, .08);
+}
+
+.skeuomorphic-glass-toggle__scene {
+  width: 100%;
+  height: 100%;
+}
+
+.settings-toggle.settings-toggle-shell {
+  display: block;
+  width: 176px;
+  height: 148px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  color: inherit;
+  background: transparent;
+}
+
+.preference-toggle.preference-toggle-shell {
+  display: block;
+  width: 176px;
+  height: 148px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+}
+
+@media (max-width: 760px) {
+  .skeuomorphic-glass-toggle,
+  .settings-toggle.settings-toggle-shell,
+  .preference-toggle.preference-toggle-shell {
+    width: 156px;
+    height: 136px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeuomorphic-glass-toggle {
+    box-shadow: none;
+  }
+}

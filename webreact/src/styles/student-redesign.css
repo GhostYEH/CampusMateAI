@@ -1060,38 +1060,6 @@
   line-height: 1.6;
 }
 
-.preference-toggle {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.preference-toggle {
-  width: 44px;
-  height: 25px;
-  padding: 3px;
-  border-radius: 999px;
-  background: #dde3ee;
-}
-
-.preference-toggle i {
-  display: block;
-  width: 19px;
-  height: 19px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(35, 52, 95, .15);
-  transition: transform .2s ease;
-}
-
-.preference-toggle.on {
-  background: #5969ef;
-}
-
-.preference-toggle.on i {
-  transform: translateX(19px);
-}
-
 .settings-links {
   display: flex;
   flex-wrap: wrap;

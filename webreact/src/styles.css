@@ -572,16 +572,9 @@ html[data-theme="dark"] .is-muted .white-noise-control__toggle { background: #2c
 .settings-option-copy { min-width: 0; display: grid; gap: 4px; }
 .settings-option-copy strong { color: #344665; font-size: 12px; font-weight: 700; }
 .settings-option-copy small { color: #8a96aa; font-size: 11px; line-height: 1.45; }
-.settings-toggle { display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; flex: 0 0 auto; min-width: 102px; padding: 5px 0; border: 0; color: #a2aabd; background: transparent; }
-.settings-toggle-track { position: relative; display: inline-flex; align-items: center; width: 42px; height: 24px; padding: 3px; border-radius: 99px; background: #d8deea; transition: background .18s ease; }
-.settings-toggle-track i { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(45, 58, 91, .18); transition: transform .18s ease; }
-.settings-toggle.is-on { color: #3977dd; }
-.settings-toggle.is-on .settings-toggle-track { background: #3776e8; }
-.settings-toggle.is-on .settings-toggle-track i { transform: translateX(18px); }
-.settings-toggle-state { min-width: 38px; display: inline-flex; align-items: center; gap: 3px; color: currentColor; font-size: 10px; text-align: left; }
 .settings-select-option select { min-width: 128px; padding: 8px 28px 8px 10px; border: 1px solid #dfe5ef; border-radius: 8px; outline: 0; color: #4c5d79; background: #fff; font-size: 12px; }
 .settings-select-option select:focus { border-color: #8ca9e7; box-shadow: 0 0 0 3px rgba(50, 103, 214, .1); }
-.settings-section .button:focus-visible, .settings-toggle:focus-visible, .settings-select-option select:focus-visible { outline: 3px solid rgba(50, 103, 214, .28); outline-offset: 3px; }
+.settings-section .button:focus-visible, .settings-toggle-shell:focus-within, .settings-select-option select:focus-visible { outline: 3px solid rgba(50, 103, 214, .28); outline-offset: 3px; }
 @media (max-width: 760px) {
   .react-settings-page { padding: 18px 16px 48px; }
   .settings-hero { align-items: flex-start; flex-direction: column; gap: 18px; min-height: auto; padding: 19px 18px 20px; }
@@ -591,13 +584,8 @@ html[data-theme="dark"] .is-muted .white-noise-control__toggle { background: #2c
   .settings-section-body { padding: 0 16px 15px; }
   .settings-account-row { grid-template-columns: 82px minmax(0, 1fr); }
   .settings-option { align-items: flex-start; gap: 14px; min-height: 72px; padding: 14px 0; }
-  .settings-toggle { margin-top: -4px; }
-  .settings-toggle-state { display: none; }
   .settings-select-option { align-items: center; }
   .settings-select-option select { min-width: 112px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .settings-toggle-track, .settings-toggle-track i { transition: none; }
 }
 .topbar-account .avatar img { display: block; width: 30px; height: 30px; object-fit: cover; }
 
