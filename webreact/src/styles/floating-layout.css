@@ -26,12 +26,32 @@ html {
   --floating-nav-gutter: 12px;
   --floating-nav-list-start-padding: 8px;
   --floating-nav-list-end-padding: 30px;
-  --floating-nav-foreground: #53627b;
-  --floating-nav-active-foreground: var(--blue);
-  --floating-nav-active-background: rgb(231 239 255 / 92%);
+  --floating-nav-foreground: rgba(255, 255, 255, .62);
+  --floating-nav-active-foreground: #23261f;
+  --floating-nav-active-background: #f2f3ef;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
+  border: 1px solid rgba(255, 255, 255, .11);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, 0) 42%),
+    rgba(34, 40, 31, .74);
+  box-shadow:
+    0 8px 22px rgba(10, 14, 8, .30),
+    inset 0 1px rgba(255, 255, 255, .06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.floating-nav.liquid-glass-surface::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .055), transparent 42%);
+}
+
+.floating-nav .liquid-glass-surface__sheen {
+  border-color: rgba(255, 255, 255, .06);
+  border-radius: 15px;
+  opacity: 1;
 }
 
 .floating-nav-inner {
@@ -55,21 +75,31 @@ html {
 }
 
 .floating-nav-button {
+  border: 1px solid transparent;
+  border-radius: 11px;
   color: var(--floating-nav-foreground);
-  transition: color .2s ease, background-color .2s ease, box-shadow .2s ease;
+  background: rgba(255, 255, 255, .04);
+  transition: color .18s cubic-bezier(.22, .61, .36, 1), border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
 }
 
-.floating-nav-button:hover,
+.floating-nav-button:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .19);
+  background: rgba(31, 37, 28, .94);
+  box-shadow: 0 7px 16px rgba(10, 14, 8, .30);
+}
+
 .floating-nav-button.active {
   color: var(--floating-nav-active-foreground);
+  border-color: var(--floating-nav-active-background);
   background: var(--floating-nav-active-background);
 }
 
 .floating-nav--light {
-  --floating-nav-foreground: #f5f8ff;
-  --floating-nav-active-foreground: #fff;
-  --floating-nav-active-background: rgb(72 108 211 / 72%);
-  text-shadow: 0 1px 8px rgb(8 19 50 / 30%);
+  --floating-nav-foreground: rgba(255, 255, 255, .72);
+  --floating-nav-active-foreground: #23261f;
+  --floating-nav-active-background: #f2f3ef;
+  text-shadow: 0 1px 8px rgba(10, 14, 8, .3);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -84,7 +114,7 @@ html {
 }
 
 .floating-nav-button.active {
-  box-shadow: 0 5px 14px rgb(50 103 214 / 14%), 0 1px 0 rgb(255 255 255 / 82%) inset;
+  box-shadow: 0 6px 16px rgba(12, 17, 9, .24), 0 1px rgba(255, 255, 255, .82) inset;
 }
 
 .floating-nav-button.active::after {
@@ -94,22 +124,27 @@ html {
   left: 9px;
   height: 2px;
   border-radius: 99px;
-  background: rgb(50 103 214 / 38%);
+  background: rgba(35, 38, 31, .28);
   content: "";
 }
 
 html[data-theme="dark"] .floating-nav,
 html[data-theme="auto"] .floating-nav {
-  --floating-nav-foreground: #e8eeff;
-  --floating-nav-active-foreground: #fff;
-  --floating-nav-active-background: rgb(89 133 224 / 30%);
+  --floating-nav-foreground: rgba(255, 255, 255, .62);
+  --floating-nav-active-foreground: #23261f;
+  --floating-nav-active-background: #f2f3ef;
 }
 
 html[data-theme="dark"] .floating-nav-button:hover,
 html[data-theme="dark"] .floating-nav-button.active,
 html[data-theme="auto"] .floating-nav-button:hover,
 html[data-theme="auto"] .floating-nav-button.active {
-  background: rgb(89 133 224 / 22%);
+  background: var(--floating-nav-active-background);
+}
+
+.floating-nav-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, .72);
+  outline-offset: 3px;
 }
 
 @media (prefers-reduced-motion: reduce) {

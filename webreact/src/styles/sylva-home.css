@@ -1,0 +1,59 @@
+.app-layout:has(.sylva-home-page) {
+  background: #171c15;
+}
+
+.app-layout:has(.sylva-home-page) .route-stage {
+  padding: 0;
+}
+
+.app-layout:has(.sylva-home-page) .topbar,
+.app-layout:has(.sylva-home-page) .app-iridescence,
+.app-layout:has(.sylva-home-page) .smooth-cursor-layer {
+  display: none;
+}
+
+.sylva-home-page {
+  min-height: 100%;
+  background: #171c15;
+}
+
+.sylva-home-hero,
+.sylva-home-hero .shader-frame {
+  width: 100%;
+  height: 100vh;
+  height: 100svh;
+  min-height: 640px;
+}
+
+.sylva-home-hero {
+  position: relative;
+  z-index: 2;
+  overflow: hidden;
+  background: #171c15;
+}
+
+.sylva-home-hero .shader-frame {
+  position: absolute;
+  inset: 0;
+}
+
+.sylva-dashboard {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  background: var(--page);
+  scroll-margin-top: 1px;
+}
+
+@media (max-width: 760px) {
+  .sylva-home-hero,
+  .sylva-home-hero .shader-frame {
+    min-height: 560px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sylva-home-page {
+    scroll-behavior: auto;
+  }
+}

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
+import "@designcodeio/threeui/style.css";
 import "./styles.css";
 import "./styles/counselor-reference.css";
 import "./styles/asset-pages.css";
@@ -9,6 +10,7 @@ import "./styles/home-classic.css";
 import "./styles/home-gamified.css";
 import "./styles/floating-layout.css";
 import "./styles/study-summer.css";
+import "./styles/sylva-home.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

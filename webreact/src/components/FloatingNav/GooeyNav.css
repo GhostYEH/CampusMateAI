@@ -1,10 +1,10 @@
 .gooey-nav-container {
-  --color-1: #3267d6;
-  --color-2: #6387e8;
-  --color-3: #765eea;
-  --color-4: #3a9b78;
-  --gooey-backdrop: #f5f7fb;
-  --gooey-ink: var(--floating-nav-active-foreground, #3267d6);
+  --color-1: #f2f3ef;
+  --color-2: #c9d2bf;
+  --color-3: #87927c;
+  --color-4: #65735e;
+  --gooey-backdrop: #22281f;
+  --gooey-ink: var(--floating-nav-active-foreground, #23261f);
   position: relative;
   width: 100%;
 }
@@ -70,8 +70,8 @@
 }
 
 .gooey-nav-container .floating-nav-button:focus-visible {
-  outline: 2px solid rgb(50 103 214 / 58%);
-  outline-offset: 2px;
+  outline: 2px solid rgba(255, 255, 255, .72);
+  outline-offset: 3px;
 }
 
 .gooey-nav-container .gooey-nav-effect {
@@ -167,6 +167,6 @@
 
 html[data-theme="dark"] .gooey-nav-container,
 html[data-theme="auto"] .gooey-nav-container {
-  --gooey-backdrop: #151c2a;
-  --gooey-ink: #9cb8ff;
+  --gooey-backdrop: #22281f;
+  --gooey-ink: #23261f;
 }
