@@ -9,7 +9,7 @@ const DOCK_LINKS = Object.freeze([
   { to: "/home", label: "主页" },
 ]);
 
-export default function SummerNavDock({ whiteNoise }) {
+export default function SummerNavDock({ sceneAudio }) {
   const { pathname } = useLocation();
 
   return (
@@ -33,12 +33,12 @@ export default function SummerNavDock({ whiteNoise }) {
         <div className="study-summer-dock__tools">
           <button
             type="button"
-            className={whiteNoise.enabled ? "is-active" : ""}
-            aria-pressed={whiteNoise.enabled}
-            onClick={whiteNoise.toggle}
+            className={sceneAudio.enabled ? "is-active" : ""}
+            aria-pressed={sceneAudio.enabled}
+            onClick={sceneAudio.toggle}
           >
             <Icon name="PhWaveform" size={15} />
-            <span>白噪音</span>
+            <span>场景音</span>
           </button>
         </div>
       </div>
