@@ -1,3 +1,11 @@
+/* ─────────────────────────────────────────────────────────────────────
+   Sylva living-scene home.
+
+   The Sylva three.js ecosystem scene is the fixed, full-viewport
+   background. CampusMate content scrolls above it; there is no dark
+   divider band, and the scene never moves with the scroll position.
+   ───────────────────────────────────────────────────────────────────── */
+
 .app-layout:has(.sylva-home-page) {
   background: #171c15;
 }
@@ -19,40 +27,450 @@
   top: clamp(24px, 4.22svh, 42px);
 }
 
+/* ── page shell ──────────────────────────────────────────────────── */
+
 .sylva-home-page {
+  position: relative;
   min-height: 100%;
   background: #171c15;
+  isolation: isolate;
 }
 
-.sylva-home-hero,
-.sylva-home-hero .shader-frame {
-  width: 100%;
+/* ── fixed background layer ─────────────────────────────────────────
+   Full-viewport, pinned to the viewport, pointer-transparent. The
+   three.js particles and terrain keep animating inside; the layer never
+   scrolls or parallaxes with document scroll. */
+
+.sylva-home-hero.sylva-scene-background,
+.sylva-home-hero.sylva-scene-background .shader-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
   height: 100vh;
   height: 100svh;
-  min-height: 640px;
-}
-
-.sylva-home-hero {
-  position: relative;
-  z-index: 2;
   overflow: hidden;
+  pointer-events: none;
   background: #171c15;
 }
 
-.sylva-home-hero .shader-frame {
-  position: absolute;
-  inset: 0;
+/* ── foreground content layer ───────────────────────────────────────
+   Everything interactive lives here, above the pinned scene. */
+
+.sylva-home-foreground {
+  position: relative;
+  z-index: 1;
+  min-height: 100svh;
 }
+
+/* ── first-viewport CampusMate overview ──────────────────────────── */
+
+.sylva-campus-overview {
+  position: relative;
+}
+
+.sylva-overview-layout {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(360px, 0.94fr);
+  align-items: start;
+  gap: clamp(28px, 4vw, 72px);
+  width: min(1360px, 100%);
+  min-height: calc(100svh - 180px);
+  margin: 0 auto;
+  padding: clamp(116px, 15svh, 172px) clamp(20px, 3.6vw, 64px) clamp(36px, 5.5svh, 72px);
+}
+
+/* left: the learning narrative */
+
+.sylva-overview-copy {
+  display: grid;
+  gap: clamp(14px, 2.2vh, 22px);
+  justify-items: start;
+  max-width: 640px;
+}
+
+.sylva-overview-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 13px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 999px;
+  background: rgba(18, 23, 16, .42);
+  box-shadow: 0 10px 26px rgba(10, 14, 8, .2), inset 0 1px 0 rgba(255, 255, 255, .08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(238, 242, 231, .9);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.sylva-overview-eyebrow i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c9e36a;
+  box-shadow: 0 0 0 4px rgba(201, 227, 106, .14);
+}
+
+.sylva-overview-title {
+  margin: 0;
+  color: #f3f5ec;
+  font-size: clamp(30px, 4vw, 52px);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  text-shadow: 0 2px 30px rgba(8, 12, 6, .55), 0 1px 2px rgba(8, 12, 6, .4);
+}
+
+.sylva-overview-detail {
+  margin: 0;
+  max-width: 520px;
+  color: rgba(238, 242, 231, .84);
+  font-size: clamp(14px, 1.4vw, 16.5px);
+  line-height: 1.75;
+  text-shadow: 0 1px 18px rgba(8, 12, 6, .55);
+}
+
+.sylva-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.sylva-overview-primary,
+.sylva-overview-secondary {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: translate .2s ease, background .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.sylva-overview-primary {
+  border: 1px solid rgba(255, 255, 255, .18);
+  color: #f7f8f2;
+  background: rgba(35, 41, 32, .92);
+  box-shadow: 0 14px 34px rgba(12, 16, 9, .34), inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+.sylva-overview-primary:hover {
+  translate: 0 -2px;
+  background: #2c3327;
+}
+
+.sylva-overview-secondary {
+  border: 1px solid rgba(255, 255, 255, .24);
+  color: #eef1e6;
+  background: rgba(30, 37, 27, .52);
+  box-shadow: 0 12px 28px rgba(12, 16, 9, .26), inset 0 1px 0 rgba(255, 255, 255, .12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.sylva-overview-secondary:hover {
+  translate: 0 -2px;
+  background: rgba(40, 49, 35, .68);
+}
+
+.sylva-overview-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(236, 241, 229, .7);
+  font-size: 12px;
+  text-shadow: 0 1px 12px rgba(8, 12, 6, .5);
+}
+
+/* right: rhythm + next-thing cards and floating scene stats */
+
+.sylva-overview-rail {
+  display: grid;
+  gap: clamp(18px, 2.6vh, 30px);
+  justify-items: end;
+  min-width: 0;
+}
+
+.sylva-scene-stats {
+  display: flex;
+  gap: clamp(10px, 1vw, 16px);
+}
+
+.sylva-scene-stat {
+  display: grid;
+  gap: 3px;
+  min-width: clamp(92px, 9.5vw, 132px);
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 15px;
+  background: rgba(18, 23, 16, .44);
+  box-shadow: 0 12px 30px rgba(10, 14, 8, .28), inset 0 1px 0 rgba(255, 255, 255, .1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.sylva-scene-stat small {
+  color: rgba(236, 241, 229, .7);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.sylva-scene-stat strong {
+  color: #f4f6ef;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+
+.sylva-rhythm-card,
+.sylva-next-card {
+  width: min(480px, 100%);
+  border: 1px solid rgba(255, 255, 255, .64);
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(248, 249, 243, .94), rgba(231, 234, 224, .9));
+  box-shadow: 0 34px 86px rgba(6, 10, 5, .34), inset 0 1px 0 rgba(255, 255, 255, .96);
+  backdrop-filter: blur(22px) saturate(.9);
+  -webkit-backdrop-filter: blur(22px) saturate(.9);
+}
+
+.sylva-rhythm-card {
+  padding: 20px 20px 22px;
+  transform: rotate(.35deg);
+}
+
+.sylva-next-card {
+  padding: 18px 20px 20px;
+  transform: rotate(-.3deg);
+}
+
+.sylva-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sylva-card-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.sylva-card-head span {
+  color: #60724a;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sylva-card-head h2 {
+  margin: 0;
+  color: #273023;
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.sylva-card-head > small {
+  color: #687064;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.sylva-rhythm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sylva-rhythm-grid > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(92, 104, 81, .16);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .55);
+  text-align: left;
+  cursor: pointer;
+  transition: translate .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.sylva-rhythm-grid > button:hover {
+  translate: 0 -3px;
+  background: rgba(255, 255, 255, .86);
+  box-shadow: 0 12px 24px rgba(35, 44, 28, .14);
+}
+
+.sylva-rhythm-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #e6ecd8;
+  color: #5e7543;
+}
+
+.sylva-rhythm-grid > button:nth-child(2) .sylva-rhythm-icon { background: #dceadf; color: #50755b; }
+.sylva-rhythm-grid > button:nth-child(3) .sylva-rhythm-icon { background: #ede6cd; color: #87743e; }
+.sylva-rhythm-grid > button:nth-child(4) .sylva-rhythm-icon { background: #e7e3d8; color: #6e6856; }
+
+.sylva-rhythm-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.sylva-rhythm-copy small {
+  color: #687064;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sylva-rhythm-copy strong {
+  color: #31392d;
+  font-size: 14px;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sylva-rhythm-arrow {
+  color: #788a5d;
+}
+
+.sylva-card-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  color: #f7f8f2;
+  background: rgba(35, 41, 32, .9);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(17, 22, 14, .22), inset 0 1px 0 rgba(255, 255, 255, .14);
+  transition: translate .2s ease, background .2s ease;
+}
+
+.sylva-card-more:hover {
+  translate: 0 -2px;
+  background: #30382b;
+}
+
+.sylva-next-list {
+  display: grid;
+  gap: 9px;
+}
+
+.sylva-next-list > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(92, 104, 81, .16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .55);
+  text-align: left;
+  cursor: pointer;
+  transition: translate .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.sylva-next-list > button:hover {
+  translate: 0 -2px;
+  background: rgba(255, 255, 255, .86);
+  box-shadow: 0 12px 24px rgba(35, 44, 28, .14);
+}
+
+.sylva-next-kind {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #e6ecd8;
+  color: #5e7543;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.sylva-next-kind.amber { background: #f3e9d2; color: #8a7239; }
+.sylva-next-kind.red { background: #f7dfe1; color: #b04a52; }
+
+.sylva-next-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.sylva-next-copy strong {
+  color: #31392d;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sylva-next-copy time {
+  color: #687064;
+  font-size: 11px;
+}
+
+.sylva-next-list > button > svg {
+  color: #788a5d;
+}
+
+.sylva-next-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 16px 10px 8px;
+  color: #687064;
+  text-align: center;
+}
+
+.sylva-next-empty > svg { color: #6f8a4d; }
+.sylva-next-empty > span { font-size: 12px; }
+
+.sylva-next-empty > button {
+  margin-top: 6px;
+  padding: 8px 14px;
+  border: 1px solid rgba(92, 104, 81, .2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .6);
+  color: #4e6237;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sylva-next-empty > button:hover { background: #fff; }
+
+/* ── dashboard: same living scene, no divider band ───────────────── */
 
 .sylva-dashboard {
   position: relative;
   z-index: 3;
   min-height: 100vh;
-  margin-top: -22svh;
-  padding-top: clamp(18px, 3vw, 46px);
-  background:
-    linear-gradient(180deg, transparent 0, rgba(23, 28, 21, .7) 9rem, #171c15 31rem),
-    #171c15;
+  padding-top: clamp(20px, 3vw, 44px);
+  background: transparent;
   scroll-margin-top: 1px;
   isolation: isolate;
 }
@@ -60,13 +478,12 @@
 .sylva-dashboard::before {
   position: absolute;
   z-index: -1;
-  inset: 7rem 0 0;
+  inset: 0;
   content: "";
   pointer-events: none;
   background:
-    radial-gradient(circle at 15% 12%, rgba(201, 227, 106, .1), transparent 23rem),
-    radial-gradient(circle at 88% 46%, rgba(96, 114, 74, .16), transparent 32rem),
-    linear-gradient(112deg, transparent 12%, rgba(255, 255, 255, .025) 49%, transparent 72%);
+    radial-gradient(circle at 15% 12%, rgba(201, 227, 106, .1), transparent 26rem),
+    radial-gradient(circle at 88% 46%, rgba(96, 114, 74, .18), transparent 34rem);
 }
 
 .sylva-dashboard .student-page.student-home {
@@ -386,13 +803,51 @@
   color: #5b7040;
 }
 
+/* the fixed brand fades out of the living scene instead of a hard band */
+
 .sylva-dashboard .home-footer-fixed-brand .home-foreground {
   margin-bottom: var(--home-brand-stage-height);
 }
 
 .sylva-dashboard .home-brand-underlay {
   position: absolute;
-  background: #171c15;
+  background: linear-gradient(180deg, rgba(23, 28, 21, 0) 0%, rgba(23, 28, 21, .42) 52%, rgba(23, 28, 21, .74) 100%);
+}
+
+/* ── entrance motion ─────────────────────────────────────────────── */
+
+.sylva-overview-copy > * {
+  animation: sylva-copy-rise .7s both cubic-bezier(.2, .8, .2, 1);
+}
+
+.sylva-overview-copy > *:nth-child(2) { animation-delay: 80ms; }
+.sylva-overview-copy > *:nth-child(3) { animation-delay: 150ms; }
+.sylva-overview-copy > *:nth-child(4) { animation-delay: 220ms; }
+.sylva-overview-copy > *:nth-child(5) { animation-delay: 290ms; }
+
+.sylva-scene-stats,
+.sylva-rhythm-card,
+.sylva-next-card {
+  animation: sylva-card-arrive .8s both cubic-bezier(.2, .8, .2, 1);
+}
+
+.sylva-rhythm-card { animation-delay: 120ms; }
+.sylva-next-card { animation-delay: 200ms; }
+
+@keyframes sylva-copy-rise {
+  from {
+    opacity: 0;
+    translate: 0 20px;
+    filter: blur(6px);
+  }
+}
+
+@keyframes sylva-card-arrive {
+  from {
+    opacity: 0;
+    translate: 0 30px;
+    filter: blur(7px);
+  }
 }
 
 .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
@@ -405,23 +860,54 @@
 .sylva-dashboard .simple-quick-section { animation-delay: 270ms; }
 .sylva-dashboard .home-footer-info { animation-delay: 330ms; }
 
-@keyframes sylva-card-arrive {
-  from {
-    opacity: 0;
-    translate: 0 32px;
-    filter: blur(7px);
-  }
-}
+/* ── responsive ──────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
-  .sylva-home-hero,
-  .sylva-home-hero .shader-frame {
-    min-height: 560px;
+  .sylva-overview-layout {
+    grid-template-columns: 1fr;
+    gap: clamp(20px, 4vh, 34px);
+    min-height: calc(100svh - 56px);
+    padding: clamp(104px, 17svh, 140px) 16px 40px;
+  }
+
+  .sylva-overview-copy,
+  .sylva-overview-rail {
+    grid-column: 1;
+  }
+
+  .sylva-overview-title {
+    font-size: clamp(26px, 7.6vw, 34px);
+  }
+
+  .sylva-overview-rail {
+    justify-items: stretch;
+  }
+
+  .sylva-scene-stats {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .sylva-scene-stat {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .sylva-scene-stat strong {
+    font-size: 13px;
+  }
+
+  .sylva-rhythm-card,
+  .sylva-next-card {
+    width: 100%;
+    max-width: none;
+    transform: none;
+    border-radius: 22px;
   }
 
   .sylva-dashboard {
-    margin-top: -12svh;
-    padding-top: 16px;
+    padding-top: 14px;
   }
 
   .sylva-dashboard .student-page.student-home {
@@ -494,6 +980,10 @@
     scroll-behavior: auto;
   }
 
+  .sylva-overview-copy > *,
+  .sylva-scene-stats,
+  .sylva-rhythm-card,
+  .sylva-next-card,
   .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-priority-panel, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
     animation: none;
   }

@@ -1,50 +1,16 @@
-import { useEffect, useRef } from "react";
 import { SylvaHero } from "@designcodeio/threeui";
 
-export default function SylvaHomeHero({ onNavigate, onExplore }) {
-  const heroRef = useRef(null);
-
-  useEffect(() => {
-    const iframe = heroRef.current?.querySelector("iframe");
-    if (!iframe) return undefined;
-
-    let removeFrameListeners = () => {};
-
-    const connectFrameActions = () => {
-      removeFrameListeners();
-
-      const frameDocument = iframe.contentDocument;
-      if (!frameDocument) return;
-
-      const cleanups = [];
-      const exploreButton = frameDocument.querySelector(".liquid-button--explore");
-      if (exploreButton) {
-        const handleExplore = () => onExplore();
-        exploreButton.addEventListener("click", handleExplore);
-        cleanups.push(() => exploreButton.removeEventListener("click", handleExplore));
-      }
-
-      const playButton = frameDocument.querySelector(".liquid-button--play");
-      if (playButton) {
-        const handlePlay = () => onNavigate("/study");
-        playButton.addEventListener("click", handlePlay);
-        cleanups.push(() => playButton.removeEventListener("click", handlePlay));
-      }
-
-      removeFrameListeners = () => cleanups.forEach((cleanup) => cleanup());
-    };
-
-    iframe.addEventListener("load", connectFrameActions);
-    if (iframe.contentDocument?.readyState === "complete") connectFrameActions();
-
-    return () => {
-      iframe.removeEventListener("load", connectFrameActions);
-      removeFrameListeners();
-    };
-  }, [onExplore, onNavigate]);
-
+/**
+ * Sylva living-scene background.
+ *
+ * This component renders the Sylva three.js ecosystem scene as the fixed,
+ * full-viewport background layer of the CampusMate home page. It never moves
+ * with document scroll and never intercepts pointer events: all interactive
+ * business content lives in the foreground layer above it.
+ */
+export default function SylvaHomeHero() {
   return (
-    <section ref={heroRef} className="sylva-home-hero" aria-label="CampusMate 生态学习空间">
+    <section className="sylva-home-hero sylva-scene-background" aria-hidden="true">
       <div className="shader-frame">
         <SylvaHero
           variant="living-green"
@@ -56,6 +22,7 @@ export default function SylvaHomeHero({ onNavigate, onExplore }) {
           headingSize={63}
           bodySize={16.5}
           headingLetterSpacing={-0.006}
+          style={{ pointerEvents: "none" }}
         />
       </div>
     </section>

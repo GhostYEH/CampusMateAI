@@ -18,6 +18,7 @@ import {
 import { createLocalGamificationRepository } from "../data/gamificationRepository.js";
 import ClassicHome from "./home/ClassicHome.jsx";
 import GamifiedHome from "./home/GamifiedHome.jsx";
+import SylvaCampusOverview from "./home/SylvaCampusOverview.jsx";
 import SylvaHomeHero from "../components/SylvaHomeHero.jsx";
 
 const HOME_BOOT_TIMEOUT_MS = 1200;
@@ -235,16 +236,15 @@ export default function HomePage() {
     navigate(item.route || (item.kind === "作业" ? `/tasks/assignment/${item.id}` : `/tasks/personal/${item.id}`));
   }
 
-  function handleExploreDashboard() {
-    document.getElementById("campus-dashboard")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   const dashboard = dashboardStyle === "gamified"
     ? <GamifiedHome state={state} onNavigate={handleNavigate} onReload={reload} />
     : <ClassicHome state={state} searchQuery={query} onNavigate={handleNavigate} onOpenDue={handleOpenDue} onReload={reload} />;
 
   return <div className="sylva-home-page">
-    <SylvaHomeHero onNavigate={handleNavigate} onExplore={handleExploreDashboard} />
-    <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
+    <SylvaHomeHero />
+    <div className="sylva-home-foreground">
+      <SylvaCampusOverview state={state} onNavigate={handleNavigate} onOpenDue={handleOpenDue} />
+      <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
+    </div>
   </div>;
 }

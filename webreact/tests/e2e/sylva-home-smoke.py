@@ -40,8 +40,10 @@ def run():
 
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
         print("desktop page loaded", flush=True)
-        iframe = page.locator(".sylva-home-hero iframe")
-        if iframe.count() == 0:
+
+        # ── fixed background layer + three.js scene ──────────────────────
+        background = page.locator(".sylva-home-hero.sylva-scene-background")
+        if background.count() == 0:
             raise AssertionError(
                 {
                     "url": page.url,
@@ -50,6 +52,7 @@ def run():
                     "page_errors": page_errors,
                 }
             )
+        iframe = page.locator(".sylva-scene-background iframe")
         iframe.wait_for(state="visible", timeout=15_000)
         assert iframe.get_attribute("src") == "/landing-pages/inner-green-3d.html"
 
@@ -62,59 +65,90 @@ def run():
         )
         assert scene_pixels["width"] > 0 and scene_pixels["height"] > 0
         assert scene_pixels["engine"] == "three.js r149"
+        # the English editorial layer is hidden; only the living scene remains
+        headline = scene.query_selector(".headline")
+        assert headline is not None
+        assert headline.evaluate("el => getComputedStyle(el).display") == "none"
         assert scene.query_selector(".dock-wrap") is None
         assert not scene.query_selector_all(".dock [data-dock]")
-        scene_copy = scene.query_selector(".headline")
-        assert scene_copy is not None
-        assert "Step into" in scene_copy.inner_text()
-        assert "the living world" in scene_copy.inner_text()
-        explore_button = scene.query_selector(".liquid-button--explore")
-        assert explore_button is not None
+        # background is truly fixed at the viewport origin
+        bg_style = background.evaluate("el => getComputedStyle(el).position")
+        assert bg_style == "fixed"
+        bg_box = background.bounding_box()
+        assert bg_box and abs(bg_box["x"]) < 2 and abs(bg_box["y"]) < 2
+        assert abs(bg_box["width"] - 1440) < 2 and abs(bg_box["height"] - 900) < 2
+        print("desktop scene verified", flush=True)
+
+        # ── first viewport shows CampusMate business content ─────────────
+        overview = page.locator(".sylva-campus-overview")
+        overview.wait_for(state="visible", timeout=10_000)
+        title = page.locator(".sylva-overview-title")
+        assert title.is_visible()
+        assert len(title.inner_text().strip()) > 0
+        primary = page.locator(".sylva-overview-primary")
+        assert primary.is_visible()
+        assert page.locator(".sylva-rhythm-card").count() == 1
+        assert page.locator(".sylva-next-card").count() == 1
+        assert page.locator(".sylva-scene-stat").count() >= 2
+        assert page.get_by_role("heading", name="今日学习节奏").count() == 1
+        assert page.get_by_role("heading", name="下一件事").count() == 1
+
+        # ── existing global navigation preserved ─────────────────────────
         global_nav = page.locator(".floating-nav")
         global_nav.wait_for(state="visible")
         assert global_nav.locator(".floating-nav-button").count() == 8
         assert global_nav.get_by_role("button", name="首页").get_attribute("aria-current") == "page"
 
-        hero_box = page.locator(".sylva-home-hero").bounding_box()
-        assert hero_box and abs(hero_box["height"] - 900) < 2
+        # ── primary action navigates to a real existing route ────────────
+        primary.click()
+        page.wait_for_url(f"{BASE_URL}/study", timeout=10_000)
+        print("primary action route verified", flush=True)
 
-        learning_command = page.locator(".home-learning-command")
-        learning_command.wait_for(state="visible", timeout=10_000)
-        command_box = learning_command.bounding_box()
-        assert command_box and command_box["y"] < hero_box["height"]
-        assert page.locator(".home-learning-pulse").count() == 1
-        assert page.get_by_role("heading", name="优先处理").count() == 1
-        assert page.get_by_role("heading", name="课程表").count() == 1
-        assert page.get_by_role("button", name="通知整理 课程与校园通知").count() == 1
-        assert page.get_by_role("button", name="校园社区 交流学习与生活").count() == 1
-        assert page.get_by_role("button", name="学校与专业 查看校园背景信息").count() == 1
-        print("desktop scene verified", flush=True)
+        # ── after scrolling one viewport the background stays pinned ─────
+        page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        background.wait_for(state="visible", timeout=15_000)
+        before_box = background.bounding_box()
+        page.evaluate("window.scrollTo(0, window.innerHeight)")
+        page.wait_for_timeout(300)
+        after_box = background.bounding_box()
+        assert after_box and abs(after_box["x"] - before_box["x"]) < 2
+        assert after_box and abs(after_box["y"] - before_box["y"]) < 2
+        assert abs(after_box["width"] - 1440) < 2 and abs(after_box["height"] - 900) < 2
+        overflow = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert overflow <= 0, f"desktop horizontal overflow: {overflow}"
+        print("desktop scroll pinned verified", flush=True)
 
-        explore_button.evaluate("button => button.click()")
-        page.wait_for_function("window.scrollY > window.innerHeight * 0.6")
-        assert page.locator("#campus-dashboard").count() == 1
-        print("explore bridge verified", flush=True)
-
-        page.evaluate("window.scrollTo(0, 0)")
-        global_nav.get_by_role("button", name="我的课程").click()
-        page.wait_for_url(f"{BASE_URL}/courses", timeout=10_000)
-        print("dock bridge verified", flush=True)
-
-        page.set_viewport_size({"width": 320, "height": 720})
+        # ── mobile: 390×844 ──────────────────────────────────────────────
+        page.set_viewport_size({"width": 390, "height": 844})
         page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
         print("mobile page loaded", flush=True)
-        mobile_iframe = page.locator(".sylva-home-hero iframe")
+        mobile_bg = page.locator(".sylva-home-hero.sylva-scene-background")
+        mobile_bg.wait_for(state="visible", timeout=15_000)
+        mobile_iframe = mobile_bg.locator("iframe")
         mobile_scene = mobile_iframe.element_handle().content_frame()
         mobile_scene.wait_for_load_state("domcontentloaded")
         assert mobile_scene.query_selector("#scene") is not None
-        mobile_box = page.locator(".sylva-home-hero").bounding_box()
-        assert mobile_box and abs(mobile_box["width"] - 320) < 2
-        assert mobile_box["height"] >= 560
-        assert mobile_scene.query_selector(".dock-wrap") is None
-        assert not mobile_scene.query_selector_all(".dock [data-dock]")
+        mobile_box = mobile_bg.bounding_box()
+        assert mobile_box and abs(mobile_box["width"] - 390) < 2
+        assert abs(mobile_box["height"] - 844) < 2
         assert page.locator(".floating-nav").is_visible()
         assert page.locator(".floating-nav-button").count() == 8
+        assert page.locator(".sylva-overview-primary").is_visible()
+        overflow_m = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert overflow_m <= 0, f"mobile horizontal overflow: {overflow_m}"
         print("mobile scene verified", flush=True)
+
+        # ── narrow: 320×720 ──────────────────────────────────────────────
+        page.set_viewport_size({"width": 320, "height": 720})
+        page.goto(f"{BASE_URL}/home", wait_until="networkidle", timeout=30_000)
+        narrow_bg = page.locator(".sylva-home-hero.sylva-scene-background")
+        narrow_bg.wait_for(state="visible", timeout=15_000)
+        narrow_box = narrow_bg.bounding_box()
+        assert narrow_box and abs(narrow_box["width"] - 320) < 2
+        assert page.locator(".sylva-overview-primary").is_visible()
+        overflow_n = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+        assert overflow_n <= 0, f"narrow horizontal overflow: {overflow_n}"
+        print("narrow scene verified", flush=True)
 
         assert not failed_local_assets, failed_local_assets
         assert not page_errors, page_errors

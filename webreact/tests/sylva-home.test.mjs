@@ -19,7 +19,7 @@ test("Sylva homepage keeps every registered runtime asset byte-exact", async () 
   }
 });
 
-test("homepage opens with the configured Living Green hero before the existing dashboard", async () => {
+test("homepage keeps the Sylva hero as the fixed living-scene background", async () => {
   const [heroSource, homeSource] = await Promise.all([
     readFile(new URL("src/components/SylvaHomeHero.jsx", webRoot), "utf8"),
     readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8"),
@@ -35,16 +35,45 @@ test("homepage opens with the configured Living Green hero before the existing d
   assert.match(heroSource, /headingSize=\{63\}/);
   assert.match(heroSource, /bodySize=\{16\.5\}/);
   assert.match(heroSource, /headingLetterSpacing=\{-0\.006\}/);
-  assert.match(homeSource, /<SylvaHomeHero/);
+  assert.match(heroSource, /sylva-scene-background/);
+  assert.match(homeSource, /<SylvaHomeHero\s*\/>/);
   assert.match(homeSource, /id=["']campus-dashboard["']/);
   assert.match(homeSource, /<ClassicHome|<GamifiedHome/);
 });
 
-test("the bundled Sylva scene removes its native dock in favor of the campus navigation", async () => {
+test("homepage renders the CampusMate first-screen layer above the background", async () => {
+  const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
+
+  assert.match(homeSource, /<div className=["']sylva-home-foreground["']>/);
+  assert.match(homeSource, /<SylvaCampusOverview\s+state=\{state\}[^>]*onNavigate=\{handleNavigate\}[^>]*onOpenDue=\{handleOpenDue\}[^>]*\/>/);
+  assert.match(homeSource, /SylvaCampusOverview/);
+  const overviewSource = await readFile(new URL("src/pages/home/SylvaCampusOverview.jsx", webRoot), "utf8");
+  assert.match(overviewSource, /learningCommand/);
+  assert.match(overviewSource, /filteredDueItems/);
+  assert.match(overviewSource, /todayFocusSeconds/);
+  assert.match(overviewSource, /onNavigate/);
+  assert.match(overviewSource, /onOpenDue/);
+});
+
+test("the Sylva scene hides its editorial layer and keeps only the living scene", async () => {
   const sceneSource = await readFile(new URL("public/landing-pages/inner-green-3d.html", webRoot), "utf8");
 
+  assert.match(sceneSource, /html\.bg-only/);
+  assert.match(sceneSource, /\.headline/);
+  assert.match(sceneSource, /\.card/);
+  assert.match(sceneSource, /\.stat/);
   assert.doesNotMatch(sceneSource, /<div class="dock-wrap">/);
   assert.doesNotMatch(sceneSource, /initDock\(\);/);
+});
+
+test("the fixed background layer does not move or transform with scroll", async () => {
+  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
+
+  assert.match(sylvaStyles, /\.sylva-home-hero\.sylva-scene-background\s*,[^}]*\.shader-frame\s*\{[\s\S]*?position:\s*fixed/);
+  assert.match(sylvaStyles, /inset:\s*0;/);
+  assert.match(sylvaStyles, /100svh/);
+  assert.match(sylvaStyles, /pointer-events:\s*none/);
+  assert.doesNotMatch(sylvaStyles, /scrollY/);
 });
 
 test("global navigation preserves the project's original blue liquid-glass states", async () => {
