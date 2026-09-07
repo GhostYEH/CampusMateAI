@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
@@ -10,11 +10,24 @@ import { WhiteNoiseControl } from "../components/study/WhiteNoiseControl.jsx";
 import { formatDateTime } from "../utils/date.js";
 import { studyExperienceModel, weeklyTrend } from "../data/alignment.js";
 import { useWhiteNoise } from "../features/study/whiteNoise.js";
-import { pickStudyBackground } from "../features/study/backgrounds.js";
+import { advancePomodoro, createPomodoroState, isPomodoroState, pausePomodoro, remainingAt, resetPomodoro, skipPomodoro, startPomodoro } from "../features/study/pomodoro.js";
+import { useAmbientSound } from "../features/study/ambientSound.js";
+import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
+import SummerNavDock from "../components/study/SummerNavDock.jsx";
 
 const list = itemsOf;
 const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
 const dateText = (value) => formatDateTime(value, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }, "时间待定");
+const POMODORO_STORAGE_KEY = "campus-study-pomodoro";
+
+function readPomodoroState() {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(POMODORO_STORAGE_KEY) || "null");
+    return isPomodoroState(value) ? value : createPomodoroState();
+  } catch {
+    return createPomodoroState();
+  }
+}
 
 function StudyTiltedCard({ children, className = "" }) {
   return <TiltedCard className={["study-tilted-card", className].filter(Boolean).join(" ")} containerHeight="auto" containerWidth="100%" rotateAmplitude={6} scaleOnHover={1.02} showMobileWarning={false} showTooltip={false}>{children}</TiltedCard>;
@@ -43,39 +56,102 @@ function StudyMetric({ label, value, unit, detail, icon, tone, onClick }) {
 }
 
 export default function StudyPage() {
-  const [background] = useState(pickStudyBackground);
   const [active, setActive] = useState(null); const [sessions, setSessions] = useState([]); const [tasks, setTasks] = useState([]); const [goal, setGoal] = useState(""); const [mode, setMode] = useState("deep"); const [preset, setPreset] = useState(25); const [customMinutes, setCustomMinutes] = useState(45); const [seconds, setSeconds] = useState(0); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [selfReport, setSelfReport] = useState(""); const [breaking, setBreaking] = useState(false); const [breakdown, setBreakdown] = useState(null); const [blockNotifications, setBlockNotifications] = useState(true); const [experience, setExperience] = useState(null);
+  const [pomodoro, setPomodoro] = useState(readPomodoroState);
+  const pomodoroRef = useRef(pomodoro); pomodoroRef.current = pomodoro;
+  const activeRef = useRef(active); activeRef.current = active;
   const whiteNoise = useWhiteNoise();
-  async function load() { setLoading(true); setError(""); try { const [current, history, pending] = await Promise.all([api.getActiveStudySession().catch(() => null), api.getStudySessions(), api.getTasks({ status: "pending" })]); setActive(current); setSessions(list(history)); setTasks(list(pending)); } catch (err) { setError(errorText(err, "学习数据加载失败")); } finally { setLoading(false); } }
+  const [scene, setScene] = useState(() => {
+    const stored = window.localStorage.getItem("campus_study_scene");
+    const known = ["rain", "snow", "cloud"];
+    return known.includes(stored) ? stored : "rain";
+  });
+  const ambient = useAmbientSound(scene);
+  function selectScene(nextScene) { setScene(nextScene); window.localStorage.setItem("campus_study_scene", nextScene); }
+  const commitPomodoro = (next) => { pomodoroRef.current = next; setPomodoro(next); setSeconds(remainingAt(next, Date.now())); try { window.localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(next)); } catch {} };
+  function syncPomodoroWithSession(current) {
+    if (current) {
+      const plannedMinutes = Math.max(5, Math.round(Number(current.planned_duration_seconds || 0) / 60) || selectedMinutes);
+      const started = new Date(current.started_at).getTime();
+      const pausedAt = current.status === "paused" && current.paused_at ? new Date(current.paused_at).getTime() : Date.now();
+      const elapsed = Math.max(0, Math.floor((pausedAt - started) / 1000) - Number(current.pause_seconds || 0));
+      const remaining = Math.max(0, plannedMinutes * 60 - elapsed);
+      const next = remaining > 0
+        ? { ...createPomodoroState({ focusMinutes: plannedMinutes, breakMinutes: 5 }), remaining, isRunning: current.status !== "paused", expiresAt: current.status !== "paused" ? Date.now() + remaining * 1000 : null }
+        : { ...createPomodoroState({ focusMinutes: plannedMinutes, breakMinutes: 5 }), mode: "break", completed: 1, remaining: 5 * 60 };
+      commitPomodoro(next);
+      if (remaining <= 0) {
+        setActive(null);
+        void api.finishStudySession(current.id, { self_report: null }).then(() => api.getStudySessions()).then((value) => setSessions(list(value))).catch(() => setError("专注已完成，但记录同步失败"));
+        setNotice("专注完成，进入短暂休息");
+      }
+      return;
+    }
+    if (pomodoroRef.current.mode === "focus" && pomodoroRef.current.isRunning) commitPomodoro(resetPomodoro(pomodoroRef.current));
+  }
+  async function load() { setLoading(true); setError(""); try { const [current, history, pending] = await Promise.all([api.getActiveStudySession().catch(() => null), api.getStudySessions(), api.getTasks({ status: "pending" })]); setActive(current); setSessions(list(history)); setTasks(list(pending)); syncPomodoroWithSession(current); } catch (err) { setError(errorText(err, "学习数据加载失败")); } finally { setLoading(false); } }
   useEffect(() => { load(); }, []);
   useEffect(() => {
-    if (!active) return undefined;
     const tick = () => {
-      const started = new Date(active.started_at).getTime();
-      const pausedAt = active.status === "paused" && active.paused_at ? new Date(active.paused_at).getTime() : Date.now();
-      const elapsed = Math.floor((pausedAt - started) / 1000) - Number(active.pause_seconds || 0);
-      setSeconds(Math.max(0, elapsed));
+      const current = pomodoroRef.current;
+      const next = advancePomodoro(current, Date.now());
+      if (current.mode === "focus" && next.mode === "break" && next.completed > current.completed) void completePomodoroRound();
+      if (next !== current) commitPomodoro(next);
+      else setSeconds(remainingAt(current, Date.now()));
     };
     tick();
-    const timer = window.setInterval(tick, 1000);
+    const timer = window.setInterval(tick, 250);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, []);
   const completed = useMemo(() => sessions.filter((item) => item.status === "completed"), [sessions]);
   const todayMinutes = useMemo(() => completed.filter((item) => isSameLocalDate(item.started_at)).reduce((total, item) => total + Math.round(Number(item.duration_seconds || 0) / 60), 0), [completed]);
   const weekMinutes = useMemo(() => completed.reduce((total, item) => total + Math.round(Number(item.duration_seconds || 0) / 60), 0), [completed]);
   const trend = useMemo(() => weeklyTrend(completed, new Date(), "started_at", (item) => Math.round(Number(item.duration_seconds || 0) / 60)), [completed]);
   const selectedMinutes = preset === "custom" ? Math.max(5, Math.min(180, Number(customMinutes) || 45)) : preset;
-  async function start(goalOverride = goal) { if (active) return; try { const result = await api.startStudySession({ goal: goalOverride.trim() || "完成一段专注学习", mode, minutes: selectedMinutes }); setActive(result); setGoal(goalOverride.trim()); setSeconds(0); setNotice(`已开始 ${selectedMinutes} 分钟专注`); } catch (err) { setError(errorText(err, "无法开始学习会话")); } }
-  async function togglePause() { if (!active) return; try { setActive(active.status === "paused" ? await api.resumeStudySession(active.id) : await api.pauseStudySession(active.id, "主动休息")); } catch (err) { setError(errorText(err, "学习状态更新失败")); } }
-  async function finish() { if (!active) return; try { await api.finishStudySession(active.id, { self_report: selfReport.trim() || null }); setActive(null); setSelfReport(""); setSeconds(0); setNotice("本次专注已记录"); await load(); } catch (err) { setError(errorText(err, "结束会话失败")); } }
+  useEffect(() => {
+    const restoredMinutes = pomodoroRef.current.focusMinutes;
+    if (restoredMinutes !== 25) {
+      setPreset([25, 45, 60].includes(restoredMinutes) ? restoredMinutes : "custom");
+      setCustomMinutes(restoredMinutes);
+    }
+  }, []);
+  function selectPreset(value) {
+    setPreset(value);
+    if (value === "custom") return;
+    const current = pomodoroRef.current;
+    if (!current.isRunning && current.mode === "focus") commitPomodoro({ ...current, focusMinutes: value, remaining: value * 60, expiresAt: null });
+  }
+  function selectCustomMinutes(value) {
+    setCustomMinutes(value);
+    const minutes = Math.max(5, Math.min(180, Number(value) || 45));
+    const current = pomodoroRef.current;
+    if (!current.isRunning && current.mode === "focus") commitPomodoro({ ...current, focusMinutes: minutes, remaining: minutes * 60, expiresAt: null });
+  }
+  async function start(goalOverride = goal) {
+    const current = pomodoroRef.current;
+    if (current.mode === "break") { commitPomodoro(startPomodoro(current, Date.now())); return; }
+    if (activeRef.current) return;
+    try { const result = await api.startStudySession({ goal: goalOverride.trim() || "完成一段专注学习", mode, minutes: selectedMinutes }); setActive(result); setGoal(goalOverride.trim()); commitPomodoro(startPomodoro({ ...createPomodoroState({ focusMinutes: selectedMinutes, breakMinutes: 5 }), remaining: selectedMinutes * 60 }, Date.now())); setNotice(`已开始 ${selectedMinutes} 分钟专注`); } catch (err) { setError(errorText(err, "无法开始学习会话")); }
+  }
+  async function togglePause() {
+    const current = pomodoroRef.current;
+    try {
+      if (current.isRunning) { if (activeRef.current) setActive(await api.pauseStudySession(activeRef.current.id, "主动休息")); commitPomodoro(pausePomodoro(current, Date.now())); }
+      else { if (activeRef.current) setActive(await api.resumeStudySession(activeRef.current.id)); commitPomodoro(startPomodoro(current, Date.now())); }
+    } catch (err) { setError(errorText(err, "学习状态更新失败")); }
+  }
+  async function finish() { if (!activeRef.current) return; try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); setActive(null); setSelfReport(""); commitPomodoro(resetPomodoro(pomodoroRef.current)); setNotice("本次专注已记录"); await load(); } catch (err) { setError(errorText(err, "结束会话失败")); } }
+  async function completePomodoroRound() { const session = activeRef.current; if (session) { try { await api.finishStudySession(session.id, { self_report: null }); } catch (err) { setError(errorText(err, "专注完成，但记录保存失败")); } setActive(null); setSelfReport(""); void api.getStudySessions().then((value) => setSessions(list(value))).catch(() => {}); } setNotice("专注完成，进入短暂休息"); }
+  async function resetTimer() { if (activeRef.current) { try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) { setError(errorText(err, "计时已重置，但记录保存失败")); } setActive(null); } commitPomodoro(resetPomodoro(pomodoroRef.current)); setSelfReport(""); setNotice("计时已重置"); }
+  async function skipTimer() { const currentMode = pomodoroRef.current.mode; if (activeRef.current) { try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) { setError(errorText(err, "阶段已跳过，但记录保存失败")); } setActive(null); } commitPomodoro(skipPomodoro(pomodoroRef.current)); setSelfReport(""); setNotice(currentMode === "break" ? "已跳过休息，准备下一轮专注" : "已跳过当前专注阶段"); }
   async function planBreakdown() { if (!goal.trim() || breaking || active) return; setBreaking(true); try { setBreakdown(await api.breakdownStudyTask({ goal: goal.trim() })); } catch (err) { setError(errorText(err, "任务拆解失败")); } finally { setBreaking(false); } }
   function reuseExperience(item) { const nextGoal = item?.goal || item?.title || goal; if (!active && nextGoal) setGoal(nextGoal); setExperience(null); setNotice("目标已带入专注计划"); }
   async function saveTaskFromLayer(task) { if (!task?.id || !task.title?.trim()) return; try { const updated = await api.updateTask(task.id, { title: task.title.trim() }); setTasks((current) => current.map((item) => item.id === task.id ? { ...item, ...updated, title: task.title.trim() } : item)); setExperience((current) => current ? studyExperienceModel(current.view, { ...current, task: { ...task, ...updated, title: task.title.trim() } }) : current); setNotice("计划修改已保存"); } catch (err) { setError(errorText(err, "计划保存失败")); } }
   async function completeTaskFromLayer(task) { if (!task?.id) return; try { await api.completeTask(task.id, true); setTasks((current) => current.filter((item) => item.id !== task.id)); setExperience(null); setNotice("计划已完成"); } catch (err) { setError(errorText(err, "计划状态更新失败")); } }
-  return <><div className="study-page-backdrop" style={{ backgroundImage: `url("${background}")` }} aria-hidden="true" /><PageFrame className="study-page" eyebrow="Focus / Study Companion" title="学习陪伴" description="清醒地专注，松弛地成长。给今天留下一段完整的学习时间。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load}>刷新记录</Button>}>
+  return <><PageFrame className="study-page" showHeading={false}>
     {notice && <div className="page-notice notice-info" role="status">{notice}</div>}{error && <div className="page-notice notice-error" role="alert">{error}<Button variant="quiet" onClick={load}>重试</Button></div>}
     {loading ? <div className="state-card loading-state" aria-busy="true"><span className="loading-orb" /><p>正在加载内容…</p></div> : <div className="stack reveal">
-      <StudyTiltedCard className="study-focus-card"><Panel className={`focus-hero ${active ? "is-active" : ""}`}><img className="focus-robot-art" src="/assets/focus-study-robot.png" alt="学习专注助手" /><div className="focus-copy"><span className="eyebrow">{active ? "FOCUS IN PROGRESS" : "READY WHEN YOU ARE"}</span><h2>{active?.goal || "开始专注"}</h2><p>{active ? "手机放远一点，先把眼前这一小步走完。" : "给今天安排一段完整、不被打扰的学习时间。"}</p></div><div className="focus-clock"><strong>{String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}</strong><small>{active ? (active.status === "paused" ? "已暂停" : "正在专注") : "分钟"}</small></div>{!active && <div className="focus-presets">{[25, 50, 75].map((item) => <button key={item} className={preset === item ? "active" : ""} onClick={() => setPreset(item)}>{item} 分钟</button>)}<button className={preset === "custom" ? "active" : ""} onClick={() => setPreset("custom")}>自定义</button>{preset === "custom" && <input type="number" min="5" max="180" aria-label="自定义专注分钟数" value={customMinutes} onChange={(event) => setCustomMinutes(event.target.value)} />}</div>}{active ? <div className="focus-actions"><Button variant="secondary" icon={active.status === "paused" ? "PhPlay" : "PhPause"} onClick={togglePause}>{active.status === "paused" ? "继续" : "暂停"}</Button><Button icon="PhStop" onClick={finish}>结束并记录</Button></div> : <form className="focus-start-form" onSubmit={(event) => { event.preventDefault(); start(); }}><input name="study-goal" value={goal} onChange={(event) => setGoal(event.target.value)} placeholder="例如：完成高数第三章习题…" /><Button icon="PhPlay">开始专注</Button></form>}<div className="focus-options"><label><span><Icon name="PhStudent" />专注模式</span><select value={mode} disabled={Boolean(active)} onChange={(event) => setMode(event.target.value)}><option value="deep">深度专注</option><option value="steady">稳步推进</option><option value="quiet">安静阅读</option></select></label><label><span><Icon name="PhBell" />提醒设置</span><input type="checkbox" checked={blockNotifications} onChange={(event) => setBlockNotifications(event.target.checked)} />{blockNotifications ? "阻止通知" : "允许通知"}</label></div><WhiteNoiseControl enabled={whiteNoise.enabled} volume={whiteNoise.volume} onToggle={whiteNoise.toggle} onVolumeChange={whiteNoise.setVolume} /></Panel></StudyTiltedCard>
+      <div className="study-focus-card"><SummerFocusRoom active={active} pomodoro={pomodoro} seconds={seconds} goal={goal} preset={preset} customMinutes={customMinutes} mode={mode} blockNotifications={blockNotifications} whiteNoise={whiteNoise} tasks={tasks} onGoalChange={setGoal} onPresetChange={selectPreset} onCustomMinutesChange={selectCustomMinutes} onModeChange={setMode} onToggleNotifications={() => setBlockNotifications((value) => !value)} onStart={start} onTogglePause={togglePause} onFinish={finish} onReset={resetTimer} onSkip={skipTimer} onTaskSelect={(item) => setExperience(studyExperienceModel("task", { title: "计划详情", value: item.title || "学习计划", detail: item.deadline ? `计划截止 ${dateText(item.deadline)}` : "打开任务页可以继续编辑和完成计划。", task: item }))} onOpenPlan={() => setExperience(studyExperienceModel("plan", {}))} onRefresh={load} /></div>
       {active && <StudyTiltedCard className="study-report-card"><Panel className="study-report"><label htmlFor="study-report">本次学习感受（可选）</label><textarea id="study-report" name="self_report" rows="2" value={selfReport} onChange={(event) => setSelfReport(event.target.value)} placeholder="例如：完成了阅读，后半段注意力有些分散…" /></Panel></StudyTiltedCard>}
       <StudyTiltedCard className="study-plan-card"><Panel className="study-plan-panel"><SectionHeading title="今日学习计划" detail="把大目标拆成下一步" action={<Button variant="quiet" icon="PhSparkle" onClick={() => setExperience(studyExperienceModel("plan", {}))}>打开 AI 学习路线</Button>} />{tasks.slice(0, 4).length ? <div className="study-today-list">{tasks.slice(0, 4).map((item, index) => <button type="button" className="study-today-task" key={item.id} onClick={() => setExperience(studyExperienceModel("task", { title: "计划详情", value: item.title || "学习计划", detail: item.deadline ? `计划截止 ${dateText(item.deadline)}` : "打开任务页可以继续编辑和完成计划。", task: item }))}><span className={`study-today-check ${index < 2 ? "is-highlighted" : ""}`}><Icon name={index < 2 ? "PhCheck" : "PhSquare"} size={15} weight="bold" /></span><span><strong>{item.title}</strong><small>{item.deadline ? dateText(item.deadline) : "待安排"}</small></span><Icon name="PhDotsThree" size={18} weight="bold" /></button>)}</div> : <div className="inline-empty"><Icon name="PhCheckCircle" size={28} />当前没有待完成计划</div>}<Link className="study-plan-link" to="/tasks">查看完整计划 <Icon name="PhArrowRight" size={14} /></Link></Panel></StudyTiltedCard>
       <div className="stat-grid"><StudyMetric label="今日专注" value={todayMinutes} unit="分钟" detail="点击查看节奏" icon="PhClock" tone="violet" onClick={() => setExperience(studyExperienceModel("metric", { label: "今日专注", value: todayMinutes, unit: "分钟", eyebrow: "TODAY RHYTHM", insight: "午后是你的高效区间", trend }))} /><StudyMetric label="已完成会话" value={completed.length} unit="次" detail="查看累计记录" icon="PhCheckCircle" tone="green" onClick={() => setExperience(studyExperienceModel("metric", { label: "已完成会话", value: completed.length, unit: "次", eyebrow: "FOCUS ARCHIVE", insight: "完成记录正在形成你的专注画像", trend }))} /><StudyMetric label="连续专注" value={completed.length ? "—" : "0"} unit="天" detail="查看连续趋势" icon="PhSparkle" tone="orange" onClick={() => setExperience(studyExperienceModel("metric", { label: "连续专注", value: completed.length ? "—" : "0", unit: "天", eyebrow: "FOCUS STREAK", insight: "保持出现，比偶尔超常更重要", trend }))} /><StudyMetric label="专注评分" value="—" unit="/100" detail="查看评分说明" icon="PhChartLineUp" tone="blue" onClick={() => setExperience(studyExperienceModel("metric", { label: "专注评分", value: "—", unit: "/100", eyebrow: "FOCUS SCORE", insight: "完成更多会话后生成专注评分", trend }))} /></div>
@@ -84,5 +160,5 @@ export default function StudyPage() {
       <div className="grid grid-2"><StudyTiltedCard className="study-records-card"><Panel><SectionHeading title="最近记录" detail="每一次完成都会留下轨迹" />{sessions.slice(0, 4).length ? <div className="list-stack">{sessions.slice(0, 4).map((item) => <button type="button" className="list-row" key={item.id} onClick={() => setExperience(studyExperienceModel("record", item))}><span className="row-icon tone-green"><Icon name="PhCheckCircle" size={18} /></span><span className="row-copy"><strong>{item.goal || "一次学习陪伴"}</strong><small>{dateText(item.started_at)} · {item.status === "completed" ? "已完成" : item.status}</small></span><span className="row-meta">{Math.round(Number(item.duration_seconds || 0) / 60)} 分钟</span></button>)}</div> : <div className="inline-empty"><Icon name="PhChartLineUp" size={30} />还没有学习记录</div>}</Panel></StudyTiltedCard><StudyTiltedCard className="study-tasks-card"><Panel><SectionHeading title="待完成计划" action={<Link className="text-link" to="/tasks">管理全部</Link>} />{tasks.slice(0, 4).length ? <div className="list-stack">{tasks.slice(0, 4).map((item) => <button type="button" className="list-row" key={item.id} onClick={() => setExperience(studyExperienceModel("task", { title: "计划详情", value: item.title || "学习计划", detail: item.deadline ? `计划截止 ${dateText(item.deadline)}` : "打开任务页可以继续编辑和完成计划。", task: item }))}><span className="row-icon tone-blue"><Icon name="PhCheckSquare" size={18} /></span><span className="row-copy"><strong>{item.title}</strong><small>{item.deadline ? dateText(item.deadline) : "待安排"}</small></span><Icon name="PhArrowsOut" size={16} /></button>)}</div> : <div className="inline-empty">当前没有待完成计划</div>}</Panel></StudyTiltedCard></div>
       {experience && <ExperienceLayer experience={experience} active={active} seconds={seconds} goal={goal} mode={mode} soundOn={whiteNoise.enabled} blockNotifications={blockNotifications} breaking={breaking} breakdown={breakdown} onClose={() => setExperience(null)} onStart={() => { start(experience.goal || goal); setExperience(null); }} onTogglePause={togglePause} onFinish={finish} onBreakdown={planBreakdown} onGoalChange={setGoal} onModeChange={setMode} onToggleSound={whiteNoise.toggle} onToggleNotifications={() => setBlockNotifications((value) => !value)} onReuse={reuseExperience} onSaveTask={saveTaskFromLayer} onCompleteTask={completeTaskFromLayer} />}
     </div>}
-  </PageFrame></>;
+  </PageFrame><SummerNavDock sceneAudio={ambient} /></>;
 }

@@ -8,6 +8,7 @@ import "./styles/asset-pages.css";
 import "./styles/home-classic.css";
 import "./styles/home-gamified.css";
 import "./styles/floating-layout.css";
+import "./styles/study-summer.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
