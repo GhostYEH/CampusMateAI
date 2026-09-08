@@ -14,7 +14,6 @@
   padding: 0;
 }
 
-.app-layout:has(.sylva-home-page) .app-iridescence,
 .app-layout:has(.sylva-home-page) .smooth-cursor-layer {
   display: none;
 }
@@ -738,23 +737,6 @@
   box-shadow: -4px 0 34px rgba(201, 227, 106, .045);
 }
 
-.sylva-dashboard .simple-home-command-stack {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-}
-
-.sylva-dashboard .home-learning-command {
-  z-index: 1;
-  grid-column: 1 / 10;
-  grid-row: 1;
-  min-height: 350px;
-  border-radius: 38px 78px 42px 48px;
-  transform: rotate(-.35deg);
-}
-
 .sylva-dashboard .home-learning-pulse {
   z-index: 2;
   grid-column: 7 / 13;
@@ -799,52 +781,8 @@
   color: #314027;
 }
 
-.sylva-dashboard .simple-home-grid {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-}
-
-.sylva-dashboard .simple-home-grid > .course-panel {
-  z-index: 1;
-  grid-column: 2 / 12;
-  grid-row: 1;
-  min-height: 430px;
-  margin-top: 0;
-  padding-left: clamp(24px, 4vw, 64px);
-  border-radius: 72px 36px 58px 40px;
-  transform: rotate(-.35deg);
-}
-
-.sylva-dashboard .simple-quick-section {
-  grid-column: 2 / 12;
-  width: 92%;
-  margin: -8px 0 24px auto;
-  border-radius: 54px 30px 66px 38px;
-  transform: rotate(.28deg);
-}
-
-.sylva-dashboard .student-quick-grid {
-  grid-template-columns: 1.08fr .92fr 1.16fr;
-}
-
-.sylva-dashboard .student-quick-grid > button:nth-child(2) {
-  translate: 0 7px;
-}
-
-.sylva-dashboard .student-quick-grid > button:nth-child(3) {
-  translate: 0 -4px;
-}
-
-/* the detailed schedule remains below the first-screen workbench */
-
 .sylva-dashboard :is(
-  .home-learning-command,
-  .home-learning-pulse,
-  .student-home-panel,
-  .simple-quick-section
+  .home-learning-pulse
 ) {
   border: 1px solid rgba(255, 255, 255, .64);
   background: linear-gradient(145deg, rgba(248, 249, 243, .94), rgba(232, 235, 225, .88));
@@ -860,63 +798,32 @@
   -webkit-backdrop-filter: none;
 }
 
-.sylva-dashboard .command-copy {
-  background:
-    radial-gradient(circle at 12% 18%, rgba(201, 227, 106, .18), transparent 15rem),
-    linear-gradient(112deg, rgba(255, 255, 255, .48), transparent 76%);
-}
-
-.sylva-dashboard .home-agent-loop {
-  border-left-color: rgba(91, 103, 80, .16);
-  background: rgba(255, 255, 255, .22);
-}
-
-.sylva-dashboard :is(.command-copy h1, .pulse-heading h2, .home-panel-head h2, .quick-section-head h2) {
+.sylva-dashboard .pulse-heading h2 {
   color: #273023;
 }
 
-.sylva-dashboard :is(.command-eyebrow, .pulse-heading span, .simple-quick-section .quick-section-head span) {
+.sylva-dashboard .pulse-heading span {
   color: #60724a;
 }
 
-.sylva-dashboard .command-eyebrow i {
-  background: #91a75f;
-  box-shadow: 0 0 0 4px rgba(145, 167, 95, .16);
-}
-
-.sylva-dashboard :is(.command-copy p, .command-trust, .pulse-heading small, .quick-section-head > small) {
+.sylva-dashboard .pulse-heading small {
   color: #687064;
 }
 
-.sylva-dashboard :is(.command-trust svg, .pulse-arrow) {
+.sylva-dashboard .pulse-arrow {
   color: #788a5d;
 }
 
-.sylva-dashboard .home-agent-loop li.active {
-  border-color: rgba(126, 147, 88, .32);
-  background: rgba(224, 233, 203, .78);
-  box-shadow: 0 8px 18px rgba(75, 92, 52, .12);
-}
-
-.sylva-dashboard .home-agent-loop li.active i {
-  background: #66784f;
-}
-
-.sylva-dashboard .home-agent-loop li.active strong,
-.sylva-dashboard .home-agent-loop li.active svg {
-  color: #4e6237;
-}
-
-.sylva-dashboard :is(.pulse-grid button, .priority-list button, .home-schedule-grid > section, .home-schedule-grid button, .student-quick-grid > button) {
+.sylva-dashboard .pulse-grid button {
   border-color: rgba(92, 104, 81, .14);
   background: rgba(255, 255, 255, .5);
 }
 
-.sylva-dashboard :is(.pulse-grid button, .priority-list button, .student-quick-grid > button) {
+.sylva-dashboard .pulse-grid button {
   transition: translate .22s ease, rotate .22s ease, box-shadow .22s ease, background .22s ease;
 }
 
-.sylva-dashboard :is(.pulse-grid button, .priority-list button, .student-quick-grid > button):hover {
+.sylva-dashboard .pulse-grid button:hover {
   translate: 0 -4px;
   rotate: -.35deg;
   background: rgba(255, 255, 255, .82);
@@ -943,16 +850,11 @@
   color: #6e6856;
 }
 
-.sylva-dashboard :is(.pulse-copy strong, .student-quick-grid strong, .priority-list strong) {
+.sylva-dashboard .pulse-copy strong {
   color: #31392d;
 }
 
 .sylva-dashboard :is(
-  .command-primary,
-  .command-secondary,
-  .home-panel-head > button,
-  .panel-footer,
-  .reference-empty-action,
   .student-alert .link-button,
   .home-footer-mail-button,
   .home-footer-copy-button,
@@ -974,11 +876,6 @@
 }
 
 .sylva-dashboard :is(
-  .command-primary,
-  .command-secondary,
-  .home-panel-head > button,
-  .panel-footer,
-  .reference-empty-action,
   .student-alert .link-button,
   .home-footer-mail-button,
   .home-footer-copy-button,
@@ -995,12 +892,6 @@
 .sylva-dashboard :is(button, a):focus-visible {
   outline: 3px solid #c9e36a;
   outline-offset: 3px;
-}
-
-.sylva-dashboard .panel-footer {
-  width: max-content;
-  margin-top: auto;
-  border-top: 1px solid rgba(255, 255, 255, .2);
 }
 
 .sylva-dashboard .home-footer-info {
@@ -1128,15 +1019,13 @@
     padding-inline: 12px;
   }
 
-  .sylva-dashboard .home-foreground,
-  .sylva-dashboard .simple-home-command-stack,
-  .sylva-dashboard .simple-home-grid {
+  .sylva-dashboard .home-foreground {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
-  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .home-search-note, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+  .sylva-dashboard :is(.home-learning-pulse, .home-search-note, .home-footer-info) {
     grid-column: 1;
     grid-row: auto;
     width: 100%;
@@ -1145,24 +1034,8 @@
     transform: none;
   }
 
-  .sylva-dashboard .home-learning-command,
-  .sylva-dashboard .home-learning-pulse,
-  .sylva-dashboard .simple-home-grid > .course-panel,
-  .sylva-dashboard .simple-quick-section {
+  .sylva-dashboard .home-learning-pulse {
     border-radius: 30px;
-  }
-
-  .sylva-dashboard .simple-home-grid > .course-panel {
-    grid-column: 1;
-    padding-left: 16px;
-  }
-
-  .sylva-dashboard .student-quick-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sylva-dashboard .student-quick-grid > button:nth-child(n) {
-    translate: none;
   }
 
   .sylva-dashboard .home-footer-info {
@@ -1219,7 +1092,7 @@
   .sylva-priority-card,
   .sylva-schedule-card,
   .sylva-schedule-loading i,
-  .sylva-dashboard :is(.home-learning-command, .home-learning-pulse, .simple-home-grid > .course-panel, .simple-quick-section, .home-footer-info) {
+  .sylva-dashboard :is(.home-learning-pulse, .home-footer-info) {
     animation: none;
   }
 

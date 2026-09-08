@@ -6,6 +6,7 @@ const appShell = await readFile(new URL("../src/components/AppShell.jsx", import
 const background = await readFile(new URL("../src/components/Iridescence.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const homeClassicStyles = await readFile(new URL("../src/styles/home-classic.css", import.meta.url), "utf8");
+const sylvaStyles = await readFile(new URL("../src/styles/sylva-home.css", import.meta.url), "utf8");
 const homeFooter = await readFile(new URL("../src/components/HomeFooter.jsx", import.meta.url), "utf8");
 const particleText = await readFile(new URL("../src/components/ParticleText.jsx", import.meta.url), "utf8");
 
@@ -31,10 +32,14 @@ test("iridescence tracks the cursor above the click-through background layer", (
   assert.doesNotMatch(background, /container\.addEventListener\(["']mousemove["'], handleMouseMove\)/);
 });
 
-test("the homepage keeps the full-page iridescence visible behind its content", () => {
-  assert.match(appShell, /home-background-active/);
+test("the homepage does not mount the legacy shell background before Sylva loads", () => {
+  assert.match(appShell, /iridescence-background-active/);
   assert.match(appShell, /location\.pathname === ["']\/home["']/);
-  assert.match(styles, /\.home-background-active \.app-iridescence::after/);
+  assert.match(appShell, /isCourses && <Iridescence/);
+  assert.doesNotMatch(appShell, /\(isHome \|\| isCourses\) && <Iridescence/);
+  assert.doesNotMatch(appShell, /home-background-active/);
+  assert.match(styles, /\.iridescence-background-active \.app-iridescence::after/);
+  assert.doesNotMatch(sylvaStyles, /\.app-layout:has\(\.sylva-home-page\) \.app-iridescence/);
   assert.match(homeClassicStyles, /\.home-foreground\{/);
 });
 

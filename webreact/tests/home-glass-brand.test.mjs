@@ -7,8 +7,8 @@ const baseStyles = await readFile(new URL("../src/styles.css", import.meta.url),
 const sylvaStyles = await readFile(new URL("../src/styles/sylva-home.css", import.meta.url), "utf8");
 
 test("classic homepage surfaces keep the liquid-glass treatment", () => {
-  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,\.home-learning-pulse,\.student-home-panel\{[^}]*background:linear-gradient\(/);
-  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-command,\.home-learning-pulse,\.student-home-panel\{[^}]*backdrop-filter:none/);
+  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-pulse\{[^}]*background:linear-gradient\(/);
+  assert.match(styles, /\/\* Homepage liquid-glass surfaces[\s\S]*\.home-learning-pulse\{[^}]*backdrop-filter:none/);
 });
 
 test("homepage brand canvas keeps only the particle field without a backdrop", () => {

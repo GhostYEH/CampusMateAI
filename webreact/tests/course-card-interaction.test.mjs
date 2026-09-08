@@ -60,12 +60,13 @@ test("the live courses route uses the interactive course card and no legacy hero
   assert.doesNotMatch(parityPageSource, /asset-page-hero/);
 });
 
-test("the courses page shares the homepage Iridescence background and drops the local Grainient and TargetCursor", () => {
+test("the courses page keeps its Iridescence background without mounting it on the Sylva homepage", () => {
   assert.doesNotMatch(parityPageSource, /Grainient/);
   assert.doesNotMatch(parityPageSource, /TargetCursor/);
   assert.match(appShellSource, /const isCourses = location\.pathname\.startsWith\("\/courses"\)/);
-  assert.match(appShellSource, /\(isHome \|\| isCourses\) && <Iridescence/);
-  assert.match(appShellSource, /\(isHome \|\| isCourses\) \? "home-background-active"/);
+  assert.match(appShellSource, /isCourses && <Iridescence/);
+  assert.match(appShellSource, /isCourses \? "iridescence-background-active"/);
+  assert.doesNotMatch(appShellSource, /\(isHome \|\| isCourses\) && <Iridescence/);
 });
 
 test("course cards forward FLIP data attributes to the rendered link", () => {
