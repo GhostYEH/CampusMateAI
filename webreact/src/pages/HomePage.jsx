@@ -20,9 +20,12 @@ import ClassicHome from "./home/ClassicHome.jsx";
 import GamifiedHome from "./home/GamifiedHome.jsx";
 import SylvaCampusOverview from "./home/SylvaCampusOverview.jsx";
 import SylvaHomeHero from "../components/SylvaHomeHero.jsx";
-import Iridescence from "../components/Iridescence.jsx";
+import RippleDistortion from "../components/RippleDistortion.jsx";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+const DESKTOP_SHEET_RATIO = 0.48;
+const MOBILE_SHEET_RATIO = 0.7;
 
 const HOME_BOOT_TIMEOUT_MS = 1200;
 const HOME_CACHE_TTL_MS = 30_000;
@@ -255,26 +258,34 @@ export default function HomePage() {
     if (reducedMotion) return undefined;
 
     gsap.registerPlugin(ScrollTrigger);
-    const glass = sheet.querySelector(".rising-sheet-glass");
     const ctx = gsap.context(() => {
       gsap.fromTo(stage,
         { opacity: 1 },
         {
-          opacity: 0.45,
+          opacity: 0.55,
           ease: "none",
           scrollTrigger: { trigger: stage, start: "top top", end: "bottom top", scrub: true },
         }
       );
-      if (glass) {
-        gsap.fromTo(glass,
-          { opacity: 0.72 },
-          {
-            opacity: 0.9,
-            ease: "none",
-            scrollTrigger: { trigger: stage, start: "top top", end: "bottom top", scrub: true },
-          }
-        );
-      }
+
+      const computeTargetScrollY = () => {
+        const isCompactViewport = window.matchMedia("(max-width: 760px)").matches;
+        const sheetRatio = isCompactViewport ? MOBILE_SHEET_RATIO : DESKTOP_SHEET_RATIO;
+        const sheetTop = sheet.getBoundingClientRect().top + window.scrollY;
+        return Math.max(0, sheetTop - window.innerHeight * sheetRatio);
+      };
+
+      ScrollTrigger.create({
+        trigger: document.documentElement,
+        start: 0,
+        end: () => `+=${computeTargetScrollY()}`,
+        snap: {
+          snapTo: [0, 1],
+          duration: { min: 0.35, max: 0.6 },
+          ease: "power3.inOut",
+          delay: 0.18,
+        },
+      });
     }, stageRef);
 
     const refreshTimer = window.setTimeout(() => ScrollTrigger.refresh(), 800);
@@ -287,10 +298,10 @@ export default function HomePage() {
       <SylvaCampusOverview state={state} onNavigate={handleNavigate} onOpenDue={handleOpenDue} />
     </section>
     <section ref={sheetRef} className="rising-sheet" aria-label="CampusMate 学习工作台">
-      <div className="rising-sheet-iridescence" aria-hidden="true">
-        <Iridescence color={[0.92, 0.98, 0.90]} mouseReact={false} amplitude={0.06} speed={0.25} />
+      <div className="rising-sheet-video" aria-hidden="true">
+        <RippleDistortion className="rising-sheet-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} />
       </div>
-      <div className="rising-sheet-glass" aria-hidden="true" />
+      <div className="rising-sheet-scrim" aria-hidden="true" />
       <div className="rising-sheet-content">
         <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
       </div>

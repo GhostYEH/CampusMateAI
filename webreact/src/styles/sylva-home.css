@@ -898,7 +898,7 @@
   grid-column: 1 / -1;
   margin-top: 26px;
   border-radius: 70px 42px 0 0;
-  background: rgba(231, 234, 224, .9);
+  background: rgba(231, 234, 224, .34);
 }
 
 .sylva-dashboard .home-footer-about h2,
@@ -1114,8 +1114,10 @@
    .home-stage 是第一屏 sticky 舞台（SylvaCampusOverview），滚动期间
    固定在视窗顶部；.rising-sheet 是紧随其后的第二层，随文档流从视窗
    底部整体升起来覆盖舞台。背景由 SylvaHomeHero 的 fixed 全视窗层提
-   供，永不随文档滚动。GSAP ScrollTrigger 仅联动舞台 opacity 与玻璃
-   实度，主动画由 sticky 文档流天然完成，GPU 友好且完全可逆。
+   供，永不随文档滚动。.rising-sheet 内复用登录页 RippleDistortion 视
+   频背景覆盖整块下半区，scrim 提供轻深色遮罩保证文字可读；GSAP
+   ScrollTrigger 联动舞台 opacity 并以 snap 实现半屏智能吸附，主动画
+   由 sticky 文档流天然完成，GPU 友好且完全可逆。
    ───────────────────────────────────────────────────────────────────── */
 
 .home-stage {
@@ -1136,53 +1138,33 @@
   box-shadow: 0 -24px 64px -30px rgba(8, 18, 12, .5);
 }
 
-.rising-sheet-iridescence {
+.rising-sheet-video {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: .14;
-  mix-blend-mode: soft-light;
+  overflow: hidden;
 }
 
-.rising-sheet-iridescence .iridescence-container {
-  background: transparent;
+.rising-sheet-video .rising-sheet-ripple {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.rising-sheet-glass {
+.rising-sheet-scrim {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: .72;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .92) 0%, rgba(244, 247, 239, .82) 20%, rgba(244, 247, 239, .82) 100%);
-  backdrop-filter: blur(18px) saturate(118%);
-  -webkit-backdrop-filter: blur(18px) saturate(118%);
-}
-
-.rising-sheet-glass::before {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  content: "";
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85) 30%, rgba(201, 227, 106, .5) 50%, rgba(255, 255, 255, .85) 70%, transparent);
-}
-
-.rising-sheet-glass::after {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 30px;
-  content: "";
-  background: linear-gradient(180deg, rgba(255, 255, 255, .5), transparent);
+  background:
+    linear-gradient(180deg, rgba(8, 14, 22, .55) 0%, rgba(8, 14, 22, .28) 18%, rgba(6, 10, 18, .34) 60%, rgba(4, 8, 16, .66) 100%);
 }
 
 .rising-sheet-content {
   position: relative;
-  z-index: 2;
+  z-index: 3;
 }
 
 @media (max-width: 760px) {
@@ -1190,14 +1172,15 @@
     border-radius: 24px 24px 0 0;
   }
 
-  .rising-sheet-glass {
-    backdrop-filter: blur(14px) saturate(112%);
-    -webkit-backdrop-filter: blur(14px) saturate(112%);
+  .rising-sheet-scrim {
+    background:
+      linear-gradient(180deg, rgba(8, 14, 22, .6) 0%, rgba(8, 14, 22, .34) 22%, rgba(6, 10, 18, .4) 60%, rgba(4, 8, 16, .72) 100%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rising-sheet-glass {
-    opacity: .9;
+  .rising-sheet-scrim {
+    background:
+      linear-gradient(180deg, rgba(8, 14, 22, .62) 0%, rgba(8, 14, 22, .34) 22%, rgba(6, 10, 18, .42) 60%, rgba(4, 8, 16, .74) 100%);
   }
 }
