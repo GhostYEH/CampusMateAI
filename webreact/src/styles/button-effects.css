@@ -31,6 +31,10 @@
   margin-top: 12px;
 }
 
+.sylva-liquid-stage--nav {
+  --h: var(--floating-nav-item-size, 44px);
+}
+
 .sylva-liquid-plate {
   position: absolute;
   z-index: 0;

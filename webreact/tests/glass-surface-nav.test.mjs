@@ -19,21 +19,23 @@ test("navigation delegates optical material and accessibility fallbacks to OpenG
   assert.doesNotMatch(layoutStyles, /liquid glass material \(nav only\)/i);
 });
 
-test("floating navigation uses a route-safe gooey click effect in the existing palette", () => {
+test("floating navigation reuses the liquid metal runtime instead of gooey particles", () => {
   assert.match(navSource, /import GooeyNav from "\.\/GooeyNav\.jsx"/);
   assert.match(navSource, /<GooeyNav[\s\S]*items=\{navItems\}/);
-  assert.match(gooeySource, /requestAnimationFrame/);
+  assert.match(gooeySource, /LiquidMetalButton|mountLiquidMetal/);
   assert.match(gooeySource, /onSelect/);
-  assert.match(gooeyStyles, /--color-1:\s*#3267d6/);
-  assert.match(gooeyStyles, /--color-3:\s*#765eea/);
-  assert.doesNotMatch(gooeyStyles, /(?:color|background):\s*white\b|#fff\b/i);
+  assert.doesNotMatch(gooeySource, /makeParticles/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-particle/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-point/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-effect/);
 });
 
-test("gooey selection backdrop stays transparent so the glass nav is not painted white", () => {
-  assert.match(
-    gooeyStyles,
-    /\.gooey-nav-container \.gooey-nav-effect\.filter::before\s*\{[^}]*background:\s*transparent;/s,
-  );
+test("navigation no longer ships gooey particle keyframes or styles", () => {
+  assert.doesNotMatch(gooeyStyles, /gooey-nav-particle/);
+  assert.doesNotMatch(gooeyStyles, /gooey-nav-point/);
+  assert.doesNotMatch(gooeyStyles, /gooey-nav-effect/);
+  assert.doesNotMatch(gooeyStyles, /@keyframes\s+gooey-particle/);
+  assert.doesNotMatch(gooeyStyles, /@keyframes\s+gooey-point/);
 });
 
 test("desktop hover scaling can render the edge selection marker without clipping", () => {

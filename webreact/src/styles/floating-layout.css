@@ -110,13 +110,12 @@ html {
 
 .floating-nav-button {
   color: var(--floating-nav-foreground);
-  transition: color .2s ease, background-color .2s ease, box-shadow .2s ease;
+  transition: color .2s ease, box-shadow .2s ease;
 }
 
 .floating-nav-button:hover,
 .floating-nav-button.active {
   color: var(--floating-nav-active-foreground);
-  background: var(--floating-nav-active-background);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -128,22 +127,6 @@ html {
     transform-origin: center bottom;
     will-change: transform;
   }
-}
-
-.floating-nav-button.active::after {
-  position: absolute;
-  right: 9px;
-  bottom: 4px;
-  left: 9px;
-  height: 2px;
-  border-radius: 99px;
-  background: rgb(50 103 214 / 38%);
-  content: "";
-}
-
-.floating-nav[data-ogui-tone="dark"] .floating-nav-button.active::after,
-.floating-nav[data-contrast="dark"] .floating-nav-button.active::after {
-  background: rgb(255 255 255 / 46%);
 }
 
 @media (prefers-reduced-motion: reduce) {

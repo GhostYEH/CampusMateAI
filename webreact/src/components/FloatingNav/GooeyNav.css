@@ -1,9 +1,4 @@
 .gooey-nav-container {
-  --color-1: #3267d6;
-  --color-2: #6387e8;
-  --color-3: #765eea;
-  --color-4: #3a9b78;
-  --gooey-backdrop: #f5f7fb;
   --gooey-ink: var(--floating-nav-active-foreground, #3267d6);
   position: relative;
   width: 100%;
@@ -74,91 +69,6 @@
   outline-offset: 2px;
 }
 
-.gooey-nav-container .gooey-nav-effect {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: grid;
-  width: 0;
-  height: 0;
-  place-items: center;
-  pointer-events: none;
-}
-
-.gooey-nav-container .gooey-nav-effect.filter {
-  z-index: 2;
-  filter: blur(5px) contrast(18);
-  mix-blend-mode: multiply;
-}
-
-.gooey-nav-container .gooey-nav-effect.filter::before {
-  position: absolute;
-  inset: -30px;
-  z-index: -2;
-  background: transparent;
-  content: "";
-}
-
-.gooey-nav-container .gooey-nav-effect.filter::after {
-  content: none;
-}
-
-.gooey-nav-container .gooey-nav-effect.text {
-  z-index: 4;
-  color: var(--gooey-ink);
-  opacity: 0;
-}
-
-.gooey-nav-particle,
-.gooey-nav-point {
-  display: block;
-  width: 12px;
-  height: 12px;
-  border-radius: 100%;
-  transform-origin: center;
-}
-
-.gooey-nav-particle {
-  position: absolute;
-  top: calc(50% - 6px);
-  left: calc(50% - 6px);
-  animation: gooey-particle var(--time) ease 1 -350ms;
-  opacity: 0;
-}
-
-.gooey-nav-point {
-  background: var(--color);
-  animation: gooey-point var(--time) ease 1 -350ms;
-  opacity: 1;
-}
-
-@keyframes gooey-particle {
-  0% {
-    opacity: 1;
-    transform: rotate(0deg) translate(var(--start-x), var(--start-y));
-  }
-  70% {
-    opacity: 1;
-    transform: rotate(calc(var(--rotate) * .5)) translate(calc(var(--end-x) * 1.2), calc(var(--end-y) * 1.2));
-  }
-  100% {
-    opacity: 1;
-    transform: rotate(var(--rotate)) translate(var(--end-x), var(--end-y));
-  }
-}
-
-@keyframes gooey-point {
-  0% { opacity: 0; transform: scale(0); }
-  35% { opacity: 1; }
-  70% { opacity: 1; transform: scale(var(--scale)); }
-  100% { opacity: 0; transform: scale(0); }
-}
-
-.gooey-nav-container[data-reduce-motion="true"] .gooey-nav-particle,
-.gooey-nav-container[data-reduce-motion="true"] .gooey-nav-point {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .gooey-nav-container nav ul li {
     transition: none;
@@ -167,6 +77,5 @@
 
 html[data-theme="dark"] .gooey-nav-container,
 html[data-theme="auto"] .gooey-nav-container {
-  --gooey-backdrop: #151c2a;
   --gooey-ink: #9cb8ff;
 }

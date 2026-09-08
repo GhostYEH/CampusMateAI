@@ -113,3 +113,41 @@ test("mobile floating navigation keeps its glass surface compact", () => {
 
   assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });
+
+test("navigation active state uses explicit index comparison so home route stays selected", () => {
+  const gooeySource = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(floatingNavSource, /activeIndex\s*\?/);
+  assert.doesNotMatch(gooeySource, /activeIndex\s*\?/);
+  assert.match(gooeySource, /activeIndex === index/);
+  assert.match(gooeySource, /aria-current=\{active\s*\?\s*"page"\s*:\s*undefined\}/);
+});
+
+test("navigation removes legacy gooey particle implementation entirely", () => {
+  const gooeySource = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(gooeySource, /makeParticles/);
+  assert.doesNotMatch(gooeySource, /getXY/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-particle/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-point/);
+  assert.doesNotMatch(gooeySource, /gooey-nav-effect/);
+  assert.doesNotMatch(gooeySource, /filterRef/);
+  assert.doesNotMatch(gooeySource, /textRef/);
+  assert.doesNotMatch(navStyles, /gooey-nav-particle/);
+  assert.doesNotMatch(navStyles, /gooey-nav-point/);
+  assert.doesNotMatch(navStyles, /gooey-nav-effect/);
+  assert.doesNotMatch(navStyles, /@keyframes\s+gooey-particle/);
+  assert.doesNotMatch(navStyles, /@keyframes\s+gooey-point/);
+});
+
+test("navigation reuses the liquid metal button for selected and hover states", () => {
+  const gooeySource = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.jsx", import.meta.url), "utf8");
+  assert.match(gooeySource, /LiquidMetalButton/);
+  assert.match(gooeySource, /variant="nav"/);
+  assert.match(gooeySource, /active=\{active\}/);
+  assert.match(gooeySource, /defer/);
+});
+
+test("navigation floating layout drops the legacy active background and underline", () => {
+  assert.doesNotMatch(layoutStyles, /\.floating-nav-button\.active::after/);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav-button\.active[^}]*background/);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav-button:hover[^}]*background/);
+});

@@ -349,7 +349,7 @@ function createProgram(gl, fragmentSource) {
   return { program, uniforms };
 }
 
-export function mountLiquidMetal(stage) {
+export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
   const canvas = stage?.querySelector(".sylva-liquid-fx");
   const button = stage?.querySelector(".sylva-liquid-control");
   if (!canvas || !button || typeof window === "undefined") return () => {};
@@ -522,10 +522,11 @@ export function mountLiquidMetal(stage) {
   };
 
   const syncInteraction = () => {
-    hoverTarget = interaction.over || interaction.press || interaction.focus ? 1 : 0;
+    hoverTarget = getActive() || interaction.over || interaction.press || interaction.focus ? 1 : 0;
     pressTarget = interaction.press ? 1 : 0;
     stage.classList.toggle("hot", hoverTarget > 0.5);
     stage.classList.toggle("press", interaction.press);
+    stage.classList.toggle("active", getActive());
   };
 
   const drawFrame = (now) => {
@@ -534,6 +535,14 @@ export function mountLiquidMetal(stage) {
     previousTime = now;
     const delta = Math.min(rawDelta, 1 / 20);
     if (!reducedMotion.matches) clock += delta;
+
+    const currentActive = getActive();
+    const desiredHoverTarget = currentActive || interaction.over || interaction.press || interaction.focus ? 1 : 0;
+    if (desiredHoverTarget !== hoverTarget) {
+      hoverTarget = desiredHoverTarget;
+      stage.classList.toggle("hot", hoverTarget > 0.5);
+    }
+    stage.classList.toggle("active", currentActive);
 
     const hoverEase = hoverTarget > hover
       ? 1 - Math.pow(0.0012, delta)
@@ -582,7 +591,7 @@ export function mountLiquidMetal(stage) {
     }
     lastStaticSignature = staticSignature;
 
-    const idle = !interaction.over && !interaction.press && !interaction.focus
+    const idle = !currentActive && !interaction.over && !interaction.press && !interaction.focus
       && !rippleIsLive && hover < 0.002 && press < 0.002 && pointerAmount < 0.002;
     if (idle && now - previousDrawTime < 1000 / 30) {
       animationFrame = window.requestAnimationFrame(drawFrame);
@@ -769,6 +778,7 @@ export function mountLiquidMetal(stage) {
   const resizeObserver = new ResizeObserver(() => { needsResize = true; });
   resizeObserver.observe(stage);
   resize();
+  syncInteraction();
   animationFrame = window.requestAnimationFrame(drawFrame);
 
   return () => {
