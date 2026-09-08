@@ -145,7 +145,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
   const countFor = (key) => key === "tasks" ? pendingCount : key === "notifications" ? unreadCount : 0;
   const activeIndex = Math.max(0, navItems.findIndex(({ key }) => isActive(key)));
 
-  return <Glass ref={dockRef} className={`floating-nav floating-nav--${tone}`} material="regular" interactive>
+  return <Glass ref={dockRef} className={`floating-nav floating-nav--${tone}`} material="clear" tone={tone} interactive>
     <GooeyNav
       items={navItems}
       activeIndex={activeIndex}

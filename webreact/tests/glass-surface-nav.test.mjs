@@ -9,7 +9,7 @@ const layoutStyles = await readFile(new URL("../src/styles/floating-layout.css",
 
 test("floating navigation is hosted by the OpenGlass surface", () => {
   assert.match(navSource, /import \{ Glass \} from "open-glass-ui"/);
-  assert.match(navSource, /<Glass[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}[\s\S]*material="regular"[\s\S]*interactive/);
+  assert.match(navSource, /<Glass[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}[\s\S]*material="clear"[\s\S]*tone=\{tone\}[\s\S]*interactive/);
   assert.doesNotMatch(navSource, /LiquidGlassSurface/);
   assert.match(gooeySource, /<nav aria-label=\{ariaLabel\}/);
 });

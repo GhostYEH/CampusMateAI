@@ -43,14 +43,15 @@ test("adaptive navigation uses explicit contrast tokens and no mix-blend differe
 
 test("navigation uses OpenGlass while preserving the existing eight entries", () => {
   assert.match(floatingNavSource, /import \{ Glass \} from ["']open-glass-ui["']/);
-  assert.match(floatingNavSource, /<Glass[\s\S]*material="regular"[\s\S]*interactive/);
+  assert.match(floatingNavSource, /<Glass[\s\S]*material="clear"[\s\S]*tone=\{tone\}[\s\S]*interactive/);
   assert.doesNotMatch(floatingNavSource, /LiquidGlassSurface/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav\.floating-nav-surface/);
   assert.equal(navItems.length, 8);
 });
 
-test("non-home routes keep the existing tone behavior untouched", () => {
-  assert.match(appShell, /const floatingNavTone = isCounselor \|\| dashboardStyle === "gamified" \? "light" : "dark";/);
-  assert.match(appShell, /<FloatingNav tone=\{floatingNavTone\}/);
-  assert.match(layoutStyles, /\.floating-nav--light/);
+test("navigation tone follows the page scene instead of the operating-system theme", () => {
+  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \|\| dashboardStyle === "gamified" \? "dark" : "light";/);
+  assert.match(appShell, /<FloatingNav tone=\{topbarGlassTone\}/);
+  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="light"\]/);
+  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="dark"\]/);
 });

@@ -41,12 +41,14 @@ test("floating navigation foreground uses explicit contrast tokens", () => {
   assert.match(navStyles, /\.gooey-nav-container nav ul[^}]*color: var\(--floating-nav-foreground/);
   assert.doesNotMatch(navStyles, /mix-blend-mode:\s*difference/);
   assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-foreground:/);
-  assert.match(layoutStyles, /\.floating-nav--light/);
+  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="light"\]/);
+  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="dark"\]/);
+  assert.doesNotMatch(layoutStyles, /html\[data-theme="auto"\] \.floating-nav/);
 });
 
 test("counselor uses the same global floating navigation as other routes", () => {
-  assert.match(appShell, /const floatingNavTone = isCounselor \|\| dashboardStyle === "gamified" \? "light" : "dark";/);
-  assert.match(appShell, /<FloatingNav tone=\{floatingNavTone\}/);
+  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \|\| dashboardStyle === "gamified" \? "dark" : "light";/);
+  assert.match(appShell, /<FloatingNav tone=\{topbarGlassTone\}/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav\{/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-list\{/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-button\{/);
@@ -66,8 +68,8 @@ test("topbar side controls keep the global search and profile implementation", (
 });
 
 test("counselor shares the global OpenGlass topbar wrappers", () => {
-  assert.match(appShell, /function SearchBox\(\)/);
-  assert.match(appShell, /<SearchBox \/>/);
+  assert.match(appShell, /function SearchBox\(\{ tone \}\)/);
+  assert.match(appShell, /<SearchBox tone=\{topbarGlassTone\} \/>/);
   assert.match(appShell, /topbar-search-surface/);
   assert.match(appShell, /topbar-info-surface/);
 });
