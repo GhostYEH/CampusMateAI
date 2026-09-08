@@ -1,24 +1,37 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { after, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-const component = await readFile(new URL("../src/components/LiquidMetalButton.jsx", import.meta.url), "utf8");
-const styles = await readFile(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
-const overview = await readFile(new URL("../src/pages/home/SylvaCampusOverview.jsx", import.meta.url), "utf8");
-const priority = await readFile(new URL("../src/pages/home/SylvaPriorityCard.jsx", import.meta.url), "utf8");
-const schedule = await readFile(new URL("../src/pages/home/SylvaScheduleCard.jsx", import.meta.url), "utf8");
+const vite = await createServer({
+  root: fileURLToPath(new URL("..", import.meta.url)),
+  server: { middlewareMode: true },
+  appType: "custom",
+  logLevel: "silent",
+});
 
-test("homepage CTA buttons use the reusable liquid-metal control", () => {
-  assert.match(component, /getContext\("webgl2"/);
-  assert.match(component, /uRippleTime/);
-  assert.match(component, /pointerenter/);
-  assert.match(component, /pointerdown/);
-  assert.match(component, /prefers-reduced-motion/);
-  assert.match(styles, /\.liquid-metal-canvas/);
-  assert.match(styles, /\.liquid-metal-fallback/);
-  assert.match(overview, /<LiquidMetalButton className="sylva-overview-primary"/);
-  assert.match(overview, /<LiquidMetalButton className="sylva-overview-secondary"/);
-  assert.match(priority, /<LiquidMetalButton className="sylva-card-link"/);
-  assert.match(priority, /<LiquidMetalButton className="sylva-priority-more"/);
-  assert.match(schedule, /<LiquidMetalButton className="sylva-card-link"/);
+after(async () => {
+  await vite.close();
+});
+
+test("liquid metal keeps the authored stage, plate, canvas, and native button layers", async () => {
+  const { default: LiquidMetalButton } = await vite.ssrLoadModule(
+    "/src/components/LiquidMetalButton.jsx",
+  );
+
+  const markup = renderToStaticMarkup(
+    createElement(LiquidMetalButton, {
+      className: "sylva-card-link",
+      children: "全部待办",
+      "aria-label": "查看全部待办",
+    }),
+  );
+
+  assert.match(markup, /^<span class="sylva-liquid-stage/);
+  assert.match(markup, /class="sylva-liquid-plate" aria-hidden="true"/);
+  assert.match(markup, /class="sylva-liquid-fx" aria-hidden="true"/);
+  assert.match(markup, /<button[^>]*class="sylva-liquid-control sylva-card-link"/);
+  assert.match(markup, />全部待办<\/button><\/span>$/);
 });

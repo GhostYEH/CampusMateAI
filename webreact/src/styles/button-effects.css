@@ -1,169 +1,148 @@
-/*
- * CampusMate liquid-metal controls.
- *
- * The source direction comes from ThreeUI's SylvaHero living-green controls:
- * a dark liquid plate, a travelling prismatic rim, a cursor well and a press
- * ripple. The WebGL layer lives in LiquidMetalButton; these rules keep the
- * native button legible and provide the CSS fallback when WebGL2 is missing.
- */
-
-.liquid-metal-button {
+/* ThreeUI SylvaHero liquid-metal controls, scoped to CampusMate's homepage. */
+.sylva-liquid-stage {
+  --h: 46px;
+  --lu: calc(var(--h) / 516);
+  --bh: var(--h);
+  --pad: calc(900 * var(--lu));
   position: relative;
-  width: auto;
-  height: auto;
-  min-width: 0;
-  min-height: 0;
+  display: inline-grid;
+  width: max-content;
+  height: max-content;
+  flex: none;
+  place-items: center;
   isolation: isolate;
-  overflow: visible;
+  touch-action: manipulation;
   transform: translateZ(0);
-  -webkit-tap-highlight-color: transparent;
+  transition: translate .38s cubic-bezier(.22, .61, .36, 1);
+  vertical-align: middle;
 }
 
-.liquid-metal-button::before {
+.sylva-liquid-stage--overview {
+  --h: 46px;
+}
+
+.sylva-liquid-stage--compact {
+  --h: 32px;
+}
+
+.sylva-liquid-stage--wide {
+  --h: 36px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.sylva-liquid-plate {
   position: absolute;
   z-index: 0;
-  inset: 1px;
-  border-radius: inherit;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .025) 43%, transparent 68%),
-    linear-gradient(110deg, rgba(160, 192, 130, .08), transparent 45%, rgba(118, 165, 255, .08));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .16),
-    inset 0 -1px 2px rgba(0, 0, 0, .2);
-  content: "";
-  pointer-events: none;
-}
-
-.liquid-metal-button::after {
-  position: absolute;
-  z-index: 2;
-  inset: 1px 12% auto;
-  height: 1px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .42), transparent);
-  content: "";
-  opacity: .7;
-  pointer-events: none;
-}
-
-.liquid-metal-canvas {
-  position: absolute;
-  z-index: 1;
   inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  pointer-events: none;
-  mix-blend-mode: screen;
-}
-
-.liquid-metal-button > :not(.liquid-metal-canvas) {
-  position: relative;
-  z-index: 3;
-}
-
-.sylva-overview-primary,
-.sylva-overview-secondary,
-.sylva-card-link,
-.sylva-priority-more {
-  --liquid-shadow-rgb: 12, 16, 9;
+  border-radius: 999px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .014) 44%, transparent 64%),
-    rgba(10, 12, 10, .72);
+    linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.014) 44%, rgba(255,255,255,0) 64%),
+    rgba(10,12,10,.42);
   box-shadow:
-    0 4px 9px rgba(var(--liquid-shadow-rgb), .40),
-    0 12px 25px rgba(var(--liquid-shadow-rgb), .28),
-    0 24px 48px rgba(var(--liquid-shadow-rgb), .16),
-    inset 0 1px 0 rgba(255, 255, 255, .13),
-    inset 0 -1px 3px rgba(255, 255, 255, .055);
+    0 calc(var(--h) * .08) calc(var(--h) * .18) rgba(0,0,0,.38),
+    0 calc(var(--h) * .24) calc(var(--h) * .50) rgba(0,0,0,.28),
+    0 calc(var(--h) * .48) calc(var(--h) * .96) rgba(0,0,0,.16),
+    inset 0 1px 0 rgba(255,255,255,.13),
+    inset 0 calc(var(--h) * -.02) calc(var(--h) * .05) rgba(255,255,255,.05);
   transition:
-    translate .38s cubic-bezier(.22, .61, .36, 1),
-    background .38s cubic-bezier(.22, .61, .36, 1),
-    box-shadow .38s cubic-bezier(.22, .61, .36, 1),
-    border-color .38s cubic-bezier(.22, .61, .36, 1),
-    transform .38s cubic-bezier(.22, .61, .36, 1);
+    box-shadow .38s cubic-bezier(.22,.61,.36,1),
+    background .38s cubic-bezier(.22,.61,.36,1);
+  pointer-events: none;
 }
 
-.sylva-overview-primary,
-.sylva-overview-secondary {
-  min-height: 46px;
-}
-
-.sylva-priority-more {
-  min-height: 36px;
-}
-
-.sylva-overview-primary {
-  border-color: rgba(255, 255, 255, .26);
-}
-
-.sylva-overview-secondary {
-  border-color: rgba(255, 255, 255, .30);
+.sylva-liquid-stage.hot .sylva-liquid-plate {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .02) 44%, transparent 64%),
-    rgba(24, 32, 22, .62);
-}
-
-.sylva-card-link,
-.sylva-priority-more {
-  --liquid-shadow-rgb: 17, 22, 14;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, .014) 44%, transparent 64%),
-    rgba(10, 12, 10, .78);
-}
-
-.sylva-overview-primary:hover,
-.sylva-overview-secondary:hover,
-.sylva-card-link:hover,
-.sylva-priority-more:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .03) 44%, transparent 66%),
-    rgba(21, 28, 18, .86);
+    linear-gradient(180deg, rgba(255,255,255,.105), rgba(255,255,255,.02) 44%, rgba(255,255,255,0) 64%),
+    rgba(8,10,8,.50);
   box-shadow:
-    0 5px 12px rgba(var(--liquid-shadow-rgb), .46),
-    0 15px 31px rgba(var(--liquid-shadow-rgb), .34),
-    0 31px 62px rgba(var(--liquid-shadow-rgb), .20),
-    inset 0 1px 0 rgba(255, 255, 255, .19),
-    inset 0 -1px 4px rgba(255, 255, 255, .08);
+    0 calc(var(--h) * .10) calc(var(--h) * .22) rgba(0,0,0,.44),
+    0 calc(var(--h) * .32) calc(var(--h) * .66) rgba(0,0,0,.34),
+    0 calc(var(--h) * .66) calc(var(--h) * 1.32) rgba(0,0,0,.20),
+    inset 0 1px 0 rgba(255,255,255,.17),
+    inset 0 calc(var(--h) * -.02) calc(var(--h) * .05) rgba(255,255,255,.06);
 }
 
-.sylva-overview-primary:active,
-.sylva-overview-secondary:active,
-.sylva-card-link:active,
-.sylva-priority-more:active {
-  translate: 0 0;
-  transform: translateY(1px) scale(.985);
+.sylva-liquid-stage.press .sylva-liquid-plate {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(255, 255, 255, .01) 44%, transparent 64%),
-    rgba(6, 8, 6, .88);
+    linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.01) 44%, rgba(255,255,255,0) 64%),
+    rgba(7,9,7,.55);
   box-shadow:
-    0 2px 4px rgba(var(--liquid-shadow-rgb), .50),
-    0 6px 12px rgba(var(--liquid-shadow-rgb), .30),
-    inset 0 1px 0 rgba(255, 255, 255, .10),
-    inset 0 -2px 4px rgba(0, 0, 0, .18);
+    0 calc(var(--h) * .04) calc(var(--h) * .11) rgba(0,0,0,.46),
+    0 calc(var(--h) * .13) calc(var(--h) * .32) rgba(0,0,0,.36),
+    0 calc(var(--h) * .27) calc(var(--h) * .62) rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.10);
   transition-duration: .10s;
 }
 
-.liquid-metal-button:focus-visible {
-  outline: 2px solid rgba(232, 247, 209, .9);
-  outline-offset: 4px;
+.sylva-liquid-fx {
+  position: absolute;
+  z-index: 1;
+  inset: calc(-1 * var(--pad));
+  display: block;
+  width: calc(100% + 2 * var(--pad));
+  height: calc(100% + 2 * var(--pad));
+  max-width: none;
+  pointer-events: none;
 }
 
-.liquid-metal-fallback .liquid-metal-canvas {
+.sylva-liquid-control {
+  position: relative;
+  z-index: 2;
+  width: auto;
+  height: var(--bh);
+  min-width: 0;
+  min-height: var(--bh);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sylva-liquid-control.sylva-overview-primary,
+.sylva-liquid-control.sylva-overview-secondary,
+.sylva-liquid-control.sylva-card-link,
+.sylva-liquid-control.sylva-priority-more,
+.sylva-liquid-control.sylva-overview-primary:hover,
+.sylva-liquid-control.sylva-overview-secondary:hover,
+.sylva-liquid-control.sylva-card-link:hover,
+.sylva-liquid-control.sylva-priority-more:hover,
+.sylva-liquid-control.sylva-overview-primary:active,
+.sylva-liquid-control.sylva-overview-secondary:active,
+.sylva-liquid-control.sylva-card-link:active,
+.sylva-liquid-control.sylva-priority-more:active {
+  margin: 0;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  translate: none;
+}
+
+.sylva-liquid-control.sylva-priority-more {
+  width: 100%;
+}
+
+.sylva-liquid-stage:hover {
+  translate: 0 -2px;
+}
+
+.sylva-liquid-stage.press {
+  translate: 0 0;
+}
+
+.sylva-liquid-control:focus-visible {
+  outline: calc(4 * var(--lu)) solid rgba(255,255,255,.55);
+  outline-offset: calc(10 * var(--lu));
+}
+
+.sylva-liquid-fallback .sylva-liquid-fx {
   display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .liquid-metal-button,
-  .sylva-overview-primary,
-  .sylva-overview-secondary,
-  .sylva-card-link,
-  .sylva-priority-more {
+  .sylva-liquid-stage,
+  .sylva-liquid-plate {
     transition: none;
-  }
-
-  .liquid-metal-button::after {
-    opacity: .45;
   }
 }
