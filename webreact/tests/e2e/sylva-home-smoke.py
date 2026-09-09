@@ -154,9 +154,6 @@ def run():
         assert nav_contrast in ("light", "dark"), nav_contrast
         nav_color = page.locator(".floating-nav-button").first.evaluate("el => getComputedStyle(el).color")
         assert nav_color and nav_color != "rgba(0, 0, 0, 0)", nav_color
-        nav_label_shadow = page.evaluate(
-            "getComputedStyle(document.querySelector('.floating-nav-label')).textShadow"
-        )
         print(f"nav contrast={nav_contrast} color={nav_color}", flush=True)
 
         # ── clicking a priority item opens its task route ────────────────

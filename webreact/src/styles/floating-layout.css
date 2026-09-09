@@ -24,23 +24,23 @@ html {
    legacy class for counselor / gamified routes. */
 
 .floating-nav {
-  --floating-nav-expanded-width: 900px;
+  --floating-nav-collapsed-width: 424px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
-  --floating-nav-expanded-item-gap: 30px;
-  --floating-nav-expanded-button-offset: 76px;
-  --floating-nav-gutter: 12px;
   --floating-nav-list-start-padding: 8px;
-  --floating-nav-list-end-padding: 30px;
+  --floating-nav-list-end-padding: 8px;
   --floating-nav-foreground: #53627b;
   --floating-nav-active-foreground: var(--blue);
-  --floating-nav-active-background: rgb(231 239 255 / 92%);
-  --floating-nav-border: rgb(255 255 255 / 88%);
-  --floating-nav-shadow: 0 14px 34px rgb(39 63 119 / 12%), 0 26px 72px rgb(39 63 119 / 8%);
-  --floating-nav-label-shadow: none;
-  --floating-nav-surface-fill: linear-gradient(145deg, rgb(255 255 255 / 62%), rgb(236 243 255 / 42%));
-  overflow-x: auto;
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 60;
+  width: var(--floating-nav-collapsed-width);
+  min-height: var(--topbar-control-height);
+  overflow-x: hidden;
   overflow-y: hidden;
+  transform: translateX(-50%);
+  border-radius: 999px;
   scrollbar-width: none;
 }
 
@@ -48,19 +48,11 @@ html {
 .floating-nav[data-ogui-tone="light"] {
   --floating-nav-foreground: #3a4252;
   --floating-nav-active-foreground: #2657c3;
-  --floating-nav-active-background: rgb(231 239 255 / 72%);
-  --floating-nav-border: rgb(255 255 255 / 92%);
-  --floating-nav-shadow: 0 14px 34px rgb(39 63 119 / 14%), 0 26px 72px rgb(39 63 119 / 10%);
-  --floating-nav-label-shadow: none;
 }
 
 .floating-nav[data-ogui-tone="dark"] {
   --floating-nav-foreground: #eef3ff;
   --floating-nav-active-foreground: #ffffff;
-  --floating-nav-active-background: rgb(72 108 211 / 52%);
-  --floating-nav-border: rgb(255 255 255 / 26%);
-  --floating-nav-shadow: 0 12px 30px rgb(6 10 18 / 38%), 0 26px 70px rgb(6 10 18 / 26%);
-  --floating-nav-label-shadow: 0 1px 8px rgb(8 19 50 / 40%);
 }
 
 /* bright scene behind the nav → dark text on a light glass */
@@ -68,11 +60,6 @@ html {
 .floating-nav[data-contrast="light"] {
   --floating-nav-foreground: #3a4252;
   --floating-nav-active-foreground: #2657c3;
-  --floating-nav-active-background: rgb(231 239 255 / 92%);
-  --floating-nav-border: rgb(255 255 255 / 92%);
-  --floating-nav-shadow: 0 14px 34px rgb(39 63 119 / 14%), 0 26px 72px rgb(39 63 119 / 10%);
-  --floating-nav-label-shadow: none;
-  --floating-nav-surface-fill: linear-gradient(145deg, rgb(255 255 255 / 68%), rgb(235 242 255 / 46%));
 }
 
 /* dark scene behind the nav → light text on a darker glass */
@@ -80,11 +67,6 @@ html {
 .floating-nav[data-contrast="dark"] {
   --floating-nav-foreground: #eef3ff;
   --floating-nav-active-foreground: #ffffff;
-  --floating-nav-active-background: rgb(72 108 211 / 72%);
-  --floating-nav-border: rgb(255 255 255 / 26%);
-  --floating-nav-shadow: 0 12px 30px rgb(6 10 18 / 38%), 0 26px 70px rgb(6 10 18 / 26%);
-  --floating-nav-label-shadow: 0 1px 8px rgb(8 19 50 / 40%);
-  --floating-nav-surface-fill: linear-gradient(145deg, rgb(24 32 22 / 58%), rgb(14 19 13 / 42%));
 }
 
 .floating-nav-inner {
@@ -96,16 +78,9 @@ html {
   display: none;
 }
 
-.floating-nav-list {
+.floating-nav .floating-nav-list {
   width: max-content;
   padding: 8px var(--floating-nav-list-end-padding) 8px var(--floating-nav-list-start-padding);
-}
-
-.floating-nav-label {
-  width: max-content;
-  white-space: nowrap;
-  font-size: 14px;
-  text-shadow: var(--floating-nav-label-shadow);
 }
 
 .floating-nav-button {
@@ -113,8 +88,12 @@ html {
   transition: color .2s ease, box-shadow .2s ease;
 }
 
+.floating-nav .floating-nav-button {
+  gap: 0;
+}
+
 .floating-nav-button:hover,
-.floating-nav-button.active {
+.floating-nav-list > li.active .floating-nav-button {
   color: var(--floating-nav-active-foreground);
 }
 
@@ -150,18 +129,22 @@ html {
   }
 
   .floating-nav {
+    --floating-nav-collapsed-width: calc(100vw - 24px);
     --floating-nav-item-size: 34px;
     --floating-nav-item-gap: 1px;
-    --floating-nav-gutter: 12px;
     --floating-nav-list-start-padding: 7px;
     --floating-nav-list-end-padding: 7px;
+    top: auto;
+    bottom: calc(15px + env(safe-area-inset-bottom));
+    width: var(--floating-nav-collapsed-width);
     min-height: 0;
     height: calc(var(--floating-nav-item-size) + 16px);
     overflow-x: auto;
     overflow-y: hidden;
   }
 
-  .floating-nav-list {
+  .floating-nav .floating-nav-list {
+    justify-content: space-between;
     padding: 7px var(--floating-nav-list-end-padding) 7px var(--floating-nav-list-start-padding);
   }
 }

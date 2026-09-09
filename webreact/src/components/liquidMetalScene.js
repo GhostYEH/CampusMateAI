@@ -1,6 +1,9 @@
 const VERT = `#version 300 es
 in vec2 position; void main(){ gl_Position = vec4(position,0.,1.); }`;
 
+const CONTEXT_RELEASE_TIMER = Symbol("sylvaLiquidContextReleaseTimer");
+export const LIQUID_METAL_MAX_FPS = 30;
+
 const HEAD = `#version 300 es
 precision highp float;
 out vec4 o;
@@ -349,10 +352,26 @@ function createProgram(gl, fragmentSource) {
   return { program, uniforms };
 }
 
-export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
+export function releaseWebGLContext(gl) {
+  try {
+    gl?.getExtension?.("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // Context disposal is best-effort on browsers without WEBGL_lose_context.
+  }
+}
+
+export function mountLiquidMetal(stage, {
+  getActive = () => false,
+  getEngaged = getActive,
+} = {}) {
   const canvas = stage?.querySelector(".sylva-liquid-fx");
-  const button = stage?.querySelector(".sylva-liquid-control");
-  if (!canvas || !button || typeof window === "undefined") return () => {};
+  const control = stage?.querySelector(".sylva-liquid-control");
+  if (!canvas || !control || typeof window === "undefined") return () => {};
+
+  if (canvas[CONTEXT_RELEASE_TIMER] !== undefined) {
+    window.clearTimeout(canvas[CONTEXT_RELEASE_TIMER]);
+    delete canvas[CONTEXT_RELEASE_TIMER];
+  }
 
   let gl;
   try {
@@ -385,6 +404,7 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
   } catch (error) {
     console.error(error);
     stage.classList.add("sylva-liquid-fallback");
+    releaseWebGLContext(gl);
     return () => {};
   }
 
@@ -444,7 +464,7 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
 
   const resize = () => {
     const canvasRect = canvas.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
+    const buttonRect = control.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(2, Math.round(canvasRect.width * dpr));
     const height = Math.max(2, Math.round(canvasRect.height * dpr));
@@ -513,7 +533,7 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
   };
 
   const localPoint = (event) => {
-    const bounds = button.getBoundingClientRect();
+    const bounds = control.getBoundingClientRect();
     const size = Math.max(bounds.height, 1);
     return [
       (event.clientX - (bounds.left + bounds.width / 2)) / size,
@@ -522,7 +542,7 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
   };
 
   const syncInteraction = () => {
-    hoverTarget = getActive() || interaction.over || interaction.press || interaction.focus ? 1 : 0;
+    hoverTarget = getEngaged() || interaction.over || interaction.press || interaction.focus ? 1 : 0;
     pressTarget = interaction.press ? 1 : 0;
     stage.classList.toggle("hot", hoverTarget > 0.5);
     stage.classList.toggle("press", interaction.press);
@@ -537,7 +557,8 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     if (!reducedMotion.matches) clock += delta;
 
     const currentActive = getActive();
-    const desiredHoverTarget = currentActive || interaction.over || interaction.press || interaction.focus ? 1 : 0;
+    const currentEngaged = getEngaged();
+    const desiredHoverTarget = currentEngaged || interaction.over || interaction.press || interaction.focus ? 1 : 0;
     if (desiredHoverTarget !== hoverTarget) {
       hoverTarget = desiredHoverTarget;
       stage.classList.toggle("hot", hoverTarget > 0.5);
@@ -591,9 +612,7 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     }
     lastStaticSignature = staticSignature;
 
-    const idle = !currentActive && !interaction.over && !interaction.press && !interaction.focus
-      && !rippleIsLive && hover < 0.002 && press < 0.002 && pointerAmount < 0.002;
-    if (idle && now - previousDrawTime < 1000 / 30) {
+    if (now - previousDrawTime < 1000 / LIQUID_METAL_MAX_FPS) {
       animationFrame = window.requestAnimationFrame(drawFrame);
       return;
     }
@@ -741,10 +760,11 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     syncInteraction();
   };
   const handleFocus = () => {
-    interaction.focus = button.matches(":focus-visible");
+    interaction.focus = true;
     syncInteraction();
   };
-  const handleBlur = () => {
+  const handleBlur = (event) => {
+    if (control.contains(event.relatedTarget)) return;
     interaction.focus = false;
     syncInteraction();
   };
@@ -763,13 +783,13 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     lastStaticSignature = null;
   };
 
-  button.addEventListener("pointerenter", handlePointerEnter);
-  button.addEventListener("pointerleave", handlePointerLeave);
-  button.addEventListener("pointerdown", handlePointerDown);
-  button.addEventListener("focus", handleFocus);
-  button.addEventListener("blur", handleBlur);
-  button.addEventListener("keydown", handleKeyDown);
-  button.addEventListener("keyup", handleKeyUp);
+  control.addEventListener("pointerenter", handlePointerEnter);
+  control.addEventListener("pointerleave", handlePointerLeave);
+  control.addEventListener("pointerdown", handlePointerDown);
+  control.addEventListener("focusin", handleFocus);
+  control.addEventListener("focusout", handleBlur);
+  control.addEventListener("keydown", handleKeyDown);
+  control.addEventListener("keyup", handleKeyUp);
   window.addEventListener("pointermove", handlePointerMove, { passive: true });
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
@@ -785,13 +805,13 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     disposed = true;
     if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     resizeObserver.disconnect();
-    button.removeEventListener("pointerenter", handlePointerEnter);
-    button.removeEventListener("pointerleave", handlePointerLeave);
-    button.removeEventListener("pointerdown", handlePointerDown);
-    button.removeEventListener("focus", handleFocus);
-    button.removeEventListener("blur", handleBlur);
-    button.removeEventListener("keydown", handleKeyDown);
-    button.removeEventListener("keyup", handleKeyUp);
+    control.removeEventListener("pointerenter", handlePointerEnter);
+    control.removeEventListener("pointerleave", handlePointerLeave);
+    control.removeEventListener("pointerdown", handlePointerDown);
+    control.removeEventListener("focusin", handleFocus);
+    control.removeEventListener("focusout", handleBlur);
+    control.removeEventListener("keydown", handleKeyDown);
+    control.removeEventListener("keyup", handleKeyUp);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerUp);
@@ -804,5 +824,13 @@ export function mountLiquidMetal(stage, { getActive = () => false } = {}) {
     gl.deleteVertexArray(vao);
     [sceneProgram, rimProgram, downProgram, blurProgram, compositeProgram]
       .forEach(({ program }) => gl.deleteProgram(program));
+    // React StrictMode immediately mounts effects a second time in development.
+    // Releasing a still-connected canvas here permanently loses the context before
+    // that second mount can compile its shaders. Defer the release and cancel it
+    // when the same canvas is mounted again; detached canvases are still released.
+    canvas[CONTEXT_RELEASE_TIMER] = window.setTimeout(() => {
+      delete canvas[CONTEXT_RELEASE_TIMER];
+      if (!canvas.isConnected) releaseWebGLContext(gl);
+    }, 0);
   };
 }

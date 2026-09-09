@@ -54,7 +54,7 @@
 
 .student-page { width: 100%; }
 
-/* The shared GooeyNav is icon-sized by default. Profile tabs are text tabs, so
+/* The shared liquid-metal dock is icon-sized by default. Profile tabs are text tabs, so
    they need their own width and overflow contract instead of the dock sizing. */
 .profile-redesign .redesign-tabs {
   display: flex;
@@ -64,8 +64,7 @@
   border-bottom: 1px solid rgba(219, 226, 244, .92);
 }
 
-.profile-redesign .profile-gooey-nav {
-  --profile-nav-pill: rgba(255, 255, 255, .96);
+.profile-redesign .profile-liquid-nav {
   --floating-nav-foreground: #73819a;
   --floating-nav-active-foreground: #5364ef;
   --floating-nav-item-gap: 6px;
@@ -73,13 +72,13 @@
   max-width: 100%;
 }
 
-.profile-redesign .profile-gooey-nav nav ul {
+.profile-redesign .profile-liquid-nav nav ul {
   width: max-content;
   min-width: 0;
   padding: 6px;
 }
 
-.profile-redesign .profile-gooey-nav .floating-nav-button {
+.profile-redesign .profile-liquid-nav .floating-nav-button {
   width: auto;
   min-width: 104px;
   height: 42px;
@@ -89,26 +88,23 @@
   font-size: 13px;
   font-weight: 650;
   letter-spacing: .01em;
-  transition: color .24s ease, background-color .24s ease, box-shadow .24s ease, transform .24s ease;
+  transition: color .24s ease, transform .24s ease;
 }
 
-.profile-redesign .profile-gooey-nav li.active .floating-nav-button {
+.profile-redesign .profile-liquid-nav li.active .floating-nav-button {
   color: #5364ef;
-  background: var(--profile-nav-pill);
-  box-shadow: 0 7px 18px rgba(94, 108, 201, .14), inset 0 1px 0 rgba(255, 255, 255, .96);
 }
 
-.profile-redesign .profile-gooey-nav li:not(.active) .floating-nav-button:hover {
+.profile-redesign .profile-liquid-nav li:not(.active) .floating-nav-button:hover {
   color: #5364ef;
-  background: rgba(255, 255, 255, .62);
 }
 
-.profile-redesign .profile-gooey-nav .floating-nav-button:focus-visible {
+.profile-redesign .profile-liquid-nav .floating-nav-button:focus-visible {
   outline: 2px solid rgba(83, 100, 239, .55);
   outline-offset: 3px;
 }
 
-.profile-redesign .profile-gooey-nav .profile-gooey-label {
+.profile-redesign .profile-liquid-nav .profile-liquid-label {
   display: inline-flex;
   align-items: center;
   min-height: 1em;
@@ -116,7 +112,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .profile-redesign .profile-gooey-nav .floating-nav-button {
+  .profile-redesign .profile-liquid-nav .floating-nav-button {
     transition: none;
   }
 }
@@ -132,20 +128,20 @@
     overflow-x: auto;
   }
 
-  .profile-redesign .profile-gooey-nav {
+  .profile-redesign .profile-liquid-nav {
     width: 100%;
   }
 
-  .profile-redesign .profile-gooey-nav nav ul {
+  .profile-redesign .profile-liquid-nav nav ul {
     width: 100%;
     justify-content: space-between;
   }
 
-  .profile-redesign .profile-gooey-nav nav ul li {
+  .profile-redesign .profile-liquid-nav nav ul li {
     flex: 1 1 0;
   }
 
-  .profile-redesign .profile-gooey-nav .floating-nav-button {
+  .profile-redesign .profile-liquid-nav .floating-nav-button {
     width: 100%;
     min-width: 0;
     padding-inline: 12px;

@@ -20,8 +20,8 @@ test("navigation uses the OpenGlass provider and official components", () => {
 test("navigation material follows its scene instead of the operating-system theme", () => {
   assert.match(appSource, /theme=\{\{ appearance: "light"/);
   assert.match(shellSource, /const topbarGlassTone = isHome \|\| isStudy \|\| dashboardStyle === "gamified" \? "dark" : "light";/);
-  assert.match(shellSource, /className="topbar-search-surface"[\s\S]*material="clear"[\s\S]*tone=\{topbarGlassTone\}/);
-  assert.match(shellSource, /className="topbar-info-surface"[\s\S]*material="clear"[\s\S]*tone=\{topbarGlassTone\}/);
+  assert.match(shellSource, /className="topbar-search-surface"[\s\S]*data-tone=\{tone\}/);
+  assert.match(shellSource, /className="topbar-info-surface"[\s\S]*data-tone=\{topbarGlassTone\}/);
 });
 
 test("navigation no longer depends on the local glass surface", () => {

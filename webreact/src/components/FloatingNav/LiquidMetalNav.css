@@ -1,16 +1,15 @@
-.gooey-nav-container {
-  --gooey-ink: var(--floating-nav-active-foreground, #3267d6);
+.liquid-metal-nav-container {
   position: relative;
   width: 100%;
 }
 
-.gooey-nav-container nav {
+.liquid-metal-nav-container nav {
   position: relative;
   display: flex;
   transform: translate3d(0, 0, .01px);
 }
 
-.gooey-nav-container nav ul {
+.liquid-metal-nav-container nav ul {
   position: relative;
   z-index: 3;
   display: flex;
@@ -24,7 +23,7 @@
   list-style: none;
 }
 
-.gooey-nav-container nav ul li {
+.liquid-metal-nav-container nav ul li {
   position: relative;
   flex: 0 0 auto;
   border-radius: 100vw;
@@ -32,7 +31,7 @@
   transition: color .3s ease, box-shadow .3s ease;
 }
 
-.gooey-nav-container nav ul li button {
+.liquid-metal-nav-container nav ul li button {
   position: relative;
   z-index: 1;
   display: inline-flex;
@@ -50,12 +49,12 @@
   white-space: nowrap;
 }
 
-.gooey-nav-container nav ul li:hover button,
-.gooey-nav-container nav ul li.active button {
+.liquid-metal-nav-container nav ul li:hover button,
+.liquid-metal-nav-container nav ul li.active button {
   color: inherit;
 }
 
-.gooey-nav-container .floating-nav-icon {
+.liquid-metal-nav-container .floating-nav-icon {
   display: inline-grid;
   flex: 0 0 var(--floating-nav-item-size, 44px);
   width: var(--floating-nav-item-size, 44px);
@@ -64,18 +63,24 @@
   border-radius: 50%;
 }
 
-.gooey-nav-container .floating-nav-button:focus-visible {
-  outline: 2px solid rgb(50 103 214 / 58%);
-  outline-offset: 2px;
+.liquid-metal-nav-container .floating-nav-button:focus-visible {
+  outline: 2px solid rgb(255 255 255 / 68%);
+  outline-offset: -3px;
+}
+
+.liquid-metal-nav-container .floating-nav-dot {
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 50%;
+  background: var(--red);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gooey-nav-container nav ul li {
+  .liquid-metal-nav-container nav ul li {
     transition: none;
   }
-}
-
-html[data-theme="dark"] .gooey-nav-container,
-html[data-theme="auto"] .gooey-nav-container {
-  --gooey-ink: #9cb8ff;
 }

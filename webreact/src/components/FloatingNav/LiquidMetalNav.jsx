@@ -1,8 +1,8 @@
 import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
 import { useRef } from "react";
-import "./GooeyNav.css";
-import { getDockScale } from "./layout.js";
 import LiquidMetalButton from "../LiquidMetalButton.jsx";
+import { getDockScale } from "./layout.js";
+import "./LiquidMetalNav.css";
 
 const dockSpring = { mass: 0.25, stiffness: 260, damping: 22 };
 
@@ -37,6 +37,7 @@ function DockItem({
         variant="nav"
         active={active}
         defer
+        disableEffects={reduceMotion}
         className="floating-nav-button"
         aria-label={item.label}
         aria-current={active ? "page" : undefined}
@@ -48,7 +49,7 @@ function DockItem({
   );
 }
 
-export default function GooeyNav({
+export default function LiquidMetalNav({
   items = [],
   activeIndex: controlledActiveIndex = 0,
   onSelect,
@@ -60,8 +61,6 @@ export default function GooeyNav({
   dockMagnification = 60,
   dockBaseItemSize = 44,
 }) {
-  const containerRef = useRef(null);
-  const navRef = useRef(null);
   const mouseX = useMotionValue(Number.POSITIVE_INFINITY);
   const activeIndex = Number.isInteger(controlledActiveIndex) ? controlledActiveIndex : 0;
 
@@ -73,14 +72,13 @@ export default function GooeyNav({
 
   return (
     <div
-      ref={containerRef}
-      className={`gooey-nav-container ${className}`}
+      className={`liquid-metal-nav-container ${className}`}
       data-reduce-motion={reduceMotion ? "true" : undefined}
       onMouseMove={(event) => mouseX.set(event.clientX)}
       onMouseLeave={() => mouseX.set(Number.POSITIVE_INFINITY)}
     >
       <nav aria-label={ariaLabel}>
-        <ul ref={navRef} className="floating-nav-list">
+        <ul className="floating-nav-list">
           {items.map((item, index) => (
             <DockItem
               key={item.key || item.href || index}

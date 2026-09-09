@@ -33,7 +33,7 @@ def run():
             };
         }""")
         assert nav_geometry["width"] >= 420
-        assert nav_geometry["height"] >= 76
+        assert nav_geometry["height"] >= 60
         assert nav_geometry["buttonWidth"] >= 44
         assert nav_geometry["buttonHeight"] >= 44
 
@@ -45,7 +45,7 @@ def run():
         assert mouse_focus_shadow == "none"
         home_button.hover()
         page.wait_for_timeout(450)
-        expanded_spacing = page.locator(".floating-nav-list").evaluate("""list => {
+        compact_spacing = page.locator(".floating-nav-list").evaluate("""list => {
             const buttons = [...list.querySelectorAll('.floating-nav-button')]
                 .map((button) => button.getBoundingClientRect());
             return {
@@ -53,8 +53,8 @@ def run():
                 visualGaps: buttons.slice(1).map((button, index) => button.left - buttons[index].right),
             };
         }""")
-        assert expanded_spacing["layoutGap"] >= 16
-        assert min(expanded_spacing["visualGaps"]) >= 8
+        assert compact_spacing["layoutGap"] == 8
+        assert min(compact_spacing["visualGaps"]) >= 0
         indicator_geometry = home_button.evaluate("""button => {
             const indicator = button.querySelector('.floating-nav-icon');
             if (!indicator) return null;
@@ -62,10 +62,7 @@ def run():
             const indicatorRect = indicator.getBoundingClientRect();
             const iconRect = icon?.getBoundingClientRect();
             const buttonStyle = getComputedStyle(button);
-            const oldFilterCircle = getComputedStyle(
-                document.querySelector('.gooey-nav-effect.filter'),
-                '::after',
-            );
+            const liquidStage = button.closest('.sylva-liquid-stage--nav');
             return {
                 width: indicatorRect.width,
                 height: indicatorRect.height,
@@ -79,8 +76,8 @@ def run():
                 ) : Number.POSITIVE_INFINITY,
                 buttonHeight: button.offsetHeight,
                 buttonClipRadius: Number.parseFloat(buttonStyle.borderTopLeftRadius),
-                radius: getComputedStyle(indicator, '::before').borderRadius,
-                oldFilterContent: oldFilterCircle.content,
+                radius: getComputedStyle(indicator).borderRadius,
+                liquidActive: liquidStage?.dataset.active,
             };
         }""")
         assert indicator_geometry is not None, "active navigation icon needs its own indicator geometry"
@@ -89,7 +86,7 @@ def run():
         assert indicator_geometry["centerOffsetY"] < 0.5
         assert indicator_geometry["buttonClipRadius"] >= indicator_geometry["buttonHeight"] / 2
         assert indicator_geometry["radius"] == "50%"
-        assert indicator_geometry["oldFilterContent"] == "none"
+        assert indicator_geometry["liquidActive"] == "true"
 
         page.goto(f"{BASE_URL}/tasks")
         page.wait_for_selector("main h1")

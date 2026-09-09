@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { navItems } from "../src/components/FloatingNav/navItems.js";
 
 const layoutStyles = readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
-const gooeyStyles = readFileSync(new URL("../src/components/FloatingNav/GooeyNav.css", import.meta.url), "utf8");
+const navStyles = readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.css", import.meta.url), "utf8");
 const floatingNavSource = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 const appShell = readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 
@@ -33,12 +33,8 @@ test("adaptive navigation falls back to a readable default when the scene cannot
 test("adaptive navigation uses explicit contrast tokens and no mix-blend difference", () => {
   assert.match(layoutStyles, /--floating-nav-foreground/);
   assert.match(layoutStyles, /--floating-nav-active-foreground/);
-  assert.match(layoutStyles, /--floating-nav-active-background/);
-  assert.match(layoutStyles, /--floating-nav-border/);
-  assert.match(layoutStyles, /--floating-nav-shadow/);
-  assert.match(layoutStyles, /--floating-nav-label-shadow/);
   assert.doesNotMatch(layoutStyles, /mix-blend-mode:\s*difference/);
-  assert.doesNotMatch(gooeyStyles, /mix-blend-mode:\s*difference/);
+  assert.doesNotMatch(navStyles, /mix-blend-mode:\s*difference/);
 });
 
 test("navigation uses OpenGlass while preserving the existing eight entries", () => {

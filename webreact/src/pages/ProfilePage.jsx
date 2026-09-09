@@ -4,7 +4,7 @@ import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
 import { Icon } from "../components/Icon.jsx";
 import SkeuomorphicGlassToggle from "../components/settings/SkeuomorphicGlassToggle.jsx";
-import GooeyNav from "../components/FloatingNav/GooeyNav.jsx";
+import LiquidMetalNav from "../components/FloatingNav/LiquidMetalNav.jsx";
 import TargetCursor from "../components/TargetCursor.jsx";
 import "../styles/student-redesign.css";
 import "../styles/student-profile-reference.css";
@@ -148,6 +148,7 @@ export default function ProfilePage() {
     <main className="student-page campus-redesign profile-redesign">
       <TargetCursor
         targetSelector={'.profile-redesign button, .profile-redesign a, .profile-redesign [role="button"]'}
+        disabled={reduceMotion}
         spinDuration={2}
         hideDefaultCursor
         parallaxOn
@@ -214,14 +215,14 @@ export default function ProfilePage() {
           </header>
 
           <div className="redesign-tabs">
-            <GooeyNav
+            <LiquidMetalNav
               items={TABS}
               activeIndex={TABS.findIndex((item) => item.key === tab)}
-              className="profile-gooey-nav"
+              className="profile-liquid-nav"
               ariaLabel="个人中心分区"
               reduceMotion={reduceMotion}
               onSelect={(item) => setTab(item.key)}
-              renderItem={(item) => <span className="profile-gooey-label">{item.label}</span>}
+              renderItem={(item) => <span className="profile-liquid-label">{item.label}</span>}
               dockDistance={96}
               dockMagnification={18}
               dockBaseItemSize={42}

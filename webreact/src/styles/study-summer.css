@@ -6,8 +6,6 @@
 .app-layout.study-mode .topbar-search-surface, .app-layout.study-mode .topbar-info-surface { color: rgba(239, 250, 242, .82); background: rgba(7, 23, 17, .68); border-color: rgba(255,255,255,.16); box-shadow: 0 16px 36px rgba(0,0,0,.22); }
 .app-layout.study-mode .topbar-search input, .app-layout.study-mode .topbar-date { color: rgba(239, 250, 242, .78); }
 .app-layout.study-mode .topbar-search input::placeholder { color: rgba(239, 250, 242, .44); }
-.app-layout.study-mode .floating-nav { color: rgba(239, 250, 242, .72); background: rgba(7, 23, 17, .72); border-color: rgba(255,255,255,.15); }
-.app-layout.study-mode .floating-nav-button:hover, .app-layout.study-mode .floating-nav-button.active { color: #08150e; background: #d7ef83; }
 .study-summer-room {
   --summer-primary: #d7ef83;
   --summer-foreground: #f2f8f4;

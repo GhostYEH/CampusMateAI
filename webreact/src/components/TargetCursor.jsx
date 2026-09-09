@@ -37,6 +37,7 @@ const TargetCursor = ({
   parallaxOn = true,
   cursorColor = "#ffffff",
   cursorColorOnTarget,
+  disabled = false,
 }) => {
   const cursorRef = useRef(null);
   const cornersRef = useRef(null);
@@ -73,7 +74,7 @@ const TargetCursor = ({
   }, []);
 
   useEffect(() => {
-    if (isMobile || reduceMotion || !cursorRef.current) return undefined;
+    if (isMobile || reduceMotion || disabled || !cursorRef.current) return undefined;
 
     const originalCursor = document.body.style.cursor;
     if (hideDefaultCursor) {
@@ -318,17 +319,17 @@ const TargetCursor = ({
       targetCornerPositionsRef.current = null;
       activeStrengthRef.current = 0;
     };
-  }, [targetSelector, spinDuration, moveCursor, constants, hideDefaultCursor, isMobile, reduceMotion, hoverDuration, parallaxOn, cursorColor, cursorColorOnTarget]);
+  }, [targetSelector, spinDuration, moveCursor, constants, hideDefaultCursor, isMobile, reduceMotion, disabled, hoverDuration, parallaxOn, cursorColor, cursorColorOnTarget]);
 
   useEffect(() => {
-    if (isMobile || reduceMotion || !cursorRef.current || !spinTl.current) return;
+    if (isMobile || reduceMotion || disabled || !cursorRef.current || !spinTl.current) return;
     if (spinTl.current.isActive()) {
       spinTl.current.kill();
       spinTl.current = gsap.timeline({ repeat: -1 }).to(cursorRef.current, { rotation: "+=360", duration: spinDuration, ease: "none" });
     }
-  }, [spinDuration, isMobile, reduceMotion]);
+  }, [spinDuration, isMobile, reduceMotion, disabled]);
 
-  if (isMobile || reduceMotion || typeof document === "undefined") {
+  if (isMobile || reduceMotion || disabled || typeof document === "undefined") {
     return null;
   }
 

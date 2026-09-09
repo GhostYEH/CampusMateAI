@@ -120,12 +120,14 @@ test("the fixed background layer does not move or transform with scroll", async 
   assert.doesNotMatch(sylvaStyles, /scrollY/);
 });
 
-test("global navigation preserves the project's original blue liquid-glass states", async () => {
+test("global navigation keeps one liquid-metal state system across page scenes", async () => {
   const navStyles = await readFile(new URL("src/styles/floating-layout.css", webRoot), "utf8");
+  const studyStyles = await readFile(new URL("src/styles/study-summer.css", webRoot), "utf8");
 
   assert.match(navStyles, /--floating-nav-foreground:\s*#53627b/);
-  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(231\s+239\s+255\s*\/\s*92%\)/);
-  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(72\s+108\s+211\s*\/\s*72%\)/);
-  assert.match(navStyles, /--floating-nav-active-background:\s*rgb\(89\s+133\s+224\s*\/\s*30%\)/);
+  assert.match(navStyles, /--floating-nav-active-foreground:\s*#ffffff/);
+  assert.doesNotMatch(navStyles, /--floating-nav-active-background/);
   assert.doesNotMatch(navStyles, /rgba\(34,\s*40,\s*31,\s*\.74\)/);
+  assert.doesNotMatch(studyStyles, /\.app-layout\.study-mode \.floating-nav\s*\{[^}]*background/);
+  assert.doesNotMatch(studyStyles, /\.app-layout\.study-mode \.floating-nav-button/);
 });

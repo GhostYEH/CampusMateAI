@@ -16,7 +16,7 @@ test("Smooth Cursor is wired into the authenticated shell with motion-safe defau
   assert.match(component, /springStrength/);
   assert.match(component, /aria-hidden="true"/);
   assert.match(shell, /import SmoothCursor from ["']\.\/SmoothCursor\.jsx["']/);
-  assert.match(shell, /<SmoothCursor[\s\S]*motionPaused/);
+  assert.match(shell, /!isProfile\s*&&\s*<SmoothCursor[\s\S]*motionPaused/);
   assert.match(styles, /\.smooth-cursor-layer[\s\S]*pointer-events:\s*none/);
   assert.match(styles, /\.reduce-motion \.smooth-cursor-layer[\s\S]*display:\s*none/);
   assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*\.smooth-cursor-layer/);

@@ -33,6 +33,37 @@
 
 .sylva-liquid-stage--nav {
   --h: var(--floating-nav-item-size, 44px);
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.sylva-liquid-stage--surface {
+  --h: var(--topbar-control-height, 64px);
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.sylva-liquid-stage--surface.topbar-search-surface,
+.sylva-liquid-stage--surface.topbar-info-surface {
+  position: fixed;
+}
+
+.sylva-liquid-stage--surface.topbar-search-surface {
+  right: auto;
+}
+
+.sylva-liquid-stage--surface.topbar-info-surface {
+  left: auto;
+}
+
+.sylva-liquid-stage--surface .sylva-liquid-surface-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  color: inherit;
+  background: transparent;
+  cursor: default;
 }
 
 .sylva-liquid-plate {
@@ -77,6 +108,27 @@
     0 calc(var(--h) * .27) calc(var(--h) * .62) rgba(0,0,0,.22),
     inset 0 1px 0 rgba(255,255,255,.10);
   transition-duration: .10s;
+}
+
+.sylva-liquid-stage--nav .sylva-liquid-plate {
+  opacity: 0;
+}
+
+.sylva-liquid-stage--nav:hover .sylva-liquid-plate,
+.sylva-liquid-stage--nav:focus-within .sylva-liquid-plate,
+.sylva-liquid-stage--nav[data-active="true"] .sylva-liquid-plate {
+  opacity: 1;
+}
+
+.sylva-liquid-stage--surface[data-tone="light"] > .sylva-liquid-plate {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.08) 48%, rgba(255,255,255,0) 70%),
+    rgba(214,224,241,.58);
+  box-shadow:
+    0 calc(var(--h) * .08) calc(var(--h) * .24) rgba(50,69,108,.18),
+    0 calc(var(--h) * .30) calc(var(--h) * .68) rgba(50,69,108,.12),
+    inset 0 1px 0 rgba(255,255,255,.62),
+    inset 0 -1px 0 rgba(102,124,164,.14);
 }
 
 .sylva-liquid-fx {
