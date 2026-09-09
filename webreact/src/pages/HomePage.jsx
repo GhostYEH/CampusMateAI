@@ -232,6 +232,7 @@ function useStudentDashboardData(searchQuery) {
 
 export default function HomePage() {
   const { dashboardStyle } = useApp();
+  const isClassicDashboard = dashboardStyle !== "gamified";
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
@@ -278,7 +279,7 @@ export default function HomePage() {
       ScrollTrigger.create({
         trigger: document.documentElement,
         start: 0,
-        end: () => `+=${computeTargetScrollY()}`,
+        end: () => isClassicDashboard ? "max" : `+=${computeTargetScrollY()}`,
         snap: {
           snapTo: [0, 1],
           duration: { min: 0.35, max: 0.6 },
@@ -290,14 +291,19 @@ export default function HomePage() {
 
     const refreshTimer = window.setTimeout(() => ScrollTrigger.refresh(), 800);
     return () => { window.clearTimeout(refreshTimer); ctx.revert(); };
-  }, []);
+  }, [isClassicDashboard]);
+
+  const risingSheetClassName = [
+    "rising-sheet",
+    isClassicDashboard && "rising-sheet--bounded",
+  ].filter(Boolean).join(" ");
 
   return <div className="sylva-home-page">
     <SylvaHomeHero />
     <section ref={stageRef} className="home-stage">
       <SylvaCampusOverview state={state} onNavigate={handleNavigate} onOpenDue={handleOpenDue} />
     </section>
-    <section ref={sheetRef} className="rising-sheet" aria-label="CampusMate 学习工作台">
+    <section ref={sheetRef} className={risingSheetClassName} aria-label="CampusMate 学习工作台">
       <div className="rising-sheet-video" aria-hidden="true">
         <RippleDistortion className="rising-sheet-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} />
       </div>

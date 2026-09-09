@@ -89,3 +89,31 @@ test("the footer information surface lets the sheet video remain visible", async
   const alpha = Number(backgroundBlock[1].match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1]);
   assert.ok(alpha <= 0.4, `footer background alpha ${alpha} hides too much of the video`);
 });
+
+test("the classic home snap finishes at the browser's real scroll limit", async () => {
+  const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
+
+  assert.match(homeSource, /isClassicDashboard/);
+  assert.match(homeSource, /isClassicDashboard\s*\?\s*["']max["']/);
+  assert.match(homeSource, /rising-sheet--bounded/);
+});
+
+test("the classic lower sheet is real content height rather than a clipped full viewport", async () => {
+  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
+  const boundedSheet = sylvaStyles.match(/\.rising-sheet--bounded\s*\{([^}]*)\}/)?.[1] || "";
+  const boundedDashboard = sylvaStyles.match(/\.rising-sheet--bounded\s+\.sylva-dashboard\s*\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(boundedSheet, /overflow:\s*visible/);
+  assert.match(boundedDashboard, /box-sizing:\s*border-box/);
+  assert.match(boundedDashboard, /min-height:\s*54svh/);
+  assert.doesNotMatch(boundedDashboard, /(?<!min-)height:\s*54svh/);
+  assert.doesNotMatch(boundedDashboard, /overflow:\s*(?:hidden|clip)/);
+  assert.match(sylvaStyles, /\.rising-sheet--bounded\s+\.home-footer-fixed-brand\s*\{[\s\S]*?--home-brand-stage-height:\s*clamp\(240px,\s*27vh,\s*320px\)/);
+});
+
+test("the gamified dashboard is not assigned the bounded classic layout", async () => {
+  const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
+
+  assert.match(homeSource, /dashboardStyle\s*!==\s*["']gamified["']/);
+  assert.match(homeSource, /isClassicDashboard\s*&&\s*["']rising-sheet--bounded["']/);
+});
