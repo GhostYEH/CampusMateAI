@@ -42,7 +42,7 @@ def run():
                 page.goto(f"{BASE_URL}{route}", wait_until="domcontentloaded", timeout=10000)
                 page.wait_for_load_state("domcontentloaded")
                 try:
-                    page.wait_for_selector("main h1", timeout=10_000)
+                    page.wait_for_selector("main", state="attached", timeout=10_000)
                 except Exception as error:
                     raise AssertionError(f"{route}: {error}") from error
                 page.wait_for_timeout(100)

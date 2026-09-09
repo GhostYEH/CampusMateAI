@@ -125,9 +125,6 @@ export default function IslandPage() {
 
   return (
     <section className="island-scene" data-study-scene={scene} aria-labelledby="island-title">
-      <div className="island-scene__backdrop" aria-hidden="true" />
-      <div className="island-scene__shade-top" aria-hidden="true" />
-
       <header className="island-top">
         <div className="island-heading">
           <p className="study-summer-eyebrow">{todayText}</p>

@@ -13,14 +13,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined;
-          if (id.includes("@phosphor-icons")) return "icon-vendor";
-          if (id.includes("react-router") || id.includes("react-dom")) return "react-vendor";
-          if (id.includes("qrcode")) return "qr-tools";
-          if (id.includes("marked")) return "markdown-tools";
-          if (id.includes("axios")) return "network-vendor";
-          return "vendor";
+          const moduleId = id.replaceAll("\\", "/");
+          if (!moduleId.includes("node_modules")) return undefined;
+          if (moduleId.endsWith(".css")) return undefined;
+          if (moduleId.includes("@designcodeio/threeui") || moduleId.includes("@react-three") || moduleId.includes("node_modules/three/") || moduleId.includes("node_modules/three-stdlib/") || moduleId.includes("node_modules/postprocessing/")) return "route-3d-vendor";
+          return undefined;
         },
       },
     },

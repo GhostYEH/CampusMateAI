@@ -25,8 +25,6 @@ function useStudyScene() {
 
 function StudyShell({ eyebrow, title, description, scene, onSelectScene, audio, children }) {
   return <main className="study-summer-subpage" data-study-scene={scene}>
-    <div className="study-summer-subpage__backdrop" aria-hidden="true" />
-    <div className="study-summer-subpage__shade" aria-hidden="true" />
     <header className="study-summer-subpage__header">
       <div><span className="study-summer-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
       <div className="study-summer-subpage__scene-picker" aria-label="场景切换">

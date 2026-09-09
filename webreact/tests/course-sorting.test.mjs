@@ -60,7 +60,7 @@ test("the courses toolbar uses flat targetable sort buttons without a course sea
 
 test("the courses page keeps the header fixed while only the course list scrolls", () => {
   assert.match(pageSource, /className="courses-page__scroll-shell"/);
-  assert.match(stylesSource, /\.courses-page\s*\{[\s\S]*height:\s*100dvh[\s\S]*overflow:\s*hidden/);
+  assert.match(stylesSource, /\.courses-page\s*\{[\s\S]*height:\s*calc\(100dvh - 112px\)[\s\S]*overflow:\s*hidden/);
   assert.match(stylesSource, /\.courses-page__content\s*\{[\s\S]*min-height:\s*0/);
   assert.match(stylesSource, /\.courses-page__scroll-shell\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(stylesSource, /\.courses-page__scroll-shell > \.scroll-list-container\s*\{[\s\S]*height:\s*100%/);

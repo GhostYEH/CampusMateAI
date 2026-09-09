@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { STUDY_SCENE_ASSETS, STUDY_SCENES, readStudyScene, saveStudyScene } from "../src/features/study/scenes.js";
 
 const roomSource = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
+const appShellSource = await readFile(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const studyStyles = await readFile(new URL("../src/styles/study-summer.css", import.meta.url), "utf8");
 const galleryStyles = await readFile(new URL("../src/components/study/AccordionGallery.css", import.meta.url), "utf8");
 const gallerySource = await readFile(new URL("../src/components/study/AccordionGallery.jsx", import.meta.url), "utf8");
@@ -51,11 +52,11 @@ test("focus room gives the scene gallery enough space for its hover expansion", 
   assert.match(galleryStyles, /\.study-scene-gallery\s*\{[^}]*flex:\s*0\s+1\s+520px/);
 });
 
-test("all five study scenes are available to full-page and immersive backgrounds", () => {
+test("all five study scenes are available to the shared full-page and immersive backgrounds", () => {
   assert.match(studyStyles, /study-bamboo-mist\.png/);
   assert.match(studyStyles, /study-coastal-dusk\.png/);
-  assert.match(studyStyles, /data-study-scene=["']bamboo["']/);
-  assert.match(studyStyles, /data-study-scene=["']coast["']/);
+  assert.match(appShellSource, /STUDY_SCENE_ASSETS\[studyScene\]/);
+  assert.match(appShellSource, /--study-global-image/);
   assert.match(studyStyles, /data-immersive-scene=["']bamboo["']/);
   assert.match(studyStyles, /data-immersive-scene=["']coast["']/);
 });

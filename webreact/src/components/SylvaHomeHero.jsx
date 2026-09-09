@@ -1,5 +1,6 @@
 import { SylvaHero } from "@designcodeio/threeui";
 import { useEffect, useRef } from "react";
+import "@designcodeio/threeui/style.css";
 
 const POINTER_MESSAGE = "campusmate:pointer";
 

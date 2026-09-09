@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const studyPage = await readFile(new URL("../src/pages/StudyPage.jsx", import.meta.url), "utf8");
+const studySubpages = await readFile(new URL("../src/pages/StudySubpages.jsx", import.meta.url), "utf8");
+const islandPage = await readFile(new URL("../src/pages/IslandPage.jsx", import.meta.url), "utf8");
 const room = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles/study-summer.css", import.meta.url), "utf8");
 
@@ -31,6 +33,18 @@ test("study room uses the global scene as the only background (no internal stage
   assert.match(room, /study-summer-focus/);
   assert.match(room, /study-summer-atmosphere/);
   assert.match(room, /study-summer-todos/);
+});
+
+test("study secondary routes reuse the global scene without a duplicate page backdrop", () => {
+  assert.doesNotMatch(studySubpages, /study-summer-subpage__backdrop/);
+  assert.doesNotMatch(studySubpages, /study-summer-subpage__shade/);
+  assert.doesNotMatch(styles, /\.study-summer-subpage__backdrop/);
+  assert.doesNotMatch(styles, /\.study-summer-subpage__shade/);
+  assert.doesNotMatch(islandPage, /island-scene__backdrop/);
+  assert.doesNotMatch(islandPage, /island-scene__shade-top/);
+  assert.doesNotMatch(styles, /\.island-scene__backdrop/);
+  assert.doesNotMatch(styles, /\.island-scene__shade-top/);
+  assert.doesNotMatch(styles, /\.island-scene::before/);
 });
 
 test("study styles keep the room borderless and lay out three columns on desktop", () => {
