@@ -92,6 +92,8 @@ export default function ParticleText({
     let width = 0;
     let height = 0;
     let dpr = 1;
+    const initialRect = container.getBoundingClientRect();
+    let isVisible = initialRect.bottom > 0 && initialRect.right > 0 && initialRect.top < window.innerHeight && initialRect.left < window.innerWidth;
 
     const pointer = { active: false, x: 0, y: 0, smoothX: 0, smoothY: 0 };
 
@@ -127,6 +129,8 @@ export default function ParticleText({
     };
 
     const render = (now) => {
+      animationFrame = null;
+      if (!isVisible || document.hidden) return;
       context.clearRect(0, 0, width, height);
       if (glow && !reducedMotion) {
         context.shadowBlur = particleSize * 3;
@@ -185,7 +189,7 @@ export default function ParticleText({
     };
 
     const ensureRenderLoop = () => {
-      if (animationFrame === null) animationFrame = window.requestAnimationFrame(render);
+      if (isVisible && !document.hidden && animationFrame === null) animationFrame = window.requestAnimationFrame(render);
     };
 
     const sampleText = async () => {
@@ -330,11 +334,29 @@ export default function ParticleText({
     canvas.addEventListener("click", handleClick);
     const resizeObserver = new ResizeObserver(queueSample);
     resizeObserver.observe(container);
+    const visibilityObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => {
+      isVisible = Boolean(entry?.isIntersecting);
+      if (isVisible) ensureRenderLoop();
+      else if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+    });
+    visibilityObserver?.observe(container);
+    const handleVisibilityChange = () => {
+      if (document.hidden && animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      } else ensureRenderLoop();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     sampleText();
 
     return () => {
       buildId += 1;
       resizeObserver.disconnect();
+      visibilityObserver?.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       reduceMotionQuery?.removeEventListener("change", handleReduceMotionChange);
       canvas.removeEventListener("pointerenter", handlePointerEnter);
       canvas.removeEventListener("pointermove", handlePointerMove);

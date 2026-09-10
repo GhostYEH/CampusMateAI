@@ -107,23 +107,41 @@ export default function RippleDistortion({
     const imageTexture = new Texture(gl, { generateMipmaps: false, minFilter: gl.LINEAR, magFilter: gl.LINEAR, wrapS: gl.CLAMP_TO_EDGE, wrapT: gl.CLAMP_TO_EDGE });
     let disposed = false;
     const useVideo = /\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(src);
+    const initialRect = mount.getBoundingClientRect();
+    let isVisible = initialRect.bottom > 0 && initialRect.right > 0 && initialRect.top < window.innerHeight && initialRect.left < window.innerWidth;
+    let raf = 0;
+    let previousTime = 0;
+    let scrollResumeTimer = 0;
+    let isScrolling = false;
+    let requestRender = () => {};
+    let updatePlayback = () => {};
     let mediaEl = null;
     if (useVideo) {
       mediaEl = document.createElement("video");
       mediaEl.src = src;
       mediaEl.loop = true;
       mediaEl.muted = true;
-      mediaEl.autoplay = true;
+      mediaEl.autoplay = false;
       mediaEl.playsInline = true;
       mediaEl.setAttribute("muted", "");
       mediaEl.load();
-      mediaEl.addEventListener("loadeddata", () => { if (!disposed) compositeUniforms.uTextureSize.value = [mediaEl.videoWidth || 1, mediaEl.videoHeight || 1]; });
-      const playPromise = mediaEl.play(); if (playPromise && playPromise.catch) playPromise.catch(() => {});
+      mediaEl.addEventListener("loadeddata", () => {
+        if (disposed) return;
+        imageTexture.image = mediaEl;
+        compositeUniforms.uTextureSize.value = [mediaEl.videoWidth || 1, mediaEl.videoHeight || 1];
+        updatePlayback();
+        requestRender();
+      });
     } else {
       mediaEl = new window.Image();
       mediaEl.crossOrigin = "anonymous";
       mediaEl.decoding = "async";
-      mediaEl.onload = () => { if (!disposed) { imageTexture.image = mediaEl; compositeUniforms.uTextureSize.value = [mediaEl.naturalWidth || 1, mediaEl.naturalHeight || 1]; } };
+      mediaEl.onload = () => {
+        if (disposed) return;
+        imageTexture.image = mediaEl;
+        compositeUniforms.uTextureSize.value = [mediaEl.naturalWidth || 1, mediaEl.naturalHeight || 1];
+        requestRender();
+      };
       mediaEl.src = src;
     }
 
@@ -157,26 +175,62 @@ export default function RippleDistortion({
       compositeUniforms.uResolution.value = [width, height];
       const scale = QUALITY_SCALE[quality] || QUALITY_SCALE.high; const fieldW = Math.max(2, Math.round(width * scale)); const fieldH = Math.max(2, Math.round(height * scale));
       displacementTarget.setSize(fieldW, fieldH); compositeUniforms.uTexel.value = [1 / fieldW, 1 / fieldH];
+      requestRender();
     };
     const ro = new ResizeObserver(resize); ro.observe(mount); resize();
-    const setNewWave = (x, y, power) => { const cfg = configRef.current; const wave = waves[current]; current = (current + 1) % MAX_WAVES; wave.x = x; wave.y = y; wave.scale = START_SCALE * power; wave.target = START_SCALE * Math.max(1, cfg.spread) * power; wave.size = Math.max(1, cfg.brushSize); wave.opacity = 1; };
+    const setNewWave = (x, y, power) => { const cfg = configRef.current; const wave = waves[current]; current = (current + 1) % MAX_WAVES; wave.x = x; wave.y = y; wave.scale = START_SCALE * power; wave.target = START_SCALE * Math.max(1, cfg.spread) * power; wave.size = Math.max(1, cfg.brushSize); wave.opacity = 1; requestRender(); };
     const localPoint = (clientX, clientY) => { const rect = mount.getBoundingClientRect(); if (!rect.width || !rect.height || clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null; return [clientX - rect.left, rect.height - (clientY - rect.top)]; };
     let previousX = 0; let previousY = 0;
     const onMove = (event) => { const cfg = configRef.current; if (!cfg.enabled || reduceMotion || cfg.trigger === "click") return; const point = localPoint(event.clientX, event.clientY); if (!point) return; const step = Math.max(1, cfg.spacing); if (Math.abs(point[0] - previousX) > step || Math.abs(point[1] - previousY) > step) { setNewWave(point[0], point[1], 1); previousX = point[0]; previousY = point[1]; } };
     const onDown = (event) => { const cfg = configRef.current; if (!cfg.enabled || reduceMotion || cfg.trigger === "hover") return; const point = localPoint(event.clientX, event.clientY); if (point) setNewWave(point[0], point[1], Math.max(1, cfg.clickStrength)); };
     window.addEventListener("pointermove", onMove, { passive: true }); window.addEventListener("pointerdown", onDown, { passive: true });
-    let raf = 0; let previousTime = 0;
     const loop = (now) => {
-      raf = requestAnimationFrame(loop); const delta = previousTime ? Math.min(0.05, (now - previousTime) / 1000) : 0; previousTime = now; const cfg = configRef.current;
+      raf = 0;
+      if (disposed || !isVisible || isScrolling || document.hidden) { previousTime = 0; return; }
+      const delta = previousTime ? Math.min(0.05, (now - previousTime) / 1000) : 0; previousTime = now; const cfg = configRef.current;
       if (useVideo && mediaEl && mediaEl.readyState >= 2) { if (!imageTexture.image) imageTexture.image = mediaEl; imageTexture.needsUpdate = true; }
-      const growth = reduceMotion ? 0 : 1 - Math.exp(-delta * 1.09); const decay = reduceMotion ? 1 : Math.exp((-delta * LIFE_CONSTANT) / Math.max(0.15, cfg.fade));
+      const motionAllowed = cfg.enabled && !reduceMotion;
+      const growth = motionAllowed ? 1 - Math.exp(-delta * 1.09) : 0; const decay = motionAllowed ? Math.exp((-delta * LIFE_CONSTANT) / Math.max(0.15, cfg.fade)) : 0;
       for (let i = 0; i < MAX_WAVES; i += 1) { const wave = waves[i]; if (wave.opacity <= 0) { opacities[i] = 0; continue; } wave.opacity *= decay; wave.scale += (wave.target - wave.scale) * growth; if (wave.opacity < 0.002) { wave.opacity = 0; opacities[i] = 0; continue; } const half = wave.scale * wave.size / 2; offsets[i * 2] = wave.x / width * 2 - 1; offsets[i * 2 + 1] = wave.y / height * 2 - 1; scales[i * 2] = half / width * 2; scales[i * 2 + 1] = half / height * 2; opacities[i] = wave.opacity; }
       geometry.attributes.iOffset.needsUpdate = true; geometry.attributes.iScale.needsUpdate = true; geometry.attributes.iOpacity.needsUpdate = true;
       renderer.render({ scene: waveMesh, target: displacementTarget, clear: true }); renderer.render({ scene: compositeMesh });
+      const hasActiveWaves = waves.some((wave) => wave.opacity > 0);
+      const shouldContinue = hasActiveWaves || (useVideo && motionAllowed && mediaEl?.readyState >= 2 && !mediaEl.paused);
+      if (shouldContinue) raf = requestAnimationFrame(loop);
+      else previousTime = 0;
     };
-    raf = requestAnimationFrame(loop);
-    return () => { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerdown", onDown); uniformsRef.current = null; if (useVideo && mediaEl) { mediaEl.pause(); mediaEl.removeAttribute("src"); mediaEl.load(); } if (canvas.parentNode === mount) mount.removeChild(canvas); gl.getExtension("WEBGL_lose_context")?.loseContext(); };
-  }, [quality, src]);
+    requestRender = () => {
+      if (!disposed && isVisible && !isScrolling && !document.hidden && !raf) raf = requestAnimationFrame(loop);
+    };
+    updatePlayback = () => {
+      if (!useVideo || !mediaEl) return;
+      const shouldPlay = configRef.current.enabled && !reduceMotion && isVisible && !isScrolling && !document.hidden;
+      if (shouldPlay) {
+        const playPromise = mediaEl.play();
+        if (playPromise?.catch) playPromise.catch(() => {});
+      } else mediaEl.pause();
+      requestRender();
+    };
+    const visibilityObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => {
+      isVisible = Boolean(entry?.isIntersecting);
+      if (!isVisible && raf) { cancelAnimationFrame(raf); raf = 0; previousTime = 0; }
+      updatePlayback();
+    });
+    visibilityObserver?.observe(mount);
+    const onVisibilityChange = () => updatePlayback();
+    const onScroll = () => {
+      isScrolling = true;
+      if (raf) { cancelAnimationFrame(raf); raf = 0; previousTime = 0; }
+      if (useVideo) mediaEl?.pause();
+      window.clearTimeout(scrollResumeTimer);
+      scrollResumeTimer = window.setTimeout(() => { isScrolling = false; updatePlayback(); requestRender(); }, 500);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    updatePlayback();
+    requestRender();
+    return () => { disposed = true; cancelAnimationFrame(raf); window.clearTimeout(scrollResumeTimer); ro.disconnect(); visibilityObserver?.disconnect(); document.removeEventListener("visibilitychange", onVisibilityChange); window.removeEventListener("scroll", onScroll); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerdown", onDown); uniformsRef.current = null; if (useVideo && mediaEl) { mediaEl.pause(); mediaEl.removeAttribute("src"); mediaEl.load(); } if (canvas.parentNode === mount) mount.removeChild(canvas); gl.getExtension("WEBGL_lose_context")?.loseContext(); };
+  }, [enabled, quality, src]);
 
   useEffect(() => {
     const uniforms = uniformsRef.current;

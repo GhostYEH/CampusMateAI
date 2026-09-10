@@ -29,6 +29,13 @@ test("counselor hero uses RippleDistortion over the local campus artwork", () =>
   assert.match(ripple, /pointermove/);
 });
 
+test("ripple distortion avoids unconditional and offscreen animation loops", () => {
+  assert.match(ripple, /IntersectionObserver/);
+  assert.match(ripple, /hasActiveWaves/);
+  assert.match(ripple, /shouldContinue/);
+  assert.doesNotMatch(ripple, /raf = requestAnimationFrame\(loop\); const delta/);
+});
+
 test("counselor layout enlarges the title and uses translucent glass surfaces", () => {
   assert.match(styles, /\.counselor-reference-title h1\{[^}]*font-size:clamp\(\d+px,\s*\d+vw,\s*\d+px\)/);
   assert.match(styles, /\.counselor-reference\{[^}]*max-width:1680px/);

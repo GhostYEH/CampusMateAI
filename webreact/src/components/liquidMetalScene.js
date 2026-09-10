@@ -521,7 +521,15 @@ export function mountLiquidMetal(stage, {
   let previousDrawTime = 0;
   let lastStaticSignature = null;
   let animationFrame = null;
+  let isScrolling = false;
+  let lastScrollY = window.scrollY;
   let disposed = false;
+
+  const requestFrame = () => {
+    if (!disposed && !isScrolling && animationFrame === null) {
+      animationFrame = window.requestAnimationFrame(drawFrame);
+    }
+  };
 
   const addRipple = (x, y) => {
     const ripple = rippleSlots[rippleIndex];
@@ -550,7 +558,13 @@ export function mountLiquidMetal(stage, {
   };
 
   const drawFrame = (now) => {
-    if (disposed) return;
+    animationFrame = null;
+    if (disposed || isScrolling) { animationFrame = null; return; }
+    if (window.scrollY !== lastScrollY) {
+      lastScrollY = window.scrollY;
+      handleScroll();
+      return;
+    }
     const rawDelta = (now - previousTime) / 1000;
     previousTime = now;
     const delta = Math.min(rawDelta, 1 / 20);
@@ -607,7 +621,6 @@ export function mountLiquidMetal(stage, {
       ? `${hover}|${press}|${renderWidth}|${renderHeight}`
       : null;
     if (staticSignature !== null && staticSignature === lastStaticSignature) {
-      animationFrame = window.requestAnimationFrame(drawFrame);
       return;
     }
     lastStaticSignature = staticSignature;
@@ -727,60 +740,90 @@ export function mountLiquidMetal(stage, {
     gl.uniform1f(compositeProgram.uniforms.uPunch, C.punch);
     drawTo(null);
 
-    animationFrame = window.requestAnimationFrame(drawFrame);
+    const shouldContinue = interaction.over
+      || interaction.press
+      || rippleIsLive
+      || Math.abs(hoverTarget - hover) >= 0.0008
+      || Math.abs(pressTarget - press) >= 0.002
+      || Math.abs(desiredWell - pointerAmount) >= 0.002
+      || pointerSpeed >= 0.002;
+    if (shouldContinue) requestFrame();
   };
 
   const handlePointerEnter = (event) => {
     if (event.pointerType !== "mouse") return;
+    isScrolling = false;
     [pointer.x, pointer.y] = localPoint(event);
     smoothedPointer.x = pointer.x;
     smoothedPointer.y = pointer.y;
     pointerSpeed = 0;
     interaction.over = true;
     syncInteraction();
+    requestFrame();
   };
   const handlePointerLeave = (event) => {
     if (event.pointerType === "mouse") {
       interaction.over = false;
       syncInteraction();
+      requestFrame();
     }
   };
   const handlePointerMove = (event) => {
     if (!interaction.over && !interaction.press) return;
+    isScrolling = false;
     [pointer.x, pointer.y] = localPoint(event);
+    requestFrame();
   };
   const handlePointerDown = (event) => {
     [pointer.x, pointer.y] = localPoint(event);
     interaction.press = true;
     syncInteraction();
     addRipple(pointer.x, pointer.y);
+    isScrolling = false;
+    requestFrame();
   };
   const handlePointerUp = () => {
     interaction.press = false;
     syncInteraction();
+    requestFrame();
   };
   const handleFocus = () => {
     interaction.focus = true;
     syncInteraction();
+    isScrolling = false;
+    requestFrame();
   };
   const handleBlur = (event) => {
     if (control.contains(event.relatedTarget)) return;
     interaction.focus = false;
     syncInteraction();
+    requestFrame();
   };
   const handleKeyDown = (event) => {
     if ((event.key !== "Enter" && event.key !== " ") || event.repeat) return;
     interaction.press = true;
     syncInteraction();
     addRipple(0, 0);
+    isScrolling = false;
+    requestFrame();
   };
   const handleKeyUp = (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     interaction.press = false;
     syncInteraction();
+    requestFrame();
   };
   const handleMotionChange = () => {
     lastStaticSignature = null;
+    requestFrame();
+  };
+  const handleScroll = () => {
+    lastScrollY = window.scrollY;
+    isScrolling = true;
+    if (animationFrame !== null) {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
   };
 
   control.addEventListener("pointerenter", handlePointerEnter);
@@ -793,13 +836,14 @@ export function mountLiquidMetal(stage, {
   window.addEventListener("pointermove", handlePointerMove, { passive: true });
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
+  window.addEventListener("scroll", handleScroll, { passive: true });
   reducedMotion.addEventListener?.("change", handleMotionChange);
 
-  const resizeObserver = new ResizeObserver(() => { needsResize = true; });
+  const resizeObserver = new ResizeObserver(() => { needsResize = true; requestFrame(); });
   resizeObserver.observe(stage);
   resize();
   syncInteraction();
-  animationFrame = window.requestAnimationFrame(drawFrame);
+  requestFrame();
 
   return () => {
     disposed = true;
@@ -815,6 +859,7 @@ export function mountLiquidMetal(stage, {
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerUp);
+    window.removeEventListener("scroll", handleScroll);
     reducedMotion.removeEventListener?.("change", handleMotionChange);
     targets.forEach((target) => {
       gl.deleteFramebuffer(target.framebuffer);
