@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
 const buttonStyles = fs.readFileSync(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
+const layoutStyles = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
 test("floating navigation applies spring proximity scaling to every dock item", () => {
   assert.match(source, /from "motion\/react"/);
@@ -15,6 +16,21 @@ test("floating navigation applies spring proximity scaling to every dock item", 
   assert.match(source, /style=\{\{ scale:/);
   assert.match(source, /dockMagnification = 60/);
   assert.match(source, /dockBaseItemSize = 44/);
+});
+
+test("floating navigation caches item geometry instead of reading layout during pointer scaling", () => {
+  assert.match(source, /useLayoutEffect/);
+  assert.match(source, /ResizeObserver/);
+  assert.doesNotMatch(source, /useTransform\([\s\S]*getBoundingClientRect\(\)/);
+});
+
+test("floating navigation coalesces pointer updates to one animation frame", () => {
+  assert.match(source, /requestAnimationFrame/);
+  assert.match(source, /cancelAnimationFrame/);
+});
+
+test("floating navigation promotes the elements that receive the dock scale", () => {
+  assert.match(layoutStyles, /\.floating-nav-list\s*>\s*li\s*\{[^}]*will-change:\s*transform/);
 });
 
 test("floating navigation gives hovered items the same deferred liquid effect", () => {

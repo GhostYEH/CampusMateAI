@@ -1,5 +1,5 @@
 import { motion, useMotionValue, useSpring, useTransform } from "motion/react";
-import { useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import LiquidMetalButton from "../LiquidMetalButton.jsx";
 import { getDockScale } from "./layout.js";
 import "./LiquidMetalNav.css";
@@ -19,10 +19,36 @@ function DockItem({
   renderItem,
 }) {
   const itemRef = useRef(null);
-  const pointerDistance = useTransform(mouseX, (value) => {
-    const rect = itemRef.current?.getBoundingClientRect();
-    if (!rect) return Number.POSITIVE_INFINITY;
-    return value - (rect.left + rect.width / 2);
+  const centerX = useMotionValue(Number.NaN);
+  useLayoutEffect(() => {
+    const element = itemRef.current;
+    if (!element) return undefined;
+
+    let measureFrame = 0;
+    const measure = () => {
+      if (measureFrame) return;
+      measureFrame = requestAnimationFrame(() => {
+        measureFrame = 0;
+        const rect = element.getBoundingClientRect();
+        centerX.set(rect.left + rect.width / 2);
+      });
+    };
+
+    measure();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    window.addEventListener("resize", measure, { passive: true });
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      if (measureFrame) cancelAnimationFrame(measureFrame);
+    };
+  }, [centerX]);
+
+  const pointerDistance = useTransform([mouseX, centerX], ([value, center]) => {
+    if (!Number.isFinite(value) || !Number.isFinite(center)) return Number.POSITIVE_INFINITY;
+    return value - center;
   });
   const targetScale = useTransform(pointerDistance, (value) => getDockScale(value, distance, baseItemSize, magnification));
   const scale = useSpring(targetScale, dockSpring);
@@ -64,7 +90,32 @@ export default function LiquidMetalNav({
   dockBaseItemSize = 44,
 }) {
   const mouseX = useMotionValue(Number.POSITIVE_INFINITY);
+  const pointerFrameRef = useRef(0);
+  const pendingPointerXRef = useRef(Number.POSITIVE_INFINITY);
   const activeIndex = Number.isInteger(controlledActiveIndex) ? controlledActiveIndex : 0;
+
+  useEffect(() => () => {
+    if (pointerFrameRef.current) cancelAnimationFrame(pointerFrameRef.current);
+  }, []);
+
+  const handleMouseMove = (event) => {
+    if (reduceMotion) return;
+    pendingPointerXRef.current = event.clientX;
+    if (pointerFrameRef.current) return;
+    pointerFrameRef.current = requestAnimationFrame(() => {
+      pointerFrameRef.current = 0;
+      mouseX.set(pendingPointerXRef.current);
+    });
+  };
+
+  const handleMouseLeave = () => {
+    pendingPointerXRef.current = Number.POSITIVE_INFINITY;
+    if (pointerFrameRef.current) {
+      cancelAnimationFrame(pointerFrameRef.current);
+      pointerFrameRef.current = 0;
+    }
+    mouseX.set(Number.POSITIVE_INFINITY);
+  };
 
   const handleClick = (event, index) => {
     const item = items[index];
@@ -76,8 +127,8 @@ export default function LiquidMetalNav({
     <div
       className={`liquid-metal-nav-container ${className}`}
       data-reduce-motion={reduceMotion ? "true" : undefined}
-      onMouseMove={(event) => mouseX.set(event.clientX)}
-      onMouseLeave={() => mouseX.set(Number.POSITIVE_INFINITY)}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
       <nav aria-label={ariaLabel}>
         <ul className="floating-nav-list">
