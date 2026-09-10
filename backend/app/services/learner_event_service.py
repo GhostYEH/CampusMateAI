@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from ..core.logging import logger
 from ..models.personal_task import PersonalTaskRow
 from ..models.study import StudySessionRow
 from ..repositories.learner_event_repository import LearnerEventRepository
@@ -10,8 +11,16 @@ from ..schemas.learner_event import EvidenceReference, LearnerEventAppendResult,
 
 
 class LearnerEventService:
-    def __init__(self, repository: LearnerEventRepository) -> None:
+    def __init__(
+        self,
+        repository: LearnerEventRepository,
+        *,
+        study_session_repository=None,
+        personal_task_repository=None,
+    ) -> None:
         self._repository = repository
+        self._study_session_repository = study_session_repository
+        self._personal_task_repository = personal_task_repository
 
     @property
     def repository(self) -> LearnerEventRepository:
@@ -126,6 +135,88 @@ class LearnerEventService:
 
     def delete_user_events(self, *, user_id: str) -> int:
         return self._repository.delete_for_user(user_id=user_id)
+
+    def backfill_core_learning_events(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        batch_size: int = 100,
+    ) -> dict[str, int]:
+        """从已完成的核心业务记录幂等补写 Learner Events。
+
+        业务 Repository 在容器中注入，避免引入新的容器或数据库实例。
+        ``user_id=None`` 只允许明确的管理回填调用，两个查询方法也有专门命名。
+        """
+        if batch_size < 1 or batch_size > 100:
+            raise ValueError("batch_size must stay within 1..100")
+        if self._study_session_repository is None or self._personal_task_repository is None:
+            raise RuntimeError("core learning event backfill repositories are not configured")
+        result = {
+            "scanned": 0,
+            "created": 0,
+            "reused": 0,
+            "skipped": 0,
+            "failed": 0,
+        }
+        self._backfill_repository(
+            repository=self._study_session_repository,
+            recorder=self.record_study_session_finished,
+            user_id=user_id,
+            batch_size=batch_size,
+            subject_type="study_session",
+            result=result,
+        )
+        self._backfill_repository(
+            repository=self._personal_task_repository,
+            recorder=self.record_personal_task_completed,
+            user_id=user_id,
+            batch_size=batch_size,
+            subject_type="personal_task",
+            result=result,
+        )
+        return result
+
+    def _backfill_repository(
+        self,
+        *,
+        repository,
+        recorder,
+        user_id: Optional[str],
+        batch_size: int,
+        subject_type: str,
+        result: dict[str, int],
+    ) -> None:
+        page = 1
+        while True:
+            rows, _ = repository.list_completed_for_event_backfill(
+                user_id=user_id,
+                page=page,
+                page_size=batch_size,
+            )
+            if not rows:
+                return
+            for row in rows:
+                result["scanned"] += 1
+                try:
+                    append_result = recorder(row)
+                except Exception as exc:
+                    result["failed"] += 1
+                    logger.warning(
+                        "learner_event_backfill_failed subject_type={} subject_id={} exception_type={}",
+                        subject_type,
+                        row.id,
+                        type(exc).__name__,
+                    )
+                    continue
+                if append_result is None:
+                    result["skipped"] += 1
+                elif append_result.created:
+                    result["created"] += 1
+                else:
+                    result["reused"] += 1
+            if len(rows) < batch_size:
+                return
+            page += 1
 
 
 __all__ = ["LearnerEventService"]

@@ -150,7 +150,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     home_banner_repository = HomeBannerRepository(db)
     home_banner_repository.seed_defaults()
     learner_event_repository = LearnerEventRepository(db)
-    learner_event_service = LearnerEventService(learner_event_repository)
+    learner_event_service = LearnerEventService(
+        learner_event_repository,
+        study_session_repository=study_session_repo,
+        personal_task_repository=personal_task_repo,
+    )
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)

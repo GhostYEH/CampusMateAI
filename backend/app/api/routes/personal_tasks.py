@@ -29,6 +29,7 @@ from ...core.exceptions import (
     PersonalTaskConflict,
     PersonalTaskNotFound,
 )
+from ...core.logging import logger
 from ...models.multi_role import UserRow
 from ...models.personal_task import PersonalTaskRow
 from ...repositories.personal_task_repository import _load_materials
@@ -48,6 +49,7 @@ from ...schemas.personal_task import (
 )
 from ...schemas.multi_role import Page
 from ...services.container import ServiceContainer, get_container
+from ...services.learner_event_service import LearnerEventService
 from ..deps import current_user
 
 router = APIRouter(prefix="/tasks", tags=["personal-tasks"])
@@ -55,6 +57,12 @@ router = APIRouter(prefix="/tasks", tags=["personal-tasks"])
 
 def _container() -> ServiceContainer:
     return get_container()
+
+
+def _learner_event_service(
+    c: ServiceContainer = Depends(_container),
+) -> LearnerEventService:
+    return c.learner_event_service
 
 
 def _to_out(row: PersonalTaskRow) -> PersonalTaskOut:
@@ -334,6 +342,7 @@ def complete_personal_task(
     task_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
+    event_service: LearnerEventService = Depends(_learner_event_service),
 ) -> PersonalTaskOut:
     """标记任务为已完成(pending → completed)。"""
     repo = container.personal_task_repository
@@ -348,6 +357,17 @@ def complete_personal_task(
     updated = repo.complete(task_id, user_id=user.id)
     if updated is None:
         raise PersonalTaskConflict("当前状态不允许完成")
+    try:
+        event_service.record_personal_task_completed(updated)
+    except Exception as exc:
+        logger.warning(
+            "learner_event_append_failed action={} user_id={} subject_type={} subject_id={} exception_type={}",
+            "task_completed",
+            user.id,
+            "personal_task",
+            updated.id,
+            type(exc).__name__,
+        )
     return _to_out(updated)
 
 

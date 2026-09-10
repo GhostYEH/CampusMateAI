@@ -31,6 +31,7 @@ from ...core.exceptions import (
     StudySessionNotFound,
     ValidationFailed,
 )
+from ...core.logging import logger
 from ...models.multi_role import UserRow
 from ...models.study import StudyBreakRow, StudySessionRow
 from ...repositories.study_session_repository import StudySessionRepository
@@ -52,6 +53,7 @@ from ...schemas.study import (
 )
 from ...repositories.study_goal_repository import StudyGoalRepository
 from ...services.container import ServiceContainer, get_container
+from ...services.learner_event_service import LearnerEventService
 from ...services.task_breakdown_service import TaskBreakdownService
 from ..deps import current_user
 
@@ -64,6 +66,12 @@ def _container() -> ServiceContainer:
 
 def _repo(c: ServiceContainer = Depends(_container)) -> StudySessionRepository:
     return c.study_session_repository
+
+
+def _learner_event_service(
+    c: ServiceContainer = Depends(_container),
+) -> LearnerEventService:
+    return c.learner_event_service
 
 
 def _goal_repo(c: ServiceContainer = Depends(_container)) -> StudyGoalRepository:
@@ -321,6 +329,7 @@ def finish_session(
     req: StudySessionFinish,
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
+    event_service: LearnerEventService = Depends(_learner_event_service),
 ) -> StudySessionOut:
     """结束会话。
 
@@ -342,6 +351,17 @@ def finish_session(
             else None
         ),
     )
+    try:
+        event_service.record_study_session_finished(session)
+    except Exception as exc:
+        logger.warning(
+            "learner_event_append_failed action={} user_id={} subject_type={} subject_id={} exception_type={}",
+            "study_session_finished",
+            user.id,
+            "study_session",
+            session.id,
+            type(exc).__name__,
+        )
     breaks = repo.list_breaks(session_id, user_id=user.id)
     return _session_to_out(session, breaks=breaks)
 
