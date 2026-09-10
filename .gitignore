@@ -112,6 +112,7 @@ web/.npmrc
 
 # Local QA screenshots
 *-audit.png
+webreact/tests/e2e/shots/
 
 # Backend runtime data(用户提交附件 / SQLite 文件 / 上传缓存)
 backend/data/submission_attachments/
