@@ -159,12 +159,11 @@ def run():
             }""",
             task_selector,
         )
-        expect(task_state["hasCanvas"], "非当前页面按钮悬停时应创建液态金属画布")
-        expect(not task_state["fallback"], "待办与作业退化成静态 CSS 效果")
+        expect(not task_state["hasCanvas"], "非当前页面按钮悬停时不应重复创建液态金属画布")
         expect(task_state["plateOpacity"] == "1", "待办与作业悬停时缺少轻量液态悬停反馈")
         expect("0px 0px 0px 1px" in task_state["plateShadow"], "待办与作业悬停时缺少清晰边缘高光")
         expect(task_state["activeHasCanvas"], "当前页面按钮应保留完整液态金属画布")
-        expect(task_state["navFxCount"] == 2, f"悬停时导航内应有活动项和悬停项 2 个液态画布，实际为 {task_state['navFxCount']}")
+        expect(task_state["navFxCount"] == 1, f"悬停时导航内应保持唯一液态画布，实际为 {task_state['navFxCount']}")
         hovered_nav = rect(page, ".floating-nav")
         task_label = rect(page, f'{task_selector} .floating-nav-label')
         expect(hovered_nav["width"] > compact_nav_width + 200, "指针悬停后导航没有展开")
@@ -178,8 +177,8 @@ def run():
             })""",
             task_selector,
         )
-        expect(not released_state["hasCanvas"], "离开非活动导航项后应释放临时液态画布")
-        expect(released_state["navFxCount"] == 1, f"离开悬停后导航内应回收至 1 个液态画布，实际为 {released_state['navFxCount']}")
+        expect(not released_state["hasCanvas"], "离开非活动导航项后应保持无重复液态画布")
+        expect(released_state["navFxCount"] == 1, f"离开悬停后导航内应保持 1 个液态画布，实际为 {released_state['navFxCount']}")
         expect(not shader_errors, f"液态金属着色器报错：{shader_errors}")
 
         page.goto(f"{BASE_URL}/tasks", wait_until="domcontentloaded", timeout=30_000)

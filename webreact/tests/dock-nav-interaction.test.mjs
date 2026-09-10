@@ -4,7 +4,6 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
 const buttonStyles = fs.readFileSync(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
-const layoutStyles = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
 test("floating navigation applies spring proximity scaling to every dock item", () => {
   assert.match(source, /from "motion\/react"/);
@@ -29,14 +28,10 @@ test("floating navigation coalesces pointer updates to one animation frame", () 
   assert.match(source, /cancelAnimationFrame/);
 });
 
-test("floating navigation promotes the elements that receive the dock scale", () => {
-  assert.match(layoutStyles, /\.floating-nav-list\s*>\s*li\s*\{[^}]*will-change:\s*transform/);
-});
-
-test("floating navigation gives hovered items the same deferred liquid effect", () => {
+test("floating navigation keeps the liquid renderer on the active item only", () => {
   assert.match(source, /LiquidMetalButton/);
   assert.match(source, /variant="nav"/);
-  assert.match(source, /disableEffects=\{reduceMotion\}/);
+  assert.match(source, /disableEffects=\{reduceMotion \|\| !active\}/);
   assert.match(source, /defer/);
   assert.match(source, /maxFps=\{20\}/);
   assert.match(source, /dprCap=\{1\}/);
@@ -49,5 +44,7 @@ test("floating navigation disables proximity scaling when reduced motion is enab
 
 test("floating navigation keeps a visible hover highlight at compact size", () => {
   assert.match(buttonStyles, /\.sylva-liquid-stage--nav\.hot \.sylva-liquid-plate/);
+  assert.match(buttonStyles, /\.sylva-liquid-stage--nav:hover \.sylva-liquid-plate/);
+  assert.match(buttonStyles, /\.sylva-liquid-stage--nav\.hot \.sylva-liquid-plate,\s*\.sylva-liquid-stage--nav:hover \.sylva-liquid-plate/);
   assert.match(buttonStyles, /\.sylva-liquid-stage--nav\.hot \.sylva-liquid-plate[\s\S]*box-shadow:/);
 });
