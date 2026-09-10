@@ -135,4 +135,3 @@
 4. Review `git diff`, `git diff --cached`, and `git status`; leave pre-existing `webreact/src/pages/StudySubpages.jsx`, `webreact/src/styles/study-summer.css`, and `webreact/tests/e2e/shots/` untouched and uncommitted.
 5. Do not perform another real-account login. Provide a credential-free local manual acceptance checklist for the user to run after changing their password.
 6. Use `verification-before-completion` and `finishing-a-development-branch`, then create the final precise commit if verification fixes were needed.
-
