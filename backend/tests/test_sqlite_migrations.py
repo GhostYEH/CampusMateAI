@@ -68,3 +68,63 @@ def test_legacy_study_sessions_gain_nullable_behavior_summary(tmp_path):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(study_sessions)")}
 
     assert "behavior_summary" in columns
+
+
+def test_legacy_database_gains_learner_events_idempotently(tmp_path):
+    db_path = tmp_path / "legacy-events.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
+            VALUES ('user1', 'user1', 'hash', 'student', '2026-01-01', '2026-01-01');
+            """
+        )
+
+    for _ in range(2):
+        database = Database(db_path)
+        with database.query() as conn:
+            tables = {
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            assert "learner_events" in tables
+            indexes = {
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='learner_events'"
+                ).fetchall()
+            }
+            assert {
+                "idx_learner_events_user_time",
+                "idx_learner_events_user_source_type",
+                "idx_learner_events_user_course",
+                "idx_learner_events_user_subject",
+            } <= indexes
+            unique_found = False
+            for row in conn.execute("PRAGMA index_list(learner_events)").fetchall():
+                if row["unique"] == 1:
+                    cols = {
+                        c["name"]
+                        for c in conn.execute(
+                            f"PRAGMA index_info({row['name']})"
+                        ).fetchall()
+                    }
+                    if cols == {"user_id", "dedupe_key"}:
+                        unique_found = True
+            assert unique_found
+            user = conn.execute(
+                "SELECT username FROM users WHERE id='user1'"
+            ).fetchone()
+            assert tuple(user) == ("user1",)
+        database.dispose()

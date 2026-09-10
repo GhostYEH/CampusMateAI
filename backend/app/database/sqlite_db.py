@@ -112,13 +112,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_student_number ON users(student_number);
-CREATE INDEX IF NOT EXISTS idx_users_teacher_number ON users(teacher_number);
--- SQLite 支持部分唯一索引(NULL 不参与唯一约束)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_number_unique
-    ON users(student_number) WHERE student_number IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_teacher_number_unique
-    ON users(teacher_number) WHERE teacher_number IS NOT NULL;
+-- 依赖可迁移列的 student/teacher number 索引在 _migrate() 中创建。
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id TEXT PRIMARY KEY,
@@ -1044,6 +1038,36 @@ CREATE INDEX IF NOT EXISTS idx_edu_sessions_user ON edu_sessions(user_id, create
 CREATE INDEX IF NOT EXISTS idx_edu_sessions_expires ON edu_sessions(expires_at);
 """
 
+LEARNER_EVENT_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learner_events (
+    event_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    source TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    course_id TEXT,
+    subject_type TEXT,
+    subject_id TEXT,
+    external_ref TEXT,
+    outcome TEXT,
+    duration_seconds INTEGER CHECK(duration_seconds IS NULL OR duration_seconds >= 0),
+    evidence_reference_json TEXT NOT NULL,
+    data_quality TEXT NOT NULL,
+    consent_scope TEXT NOT NULL,
+    source_version TEXT,
+    dedupe_key TEXT NOT NULL,
+    payload_json TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, dedupe_key)
+);
+CREATE INDEX IF NOT EXISTS idx_learner_events_user_time ON learner_events(user_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_learner_events_user_source_type ON learner_events(user_id, source, event_type);
+CREATE INDEX IF NOT EXISTS idx_learner_events_user_course ON learner_events(user_id, course_id);
+CREATE INDEX IF NOT EXISTS idx_learner_events_user_subject ON learner_events(user_id, subject_type, subject_id);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1104,6 +1128,7 @@ class Database:
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
+                conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
@@ -1178,6 +1203,28 @@ class Database:
                 conn.execute(f"ALTER TABLE courses ADD COLUMN {column} {column_type}")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)")
+
+        # 检查 users 表新增列。旧库可能在 MULTI_ROLE_SCHEMA_SQL 执行时仍缺少
+        # student_number/teacher_number；先补列，再创建依赖这些列的索引。
+        cur = conn.execute("PRAGMA table_info(users)")
+        user_cols = {row["name"] for row in cur.fetchall()}
+        for column, column_type in (
+            ("student_number", "TEXT"),
+            ("teacher_number", "TEXT"),
+        ):
+            if column not in user_cols:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_student_number ON users(student_number)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_teacher_number ON users(teacher_number)")
+        # SQLite 支持部分唯一索引(NULL 不参与唯一约束)。
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_number_unique "
+            "ON users(student_number) WHERE student_number IS NOT NULL"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_teacher_number_unique "
+            "ON users(teacher_number) WHERE teacher_number IS NOT NULL"
+        )
 
         # 检查 personal_tasks 表新增列
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
