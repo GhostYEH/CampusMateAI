@@ -132,6 +132,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     notice = NoticeExtractionService(llm, settings)
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
+    course_repo = CourseRepository(db)
     personal_task_repo = PersonalTaskRepository(db)
     personal_file_repo = PersonalFileRepository(db)
     favorite_repo = FavoriteRepository(db)
@@ -154,6 +155,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_event_repository,
         study_session_repository=study_session_repo,
         personal_task_repository=personal_task_repo,
+        course_repository=course_repo,
+        notice_repository=NoticeRepository(db),
+        course_content_repository=course_content_repository,
     )
     # EduConnector
     edu_repo = EduRepository(db)
@@ -191,7 +195,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         tts=tts,
         user_repository=UserRepository(db),
         refresh_token_repository=RefreshTokenRepository(db),
-        course_repository=CourseRepository(db),
+        course_repository=course_repo,
         class_group_repository=ClassGroupRepository(db),
         enrollment_repository=EnrollmentRepository(db),
         announcement_repository=AnnouncementRepository(db),

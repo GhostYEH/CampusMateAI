@@ -154,6 +154,18 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
+def _project_learner_event(container, *, action, subject_type, subject_id, callback):
+    service = getattr(container, "learner_event_service", None)
+    if service is None:
+        return None
+    return service.project_safely(
+        action=action,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        callback=callback,
+    )
+
+
 def _count_user_chaoxing(container: ServiceContainer, user_id: str, kind: str) -> int:
     queries = {
         "courses": (
@@ -352,7 +364,7 @@ async def _perform_sync_chaoxing(
         existing_course = course_repo.get_course_by_external_id(external_id, owner_user_id=user.id)
         if existing_course:
             # Update existing course (e.g. if name changed)
-            course_repo.update_course(
+            saved_course = course_repo.update_course(
                 existing_course.id,
                 fields={
                     "name": course_data["name"],
@@ -372,7 +384,7 @@ async def _perform_sync_chaoxing(
             stats["courses_updated"] += 1
         else:
             # Insert new course
-            existing_course = course_repo.create_course(
+            saved_course = course_repo.create_course(
                 name=course_data["name"],
                 owner_user_id=user.id,
                 remote_teacher_name=course_data.get("teacher_name"),
@@ -391,7 +403,15 @@ async def _perform_sync_chaoxing(
                 last_synced_at=now_iso,
             )
             stats["courses_created"] += 1
-        course_data["local_course_id"] = existing_course.id
+        if saved_course is not None:
+            _project_learner_event(
+                container,
+                action="course_synced",
+                subject_type="course",
+                subject_id=saved_course.id,
+                callback=lambda saved_course=saved_course: container.learner_event_service.record_chaoxing_course_synced(saved_course),
+            )
+        course_data["local_course_id"] = saved_course.id if saved_course else existing_course.id
 
     # Homework sync
     course_by_remote_id = {str(course.get("course_id")): course for course in courses}
@@ -455,21 +475,31 @@ async def _perform_sync_chaoxing(
                 # Update status
                 current_status = existing_task["status"]
                 new_status = assignment.get("status", "pending")
-                
+                transitioned_task = None
                 if current_status != new_status:
                     if new_status == "completed":
-                        task_repo.complete(task_id, user_id=user.id)
+                        transitioned_task = task_repo.complete(task_id, user_id=user.id)
                     elif new_status == "pending" and current_status == "completed":
                         task_repo.restore(task_id, user_id=user.id)
                 
-                task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
+                saved_task = task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
                 stats["assignments_updated"] += 1
+                if current_status != "completed" and new_status == "completed" and transitioned_task:
+                    _project_learner_event(
+                        container,
+                        action="assignment_submitted",
+                        subject_type="personal_task",
+                        subject_id=task_id,
+                        callback=lambda saved_task=saved_task or transitioned_task: container.learner_event_service.record_chaoxing_assignment_submitted(
+                            saved_task, observed_at=now_iso
+                        ),
+                    )
             else:
                 if assignment.get("status") == "completed":
                     continue
                 # Create new task
                 # Ensure status is properly created
-                task_repo.create_task(
+                saved_task = task_repo.create_task(
                     user_id=user.id,
                     title=assignment["title"],
                     deadline=assignment["deadline"],
@@ -481,6 +511,14 @@ async def _perform_sync_chaoxing(
                     last_synced_at=now_iso,
                 )
                 stats["assignments_created"] += 1
+                if saved_task is not None:
+                    _project_learner_event(
+                        container,
+                        action="assignment_discovered",
+                        subject_type="personal_task",
+                        subject_id=saved_task.id,
+                        callback=lambda saved_task=saved_task: container.learner_event_service.record_chaoxing_assignment_discovered(saved_task),
+                    )
 
     # Notice Sync
     notice_sync_available = True
@@ -546,7 +584,7 @@ async def _perform_sync_chaoxing(
                 # A task proves actionable extraction already succeeded. Without one,
                 # retry unchanged notices so a transient AI failure cannot lose work.
                 if existing_content == notice.get("content") and existing_notice_task:
-                    container.notice_repository.create_or_update_notice(
+                    saved_notice = container.notice_repository.create_or_update_notice(
                         user_id=user.id,
                         source="chaoxing",
                         external_id=external_id,
@@ -557,10 +595,17 @@ async def _perform_sync_chaoxing(
                         source_url=notice.get("link"),
                         last_synced_at=now_iso,
                     )
+                    _project_learner_event(
+                        container,
+                        action="notice_synced",
+                        subject_type="notice",
+                        subject_id=saved_notice.id,
+                        callback=lambda saved_notice=saved_notice: container.learner_event_service.record_chaoxing_notice_synced(saved_notice),
+                    )
                     continue
             else:
                 stats["notices_created"] += 1
-            container.notice_repository.create_or_update_notice(
+            saved_notice = container.notice_repository.create_or_update_notice(
                 user_id=user.id,
                 source="chaoxing",
                 external_id=external_id,
@@ -571,12 +616,23 @@ async def _perform_sync_chaoxing(
                 source_url=notice.get("link"),
                 last_synced_at=now_iso,
             )
+            _project_learner_event(
+                container,
+                action="notice_synced",
+                subject_type="notice",
+                subject_id=saved_notice.id,
+                callback=lambda saved_notice=saved_notice: container.learner_event_service.record_chaoxing_notice_synced(saved_notice),
+            )
             # 2. 调用 AI 提取判断是否 actionable，如果是则创建/更新 PersonalTask
             try:
                 extracted = await extract_notice(notice, course)
             except Exception as e:
                 # AI 抽取失败：Notice 仍然正常保存，不抛异常
-                logger.warning("Failed to extract notice %s: %s", external_id, e)
+                logger.warning(
+                    "chaoxing_notice_extract_failed subject_type=notice subject_id=%s exception_type=%s",
+                    external_id,
+                    type(e).__name__,
+                )
                 continue
 
             if extracted.actionable:

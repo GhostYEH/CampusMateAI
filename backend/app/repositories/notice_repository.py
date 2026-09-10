@@ -63,3 +63,33 @@ class NoticeRepository:
                 "SELECT * FROM notices WHERE user_id = ? ORDER BY published_at DESC", (user_id,)
             )
             return [NoticeRow.from_row(r) for r in cur.fetchall()]
+
+    def list_chaoxing_for_event_backfill(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> tuple[List[NoticeRow], int]:
+        """分页读取学习通通知，供受控 Learner Event 回填使用。"""
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1 or page_size > 100:
+            raise ValueError("page_size must stay within 1..100")
+        conditions = ["source = 'chaoxing'"]
+        params: list = []
+        if user_id is not None:
+            conditions.insert(0, "user_id = ?")
+            params.append(user_id)
+        where = " WHERE " + " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        with self._db.query() as conn:
+            total = int(
+                conn.execute(f"SELECT COUNT(*) AS n FROM notices{where}", params)
+                .fetchone()["n"]
+            )
+            rows = conn.execute(
+                f"SELECT * FROM notices{where} ORDER BY user_id ASC, id ASC LIMIT ? OFFSET ?",
+                params + [page_size, offset],
+            ).fetchall()
+        return [NoticeRow.from_row(row) for row in rows], total

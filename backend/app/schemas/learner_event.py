@@ -8,24 +8,44 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_core import InitErrorDetails, PydanticCustomError
 from pydantic_core import ValidationError as CoreValidationError
 
-WritableSource = Literal["study", "personal_task"]
-WritableEventType = Literal["study_session_finished", "task_completed"]
-ReservedSource = Literal["chaoxing", "edu"]
-ReservedEventType = Literal[
+WritableSource = Literal["study", "personal_task", "chaoxing"]
+WritableEventType = Literal[
+    "study_session_finished",
+    "task_completed",
     "course_synced",
     "chapter_completed",
     "assignment_discovered",
     "assignment_submitted",
     "notice_synced",
+]
+ReservedSource = Literal["edu"]
+ReservedEventType = Literal[
     "edu_grade_synced",
 ]
-EventOutcome = Literal["completed"]
+EventOutcome = Literal["completed", "synced", "discovered", "observed_completed"]
 DataQuality = Literal["verified", "partial"]
-ConsentScope = Literal["core_learning_record"]
+ConsentScope = Literal["core_learning_record", "connected_learning_platform"]
 
 SOURCE_EVENT_TYPES: dict[str, set[str]] = {
     "study": {"study_session_finished"},
     "personal_task": {"task_completed"},
+    "chaoxing": {
+        "course_synced",
+        "chapter_completed",
+        "assignment_discovered",
+        "assignment_submitted",
+        "notice_synced",
+    },
+}
+
+EVENT_OUTCOMES: dict[str, str] = {
+    "study_session_finished": "completed",
+    "task_completed": "completed",
+    "course_synced": "synced",
+    "assignment_discovered": "discovered",
+    "assignment_submitted": "observed_completed",
+    "notice_synced": "synced",
+    "chapter_completed": "observed_completed",
 }
 
 SENSITIVE_KEYS = frozenset(
@@ -129,6 +149,15 @@ class LearnerEventCreate(BaseModel):
         allowed = SOURCE_EVENT_TYPES.get(self.source, set())
         if self.event_type not in allowed:
             raise ValueError("illegal source and event_type combination")
+        if self.outcome != EVENT_OUTCOMES[self.event_type]:
+            raise ValueError("outcome does not match event type")
+        expected_consent = (
+            "connected_learning_platform"
+            if self.source == "chaoxing"
+            else "core_learning_record"
+        )
+        if self.consent_scope != expected_consent:
+            raise ValueError("consent_scope does not match event source")
         return self
 
 

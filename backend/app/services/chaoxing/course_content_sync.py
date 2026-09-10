@@ -153,6 +153,7 @@ class ChaoxingCourseContentSyncService:
                 result = await fetcher(context, **kwargs)
                 items = result.get("items") or []
                 status = result.get("status") or "failed"
+                saved_chapters = []
                 if status in {"complete", "partial"}:
                     keys: set[tuple[str, str]] = set()
                     new_resource_counts = (
@@ -170,12 +171,14 @@ class ChaoxingCourseContentSyncService:
                             sig = self._chapter_signature(item, new_resource_counts.get(external_id, 0), fp)
                             item_metadata["sync_signature"] = sig
                             item["metadata"] = item_metadata
-                        self.repository.upsert_item(
+                        saved_item = self.repository.upsert_item(
                             user_id=user_id, course_id=course_id, kind=kind,
                             external_id=external_id, title=item.get("title") or "无标题",
                             **{key: value for key, value in item.items()
                                if key not in {"kind", "external_id", "title"}},
                         )
+                        if section == "chapters" and kind == "chapter":
+                            saved_chapters.append(saved_item)
                     if status == "complete":
                         if unchanged_chapter_ids and section in ("materials", "exams"):
                             existing_items = self.repository.list_items(
@@ -192,11 +195,24 @@ class ChaoxingCourseContentSyncService:
                             kinds=self.SECTION_KINDS[section], external_keys=keys,
                         )
                 error = result.get("error")
-                self.repository.upsert_section_status(
+                section_row = self.repository.upsert_section_status(
                     user_id=user_id, course_id=course_id, section=section,
                     status=status, item_count=len(items), error_code=error,
                     error_message=error,
                 )
+                if section == "chapters" and section_row.status == "complete":
+                    event_service = getattr(self.container, "learner_event_service", None)
+                    project_safely = getattr(event_service, "project_safely", None)
+                    if callable(project_safely):
+                        for chapter in saved_chapters:
+                            project_safely(
+                                action="chapter_completed",
+                                subject_type="chapter",
+                                subject_id=chapter.id,
+                                callback=lambda chapter=chapter: event_service.record_chaoxing_chapter_completed(
+                                    chapter, section_status=section_row.status
+                                ),
+                            )
                 section_results[section] = {"status": status, "item_count": len(items), "error": error}
         finally:
             await client.client.aclose()

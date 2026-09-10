@@ -175,6 +175,44 @@ class CourseContentRepository:
             ).fetchall()
         return [CourseSyncSectionRow.from_row(row) for row in rows]
 
+    def list_completed_chapters_for_event_backfill(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> tuple[list[CourseContentItemRow], int]:
+        """读取章节完成证据，并要求 chapters section 最近一次同步成功。"""
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1 or page_size > 100:
+            raise ValueError("page_size must stay within 1..100")
+        conditions = [
+            "i.provider = 'chaoxing'",
+            "i.kind = 'chapter'",
+            "i.status = 'completed'",
+            "i.is_stale = 0",
+            "s.section = 'chapters'",
+            "s.status = 'complete'",
+        ]
+        params: list[Any] = []
+        if user_id is not None:
+            conditions.insert(0, "i.user_id = ?")
+            params.append(user_id)
+        where = " WHERE " + " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        join = "course_content_items i JOIN course_sync_sections s ON s.user_id=i.user_id AND s.course_id=i.course_id"
+        with self._db.query() as conn:
+            total = int(
+                conn.execute(f"SELECT COUNT(*) AS n FROM {join}{where}", params)
+                .fetchone()["n"]
+            )
+            rows = conn.execute(
+                f"SELECT i.* FROM {join}{where} ORDER BY i.user_id ASC, i.course_id ASC, i.id ASC LIMIT ? OFFSET ?",
+                params + [page_size, offset],
+            ).fetchall()
+        return [CourseContentItemRow.from_row(row) for row in rows], total
+
     def mark_section_stale_except(self, *, user_id: str, course_id: str,
                                   kinds: set[str], external_keys: set[tuple[str, str]]) -> None:
         if not kinds:
