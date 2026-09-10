@@ -50,6 +50,7 @@ from app.services.edu.adapters.qiangzhi import QiangzhiAdapter
 from app.services.edu.adapters.qingguo import QingguoAdapter
 from app.services.edu.connector import EduConnectorService
 from app.services.edu.adapters.zhengfang_http import NeedUserAction
+from app.services.edu.schedule_validator import ScheduleValidationError
 from app.services.edu import discovery_service
 
 
@@ -548,6 +549,44 @@ def test_sync_schedule_with_mock_returns_items() -> None:
     assert result["items_count"] >= 1
     assert result["schedule"] is not None
     assert len(result["schedule"]["items"]) >= 1
+    assert result["stage"] == "commit"
+    assert result["previous_schedule_preserved"] is False
+
+
+def test_failed_schedule_validation_preserves_previous_schedule_and_success_time(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    client.post(
+        "/api/v1/edu/bind",
+        headers=headers,
+        json={"username": "S202401001", "password": "demo"},
+    )
+    first = client.post("/api/v1/edu/sync/schedule", headers=headers).json()
+    assert first["status"] == "success"
+    before_items = client.get("/api/v1/edu/schedule/items", headers=headers).json()
+    before_binding = client.get("/api/v1/edu/binding", headers=headers).json()
+
+    class InvalidScheduleAdapter:
+        async def fetch_schedule(self, _session, *, semester=None):
+            raise ScheduleValidationError(
+                "SCHEDULE_BATCH_INVALID",
+                "课表批次包含 1 条无效记录",
+                invalid_count=1,
+            )
+
+    connector = get_container().edu_connector
+    monkeypatch.setattr(connector, "_select_adapter", lambda _provider: (InvalidScheduleAdapter(), False))
+
+    failed = client.post("/api/v1/edu/sync/schedule", headers=headers).json()
+    after_items = client.get("/api/v1/edu/schedule/items", headers=headers).json()
+    after_binding = client.get("/api/v1/edu/binding", headers=headers).json()
+
+    assert failed["status"] == "failed"
+    assert failed["stage"] == "validate"
+    assert failed["previous_schedule_preserved"] is True
+    assert after_items == before_items
+    assert after_binding["last_synced_at"] == before_binding["last_synced_at"]
 
 
 def test_sync_grade_and_exam_with_mock() -> None:

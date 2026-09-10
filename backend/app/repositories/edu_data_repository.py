@@ -141,6 +141,7 @@ class EduDataRepository:
         binding: EduBindingRow,
         schedule: EduSchedule,
         sync_batch_id: str,
+        validated_empty: bool = False,
     ) -> SyncStats:
         stats = SyncStats()
         now = _now_iso()
@@ -283,6 +284,17 @@ class EduDataRepository:
                         (now, user_id, edu_system_id, *seen_semesters, *seen_ids),
                     )
                     stats.removed = cur.rowcount or 0
+
+            if not seen_ids and validated_empty and semester and edu_system_id:
+                cur = conn.execute(
+                    """
+                    UPDATE edu_schedule_items SET is_stale = 1, updated_at = ?
+                    WHERE user_id = ? AND edu_system_id = ? AND semester = ?
+                      AND is_stale = 0
+                    """,
+                    (now, user_id, edu_system_id, semester),
+                )
+                stats.removed = cur.rowcount or 0
 
         return stats
 

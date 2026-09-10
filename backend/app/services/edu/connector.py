@@ -826,6 +826,18 @@ class EduConnectorService:
         self._edu_repo.cache_schedule_protocol(binding.edu_system_id, descriptor)
         return source
 
+    @staticmethod
+    def _schedule_failure_stage(error: Exception) -> str:
+        explicit_stage = getattr(error, "stage", None)
+        if explicit_stage in {"parse", "validate"}:
+            return explicit_stage
+        code = str(getattr(error, "code", ""))
+        if "PROTOCOL" in code or isinstance(error, AdapterNotImplemented):
+            return "protocol_discovery"
+        if code in {"AUTH_FAILED", "SESSION_EXPIRED"}:
+            return "identity"
+        return "fetch"
+
     async def _sync(
         self,
         user_id: str,
@@ -876,14 +888,23 @@ class EduConnectorService:
                 data = await adapter.fetch_schedule(internal_session, semester=semester)
                 protocol_source = self._cache_verified_schedule_protocol(binding, internal_session)
                 count = len(data.items)
+                schedule_meta = internal_session.get("schedule_sync_meta")
+                validated_empty = (
+                    count == 0
+                    and isinstance(schedule_meta, dict)
+                    and schedule_meta.get("validation_status") == "explicit_empty"
+                )
                 stats = SyncStats()
                 sync_batch_id = None
-                if self._edu_data_repo is not None and count > 0:
+                if self._edu_data_repo is not None and (
+                    count > 0 or (validated_empty and bool(data.semester))
+                ):
                     sync_batch_id = sync_record.id
                     stats = self._edu_data_repo.sync_schedule_items(
                         binding=binding,
                         schedule=data,
                         sync_batch_id=sync_batch_id,
+                        validated_empty=validated_empty,
                     )
                 self._edu_repo.finish_sync_record(
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
@@ -906,8 +927,12 @@ class EduConnectorService:
                     failed=stats.failed,
                     sync_batch_id=sync_batch_id,
                     semester=data.semester,
-                    persisted=self._edu_data_repo is not None and count > 0,
+                    persisted=self._edu_data_repo is not None and (
+                        count > 0 or (validated_empty and bool(data.semester))
+                    ),
                     protocol_source=protocol_source,
+                    stage="commit",
+                    previous_schedule_preserved=False,
                 )
             elif sync_type == "grade":
                 data = await adapter.fetch_grade(internal_session, semester=semester)
@@ -993,7 +1018,11 @@ class EduConnectorService:
                 last_error=str(e),
             )
             return EduSyncResult(
-                sync_type=sync_type, status=SYNC_FAILED, error_message=str(e)
+                sync_type=sync_type,
+                status=SYNC_FAILED,
+                error_message=str(e),
+                stage=self._schedule_failure_stage(e) if sync_type == "schedule" else None,
+                previous_schedule_preserved=True if sync_type == "schedule" else None,
             )
         except Exception as e:
             self._edu_repo.finish_sync_record(
@@ -1007,7 +1036,11 @@ class EduConnectorService:
                 last_error=str(e)[:500],
             )
             return EduSyncResult(
-                sync_type=sync_type, status=SYNC_FAILED, error_message=str(e)[:500]
+                sync_type=sync_type,
+                status=SYNC_FAILED,
+                error_message=str(e)[:500],
+                stage=self._schedule_failure_stage(e) if sync_type == "schedule" else None,
+                previous_schedule_preserved=True if sync_type == "schedule" else None,
             )
 
     # ===== 同步记录 =====

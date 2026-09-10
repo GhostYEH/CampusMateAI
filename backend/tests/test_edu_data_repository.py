@@ -232,6 +232,39 @@ def test_sync_schedule_stale_on_removal(repo, binding):
     assert stale[0].course_code == "CS101"
 
 
+def test_validated_explicit_empty_schedule_stales_only_requested_semester(repo, binding):
+    repo.sync_schedule_items(binding=binding, schedule=_schedule(), sync_batch_id="batch_001")
+
+    stats = repo.sync_schedule_items(
+        binding=binding,
+        schedule=EduSchedule(semester="2024-2025秋季", items=[]),
+        sync_batch_id="batch_002",
+        validated_empty=True,
+    )
+
+    assert stats.removed == 2
+    assert repo.list_schedule_items(
+        user_id=binding.user_id,
+        semester="2024-2025秋季",
+    ) == []
+
+
+def test_ambiguous_empty_schedule_never_marks_existing_items_stale(repo, binding):
+    repo.sync_schedule_items(binding=binding, schedule=_schedule(), sync_batch_id="batch_001")
+
+    stats = repo.sync_schedule_items(
+        binding=binding,
+        schedule=EduSchedule(semester="2024-2025秋季", items=[]),
+        sync_batch_id="batch_002",
+    )
+
+    assert stats.removed == 0
+    assert len(repo.list_schedule_items(
+        user_id=binding.user_id,
+        semester="2024-2025秋季",
+    )) == 2
+
+
 def test_sync_schedule_semesters(repo, binding):
     repo.sync_schedule_items(binding=binding, schedule=_schedule(), sync_batch_id="batch_001")
     other = EduSchedule(

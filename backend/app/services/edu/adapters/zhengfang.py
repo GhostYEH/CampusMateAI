@@ -568,7 +568,10 @@ class ZhengfangAdapter(EduAdapter):
                 schedule = await self._fetch_with_protocol(
                     client, school, school.schedule_protocol, semester=semester
                 )
-                session["schedule_sync_meta"] = {"protocol_source": "cached_discovered"}
+                session["schedule_sync_meta"] = {
+                    "protocol_source": "cached_discovered",
+                    "validation_status": "explicit_empty" if not schedule.items else "success",
+                }
                 return schedule
             except (EduAdapterError, ScheduleValidationError, ValueError):
                 config = session.get("adapter_config")
@@ -587,7 +590,10 @@ class ZhengfangAdapter(EduAdapter):
                 fingerprint="static_verified",
             )
             schedule = await self._fetch_with_protocol(client, school, protocol, semester=semester)
-            session["schedule_sync_meta"] = {"protocol_source": "static_verified"}
+            session["schedule_sync_meta"] = {
+                "protocol_source": "static_verified",
+                "validation_status": "explicit_empty" if not schedule.items else "success",
+            }
             return schedule
 
         menu_path = session.get("authenticated_menu_path")
@@ -636,7 +642,10 @@ class ZhengfangAdapter(EduAdapter):
                     config = {}
                     session["adapter_config"] = config
                 config["schedule_protocol"] = protocol.to_dict()
-                session["schedule_sync_meta"] = {"protocol_source": "live_discovered"}
+                session["schedule_sync_meta"] = {
+                    "protocol_source": "live_discovered",
+                    "validation_status": "explicit_empty" if not schedule.items else "success",
+                }
                 return schedule
             except (EduAdapterError, ScheduleDiscoveryError, ScheduleValidationError, ValueError) as exc:
                 last_error = exc
