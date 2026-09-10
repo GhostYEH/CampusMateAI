@@ -13,8 +13,9 @@ test("floating dock reveals route labels on desktop without restoring the legacy
   assert.doesNotMatch(floatingNav, /mouseenter|mouseleave|focusin|focusout/);
   assert.doesNotMatch(floatingNav, /timeline|measureExpandedWidth|getFloatingNavWidth/);
   assert.match(floatingNav, /className="floating-nav-label"/);
-  assert.match(floatingLayout, /\.floating-nav:is\(:hover, :focus-within\)/);
-  assert.match(floatingLayout, /\.floating-nav:is\(:hover, :focus-within\)[\s\S]*\.floating-nav-label/);
+  assert.match(floatingLayout, /\.floating-nav:hover\s*\{/);
+  assert.match(floatingLayout, /\.floating-nav:hover[\s\S]*\.floating-nav-label/);
+  assert.doesNotMatch(floatingLayout, /\.floating-nav:is\(:hover,\s*:focus-within\)/);
   assert.match(floatingLayout, /@media \(max-width: 760px\)[\s\S]*\.floating-nav-label[^}]*display:\s*none/);
   assert.match(floatingNav, /<Glass[^>]*material="clear"[^>]*interactive/);
   assert.match(floatingNav, /<LiquidMetalNav/);
