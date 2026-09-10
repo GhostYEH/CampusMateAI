@@ -76,6 +76,7 @@ class ZhengfangHttpClient:
     """正方教务系统 HTTP 客户端。"""
 
     DEFAULT_TIMEOUT = 20.0
+    GET_MAX_ATTEMPTS = 3
 
     def __init__(
         self,
@@ -99,6 +100,20 @@ class ZhengfangHttpClient:
         self._allowed_origins: set[str] = {base_origin}
         self._cookies = self._new_cookie_jar()
         self._observed_cookies: list[dict] = []
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _pooled_client(self) -> httpx.AsyncClient:
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=False,
+            )
+        return self._http_client
+
+    async def aclose(self) -> None:
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     @staticmethod
     def _new_cookie_jar() -> httpx.Cookies:
@@ -342,23 +357,28 @@ class ZhengfangHttpClient:
         url = safe_join_url(self._base_url, path_or_url) if not path_or_url.startswith(("http://", "https://")) else path_or_url
         assert_safe_url(url, allow_private=self._allow_private)
         self._validate_request_origin(url)
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
+        for attempt in range(self.GET_MAX_ATTEMPTS):
+            try:
+                client = self._pooled_client()
                 resp = await client.get(url, params=params, headers=self._request_headers(url, referer=referer))
                 self._validate_redirect_target(resp, url)
                 self._cookies.update(resp.cookies)
                 self._record_response_cookie_origins(resp)
                 return self._wrap(resp, url)
-        except httpx.TimeoutException as e:
-            raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
-        except httpx.ConnectError as e:
-            raise EduAdapterError("NETWORK_ERROR", f"连接失败: {e}") from e
-        except (httpx.ReadError, httpx.RemoteProtocolError) as e:
-            raise EduAdapterError("NETWORK_ERROR", f"读取失败: {e}") from e
-        except SSRFBlockedError:
-            raise
-        except httpx.HTTPError as e:
-            raise EduAdapterError("NETWORK_ERROR", f"HTTP 错误: {e}") from e
+            except httpx.TimeoutException as e:
+                if attempt + 1 == self.GET_MAX_ATTEMPTS:
+                    raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
+            except httpx.ConnectError as e:
+                if attempt + 1 == self.GET_MAX_ATTEMPTS:
+                    raise EduAdapterError("NETWORK_ERROR", f"连接失败: {e}") from e
+            except (httpx.ReadError, httpx.RemoteProtocolError) as e:
+                if attempt + 1 == self.GET_MAX_ATTEMPTS:
+                    raise EduAdapterError("NETWORK_ERROR", f"读取失败: {e}") from e
+            except SSRFBlockedError:
+                raise
+            except httpx.HTTPError as e:
+                raise EduAdapterError("NETWORK_ERROR", f"HTTP 错误: {e}") from e
+        raise EduAdapterError("NETWORK_ERROR", "GET 请求失败")
 
     async def post(
         self,
@@ -373,17 +393,17 @@ class ZhengfangHttpClient:
         assert_safe_url(url, allow_private=self._allow_private)
         self._validate_request_origin(url)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as client:
-                resp = await client.post(
-                    url,
-                    data=data,
-                    params=params,
-                    headers=self._request_headers(url, referer=referer, form_post=form_post),
-                )
-                self._validate_redirect_target(resp, url)
-                self._cookies.update(resp.cookies)
-                self._record_response_cookie_origins(resp)
-                return self._wrap(resp, url)
+            client = self._pooled_client()
+            resp = await client.post(
+                url,
+                data=data,
+                params=params,
+                headers=self._request_headers(url, referer=referer, form_post=form_post),
+            )
+            self._validate_redirect_target(resp, url)
+            self._cookies.update(resp.cookies)
+            self._record_response_cookie_origins(resp)
+            return self._wrap(resp, url)
         except httpx.TimeoutException as e:
             raise EduAdapterError("NETWORK_TIMEOUT", f"请求超时: {e}") from e
         except httpx.ConnectError as e:

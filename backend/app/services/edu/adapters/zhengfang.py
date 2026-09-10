@@ -34,6 +34,11 @@ from ....models.edu import (
 )
 from ....schemas.edu import EduExam, EduGrade, EduProfile, EduSchedule
 from .base import AdapterNotImplemented, EduAdapter
+from .zhengfang_discovery import (
+    ScheduleDiscoveryError,
+    ScheduleProtocol,
+    ZhengfangCapabilityDiscoverer,
+)
 from .zhengfang_http import EduAdapterError, NeedUserAction, ZhengfangHttpClient
 from .zhengfang_parser import ZhengfangParser
 from .zhengfang_strategy import (
@@ -42,6 +47,7 @@ from .zhengfang_strategy import (
     school_config_from_dict,
     school_config_to_dict,
 )
+from ..schedule_validator import EduScheduleValidator, ScheduleValidationError
 
 
 _CAPTCHA_IMAGE_MAX_BYTES = 1 * 1024 * 1024
@@ -192,6 +198,17 @@ def _configured_captcha_url(school: SchoolConfig, img_url: str) -> Optional[str]
     return full_url
 
 
+def _same_origin_relative_path(school: SchoolConfig, value: Optional[str], *, base: Optional[str] = None) -> Optional[str]:
+    if not value:
+        return None
+    resolved = urljoin(base or school.base_url.rstrip("/") + "/", value)
+    if not _is_exact_origin(resolved, school.allowed_origin or school.base_url):
+        return None
+    parsed = urlparse(resolved)
+    path = parsed.path or "/"
+    return f"{path}?{parsed.query}" if parsed.query else path
+
+
 class ZhengfangAdapter(EduAdapter):
     """正方教务系统适配器（真实实现）。
 
@@ -209,6 +226,7 @@ class ZhengfangAdapter(EduAdapter):
 
     def __init__(self, *, parser: Optional[ZhengfangParser] = None) -> None:
         self._parser = parser or ZhengfangParser()
+        self._schedule_validator = EduScheduleValidator()
 
     # ===== 登录 =====
 
@@ -394,8 +412,17 @@ class ZhengfangAdapter(EduAdapter):
             raise PermissionError(msg)
 
         profile = await self._authenticated_probe(school, client)
+        location = next(
+            (value for key, value in resp.headers.items() if str(key).lower() == "location"),
+            None,
+        )
+        authenticated_menu_path = _same_origin_relative_path(
+            school,
+            location,
+            base=resp.url,
+        )
 
-        return {
+        result = {
             "provider": self.provider,
             "adapter_version": self.adapter_version,
             "base_url": school.base_url,
@@ -405,6 +432,9 @@ class ZhengfangAdapter(EduAdapter):
             "external_student_id": profile.external_student_id,
             "adapter_config": school_config_to_dict(school),
         }
+        if authenticated_menu_path:
+            result["authenticated_menu_path"] = authenticated_menu_path
+        return result
 
     async def login_with_cookies(
         self,
@@ -452,7 +482,7 @@ class ZhengfangAdapter(EduAdapter):
 
         profile = await self._authenticated_probe(school, client)
 
-        return {
+        result = {
             "provider": self.provider,
             "adapter_version": self.adapter_version,
             "base_url": school.base_url,
@@ -464,6 +494,10 @@ class ZhengfangAdapter(EduAdapter):
             "external_student_id": profile.external_student_id,
             "adapter_config": school_config_to_dict(school),
         }
+        authenticated_menu_path = _same_origin_relative_path(school, current_url)
+        if authenticated_menu_path:
+            result["authenticated_menu_path"] = authenticated_menu_path
+        return result
 
     async def verify_session(self, session: dict) -> bool:
         try:
@@ -509,16 +543,155 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_schedule(self, session: dict, *, semester: Optional[str] = None) -> EduSchedule:
         school, client = self._prepare(session)
-        if not school.endpoints.schedule_path:
-            raise AdapterNotImplemented(self.provider, "fetch_schedule: schedule_path is not configured")
+        try:
+            return await self._fetch_schedule_with_client(
+                session,
+                school,
+                client,
+                semester=semester,
+            )
+        finally:
+            close = getattr(client, "aclose", None)
+            if close is not None:
+                await close()
+
+    async def _fetch_schedule_with_client(
+        self,
+        session: dict,
+        school: SchoolConfig,
+        client: ZhengfangHttpClient,
+        *,
+        semester: Optional[str],
+    ) -> EduSchedule:
+        if school.schedule_protocol is not None:
+            try:
+                schedule = await self._fetch_with_protocol(
+                    client, school, school.schedule_protocol, semester=semester
+                )
+                session["schedule_sync_meta"] = {"protocol_source": "cached_discovered"}
+                return schedule
+            except (EduAdapterError, ScheduleValidationError, ValueError):
+                config = session.get("adapter_config")
+                if isinstance(config, dict):
+                    config.pop("schedule_protocol", None)
+                school.schedule_protocol = None
+
+        if school.endpoints_override is not None and school.endpoints.schedule_path:
+            protocol = ScheduleProtocol(
+                entry_path=school.endpoints.schedule_path,
+                data_path=school.endpoints.schedule_path,
+                method="GET" if school.endpoints.schedule_format == "html" else "POST",
+                semester_params=(school.semester_param_name,),
+                response_format=school.endpoints.schedule_format,
+                source="static_verified",
+                fingerprint="static_verified",
+            )
+            schedule = await self._fetch_with_protocol(client, school, protocol, semester=semester)
+            session["schedule_sync_meta"] = {"protocol_source": "static_verified"}
+            return schedule
+
+        menu_path = session.get("authenticated_menu_path")
+        if not isinstance(menu_path, str) or not menu_path:
+            raise EduAdapterError("SCHEDULE_PROTOCOL_NOT_FOUND", "登录会话未提供可验证的已认证菜单")
+        menu_path = _validated_protocol_request_path(school, menu_path)
+        menu = await client.get(menu_path, referer=school.base_url)
+        discoverer = ZhengfangCapabilityDiscoverer(school.allowed_origin or school.base_url)
+        candidates = discoverer.menu_candidates(menu.text, page_url=menu.url)
+        if not candidates:
+            raise EduAdapterError("SCHEDULE_PROTOCOL_NOT_FOUND", "已认证菜单未声明个人课表入口")
+
+        last_error: Optional[Exception] = None
+        for candidate in candidates[:5]:
+            try:
+                page = await client.get(candidate.entry_path, referer=menu.url)
+                try:
+                    parsed_page = self._parser.parse_schedule_response(page.text, semester=semester)
+                    validated_page = self._schedule_validator.validate(
+                        parsed_page.schedule,
+                        requested_semester=semester,
+                        explicit_empty=parsed_page.explicit_empty,
+                        source_invalid_count=parsed_page.invalid_count,
+                    )
+                    protocol = ScheduleProtocol(
+                        entry_path=candidate.entry_path,
+                        data_path=candidate.entry_path,
+                        method="GET",
+                        semester_params=(),
+                        response_format=parsed_page.response_kind,
+                        source="live_discovered",
+                        fingerprint="direct_authenticated_response",
+                    )
+                    schedule = validated_page.schedule
+                except ValueError:
+                    protocol = discoverer.page_protocol(
+                        page.text,
+                        page_url=page.url,
+                        candidate=candidate,
+                    )
+                    schedule = await self._fetch_with_protocol(
+                        client, school, protocol, semester=semester
+                    )
+                config = session.get("adapter_config")
+                if not isinstance(config, dict):
+                    config = {}
+                    session["adapter_config"] = config
+                config["schedule_protocol"] = protocol.to_dict()
+                session["schedule_sync_meta"] = {"protocol_source": "live_discovered"}
+                return schedule
+            except (EduAdapterError, ScheduleDiscoveryError, ScheduleValidationError, ValueError) as exc:
+                last_error = exc
+        raise EduAdapterError(
+            "SCHEDULE_PROTOCOL_NOT_FOUND",
+            "已认证课表入口均未返回可验证的课表结构",
+        ) from last_error
+
+    async def _fetch_with_protocol(
+        self,
+        client: ZhengfangHttpClient,
+        school: SchoolConfig,
+        protocol: ScheduleProtocol,
+        *,
+        semester: Optional[str],
+    ) -> EduSchedule:
+        path = _validated_protocol_request_path(school, protocol.data_path)
         params = dict(school.schedule_payload_extra)
         if semester:
-            params.setdefault(school.semester_param_name, semester)
-        if school.endpoints.schedule_format == "html":
-            resp = await client.get(school.endpoints.schedule_path, params=params or None, referer=school.base_url)
-            return self._parser.parse_schedule_html(resp.text, semester=semester)
-        resp = await client.post(school.endpoints.schedule_path, data=params or None, referer=school.base_url, form_post=True)
-        return self._parser.parse_schedule_json(resp.text, semester=semester)
+            direct_names = [
+                name for name in protocol.semester_params
+                if name.lower() in {"xnxq01id", "semester", "semesterid"}
+            ]
+            if len(protocol.semester_params) > 1 and not direct_names:
+                raise EduAdapterError(
+                    "SCHEDULE_SEMESTER_UNSUPPORTED",
+                    "该教务页面未明确声明学年学期值映射",
+                )
+            if direct_names:
+                params.setdefault(direct_names[0], semester)
+            elif protocol.semester_params:
+                params.setdefault(protocol.semester_params[0], semester)
+        if protocol.method == "GET":
+            response = await client.get(path, params=params or None, referer=protocol.entry_path)
+        elif protocol.method == "POST":
+            response = await client.post(
+                path,
+                data=params or None,
+                referer=protocol.entry_path,
+                form_post=True,
+            )
+        else:
+            raise EduAdapterError("SCHEDULE_PROTOCOL_INVALID", "课表请求方法无效")
+        parsed = self._parser.parse_schedule_response(
+            response.text,
+            semester=semester,
+            format_hint=protocol.response_format,
+        )
+        validated = self._schedule_validator.validate(
+            parsed.schedule,
+            requested_semester=semester,
+            explicit_empty=parsed.explicit_empty,
+            source_invalid_count=parsed.invalid_count,
+        )
+        return validated.schedule
 
     async def fetch_grade(self, session: dict, *, semester: Optional[str] = None) -> EduGrade:
         school, client = self._prepare(session)

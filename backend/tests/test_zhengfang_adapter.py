@@ -393,6 +393,9 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
         "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html?entry=portal"
     ) is not None
     assert detector.known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/index_initMenu.html?jsdm=xs&echarts=1"
+    ) is not None
+    assert detector.known_school_config(
         "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html/"
     ) is None
     config["endpoint_overrides"]["profile_path"] = "/mutated-by-caller"
@@ -414,26 +417,93 @@ def test_huel_configuration_uses_verified_identity_endpoint_only():
 
 
 @pytest.mark.asyncio
-async def test_huel_schedule_fetch_rejects_unverified_endpoint(monkeypatch):
-    class NoDataRequestClient:
+async def test_huel_schedule_fetch_discovers_only_authenticated_menu_protocol(monkeypatch):
+    class AuthenticatedDiscoveryClient:
         def __init__(self, **_kwargs):
             self.cookies = {}
+            self.get_paths = []
+            self.post_paths = []
 
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
 
-        async def post(self, *args, **kwargs):
-            raise AssertionError("an unverified HUEL schedule endpoint must not be requested")
+        async def get(self, path, **_kwargs):
+            self.get_paths.append(path)
+            if "index_initMenu" in path:
+                text = _load("menu_schedule.html")
+            elif "xskbcx_cxXsKb" in path:
+                text = _load("schedule_page.html")
+            else:
+                raise AssertionError(f"unexpected discovery path: {path}")
+            return HttpResponse(200, text, f"https://xk.huel.edu.cn{path}", {})
 
-    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", NoDataRequestClient)
+        async def post(self, path, **_kwargs):
+            self.post_paths.append(path)
+            return HttpResponse(200, _load("schedule_jwgl2.json"), f"https://xk.huel.edu.cn{path}", {})
 
-    with pytest.raises(AdapterNotImplemented, match="schedule_path is not configured"):
-        await zhengfang_module.ZhengfangAdapter().fetch_schedule(
-            {
-                "adapter_config": ProviderDetector().known_school_config("https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"),
-                "cookies": {},
-            }
-        )
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", AuthenticatedDiscoveryClient)
+    session = {
+        "adapter_config": ProviderDetector().known_school_config(
+            "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+        ),
+        "authenticated_menu_path": "/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
+        "cookies": {},
+    }
+
+    schedule = await zhengfang_module.ZhengfangAdapter().fetch_schedule(session)
+
+    assert len(schedule.items) == 3
+    protocol = session["adapter_config"]["schedule_protocol"]
+    assert protocol["data_path"] == "/jwglxt/kbcx/xskbcx_cxXsKb.html?gnmkdm=N253508"
+    assert protocol["method"] == "POST"
+    assert session["schedule_sync_meta"]["protocol_source"] == "live_discovered"
+
+
+@pytest.mark.asyncio
+async def test_schedule_fetch_uses_cached_protocol_without_loading_menu(monkeypatch):
+    class CachedProtocolClient:
+        instance = None
+
+        def __init__(self, **_kwargs):
+            self.cookies = {}
+            self.closed = False
+            CachedProtocolClient.instance = self
+
+        def set_cookies(self, cookies):
+            self.cookies = dict(cookies)
+
+        async def get(self, *_args, **_kwargs):
+            raise AssertionError("cached protocol must not load the menu")
+
+        async def post(self, path, **_kwargs):
+            assert path == "/jwglxt/kbcx/data.html?gnmkdm=N253508"
+            return HttpResponse(200, _load("schedule_jwgl2.json"), f"https://jwxt.example.edu.cn{path}", {})
+
+        async def aclose(self):
+            self.closed = True
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", CachedProtocolClient)
+    session = {
+        "adapter_config": {
+            "base_url": "https://jwxt.example.edu.cn",
+            "schedule_protocol": {
+                "entry_path": "/jwglxt/kbcx/personal.html?gnmkdm=N253508",
+                "data_path": "/jwglxt/kbcx/data.html?gnmkdm=N253508",
+                "method": "POST",
+                "semester_params": [],
+                "response_format": "auto",
+                "source": "live_discovered",
+                "fingerprint": "a" * 64,
+            },
+        },
+        "cookies": {},
+    }
+
+    schedule = await zhengfang_module.ZhengfangAdapter().fetch_schedule(session)
+
+    assert len(schedule.items) == 3
+    assert session["schedule_sync_meta"]["protocol_source"] == "cached_discovered"
+    assert CachedProtocolClient.instance.closed is True
 
 
 def test_huel_login_fixture_detects_zhengfang():
@@ -910,7 +980,12 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
 
         async def post(self, path, *, data=None, **kwargs):
             self.post_calls.append((path, data or {}))
-            return HttpResponse(200, json.dumps({"success": True}), "https://jwxt.example.edu/login", {})
+            return HttpResponse(
+                302,
+                "",
+                "https://jwxt.example.edu/login",
+                {"location": "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"},
+            )
 
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
@@ -928,6 +1003,7 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
     assert client.post_calls[0][1]["mm"] != "fixture-password"
     assert any("login_getPublicKey" in path for path in client.get_calls)
     assert internal["external_student_id"] == "FIXTURE-S000000001"
+    assert internal["authenticated_menu_path"] == "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"
 
 
 @pytest.mark.asyncio

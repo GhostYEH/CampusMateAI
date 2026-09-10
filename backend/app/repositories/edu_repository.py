@@ -72,6 +72,54 @@ class EduRepository:
             ).fetchone()
         return EduSystemRow.from_row(row) if row else None
 
+    def cache_schedule_protocol(self, system_id: str, descriptor: dict) -> EduSystemRow:
+        """Merge one verified, non-sensitive schedule descriptor into adapter config."""
+        allowed_fields = {
+            "entry_path",
+            "data_path",
+            "method",
+            "semester_params",
+            "response_format",
+            "source",
+            "fingerprint",
+        }
+        if not isinstance(descriptor, dict) or set(descriptor) != allowed_fields:
+            raise ValueError("课表协议缓存字段无效")
+        if descriptor["method"] not in {"GET", "POST"}:
+            raise ValueError("课表协议缓存请求方法无效")
+        for key in ("entry_path", "data_path"):
+            value = descriptor[key]
+            if not isinstance(value, str) or not value.startswith("/") or value.startswith("//") or len(value) > 1024:
+                raise ValueError("课表协议缓存路径无效")
+        semester_params = descriptor["semester_params"]
+        if not isinstance(semester_params, list) or len(semester_params) > 8 or not all(
+            isinstance(value, str) and 0 < len(value) <= 64 for value in semester_params
+        ):
+            raise ValueError("课表协议缓存学期字段无效")
+        fingerprint = descriptor["fingerprint"]
+        if not isinstance(fingerprint, str) or len(fingerprint) > 128:
+            raise ValueError("课表协议缓存指纹无效")
+
+        existing = self.get_system_by_id(system_id)
+        if existing is None:
+            raise ValueError("教务系统不存在")
+        try:
+            config = json.loads(existing.adapter_config or "{}")
+        except (TypeError, ValueError):
+            config = {}
+        if not isinstance(config, dict):
+            config = {}
+        config["schedule_protocol"] = descriptor
+        now = _now_iso()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE edu_systems SET adapter_config = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(config, ensure_ascii=False), now, system_id),
+            )
+        result = self.get_system_by_id(system_id)
+        assert result is not None
+        return result
+
     def upsert_system(
         self,
         *,

@@ -9,12 +9,15 @@
 """
 from __future__ import annotations
 
+import json
 import pytest
 
 from app.database.sqlite_db import Database
 from app.models.edu import BINDING_ACTIVE, EduBindingRow
 from app.repositories.edu_data_repository import EduDataRepository
+from app.repositories.edu_repository import EduRepository
 from app.schemas.edu import EduExam, EduExamItem, EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
+from app.services.edu.connector import EduConnectorService
 
 
 @pytest.fixture
@@ -117,6 +120,73 @@ def test_sync_schedule_inserts(repo, binding):
     assert stats.unchanged == 0
     items = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")
     assert len(items) == 2
+
+
+def test_schedule_protocol_cache_merges_non_sensitive_descriptor(db):
+    repository = EduRepository(db)
+    repository.upsert_system(
+        university_id="uni_test_001",
+        system_key="undergraduate-main",
+        adapter_config={"existing_setting": "keep"},
+    )
+    descriptor = {
+        "entry_path": "/jwglxt/kbcx/personal.html?gnmkdm=N253508",
+        "data_path": "/jwglxt/kbcx/data.html?gnmkdm=N253508",
+        "method": "POST",
+        "semester_params": ["xnm", "xqm"],
+        "response_format": "auto",
+        "source": "live_discovered",
+        "fingerprint": "a" * 64,
+    }
+
+    repository.cache_schedule_protocol("esys_test_001", descriptor)
+
+    stored = repository.get_system_by_id("esys_test_001")
+    assert stored is not None
+    config = json.loads(stored.adapter_config)
+    assert config["existing_setting"] == "keep"
+    assert config["schedule_protocol"] == descriptor
+
+
+def test_schedule_protocol_cache_rejects_unexpected_sensitive_fields(db):
+    repository = EduRepository(db)
+
+    with pytest.raises(ValueError, match="字段"):
+        repository.cache_schedule_protocol("esys_test_001", {
+            "entry_path": "/jwglxt/kbcx/personal.html",
+            "data_path": "/jwglxt/kbcx/data.html",
+            "method": "POST",
+            "semester_params": [],
+            "response_format": "auto",
+            "source": "live_discovered",
+            "fingerprint": "a" * 64,
+            "cookie": "must-not-be-cached",
+        })
+
+
+def test_connector_persists_only_verified_live_schedule_protocol(db, binding):
+    connector = object.__new__(EduConnectorService)
+    connector._edu_repo = EduRepository(db)
+    descriptor = {
+        "entry_path": "/jwglxt/kbcx/personal.html?gnmkdm=N253508",
+        "data_path": "/jwglxt/kbcx/data.html?gnmkdm=N253508",
+        "method": "POST",
+        "semester_params": [],
+        "response_format": "auto",
+        "source": "live_discovered",
+        "fingerprint": "a" * 64,
+    }
+    session = {
+        "adapter_config": {"schedule_protocol": descriptor},
+        "schedule_sync_meta": {"protocol_source": "live_discovered"},
+    }
+
+    source = connector._cache_verified_schedule_protocol(binding, session)
+
+    stored = connector._edu_repo.get_system_by_id(binding.edu_system_id)
+    assert source == "live_discovered"
+    assert stored is not None
+    assert json.loads(stored.adapter_config)["schedule_protocol"] == descriptor
 
 
 def test_sync_schedule_idempotent(repo, binding):

@@ -192,3 +192,86 @@ def test_external_headers_cannot_inject_cookie_header():
             base_url="https://jwxt.example.edu.cn",
             extra_headers={"Cookie": "sid=attacker"},
         )
+
+
+@pytest.mark.asyncio
+async def test_http_client_reuses_one_connection_pool_for_get_and_post(monkeypatch):
+    created = []
+
+    class ReusableClient:
+        def __init__(self, **_kwargs):
+            self.closed = False
+            created.append(self)
+
+        async def get(self, url, **_kwargs):
+            return httpx.Response(200, text="get", request=httpx.Request("GET", url))
+
+        async def post(self, url, **_kwargs):
+            return httpx.Response(200, text="post", request=httpx.Request("POST", url))
+
+        async def aclose(self):
+            self.closed = True
+
+    monkeypatch.setattr(httpx, "AsyncClient", ReusableClient)
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+
+    await client.get("/menu")
+    await client.post("/schedule", data={})
+    await client.aclose()
+
+    assert len(created) == 1
+    assert created[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_get_retries_transient_read_failure_at_most_three_attempts(monkeypatch):
+    attempts = 0
+
+    class FlakyGetClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def get(self, url, **_kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise httpx.ReadError("temporary", request=httpx.Request("GET", url))
+            return httpx.Response(200, text="ok", request=httpx.Request("GET", url))
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(httpx, "AsyncClient", FlakyGetClient)
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+
+    response = await client.get("/menu")
+    await client.aclose()
+
+    assert response.text == "ok"
+    assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_login_post_transport_failure_is_never_blindly_replayed(monkeypatch):
+    attempts = 0
+
+    class FailingPostClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def post(self, url, **_kwargs):
+            nonlocal attempts
+            attempts += 1
+            raise httpx.ReadError("uncertain delivery", request=httpx.Request("POST", url))
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(httpx, "AsyncClient", FailingPostClient)
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+
+    with pytest.raises(Exception, match="读取失败"):
+        await client.post("/login", data={})
+    await client.aclose()
+
+    assert attempts == 1

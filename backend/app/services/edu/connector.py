@@ -812,6 +812,20 @@ class EduConnectorService:
     async def sync_exam(self, user_id: str, *, semester: Optional[str] = None) -> EduSyncResult:
         return await self._sync(user_id, "exam", semester=semester)
 
+    def _cache_verified_schedule_protocol(self, binding, internal_session: dict) -> Optional[str]:
+        meta = internal_session.get("schedule_sync_meta")
+        if not isinstance(meta, dict):
+            return None
+        source = meta.get("protocol_source")
+        if source != "live_discovered":
+            return source if isinstance(source, str) else None
+        config = internal_session.get("adapter_config")
+        descriptor = config.get("schedule_protocol") if isinstance(config, dict) else None
+        if not isinstance(descriptor, dict) or not binding.edu_system_id:
+            return None
+        self._edu_repo.cache_schedule_protocol(binding.edu_system_id, descriptor)
+        return source
+
     async def _sync(
         self,
         user_id: str,
@@ -860,6 +874,7 @@ class EduConnectorService:
                 )
             elif sync_type == "schedule":
                 data = await adapter.fetch_schedule(internal_session, semester=semester)
+                protocol_source = self._cache_verified_schedule_protocol(binding, internal_session)
                 count = len(data.items)
                 stats = SyncStats()
                 sync_batch_id = None
@@ -892,6 +907,7 @@ class EduConnectorService:
                     sync_batch_id=sync_batch_id,
                     semester=data.semester,
                     persisted=self._edu_data_repo is not None and count > 0,
+                    protocol_source=protocol_source,
                 )
             elif sync_type == "grade":
                 data = await adapter.fetch_grade(internal_session, semester=semester)

@@ -519,10 +519,14 @@ class ProviderDetector:
         scheme, and it does not include unverified academic-data endpoints.
         """
         parsed = urlparse(url)
+        huel_public_entry_paths = {
+            "/jwglxt/xtgl/login_slogin.html",
+            "/jwglxt/xtgl/index_initMenu.html",
+        }
         if (
             parsed.scheme != "https"
             or parsed.netloc != "xk.huel.edu.cn"
-            or parsed.path != "/jwglxt/xtgl/login_slogin.html"
+            or parsed.path not in huel_public_entry_paths
             or parsed.username is not None
             or parsed.password is not None
         ):
