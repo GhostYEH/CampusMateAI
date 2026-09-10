@@ -25,6 +25,7 @@ html {
 
 .floating-nav {
   --floating-nav-collapsed-width: 424px;
+  --floating-nav-expanded-width: 900px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
   --floating-nav-list-start-padding: 8px;
@@ -39,9 +40,10 @@ html {
   min-height: var(--topbar-control-height);
   overflow-x: hidden;
   overflow-y: hidden;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateZ(0);
   border-radius: 999px;
   scrollbar-width: none;
+  transition: width .34s cubic-bezier(.22, .61, .36, 1);
 }
 
 /* The material tone is selected from the page scene, never the OS theme. */
@@ -90,6 +92,25 @@ html {
 
 .floating-nav .floating-nav-button {
   gap: 0;
+  width: auto;
+  min-width: var(--floating-nav-item-size);
+}
+
+.floating-nav-label {
+  display: block;
+  max-width: 0;
+  overflow: hidden;
+  margin-right: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+  transition:
+    max-width .34s cubic-bezier(.22, .61, .36, 1),
+    margin-right .34s cubic-bezier(.22, .61, .36, 1),
+    opacity .18s ease,
+    transform .3s cubic-bezier(.22, .61, .36, 1);
 }
 
 .floating-nav-button:hover,
@@ -97,9 +118,53 @@ html {
   color: var(--floating-nav-active-foreground);
 }
 
-@media (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) and (min-width: 1101px) {
   .floating-nav {
     overflow: visible;
+  }
+
+  .floating-nav:is(:hover, :focus-within) {
+    width: min(var(--floating-nav-expanded-width), calc(100vw - 580px));
+  }
+
+  .floating-nav:is(:hover, :focus-within) .floating-nav-list {
+    justify-content: center;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .floating-nav:is(:hover, :focus-within) .floating-nav-button {
+    gap: 6px;
+    padding: 0 6px 0 2px;
+  }
+
+  .floating-nav:is(:hover, :focus-within) .floating-nav-icon {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .floating-nav:is(:hover, :focus-within) .floating-nav-label {
+    max-width: 80px;
+    margin-right: 0;
+    opacity: 1;
+    transform: translateX(0);
+    font-size: 12.5px;
+    text-overflow: ellipsis;
+    transition:
+      max-width .28s ease-out,
+      margin-right .28s ease-out,
+      opacity .16s ease .06s,
+      transform .24s ease-out;
+  }
+
+  /* Dock magnification is an icon-dock effect: it scales each <li> without
+     affecting layout, so expanded pills would visually overlap while the bar
+     is 900px wide. Neutralize the motion scale while labels are visible. */
+  .floating-nav:is(:hover, :focus-within) .floating-nav-list > li {
+    transform: none !important;
+    scale: none !important;
+    will-change: auto;
   }
 
   .floating-nav-button {
@@ -109,6 +174,8 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .floating-nav,
+  .floating-nav-label,
   .floating-nav-button {
     transition: none;
     will-change: auto;
@@ -146,5 +213,9 @@ html {
   .floating-nav .floating-nav-list {
     justify-content: space-between;
     padding: 7px var(--floating-nav-list-end-padding) 7px var(--floating-nav-list-start-padding);
+  }
+
+  .floating-nav-label {
+    display: none;
   }
 }

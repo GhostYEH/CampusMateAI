@@ -84,13 +84,14 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
       reduceMotion={reduceMotion}
       className="floating-nav-inner"
       onSelect={({ key }) => navigate(`/${key}`)}
-      renderItem={({ key, icon }) => {
+      renderItem={({ key, label, icon }) => {
         const active = isActive(key);
         const count = countFor(key);
         return <>
           <span className="floating-nav-icon" aria-hidden="true">
             <Icon name={icon} size={20} weight={active ? "duotone" : "regular"} />
           </span>
+          <span className="floating-nav-label" aria-hidden="true">{label}</span>
           {count > 0 && <i className="floating-nav-dot" aria-label={`${count} 条待处理`} />}
         </>;
       }}

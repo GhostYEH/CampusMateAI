@@ -4,13 +4,18 @@ import test from "node:test";
 
 const shell = fs.readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const floatingNav = fs.readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
-test("floating dock stays compact and does not keep the legacy GSAP expansion", () => {
+const floatingLayout = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
+
+test("floating dock reveals route labels on desktop without restoring the legacy GSAP implementation", () => {
   assert.match(shell, /FloatingNav/);
   assert.doesNotMatch(shell, /sidebar|mobileOpen|sidebarRef/);
   assert.doesNotMatch(floatingNav, /from ["']gsap["']/);
   assert.doesNotMatch(floatingNav, /mouseenter|mouseleave|focusin|focusout/);
   assert.doesNotMatch(floatingNav, /timeline|measureExpandedWidth|getFloatingNavWidth/);
-  assert.doesNotMatch(floatingNav, /floating-nav-label/);
+  assert.match(floatingNav, /className="floating-nav-label"/);
+  assert.match(floatingLayout, /\.floating-nav:is\(:hover, :focus-within\)/);
+  assert.match(floatingLayout, /\.floating-nav:is\(:hover, :focus-within\)[\s\S]*\.floating-nav-label/);
+  assert.match(floatingLayout, /@media \(max-width: 760px\)[\s\S]*\.floating-nav-label[^}]*display:\s*none/);
   assert.match(floatingNav, /<Glass[^>]*material="clear"[^>]*interactive/);
   assert.match(floatingNav, /<LiquidMetalNav/);
 });

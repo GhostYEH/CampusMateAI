@@ -152,7 +152,9 @@ def run():
         expect(not task_state["fallback"], "待办与作业退化成静态 CSS 效果")
         expect(task_state["contextLost"] is False, "待办与作业的 WebGL 上下文已丢失")
         hovered_nav = rect(page, ".floating-nav")
-        expect(abs(hovered_nav["width"] - compact_nav_width) < 1.5, "指针悬停后旧导航仍会整体展开")
+        task_label = rect(page, f'{task_selector} .floating-nav-label')
+        expect(hovered_nav["width"] > compact_nav_width + 200, "指针悬停后导航没有展开")
+        expect(task_label["width"] > 40, "指针悬停后没有显示待办与作业的详细名称")
         expect(not shader_errors, f"液态金属着色器报错：{shader_errors}")
 
         page.goto(f"{BASE_URL}/tasks", wait_until="domcontentloaded", timeout=30_000)

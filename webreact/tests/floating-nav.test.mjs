@@ -94,10 +94,10 @@ test("topbar controls share one desktop height and top alignment", () => {
   assert.match(styles, /\.topbar-info-surface[^}]*top:\s*14px/);
 });
 
-test("navigation keeps only compact icon controls and removes hidden label structure", () => {
-  assert.doesNotMatch(layoutStyles, /--floating-nav-expanded-/);
-  assert.doesNotMatch(layoutStyles, /\.floating-nav-label/);
-  assert.doesNotMatch(floatingNavSource, /floating-nav-label/);
+test("navigation starts compact and reveals accessible route labels on desktop hover", () => {
+  assert.match(layoutStyles, /--floating-nav-expanded-width:\s*900px/);
+  assert.match(layoutStyles, /\.floating-nav-label/);
+  assert.match(floatingNavSource, /floating-nav-label/);
   assert.match(layoutStyles, /--floating-nav-collapsed-width:\s*424px/);
 });
 
