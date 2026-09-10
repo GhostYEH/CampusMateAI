@@ -161,6 +161,7 @@ async def test_cookie_login_uses_validated_client_user_agent_for_followup_sessio
         def __init__(self, **kwargs):
             self.extra_headers = kwargs["extra_headers"]
             self.cookies = {}
+            self.closed = False
             UserAgentClient.instance = self
 
         def set_cookies(self, cookies):
@@ -174,6 +175,9 @@ async def test_cookie_login_uses_validated_client_user_agent_for_followup_sessio
                 {},
             )
 
+        async def aclose(self):
+            self.closed = True
+
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", UserAgentClient)
     user_agent = "Mozilla/5.0 (Linux; Android 14) CampusMate/1.0"
 
@@ -185,6 +189,7 @@ async def test_cookie_login_uses_validated_client_user_agent_for_followup_sessio
 
     assert UserAgentClient.instance.extra_headers["User-Agent"] == user_agent
     assert internal["user_agent"] == user_agent
+    assert UserAgentClient.instance.closed is True
 
 
 # ===== 课表 JSON 解析 =====
@@ -639,6 +644,7 @@ def test_session_prepare_restores_full_adapter_config():
 
 
 class _FakeZhengfangClient:
+    instance = None
     response = HttpResponse(
         status=200,
         text="",
@@ -649,6 +655,8 @@ class _FakeZhengfangClient:
 
     def __init__(self, **kwargs):
         self._cookies = {}
+        self.closed = False
+        _FakeZhengfangClient.instance = self
 
     def set_cookies(self, cookies):
         self._cookies = dict(cookies)
@@ -658,15 +666,22 @@ class _FakeZhengfangClient:
             raise self.error
         return self.response
 
+    async def aclose(self):
+        self.closed = True
+
 
 @pytest.mark.asyncio
 async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkeypatch):
     captcha_bytes = b"\x89PNG\r\n\x1a\n\x00\xff\x10\x80"
 
     class BinaryCaptchaClient:
+        instance = None
+
         def __init__(self, **_kwargs):
             self.cookies = {}
             self._http_wrapper = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+            self.closed = False
+            BinaryCaptchaClient.instance = self
 
         def _wrap(self, body, url, content_type):
             response = httpx.Response(
@@ -698,6 +713,9 @@ async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkey
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
 
+        async def aclose(self):
+            self.closed = True
+
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", BinaryCaptchaClient)
     result = await zhengfang_module.ZhengfangAdapter().prepare_login(
         config={
@@ -709,6 +727,7 @@ async def test_prepare_login_preserves_binary_captcha_bytes_and_mime_type(monkey
 
     assert result["captcha_image_base64"] == base64.b64encode(captcha_bytes).decode("ascii")
     assert result["captcha_mime_type"] == "image/png"
+    assert BinaryCaptchaClient.instance.closed is True
 
 
 @pytest.mark.asyncio
@@ -907,6 +926,7 @@ async def test_huel_login_serializes_public_form_fields_after_rsa_encryption(mon
         def __init__(self, **_kwargs):
             self.get_calls = []
             self.post_call = None
+            self.closed = False
             LoginFlowClient.instance = self
 
         async def get(self, path, **_kwargs):
@@ -934,6 +954,9 @@ async def test_huel_login_serializes_public_form_fields_after_rsa_encryption(mon
             self.post_call = (path, data)
             raise StopAfterPost
 
+        async def aclose(self):
+            self.closed = True
+
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginFlowClient)
 
     with pytest.raises(StopAfterPost):
@@ -950,6 +973,7 @@ async def test_huel_login_serializes_public_form_fields_after_rsa_encryption(mon
     assert data["mm"] != "fixture-password"
     assert data["csrftoken"] == "fixture-csrf"
     assert data["yzm"] == "fixture-captcha"
+    assert LoginFlowClient.instance.closed is True
 
 
 @pytest.mark.asyncio
@@ -968,6 +992,7 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
             self.cookies = {"JSESSIONID": "fixture-session"}
             self.get_calls = []
             self.post_calls = []
+            self.closed = False
             LoginFlowClient.instance = self
 
         async def get(self, path, **kwargs):
@@ -990,6 +1015,9 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
 
+        async def aclose(self):
+            self.closed = True
+
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginFlowClient)
 
     internal = await zhengfang_module.ZhengfangAdapter().login(
@@ -1003,6 +1031,7 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
     assert client.post_calls[0][1]["mm"] != "fixture-password"
     assert any("login_getPublicKey" in path for path in client.get_calls)
     assert internal["external_student_id"] == "FIXTURE-S000000001"
+    assert client.closed is True
     assert internal["authenticated_menu_path"] == "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"
 
 
@@ -1047,6 +1076,7 @@ async def test_verify_session_rejects_network_errors(monkeypatch):
         "base_url": "https://jwxt.example.edu.cn",
         "cookies": {"JSESSIONID": "fixture"},
     }) is False
+    assert _FakeZhengfangClient.instance.closed is True
     _FakeZhengfangClient.error = None
 
 
@@ -1060,11 +1090,18 @@ async def test_exam_without_configured_endpoint_is_explicitly_unsupported():
 @pytest.mark.asyncio
 async def test_exam_uses_explicit_configured_endpoint(monkeypatch):
     class ExamClient:
+        instance = None
+
         def __init__(self, **_kwargs):
             self.cookies = {}
+            self.closed = False
+            ExamClient.instance = self
 
         def set_cookies(self, cookies):
             self.cookies = dict(cookies)
+
+        async def aclose(self):
+            self.closed = True
 
         async def post(self, path, *, data=None, **_kwargs):
             assert path == "/fixture/exams"
@@ -1094,6 +1131,7 @@ async def test_exam_uses_explicit_configured_endpoint(monkeypatch):
         semester="2024-2025秋季",
     )
     assert exam.items[0].exam_type == "补考"
+    assert ExamClient.instance.closed is True
 
 
 def test_provider_capabilities_do_not_claim_exam_support():

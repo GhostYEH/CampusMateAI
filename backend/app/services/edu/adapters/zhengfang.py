@@ -209,6 +209,12 @@ def _same_origin_relative_path(school: SchoolConfig, value: Optional[str], *, ba
     return f"{path}?{parsed.query}" if parsed.query else path
 
 
+async def _close_client(client: object) -> None:
+    close = getattr(client, "aclose", None)
+    if close is not None:
+        await close()
+
+
 class ZhengfangAdapter(EduAdapter):
     """正方教务系统适配器（真实实现）。
 
@@ -254,6 +260,17 @@ class ZhengfangAdapter(EduAdapter):
             allow_private=False,
             extra_headers=school.extra_headers,
         )
+
+        try:
+            return await self._prepare_login_with_client(school, client)
+        finally:
+            await _close_client(client)
+
+    async def _prepare_login_with_client(
+        self,
+        school: SchoolConfig,
+        client: ZhengfangHttpClient,
+    ) -> dict:
 
         login_path = _validated_protocol_request_path(school, school.effective_login_url)
         page = await client.get(login_path, referer=school.base_url)
@@ -341,6 +358,30 @@ class ZhengfangAdapter(EduAdapter):
             allow_private=False,
             extra_headers=school.extra_headers,
         )
+
+        try:
+            return await self._login_with_client(
+                school,
+                client,
+                username=username,
+                password=password,
+                captcha=captcha,
+                pre_login_session=pre_login_session,
+            )
+        finally:
+            await _close_client(client)
+
+    async def _login_with_client(
+        self,
+        school: SchoolConfig,
+        client: ZhengfangHttpClient,
+        *,
+        username: str,
+        password: str,
+        captcha: Optional[str],
+        pre_login_session: Optional[dict],
+    ) -> dict:
+        login_path = _validated_protocol_request_path(school, school.effective_login_url)
 
         # 滑块/短信/MFA 仍然必须由用户在 WebView 中完成，不前端化
         if school.captcha_type in ("slide", "sms") or (school.captcha_type == "image" and not captcha and not pre_login_session):
@@ -475,6 +516,28 @@ class ZhengfangAdapter(EduAdapter):
             allow_private=False,
             extra_headers=extra_headers,
         )
+        try:
+            return await self._login_with_cookies_client(
+                school,
+                client,
+                cookies=cookies,
+                cookie_jar=cookie_jar,
+                current_url=current_url,
+                actual_user_agent=actual_user_agent,
+            )
+        finally:
+            await _close_client(client)
+
+    async def _login_with_cookies_client(
+        self,
+        school: SchoolConfig,
+        client: ZhengfangHttpClient,
+        *,
+        cookies: dict,
+        cookie_jar: Optional[list[dict]],
+        current_url: Optional[str],
+        actual_user_agent: Optional[str],
+    ) -> dict:
         if cookie_jar:
             client.set_cookie_jar(cookie_jar, allowed_origins=school_allowed_origins(school))
         else:
@@ -500,12 +563,16 @@ class ZhengfangAdapter(EduAdapter):
         return result
 
     async def verify_session(self, session: dict) -> bool:
+        client: Optional[ZhengfangHttpClient] = None
         try:
             school, client = self._prepare(session)
             await self._authenticated_probe(school, client)
             return True
         except Exception:
             return False
+        finally:
+            if client is not None:
+                await _close_client(client)
 
     async def _authenticated_probe(self, school: SchoolConfig, client: ZhengfangHttpClient) -> EduProfile:
         """访问需要登录的学生信息端点，拒绝首页 200、登录页和网络异常。"""
@@ -533,13 +600,15 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_profile(self, session: dict) -> EduProfile:
         school, client = self._prepare(session)
-        if not school.endpoints.profile_path:
-            raise AdapterNotImplemented(self.provider, "fetch_profile: profile_path is not configured")
-        if school.endpoints.profile_format == "html":
+        try:
+            if not school.endpoints.profile_path:
+                raise AdapterNotImplemented(self.provider, "fetch_profile: profile_path is not configured")
             resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
-            return self._parser.parse_profile_html(resp.text)
-        resp = await client.get(school.endpoints.profile_path, referer=school.base_url)
-        return self._parser.parse_profile_json(resp.text)
+            if school.endpoints.profile_format == "html":
+                return self._parser.parse_profile_html(resp.text)
+            return self._parser.parse_profile_json(resp.text)
+        finally:
+            await _close_client(client)
 
     async def fetch_schedule(self, session: dict, *, semester: Optional[str] = None) -> EduSchedule:
         school, client = self._prepare(session)
@@ -551,9 +620,7 @@ class ZhengfangAdapter(EduAdapter):
                 semester=semester,
             )
         finally:
-            close = getattr(client, "aclose", None)
-            if close is not None:
-                await close()
+            await _close_client(client)
 
     async def _fetch_schedule_with_client(
         self,
@@ -704,30 +771,36 @@ class ZhengfangAdapter(EduAdapter):
 
     async def fetch_grade(self, session: dict, *, semester: Optional[str] = None) -> EduGrade:
         school, client = self._prepare(session)
-        if not school.endpoints.grade_path:
-            raise AdapterNotImplemented(self.provider, "fetch_grade: grade_path is not configured")
-        params = dict(school.grade_payload_extra)
-        if semester:
-            params.setdefault(school.semester_param_name, semester)
-        if school.endpoints.grade_format == "html":
-            resp = await client.get(school.endpoints.grade_path, params=params or None, referer=school.base_url)
-            return self._parser.parse_grade_html(resp.text, semester=semester)
-        resp = await client.post(school.endpoints.grade_path, data=params or None, referer=school.base_url, form_post=True)
-        return self._parser.parse_grade_json(resp.text, semester=semester)
+        try:
+            if not school.endpoints.grade_path:
+                raise AdapterNotImplemented(self.provider, "fetch_grade: grade_path is not configured")
+            params = dict(school.grade_payload_extra)
+            if semester:
+                params.setdefault(school.semester_param_name, semester)
+            if school.endpoints.grade_format == "html":
+                resp = await client.get(school.endpoints.grade_path, params=params or None, referer=school.base_url)
+                return self._parser.parse_grade_html(resp.text, semester=semester)
+            resp = await client.post(school.endpoints.grade_path, data=params or None, referer=school.base_url, form_post=True)
+            return self._parser.parse_grade_json(resp.text, semester=semester)
+        finally:
+            await _close_client(client)
 
     async def fetch_exam(self, session: dict, *, semester: Optional[str] = None) -> EduExam:
         school, client = self._prepare(session)
-        endpoint = school.endpoints.exam_path
-        if not endpoint:
-            raise AdapterNotImplemented(self.provider, "fetch_exam: exam_path is not configured")
-        params = dict(school.exam_payload_extra)
-        if semester:
-            params.setdefault(school.semester_param_name, semester)
-        if school.endpoints.exam_format == "html":
-            resp = await client.get(endpoint, params=params or None, referer=school.base_url)
-            return self._parser.parse_exam_html(resp.text, semester=semester)
-        resp = await client.post(endpoint, data=params or None, referer=school.base_url, form_post=True)
-        return self._parser.parse_exam_json(resp.text, semester=semester)
+        try:
+            endpoint = school.endpoints.exam_path
+            if not endpoint:
+                raise AdapterNotImplemented(self.provider, "fetch_exam: exam_path is not configured")
+            params = dict(school.exam_payload_extra)
+            if semester:
+                params.setdefault(school.semester_param_name, semester)
+            if school.endpoints.exam_format == "html":
+                resp = await client.get(endpoint, params=params or None, referer=school.base_url)
+                return self._parser.parse_exam_html(resp.text, semester=semester)
+            resp = await client.post(endpoint, data=params or None, referer=school.base_url, form_post=True)
+            return self._parser.parse_exam_json(resp.text, semester=semester)
+        finally:
+            await _close_client(client)
 
     # ===== 内部 =====
 
