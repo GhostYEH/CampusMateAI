@@ -18,6 +18,8 @@ from urllib.parse import urlsplit
 from dataclasses import asdict
 from typing import Optional
 
+from .zhengfang_discovery import ScheduleProtocol
+
 
 # ===== 版本标识 =====
 ZHENGFANG_VERSION_JW2017 = "jw2017"
@@ -140,6 +142,7 @@ class SchoolConfig:
     schedule_payload_extra: dict = field(default_factory=dict)
     grade_payload_extra: dict = field(default_factory=dict)
     exam_payload_extra: dict = field(default_factory=dict)
+    schedule_protocol: Optional[ScheduleProtocol] = None
     endpoints_override: Optional[ZhengfangEndpoints] = None
     sso_url: Optional[str] = None
     vpn_url: Optional[str] = None
@@ -220,6 +223,13 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         endpoints_override = ZhengfangEndpoints(
             **{k: v for k, v in endpoint_values.items() if k in allowed_endpoint_fields}
         )
+    protocol_values = config.get("schedule_protocol")
+    schedule_protocol = None
+    if isinstance(protocol_values, dict) and protocol_values:
+        try:
+            schedule_protocol = ScheduleProtocol.from_dict(protocol_values)
+        except (KeyError, TypeError, ValueError):
+            schedule_protocol = None
     return SchoolConfig(
         base_url=base_url,
         login_url=config.get("login_url") or config.get("academic_login_url"),
@@ -247,6 +257,7 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         schedule_payload_extra=dict(config.get("schedule_payload_extra") or {}),
         grade_payload_extra=dict(config.get("grade_payload_extra") or {}),
         exam_payload_extra=dict(config.get("exam_payload_extra") or {}),
+        schedule_protocol=schedule_protocol,
         endpoints_override=endpoints_override,
     )
 
@@ -278,6 +289,8 @@ def school_config_to_dict(school: SchoolConfig) -> dict:
         "requires_campus_network": school.requires_campus_network,
         "login_execution_mode": school.login_execution_mode,
     }
+    if school.schedule_protocol is not None:
+        data["schedule_protocol"] = school.schedule_protocol.to_dict()
     if school.endpoints_override is not None:
         data["endpoint_overrides"] = asdict(school.endpoints_override)
     return {key: value for key, value in data.items() if value is not None}
