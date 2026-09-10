@@ -36,8 +36,9 @@ sealed interface EduUiState {
 }
 
 fun isScheduleImported(result: EduSyncResult, stored: EduScheduleItemsResponse?): Boolean =
-    result.status == "success" && result.persisted && result.items_count > 0 &&
-        (stored?.items_count ?: 0) > 0
+    result.status == "success" && result.persisted && stored != null &&
+        if (result.items_count == 0) result.stage == "commit" && stored.items_count == 0
+        else stored.items_count >= result.items_count
 
 fun connectionNeedsWebLogin(connection: EduConnectionDto): Boolean =
     connection.state == "waiting_user_login" && !connection.portal_url.isNullOrBlank()

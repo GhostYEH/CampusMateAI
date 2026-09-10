@@ -331,6 +331,15 @@ data class EduSyncResult(
     val persisted: Boolean = false,
     val inserted: Int = 0,
     val updated: Int = 0,
+    val unchanged: Int = 0,
+    val removed: Int = 0,
+    val failed: Int = 0,
+    val sync_batch_id: String? = null,
+    val semester: String? = null,
+    val stage: String? = null,
+    val previous_schedule_preserved: Boolean? = null,
+    val requires_user_action: String? = null,
+    val protocol_source: String? = null,
 )
 data class EduSyncRecord(
     val id: String,

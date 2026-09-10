@@ -225,11 +225,10 @@ fun EduSystemScreen(
                     val gradeOk = s.gradeResult?.status == "success"
                     val examOk = s.examResult?.status == "success"
                     Text(
-                        "课表同步${if (schedOk) "成功（已导入 ${s.scheduleResult?.items_count ?: 0} 门）" else "失败"}，成绩同步${if (gradeOk) "成功" else "失败"}，考试同步${if (examOk) "成功" else "失败"}",
+                        "${eduScheduleStatusMessage(s.scheduleResult)}；成绩同步${if (gradeOk) "成功" else "失败"}，考试同步${if (examOk) "成功" else "失败"}",
                         color = if (schedOk && gradeOk && examOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                     )
-                    s.scheduleResult?.error_message?.let { Text("课表: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     s.gradeResult?.error_message?.let { Text("成绩: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (schedOk) {
