@@ -1,4 +1,5 @@
 import { resourceManager } from '@kit.LocalizationKit';
+import { util } from '@kit.ArkTS';
 import { ExpressionThresholds, DEFAULT_EXPRESSION_THRESHOLDS } from './ExpressionSignalProcessor';
 
 export interface ExpressionPreprocessingConfig {
@@ -20,7 +21,7 @@ const CONFIG_PATH: string = 'models/expression/preprocessing.json';
 export class ExpressionPreprocessingLoader {
   static async load(manager: resourceManager.ResourceManager): Promise<ExpressionPreprocessingConfig> {
     const bytes: Uint8Array = await manager.getRawFileContent(CONFIG_PATH);
-    const text: string = new TextDecoder('utf-8').decode(bytes);
+    const text: string = new util.TextDecoder().decode(bytes);
     const raw: Record<string, Object> = JSON.parse(text) as Record<string, Object>;
     const classThresholdsRaw: Record<string, number> = raw['class_thresholds'] as Record<string, number>;
     return {

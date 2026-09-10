@@ -52,10 +52,10 @@ export struct ExpressionContributionPage {
   async pickImage(): Promise<void> {
     try {
       const photoPicker: picker.PhotoViewPicker = new picker.PhotoViewPicker();
-      const result: picker.PhotoSelectResult = await photoPicker.select({
-        maxSelectNumber: 1,
-        selectMode: picker.PhotoViewPickerSelectMode.PHOTO_SELECT
-      } as picker.PhotoSelectOptions);
+      const selectOptions: picker.PhotoSelectOptions = new picker.PhotoSelectOptions();
+      selectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+      selectOptions.maxSelectNumber = 1;
+      const result: picker.PhotoSelectResult = await photoPicker.select(selectOptions);
       if (result.photoUris.length > 0) {
         this.selectedFileUri = result.photoUris[0];
         const parts: string[] = result.photoUris[0].split('/');
