@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import re
 from typing import Any, Optional
@@ -84,7 +85,10 @@ def _expand_json_payload(text: str) -> Any:
     """正方部分接口返回带前置脏数据的 JSON，尝试提取首个 JSON 结构。"""
     text = text.strip()
     try:
-        return json.loads(text)
+        payload = json.loads(text)
+        if isinstance(payload, str):
+            return _expand_json_payload(payload)
+        return payload
     except json.JSONDecodeError:
         pass
     start = text.find("{")
@@ -100,20 +104,97 @@ def _expand_json_payload(text: str) -> Any:
     return None
 
 
+def _schedule_rows(payload: Any) -> tuple[list[Any], bool]:
+    if isinstance(payload, list):
+        return payload, True
+    if not isinstance(payload, dict):
+        return [], False
+    for key in ("kbList", "items", "rows"):
+        if key in payload and isinstance(payload[key], list):
+            return payload[key], True
+    for key in ("data", "result"):
+        if key in payload:
+            rows, declared = _schedule_rows(payload[key])
+            if declared:
+                return rows, True
+    if payload.get("success") is True and payload.get("total") in (0, "0"):
+        return [], True
+    return [], False
+
+
+class ScheduleParseError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.stage = "parse"
+        super().__init__(message)
+
+
+@dataclass(frozen=True)
+class ScheduleParseResult:
+    schedule: EduSchedule
+    response_kind: str
+    explicit_empty: bool
+    row_count: int
+    invalid_count: int
+
+
 class ZhengfangParser:
     """正方教务系统数据解析器。"""
 
     # ===== 课表 =====
 
+    def parse_schedule_response(
+        self,
+        text: str,
+        *,
+        semester: Optional[str] = None,
+        format_hint: str = "auto",
+    ) -> ScheduleParseResult:
+        raw = (text or "").strip()
+        lowered = raw.lower()
+        if any(marker in raw for marker in ("没有访问权限", "无访问权限", "无权访问")) or "permission denied" in lowered:
+            raise ScheduleParseError("SCHEDULE_ACCESS_DENIED", "课表接口拒绝访问")
+        if re.search(r'<input[^>]+type=["\']password["\']', raw, re.IGNORECASE) or (
+            "登录" in raw and re.search(r"<form\b", raw, re.IGNORECASE)
+        ):
+            raise ScheduleParseError("SESSION_EXPIRED", "教务会话已过期")
+        if ("验证码" in raw or "captcha" in lowered or "滑块" in raw) and re.search(
+            r"<(?:form|input)\b", raw, re.IGNORECASE
+        ):
+            raise ScheduleParseError("VERIFICATION_REQUIRED", "课表请求需要用户验证")
+
+        payload = _expand_json_payload(raw) if format_hint in {"auto", "json"} else None
+        rows, declared = _schedule_rows(payload)
+        if declared:
+            try:
+                schedule = self.parse_schedule_json(raw, semester=semester)
+            except Exception as exc:
+                raise ScheduleParseError("SCHEDULE_RESPONSE_INVALID", "课表 JSON 字段无效") from exc
+            invalid_count = len(rows) - len(schedule.items)
+            return ScheduleParseResult(
+                schedule=schedule,
+                response_kind="json",
+                explicit_empty=len(rows) == 0,
+                row_count=len(rows),
+                invalid_count=max(0, invalid_count),
+            )
+
+        if format_hint in {"auto", "html"} and re.search(r"<table\b", raw, re.IGNORECASE):
+            schedule = self.parse_schedule_html(raw, semester=semester)
+            if schedule.items:
+                return ScheduleParseResult(
+                    schedule=schedule,
+                    response_kind="html",
+                    explicit_empty=False,
+                    row_count=len(schedule.items),
+                    invalid_count=0,
+                )
+        raise ScheduleParseError("SCHEDULE_RESPONSE_UNKNOWN", "无法识别课表响应结构")
+
     def parse_schedule_json(self, text: str, *, semester: Optional[str] = None) -> EduSchedule:
         payload = _expand_json_payload(text)
         items: list[EduScheduleItem] = []
-        if isinstance(payload, dict):
-            rows = payload.get("kbList") or payload.get("items") or payload.get("data") or []
-        elif isinstance(payload, list):
-            rows = payload
-        else:
-            rows = []
+        rows, _ = _schedule_rows(payload)
         for it in rows if isinstance(rows, list) else []:
             if not isinstance(it, dict):
                 continue

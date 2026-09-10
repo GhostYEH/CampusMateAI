@@ -569,6 +569,10 @@ class EduSyncResult(BaseModel):
     sync_batch_id: Optional[str] = None
     semester: Optional[str] = None
     persisted: bool = False
+    stage: Optional[str] = None
+    previous_schedule_preserved: Optional[bool] = None
+    requires_user_action: Optional[str] = None
+    protocol_source: Optional[str] = None
 
 
 # ===== 探测 =====

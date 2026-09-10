@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "kcmc": "Fixture课程A",
+        "kch": "FIXTURE-COURSE-A",
+        "xqj": "2",
+        "jc1": "3",
+        "jc2": "4",
+        "zcd": "1-16周"
+      }
+    ]
+  }
+}
