@@ -3,6 +3,17 @@ in vec2 position; void main(){ gl_Position = vec4(position,0.,1.); }`;
 
 const CONTEXT_RELEASE_TIMER = Symbol("sylvaLiquidContextReleaseTimer");
 export const LIQUID_METAL_MAX_FPS = 30;
+export const LIQUID_METAL_DPR_CAP = 2;
+
+function normalizeMaxFps(value) {
+  if (!Number.isFinite(value) || value <= 0) return LIQUID_METAL_MAX_FPS;
+  return Math.min(Math.max(value, 1), 120);
+}
+
+function normalizeDprCap(value) {
+  if (!Number.isFinite(value) || value <= 0) return LIQUID_METAL_DPR_CAP;
+  return Math.min(Math.max(value, 1), 4);
+}
 
 const HEAD = `#version 300 es
 precision highp float;
@@ -363,7 +374,11 @@ export function releaseWebGLContext(gl) {
 export function mountLiquidMetal(stage, {
   getActive = () => false,
   getEngaged = getActive,
+  maxFps = LIQUID_METAL_MAX_FPS,
+  dprCap = LIQUID_METAL_DPR_CAP,
 } = {}) {
+  const effectiveMaxFps = normalizeMaxFps(maxFps);
+  const effectiveDprCap = normalizeDprCap(dprCap);
   const canvas = stage?.querySelector(".sylva-liquid-fx");
   const control = stage?.querySelector(".sylva-liquid-control");
   if (!canvas || !control || typeof window === "undefined") return () => {};
@@ -465,7 +480,7 @@ export function mountLiquidMetal(stage, {
   const resize = () => {
     const canvasRect = canvas.getBoundingClientRect();
     const buttonRect = control.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, effectiveDprCap);
     const width = Math.max(2, Math.round(canvasRect.width * dpr));
     const height = Math.max(2, Math.round(canvasRect.height * dpr));
     if (width !== renderWidth || height !== renderHeight) {
@@ -524,9 +539,10 @@ export function mountLiquidMetal(stage, {
   let isScrolling = false;
   let lastScrollY = window.scrollY;
   let disposed = false;
+  let pageHidden = typeof document !== "undefined" ? document.hidden === true : false;
 
   const requestFrame = () => {
-    if (!disposed && !isScrolling && animationFrame === null) {
+    if (!disposed && !isScrolling && !pageHidden && animationFrame === null) {
       animationFrame = window.requestAnimationFrame(drawFrame);
     }
   };
@@ -559,7 +575,7 @@ export function mountLiquidMetal(stage, {
 
   const drawFrame = (now) => {
     animationFrame = null;
-    if (disposed || isScrolling) { animationFrame = null; return; }
+    if (disposed || isScrolling || pageHidden) { animationFrame = null; return; }
     if (window.scrollY !== lastScrollY) {
       lastScrollY = window.scrollY;
       handleScroll();
@@ -625,7 +641,7 @@ export function mountLiquidMetal(stage, {
     }
     lastStaticSignature = staticSignature;
 
-    if (now - previousDrawTime < 1000 / LIQUID_METAL_MAX_FPS) {
+    if (now - previousDrawTime < 1000 / effectiveMaxFps) {
       animationFrame = window.requestAnimationFrame(drawFrame);
       return;
     }
@@ -742,12 +758,19 @@ export function mountLiquidMetal(stage, {
 
     const shouldContinue = interaction.over
       || interaction.press
+      || interaction.focus
       || rippleIsLive
       || Math.abs(hoverTarget - hover) >= 0.0008
       || Math.abs(pressTarget - press) >= 0.002
       || Math.abs(desiredWell - pointerAmount) >= 0.002
       || pointerSpeed >= 0.002;
     if (shouldContinue) requestFrame();
+  };
+
+  const isDocumentHidden = () => {
+    if (typeof document === "undefined") return false;
+    if (typeof document.hidden === "boolean") return document.hidden;
+    return document.visibilityState === "hidden";
   };
 
   const handlePointerEnter = (event) => {
@@ -825,6 +848,23 @@ export function mountLiquidMetal(stage, {
       animationFrame = null;
     }
   };
+  const handleVisibilityChange = () => {
+    pageHidden = isDocumentHidden();
+    if (pageHidden) {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+      return;
+    }
+    if (interaction.over || interaction.press || interaction.focus || rippleSlots.some((ripple) => ripple.active)) {
+      requestFrame();
+      return;
+    }
+    if (Math.abs(hoverTarget - hover) >= 0.0008 || Math.abs(pressTarget - press) >= 0.002) {
+      requestFrame();
+    }
+  };
 
   control.addEventListener("pointerenter", handlePointerEnter);
   control.addEventListener("pointerleave", handlePointerLeave);
@@ -837,6 +877,7 @@ export function mountLiquidMetal(stage, {
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
   window.addEventListener("scroll", handleScroll, { passive: true });
+  document.addEventListener("visibilitychange", handleVisibilityChange);
   reducedMotion.addEventListener?.("change", handleMotionChange);
 
   const resizeObserver = new ResizeObserver(() => { needsResize = true; requestFrame(); });
@@ -860,6 +901,7 @@ export function mountLiquidMetal(stage, {
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerUp);
     window.removeEventListener("scroll", handleScroll);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     reducedMotion.removeEventListener?.("change", handleMotionChange);
     targets.forEach((target) => {
       gl.deleteFramebuffer(target.framebuffer);

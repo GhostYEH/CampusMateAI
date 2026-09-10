@@ -126,6 +126,10 @@ def run():
 
         home_surface = surface_signature(page)
         compact_nav_width = nav["width"]
+        nav_canvas_count = page.evaluate(
+            "() => document.querySelectorAll('.floating-nav .sylva-liquid-fx').length"
+        )
+        expect(nav_canvas_count == 1, f"首页初始导航液态画布应为 1，实际为 {nav_canvas_count}")
         task_selector = '.floating-nav-button[aria-label="待办与作业"]'
         for _ in range(3):
             task_box = rect(page, task_selector)
@@ -135,22 +139,29 @@ def run():
         page.wait_for_timeout(900)
         task_state = page.evaluate(
             """selector => {
+              const navFxCount = document.querySelectorAll('.floating-nav .sylva-liquid-fx').length;
               const stage = document.querySelector(selector)?.closest('.sylva-liquid-stage');
               const canvas = stage.querySelector('canvas');
-              const gl = canvas?.getContext('webgl2');
+              const plate = stage.querySelector('.sylva-liquid-plate');
+              const plateOpacity = plate ? getComputedStyle(plate).opacity : null;
+              const activeStage = document.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav');
+              const activeCanvas = activeStage ? activeStage.querySelector('canvas') : null;
               return {
                 hot: stage.classList.contains('hot'),
                 fallback: stage.classList.contains('sylva-liquid-fallback'),
                 hasCanvas: Boolean(canvas),
-                contextLost: gl ? gl.isContextLost() : null,
+                plateOpacity,
+                navFxCount,
+                activeHasCanvas: Boolean(activeCanvas),
               };
             }""",
             task_selector,
         )
-        expect(task_state["hot"], "待办与作业没有进入指针悬停状态")
-        expect(task_state["hasCanvas"], "待办与作业没有创建液态金属画布")
+        expect(not task_state["hasCanvas"], "非当前页面按钮不应创建液态金属画布")
         expect(not task_state["fallback"], "待办与作业退化成静态 CSS 效果")
-        expect(task_state["contextLost"] is False, "待办与作业的 WebGL 上下文已丢失")
+        expect(task_state["plateOpacity"] == "1", "待办与作业悬停时缺少轻量液态悬停反馈")
+        expect(task_state["activeHasCanvas"], "当前页面按钮应保留完整液态金属画布")
+        expect(task_state["navFxCount"] == 1, f"导航内液态画布应保持 1 个，实际为 {task_state['navFxCount']}")
         hovered_nav = rect(page, ".floating-nav")
         task_label = rect(page, f'{task_selector} .floating-nav-label')
         expect(hovered_nav["width"] > compact_nav_width + 200, "指针悬停后导航没有展开")
@@ -164,10 +175,21 @@ def run():
             """() => {
               const button = document.querySelector('.floating-nav-button[aria-label="待办与作业"]');
               const stage = button?.closest('.sylva-liquid-stage--nav');
-              return {current: button?.getAttribute('aria-current'), active: stage?.dataset.active};
+              const canvas = stage?.querySelector('canvas');
+              const gl = canvas?.getContext('webgl2');
+              return {
+                current: button?.getAttribute('aria-current'),
+                active: stage?.dataset.active,
+                hasCanvas: Boolean(canvas),
+                contextLost: gl ? gl.isContextLost() : null,
+                navFxCount: document.querySelectorAll('.floating-nav .sylva-liquid-fx').length,
+              };
             }"""
         )
-        expect(task_active == {"current": "page", "active": "true"}, "待办页没有保持统一的液态金属活动态")
+        expect(task_active.get("current") == "page" and task_active.get("active") == "true", "待办页没有保持统一的液态金属活动态")
+        expect(task_active.get("hasCanvas"), "待办页活动项应保留完整液态金属画布")
+        expect(task_active.get("contextLost") is False, "待办页活动项的 WebGL 上下文已丢失")
+        expect(task_active.get("navFxCount") == 1, f"待办页导航内液态画布应为 1，实际为 {task_active.get('navFxCount')}")
 
         print("opening study", flush=True)
         page.goto(f"{BASE_URL}/study", wait_until="domcontentloaded", timeout=30_000)

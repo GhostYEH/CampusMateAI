@@ -37,7 +37,9 @@ function DockItem({
         variant="nav"
         active={active}
         defer
-        disableEffects={reduceMotion}
+        disableEffects={reduceMotion || !active}
+        maxFps={20}
+        dprCap={1}
         className="floating-nav-button"
         aria-label={item.label}
         aria-current={active ? "page" : undefined}

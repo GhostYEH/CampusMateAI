@@ -138,3 +138,42 @@ test("liquid metal runtime explicitly releases a disposed WebGL context", async 
   assert.equal(released, 1);
   assert.equal(LIQUID_METAL_MAX_FPS, 30);
 });
+
+test("liquid metal runtime keeps default 30 FPS and DPR 2 budgets", async () => {
+  const { LIQUID_METAL_MAX_FPS, LIQUID_METAL_DPR_CAP } = await vite.ssrLoadModule(
+    "/src/components/liquidMetalScene.js",
+  );
+
+  assert.equal(LIQUID_METAL_MAX_FPS, 30);
+  assert.equal(LIQUID_METAL_DPR_CAP, 2);
+});
+
+test("liquid metal runtime supports navigation quality overrides", async () => {
+  const { readFileSync } = await import("node:fs");
+  const runtime = readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
+  assert.match(runtime, /maxFps/);
+  assert.match(runtime, /dprCap/);
+  assert.match(runtime, /LIQUID_METAL_DPR_CAP/);
+});
+
+test("liquid metal runtime falls back for invalid quality parameters", async () => {
+  const { readFileSync } = await import("node:fs");
+  const runtime = readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
+  assert.match(runtime, /Number\.isFinite/);
+  assert.match(runtime, /maxFps/);
+  assert.match(runtime, /dprCap/);
+});
+
+test("liquid metal runtime pauses frames while the page is hidden", async () => {
+  const { readFileSync } = await import("node:fs");
+  const runtime = readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
+  assert.match(runtime, /visibilitychange/);
+  assert.match(runtime, /document\.hidden|document\.visibilityState/);
+});
+
+test("liquid metal runtime removes its visibility listener on cleanup", async () => {
+  const { readFileSync } = await import("node:fs");
+  const runtime = readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
+  assert.match(runtime, /visibilitychange/);
+  assert.match(runtime, /removeEventListener/);
+});

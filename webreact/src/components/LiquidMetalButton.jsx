@@ -15,6 +15,8 @@ export default function LiquidMetalButton({
   active = false,
   defer = true,
   disableEffects = false,
+  maxFps,
+  dprCap,
   ...props
 }) {
   const stageRef = useRef(null);
@@ -29,8 +31,10 @@ export default function LiquidMetalButton({
     return mountLiquidMetal(stageRef.current, {
       getActive: () => activeRef.current,
       getEngaged: () => activeRef.current || interactionRef.current.pointer || interactionRef.current.focus,
+      maxFps,
+      dprCap,
     });
-  }, [shouldMount]);
+  }, [shouldMount, maxFps, dprCap]);
 
   const syncInteraction = () => {
     if (defer && !disableEffects) setInteracting(interactionRef.current.pointer || interactionRef.current.focus);

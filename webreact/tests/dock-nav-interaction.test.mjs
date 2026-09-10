@@ -16,6 +16,14 @@ test("floating navigation applies spring proximity scaling to every dock item", 
   assert.match(source, /dockBaseItemSize = 44/);
 });
 
+test("floating navigation keeps a single WebGL canvas on the active item", () => {
+  assert.match(source, /LiquidMetalButton/);
+  assert.match(source, /variant="nav"/);
+  assert.match(source, /disableEffects=\{reduceMotion \|\| !active\}/);
+  assert.match(source, /maxFps=\{20\}/);
+  assert.match(source, /dprCap=\{1\}/);
+});
+
 test("floating navigation disables proximity scaling when reduced motion is enabled", () => {
   assert.match(source, /reduceMotion \? 1 : [a-zA-Z]+/);
   assert.match(source, /data-reduce-motion/);
