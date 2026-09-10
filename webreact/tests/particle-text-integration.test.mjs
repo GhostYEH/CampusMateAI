@@ -8,7 +8,7 @@ const particleText = await readFile(new URL("../src/components/ParticleText.jsx"
 test("homepage brand footer integrates the React Bits particle text contract", () => {
   assert.match(footer, /import ParticleText from ["']\.\/ParticleText\.jsx["']/);
   assert.match(footer, /<ParticleText[\s\S]*text="Campus Mate"/);
-  assert.match(footer, /trigger="hover"/);
+  assert.match(footer, /trigger="none"/);
   assert.match(footer, /particleSize=\{2\.3\}/);
   assert.match(footer, /density=\{6\}/);
   assert.match(footer, /scatter=\{180\}/);

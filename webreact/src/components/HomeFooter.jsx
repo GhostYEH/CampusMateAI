@@ -140,7 +140,7 @@ function HomeBrandCanvas() {
       repelRadius={110}
       idleDrift={0.7}
       animateOnMount={false}
-      trigger="hover"
+      trigger="none"
       fontSize="clamp(3rem, 12vw, 8rem)"
       fontWeight={900}
       fontFamily="inherit"
