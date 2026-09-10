@@ -598,6 +598,10 @@ export interface EduSyncResult {
   sync_batch_id?: string;
   semester?: string;
   persisted?: boolean;
+  stage?: string;
+  previous_schedule_preserved?: boolean;
+  requires_user_action?: string;
+  protocol_source?: string;
 }
 export interface EduSyncRecord {
   id: string;

@@ -88,6 +88,8 @@ class DelayedPostConnectOperations implements EduPostConnectOperations {
   examResult: Promise<EduSyncResult>;
   scheduleItemsResult: Promise<EduScheduleItemsResponse>;
   examCalls: number = 0;
+  scheduleItemsCalls: number = 0;
+  requestedSemester: string | undefined = undefined;
 
   constructor(
     bindingResult: Promise<EduBindingDto | undefined>,
@@ -120,7 +122,9 @@ class DelayedPostConnectOperations implements EduPostConnectOperations {
     return this.examResult;
   }
 
-  listScheduleItems(_semester?: string): Promise<EduScheduleItemsResponse> {
+  listScheduleItems(semester?: string): Promise<EduScheduleItemsResponse> {
+    this.scheduleItemsCalls++;
+    this.requestedSemester = semester;
     return this.scheduleItemsResult;
   }
 }
@@ -400,8 +404,60 @@ export default function eduLoginSecurityTest(): void {
         .autoSync(request as EduPostConnectRequestToken);
 
       expect(operations.examCalls).assertEqual(1);
-      expect(state.syncMessage.includes('课表同步失败')).assertTrue();
+      expect(state.syncMessage.includes('课表未成功导入系统，请重新同步；原有课表未被覆盖')).assertTrue();
       expect(state.syncMessage.includes('考试同步成功')).assertTrue();
+    });
+
+    it('keeps backend validation diagnostics and does not read a failed schedule', 0, async () => {
+      const guard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
+      const generation: number = guard.beginReplacement();
+      expect(guard.acceptCreatedConnection(generation, 'connection-validate')).assertTrue();
+      const request: EduPostConnectRequestToken | undefined = guard.capturePostConnect('connection-validate');
+      const state: PostConnectState = new PostConnectState();
+      const failedSchedule: EduSyncResult = {
+        sync_type: 'schedule', status: 'failed', items_count: 0, persisted: false,
+        stage: 'validate', error_message: '课表结构校验失败', previous_schedule_preserved: true
+      };
+      const operations: DelayedPostConnectOperations = new DelayedPostConnectOperations(
+        Promise.resolve(bindingFixture('binding-validate')),
+        Promise.resolve(failedSchedule),
+        Promise.resolve(syncFixture('grade')),
+        Promise.resolve(syncFixture('exam'))
+      );
+
+      await new EduPostConnectController(guard, operations, state)
+        .autoSync(request as EduPostConnectRequestToken);
+
+      expect(operations.scheduleItemsCalls).assertEqual(0);
+      expect(state.syncMessage.includes('课表校验失败：课表结构校验失败；原有课表未被覆盖')).assertTrue();
+      expect(state.syncMessage.includes('成绩同步成功')).assertTrue();
+      expect(state.syncMessage.includes('考试同步成功')).assertTrue();
+    });
+
+    it('accepts an explicitly committed empty semester after read-back', 0, async () => {
+      const guard: EduConnectionRequestGuard = new EduConnectionRequestGuard();
+      const generation: number = guard.beginReplacement();
+      expect(guard.acceptCreatedConnection(generation, 'connection-empty')).assertTrue();
+      const request: EduPostConnectRequestToken | undefined = guard.capturePostConnect('connection-empty');
+      const state: PostConnectState = new PostConnectState();
+      const emptySchedule: EduSyncResult = {
+        sync_type: 'schedule', status: 'success', items_count: 0, persisted: true,
+        stage: 'commit', semester: '2025-2026-1'
+      };
+      const emptyStoredSchedule: EduScheduleItemsResponse = { items_count: 0, items: [] };
+      const operations: DelayedPostConnectOperations = new DelayedPostConnectOperations(
+        Promise.resolve(bindingFixture('binding-empty')),
+        Promise.resolve(emptySchedule),
+        Promise.resolve(syncFixture('grade')),
+        Promise.resolve(syncFixture('exam')),
+        Promise.resolve(emptyStoredSchedule)
+      );
+
+      await new EduPostConnectController(guard, operations, state)
+        .autoSync(request as EduPostConnectRequestToken);
+
+      expect(operations.requestedSemester).assertEqual('2025-2026-1');
+      expect(state.syncMessage.includes('课表同步成功，本学期暂无课程')).assertTrue();
     });
 
     it('selects exactly one credentials or captcha surface for backend login', 0, () => {

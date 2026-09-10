@@ -18,6 +18,38 @@ export interface EduPostConnectStateWriter {
   setSyncMessage(message: string): void;
 }
 
+const SCHEDULE_STAGE_LABELS: Record<string, string> = {
+  'protocol_discovery': '课表协议识别',
+  'fetch': '课表读取',
+  'parse': '课表解析',
+  'validate': '课表校验',
+  'commit': '课表保存'
+};
+
+export function isVerifiedScheduleImport(
+  result: EduSyncResult,
+  stored: EduScheduleItemsResponse | undefined
+): boolean {
+  if (result.status !== 'success' || result.persisted !== true || stored === undefined) return false;
+  if (result.items_count === 0) return result.stage === 'commit' && stored.items_count === 0;
+  return stored.items_count >= result.items_count;
+}
+
+export function eduScheduleStatusMessage(result: EduSyncResult, imported: boolean): string {
+  if (imported) {
+    return result.items_count === 0 ? '课表同步成功，本学期暂无课程' :
+      `课表同步成功，已校验并保存 ${result.items_count} 条课程记录`;
+  }
+  if (result.status === 'failed') {
+    const label: string | undefined = result.stage === undefined ? undefined : SCHEDULE_STAGE_LABELS[result.stage];
+    const prefix: string = label === undefined ? '' : `${label}失败：`;
+    const detail: string = result.error_message || '请稍后重试';
+    const preserved: string = result.previous_schedule_preserved === true ? '；原有课表未被覆盖' : '';
+    return `${prefix}${detail}${preserved}`;
+  }
+  return '课表未成功导入系统，请重新同步；原有课表未被覆盖';
+}
+
 /** Runs binding and sync requests inside one connection-scoped lifecycle. */
 export class EduPostConnectController {
   private guard: EduConnectionRequestGuard;
@@ -69,9 +101,12 @@ export class EduPostConnectController {
       if (!this.isCurrent(request)) return;
       const scheduleResult: EduSyncResult = await this.operations.syncSchedule();
       if (!this.isCurrent(request)) return;
-      const storedSchedule: EduScheduleItemsResponse = await this.operations.listScheduleItems(
-        scheduleResult.schedule?.semester || scheduleResult.semester
-      );
+      let storedSchedule: EduScheduleItemsResponse | undefined = undefined;
+      if (scheduleResult.status === 'success') {
+        storedSchedule = await this.operations.listScheduleItems(
+          scheduleResult.schedule?.semester || scheduleResult.semester
+        );
+      }
       if (!this.isCurrent(request)) return;
       this.state.setSyncMessage('正在同步成绩…');
       if (!this.isCurrent(request)) return;
@@ -81,13 +116,12 @@ export class EduPostConnectController {
       if (!this.isCurrent(request)) return;
       const examResult: EduSyncResult = await this.operations.syncExam();
       if (!this.isCurrent(request)) return;
-      const scheduleOk: boolean = scheduleResult.status === 'success' &&
-        scheduleResult.persisted === true && scheduleResult.items_count > 0 && storedSchedule.items_count > 0;
+      const scheduleOk: boolean = isVerifiedScheduleImport(scheduleResult, storedSchedule);
       const gradeOk: boolean = gradeResult.status === 'success';
       const examOk: boolean = examResult.status === 'success';
       if (!this.isCurrent(request)) return;
       this.state.setSyncMessage(
-        `课表同步${scheduleOk ? '成功' : '失败'}，成绩同步${gradeOk ? '成功' : '失败'}，考试同步${examOk ? '成功' : '失败'}`
+        `${eduScheduleStatusMessage(scheduleResult, scheduleOk)}，成绩同步${gradeOk ? '成功' : '失败'}，考试同步${examOk ? '成功' : '失败'}`
       );
       if (!this.isCurrent(request)) return;
       await this.loadBinding(request);
