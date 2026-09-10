@@ -11,7 +11,7 @@ const homeFooter = await readFile(new URL("../src/components/HomeFooter.jsx", im
 const particleText = await readFile(new URL("../src/components/ParticleText.jsx", import.meta.url), "utf8");
 
 test("app shell renders the iridescence background instead of a remote image layer", () => {
-  assert.match(appShell, /import Iridescence from ["']\.\/Iridescence\.jsx["']/);
+  assert.match(appShell, /const Iridescence = lazy\(\(\) => import\(["']\.\/Iridescence\.jsx["']\)\)/);
   assert.match(appShell, /<Iridescence[\s\S]*className=["']app-iridescence["']/);
   assert.doesNotMatch(appShell, /WallpaperBackground|use[A-Z][A-Za-z]+Wallpaper/);
   assert.doesNotMatch(styles, /wallpaper-layer|wallpaper-scrim/);

@@ -9,7 +9,7 @@ const ripple = await readFile(new URL("../src/components/RippleDistortion.jsx", 
 const styles = await readFile(new URL("../src/styles/counselor-reference.css", import.meta.url), "utf8");
 
 test("counselor page uses a full-height interactive Prism background", () => {
-  assert.match(appShell, /import Prism from ["']\.\/Prism\.jsx["']/);
+  assert.match(appShell, /const Prism = lazy\(\(\) => import\(["']\.\/Prism\.jsx["']\)\)/);
   assert.match(appShell, /<Prism[\s\S]*className=["']app-counselor-prism["']/);
   assert.match(appShell, /animationType=["']3drotate["']/);
   assert.match(appShell, /suspendWhenOffscreen=\{false\}/);

@@ -16,18 +16,16 @@ test("adaptive navigation exposes a data-contrast state with light and dark toke
   assert.match(layoutStyles, /\.floating-nav\[data-contrast="dark"\]/);
 });
 
-test("adaptive navigation samples the Sylva scene on the home page only", () => {
-  assert.match(floatingNavSource, /\.sylva-home-hero\.sylva-scene-background iframe/);
-  assert.match(floatingNavSource, /querySelector\("#scene"\)/);
-  assert.match(floatingNavSource, /readPixels/);
-  assert.match(floatingNavSource, /CONTRAST_SAMPLE_MS/);
+test("adaptive navigation uses a fixed readable home treatment without GPU polling", () => {
   assert.match(floatingNavSource, /isHomeScene/);
-  assert.match(floatingNavSource, /window\.clearInterval/);
+  assert.match(floatingNavSource, /setAttribute\("data-contrast", "dark"\)/);
+  assert.doesNotMatch(floatingNavSource, /setInterval/);
+  assert.doesNotMatch(floatingNavSource, /readPixels/);
 });
 
-test("adaptive navigation falls back to a readable default when the scene cannot be sampled", () => {
+test("adaptive navigation sets a readable default without requiring scene sampling", () => {
   assert.match(floatingNavSource, /setAttribute\("data-contrast", "dark"\)/);
-  assert.match(floatingNavSource, /catch/);
+  assert.doesNotMatch(floatingNavSource, /contentDocument/);
 });
 
 test("adaptive navigation uses explicit contrast tokens and no mix-blend difference", () => {

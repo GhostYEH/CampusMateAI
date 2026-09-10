@@ -69,6 +69,7 @@ html {
 .floating-nav[data-contrast="dark"] {
   --floating-nav-foreground: #eef3ff;
   --floating-nav-active-foreground: #ffffff;
+  background: rgba(11, 20, 35, .74);
 }
 
 .floating-nav-inner {
