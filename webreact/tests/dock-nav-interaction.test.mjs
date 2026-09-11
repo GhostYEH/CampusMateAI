@@ -4,6 +4,8 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
 const floatingNavSource = fs.readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
+const liquidButtonSource = fs.readFileSync(new URL("../src/components/LiquidMetalButton.jsx", import.meta.url), "utf8");
+const liquidSceneSource = fs.readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
 const buttonStyles = fs.readFileSync(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
 const layoutStyles = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
@@ -56,17 +58,20 @@ test("floating navigation replaces the static hover highlight with liquid motion
   assert.match(layoutStyles, /\.floating-nav-list > li\.active \.floating-nav-button\s*\{/);
 });
 
-test("top navigation uses a stable lightweight effect while its labels resize", () => {
-  assert.match(floatingNavSource, /lightweightEffects/);
-  assert.match(source, /function StableDockItem/);
-  assert.match(source, /lightweightEffects \? StableDockItem : DockItem/);
-  assert.match(source, /disableEffects/);
-  assert.match(source, /onMouseMove=\{lightweightEffects \? undefined : handleMouseMove\}/);
+test("top navigation keeps real liquid motion on fixed icon geometry", () => {
+  assert.match(floatingNavSource, /effectGeometrySelector="\.floating-nav-icon"/);
+  assert.match(source, /effectGeometrySelector=\{effectGeometrySelector\}/);
+  assert.doesNotMatch(source, /function StableDockItem/);
+  assert.doesNotMatch(source, /lightweightEffects/);
+  assert.match(liquidButtonSource, /effectGeometrySelector/);
+  assert.match(liquidButtonSource, /geometrySelector:\s*effectGeometrySelector/);
 });
 
-test("lightweight nav feedback stays on compositor-only properties", () => {
-  assert.match(buttonStyles, /@keyframes sylva-nav-liquid-sheen/);
-  assert.match(buttonStyles, /\.floating-nav \.sylva-liquid-stage--nav::after/);
-  assert.match(buttonStyles, /will-change:\s*transform, opacity/);
-  assert.match(buttonStyles, /\.floating-nav \.sylva-liquid-stage--nav:hover::after[\s\S]*animation:\s*sylva-nav-liquid-sheen/);
+test("liquid runtime observes the fixed geometry instead of the resizing nav pill", () => {
+  assert.match(liquidSceneSource, /const effectGeometry = geometrySelector/);
+  assert.match(liquidSceneSource, /const geometryRect = effectGeometry\.getBoundingClientRect\(\)/);
+  assert.match(liquidSceneSource, /resizeObserver\.observe\(geometrySelector \? effectGeometry : stage\)/);
+  assert.match(buttonStyles, /\.floating-nav \.sylva-liquid-stage--nav \.sylva-liquid-fx/);
+  assert.match(buttonStyles, /--floating-nav-effect-size/);
+  assert.doesNotMatch(buttonStyles, /@keyframes sylva-nav-liquid-sheen/);
 });
