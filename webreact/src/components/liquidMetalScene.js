@@ -374,6 +374,7 @@ export function releaseWebGLContext(gl) {
 export function mountLiquidMetal(stage, {
   getActive = () => false,
   getEngaged = getActive,
+  geometrySelector,
   maxFps = LIQUID_METAL_MAX_FPS,
   dprCap = LIQUID_METAL_DPR_CAP,
 } = {}) {
@@ -382,6 +383,9 @@ export function mountLiquidMetal(stage, {
   const canvas = stage?.querySelector(".sylva-liquid-fx");
   const control = stage?.querySelector(".sylva-liquid-control");
   if (!canvas || !control || typeof window === "undefined") return () => {};
+  const effectGeometry = geometrySelector
+    ? stage.querySelector(geometrySelector) || control
+    : control;
 
   if (canvas[CONTEXT_RELEASE_TIMER] !== undefined) {
     window.clearTimeout(canvas[CONTEXT_RELEASE_TIMER]);
@@ -479,7 +483,7 @@ export function mountLiquidMetal(stage, {
 
   const resize = () => {
     const canvasRect = canvas.getBoundingClientRect();
-    const buttonRect = control.getBoundingClientRect();
+    const geometryRect = effectGeometry.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, effectiveDprCap);
     const width = Math.max(2, Math.round(canvasRect.width * dpr));
     const height = Math.max(2, Math.round(canvasRect.height * dpr));
@@ -489,10 +493,10 @@ export function mountLiquidMetal(stage, {
       canvas.width = renderWidth;
       canvas.height = renderHeight;
     }
-    buttonWidth = buttonRect.width * dpr;
-    buttonHeight = buttonRect.height * dpr;
-    centerX = (buttonRect.left - canvasRect.left) * dpr + buttonWidth / 2;
-    centerY = renderHeight - ((buttonRect.top - canvasRect.top) * dpr + buttonHeight / 2);
+    buttonWidth = geometryRect.width * dpr;
+    buttonHeight = geometryRect.height * dpr;
+    centerX = (geometryRect.left - canvasRect.left) * dpr + buttonWidth / 2;
+    centerY = renderHeight - ((geometryRect.top - canvasRect.top) * dpr + buttonHeight / 2);
 
     sizeTarget(coreTarget, renderWidth, renderHeight);
     sizeTarget(rimTarget, renderWidth, renderHeight);
@@ -557,7 +561,7 @@ export function mountLiquidMetal(stage, {
   };
 
   const localPoint = (event) => {
-    const bounds = control.getBoundingClientRect();
+    const bounds = effectGeometry.getBoundingClientRect();
     const size = Math.max(bounds.height, 1);
     return [
       (event.clientX - (bounds.left + bounds.width / 2)) / size,
@@ -881,7 +885,7 @@ export function mountLiquidMetal(stage, {
   reducedMotion.addEventListener?.("change", handleMotionChange);
 
   const resizeObserver = new ResizeObserver(() => { needsResize = true; requestFrame(); });
-  resizeObserver.observe(stage);
+  resizeObserver.observe(geometrySelector ? effectGeometry : stage);
   resize();
   syncInteraction();
   requestFrame();

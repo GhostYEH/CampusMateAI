@@ -28,6 +28,8 @@ html {
   --floating-nav-expanded-width: 900px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
+  --floating-nav-effect-size: var(--floating-nav-item-size);
+  --floating-nav-effect-x: 0px;
   --floating-nav-list-start-padding: 8px;
   --floating-nav-list-end-padding: 8px;
   --floating-nav-foreground: #53627b;
@@ -124,6 +126,8 @@ html {
   }
 
   .floating-nav:hover {
+    --floating-nav-effect-size: 36px;
+    --floating-nav-effect-x: 2px;
     width: min(var(--floating-nav-expanded-width), calc(100vw - 580px));
   }
 

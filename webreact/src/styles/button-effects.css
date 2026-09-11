@@ -114,8 +114,35 @@
   opacity: 0;
 }
 
+.sylva-liquid-stage--nav:hover .sylva-liquid-plate,
+.sylva-liquid-stage--nav:focus-within .sylva-liquid-plate,
 .sylva-liquid-stage--nav[data-active="true"] .sylva-liquid-plate {
   opacity: 1;
+}
+
+/* Keep hover feedback visually consistent without allocating another WebGL renderer. */
+.sylva-liquid-stage--nav.hot .sylva-liquid-plate,
+.sylva-liquid-stage--nav:hover .sylva-liquid-plate {
+  background:
+    linear-gradient(135deg, rgba(207,233,255,.24), rgba(255,255,255,.035) 44%, rgba(255,210,166,.18)),
+    rgba(24,31,31,.66);
+  box-shadow:
+    0 0 0 1px rgba(207,233,255,.46),
+    0 0 calc(var(--h) * .26) rgba(113,181,255,.24),
+    0 calc(var(--h) * .10) calc(var(--h) * .24) rgba(0,0,0,.36),
+    0 calc(var(--h) * .30) calc(var(--h) * .62) rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(255,255,255,.24),
+    inset 0 calc(var(--h) * -.02) calc(var(--h) * .05) rgba(255,255,255,.08);
+}
+
+.floating-nav .sylva-liquid-stage--nav .sylva-liquid-fx {
+  inset:
+    calc((var(--h) - var(--floating-nav-effect-size)) / 2 - var(--pad))
+    auto
+    auto
+    calc(var(--floating-nav-effect-x) - var(--pad));
+  width: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
+  height: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
 }
 
 .sylva-liquid-stage--surface[data-tone="light"] > .sylva-liquid-plate {
