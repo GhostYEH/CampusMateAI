@@ -1068,6 +1068,63 @@ CREATE INDEX IF NOT EXISTS idx_learner_events_user_course ON learner_events(user
 CREATE INDEX IF NOT EXISTS idx_learner_events_user_subject ON learner_events(user_id, subject_type, subject_id);
 """
 
+LEARNER_STATE_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learner_state_projection_runs (
+    run_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    as_of TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    estimator_version TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    is_current INTEGER NOT NULL DEFAULT 0 CHECK(is_current IN (0, 1)),
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learner_state_runs_user_time
+    ON learner_state_projection_runs(user_id, computed_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current
+    ON learner_state_projection_runs(user_id) WHERE is_current = 1;
+
+CREATE TABLE IF NOT EXISTS learner_state_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    scope_type TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    state_type TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+    data_quality TEXT NOT NULL,
+    observed_from TEXT,
+    observed_through TEXT,
+    valid_until TEXT,
+    computed_at TEXT NOT NULL,
+    UNIQUE(run_id, scope_type, scope_id, state_type),
+    FOREIGN KEY(run_id) REFERENCES learner_state_projection_runs(run_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learner_state_snapshots_run
+    ON learner_state_snapshots(run_id, scope_type, scope_id, state_type);
+CREATE INDEX IF NOT EXISTS idx_learner_state_snapshots_scope
+    ON learner_state_snapshots(scope_type, scope_id, state_type);
+
+CREATE TABLE IF NOT EXISTS learner_state_evidence (
+    evidence_id TEXT PRIMARY KEY,
+    snapshot_id TEXT NOT NULL,
+    evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('EVENT', 'SOURCE_ROW', 'SYNC_STATUS')),
+    event_id TEXT,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('SUPPORTS', 'LIMITS', 'INVALIDATES')),
+    quality TEXT NOT NULL,
+    FOREIGN KEY(snapshot_id) REFERENCES learner_state_snapshots(snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY(event_id) REFERENCES learner_events(event_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learner_state_evidence_snapshot
+    ON learner_state_evidence(snapshot_id, evidence_id);
+CREATE INDEX IF NOT EXISTS idx_learner_state_evidence_event
+    ON learner_state_evidence(event_id);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1129,6 +1186,7 @@ class Database:
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
+                conn.executescript(LEARNER_STATE_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

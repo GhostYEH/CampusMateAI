@@ -457,13 +457,16 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     await sync_chaoxing(user=user, container=container)
 
     tasks, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks) == 1
+    assert len(tasks) == 2
     tasks.sort(key=lambda x: x.title)
     
     assert tasks[0].title == "第一次作业"
     assert tasks[0].external_id == "99991"
     assert tasks[0].status == "pending"
     assert tasks[0].source == "chaoxing"
+    assert tasks[1].external_id == "99992"
+    assert tasks[1].status == "completed"
+    assert tasks[1].source == "chaoxing"
     
     # 模拟第二次作业页面，更新标题和状态
     mock_assignments_response2 = MagicMock()
@@ -498,13 +501,15 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     await sync_chaoxing(user=user, container=container)
 
     tasks2, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks2) == 1
+    assert len(tasks2) == 2
     tasks2.sort(key=lambda x: x.title)
     
     # 幂等性：不新增记录，只更新
     assert tasks2[0].title == "第一次作业（修改标题）"
     assert tasks2[0].deadline == "2026-08-12"
     assert tasks2[0].status == "completed" # 已批阅 -> completed
+    assert tasks2[1].external_id == "99992"
+    assert tasks2[1].status == "completed"
     
     # 模拟并发情况：确保不重复创建 (通过 DB 的 UNIQUE 约束)
     # 此时如果再次尝试 create_task 会触发 IntegrityError，我们在代码中处理了冲突
@@ -512,7 +517,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
         user_id="user1", title="冲突测试", source="chaoxing", external_id="99991"
     )
     tasks3, _ = task_repo.list_tasks(user_id="user1")
-    assert len(tasks3) == 1 # 已完成作业不会首次生成待办
+    assert len(tasks3) == 2
     repo = ChaoxingRepository(db)
     course_repo = CourseRepository(db)
     repo.save_credentials("user1", {"cookie": "A"})

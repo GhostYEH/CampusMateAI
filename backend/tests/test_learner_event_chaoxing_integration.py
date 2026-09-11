@@ -20,6 +20,11 @@ from app.repositories.notice_repository import NoticeRepository
 from app.repositories.personal_task_repository import PersonalTaskRepository
 from app.services.learner_event_service import LearnerEventService
 from app.schemas.learner_event import LearnerEventCreate
+from app.main import create_app
+from app.services.container import reset_container_for_tests
+from app.core.config import Settings
+from app.services.demo_seeder import seed_demo_data
+from fastapi.testclient import TestClient
 
 
 def _now() -> datetime:
@@ -283,6 +288,14 @@ class _FakeChaoxingClient:
         return self.notices
 
 
+class _BatchChaoxingClient(_FakeChaoxingClient):
+    async def get_all_assignments(self):
+        return self.assignments
+
+    async def get_all_notices(self):
+        return self.notices
+
+
 def _sync_container(db: Database, client: _FakeChaoxingClient):
     _add_user(db)
     course_repo = CourseRepository(db)
@@ -354,6 +367,127 @@ async def test_chaoxing_sync_projects_course_assignment_and_notice_without_api_c
         assert sum(row.event_type == "assignment_submitted" for row in rows) == 1
     finally:
         db.dispose()
+
+
+@pytest.mark.asyncio
+async def test_first_observed_completed_assignment_creates_discovered_and_submitted_events():
+    db = Database(None)
+    try:
+        assignment = {
+            "external_id": "work_first_completed",
+            "title": "首次同步即完成的作业",
+            "deadline": "2026-09-20T10:00:00+00:00",
+            "status": "completed",
+            "course_id": "remote_course_1",
+            "link": "https://mooc2-ans.chaoxing.com/work/1",
+        }
+        client = _FakeChaoxingClient([assignment], [])
+        container = _sync_container(db, client)
+        user = UserRow(id="user1", username="user1", password_hash="hash", role="student")
+        with patch("app.api.routes.chaoxing.ChaoxingClient", return_value=client):
+            result = await _perform_sync_chaoxing(user, container)
+            await _perform_sync_chaoxing(user, container)
+        assert result["status"] == "sync completed"
+        rows, total = container.learner_event_repository.list_for_user(user_id="user1")
+        assert total == 3  # course_synced plus the two assignment observations
+        assert sum(row.event_type == "assignment_discovered" for row in rows) == 1
+        assert sum(row.event_type == "assignment_submitted" for row in rows) == 1
+        assert not any(row.event_type == "task_completed" for row in rows)
+        submitted = next(row for row in rows if row.event_type == "assignment_submitted")
+        assert submitted.payload["observation"] == "completed_status"
+        assert submitted.payload["observed_at"] == submitted.occurred_at
+    finally:
+        db.dispose()
+
+
+def test_course_free_text_changes_do_not_change_course_revision_event():
+    db = Database(None)
+    try:
+        service = _service(db)
+        first = service.record_chaoxing_course_synced(_course())
+        changed_text = _course(
+            name="课程自由文本发生变化",
+            remote_teacher_name="教师自由文本发生变化",
+            remote_school_name="学校自由文本发生变化",
+            remote_class_name="班级自由文本发生变化",
+            source_url="https://private.example/course/changed",
+            last_synced_at="2026-09-10T11:00:00+00:00",
+        )
+        second = service.record_chaoxing_course_synced(changed_text)
+        assert first is not None and first.created is True
+        assert second is not None and second.created is False
+    finally:
+        db.dispose()
+
+
+@pytest.mark.asyncio
+async def test_formal_batch_sync_route_uses_bulk_client_methods_and_keeps_response_shape():
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite:///:memory:",
+        auto_seed_demo_users=True,
+        auto_import_demo=False,
+        llm_provider="none",
+    )
+    container = reset_container_for_tests(settings)
+    seed_demo_data(container, force=True)
+    client = _BatchChaoxingClient(
+        assignments=[
+            {
+                "external_id": "batch_work_1",
+                "course_id": "remote_course_1",
+                "title": "批量作业标题",
+                "deadline": "2026-09-20T10:00:00+00:00",
+                "status": "completed",
+            }
+        ],
+        notices=[
+            {
+                "external_id": "batch_notice_1",
+                "course_id": "remote_course_1",
+                "title": "批量通知标题",
+                "content": "批量通知正文",
+                "published_at": "2026-09-09T10:00:00+00:00",
+            }
+        ],
+    )
+    container.chaoxing_repository.save_credentials(
+        container.user_repository.get_user_by_username("student_demo").id,
+        {"session": "test-only"},
+    )
+    client.assignments_called = False
+    client.notices_called = False
+    original_assignments = client.get_all_assignments
+    original_notices = client.get_all_notices
+
+    async def get_all_assignments():
+        client.assignments_called = True
+        return await original_assignments()
+
+    async def get_all_notices():
+        client.notices_called = True
+        return await original_notices()
+
+    client.get_all_assignments = get_all_assignments
+    client.get_all_notices = get_all_notices
+    with patch("app.api.routes.chaoxing.ChaoxingClient", return_value=client):
+        with TestClient(create_app()) as http:
+            login = http.post(
+                "/api/v1/auth/login",
+                json={"username": "student_demo", "password": "Demo123456"},
+            )
+            assert login.status_code == 200
+            headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+            response = http.post("/api/v1/chaoxing/sync", headers=headers)
+    assert response.status_code == 200
+    assert {"status", "notice_sync", "source", "complete", "warnings", "stats"} <= response.json().keys()
+    assert client.assignments_called is True
+    assert client.notices_called is True
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    rows, _ = container.learner_event_repository.list_for_user(user_id=user_id)
+    assert {row.event_type for row in rows} >= {
+        "course_synced", "assignment_discovered", "assignment_submitted", "notice_synced"
+    }
 
 
 @pytest.mark.asyncio

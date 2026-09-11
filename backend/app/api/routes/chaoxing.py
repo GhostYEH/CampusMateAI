@@ -463,6 +463,7 @@ async def _perform_sync_chaoxing(
             if existing_task:
                 # Update existing task
                 task_id = existing_task["id"]
+                existing_task_row = task_repo.get_task(task_id, user_id=user.id)
                 update_fields = {
                     "title": assignment["title"],
                     "deadline": assignment["deadline"],
@@ -478,27 +479,49 @@ async def _perform_sync_chaoxing(
                 transitioned_task = None
                 if current_status != new_status:
                     if new_status == "completed":
+                        # The discovery observation is independently retryable. This
+                        # also repairs a prior event-store outage before recording the
+                        # platform's completed-status observation.
+                        if existing_task_row is not None:
+                            _project_learner_event(
+                                container,
+                                action="assignment_discovered",
+                                subject_type="personal_task",
+                                subject_id=task_id,
+                                callback=lambda existing_task_row=existing_task_row: container.learner_event_service.record_chaoxing_assignment_discovered(existing_task_row),
+                            )
                         transitioned_task = task_repo.complete(task_id, user_id=user.id)
                     elif new_status == "pending" and current_status == "completed":
                         task_repo.restore(task_id, user_id=user.id)
                 
                 saved_task = task_repo.update_task(task_id, user_id=user.id, fields=update_fields)
                 stats["assignments_updated"] += 1
-                if current_status != "completed" and new_status == "completed" and transitioned_task:
+                final_task = saved_task or transitioned_task
+                if final_task is not None:
+                    # Re-project both observations on every successful sync. The
+                    # event store is independently retryable, while its dedupe keys
+                    # keep ordinary sync retries idempotent.
+                    _project_learner_event(
+                        container,
+                        action="assignment_discovered",
+                        subject_type="personal_task",
+                        subject_id=task_id,
+                        callback=lambda final_task=final_task: container.learner_event_service.record_chaoxing_assignment_discovered(final_task),
+                    )
+                if new_status == "completed" and final_task is not None:
                     _project_learner_event(
                         container,
                         action="assignment_submitted",
                         subject_type="personal_task",
                         subject_id=task_id,
-                        callback=lambda saved_task=saved_task or transitioned_task: container.learner_event_service.record_chaoxing_assignment_submitted(
-                            saved_task, observed_at=now_iso
+                        callback=lambda final_task=final_task: container.learner_event_service.record_chaoxing_assignment_submitted(
+                            final_task, observed_at=now_iso
                         ),
                     )
             else:
-                if assignment.get("status") == "completed":
-                    continue
                 # Create new task
-                # Ensure status is properly created
+                # Always persist first, including a first observation that is already
+                # completed. Discovery and platform completion are separate facts.
                 saved_task = task_repo.create_task(
                     user_id=user.id,
                     title=assignment["title"],
@@ -519,6 +542,18 @@ async def _perform_sync_chaoxing(
                         subject_id=saved_task.id,
                         callback=lambda saved_task=saved_task: container.learner_event_service.record_chaoxing_assignment_discovered(saved_task),
                     )
+                    if assignment.get("status") == "completed":
+                        completed_task = task_repo.complete(saved_task.id, user_id=user.id)
+                        if completed_task is not None:
+                            _project_learner_event(
+                                container,
+                                action="assignment_submitted",
+                                subject_type="personal_task",
+                                subject_id=completed_task.id,
+                                callback=lambda completed_task=completed_task: container.learner_event_service.record_chaoxing_assignment_submitted(
+                                    completed_task, observed_at=now_iso
+                                ),
+                            )
 
     # Notice Sync
     notice_sync_available = True

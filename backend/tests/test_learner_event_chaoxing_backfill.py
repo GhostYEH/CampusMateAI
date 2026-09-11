@@ -143,6 +143,35 @@ def test_chaoxing_backfill_full_user_mode_isolated_and_core_backfill_does_not_em
     assert container.learner_event_repository.list_for_user(user_id=user2)[1] == 3
 
 
+def test_chaoxing_backfill_counts_discovered_and_submitted_failures_independently(caplog):
+    container = _container()
+    user_id = _user_id(container)
+    course = _course(container, user_id, "course_partial")
+    task = container.personal_task_repository.create_task(
+        user_id=user_id,
+        title="partial assignment",
+        source="chaoxing",
+        external_id="work_partial",
+        course_id=course.id,
+        last_synced_at="2026-09-10T10:00:00+00:00",
+    )
+    task = container.personal_task_repository.complete(task.id, user_id=user_id)
+    original_discovered = container.learner_event_service.record_chaoxing_assignment_discovered
+
+    def fail_discovered(_task):
+        raise RuntimeError("private assignment title must not be logged")
+
+    container.learner_event_service.record_chaoxing_assignment_discovered = fail_discovered
+    with caplog.at_level("WARNING"):
+        result = container.learner_event_service.backfill_chaoxing_learning_events(
+            user_id=user_id, batch_size=1
+        )
+    container.learner_event_service.record_chaoxing_assignment_discovered = original_discovered
+    assert result["failed"] == 1
+    assert result["created"] >= 1
+    assert "private assignment title" not in caplog.text
+
+
 @pytest.mark.parametrize("batch_size", [0, 101])
 def test_chaoxing_backfill_rejects_batch_size_outside_one_to_one_hundred(batch_size):
     container = _container()

@@ -92,6 +92,9 @@ class LearnerEventService:
         occurred_at = self._parse_aware_datetime(course.last_synced_at)
         if occurred_at is None:
             return None
+        # Deliberately hash only stable structured fields. Course/teacher/school/class
+        # names and URLs are free text and therefore neither revision inputs nor event
+        # payload data; sync-time changes to them do not create new evidence revisions.
         revision = self._revision_hash(
             {
                 "external_id": course.external_id,
@@ -434,12 +437,6 @@ class LearnerEventService:
             "failed": 0,
         }
 
-        def record_task_events(task: PersonalTaskRow) -> list[Optional[LearnerEventAppendResult]]:
-            events = [self.record_chaoxing_assignment_discovered(task)]
-            if task.status == "completed":
-                events.append(self.record_chaoxing_assignment_submitted(task))
-            return events
-
         self._backfill_repository(
             repository=self._course_repository,
             query_method="list_chaoxing_for_event_backfill",
@@ -449,13 +446,9 @@ class LearnerEventService:
             subject_type="course",
             result=result,
         )
-        self._backfill_repository(
-            repository=self._personal_task_repository,
-            query_method="list_chaoxing_for_event_backfill",
-            recorder=record_task_events,
+        self._backfill_chaoxing_tasks(
             user_id=user_id,
             batch_size=batch_size,
-            subject_type="personal_task",
             result=result,
         )
         self._backfill_repository(
@@ -479,6 +472,62 @@ class LearnerEventService:
             result=result,
         )
         return result
+
+    def _backfill_chaoxing_tasks(
+        self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
+    ) -> None:
+        """Backfill the two assignment observations independently.
+
+        A discovery append failure must not suppress the independent completed-status
+        observation; accounting is per event so a partial retry is visible.
+        """
+        page = 1
+        while True:
+            rows, _ = self._personal_task_repository.list_chaoxing_for_event_backfill(
+                user_id=user_id, page=page, page_size=batch_size
+            )
+            if not rows:
+                return
+            for task in rows:
+                result["scanned"] += 1
+                try:
+                    discovered = self.record_chaoxing_assignment_discovered(task)
+                except Exception as exc:
+                    result["failed"] += 1
+                    logger.warning(
+                        "learner_event_backfill_failed subject_type=personal_task subject_id=%s event_type=assignment_discovered exception_type=%s",
+                        task.id,
+                        type(exc).__name__,
+                    )
+                else:
+                    if discovered is None:
+                        result["skipped"] += 1
+                    elif discovered.created:
+                        result["created"] += 1
+                    else:
+                        result["reused"] += 1
+
+                if task.status != "completed":
+                    continue
+                try:
+                    submitted = self.record_chaoxing_assignment_submitted(task)
+                except Exception as exc:
+                    result["failed"] += 1
+                    logger.warning(
+                        "learner_event_backfill_failed subject_type=personal_task subject_id=%s event_type=assignment_submitted exception_type=%s",
+                        task.id,
+                        type(exc).__name__,
+                    )
+                else:
+                    if submitted is None:
+                        result["skipped"] += 1
+                    elif submitted.created:
+                        result["created"] += 1
+                    else:
+                        result["reused"] += 1
+            if len(rows) < batch_size:
+                return
+            page += 1
 
     def _backfill_repository(
         self,

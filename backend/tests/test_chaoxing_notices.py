@@ -561,7 +561,7 @@ async def test_chaoxing_concurrent_sync(mock_container: ServiceContainer, user_i
 
 
 @pytest.mark.asyncio
-async def test_completed_assignment_does_not_create_a_new_todo(mock_container: ServiceContainer, user_id: str, monkeypatch):
+async def test_first_observed_completed_assignment_is_persisted_without_core_task_event(mock_container: ServiceContainer, user_id: str, monkeypatch):
     import app.api.routes.chaoxing
 
     mock_client = MockChaoxingClient()
@@ -586,7 +586,9 @@ async def test_completed_assignment_does_not_create_a_new_todo(mock_container: S
     )
 
     tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
-    assert tasks == []
+    assert len(tasks) == 1
+    assert tasks[0].external_id == "already_done_1"
+    assert tasks[0].status == "completed"
 
 
 @pytest.mark.asyncio

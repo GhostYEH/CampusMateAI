@@ -128,3 +128,43 @@ def test_legacy_database_gains_learner_events_idempotently(tmp_path):
             ).fetchone()
             assert tuple(user) == ("user1",)
         database.dispose()
+
+
+def test_legacy_database_gains_learner_state_tables_and_indexes_idempotently(tmp_path):
+    db_path = tmp_path / "legacy-state.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
+            VALUES ('state-user', 'state-user', 'hash', 'student', '2026-01-01', '2026-01-01');
+            """
+        )
+
+    for _ in range(2):
+        database = Database(db_path)
+        with database.query() as conn:
+            tables = {
+                row["name"] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'learner_state_%'"
+                )
+            }
+            assert tables == {
+                "learner_state_projection_runs",
+                "learner_state_snapshots",
+                "learner_state_evidence",
+            }
+            indexes = {
+                row["name"] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='learner_state_projection_runs'"
+                )
+            }
+            assert "idx_learner_state_runs_current" in indexes
+        database.dispose()
