@@ -2,7 +2,7 @@
 
 一款面向大学生的智能助手,解决校园通知分散、事务流程不清、学习状态难追踪、缺乏有温度的陪伴体验等问题。
 
-> 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + Vue 3 Web 前端 + 微信小程序 + FastAPI 真实后端(Mock 与 Real 双模式可切换) + 表情识别训练与 LiteRT 部署
+> 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + React 18 Web 前端 + 微信小程序 + FastAPI 真实后端(Mock 与 Real 双模式可切换) + 表情识别训练与 LiteRT 部署
 
 ## 学习状态辅助：V3.2-A 行为模型与 V3.3.1 Presence
 
@@ -74,7 +74,7 @@ CampusMate AI
 │   └── 学习陪伴(专注 / CameraX / 表情识别)
 │
 ├── 管理员端
-│   └── Web(Vue 3)
+│   └── Web(React 18)
 │       ├── 知识库管理
 │       ├── 文档维护
 │       ├── RAG 索引维护
@@ -92,7 +92,7 @@ CampusMate AI
 | 模块 | 路径 | 技术 |
 |------|------|------|
 | 移动端 | `android/` | Kotlin + Jetpack Compose(Material 3) |
-| Web 前端 | `web/` | Vue 3 + Vite + Pinia + vue-router + axios |
+| Web 前端 | `webreact/` | React 18 + Vite + React Router + axios |
 | 微信小程序 | `wx/` | TypeScript + 原生小程序框架 |
 | 后端 | `backend/` | Python / FastAPI / SQLite / RAG / JWT / BM25 |
 | 机器学习 | `ml/` | PyTorch / FER2013 / LiteRT 部署 |
@@ -108,9 +108,9 @@ CampusMate AI
 - **Media3 ExoPlayer** 视频背景
 - **Kotlin Coroutines + Flow** 异步
 
-**Web 前端(独立仓库子目录 `web/`)**
+**Web 前端(独立仓库子目录 `webreact/`)**
 
-- Vue 3 + Vite + Pinia + vue-router + axios
+- React 18 + Vite + React Router + axios
 
 **Python 后端**(位于 [`backend/`](backend/))
 
@@ -149,7 +149,7 @@ campus_mate_ai/
 │       ├── ui/navigation/                # AppNavHost(Navigation Compose)
 │       ├── ui/theme/                     # Color / Theme / Type(Material 3 主题)
 │       └── ui/components/                # 通用组件与动效
-├── web/                                  # Vue 3 前端
+├── webreact/                              # React 18 前端
 ├── wx/                                   # 微信小程序(TypeScript)
 ├── backend/                              # Python FastAPI 后端
 │   ├── app/
@@ -302,12 +302,12 @@ gradlew.bat :app:assembleDebug      # Windows
 - 发布或跨网络使用: 将 `API_BASE_URL` 指向云服务器的 HTTPS API 地址；安卓端不需要把 FastAPI 打包进 APK
 - 后端不可用时使用本地缓存并明确提示服务状态;开发构建可通过环境配置启用 Mock 数据
 
-### 三、Web 前端运行(Vue 3)
+### 三、Web 前端运行(React 18)
 
 ```bash
-cd web
+cd webreact
 npm install
-npm run dev        # 默认 http://127.0.0.1:5173
+npm run dev        # 默认 http://127.0.0.1:5174
 ```
 
 Web 端优先作为管理员管理端,同时兼容学生端;默认连接 `http://localhost:8000`。CampusMate AI 只存在学生与管理员两类系统角色,不存在教师端。
@@ -428,7 +428,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 
 - 原生 Android(Kotlin Compose)完整业务页面与导航、DataStore 持久化、深色模式、减少动态效果
 - Android 已支持用户主动授权后的系统通知监听，当前优先接入微信与学习通；捕获内容仅本地保存，"读取微信通知"指通过 Android NotificationListenerService 合法读取系统通知栏中已展示的通知,不是读取微信聊天记录或私有数据库;学习通通知同样来自系统通知栏,未接入学习通官方 API,不保存账号密码
-- Vue 3 Web 前端复用 FastAPI 接口
+- React 18 Web 前端复用 FastAPI 接口
 
 ### 当前阶段尚未完成(真实限制)
 

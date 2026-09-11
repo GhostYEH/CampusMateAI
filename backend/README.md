@@ -3,7 +3,7 @@
 > Python FastAPI 后端 — 校园通知结构化抽取 / 校园知识库 RAG 问答 /
 > **教师-课程-班级-学生协同平台**
 
-本后端为原生 Android(Kotlin Compose)移动端与 Vue 3 Web 前端提供真实业务能力。
+本后端为原生 Android(Kotlin Compose)移动端与 React 18 Web 前端提供真实业务能力。
 **正式 Release 默认连接真实 FastAPI 接口与持久化数据库**;所有教师、学生、课程、班级、通知、任务、提交、已读状态和统计数据均以服务端数据为准。
 
 ## 当前能力

@@ -1,6 +1,6 @@
 # CampusMate React Web
 
-这是 CampusMate 的独立原生 React 客户端，使用 React 18、React Router、Vite 和 Axios。它不依赖 Vue、Pinia 或 Vue 组件；`web/` 原客户端保持不变。
+这是 CampusMate 当前唯一的 Web 客户端，使用 React 18、React Router、Vite 和 Axios。它不依赖 Vue、Pinia 或 Vue 组件，源码位于本目录。
 
 ## 开发
 

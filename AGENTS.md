@@ -7,7 +7,7 @@
 | 目录 | 职责 |
 | --- | --- |
 | `backend/` | FastAPI 后端、数据访问、检索与服务端测试 |
-| `web/` | Vue 3 Web 客户端 |
+| `webreact/` | React 18 Web 客户端（Vite + React Router） |
 | `android/` | Kotlin / Jetpack Compose Android 客户端 |
 | `harmony/` | ArkTS / ArkUI HarmonyOS 客户端 |
 | `wx/` | TypeScript 微信小程序 |
@@ -15,6 +15,7 @@
 | `ios/` | iOS 客户端预留目录；当前不存在时不要自行创建 |
 | `.github/workflows/` | GitHub Actions；除 CI 专项任务外不要改动 |
 
+- 当前 Web 客户端唯一入口是 `webreact/`；旧的 `web/` Vue 客户端已移除。涉及 Web 代码时不要按 `web/` 查找或新建目录。
 - 不要随意删除任何端已有功能。修改跨端能力时，先检查后端契约和各客户端实现，明确需要同步的平台。
 - 优先复用现有 repository、service、组件、主题和模型转换流程，避免平行实现。
 - 未经明确要求，不修改数据库结构、公开 API、模型格式或部署流程。
