@@ -28,3 +28,13 @@ def test_performance_metrics_are_null_when_prediction_file_has_no_measurements()
     report = evaluate_shadow_predictions(rows, predictions)
     assert report["performance"]["p95_latency_ms"] is None
     assert report["performance"]["peak_memory_mb"] is None
+
+
+def test_summary_supported_claims_use_controlled_evidence_mapping() -> None:
+    rows = [{"sample_id": "summary-1", "capability_name": "learning_summary_v1",
+             "input": {"explanation_codes": ["deadline_urgent"]},
+             "expected_output": {"summary": "建议先处理临近截止项。", "claim_codes": ["PRIORITIZE_NEAR_DEADLINE"]}}]
+    predictions = [{"sample_id": "summary-1", "output": {"summary": "建议先处理临近截止项。", "claim_codes": ["PRIORITIZE_NEAR_DEADLINE"]}}]
+    metrics = evaluate_shadow_predictions(rows, predictions)["by_capability"]["learning_summary_v1"]
+    assert metrics["supported_claim_rate"] == 1.0
+    assert metrics["unsupported_claim_rate"] == 0.0
