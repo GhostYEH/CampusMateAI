@@ -417,6 +417,22 @@ class LearnerStateRepository:
             ).fetchone()
         return _snapshot(row) if row else None
 
+    def get_snapshot_projection_family(
+        self, *, user_id: str, snapshot_id: str,
+    ) -> tuple[str, str] | None:
+        """Resolve a snapshot's projection family only within the requesting user."""
+        with self._db.query() as conn:
+            row = conn.execute(
+                """SELECT r.projection_kind, r.projection_scope
+                   FROM learner_state_snapshots s
+                   JOIN learner_state_projection_runs r ON r.run_id=s.run_id
+                   WHERE s.snapshot_id=? AND r.user_id=?""",
+                (snapshot_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return row["projection_kind"], row["projection_scope"]
+
     def list_evidence(
         self, *, user_id: str, snapshot_id: str, page: int = 1, page_size: int = 50,
         projection_kind: str = "CORE", projection_scope: str = "__user__",

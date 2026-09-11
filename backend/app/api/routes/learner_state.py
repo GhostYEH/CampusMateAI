@@ -149,20 +149,34 @@ def list_snapshot_evidence(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateEvidencePage:
-    existing_snapshot = container.learner_state_repository.get_snapshot(
+    family = container.learner_state_repository.get_snapshot_projection_family(
         user_id=user.id, snapshot_id=snapshot_id
     )
-    if existing_snapshot is not None:
-        snapshot = existing_snapshot
-    else:
+    if family is None:
         result = container.learner_state_service.project_user(
             user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_read"
         )
-        snapshot = next((item for item in result.snapshots if item.snapshot_id == snapshot_id), None)
+        family = container.learner_state_repository.get_snapshot_projection_family(
+            user_id=user.id, snapshot_id=snapshot_id
+        )
+    if family is None:
+        raise NotFoundError()
+    projection_kind, projection_scope = family
+    snapshot = container.learner_state_repository.get_snapshot(
+        user_id=user.id,
+        snapshot_id=snapshot_id,
+        projection_kind=projection_kind,
+        projection_scope=projection_scope,
+    )
     if snapshot is None or not snapshot.run_id:
         raise NotFoundError()
     rows, total = container.learner_state_repository.list_evidence(
-        user_id=user.id, snapshot_id=snapshot_id, page=page, page_size=page_size
+        user_id=user.id,
+        snapshot_id=snapshot_id,
+        page=page,
+        page_size=page_size,
+        projection_kind=projection_kind,
+        projection_scope=projection_scope,
     )
     return LearnerStateEvidencePage(
         items=[_evidence_out(row) for row in rows], total=total,
