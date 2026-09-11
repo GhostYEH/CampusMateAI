@@ -114,7 +114,6 @@ html {
     transform .3s cubic-bezier(.22, .61, .36, 1);
 }
 
-.floating-nav-button:hover,
 .floating-nav-list > li.active .floating-nav-button {
   color: var(--floating-nav-active-foreground);
 }

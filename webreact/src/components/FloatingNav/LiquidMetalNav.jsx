@@ -63,7 +63,7 @@ function DockItem({
         variant="nav"
         active={active}
         defer
-        disableEffects={reduceMotion || !active}
+        disableEffects={reduceMotion}
         maxFps={20}
         dprCap={1}
         className="floating-nav-button"
