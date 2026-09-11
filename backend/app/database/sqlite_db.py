@@ -1116,6 +1116,7 @@ CREATE TABLE IF NOT EXISTS learner_state_evidence (
     source_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('SUPPORTS', 'LIMITS', 'INVALIDATES')),
     quality TEXT NOT NULL,
+    explanation_code TEXT NOT NULL DEFAULT 'state_observed',
     FOREIGN KEY(snapshot_id) REFERENCES learner_state_snapshots(snapshot_id) ON DELETE CASCADE,
     FOREIGN KEY(event_id) REFERENCES learner_events(event_id) ON DELETE CASCADE
 );
@@ -1386,6 +1387,12 @@ class Database:
         )
 
         # ---- EduConnector 架构迁移 ----
+        cur = conn.execute("PRAGMA table_info(learner_state_evidence)")
+        state_evidence_cols = {row["name"] for row in cur.fetchall()}
+        if state_evidence_cols and "explanation_code" not in state_evidence_cols:
+            conn.execute(
+                "ALTER TABLE learner_state_evidence ADD COLUMN explanation_code TEXT NOT NULL DEFAULT 'state_observed'"
+            )
         self._migrate_edu_schema(conn)
 
     def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:

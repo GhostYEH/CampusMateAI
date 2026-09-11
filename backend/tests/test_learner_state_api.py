@@ -39,11 +39,14 @@ def test_learner_state_api_requires_student_auth_and_never_returns_raw_payload()
     assert body["items"]
     assert all("payload" not in item for item in body["items"])
     assert all("mastered" not in str(item).lower() for item in body["items"])
+    workload = next(item for item in body["items"] if item["state_type"] == "task_workload")
     evidence = client.get(
-        f"/api/v1/learner-state/snapshots/{body['items'][0]['snapshot_id']}/evidence",
+        f"/api/v1/learner-state/snapshots/{workload['snapshot_id']}/evidence",
         headers=headers,
     )
     assert evidence.status_code == 200
+    assert evidence.json()["items"]
+    assert all({"evidence_kind", "source_category", "role", "explanation_code"} <= set(item) for item in evidence.json()["items"])
     assert all("source_id" not in item and "row_id" not in item for item in evidence.json()["items"])
 
 

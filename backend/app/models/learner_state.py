@@ -15,6 +15,7 @@ class ProjectionRunRow:
     trigger: str
     is_current: bool
     warnings: list[str]
+    snapshot_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,8 @@ class StateEvidenceRow:
     source_id: str
     role: str
     quality: str
-    source: str | None = None
+    explanation_code: str
+    source_category: str | None = None
     event_type: str | None = None
     occurred_at: str | None = None
     data_quality: str | None = None

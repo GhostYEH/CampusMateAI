@@ -7,8 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
+    LearnerStateChangePage,
     LearnerStateEvidenceOut,
     LearnerStateEvidencePage,
+    LearnerStateRunOut,
+    LearnerStateRunPage,
     LearnerStateSnapshotOut,
     LearnerStateSnapshotPage,
 )
@@ -42,12 +45,73 @@ def _snapshot_out(snapshot) -> LearnerStateSnapshotOut:
 
 def _evidence_out(row: StateEvidenceRow) -> LearnerStateEvidenceOut:
     return LearnerStateEvidenceOut(
+        evidence_kind=row.evidence_kind,
+        source_category=row.source_category or "unknown",
         event_id=row.event_id,
-        source=row.source,
-        event_type=row.event_type,
+        event_type=row.event_type if row.evidence_kind == "EVENT" else None,
         occurred_at=row.occurred_at,
         data_quality=row.data_quality,
         role=row.role,
+        explanation_code=row.explanation_code,
+    )
+
+
+@router.get("/runs", response_model=LearnerStateRunPage)
+def list_runs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(_container),
+) -> LearnerStateRunPage:
+    container.learner_state_service.project_user(
+        user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_runs"
+    )
+    rows, total = container.learner_state_service.list_run_summaries(
+        user_id=user.id, page=page, page_size=page_size
+    )
+    return LearnerStateRunPage(
+        items=[LearnerStateRunOut(
+            run_id=row.run_id, as_of=row.as_of, computed_at=row.computed_at,
+            estimator_version=row.estimator_version, trigger=row.trigger,
+            is_current=row.is_current, warning_codes=row.warnings,
+            snapshot_count=row.snapshot_count,
+        ) for row in rows],
+        total=total, page=page, page_size=page_size,
+        has_more=page * page_size < total,
+    )
+
+
+@router.get("/changes", response_model=LearnerStateChangePage)
+def list_changes(
+    from_run_id: str | None = Query(None, min_length=1, max_length=128),
+    to_run_id: str | None = Query(None, min_length=1, max_length=128),
+    scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    include_unchanged: bool = Query(False),
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(_container),
+) -> LearnerStateChangePage:
+    if to_run_id is None:
+        projected = container.learner_state_service.project_user(
+            user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_changes"
+        )
+        to_run_id = projected.run_id
+    if not to_run_id:
+        raise NotFoundError()
+    try:
+        from_id, to_id, estimator_changed, changes, total = container.learner_state_service.compare_runs(
+            user_id=user.id, to_run_id=to_run_id, from_run_id=from_run_id,
+            page=page, page_size=page_size, scope_type=scope_type,
+            state_type=state_type, include_unchanged=include_unchanged,
+        )
+    except LookupError as exc:
+        raise NotFoundError() from exc
+    return LearnerStateChangePage(
+        from_run_id=from_id, to_run_id=to_id, estimator_changed=estimator_changed,
+        changes=changes, total=total, page=page, page_size=page_size,
+        has_more=page * page_size < total,
     )
 
 
@@ -65,18 +129,14 @@ def list_snapshots(
     result = container.learner_state_service.project_user(
         user.id, as_of=as_of, trigger="api_read"
     )
-    filtered = [
-        snapshot for snapshot in result.snapshots
-        if (scope_type is None or snapshot.scope_type == scope_type)
-        and (state_type is None or snapshot.state_type == state_type)
-        and (course_id is None or (snapshot.scope_type == "COURSE" and snapshot.scope_id == course_id))
-    ]
-    offset = (page - 1) * page_size
-    items = filtered[offset:offset + page_size]
+    items, total = container.learner_state_repository.list_snapshots(
+        user_id=user.id, page=page, page_size=page_size, scope_type=scope_type,
+        state_type=state_type, course_id=course_id,
+    )
     return LearnerStateSnapshotPage(
         items=[_snapshot_out(item) for item in items],
-        total=len(filtered), page=page, page_size=page_size,
-        has_more=offset + len(items) < len(filtered),
+        total=total, page=page, page_size=page_size,
+        has_more=page * page_size < total,
     )
 
 

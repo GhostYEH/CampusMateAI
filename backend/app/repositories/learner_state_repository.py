@@ -28,6 +28,7 @@ def _run(row) -> ProjectionRunRow:
         trigger=row["trigger"],
         is_current=bool(row["is_current"]),
         warnings=json.loads(row["warnings_json"] or "[]"),
+        snapshot_count=int(row["snapshot_count"]) if "snapshot_count" in row.keys() else 0,
     )
 
 
@@ -57,48 +58,47 @@ class LearnerStateRepository:
     def collect_inputs(self, *, user_id: str, limit: int = 5000) -> dict[str, Any]:
         if limit < 1 or limit > 10000:
             raise ValueError("limit must stay within 1..10000")
+
+        def bounded(conn, sql: str, params: tuple[Any, ...] = ()) -> tuple[list[dict[str, Any]], bool]:
+            rows = conn.execute(sql, (*params, limit + 1)).fetchall()
+            return [dict(row) for row in rows[:limit]], len(rows) > limit
+
         with self._db.query() as conn:
-            events = [dict(row) for row in conn.execute(
+            events, events_truncated = bounded(conn,
                 """SELECT event_id,user_id,occurred_at,source,event_type,course_id,
                           subject_type,subject_id,outcome,data_quality
                    FROM learner_events WHERE user_id=?
-                   ORDER BY occurred_at ASC,event_id ASC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
-            sessions = [dict(row) for row in conn.execute(
+                   ORDER BY occurred_at ASC,event_id ASC LIMIT ?""", (user_id,))
+            sessions, sessions_truncated = bounded(conn,
                 """SELECT id,user_id,started_at,ended_at,duration_seconds,status
-                   FROM study_sessions WHERE user_id=? ORDER BY id ASC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
-            tasks = [dict(row) for row in conn.execute(
+                   FROM study_sessions WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+            tasks, tasks_truncated = bounded(conn,
                 """SELECT id,user_id,course_id,source,created_at,completed_at,deadline,
                           status,deleted_at,updated_at
-                   FROM personal_tasks WHERE user_id=? ORDER BY id ASC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
-            content = [dict(row) for row in conn.execute(
+                   FROM personal_tasks WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+            content, content_truncated = bounded(conn,
                 """SELECT id,course_id,provider,kind,status,is_stale,last_synced_at
-                   FROM course_content_items WHERE user_id=? ORDER BY id ASC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
-            sections = [dict(row) for row in conn.execute(
+                   FROM course_content_items WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+            sections, sections_truncated = bounded(conn,
                 """SELECT course_id,section,status,item_count,last_synced_at,error_code
-                   FROM course_sync_sections WHERE user_id=? ORDER BY course_id,section LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
-            courses = [dict(row) for row in conn.execute(
+                   FROM course_sync_sections WHERE user_id=? ORDER BY course_id,section LIMIT ?""", (user_id,))
+            courses, courses_truncated = bounded(conn,
                 """SELECT id,provider,owner_user_id,status,last_synced_at
-                   FROM courses WHERE owner_user_id=? ORDER BY id ASC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
+                   FROM courses WHERE owner_user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
             credentials = conn.execute(
                 "SELECT updated_at FROM chaoxing_credentials WHERE user_id=?", (user_id,)
             ).fetchone()
-            edu_connections = [dict(row) for row in conn.execute(
+            edu_connections, edu_truncated = bounded(conn,
                 """SELECT state,updated_at FROM edu_connections
-                   WHERE user_id=? ORDER BY updated_at DESC LIMIT ?""",
-                (user_id, limit),
-            ).fetchall()]
+                   WHERE user_id=? ORDER BY updated_at DESC LIMIT ?""", (user_id,))
+        truncated_sources = [
+            name for name, is_truncated in (
+                ("events", events_truncated), ("sessions", sessions_truncated),
+                ("tasks", tasks_truncated), ("content", content_truncated),
+                ("sections", sections_truncated), ("courses", courses_truncated),
+                ("edu_connections", edu_truncated),
+            ) if is_truncated
+        ]
         return {
             "events": events,
             "sessions": sessions,
@@ -108,6 +108,11 @@ class LearnerStateRepository:
             "courses": courses,
             "chaoxing_credentials_updated_at": credentials["updated_at"] if credentials else None,
             "edu_connections": edu_connections,
+            "input_metadata": {
+                "hard_limit": limit,
+                "truncated": bool(truncated_sources),
+                "truncated_sources": truncated_sources,
+            },
         }
 
     def save_projection(
@@ -145,12 +150,12 @@ class LearnerStateRepository:
             for item in evidence:
                 conn.execute(
                     """INSERT INTO learner_state_evidence
-                       (evidence_id,snapshot_id,evidence_kind,event_id,source_type,source_id,role,quality)
-                       VALUES (?,?,?,?,?,?,?,?)""",
+                       (evidence_id,snapshot_id,evidence_kind,event_id,source_type,source_id,role,quality,explanation_code)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
                     (
                         item["evidence_id"], item["snapshot_id"], item["evidence_kind"],
                         item.get("event_id"), item["source_type"], item["source_id"],
-                        item["role"], item["quality"],
+                        item["role"], item["quality"], item.get("explanation_code", "state_observed"),
                     ),
                 )
             conn.execute(
@@ -181,6 +186,117 @@ class LearnerStateRepository:
                 (user_id,),
             ).fetchone()
         return _run(row) if row else None
+
+    def list_runs(
+        self, *, user_id: str, page: int = 1, page_size: int = 50
+    ) -> tuple[list[ProjectionRunRow], int]:
+        if page < 1 or page_size < 1 or page_size > 100:
+            raise ValueError("invalid pagination")
+        offset = (page - 1) * page_size
+        with self._db.query() as conn:
+            total = int(conn.execute(
+                "SELECT COUNT(*) AS n FROM learner_state_projection_runs WHERE user_id=?",
+                (user_id,),
+            ).fetchone()["n"])
+            rows = conn.execute(
+                """SELECT r.*, COUNT(s.snapshot_id) AS snapshot_count
+                   FROM learner_state_projection_runs r
+                   LEFT JOIN learner_state_snapshots s ON s.run_id=r.run_id
+                   WHERE r.user_id=?
+                   GROUP BY r.run_id
+                   ORDER BY r.computed_at DESC, r.run_id DESC
+                   LIMIT ? OFFSET ?""",
+                (user_id, page_size, offset),
+            ).fetchall()
+        return [_run(row) for row in rows], total
+
+    def snapshot_count_for_run(self, *, run_id: str, user_id: str) -> int:
+        with self._db.query() as conn:
+            return int(conn.execute(
+                """SELECT COUNT(*) AS n FROM learner_state_snapshots s
+                   JOIN learner_state_projection_runs r ON r.run_id=s.run_id
+                   WHERE s.run_id=? AND r.user_id=?""", (run_id, user_id)
+            ).fetchone()["n"])
+
+    def get_previous_run(
+        self, *, user_id: str, before_run: ProjectionRunRow
+    ) -> Optional[ProjectionRunRow]:
+        with self._db.query() as conn:
+            current_row = conn.execute(
+                "SELECT rowid FROM learner_state_projection_runs WHERE run_id=? AND user_id=?",
+                (before_run.run_id, user_id),
+            ).fetchone()
+            if current_row is None:
+                return None
+            row = conn.execute(
+                """SELECT * FROM learner_state_projection_runs
+                   WHERE user_id=? AND estimator_version=? AND rowid < ?
+                   ORDER BY rowid DESC LIMIT 1""",
+                (user_id, before_run.estimator_version, current_row["rowid"]),
+            ).fetchone()
+        return _run(row) if row else None
+
+    def list_changes(
+        self, *, user_id: str, from_run_id: str | None, to_run_id: str,
+        page: int = 1, page_size: int = 50, scope_type: str | None = None,
+        state_type: str | None = None, include_unchanged: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]:
+        if page < 1 or page_size < 1 or page_size > 100:
+            raise ValueError("invalid pagination")
+        params: list[Any] = [to_run_id]
+        if from_run_id is None:
+            cte = """WITH paired AS (
+                SELECT NULL AS previous_snapshot_id, NULL AS previous_value_json,
+                       NULL AS previous_confidence, NULL AS previous_quality,
+                       b.snapshot_id AS current_snapshot_id, b.scope_type,
+                       b.scope_id, b.state_type, b.value_json AS current_value_json,
+                       b.confidence AS current_confidence, b.data_quality AS current_quality
+                FROM learner_state_snapshots b WHERE b.run_id=?
+            )"""
+        else:
+            params = [to_run_id, from_run_id, from_run_id, to_run_id]
+            cte = """WITH paired AS (
+                SELECT a.snapshot_id AS previous_snapshot_id, a.value_json AS previous_value_json,
+                       a.confidence AS previous_confidence, a.data_quality AS previous_quality,
+                       b.snapshot_id AS current_snapshot_id, COALESCE(a.scope_type,b.scope_type) AS scope_type,
+                       COALESCE(a.scope_id,b.scope_id) AS scope_id,
+                       COALESCE(a.state_type,b.state_type) AS state_type,
+                       b.value_json AS current_value_json, b.confidence AS current_confidence,
+                       b.data_quality AS current_quality
+                FROM learner_state_snapshots a
+                LEFT JOIN learner_state_snapshots b
+                  ON b.run_id=? AND b.scope_type=a.scope_type AND b.scope_id=a.scope_id AND b.state_type=a.state_type
+                WHERE a.run_id=?
+                UNION ALL
+                SELECT NULL, NULL, NULL, NULL, b.snapshot_id, b.scope_type, b.scope_id,
+                       b.state_type, b.value_json, b.confidence, b.data_quality
+                FROM learner_state_snapshots b
+                LEFT JOIN learner_state_snapshots a
+                  ON a.run_id=? AND a.scope_type=b.scope_type AND a.scope_id=b.scope_id AND a.state_type=b.state_type
+                WHERE b.run_id=? AND a.snapshot_id IS NULL
+            )"""
+        conditions = ["1=1"]
+        if scope_type:
+            conditions.append("scope_type=?")
+            params.append(scope_type)
+        if state_type:
+            conditions.append("state_type=?")
+            params.append(state_type)
+        if not include_unchanged:
+            conditions.append(
+                "(previous_snapshot_id IS NULL OR current_snapshot_id IS NULL OR "
+                "previous_value_json != current_value_json OR "
+                "previous_quality != current_quality OR previous_confidence != current_confidence)"
+            )
+        where = " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        count_sql = f"{cte} SELECT COUNT(*) AS n FROM paired WHERE {where}"
+        rows_sql = f"""{cte} SELECT * FROM paired WHERE {where}
+                       ORDER BY scope_type,scope_id,state_type LIMIT ? OFFSET ?"""
+        with self._db.query() as conn:
+            total = int(conn.execute(count_sql, params).fetchone()["n"])
+            rows = conn.execute(rows_sql, params + [page_size, offset]).fetchall()
+        return [dict(row) for row in rows], total
 
     def list_all_current_snapshots(self, *, user_id: str, max_items: int = 10000) -> list[StateSnapshotRow]:
         """Read the current run with an explicit upper bound for projection reuse."""
@@ -261,7 +377,8 @@ class LearnerStateRepository:
                     WHERE {where}""", params,
             ).fetchone()["n"])
             rows = conn.execute(
-                f"""SELECT e.*, le.source, le.event_type, le.occurred_at, le.data_quality
+                f"""SELECT e.*, le.source, le.event_type, le.occurred_at,
+                           COALESCE(le.data_quality, e.quality) AS data_quality
                     FROM learner_state_evidence e
                     JOIN learner_state_snapshots s ON s.snapshot_id=e.snapshot_id
                     JOIN learner_state_projection_runs r ON r.run_id=s.run_id
@@ -269,7 +386,31 @@ class LearnerStateRepository:
                     WHERE {where} ORDER BY e.evidence_id LIMIT ? OFFSET ?""",
                 params + [page_size, offset],
             ).fetchall()
-        return [StateEvidenceRow(**dict(row)) for row in rows], total
+        return [
+            StateEvidenceRow(
+                evidence_id=row["evidence_id"], snapshot_id=row["snapshot_id"],
+                evidence_kind=row["evidence_kind"], event_id=row["event_id"],
+                source_type=row["source_type"], source_id=row["source_id"],
+                role=row["role"], quality=row["quality"],
+                explanation_code=row["explanation_code"],
+                source_category=self._source_category(row["source_type"]),
+                event_type=row["event_type"],
+                occurred_at=row["occurred_at"], data_quality=row["data_quality"],
+            )
+            for row in rows
+        ], total
+
+    @staticmethod
+    def _source_category(source_type: str) -> str:
+        return {
+            "study_sessions": "study_session",
+            "study": "study_session",
+            "personal_task": "personal_task",
+            "course_content_items": "course_content",
+            "course_sync_sections": "course_sync",
+            "core_learning_record": "core_learning_record",
+            "chaoxing": "chaoxing",
+        }.get(source_type, "unknown")
 
 
 __all__ = ["LearnerStateRepository"]

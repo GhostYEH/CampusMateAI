@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from ..core.logging import logger
 from ..models.learner_state import ProjectionRunRow, StateSnapshotRow
 from ..repositories.learner_state_repository import LearnerStateRepository
 
@@ -77,23 +78,30 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000) -> None:
         self.repository = repository
+        self.input_limit = input_limit
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
     ) -> ProjectionResult:
         as_of = _require_utc(as_of)
-        current = self.repository.get_current_run(user_id=user_id)
+        current = None
         try:
-            inputs = self.repository.collect_inputs(user_id=user_id)
+            current = self.repository.get_current_run(user_id=user_id)
+            inputs = self.repository.collect_inputs(user_id=user_id, limit=self.input_limit)
             input_digest = _digest(inputs)
-            if current and current.estimator_version == ESTIMATOR_VERSION and current.input_digest == input_digest:
+            current_as_of = _parse(current.as_of) if current else None
+            if (
+                current
+                and current.estimator_version == ESTIMATOR_VERSION
+                and current.input_digest == input_digest
+                and current_as_of is not None
+                and as_of >= current_as_of
+                and self._snapshots_valid(current.user_id, as_of)
+            ):
                 existing = self._result_from_current(current, as_of=as_of)
-                # A run is keyed by its explicit as_of. If a source is already stale at
-                # that as_of, recomputing cannot make the same historical observation
-                # fresh; reuse the deterministic stale result until as_of advances.
-                if existing is not None and _parse(current.as_of) == as_of:
+                if existing is not None:
                     return existing
             result, snapshot_rows, evidence = self._compute(
                 user_id=user_id,
@@ -102,25 +110,37 @@ class LearnerStateProjectionService:
                 input_digest=input_digest,
                 trigger=trigger,
             )
-            self.repository.save_projection(
-                run={
-                    "run_id": result.run_id,
-                    "user_id": user_id,
-                    "as_of": result.as_of,
-                    "computed_at": result.computed_at,
-                    "estimator_version": ESTIMATOR_VERSION,
-                    "input_digest": input_digest,
-                    "trigger": trigger,
-                    "warnings": result.warnings,
-                },
-                snapshots=[self._to_dict(row) for row in snapshot_rows],
-                evidence=evidence,
-            )
+            if current is None or current_as_of is None or as_of >= current_as_of:
+                self.repository.save_projection(
+                    run={
+                        "run_id": result.run_id,
+                        "user_id": user_id,
+                        "as_of": result.as_of,
+                        "computed_at": result.computed_at,
+                        "estimator_version": ESTIMATOR_VERSION,
+                        "input_digest": input_digest,
+                        "trigger": trigger,
+                        "warnings": result.warnings,
+                    },
+                    snapshots=[self._to_dict(row) for row in snapshot_rows],
+                    evidence=evidence,
+                )
             return result
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "learner_state_projection_failed user_id={} trigger={} estimator_version={} exception_type={}",
+                user_id, trigger, ESTIMATOR_VERSION, type(exc).__name__,
+            )
             if current is not None:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_result(user_id=user_id, as_of=as_of)
+
+    def _snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
+        rows = self.repository.list_all_current_snapshots(user_id=user_id)
+        return bool(rows) and all(
+            (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
+            for row in rows
+        )
 
     def _result_from_current(self, run: ProjectionRunRow, *, as_of: datetime) -> ProjectionResult | None:
         rows = self.repository.list_all_current_snapshots(user_id=run.user_id)
@@ -185,6 +205,9 @@ class LearnerStateProjectionService:
                     "source_id": source["source_id"],
                     "role": source.get("role", "SUPPORTS"),
                     "quality": source.get("quality", quality),
+                    "explanation_code": source.get("explanation_code") or self._explanation_code(
+                        source["source_type"], source.get("role", "SUPPORTS"), state_type
+                    ),
                 })
 
         events = inputs["events"]
@@ -192,10 +215,13 @@ class LearnerStateProjectionService:
         tasks = inputs["tasks"]
         content = inputs["content"]
         sections = inputs["sections"]
+        truncated = bool(inputs.get("input_metadata", {}).get("truncated"))
+        warnings = ["input_truncated"] if truncated else []
 
         activity_value, activity_quality, activity_sources, activity_last = self._activity(
             events, sessions, tasks, as_of, user_id
         )
+        activity_quality = self._degrade_quality(activity_quality, truncated)
         add(
             scope_type="USER", scope_id=user_id, state_type="observed_learning_activity",
             value=activity_value, quality=activity_quality, observed_from=as_of - timedelta(days=30),
@@ -204,6 +230,7 @@ class LearnerStateProjectionService:
         )
 
         workload_value, workload_quality, workload_sources = self._workload(tasks, as_of, user_id)
+        workload_quality = self._degrade_quality(workload_quality, truncated)
         add(
             scope_type="USER", scope_id=user_id, state_type="task_workload",
             value=workload_value, quality=workload_quality, observed_from=None,
@@ -214,6 +241,7 @@ class LearnerStateProjectionService:
             if task.get("deleted_at") or task.get("status") == "deleted":
                 continue
             bucket, quality = self._deadline_bucket(task.get("deadline"), as_of)
+            quality = self._degrade_quality(quality, truncated)
             deadline_sources = [{
                 "evidence_kind": "SOURCE_ROW", "source_type": "personal_task",
                 "source_id": task["id"], "role": "SUPPORTS", "quality": quality,
@@ -221,18 +249,22 @@ class LearnerStateProjectionService:
             add(
                 scope_type="TASK", scope_id=task["id"], state_type="deadline_exposure",
                 value={"bucket": bucket}, quality=quality, observed_from=None,
-                observed_through=as_of, valid_until=self._deadline_valid_until(bucket, as_of),
+                observed_through=as_of,
+                valid_until=self._deadline_valid_until(bucket, as_of, task.get("deadline")),
                 sources=deadline_sources,
             )
 
         course_ids = {
             str(item["course_id"]) for item in content if item.get("course_id")
         }
+        course_ids.update(str(task["course_id"]) for task in tasks if task.get("course_id"))
         course_ids.update(str(event["course_id"]) for event in events if event.get("course_id"))
         for course_id in sorted(course_ids):
             value, quality, sources, last = self._course_participation(
-                course_id, events, content, sections, as_of
+                course_id, events, content, sections, tasks, as_of
             )
+            quality = self._degrade_quality(quality, truncated)
+            value["evidence_quality"] = quality
             add(
                 scope_type="COURSE", scope_id=course_id, state_type="course_participation",
                 value=value, quality=quality, observed_from=None, observed_through=last or as_of,
@@ -243,18 +275,48 @@ class LearnerStateProjectionService:
             value, quality, sources, observed, valid_until = self._source_health(
                 source_id, inputs, as_of
             )
+            quality = self._degrade_quality(quality, truncated)
+            if quality == "partial" and value.get("status") == "FRESH":
+                value["status"] = "PARTIAL"
+                value.setdefault("warning_codes", []).append("input_truncated")
+            snapshot_valid_until = valid_until
+            if quality in {"stale", "unavailable"}:
+                snapshot_valid_until = max(
+                    snapshot_valid_until or as_of,
+                    as_of + _SHORT_TTL,
+                )
             add(
                 scope_type="SOURCE", scope_id=source_id, state_type="data_source_health",
                 value=value, quality=quality, observed_from=observed, observed_through=observed,
-                valid_until=valid_until, sources=sources,
+                valid_until=snapshot_valid_until, sources=sources,
             )
 
         result = ProjectionResult(
             run_id=run_id, user_id=user_id, as_of=computed_at, computed_at=computed_at,
             estimator_version=ESTIMATOR_VERSION, input_digest=input_digest,
-            snapshots=rows, warnings=[],
+            snapshots=rows, warnings=warnings,
         )
         return result, rows, evidence
+
+    @staticmethod
+    def _degrade_quality(quality: str, truncated: bool) -> str:
+        return "partial" if truncated and quality == "verified" else quality
+
+    @staticmethod
+    def _explanation_code(source_type: str, role: str, state_type: str) -> str:
+        if role == "INVALIDATES":
+            return "historical_submission_not_current"
+        if source_type == "study_sessions":
+            return "completed_study_session"
+        if source_type == "personal_task" and state_type == "task_workload":
+            return "current_pending_task"
+        if source_type in {"course_content_items", "chaoxing"}:
+            return "observed_platform_completion"
+        if source_type == "course_sync_sections":
+            return "chapter_sync_complete"
+        if source_type == "core_learning_record":
+            return "event_projection_gap" if role == "LIMITS" else "state_observed"
+        return "state_observed"
 
     @staticmethod
     def _event_sources(events: list[dict[str, Any]], *, event_types: set[str] | None = None, subject_ids: set[str] | None = None) -> list[dict[str, Any]]:
@@ -323,7 +385,8 @@ class LearnerStateProjectionService:
     def _workload(self, tasks, as_of, user_id):
         pending = [row for row in tasks if row.get("status") == "pending" and not row.get("deleted_at")]
         result = {"known_pending": len(pending), "known_overdue": 0, "known_due_24h": 0,
-                  "known_due_7d": 0, "known_without_deadline": 0, "unknown_deadline": 0}
+                  "known_due_7d": 0, "known_later": 0, "known_without_deadline": 0,
+                  "unknown_deadline": 0}
         sources = []
         for task in pending:
             bucket, quality = self._deadline_bucket(task.get("deadline"), as_of)
@@ -332,6 +395,8 @@ class LearnerStateProjectionService:
                 result[key] += 1
             elif bucket == "NO_DEADLINE":
                 result["known_without_deadline"] += 1
+            elif bucket == "LATER":
+                result["known_later"] += 1
             else:
                 result["unknown_deadline"] += 1
             sources.append({"evidence_kind": "SOURCE_ROW", "source_type": "personal_task", "source_id": task["id"], "role": "SUPPORTS", "quality": quality})
@@ -356,7 +421,7 @@ class LearnerStateProjectionService:
         return "LATER", "verified"
 
     @staticmethod
-    def _deadline_valid_until(bucket, as_of):
+    def _deadline_valid_until(bucket, as_of, deadline=None):
         boundaries = {
             "OVERDUE": as_of + _SHORT_TTL,
             "DUE_24H": as_of + timedelta(hours=24),
@@ -365,12 +430,23 @@ class LearnerStateProjectionService:
             "NO_DEADLINE": as_of + _SHORT_TTL,
             "UNKNOWN": as_of + _SHORT_TTL,
         }
+        parsed = _parse(deadline)
+        if parsed is not None and bucket == "DUE_24H":
+            boundaries[bucket] = min(boundaries[bucket], parsed)
+        elif parsed is not None and bucket == "DUE_7D":
+            boundaries[bucket] = min(boundaries[bucket], parsed - timedelta(hours=24))
+        elif parsed is not None and bucket == "LATER":
+            boundaries[bucket] = min(boundaries[bucket], parsed - timedelta(days=7))
         return boundaries[bucket]
 
-    def _course_participation(self, course_id, events, content, sections, as_of):
+    def _course_participation(self, course_id, events, content, sections, tasks, as_of):
         good_sections = {
             row["course_id"] for row in sections
-            if str(row.get("course_id")) == course_id and row.get("section") == "chapters" and row.get("status") == "complete"
+            if str(row.get("course_id")) == course_id
+            and row.get("section") == "chapters"
+            and row.get("status") == "complete"
+            and (_parse(row.get("last_synced_at")) or datetime.min.replace(tzinfo=timezone.utc))
+            > as_of - _CHAOXING_TTL
         }
         fresh_chapters = {
             row["id"] for row in content
@@ -388,31 +464,80 @@ class LearnerStateProjectionService:
             and course_id in good_sections
             and event.get("subject_id") not in stale_chapter_ids
         ]
-        assignment_discovered = {event.get("subject_id") for event in events if event.get("course_id") == course_id and event.get("event_type") == "assignment_discovered"}
-        assignment_completed = {event.get("subject_id") for event in events if event.get("course_id") == course_id and event.get("event_type") == "assignment_submitted"}
+        course_events = [event for event in events if str(event.get("course_id")) == course_id]
+        assignment_discovered = {
+            event.get("subject_id") for event in course_events
+            if event.get("event_type") == "assignment_discovered" and event.get("subject_id")
+        }
+        current_tasks = {
+            task["id"]: task for task in tasks
+            if str(task.get("course_id")) == course_id
+            and task.get("status") == "completed"
+            and not task.get("deleted_at")
+        }
+        submitted_events = [
+            event for event in course_events
+            if event.get("event_type") == "assignment_submitted" and event.get("subject_id")
+        ]
+        assignment_completed = {
+            event.get("subject_id") for event in submitted_events
+            if event.get("subject_id") in current_tasks
+        }
+        warning_codes: list[str] = []
+        if any(event.get("subject_id") not in current_tasks for event in submitted_events):
+            warning_codes.extend(["orphan_assignment_submitted", "authoritative_task_changed"])
         last_values = [_parse(event.get("occurred_at")) for event in events if event.get("course_id") == course_id]
         last_values = [item for item in last_values if item and item <= as_of]
         last = max(last_values) if last_values else None
-        sources = self._event_sources(events, subject_ids=None)
-        sources = [item for item, event in zip(sources, events) if event.get("course_id") == course_id]
-        sources += [{"evidence_kind": "SOURCE_ROW", "source_type": "course_content_items", "source_id": item, "role": "SUPPORTS", "quality": "verified"} for item in fresh_chapters]
+        sources = []
+        for event in course_events:
+            role = "SUPPORTS"
+            explanation_code = "observed_platform_completion" if event.get("event_type") in {"chapter_completed", "assignment_submitted"} else "platform_event_observed"
+            if event.get("event_type") == "assignment_submitted" and event.get("subject_id") not in current_tasks:
+                role = "INVALIDATES"
+                explanation_code = "historical_submission_not_current"
+            sources.append({
+                "evidence_kind": "EVENT", "event_id": event["event_id"],
+                "source_type": event.get("source") or "chaoxing", "source_id": event.get("subject_id") or event["event_id"],
+                "role": role, "quality": event.get("data_quality") or "partial",
+                "explanation_code": explanation_code,
+            })
+        sources += [{
+            "evidence_kind": "SOURCE_ROW", "source_type": "course_content_items", "source_id": item,
+            "role": "SUPPORTS", "quality": "partial", "explanation_code": "observed_platform_completion",
+        } for item in fresh_chapters]
+        sources += [{
+            "evidence_kind": "SYNC_STATUS", "source_type": "course_sync_sections", "source_id": course_id,
+            "role": "SUPPORTS", "quality": "partial", "explanation_code": "chapter_sync_complete",
+        } for _ in good_sections]
         if not good_sections:
-            sources.append({"evidence_kind": "SYNC_STATUS", "source_type": "course_sync_sections", "source_id": course_id, "role": "LIMITS", "quality": "partial"})
+            warning_codes.append("chapter_data_stale")
+            sources.append({
+                "evidence_kind": "SYNC_STATUS", "source_type": "course_sync_sections", "source_id": course_id,
+                "role": "LIMITS", "quality": "partial", "explanation_code": "chapter_data_stale",
+            })
         if not sources:
-            sources = [{"evidence_kind": "SYNC_STATUS", "source_type": "course_sync_sections", "source_id": course_id, "role": "LIMITS", "quality": "partial"}]
-        quality = "verified" if good_sections else "partial"
+            sources = [{
+                "evidence_kind": "SYNC_STATUS", "source_type": "course_sync_sections", "source_id": course_id,
+                "role": "LIMITS", "quality": "partial", "explanation_code": "chapter_data_stale",
+            }]
+        quality = "partial"
         return {
             "observed_chapters_completed": len(fresh_chapters | {event.get("subject_id") for event in chapter_events}),
             "observed_assignments_discovered": len({item for item in assignment_discovered if item}),
             "observed_assignments_completed": len({item for item in assignment_completed if item}),
             "last_observed_course_activity_at": _iso(last) if last else None,
             "evidence_quality": quality,
+            "warning_codes": sorted(set(warning_codes)),
         }, quality, sources, last
 
     def _source_health(self, source_id, inputs, as_of):
         if source_id == "core_learning_record":
             core_events = [item for item in inputs["events"] if item.get("source") in {"study", "personal_task"}]
-            event_subjects = {item.get("subject_id") for item in core_events}
+            event_subjects = {
+                item.get("subject_id") for item in core_events
+                if (_parse(item.get("occurred_at")) or datetime.max.replace(tzinfo=timezone.utc)) <= as_of
+            }
             observations = [_parse(item.get("occurred_at")) for item in core_events]
             authority_rows = []
             authority_rows.extend(
@@ -427,14 +552,18 @@ class LearnerStateProjectionService:
             observations = [item for item in observations if item and item <= as_of]
             observed = max(observations) if observations else None
             if observed is None:
-                return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": None, "warning_codes": ["no_observation"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": source_id, "source_id": source_id, "role": "INVALIDATES", "quality": "unavailable"}], None, None
+                return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": _iso(as_of + _SHORT_TTL), "warning_codes": ["no_observation"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": source_id, "source_id": source_id, "role": "INVALIDATES", "quality": "unavailable", "explanation_code": "event_projection_gap"}], None, as_of + _SHORT_TTL
             valid_until = observed + _CHAOXING_TTL
             missing_event = any(
                 row.get("id") not in event_subjects
                 for row in inputs["sessions"] + inputs["tasks"]
-                if (row.get("status") == "completed" and not row.get("deleted_at"))
+                if (
+                    row.get("status") == "completed"
+                    and not row.get("deleted_at")
+                    and row.get("source") not in {"chaoxing", "chaoxing_assignment"}
+                )
             )
-            if valid_until < as_of:
+            if valid_until <= as_of:
                 return {"status": "STALE", "last_successful_observation_at": _iso(observed), "valid_until": _iso(valid_until), "warning_codes": ["freshness_expired"]}, "stale", self._event_sources(inputs["events"], event_types={"study_session_finished", "task_completed"}) or [{"evidence_kind": "SYNC_STATUS", "source_type": source_id, "source_id": source_id, "role": "LIMITS", "quality": "stale"}], observed, valid_until
             if missing_event or not core_events:
                 return {"status": "PARTIAL", "last_successful_observation_at": _iso(observed), "valid_until": _iso(valid_until), "warning_codes": ["event_gap"]}, "partial", self._event_sources(inputs["events"], event_types={"study_session_finished", "task_completed"}) or [{"evidence_kind": "SYNC_STATUS", "source_type": source_id, "source_id": source_id, "role": "LIMITS", "quality": "partial"}], observed, valid_until
@@ -447,13 +576,13 @@ class LearnerStateProjectionService:
         warnings = []
         credentials = inputs.get("chaoxing_credentials_updated_at")
         if not credentials:
-            return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": None, "warning_codes": ["disconnected"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": "chaoxing", "source_id": source_id, "role": "INVALIDATES", "quality": "unavailable"}], None, None
+                return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": _iso(as_of + _SHORT_TTL), "warning_codes": ["disconnected"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": "chaoxing", "source_id": source_id, "role": "INVALIDATES", "quality": "unavailable", "explanation_code": "source_disconnected"}], None, as_of + _SHORT_TTL
         if any(item.get("status") in {"failed", "partial"} for item in inputs["sections"]):
             warnings.append("section_sync_incomplete")
         if observed is None:
-            return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": None, "warning_codes": ["no_successful_sync"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": "chaoxing", "source_id": source_id, "role": "LIMITS", "quality": "unavailable"}], None, None
+            return {"status": "UNAVAILABLE", "last_successful_observation_at": None, "valid_until": _iso(as_of + _SHORT_TTL), "warning_codes": ["no_successful_sync"]}, "unavailable", [{"evidence_kind": "SYNC_STATUS", "source_type": "chaoxing", "source_id": source_id, "role": "LIMITS", "quality": "unavailable", "explanation_code": "source_disconnected"}], None, as_of + _SHORT_TTL
         valid_until = observed + _CHAOXING_TTL
-        stale = valid_until < as_of
+        stale = valid_until <= as_of
         status = "STALE" if stale else ("PARTIAL" if warnings else "FRESH")
         quality = "stale" if stale else ("partial" if warnings else "verified")
         if stale:
@@ -469,6 +598,8 @@ class LearnerStateProjectionService:
                 if value.get("last_successful_observation_at") is not None:
                     value["status"] = "STALE"
                 value.setdefault("warning_codes", []).append("projection_failed")
+            if row.state_type == "course_participation":
+                value["evidence_quality"] = "stale"
             stale_rows.append(ComputedSnapshot(
                 snapshot_id=row.snapshot_id, run_id=row.run_id, scope_type=row.scope_type,
                 scope_id=row.scope_id, state_type=row.state_type, value=value,
@@ -496,6 +627,86 @@ class LearnerStateProjectionService:
         return ProjectionResult(run_id="", user_id=user_id, as_of=computed, computed_at=computed,
                                 estimator_version=ESTIMATOR_VERSION, input_digest="",
                                 snapshots=snapshots, warnings=["projection_failed"])
+
+    def list_run_summaries(self, *, user_id: str, page: int, page_size: int):
+        return self.repository.list_runs(user_id=user_id, page=page, page_size=page_size)
+
+    def compare_runs(
+        self, *, user_id: str, to_run_id: str, from_run_id: str | None,
+        page: int, page_size: int, scope_type: str | None = None,
+        state_type: str | None = None, include_unchanged: bool = False,
+    ) -> tuple[str | None, str, bool, list[dict[str, Any]], int]:
+        to_run = self.repository.get_run(to_run_id, user_id=user_id)
+        if to_run is None:
+            raise LookupError("run not found")
+        from_run = (
+            self.repository.get_run(from_run_id, user_id=user_id)
+            if from_run_id is not None else self.repository.get_previous_run(user_id=user_id, before_run=to_run)
+        )
+        if from_run_id is not None and from_run is None:
+            raise LookupError("run not found")
+        if from_run is not None and from_run.estimator_version != to_run.estimator_version:
+            return from_run.run_id, to_run.run_id, True, [], 0
+        raw_rows, total = self.repository.list_changes(
+            user_id=user_id, from_run_id=from_run.run_id if from_run else None,
+            to_run_id=to_run.run_id, page=page, page_size=page_size,
+            scope_type=scope_type, state_type=state_type,
+            include_unchanged=include_unchanged,
+        )
+        return (
+            from_run.run_id if from_run else None,
+            to_run.run_id,
+            False,
+            [self._change_row(row) for row in raw_rows],
+            total,
+        )
+
+    @staticmethod
+    def _change_row(row: dict[str, Any]) -> dict[str, Any]:
+        previous_exists = row.get("previous_snapshot_id") is not None
+        current_exists = row.get("current_snapshot_id") is not None
+        if not previous_exists:
+            change_type = "ADDED"
+        elif not current_exists:
+            change_type = "REMOVED"
+        elif (
+            row.get("previous_value_json") == row.get("current_value_json")
+            and row.get("previous_quality") == row.get("current_quality")
+            and row.get("previous_confidence") == row.get("current_confidence")
+        ):
+            change_type = "UNCHANGED"
+        else:
+            change_type = "UPDATED"
+        previous_value = json.loads(row["previous_value_json"]) if previous_exists else None
+        current_value = json.loads(row["current_value_json"]) if current_exists else None
+        codes: list[str] = []
+        if change_type == "ADDED":
+            codes.append("state_added")
+        elif change_type == "REMOVED":
+            codes.append("state_removed")
+        else:
+            if row.get("previous_quality") != row.get("current_quality"):
+                codes.append("data_quality_changed")
+            if row.get("state_type") == "deadline_exposure" and (
+                (previous_value or {}).get("bucket") != (current_value or {}).get("bucket")
+            ):
+                codes.append("deadline_bucket_changed")
+            if row.get("state_type") == "data_source_health" and (
+                (previous_value or {}).get("status") != (current_value or {}).get("status")
+            ):
+                codes.append("source_freshness_changed")
+            if not codes and change_type == "UPDATED":
+                codes.append("observed_value_changed")
+        return {
+            "scope_type": row["scope_type"], "scope_id": row["scope_id"],
+            "state_type": row["state_type"], "change_type": change_type,
+            "previous_value": previous_value, "current_value": current_value,
+            "previous_quality": row.get("previous_quality"),
+            "current_quality": row.get("current_quality"),
+            "previous_confidence": row.get("previous_confidence"),
+            "current_confidence": row.get("current_confidence"),
+            "explanation_codes": codes,
+        }
 
 
 __all__ = ["ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]

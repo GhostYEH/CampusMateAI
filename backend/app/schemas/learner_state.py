@@ -14,6 +14,7 @@ StateType = Literal[
     "course_participation",
     "data_source_health",
 ]
+ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -43,6 +44,7 @@ class TaskWorkloadValue(BaseModel):
     known_overdue: int = Field(ge=0)
     known_due_24h: int = Field(ge=0)
     known_due_7d: int = Field(ge=0)
+    known_later: int = Field(default=0, ge=0)
     known_without_deadline: int = Field(ge=0)
     unknown_deadline: int = Field(ge=0)
 
@@ -63,7 +65,8 @@ class CourseParticipationValue(BaseModel):
     observed_assignments_discovered: int = Field(ge=0)
     observed_assignments_completed: int = Field(ge=0)
     last_observed_course_activity_at: datetime | None = None
-    evidence_quality: Literal["verified", "partial"]
+    evidence_quality: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
     _aware_last = field_validator("last_observed_course_activity_at")(_aware)
 
@@ -155,12 +158,22 @@ class LearnerStateSnapshotPage(BaseModel):
 class LearnerStateEvidenceOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    evidence_kind: Literal["EVENT", "SOURCE_ROW", "SYNC_STATUS"]
+    source_category: Literal[
+        "study_session", "personal_task", "course_content", "course_sync",
+        "core_learning_record", "chaoxing", "unknown"
+    ]
     event_id: str | None = None
-    source: str | None = None
     event_type: str | None = None
     occurred_at: datetime | None = None
-    data_quality: str | None = None
+    data_quality: SnapshotDataQuality | None = None
     role: Literal["SUPPORTS", "LIMITS", "INVALIDATES"]
+    explanation_code: Literal[
+        "completed_study_session", "current_pending_task", "observed_platform_completion",
+        "chapter_sync_complete", "chapter_data_stale", "source_disconnected",
+        "event_projection_gap", "input_truncated", "historical_submission_not_current",
+        "orphan_assignment_submitted", "platform_event_observed", "state_observed",
+    ]
 
     _aware_occurred = field_validator("occurred_at")(_aware)
 
@@ -175,12 +188,92 @@ class LearnerStateEvidencePage(BaseModel):
     has_more: bool
 
 
+class LearnerStateRunOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    as_of: datetime
+    computed_at: datetime
+    estimator_version: str
+    trigger: str
+    is_current: bool
+    warning_codes: list[str] = Field(default_factory=list, max_length=32)
+    snapshot_count: int = Field(ge=0)
+
+    _aware_times = field_validator("as_of", "computed_at")(_aware)
+
+
+class LearnerStateRunPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[LearnerStateRunOut]
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1)
+    has_more: bool
+
+
+ChangeExplanationCode = Literal[
+    "state_added", "state_removed", "observed_value_changed", "data_quality_changed",
+    "deadline_bucket_changed", "source_freshness_changed", "authoritative_task_changed",
+    "event_projection_gap", "input_truncated",
+]
+
+
+class LearnerStateChangeOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope_type: ScopeType
+    scope_id: str
+    state_type: StateType
+    change_type: ChangeType
+    previous_value: StateValue | None = None
+    current_value: StateValue | None = None
+    previous_quality: SnapshotDataQuality | None = None
+    current_quality: SnapshotDataQuality | None = None
+    previous_confidence: float | None = Field(default=None, ge=0, le=1)
+    current_confidence: float | None = Field(default=None, ge=0, le=1)
+    explanation_codes: list[ChangeExplanationCode] = Field(default_factory=list, max_length=16)
+
+    @model_validator(mode="after")
+    def validate_values(self) -> "LearnerStateChangeOut":
+        expected = {
+            "observed_learning_activity": ObservedLearningActivityValue,
+            "task_workload": TaskWorkloadValue,
+            "deadline_exposure": DeadlineExposureValue,
+            "course_participation": CourseParticipationValue,
+            "data_source_health": DataSourceHealthValue,
+        }[self.state_type]
+        if self.previous_value is not None and not isinstance(self.previous_value, expected):
+            raise ValueError("previous_value does not match state_type")
+        if self.current_value is not None and not isinstance(self.current_value, expected):
+            raise ValueError("current_value does not match state_type")
+        return self
+
+
+class LearnerStateChangePage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_run_id: str | None
+    to_run_id: str
+    estimator_changed: bool
+    changes: list[LearnerStateChangeOut]
+    total: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1)
+    has_more: bool
+
+
 __all__ = [
     "CourseParticipationValue",
     "DataSourceHealthValue",
     "DeadlineExposureValue",
     "LearnerStateEvidenceOut",
     "LearnerStateEvidencePage",
+    "LearnerStateChangeOut",
+    "LearnerStateChangePage",
+    "LearnerStateRunOut",
+    "LearnerStateRunPage",
     "LearnerStateSnapshotOut",
     "LearnerStateSnapshotPage",
     "ObservedLearningActivityValue",
