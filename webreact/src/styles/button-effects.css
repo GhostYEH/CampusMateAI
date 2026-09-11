@@ -118,6 +118,51 @@
   opacity: 1;
 }
 
+/* The expanding top dock uses a compositor-only sheen. A WebGL canvas here
+   would resize its framebuffers on every label-width frame and visibly flash. */
+.floating-nav .sylva-liquid-stage--nav::after {
+  position: absolute;
+  z-index: 1;
+  inset: -35% -55%;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(142, 209, 255, .08) 41%,
+    rgba(255, 255, 255, .72) 50%,
+    rgba(255, 207, 158, .16) 59%,
+    transparent 70%
+  );
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-72%, 0, 0) skewX(-12deg);
+  will-change: transform, opacity;
+}
+
+.floating-nav .sylva-liquid-stage--nav:hover::after,
+.floating-nav .sylva-liquid-stage--nav:focus-within::after {
+  animation: sylva-nav-liquid-sheen 1.15s cubic-bezier(.22, .61, .36, 1) infinite;
+}
+
+.floating-nav .sylva-liquid-stage--nav:hover {
+  translate: 0;
+}
+
+@keyframes sylva-nav-liquid-sheen {
+  0% {
+    opacity: 0;
+    transform: translate3d(-72%, 0, 0) skewX(-12deg);
+  }
+  24%, 68% {
+    opacity: .72;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(72%, 0, 0) skewX(-12deg);
+  }
+}
+
 .sylva-liquid-stage--surface[data-tone="light"] > .sylva-liquid-plate {
   background:
     linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.08) 48%, rgba(255,255,255,0) 70%),
@@ -198,5 +243,10 @@
   .sylva-liquid-stage,
   .sylva-liquid-plate {
     transition: none;
+  }
+
+  .floating-nav .sylva-liquid-stage--nav::after {
+    animation: none;
+    opacity: 0;
   }
 }

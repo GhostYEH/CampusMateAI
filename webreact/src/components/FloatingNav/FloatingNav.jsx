@@ -39,6 +39,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
       items={navItems}
       activeIndex={activeIndex}
       reduceMotion={reduceMotion}
+      lightweightEffects
       className="floating-nav-inner"
       onSelect={({ key }) => navigate(`/${key}`)}
       renderItem={({ key, label, icon }) => {

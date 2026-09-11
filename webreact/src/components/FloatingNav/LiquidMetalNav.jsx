@@ -77,6 +77,24 @@ function DockItem({
   );
 }
 
+function StableDockItem({ item, index, active, onClick, renderItem }) {
+  return (
+    <li className={active ? "active" : ""}>
+      <LiquidMetalButton
+        variant="nav"
+        active={active}
+        disableEffects
+        className="floating-nav-button"
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
+        onClick={(event) => onClick(event, index)}
+      >
+        {renderItem(item, index)}
+      </LiquidMetalButton>
+    </li>
+  );
+}
+
 export default function LiquidMetalNav({
   items = [],
   activeIndex: controlledActiveIndex = 0,
@@ -85,6 +103,7 @@ export default function LiquidMetalNav({
   ariaLabel = "主导航",
   className = "",
   reduceMotion = false,
+  lightweightEffects = false,
   dockDistance = 120,
   dockMagnification = 60,
   dockBaseItemSize = 44,
@@ -93,6 +112,7 @@ export default function LiquidMetalNav({
   const pointerFrameRef = useRef(0);
   const pendingPointerXRef = useRef(Number.POSITIVE_INFINITY);
   const activeIndex = Number.isInteger(controlledActiveIndex) ? controlledActiveIndex : 0;
+  const ItemComponent = lightweightEffects ? StableDockItem : DockItem;
 
   useEffect(() => () => {
     if (pointerFrameRef.current) cancelAnimationFrame(pointerFrameRef.current);
@@ -127,13 +147,13 @@ export default function LiquidMetalNav({
     <div
       className={`liquid-metal-nav-container ${className}`}
       data-reduce-motion={reduceMotion ? "true" : undefined}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      onMouseMove={lightweightEffects ? undefined : handleMouseMove}
+      onMouseLeave={lightweightEffects ? undefined : handleMouseLeave}
     >
       <nav aria-label={ariaLabel}>
         <ul className="floating-nav-list">
           {items.map((item, index) => (
-            <DockItem
+            <ItemComponent
               key={item.key || item.href || index}
               item={item}
               index={index}

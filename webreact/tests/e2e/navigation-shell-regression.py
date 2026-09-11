@@ -129,7 +129,7 @@ def run():
         nav_canvas_count = page.evaluate(
             "() => document.querySelectorAll('.floating-nav .sylva-liquid-fx').length"
         )
-        expect(nav_canvas_count == 1, f"首页初始导航液态画布应为 1，实际为 {nav_canvas_count}")
+        expect(nav_canvas_count == 0, f"首页顶部导航不应分配液态画布，实际为 {nav_canvas_count}")
         task_selector = '.floating-nav-button[aria-label="待办与作业"]'
         for _ in range(3):
             task_box = rect(page, task_selector)
@@ -143,27 +143,25 @@ def run():
               const stage = document.querySelector(selector)?.closest('.sylva-liquid-stage');
               const canvas = stage.querySelector('canvas');
               const plate = stage.querySelector('.sylva-liquid-plate');
+              const sheen = getComputedStyle(stage, '::after');
               const plateOpacity = plate ? getComputedStyle(plate).opacity : null;
-              const plateShadow = plate ? getComputedStyle(plate).boxShadow : null;
               const activeStage = document.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav');
               const activeCanvas = activeStage ? activeStage.querySelector('canvas') : null;
               return {
-                hot: stage.classList.contains('hot'),
-                fallback: stage.classList.contains('sylva-liquid-fallback'),
                 hasCanvas: Boolean(canvas),
                 plateOpacity,
-                plateShadow,
+                sheenAnimation: sheen.animationName,
                 navFxCount,
                 activeHasCanvas: Boolean(activeCanvas),
               };
             }""",
             task_selector,
         )
-        expect(not task_state["hasCanvas"], "非当前页面按钮悬停时不应重复创建液态金属画布")
-        expect(task_state["plateOpacity"] == "1", "待办与作业悬停时缺少轻量液态悬停反馈")
-        expect("0px 0px 0px 1px" in task_state["plateShadow"], "待办与作业悬停时缺少清晰边缘高光")
-        expect(task_state["activeHasCanvas"], "当前页面按钮应保留完整液态金属画布")
-        expect(task_state["navFxCount"] == 1, f"悬停时导航内应保持唯一液态画布，实际为 {task_state['navFxCount']}")
+        expect(not task_state["hasCanvas"], "非当前页面按钮悬停时不应创建液态金属画布")
+        expect(task_state["plateOpacity"] == "0", "非活动项不应重新显示旧的静态悬停底板")
+        expect(task_state["sheenAnimation"] == "sylva-nav-liquid-sheen", "待办与作业悬停时缺少流动高光")
+        expect(not task_state["activeHasCanvas"], "展开中的活动项不应保留会反复调整尺寸的画布")
+        expect(task_state["navFxCount"] == 0, f"悬停时顶部导航不应分配画布，实际为 {task_state['navFxCount']}")
         hovered_nav = rect(page, ".floating-nav")
         task_label = rect(page, f'{task_selector} .floating-nav-label')
         expect(hovered_nav["width"] > compact_nav_width + 200, "指针悬停后导航没有展开")
@@ -178,7 +176,7 @@ def run():
             task_selector,
         )
         expect(not released_state["hasCanvas"], "离开非活动导航项后应保持无重复液态画布")
-        expect(released_state["navFxCount"] == 1, f"离开悬停后导航内应保持 1 个液态画布，实际为 {released_state['navFxCount']}")
+        expect(released_state["navFxCount"] == 0, f"离开悬停后顶部导航不应分配画布，实际为 {released_state['navFxCount']}")
         expect(not shader_errors, f"液态金属着色器报错：{shader_errors}")
 
         page.goto(f"{BASE_URL}/tasks", wait_until="domcontentloaded", timeout=30_000)
@@ -189,20 +187,20 @@ def run():
               const button = document.querySelector('.floating-nav-button[aria-label="待办与作业"]');
               const stage = button?.closest('.sylva-liquid-stage--nav');
               const canvas = stage?.querySelector('canvas');
-              const gl = canvas?.getContext('webgl2');
+              const plate = stage?.querySelector('.sylva-liquid-plate');
               return {
                 current: button?.getAttribute('aria-current'),
                 active: stage?.dataset.active,
                 hasCanvas: Boolean(canvas),
-                contextLost: gl ? gl.isContextLost() : null,
+                plateOpacity: plate ? getComputedStyle(plate).opacity : null,
                 navFxCount: document.querySelectorAll('.floating-nav .sylva-liquid-fx').length,
               };
             }"""
         )
         expect(task_active.get("current") == "page" and task_active.get("active") == "true", "待办页没有保持统一的液态金属活动态")
-        expect(task_active.get("hasCanvas"), "待办页活动项应保留完整液态金属画布")
-        expect(task_active.get("contextLost") is False, "待办页活动项的 WebGL 上下文已丢失")
-        expect(task_active.get("navFxCount") == 1, f"待办页导航内液态画布应为 1，实际为 {task_active.get('navFxCount')}")
+        expect(not task_active.get("hasCanvas"), "待办页顶部导航活动项不应分配 WebGL 画布")
+        expect(task_active.get("plateOpacity") == "1", "待办页活动项的稳定选中底板不可见")
+        expect(task_active.get("navFxCount") == 0, f"待办页顶部导航液态画布应为 0，实际为 {task_active.get('navFxCount')}")
 
         print("opening study", flush=True)
         page.goto(f"{BASE_URL}/study", wait_until="domcontentloaded", timeout=30_000)
