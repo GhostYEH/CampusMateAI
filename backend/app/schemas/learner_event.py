@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_core import InitErrorDetails, PydanticCustomError
 from pydantic_core import ValidationError as CoreValidationError
 
-WritableSource = Literal["study", "personal_task", "chaoxing"]
+WritableSource = Literal["study", "personal_task", "chaoxing", "practice"]
 WritableEventType = Literal[
     "study_session_finished",
     "task_completed",
@@ -17,6 +17,7 @@ WritableEventType = Literal[
     "assignment_discovered",
     "assignment_submitted",
     "notice_synced",
+    "practice_answered",
 ]
 ReservedSource = Literal["edu"]
 ReservedEventType = Literal[
@@ -36,6 +37,7 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
         "assignment_submitted",
         "notice_synced",
     },
+    "practice": {"practice_answered"},
 }
 
 EVENT_OUTCOMES: dict[str, str] = {
@@ -46,6 +48,7 @@ EVENT_OUTCOMES: dict[str, str] = {
     "assignment_submitted": "observed_completed",
     "notice_synced": "synced",
     "chapter_completed": "observed_completed",
+    "practice_answered": "observed_completed",
 }
 
 SENSITIVE_KEYS = frozenset(
@@ -60,6 +63,18 @@ SENSITIVE_KEYS = frozenset(
         "authorization",
         "secret",
         "apikey",
+        "code",
+        "sourcecode",
+        "rawcode",
+        "answer",
+        "rawanswer",
+        "stdout",
+        "stderr",
+        "compileroutput",
+        "prompt",
+        "title",
+        "body",
+        "url",
     }
 )
 

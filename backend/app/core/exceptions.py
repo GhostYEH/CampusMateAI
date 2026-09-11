@@ -375,9 +375,17 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _validation_handler(_: Request, exc: RequestValidationError):
         # Pydantic 自定义校验器的 ctx 可能携带 ValueError 实例；先做
         # JSON 安全转换，保证所有校验失败都稳定返回 422。
-        details = jsonable_encoder(
-            exc.errors(), custom_encoder={Exception: str}
-        )
+        # Validation errors must never echo untrusted request values (extra fields
+        # may contain source code, tokens, or other private material).
+        raw_details = jsonable_encoder(exc.errors(), custom_encoder={Exception: str})
+        details = [
+            {
+                key: item[key]
+                for key in ("type", "loc", "msg", "ctx")
+                if key in item and key != "ctx"
+            }
+            for item in raw_details
+        ] if isinstance(raw_details, list) else None
         return JSONResponse(
             status_code=422,
             content=_build_error_body(

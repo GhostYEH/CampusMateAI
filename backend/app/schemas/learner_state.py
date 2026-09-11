@@ -5,14 +5,17 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .c_knowledge import KnowledgeMasteryValue
+
 SnapshotDataQuality = Literal["verified", "partial", "stale", "unavailable"]
-ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE"]
+ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"]
 StateType = Literal[
     "observed_learning_activity",
     "task_workload",
     "deadline_exposure",
     "course_participation",
     "data_source_health",
+    "knowledge_mastery_estimate",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
@@ -100,6 +103,7 @@ StateValue = Annotated[
         DeadlineExposureValue,
         CourseParticipationValue,
         DataSourceHealthValue,
+        KnowledgeMasteryValue,
     ],
     Field(union_mode="smart"),
 ]
@@ -133,6 +137,7 @@ class LearnerStateSnapshotOut(BaseModel):
             "deadline_exposure": DeadlineExposureValue,
             "course_participation": CourseParticipationValue,
             "data_source_health": DataSourceHealthValue,
+            "knowledge_mastery_estimate": KnowledgeMasteryValue,
         }[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
@@ -160,7 +165,7 @@ class LearnerStateEvidenceOut(BaseModel):
 
     evidence_kind: Literal["EVENT", "SOURCE_ROW", "SYNC_STATUS"]
     source_category: Literal[
-        "study_session", "personal_task", "course_content", "course_sync",
+        "study_session", "personal_task", "practice_attempt", "course_content", "course_sync",
         "core_learning_record", "chaoxing", "unknown"
     ]
     event_id: str | None = None
@@ -172,7 +177,7 @@ class LearnerStateEvidenceOut(BaseModel):
         "completed_study_session", "current_pending_task", "observed_platform_completion",
         "chapter_sync_complete", "chapter_data_stale", "source_disconnected",
         "event_projection_gap", "input_truncated", "historical_submission_not_current",
-        "orphan_assignment_submitted", "platform_event_observed", "state_observed",
+        "orphan_assignment_submitted", "platform_event_observed", "state_observed", "practice_result",
     ]
 
     _aware_occurred = field_validator("occurred_at")(_aware)

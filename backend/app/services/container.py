@@ -41,6 +41,7 @@ from ..repositories.edu_data_repository import EduDataRepository
 from ..repositories.edu_repository import EduRepository
 from ..repositories.learner_event_repository import LearnerEventRepository
 from ..repositories.learner_state_repository import LearnerStateRepository
+from ..repositories.c_knowledge_repository import KnowledgeRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
@@ -48,6 +49,7 @@ from ..repositories.qr_auth_repository import (
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
+from ..services.c_knowledge_service import KnowledgeService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
 from ..services.notice_extraction_service import NoticeExtractionService
@@ -101,6 +103,8 @@ class ServiceContainer:
     learner_event_service: LearnerEventService
     learner_state_repository: LearnerStateRepository
     learner_state_service: LearnerStateProjectionService
+    knowledge_repository: KnowledgeRepository
+    knowledge_service: KnowledgeService
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -165,6 +169,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     learner_state_repository = LearnerStateRepository(db)
     learner_state_service = LearnerStateProjectionService(learner_state_repository)
+    knowledge_repository = KnowledgeRepository(db)
+    knowledge_service = KnowledgeService(
+        knowledge_repository, learner_event_repository, learner_state_repository
+    )
+    knowledge_service.seed_c_taxonomy()
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
@@ -226,6 +235,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_event_service=learner_event_service,
         learner_state_repository=learner_state_repository,
         learner_state_service=learner_state_service,
+        knowledge_repository=knowledge_repository,
+        knowledge_service=knowledge_service,
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
