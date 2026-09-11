@@ -6,6 +6,7 @@ import binascii
 from functools import lru_cache
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -64,6 +65,21 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout_seconds: int = 30
     enable_fallback_mode: bool = True
+
+    # ===== CampusMate-LM shadow candidate (disabled by default) =====
+    campusmate_lm_enabled: bool = False
+    campusmate_lm_base_url: str = ""
+    campusmate_lm_model_name: str = ""
+    campusmate_lm_api_key: str = ""
+    campusmate_lm_timeout_ms: int = 1500
+    campusmate_lm_max_tokens: int = 256
+    campusmate_lm_temperature: float = 0.0
+    campusmate_lm_seed: int = 20260911
+    campusmate_lm_shadow_sample_rate: float = 0.0
+    campusmate_lm_concurrency_limit: int = 2
+    campusmate_lm_circuit_breaker_threshold: int = 3
+    campusmate_lm_circuit_breaker_cooldown_seconds: float = 30.0
+    campusmate_lm_data_retention_days: int = 30
 
     # ===== MiMo TTS =====
     mimo_base_url: str = "https://api.xiaomimimo.com/v1"
@@ -175,6 +191,12 @@ class Settings(BaseSettings):
         )
 
     @property
+    def campusmate_lm_available(self) -> bool:
+        return self.campusmate_lm_enabled and bool(
+            self.campusmate_lm_base_url and self.campusmate_lm_api_key and self.campusmate_lm_model_name
+        )
+
+    @property
     def mimo_tts_available(self) -> bool:
         """MiMo TTS 是否已配置并可尝试调用。"""
         return bool(self.mimo_base_url and self.mimo_api_key and self.mimo_tts_model)
@@ -219,6 +241,14 @@ class Settings(BaseSettings):
         if self.llm_provider == "none" and not self.enable_fallback_mode:
             # 强制开启降级模式，否则功能不可用
             self.enable_fallback_mode = True
+        if not 0.0 <= self.campusmate_lm_shadow_sample_rate <= 1.0:
+            raise ValueError("CAMPUSMATE_LM_SHADOW_SAMPLE_RATE must be between 0 and 1")
+        if self.campusmate_lm_enabled:
+            parsed = urlparse(self.campusmate_lm_base_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ValueError("CAMPUSMATE_LM_BASE_URL must be a safe HTTP(S) origin")
+            if self.campusmate_lm_timeout_ms < 1 or self.campusmate_lm_concurrency_limit < 1:
+                raise ValueError("CampusMate-LM runtime limits are invalid")
         if self.edu_session_store not in {"auto", "memory", "encrypted_sqlite"}:
             raise ValueError(
                 "EDU_SESSION_STORE must be auto, memory, or encrypted_sqlite"

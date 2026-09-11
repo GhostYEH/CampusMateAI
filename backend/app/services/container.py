@@ -42,6 +42,7 @@ from ..repositories.edu_repository import EduRepository
 from ..repositories.learner_event_repository import LearnerEventRepository
 from ..repositories.learner_state_repository import LearnerStateRepository
 from ..repositories.learning_plan_repository import LearningPlanRepository
+from ..repositories.model_shadow_repository import ModelShadowRepository
 from ..repositories.c_knowledge_repository import KnowledgeRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
@@ -53,8 +54,11 @@ from ..services.learner_state_service import LearnerStateProjectionService
 from ..services.c_knowledge_service import KnowledgeService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
+from ..services.model_capability_registry import ModelCapabilityRegistry
+from ..services.model_shadow_runner import ModelShadowRunner
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
+from ..services.llm.openai_compatible import OpenAICompatibleClient
 from ..services.notice_extraction_service import NoticeExtractionService
 from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
@@ -74,6 +78,7 @@ class ServiceContainer:
     notice_extraction: NoticeExtractionService
     rag: RagService
     llm: Optional[LLMClient]
+    model_shadow_runner: ModelShadowRunner
     tts: Optional[MiMoTtsClient]
     # 多角色仓库
     user_repository: UserRepository
@@ -132,6 +137,23 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     retrieval = RetrievalService(repo)
     ingestion = KnowledgeIngestionService(repo, retrieval, settings)
     llm = build_llm_client(settings)
+    candidate_llm = None
+    if settings.campusmate_lm_available:
+        candidate_llm = OpenAICompatibleClient(
+            base_url=settings.campusmate_lm_base_url,
+            api_key=settings.campusmate_lm_api_key,
+            model=settings.campusmate_lm_model_name,
+            timeout=settings.campusmate_lm_timeout_ms / 1000,
+        )
+    model_shadow_runner = ModelShadowRunner(
+        registry=ModelCapabilityRegistry(), candidate_llm=candidate_llm,
+        enabled=settings.campusmate_lm_enabled, sample_rate=settings.campusmate_lm_shadow_sample_rate,
+        concurrency_limit=settings.campusmate_lm_concurrency_limit, timeout_ms=settings.campusmate_lm_timeout_ms,
+        max_tokens=settings.campusmate_lm_max_tokens, temperature=settings.campusmate_lm_temperature,
+        seed=settings.campusmate_lm_seed, circuit_breaker_threshold=settings.campusmate_lm_circuit_breaker_threshold,
+        circuit_breaker_cooldown_seconds=settings.campusmate_lm_circuit_breaker_cooldown_seconds,
+        repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+    )
     tts = (
         MiMoTtsClient(
             base_url=settings.mimo_base_url,
@@ -220,6 +242,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         notice_extraction=notice,
         rag=rag,
         llm=llm,
+        model_shadow_runner=model_shadow_runner,
         tts=tts,
         user_repository=UserRepository(db),
         refresh_token_repository=RefreshTokenRepository(db),

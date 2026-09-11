@@ -1370,6 +1370,80 @@ CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
 CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
 """
 
+MODEL_SHADOW_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS model_shadow_runs (
+    shadow_run_id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL CHECK(scope IN ('ONLINE','OFFLINE')),
+    user_id TEXT,
+    request_id TEXT NOT NULL,
+    capability_name TEXT NOT NULL,
+    capability_version TEXT NOT NULL,
+    production_model_key TEXT NOT NULL,
+    candidate_model_key TEXT NOT NULL,
+    dataset_version TEXT,
+    online_sample_version TEXT,
+    prompt_version TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    expected_output_digest TEXT,
+    candidate_output_digest TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(scope, user_id, request_id, capability_name, capability_version)
+);
+CREATE INDEX IF NOT EXISTS idx_model_shadow_runs_user_created
+    ON model_shadow_runs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_model_shadow_runs_capability
+    ON model_shadow_runs(capability_name, capability_version, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS model_shadow_results (
+    shadow_run_id TEXT PRIMARY KEY,
+    schema_valid INTEGER NOT NULL,
+    policy_valid INTEGER NOT NULL,
+    abstained INTEGER NOT NULL,
+    used_fallback INTEGER NOT NULL,
+    failure_code TEXT,
+    latency_ms INTEGER NOT NULL,
+    resource_metrics_json TEXT NOT NULL DEFAULT '{}',
+    evaluator_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(shadow_run_id) REFERENCES model_shadow_runs(shadow_run_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS model_shadow_metric_records (
+    metric_record_id TEXT PRIMARY KEY,
+    shadow_run_id TEXT,
+    scope TEXT NOT NULL CHECK(scope IN ('ONLINE','OFFLINE')),
+    capability_name TEXT NOT NULL,
+    capability_version TEXT NOT NULL,
+    dataset_version TEXT NOT NULL,
+    evaluator_version TEXT NOT NULL,
+    metrics_digest TEXT NOT NULL,
+    metrics_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(shadow_run_id) REFERENCES model_shadow_runs(shadow_run_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_model_shadow_metrics_capability
+    ON model_shadow_metric_records(capability_name, capability_version, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS model_promotion_decisions (
+    decision_id TEXT PRIMARY KEY,
+    model_key TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    capability_name TEXT NOT NULL,
+    capability_version TEXT NOT NULL,
+    dataset_version TEXT NOT NULL,
+    evaluator_version TEXT NOT NULL,
+    threshold_version TEXT NOT NULL,
+    metrics_digest TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('SHADOW_ONLY','ELIGIBLE_FOR_CANARY','BLOCKED','REVOKED')),
+    failed_gates_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_model_promotion_capability
+    ON model_promotion_decisions(model_key, capability_name, created_at DESC);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1434,6 +1508,7 @@ class Database:
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
                 conn.executescript(C_KNOWLEDGE_SCHEMA_SQL)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
+                conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
