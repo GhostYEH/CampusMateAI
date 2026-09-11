@@ -145,6 +145,19 @@ def test_legacy_database_gains_learner_state_tables_and_indexes_idempotently(tmp
             );
             INSERT INTO users (id, username, password_hash, role, created_at, updated_at)
             VALUES ('state-user', 'state-user', 'hash', 'student', '2026-01-01', '2026-01-01');
+            CREATE TABLE learner_state_projection_runs (
+                run_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                computed_at TEXT NOT NULL,
+                estimator_version TEXT NOT NULL,
+                input_digest TEXT NOT NULL,
+                trigger TEXT NOT NULL,
+                is_current INTEGER NOT NULL DEFAULT 0,
+                warnings_json TEXT NOT NULL DEFAULT '[]'
+            );
+            CREATE UNIQUE INDEX idx_learner_state_runs_current
+                ON learner_state_projection_runs(user_id) WHERE is_current = 1;
             """
         )
 
@@ -167,4 +180,10 @@ def test_legacy_database_gains_learner_state_tables_and_indexes_idempotently(tmp
                 )
             }
             assert "idx_learner_state_runs_current" in indexes
+            columns = {
+                row["name"] for row in conn.execute(
+                    "PRAGMA table_info(learner_state_projection_runs)"
+                )
+            }
+            assert {"projection_kind", "projection_scope"} <= columns
         database.dispose()

@@ -29,6 +29,8 @@ def _run(row) -> ProjectionRunRow:
         is_current=bool(row["is_current"]),
         warnings=json.loads(row["warnings_json"] or "[]"),
         snapshot_count=int(row["snapshot_count"]) if "snapshot_count" in row.keys() else 0,
+        projection_kind=row["projection_kind"] if "projection_kind" in row.keys() else "CORE",
+        projection_scope=row["projection_scope"] if "projection_scope" in row.keys() else "__user__",
     )
 
 
@@ -68,23 +70,23 @@ class LearnerStateRepository:
                 """SELECT event_id,user_id,occurred_at,source,event_type,course_id,
                           subject_type,subject_id,outcome,data_quality
                    FROM learner_events WHERE user_id=?
-                   ORDER BY occurred_at ASC,event_id ASC LIMIT ?""", (user_id,))
+                   ORDER BY occurred_at DESC,event_id DESC LIMIT ?""", (user_id,))
             sessions, sessions_truncated = bounded(conn,
                 """SELECT id,user_id,started_at,ended_at,duration_seconds,status
-                   FROM study_sessions WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+                   FROM study_sessions WHERE user_id=? ORDER BY started_at DESC,id DESC LIMIT ?""", (user_id,))
             tasks, tasks_truncated = bounded(conn,
                 """SELECT id,user_id,course_id,source,created_at,completed_at,deadline,
                           status,deleted_at,updated_at
-                   FROM personal_tasks WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+                   FROM personal_tasks WHERE user_id=? ORDER BY updated_at DESC,id DESC LIMIT ?""", (user_id,))
             content, content_truncated = bounded(conn,
                 """SELECT id,course_id,provider,kind,status,is_stale,last_synced_at
-                   FROM course_content_items WHERE user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+                   FROM course_content_items WHERE user_id=? ORDER BY last_synced_at DESC,id DESC LIMIT ?""", (user_id,))
             sections, sections_truncated = bounded(conn,
                 """SELECT course_id,section,status,item_count,last_synced_at,error_code
-                   FROM course_sync_sections WHERE user_id=? ORDER BY course_id,section LIMIT ?""", (user_id,))
+                   FROM course_sync_sections WHERE user_id=? ORDER BY last_synced_at DESC,course_id DESC,section DESC LIMIT ?""", (user_id,))
             courses, courses_truncated = bounded(conn,
                 """SELECT id,provider,owner_user_id,status,last_synced_at
-                   FROM courses WHERE owner_user_id=? ORDER BY id ASC LIMIT ?""", (user_id,))
+                   FROM courses WHERE owner_user_id=? ORDER BY last_synced_at DESC,id DESC LIMIT ?""", (user_id,))
             credentials = conn.execute(
                 "SELECT updated_at FROM chaoxing_credentials WHERE user_id=?", (user_id,)
             ).fetchone()
@@ -112,6 +114,8 @@ class LearnerStateRepository:
                 "hard_limit": limit,
                 "truncated": bool(truncated_sources),
                 "truncated_sources": truncated_sources,
+                "truncation_policy": "latest_first",
+                "selected_limit": limit,
             },
         }
 
@@ -123,14 +127,24 @@ class LearnerStateRepository:
         evidence: list[dict[str, Any]],
     ) -> ProjectionRunRow:
         """Persist run, snapshots, evidence and current switch in one transaction."""
+        projection_kind = run.get("projection_kind", "CORE")
+        projection_scope = run.get("projection_scope", "__user__")
+        if projection_kind not in {"CORE", "KNOWLEDGE"}:
+            raise ValueError("unsupported projection kind")
+        if projection_kind == "CORE" and projection_scope != "__user__":
+            raise ValueError("CORE projection must use the user scope")
+        if projection_kind == "KNOWLEDGE" and not projection_scope:
+            raise ValueError("KNOWLEDGE projection requires a course scope")
         with self._db.transaction() as conn:
             conn.execute(
                 """INSERT INTO learner_state_projection_runs
-                   (run_id,user_id,as_of,computed_at,estimator_version,input_digest,trigger,is_current,warnings_json)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                   (run_id,user_id,as_of,computed_at,estimator_version,input_digest,trigger,
+                    projection_kind,projection_scope,is_current,warnings_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     run["run_id"], run["user_id"], run["as_of"], run["computed_at"],
-                    run["estimator_version"], run["input_digest"], run["trigger"], 0,
+                    run["estimator_version"], run["input_digest"], run["trigger"],
+                    projection_kind, projection_scope, 0,
                     _json(run.get("warnings", [])),
                 ),
             )
@@ -159,8 +173,9 @@ class LearnerStateRepository:
                     ),
                 )
             conn.execute(
-                "UPDATE learner_state_projection_runs SET is_current=0 WHERE user_id=?",
-                (run["user_id"],),
+                "UPDATE learner_state_projection_runs SET is_current=0 "
+                "WHERE user_id=? AND projection_kind=? AND projection_scope=?",
+                (run["user_id"], projection_kind, projection_scope),
             )
             conn.execute(
                 "UPDATE learner_state_projection_runs SET is_current=1 WHERE run_id=?",
@@ -179,34 +194,39 @@ class LearnerStateRepository:
             ).fetchone()
         return _run(row) if row else None
 
-    def get_current_run(self, *, user_id: str) -> Optional[ProjectionRunRow]:
+    def get_current_run(
+        self, *, user_id: str, projection_kind: str = "CORE", projection_scope: str = "__user__"
+    ) -> Optional[ProjectionRunRow]:
         with self._db.query() as conn:
             row = conn.execute(
-                "SELECT * FROM learner_state_projection_runs WHERE user_id=? AND is_current=1",
-                (user_id,),
+                "SELECT * FROM learner_state_projection_runs WHERE user_id=? "
+                "AND projection_kind=? AND projection_scope=? AND is_current=1",
+                (user_id, projection_kind, projection_scope),
             ).fetchone()
         return _run(row) if row else None
 
     def list_runs(
-        self, *, user_id: str, page: int = 1, page_size: int = 50
+        self, *, user_id: str, page: int = 1, page_size: int = 50,
+        projection_kind: str = "CORE", projection_scope: str = "__user__"
     ) -> tuple[list[ProjectionRunRow], int]:
         if page < 1 or page_size < 1 or page_size > 100:
             raise ValueError("invalid pagination")
         offset = (page - 1) * page_size
         with self._db.query() as conn:
             total = int(conn.execute(
-                "SELECT COUNT(*) AS n FROM learner_state_projection_runs WHERE user_id=?",
-                (user_id,),
+                "SELECT COUNT(*) AS n FROM learner_state_projection_runs "
+                "WHERE user_id=? AND projection_kind=? AND projection_scope=?",
+                (user_id, projection_kind, projection_scope),
             ).fetchone()["n"])
             rows = conn.execute(
                 """SELECT r.*, COUNT(s.snapshot_id) AS snapshot_count
                    FROM learner_state_projection_runs r
                    LEFT JOIN learner_state_snapshots s ON s.run_id=r.run_id
-                   WHERE r.user_id=?
+                   WHERE r.user_id=? AND r.projection_kind=? AND r.projection_scope=?
                    GROUP BY r.run_id
                    ORDER BY r.computed_at DESC, r.run_id DESC
                    LIMIT ? OFFSET ?""",
-                (user_id, page_size, offset),
+                (user_id, projection_kind, projection_scope, page_size, offset),
             ).fetchall()
         return [_run(row) for row in rows], total
 
@@ -231,8 +251,10 @@ class LearnerStateRepository:
             row = conn.execute(
                 """SELECT * FROM learner_state_projection_runs
                    WHERE user_id=? AND estimator_version=? AND rowid < ?
+                   AND projection_kind=? AND projection_scope=?
                    ORDER BY rowid DESC LIMIT 1""",
-                (user_id, before_run.estimator_version, current_row["rowid"]),
+                (user_id, before_run.estimator_version, current_row["rowid"],
+                 before_run.projection_kind, before_run.projection_scope),
             ).fetchone()
         return _run(row) if row else None
 
@@ -243,6 +265,23 @@ class LearnerStateRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         if page < 1 or page_size < 1 or page_size > 100:
             raise ValueError("invalid pagination")
+        with self._db.query() as conn:
+            to_run = conn.execute(
+                "SELECT user_id,projection_kind,projection_scope "
+                "FROM learner_state_projection_runs WHERE run_id=?", (to_run_id,)
+            ).fetchone()
+            from_run = conn.execute(
+                "SELECT user_id,projection_kind,projection_scope "
+                "FROM learner_state_projection_runs WHERE run_id=?", (from_run_id,)
+            ).fetchone() if from_run_id else None
+        if to_run is None or to_run["user_id"] != user_id or (
+            from_run is not None and (
+                from_run["user_id"] != user_id
+                or from_run["projection_kind"] != to_run["projection_kind"]
+                or from_run["projection_scope"] != to_run["projection_scope"]
+            )
+        ):
+            raise LookupError("projection runs are not in the same family")
         params: list[Any] = [to_run_id]
         if from_run_id is None:
             cte = """WITH paired AS (
@@ -298,14 +337,23 @@ class LearnerStateRepository:
             rows = conn.execute(rows_sql, params + [page_size, offset]).fetchall()
         return [dict(row) for row in rows], total
 
-    def list_all_current_snapshots(self, *, user_id: str, max_items: int = 10000) -> list[StateSnapshotRow]:
+    def list_all_current_snapshots(
+        self, *, user_id: str, max_items: int = 10000,
+        projection_kind: str = "CORE", projection_scope: str = "__user__"
+    ) -> list[StateSnapshotRow]:
         """Read the current run with an explicit upper bound for projection reuse."""
         if max_items < 1 or max_items > 10000:
             raise ValueError("max_items must stay within 1..10000")
-        rows, total = self.list_snapshots(user_id=user_id, page=1, page_size=100)
+        rows, total = self.list_snapshots(
+            user_id=user_id, page=1, page_size=100,
+            projection_kind=projection_kind, projection_scope=projection_scope,
+        )
         page = 2
         while len(rows) < min(total, max_items):
-            next_rows, _ = self.list_snapshots(user_id=user_id, page=page, page_size=100)
+            next_rows, _ = self.list_snapshots(
+                user_id=user_id, page=page, page_size=100,
+                projection_kind=projection_kind, projection_scope=projection_scope,
+            )
             if not next_rows:
                 break
             rows.extend(next_rows)
@@ -321,11 +369,15 @@ class LearnerStateRepository:
         scope_type: str | None = None,
         state_type: str | None = None,
         course_id: str | None = None,
+        projection_kind: str = "CORE",
+        projection_scope: str = "__user__",
     ) -> tuple[list[StateSnapshotRow], int]:
         if page < 1 or page_size < 1 or page_size > 100:
             raise ValueError("invalid pagination")
-        conditions = ["r.user_id=?", "r.is_current=1"]
-        params: list[Any] = [user_id]
+        conditions = [
+            "r.user_id=?", "r.projection_kind=?", "r.projection_scope=?", "r.is_current=1"
+        ]
+        params: list[Any] = [user_id, projection_kind, projection_scope]
         if scope_type:
             conditions.append("s.scope_type=?")
             params.append(scope_type)
@@ -351,23 +403,31 @@ class LearnerStateRepository:
             ).fetchall()
         return [_snapshot(row) for row in rows], total
 
-    def get_snapshot(self, *, user_id: str, snapshot_id: str) -> Optional[StateSnapshotRow]:
+    def get_snapshot(
+        self, *, user_id: str, snapshot_id: str,
+        projection_kind: str = "CORE", projection_scope: str = "__user__",
+    ) -> Optional[StateSnapshotRow]:
         with self._db.query() as conn:
             row = conn.execute(
                 """SELECT s.* FROM learner_state_snapshots s
                    JOIN learner_state_projection_runs r ON r.run_id=s.run_id
-                   WHERE s.snapshot_id=? AND r.user_id=?""",
-                (snapshot_id, user_id),
+                   WHERE s.snapshot_id=? AND r.user_id=?
+                   AND r.projection_kind=? AND r.projection_scope=?""",
+                (snapshot_id, user_id, projection_kind, projection_scope),
             ).fetchone()
         return _snapshot(row) if row else None
 
     def list_evidence(
-        self, *, user_id: str, snapshot_id: str, page: int = 1, page_size: int = 50
+        self, *, user_id: str, snapshot_id: str, page: int = 1, page_size: int = 50,
+        projection_kind: str = "CORE", projection_scope: str = "__user__",
     ) -> tuple[list[StateEvidenceRow], int]:
         if page < 1 or page_size < 1 or page_size > 100:
             raise ValueError("invalid pagination")
-        where = "e.snapshot_id=? AND r.user_id=?"
-        params: list[Any] = [snapshot_id, user_id]
+        where = (
+            "e.snapshot_id=? AND r.user_id=? AND r.projection_kind=? "
+            "AND r.projection_scope=?"
+        )
+        params: list[Any] = [snapshot_id, user_id, projection_kind, projection_scope]
         offset = (page - 1) * page_size
         with self._db.query() as conn:
             total = int(conn.execute(

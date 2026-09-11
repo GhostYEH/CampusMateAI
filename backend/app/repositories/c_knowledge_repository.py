@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..database.sqlite_db import Database
+from ..core.exceptions import PracticeAttemptConflict
 from ..models.c_knowledge import (
     ExerciseMappingRow,
     KnowledgeComponentRow,
@@ -21,6 +22,16 @@ def _id(prefix: str) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _semantic_occurred_at(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat()
+    text = str(value).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text).astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return text
 
 
 def _component(row) -> KnowledgeComponentRow:
@@ -160,19 +171,39 @@ class KnowledgeRepository:
                 if existing is None:
                     raise
                 row = _attempt(existing)
-                if any(getattr(row, key) != data[key] for key in ("course_id", "exercise_id", "result_type", "score", "max_score", "occurred_at")):
-                    raise ValueError("client_attempt_id already identifies another attempt")
+                semantic_fields = (
+                    "course_id", "exercise_id", "occurred_at", "attempt_no", "result_type",
+                    "score", "max_score", "test_count", "passed_test_count", "compiler_outcome",
+                    "error_codes", "duration_seconds", "evidence_quality", "evidence_origin",
+                )
+                existing_values = {
+                    key: getattr(row, key) for key in semantic_fields
+                }
+                incoming_values = {key: data.get(key) for key in semantic_fields}
+                existing_values["occurred_at"] = _semantic_occurred_at(existing_values["occurred_at"])
+                incoming_values["occurred_at"] = _semantic_occurred_at(incoming_values["occurred_at"])
+                if existing_values != incoming_values:
+                    raise PracticeAttemptConflict()
                 return row
             row = conn.execute("SELECT * FROM practice_attempts WHERE id=?", (attempt_id,)).fetchone()
         return _attempt(row)  # type: ignore[arg-type]
 
     def list_attempts(self, *, user_id: str, course_id: str, limit: int = 5000) -> list[PracticeAttemptRow]:
+        rows, _ = self.list_attempts_bounded(user_id=user_id, course_id=course_id, limit=limit)
+        return rows
+
+    def list_attempts_bounded(
+        self, *, user_id: str, course_id: str, limit: int = 5000
+    ) -> tuple[list[PracticeAttemptRow], bool]:
+        if limit < 1 or limit > 10000:
+            raise ValueError("limit must stay within 1..10000")
         with self._db.query() as conn:
             rows = conn.execute(
-                "SELECT * FROM practice_attempts WHERE user_id=? AND course_id=? ORDER BY occurred_at ASC, id ASC LIMIT ?",
-                (user_id, course_id, limit),
+                "SELECT * FROM practice_attempts WHERE user_id=? AND course_id=? "
+                "ORDER BY occurred_at DESC, id DESC LIMIT ?",
+                (user_id, course_id, limit + 1),
             ).fetchall()
-        return [_attempt(row) for row in rows]
+        return [_attempt(row) for row in rows[:limit]][::-1], len(rows) > limit
 
     def upsert_hypothesis(self, *, data: dict[str, Any]) -> MisconceptionHypothesisRow:
         now = _now()
@@ -197,7 +228,7 @@ class KnowledgeRepository:
             else:
                 hid = current["id"]
                 status = current["status"]
-                if status not in {"CONFIRMED", "REJECTED"} or current["evidence_digest"] != data["evidence_digest"]:
+                if status not in {"CONFIRMED", "REJECTED", "RESOLVED"} or current["evidence_digest"] != data["evidence_digest"]:
                     status = data.get("status", "OPEN")
                 conn.execute(
                     """UPDATE misconception_hypotheses SET confidence=?, supporting_attempt_count=?, supporting_error_count=?, supporting_evidence_count=?,
@@ -229,6 +260,24 @@ class KnowledgeRepository:
                 return
             conn.execute("UPDATE misconception_hypotheses SET status='RESOLVED', evidence_digest=?, decided_at=NULL WHERE id=?", (evidence_digest, hypothesis_id))
             conn.execute("INSERT INTO misconception_hypothesis_history (id,hypothesis_id,status,evidence_digest,decision_source,changed_at) VALUES (?,?,?,?,?,?)", (_id("mhh"), hypothesis_id, "RESOLVED", evidence_digest, "contrary_practice", changed_at))
+
+    def resolve_hypothesis(self, *, hypothesis_id: str, evidence_digest: str, changed_at: str) -> None:
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT status FROM misconception_hypotheses WHERE id=?", (hypothesis_id,)
+            ).fetchone()
+            if row is None or row["status"] not in {"OPEN", "CONFIRMED"}:
+                return
+            conn.execute(
+                "UPDATE misconception_hypotheses SET status='RESOLVED', evidence_digest=?, decided_at=NULL WHERE id=?",
+                (evidence_digest, hypothesis_id),
+            )
+            conn.execute(
+                "INSERT INTO misconception_hypothesis_history "
+                "(id,hypothesis_id,status,evidence_digest,decision_source,changed_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (_id("mhh"), hypothesis_id, "RESOLVED", evidence_digest, "contrary_practice", changed_at),
+            )
 
     def decide_hypothesis(self, *, user_id: str, hypothesis_id: str, status: str) -> MisconceptionHypothesisRow | None:
         now = _now()

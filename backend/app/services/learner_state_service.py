@@ -88,7 +88,9 @@ class LearnerStateProjectionService:
         as_of = _require_utc(as_of)
         current = None
         try:
-            current = self.repository.get_current_run(user_id=user_id)
+            current = self.repository.get_current_run(
+                user_id=user_id, projection_kind="CORE", projection_scope="__user__"
+            )
             inputs = self.repository.collect_inputs(user_id=user_id, limit=self.input_limit)
             input_digest = _digest(inputs)
             current_as_of = _parse(current.as_of) if current else None
@@ -120,6 +122,8 @@ class LearnerStateProjectionService:
                         "estimator_version": ESTIMATOR_VERSION,
                         "input_digest": input_digest,
                         "trigger": trigger,
+                        "projection_kind": "CORE",
+                        "projection_scope": "__user__",
                         "warnings": result.warnings,
                     },
                     snapshots=[self._to_dict(row) for row in snapshot_rows],
@@ -136,14 +140,19 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def _snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
-        rows = self.repository.list_all_current_snapshots(user_id=user_id)
+        rows = self.repository.list_all_current_snapshots(
+            user_id=user_id, projection_kind="CORE", projection_scope="__user__"
+        )
         return bool(rows) and all(
             (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
             for row in rows
         )
 
     def _result_from_current(self, run: ProjectionRunRow, *, as_of: datetime) -> ProjectionResult | None:
-        rows = self.repository.list_all_current_snapshots(user_id=run.user_id)
+        rows = self.repository.list_all_current_snapshots(
+            user_id=run.user_id, projection_kind=run.projection_kind,
+            projection_scope=run.projection_scope,
+        )
         if not rows:
             return None
         return ProjectionResult(
@@ -590,7 +599,10 @@ class LearnerStateProjectionService:
         return {"status": status, "last_successful_observation_at": _iso(observed), "valid_until": _iso(valid_until), "warning_codes": warnings}, quality, [{"evidence_kind": "SYNC_STATUS", "source_type": "chaoxing", "source_id": source_id, "role": "LIMITS" if warnings else "SUPPORTS", "quality": quality}], observed, valid_until
 
     def _stale_result(self, run: ProjectionRunRow, *, as_of: datetime) -> ProjectionResult:
-        rows = self.repository.list_all_current_snapshots(user_id=run.user_id)
+        rows = self.repository.list_all_current_snapshots(
+            user_id=run.user_id, projection_kind=run.projection_kind,
+            projection_scope=run.projection_scope,
+        )
         stale_rows = []
         for row in rows:
             value = dict(row.value)
@@ -645,6 +657,11 @@ class LearnerStateProjectionService:
         )
         if from_run_id is not None and from_run is None:
             raise LookupError("run not found")
+        if from_run is not None and (
+            from_run.projection_kind != to_run.projection_kind
+            or from_run.projection_scope != to_run.projection_scope
+        ):
+            raise LookupError("projection runs are not in the same family")
         if from_run is not None and from_run.estimator_version != to_run.estimator_version:
             return from_run.run_id, to_run.run_id, True, [], 0
         raw_rows, total = self.repository.list_changes(

@@ -16,6 +16,8 @@ class ProjectionRunRow:
     is_current: bool
     warnings: list[str]
     snapshot_count: int = 0
+    projection_kind: str = "CORE"
+    projection_scope: str = "__user__"
 
 
 @dataclass(frozen=True)

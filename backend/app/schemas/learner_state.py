@@ -204,6 +204,8 @@ class LearnerStateRunOut(BaseModel):
     is_current: bool
     warning_codes: list[str] = Field(default_factory=list, max_length=32)
     snapshot_count: int = Field(ge=0)
+    projection_kind: Literal["CORE", "KNOWLEDGE"] = "CORE"
+    projection_scope: str = "__user__"
 
     _aware_times = field_validator("as_of", "computed_at")(_aware)
 

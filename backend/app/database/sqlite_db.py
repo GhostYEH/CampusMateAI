@@ -1077,15 +1077,14 @@ CREATE TABLE IF NOT EXISTS learner_state_projection_runs (
     estimator_version TEXT NOT NULL,
     input_digest TEXT NOT NULL,
     trigger TEXT NOT NULL,
+    projection_kind TEXT NOT NULL DEFAULT 'CORE',
+    projection_scope TEXT NOT NULL DEFAULT '__user__',
     is_current INTEGER NOT NULL DEFAULT 0 CHECK(is_current IN (0, 1)),
     warnings_json TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_learner_state_runs_user_time
     ON learner_state_projection_runs(user_id, computed_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current
-    ON learner_state_projection_runs(user_id) WHERE is_current = 1;
-
 CREATE TABLE IF NOT EXISTS learner_state_snapshots (
     snapshot_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -1302,6 +1301,10 @@ class Database:
         # Phase 3 C knowledge tables are additive; these guards also upgrade a
         # database created by an interrupted/older Phase 3 bootstrap.
         for table, columns in {
+            "learner_state_projection_runs": {
+                "projection_kind": "TEXT NOT NULL DEFAULT 'CORE'",
+                "projection_scope": "TEXT NOT NULL DEFAULT '__user__'",
+            },
             "knowledge_components": {
                 "description": "TEXT NOT NULL DEFAULT ''", "domain": "TEXT NOT NULL DEFAULT 'c_language'",
                 "active": "INTEGER NOT NULL DEFAULT 1", "parent_code": "TEXT",
@@ -1316,6 +1319,12 @@ class Database:
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        conn.execute("DROP INDEX IF EXISTS idx_learner_state_runs_current")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current "
+            "ON learner_state_projection_runs(user_id, projection_kind, projection_scope) "
+            "WHERE is_current = 1"
+        )
         if {row["name"] for row in conn.execute("PRAGMA table_info(exercise_kc_mappings)").fetchall()}:
             conn.execute("UPDATE exercise_kc_mappings SET subject_type='exercise' WHERE subject_type IS NULL OR subject_type=''" )
             conn.execute("UPDATE exercise_kc_mappings SET subject_id=exercise_id WHERE subject_id IS NULL OR subject_id=''" )

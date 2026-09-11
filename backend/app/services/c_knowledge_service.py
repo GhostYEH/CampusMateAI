@@ -21,6 +21,9 @@ from ..services.learner_state_service import ComputedSnapshot, ProjectionResult
 KNOWLEDGE_ESTIMATOR_VERSION = "c-knowledge-beta-decay-v1"
 HALF_LIFE_DAYS = 30
 VALIDITY_DAYS = 30
+DECAY_BUCKET_HOURS = 24
+MAX_KNOWLEDGE_INPUTS = 5000
+MAX_EVIDENCE_PER_SNAPSHOT = 100
 PRIOR_ALPHA = 1.0
 PRIOR_BETA = 1.0
 MIN_EVIDENCE_COUNT = 2
@@ -46,10 +49,14 @@ def _parse(value: str) -> datetime:
 
 
 class KnowledgeService:
-    def __init__(self, repository: KnowledgeRepository, event_repository: LearnerEventRepository, state_repository: LearnerStateRepository) -> None:
+    def __init__(
+        self, repository: KnowledgeRepository, event_repository: LearnerEventRepository,
+        state_repository: LearnerStateRepository, *, input_limit: int = MAX_KNOWLEDGE_INPUTS,
+    ) -> None:
         self.repository = repository
         self.event_repository = event_repository
         self.state_repository = state_repository
+        self.input_limit = input_limit
 
     def seed_c_taxonomy(self) -> list[KnowledgeComponentRow]:
         return self.repository.seed_components(taxonomy_definitions())
@@ -139,20 +146,38 @@ class KnowledgeService:
             # the next projection/read retries the same idempotent event keys.
             pass
         components = self.seed_c_taxonomy()
-        attempts = self.repository.list_attempts(user_id=user_id, course_id=course_id)
+        attempts, attempts_truncated = self.repository.list_attempts_bounded(
+            user_id=user_id, course_id=course_id, limit=self.input_limit
+        )
         mappings = self.repository.list_mappings(course_id=course_id)
+        bucket_start = as_of.replace(hour=0, minute=0, second=0, microsecond=0)
+        next_bucket = bucket_start + timedelta(hours=DECAY_BUCKET_HOURS)
+        input_metadata = {
+            "hard_limit": self.input_limit,
+            "truncated": attempts_truncated,
+            "truncated_sources": ["practice_attempts"] if attempts_truncated else [],
+            "truncation_policy": "latest_first",
+            "selected_limit": self.input_limit,
+        }
         digest = hashlib.sha256(json.dumps({
             "taxonomy_version": C_TAXONOMY_VERSION,
             "components": [row.code for row in components if row.active],
             "mappings": [mapping.__dict__ for mapping in mappings],
-            "attempts": [{"id": row.attempt_id, "occurred_at": row.occurred_at, "score": row.score, "errors": row.error_codes} for row in attempts],
-            "parameters": {"half_life_days": HALF_LIFE_DAYS, "prior_alpha": PRIOR_ALPHA, "prior_beta": PRIOR_BETA},
+            "attempts": [row.__dict__ for row in attempts],
+            "input_metadata": input_metadata,
+            "decay_bucket_start": _iso(bucket_start),
+            "parameters": {"half_life_days": HALF_LIFE_DAYS, "prior_alpha": PRIOR_ALPHA, "prior_beta": PRIOR_BETA,
+                           "decay_bucket_hours": DECAY_BUCKET_HOURS},
         },
             sort_keys=True, separators=(",", ":"),
         ).encode()).hexdigest()
-        current = self.state_repository.get_current_run(user_id=user_id)
+        current = self.state_repository.get_current_run(
+            user_id=user_id, projection_kind="KNOWLEDGE", projection_scope=course_id
+        )
         if current and current.estimator_version == KNOWLEDGE_ESTIMATOR_VERSION and current.input_digest == digest:
-            current_rows = self.state_repository.list_all_current_snapshots(user_id=user_id)
+            current_rows = self.state_repository.list_all_current_snapshots(
+                user_id=user_id, projection_kind="KNOWLEDGE", projection_scope=course_id
+            )
             if current_rows and all(
                 row.valid_until and _parse(row.valid_until) > as_of for row in current_rows
             ):
@@ -179,17 +204,19 @@ class KnowledgeService:
                     attempts_by_code.setdefault(mapping.knowledge_component_code, []).append((attempt, mapping.mapping_confidence))
         for component in components:
             rows = attempts_by_code.get(component.code, [])
-            value, quality, confidence = self._estimate(rows, as_of)
+            value, quality, confidence = self._estimate(rows, bucket_start)
+            if attempts_truncated:
+                quality = "partial"
             snapshot = ComputedSnapshot(
                 snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id, scope_type="KNOWLEDGE_COMPONENT",
                 scope_id=component.code, state_type="knowledge_mastery_estimate", value=value,
                 confidence=confidence, data_quality=quality,
                 observed_from=_iso(min((_parse(row.occurred_at) for row, _ in rows), default=as_of)) if rows else None,
                 observed_through=_iso(max((_parse(row.occurred_at) for row, _ in rows), default=as_of)) if rows else _iso(as_of),
-                valid_until=_iso(as_of + timedelta(days=VALIDITY_DAYS)), computed_at=computed_at,
+                valid_until=_iso(next_bucket), computed_at=computed_at,
             )
             snapshots.append(snapshot)
-            for row, _ in rows[:100]:
+            for row, _ in rows[:MAX_EVIDENCE_PER_SNAPSHOT]:
                 evidence.append({
                     "evidence_id": f"lev_{uuid.uuid4().hex[:16]}", "snapshot_id": snapshot.snapshot_id,
                     "evidence_kind": "EVENT" if row.attempt_id in event_by_attempt else "SOURCE_ROW",
@@ -197,15 +224,28 @@ class KnowledgeService:
                     "source_id": row.attempt_id, "role": "SUPPORTS" if row.result_type == "passed" else "LIMITS",
                     "quality": row.evidence_quality, "explanation_code": "practice_result",
                 })
-            self._update_hypotheses(user_id=user_id, course_id=course_id, code=component.code, rows=rows, as_of=as_of)
+            if not attempts_truncated:
+                self._update_hypotheses(
+                    user_id=user_id, course_id=course_id, code=component.code,
+                    rows=rows, as_of=as_of,
+                )
+        warnings = []
+        if attempts_truncated:
+            warnings.append("input_truncated")
+        if any(
+            sum(1 for row, _ in attempts_by_code.get(component.code, [])) > MAX_EVIDENCE_PER_SNAPSHOT
+            for component in components
+        ):
+            warnings.append("evidence_truncated")
         self.state_repository.save_projection(
             run={"run_id": run_id, "user_id": user_id, "as_of": computed_at, "computed_at": computed_at,
-                 "estimator_version": KNOWLEDGE_ESTIMATOR_VERSION, "input_digest": digest, "trigger": trigger, "warnings": []},
+                 "estimator_version": KNOWLEDGE_ESTIMATOR_VERSION, "input_digest": digest, "trigger": trigger,
+                 "projection_kind": "KNOWLEDGE", "projection_scope": course_id, "warnings": warnings},
             snapshots=[row.__dict__.copy() for row in snapshots], evidence=evidence,
         )
         return ProjectionResult(run_id=run_id, user_id=user_id, as_of=computed_at, computed_at=computed_at,
                                 estimator_version=KNOWLEDGE_ESTIMATOR_VERSION, input_digest=digest,
-                                snapshots=snapshots, warnings=[])
+                                snapshots=snapshots, warnings=warnings)
 
     def _estimate(self, rows: list[tuple[PracticeAttemptRow, float]], as_of: datetime):
         positive = negative = effective = 0.0
@@ -250,20 +290,29 @@ class KnowledgeService:
         for error_code, misconception_code in ERROR_TO_HYPOTHESIS.items():
             supporting = [row for row, _ in rows if error_code in row.error_codes]
             timestamps = {row.occurred_at for row in supporting}
-            if len(supporting) < MIN_EVIDENCE_COUNT or len(timestamps) < MIN_EVIDENCE_COUNT:
-                existing = self.repository.get_hypothesis(
-                    user_id=user_id, course_id=course_id, knowledge_component_code=code,
-                    misconception_code=misconception_code,
+            existing = self.repository.get_hypothesis(
+                user_id=user_id, course_id=course_id, knowledge_component_code=code,
+                misconception_code=misconception_code,
+            )
+            latest_error = max((_parse(row.occurred_at) for row in supporting), default=None)
+            correct = [
+                row for row, _ in rows
+                if row.result_type == "passed"
+                and row.compiler_outcome == "success"
+                and row.score >= row.max_score
+            ]
+            latest_correct = max((_parse(row.occurred_at) for row in correct), default=None)
+            if existing and latest_error and latest_correct and latest_correct > latest_error:
+                resolution_digest = hashlib.sha256(json.dumps({
+                    "errors": sorted(row.attempt_id for row in supporting),
+                    "correct": sorted(row.attempt_id for row in correct),
+                }, sort_keys=True).encode()).hexdigest()
+                self.repository.resolve_hypothesis(
+                    hypothesis_id=existing.hypothesis_id, evidence_digest=resolution_digest,
+                    changed_at=_iso(as_of),
                 )
-                latest_error = max((_parse(row.occurred_at) for row in supporting), default=None)
-                if existing and latest_error and any(
-                    row.result_type == "passed" and _parse(row.occurred_at) > latest_error
-                    for row, _ in rows
-                ):
-                    digest = hashlib.sha256(json.dumps(sorted(row.attempt_id for row, _ in rows)).encode()).hexdigest()
-                    self.repository.expire_hypothesis(
-                        hypothesis_id=existing.hypothesis_id, evidence_digest=digest, changed_at=_iso(as_of)
-                    )
+                continue
+            if len(supporting) < MIN_EVIDENCE_COUNT or len(timestamps) < MIN_EVIDENCE_COUNT:
                 continue
             digest = hashlib.sha256(json.dumps(sorted(row.attempt_id for row in supporting)).encode()).hexdigest()
             confidence = min(0.6, len(supporting) / (len(supporting) + 2))
