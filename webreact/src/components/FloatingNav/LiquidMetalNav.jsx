@@ -15,7 +15,6 @@ function DockItem({
   magnification,
   baseItemSize,
   reduceMotion,
-  effectGeometrySelector,
   onClick,
   renderItem,
 }) {
@@ -65,7 +64,6 @@ function DockItem({
         active={active}
         defer
         disableEffects={reduceMotion}
-        effectGeometrySelector={effectGeometrySelector}
         maxFps={20}
         dprCap={1}
         className="floating-nav-button"
@@ -87,7 +85,6 @@ export default function LiquidMetalNav({
   ariaLabel = "主导航",
   className = "",
   reduceMotion = false,
-  effectGeometrySelector,
   dockDistance = 120,
   dockMagnification = 60,
   dockBaseItemSize = 44,
@@ -146,7 +143,6 @@ export default function LiquidMetalNav({
               magnification={dockMagnification}
               baseItemSize={dockBaseItemSize}
               reduceMotion={reduceMotion}
-              effectGeometrySelector={effectGeometrySelector}
               onClick={handleClick}
               renderItem={renderItem}
             />

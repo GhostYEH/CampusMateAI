@@ -3,9 +3,6 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
-const floatingNavSource = fs.readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
-const liquidButtonSource = fs.readFileSync(new URL("../src/components/LiquidMetalButton.jsx", import.meta.url), "utf8");
-const liquidSceneSource = fs.readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
 const buttonStyles = fs.readFileSync(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
 const layoutStyles = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
@@ -56,22 +53,4 @@ test("floating navigation replaces the static hover highlight with liquid motion
     /\.floating-nav-button:hover,\s*\.floating-nav-list > li\.active \.floating-nav-button/,
   );
   assert.match(layoutStyles, /\.floating-nav-list > li\.active \.floating-nav-button\s*\{/);
-});
-
-test("top navigation keeps real liquid motion on fixed icon geometry", () => {
-  assert.match(floatingNavSource, /effectGeometrySelector="\.floating-nav-icon"/);
-  assert.match(source, /effectGeometrySelector=\{effectGeometrySelector\}/);
-  assert.doesNotMatch(source, /function StableDockItem/);
-  assert.doesNotMatch(source, /lightweightEffects/);
-  assert.match(liquidButtonSource, /effectGeometrySelector/);
-  assert.match(liquidButtonSource, /geometrySelector:\s*effectGeometrySelector/);
-});
-
-test("liquid runtime observes the fixed geometry instead of the resizing nav pill", () => {
-  assert.match(liquidSceneSource, /const effectGeometry = geometrySelector/);
-  assert.match(liquidSceneSource, /const geometryRect = effectGeometry\.getBoundingClientRect\(\)/);
-  assert.match(liquidSceneSource, /resizeObserver\.observe\(geometrySelector \? effectGeometry : stage\)/);
-  assert.match(buttonStyles, /\.floating-nav \.sylva-liquid-stage--nav \.sylva-liquid-fx/);
-  assert.match(buttonStyles, /--floating-nav-effect-size/);
-  assert.doesNotMatch(buttonStyles, /@keyframes sylva-nav-liquid-sheen/);
 });

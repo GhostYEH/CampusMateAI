@@ -39,7 +39,6 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
       items={navItems}
       activeIndex={activeIndex}
       reduceMotion={reduceMotion}
-      effectGeometrySelector=".floating-nav-icon"
       className="floating-nav-inner"
       onSelect={({ key }) => navigate(`/${key}`)}
       renderItem={({ key, label, icon }) => {
