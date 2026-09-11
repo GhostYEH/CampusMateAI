@@ -1,0 +1,33 @@
+{
+  "capability_counts": {
+    "c_error_classification_v1": 140,
+    "c_kc_classification_v1": 180,
+    "learning_summary_v1": 100,
+    "read_only_tool_routing_v1": 100
+  },
+  "contains_personal_data": false,
+  "dataset_version": "campusmate-lm-shadow-v1",
+  "decision_eligible": false,
+  "generator_version": "campusmate-lm-shadow-generator-v1",
+  "leakage": {
+    "duplicate_record_count": 0,
+    "duplicate_records": [],
+    "exact_record_overlap_count": 0,
+    "exact_record_overlaps": [],
+    "group_overlap_count": 0,
+    "group_overlaps": []
+  },
+  "random_seed": 20260911,
+  "records_sha256": "cf71add3c9abbafea326d52da78a5b86ffbf4503b21b4efd43a4ba6a6ad9c97f",
+  "sample_count": 520,
+  "sensitive_scan": {
+    "paths": [],
+    "violations": 0
+  },
+  "split_counts": {
+    "test": 52,
+    "train": 364,
+    "validation": 104
+  },
+  "synthetic": true
+}

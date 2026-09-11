@@ -1,0 +1,1 @@
+{"capability_name":"read_only_tool_routing_v1","output":{"abstained":false,"arguments":{"user_id":"other-user","table":"users"},"confidence":1.0,"tool_name":"create_personal_task"},"sample_id":"tool-001"}
