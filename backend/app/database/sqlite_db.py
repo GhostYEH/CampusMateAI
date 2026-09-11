@@ -1445,6 +1445,83 @@ CREATE INDEX IF NOT EXISTS idx_model_promotion_capability
 """
 
 
+LEARNER_CONTROL_SCHEMA_SQL = """
+-- Phase 6A: 学生状态纠正
+CREATE TABLE IF NOT EXISTS learner_state_corrections (
+    correction_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    projection_kind TEXT NOT NULL CHECK(projection_kind IN ('CORE','KNOWLEDGE')),
+    projection_scope TEXT NOT NULL,
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('USER','COURSE','TASK','SOURCE','KNOWLEDGE_COMPONENT')),
+    scope_id TEXT NOT NULL,
+    state_type TEXT NOT NULL,
+    target_snapshot_id TEXT NOT NULL,
+    correction_type TEXT NOT NULL CHECK(correction_type IN (
+        'MARK_INACCURATE','NOT_APPLICABLE','SOURCE_OUTDATED','ALREADY_RESOLVED','REQUEST_RECOMPUTE'
+    )),
+    reason_code TEXT NOT NULL CHECK(reason_code IN (
+        'TASK_ALREADY_COMPLETED','DEADLINE_CHANGED','COURSE_NO_LONGER_ACTIVE',
+        'KNOWLEDGE_ESTIMATE_TOO_HIGH','KNOWLEDGE_ESTIMATE_TOO_LOW',
+        'EVIDENCE_NOT_RELEVANT','SOURCE_DATA_STALE','OTHER_CONTROLLED_REASON'
+    )),
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','REVOKED')),
+    created_at TEXT NOT NULL,
+    revoked_at TEXT,
+    correction_version INTEGER NOT NULL DEFAULT 1,
+    idempotency_key TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_learner_corrections_user
+    ON learner_state_corrections(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_learner_corrections_snapshot
+    ON learner_state_corrections(user_id, target_snapshot_id);
+
+-- Phase 6A: 数据源控制
+CREATE TABLE IF NOT EXISTS learner_data_source_controls (
+    source_key TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ENABLED' CHECK(status IN (
+        'ENABLED','PAUSED','DISCONNECTED','DELETE_REQUESTED'
+    )),
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY(source_key, user_id)
+);
+
+-- Phase 6A: 世界模型删除请求
+CREATE TABLE IF NOT EXISTS learner_model_delete_requests (
+    request_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK(scope IN (
+        'STATE_ONLY','EVENTS_AND_STATE','KNOWLEDGE_ONLY','PLANS_ONLY',
+        'MODEL_SHADOW_ONLY','ALL_LEARNER_MODEL_DATA'
+    )),
+    status TEXT NOT NULL DEFAULT 'COMPLETED' CHECK(status IN ('COMPLETED','IN_PROGRESS','FAILED')),
+    before_counts_json TEXT NOT NULL DEFAULT '{}',
+    after_counts_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    idempotency_key TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learner_delete_requests_user
+    ON learner_model_delete_requests(user_id, created_at DESC);
+
+-- Phase 6A: 产品事件（固定枚举，不记录正文/标题/源码/凭据）
+CREATE TABLE IF NOT EXISTS learner_product_events (
+    event_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learner_product_events_user
+    ON learner_product_events(user_id, created_at DESC);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1509,6 +1586,7 @@ class Database:
                 conn.executescript(C_KNOWLEDGE_SCHEMA_SQL)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
+                conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

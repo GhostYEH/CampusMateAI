@@ -44,6 +44,7 @@ from ..repositories.learner_state_repository import LearnerStateRepository
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..repositories.model_shadow_repository import ModelShadowRepository
 from ..repositories.c_knowledge_repository import KnowledgeRepository
+from ..repositories.learner_control_repository import LearnerControlRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
@@ -52,6 +53,7 @@ from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
 from ..services.c_knowledge_service import KnowledgeService
+from ..services.learner_control_service import LearnerControlService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -116,6 +118,8 @@ class ServiceContainer:
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
     learning_agent_tools: LearningAgentToolRegistry
+    learner_control_repository: LearnerControlRepository
+    learner_control_service: LearnerControlService
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -209,6 +213,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
     )
+    learner_control_repository = LearnerControlRepository(db)
+    learner_control_service = LearnerControlService(
+        repository=learner_control_repository,
+        state_repository=learner_state_repository,
+        shadow_repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+    )
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
@@ -276,6 +286,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
         learning_agent_tools=LearningAgentToolRegistry(None),
+        learner_control_repository=learner_control_repository,
+        learner_control_service=learner_control_service,
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,

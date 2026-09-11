@@ -304,6 +304,81 @@ class LearningPlanUndoConflict(AppException):
     message = "学习计划创建的任务已被修改，无法安全撤销。"
 
 
+# ===== Phase 6: 学生世界模型控制 =====
+
+
+class LearnerCorrectionNotFound(AppException):
+    code = "LEARNER_CORRECTION_NOT_FOUND"
+    http_status = 404
+    message = "状态纠正记录不存在。"
+
+
+class LearnerCorrectionConflict(AppException):
+    code = "LEARNER_CORRECTION_CONFLICT"
+    http_status = 409
+    message = "状态纠正幂等键已用于不同的纠正请求。"
+
+
+class LearnerCorrectionAlreadyRevoked(AppException):
+    code = "LEARNER_CORRECTION_ALREADY_REVOKED"
+    http_status = 409
+    message = "状态纠正已被撤销。"
+
+
+class LearnerSourceNotSupported(AppException):
+    code = "LEARNER_SOURCE_NOT_SUPPORTED"
+    http_status = 400
+    message = "不支持的数据源。"
+
+
+class LearnerSourceControlConflict(AppException):
+    code = "LEARNER_SOURCE_CONTROL_CONFLICT"
+    http_status = 409
+    message = "数据源控制操作冲突。"
+
+
+class LearnerDeleteScopeInvalid(AppException):
+    code = "LEARNER_DELETE_SCOPE_INVALID"
+    http_status = 400
+    message = "无效的删除范围。"
+
+
+class LearnerDeleteInProgress(AppException):
+    code = "LEARNER_DELETE_IN_PROGRESS"
+    http_status = 409
+    message = "删除操作正在进行中。"
+
+
+class LearnerModelDataNotFound(AppException):
+    code = "LEARNER_MODEL_DATA_NOT_FOUND"
+    http_status = 404
+    message = "学生模型数据不存在。"
+
+
+class LearnerModelRecomputeRequired(AppException):
+    code = "LEARNER_MODEL_RECOMPUTE_REQUIRED"
+    http_status = 409
+    message = "需要重新计算学生模型状态。"
+
+
+class LearnerStateStale(AppException):
+    code = "LEARNER_STATE_STALE"
+    http_status = 409
+    message = "学生状态已过期。"
+
+
+class ModelShadowDisabled(AppException):
+    code = "MODEL_SHADOW_DISABLED"
+    http_status = 409
+    message = "模型影子评测已停用。"
+
+
+class DemoSeedRefused(AppException):
+    code = "DEMO_SEED_REFUSED"
+    http_status = 403
+    message = "当前环境不允许执行演示数据注入。"
+
+
 # ===== QR 扫码登录 =====
 
 
@@ -499,5 +574,17 @@ __all__ = [
     "LearningPlanExpired",
     "LearningPlanIdempotencyConflict",
     "LearningPlanUndoConflict",
+    "LearnerCorrectionNotFound",
+    "LearnerCorrectionConflict",
+    "LearnerCorrectionAlreadyRevoked",
+    "LearnerSourceNotSupported",
+    "LearnerSourceControlConflict",
+    "LearnerDeleteScopeInvalid",
+    "LearnerDeleteInProgress",
+    "LearnerModelDataNotFound",
+    "LearnerModelRecomputeRequired",
+    "LearnerStateStale",
+    "ModelShadowDisabled",
+    "DemoSeedRefused",
     "register_exception_handlers",
 ]
