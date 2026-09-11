@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Any, List, Optional
@@ -83,30 +84,37 @@ class PersonalTaskRepository:
         course_id: Optional[str] = None,
         source_url: Optional[str] = None,
         last_synced_at: Optional[str] = None,
+        conn=None,
     ) -> PersonalTaskRow:
         tid = _new_id()
         now = _now_iso()
         import sqlite3
+
+        params = (
+            tid, user_id, title, description, target_students,
+            deadline, _dump_materials(materials), submission_method, location,
+            source_name, source_text, source_notice_id,
+            priority, importance, "pending", reminder_minutes,
+            source, external_id, course_id, source_url, last_synced_at,
+            now, now,
+        )
+        sql = """INSERT INTO personal_tasks (
+                    id, user_id, title, description, target_students,
+                    deadline, materials, submission_method, location,
+                    source_name, source_text, source_notice_id,
+                    priority, importance, status, reminder_minutes,
+                    source, external_id, course_id, source_url, last_synced_at,
+                    created_at, updated_at, completed_at, deleted_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)"""
+        if conn is not None:
+            conn.execute(sql, params)
+            row = self._get_task(conn, tid, user_id)
+            if row is None:
+                raise RuntimeError("任务写入后无法读取")
+            return row
         try:
             with self._db.transaction() as conn:
-                conn.execute(
-                    """INSERT INTO personal_tasks (
-                        id, user_id, title, description, target_students,
-                        deadline, materials, submission_method, location,
-                        source_name, source_text, source_notice_id,
-                        priority, importance, status, reminder_minutes,
-                        source, external_id, course_id, source_url, last_synced_at,
-                        created_at, updated_at, completed_at, deleted_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?, ?,?,NULL,NULL)""",
-                    (
-                        tid, user_id, title, description, target_students,
-                        deadline, _dump_materials(materials), submission_method, location,
-                        source_name, source_text, source_notice_id,
-                        priority, importance, "pending", reminder_minutes,
-                        source, external_id, course_id, source_url, last_synced_at,
-                        now, now,
-                    ),
-                )
+                conn.execute(sql, params)
             # 事务已提交,重新打开连接读取
             return self.get_task(tid, user_id=user_id)  # type: ignore[return-value]
         except sqlite3.IntegrityError:
@@ -236,6 +244,21 @@ class PersonalTaskRepository:
         )
         row = cur.fetchone()
         return PersonalTaskRow.from_row(row) if row else None
+
+    def get_task_in_connection(self, conn, task_id: str, *, user_id: str) -> Optional[PersonalTaskRow]:
+        return self._get_task(conn, task_id, user_id)
+
+    @staticmethod
+    def semantic_digest(task: PersonalTaskRow) -> str:
+        """Hash only the task semantics needed for safe plan undo/revalidation."""
+        value = {
+            "id": task.id, "user_id": task.user_id, "course_id": task.course_id,
+            "deadline": task.deadline, "priority": task.priority, "importance": task.importance,
+            "status": task.status, "completed_at": task.completed_at, "deleted_at": task.deleted_at,
+            "source": task.source, "external_id": task.external_id,
+            "title_digest": hashlib.sha256(task.title.encode("utf-8")).hexdigest(),
+        }
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     def list_tasks(
         self,
@@ -521,6 +544,18 @@ class PersonalTaskRepository:
                 (now, now, task_id),
             )
         return self.get_task(task_id, user_id=user_id)
+
+    def soft_delete_in_connection(self, conn, task_id: str, *, user_id: str) -> Optional[PersonalTaskRow]:
+        existing = self._get_task(conn, task_id, user_id)
+        if existing is None or existing.status == "deleted":
+            return existing
+        now = _now_iso()
+        conn.execute(
+            """UPDATE personal_tasks SET status='deleted', deleted_at=?, updated_at=?
+               WHERE id=? AND user_id=? AND status != 'deleted'""",
+            (now, now, task_id, user_id),
+        )
+        return self._get_task(conn, task_id, user_id)
 
 
 __all__ = ["PersonalTaskRepository"]

@@ -76,8 +76,8 @@ class LearnerStateRepository:
                    FROM study_sessions WHERE user_id=? ORDER BY started_at DESC,id DESC LIMIT ?""", (user_id,))
             tasks, tasks_truncated = bounded(conn,
                 """SELECT id,user_id,course_id,source,created_at,completed_at,deadline,
-                          status,deleted_at,updated_at
-                   FROM personal_tasks WHERE user_id=? ORDER BY updated_at DESC,id DESC LIMIT ?""", (user_id,))
+                          status,deleted_at
+                   FROM personal_tasks WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT ?""", (user_id,))
             content, content_truncated = bounded(conn,
                 """SELECT id,course_id,provider,kind,status,is_stale,last_synced_at
                    FROM course_content_items WHERE user_id=? ORDER BY last_synced_at DESC,id DESC LIMIT ?""", (user_id,))

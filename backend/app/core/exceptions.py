@@ -274,6 +274,36 @@ class PersonalTaskConflict(AppException):
     message = "个人待办当前状态不允许该操作。"
 
 
+class LearningPlanExecutionFailed(AppException):
+    code = "LEARNING_PLAN_EXECUTION_FAILED"
+    http_status = 409
+    message = "学习计划执行失败，未完成任何部分写入。"
+
+
+class LearningPlanStale(AppException):
+    code = "LEARNING_PLAN_STALE"
+    http_status = 409
+    message = "学习计划所依据的数据已变化，请重新生成。"
+
+
+class LearningPlanExpired(AppException):
+    code = "LEARNING_PLAN_EXPIRED"
+    http_status = 409
+    message = "学习计划已过期，请重新生成。"
+
+
+class LearningPlanIdempotencyConflict(AppException):
+    code = "LEARNING_PLAN_IDEMPOTENCY_CONFLICT"
+    http_status = 409
+    message = "幂等键已用于不同的学习计划输入。"
+
+
+class LearningPlanUndoConflict(AppException):
+    code = "LEARNING_PLAN_UNDO_CONFLICT"
+    http_status = 409
+    message = "学习计划创建的任务已被修改，无法安全撤销。"
+
+
 # ===== QR 扫码登录 =====
 
 
@@ -464,5 +494,10 @@ __all__ = [
     "StudyBreakNotFound",
     "PersonalTaskNotFound",
     "PersonalTaskConflict",
+    "LearningPlanExecutionFailed",
+    "LearningPlanStale",
+    "LearningPlanExpired",
+    "LearningPlanIdempotencyConflict",
+    "LearningPlanUndoConflict",
     "register_exception_handlers",
 ]

@@ -3,10 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ..core.exceptions import Forbidden, InvalidTransition, NotFoundError
+from ..core.exceptions import (
+    AppException, InvalidTransition, LearningPlanExecutionFailed, LearningPlanExpired,
+    LearningPlanIdempotencyConflict, LearningPlanStale, LearningPlanUndoConflict, NotFoundError,
+)
 from ..models.learning_plan import LearningPlanRow
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..services.llm.base import LLMError
@@ -64,7 +68,9 @@ class LearningPlannerService:
 
     def generate(self, *, user_id: str, available_minutes: int, course_id: str | None = None,
                  window_start: str | None = None, window_end: str | None = None,
-                 idempotency_key: str | None = None, as_of: datetime | None = None) -> LearningPlanRow:
+                 idempotency_key: str | None = None, as_of: datetime | None = None,
+                 force_new: bool = False, supersedes_plan_id: str | None = None,
+                 replan_key: str | None = None, ignore_rejection: bool = False) -> LearningPlanRow:
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
         if course_id and not self.knowledge_repository.user_can_access_course(user_id=user_id, course_id=course_id):
             raise NotFoundError()
@@ -116,9 +122,7 @@ class LearningPlannerService:
                            "confidence": s.confidence, "data_quality": s.data_quality}
                           for s in sorted(core.snapshots, key=lambda x: (x.scope_type, x.scope_id, x.state_type))],
         }
-        safe_tasks = [{"id": t.id, "course_id": t.course_id, "deadline": t.deadline, "priority": t.priority,
-                       "importance": t.importance, "status": t.status, "updated_at": t.updated_at,
-                       "source": t.source, "last_synced_at": t.last_synced_at} for t in tasks]
+        safe_tasks = [self._task_summary(t) for t in tasks]
         safe_content = {cid: [{"id": x.id, "external_id": x.external_id, "kind": x.kind, "deadline": x.deadline,
                                "published_at": x.published_at, "last_synced_at": x.last_synced_at, "is_stale": x.is_stale}
                               for x in rows] for cid, rows in course_data.items()}
@@ -135,13 +139,14 @@ class LearningPlannerService:
             existing = self.repository.find_by_idempotency_key(user_id=user_id, idempotency_key=idempotency_key)
             if existing:
                 if existing.run.input_digest != input_digest:
-                    raise InvalidTransition("idempotency key 已用于不同的计划输入")
+                    raise LearningPlanIdempotencyConflict()
                 return existing
-        reusable = self.repository.find_reusable(user_id=user_id, planner_version=PLANNER_VERSION,
-                                                 input_digest=input_digest, as_of=_iso(now))
+        reusable = None if force_new else self.repository.find_reusable(
+            user_id=user_id, planner_version=PLANNER_VERSION, input_digest=input_digest, as_of=_iso(now)
+        )
         if reusable:
             return reusable
-        if self.repository.has_recent_rejection(user_id=user_id, input_digest=input_digest,
+        if not ignore_rejection and self.repository.has_recent_rejection(user_id=user_id, input_digest=input_digest,
                                                 since=_iso(now - REJECTION_COOLDOWN)):
             raise InvalidTransition("相同建议仍在拒绝冷却期内")
 
@@ -164,15 +169,65 @@ class LearningPlannerService:
             selected.append(item)
         if any(w in {"stale", "partial", "data_quality_partial", "knowledge_data_quality_partial", "input_truncated", "course_content_truncated", "course_content_stale", "knowledge_unavailable"} for w in warnings):
             warnings.append("data_quality_degraded")
-        run = {"run_id": f"lprun_{_digest([user_id, input_digest, now.isoformat()])[:16]}",
+        selected_task_bindings = {item["task_id"]: self._task_summary_digest(next(t for t in tasks if t.id == item["task_id"]))
+                                  for item in selected if item.get("task_id")}
+        selected_knowledge_bindings = {}
+        for cid, (knowledge, snapshots) in knowledge_data.items():
+            selected_codes = {item.get("knowledge_component_code") for item in selected if item.get("course_id") == cid}
+            selected_knowledge_bindings[cid] = {
+                "run_id": knowledge.run_id,
+                "input_digest": knowledge.input_digest,
+                "snapshots": {s.scope_id: self._knowledge_snapshot_digest(s) for s in snapshots if s.scope_id in selected_codes},
+                "quality": {s.scope_id: s.data_quality for s in snapshots if s.scope_id in selected_codes},
+            }
+        truncated = any(code in {"tasks_truncated", "course_content_truncated", "plan_items_truncated", "input_truncated", "evidence_truncated"} for code in warnings)
+        # Reusable plans are selected by the digest; run IDs must remain fresh
+        # when an identical input becomes eligible again after expiry.
+        run_id = f"lprun_{uuid.uuid4().hex[:16]}"
+        run = {"run_id": run_id,
                "planner_version": PLANNER_VERSION, "input_digest": input_digest, "as_of": _iso(now),
                "valid_until": _iso(valid_until), "available_minutes": available_minutes, "allocated_minutes": allocated,
                "course_scope": course_id, "window_start": window_start, "window_end": window_end,
-               "warning_codes": sorted(set(warnings)), "idempotency_key": idempotency_key}
+               "warning_codes": sorted(set(warnings)), "idempotency_key": idempotency_key,
+               "core_run_id": core.run_id, "core_input_digest": core.input_digest,
+               "knowledge_bindings": selected_knowledge_bindings,
+               "task_binding_digest": _digest(selected_task_bindings),
+               "task_bindings": selected_task_bindings, "input_truncated": truncated,
+               "core_quality": "unavailable" if any(s.data_quality == "unavailable" for s in core.snapshots) else (
+                   "stale" if any(s.data_quality == "stale" for s in core.snapshots) else (
+                       "partial" if any(s.data_quality == "partial" for s in core.snapshots) else "verified"
+                   )
+               ),
+               "supersedes_plan_id": supersedes_plan_id, "replan_key": replan_key}
         for item in selected:
             item_key = [run["run_id"], item["item_type"], item.get("task_id"), item.get("knowledge_component_code")]
             item["item_id"] = f"lpitem_{_digest(item_key)[:16]}"
         return self.repository.create_plan(user_id=user_id, run=run, items=selected)
+
+    @staticmethod
+    def _task_summary(task) -> dict[str, Any]:
+        return {"id": task.id, "course_id": task.course_id, "deadline": task.deadline,
+                "priority": task.priority, "importance": task.importance, "status": task.status,
+                "completed_at": task.completed_at, "deleted_at": task.deleted_at,
+                "source": task.source, "external_id": task.external_id,
+                "title_digest": hashlib.sha256(task.title.encode("utf-8")).hexdigest()}
+
+    @classmethod
+    def _task_summary_digest(cls, task) -> str:
+        return _digest(cls._task_summary(task))
+
+    @staticmethod
+    def _knowledge_snapshot_digest(snapshot) -> str:
+        value = snapshot.value or {}
+        # A new knowledge run is not itself a stale signal.  Replanning is
+        # required only when the bound KC estimate/band changed; quality is
+        # checked separately below so confidence metadata cannot cause churn.
+        return _digest({"scope_id": snapshot.scope_id, "estimate": value.get("estimate"),
+                        "band": value.get("band")})
+
+    @staticmethod
+    def _quality_rank(value: str | None) -> int:
+        return {"verified": 0, "partial": 1, "stale": 2, "unavailable": 3}.get(value or "unavailable", 3)
 
     @staticmethod
     def _next_hour(now: datetime) -> datetime:
@@ -298,43 +353,160 @@ class LearningPlannerService:
     def execute(self, *, user_id: str, plan_id: str) -> LearningPlanRow:
         plan = self.repository.get_plan(plan_id, user_id=user_id)
         if plan is None: raise NotFoundError()
+        if plan.status == "EXECUTED":
+            return plan
         if plan.status == "PROPOSED": raise InvalidTransition("计划尚未接受")
-        if plan.status == "EXPIRED": raise InvalidTransition("计划已过期")
-        if plan.status in {"REJECTED", "UNDONE"}: raise InvalidTransition("当前计划状态不能执行")
+        if plan.status == "EXPIRED": raise LearningPlanExpired()
+        if plan.status == "STALE": raise LearningPlanStale()
+        if plan.status in {"REJECTED", "UNDONE", "SUPERSEDED"}: raise InvalidTransition("当前计划状态不能执行")
         if _parse(plan.run.valid_until) and datetime.now(timezone.utc) >= _parse(plan.run.valid_until):
             self.repository.update_status(plan_id=plan_id, user_id=user_id, status="EXPIRED")
-            raise InvalidTransition("计划已过期")
-        failures = 0
-        for item in plan.items:
-            action_type = "CREATE_PERSONAL_TASK" if item.item_type == "CREATE_PERSONAL_TASK" else "REVIEW_PLAN_ITEM"
-            action = self.repository.create_action(plan_id=plan_id, item_id=item.item_id, user_id=user_id, action_type=action_type)
-            if action.status in {"SUCCEEDED", "UNDONE"}: continue
-            try:
-                target = None
-                if action_type == "CREATE_PERSONAL_TASK":
-                    target = self.task_repository.create_task(user_id=user_id, title=f"学习诊断：{item.knowledge_component_code or '课程复习'}",
-                                                              source="learning_plan", external_id=f"{plan_id}:{item.item_id}", course_id=item.course_id)
-                self.repository.finish_action(action_id=action.action_id, status="SUCCEEDED", target_task_id=target.id if target else None)
-                self.repository.mark_item(item_id=item.item_id, status="SUCCEEDED")
-            except Exception:
-                failures += 1
-                self.repository.finish_action(action_id=action.action_id, status="FAILED", error_code="action_failed")
-                self.repository.mark_item(item_id=item.item_id, status="FAILED")
-        status = "PARTIALLY_EXECUTED" if failures else "EXECUTED"
-        return self.repository.update_status(plan_id=plan_id, user_id=user_id, status=status)  # type: ignore[return-value]
+            raise LearningPlanExpired()
+        self._check_freshness(plan, user_id=user_id)
+        try:
+            self.repository.execute_atomic(plan_id=plan_id, user_id=user_id, task_repository=self.task_repository)
+        except (LearningPlanStale, LearningPlanExpired, AppException):
+            raise
+        except Exception as exc:
+            raise LearningPlanExecutionFailed() from exc
+        return self.repository.get_plan(plan_id, user_id=user_id)  # type: ignore[return-value]
 
     def undo(self, *, user_id: str, plan_id: str) -> LearningPlanRow:
         plan = self.repository.get_plan(plan_id, user_id=user_id)
         if plan is None: raise NotFoundError()
+        if plan.status == "UNDONE": return plan
         if plan.status not in {"EXECUTED", "PARTIALLY_EXECUTED"}: raise InvalidTransition("计划当前状态不能撤销")
-        for action in self.repository.list_actions(plan_id=plan_id, user_id=user_id):
-            if action.status != "SUCCEEDED" or action.action_type != "CREATE_PERSONAL_TASK" or not action.target_task_id:
+        try:
+            conflict = self.repository.undo_atomic(plan_id=plan_id, user_id=user_id, task_repository=self.task_repository)
+        except Exception as exc:
+            raise LearningPlanExecutionFailed() from exc
+        if conflict:
+            raise LearningPlanUndoConflict()
+        return self.repository.get_plan(plan_id, user_id=user_id)  # type: ignore[return-value]
+
+    def _check_freshness(self, plan: LearningPlanRow, *, user_id: str) -> None:
+        now = datetime.now(timezone.utc)
+        if plan.run.planner_version != PLANNER_VERSION:
+            self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="planner_version")
+            raise LearningPlanStale()
+        current_core = self.state_service.project_user(user_id, as_of=now, trigger="learning_plan_revalidate")
+        if plan.run.core_input_digest and current_core.input_digest != plan.run.core_input_digest:
+            self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="core_input_changed")
+            raise LearningPlanStale()
+        current_core_quality = "unavailable" if any(s.data_quality == "unavailable" for s in current_core.snapshots) else (
+            "stale" if any(s.data_quality == "stale" for s in current_core.snapshots) else (
+                "partial" if any(s.data_quality == "partial" for s in current_core.snapshots) else "verified"
+            )
+        )
+        if self._quality_rank(current_core_quality) > self._quality_rank(plan.run.core_quality):
+            self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="core_quality_worsened")
+            raise LearningPlanStale()
+        for item in plan.items:
+            if not item.task_id:
                 continue
-            task = self.task_repository.get_task(action.target_task_id, user_id=user_id)
-            if task and task.source == "learning_plan" and task.external_id == f"{plan_id}:{action.item_id}" and task.status != "deleted":
-                self.task_repository.soft_delete(task.id, user_id=user_id)
-            self.repository.finish_action(action_id=action.action_id, status="UNDONE", target_task_id=action.target_task_id)
-        return self.repository.update_status(plan_id=plan_id, user_id=user_id, status="UNDONE")  # type: ignore[return-value]
+            task = self.task_repository.get_task(item.task_id, user_id=user_id)
+            if task is None or task.status != "pending" or task.deleted_at:
+                self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="task_state_changed")
+                raise LearningPlanStale()
+            expected = plan.run.task_bindings.get(item.task_id)
+            if expected and self._task_summary_digest(task) != expected:
+                self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="task_semantics_changed")
+                raise LearningPlanStale()
+        for cid, binding in plan.run.knowledge_bindings.items():
+            knowledge = self.knowledge_service.project_knowledge(user_id=user_id, course_id=cid, as_of=now,
+                                                                 trigger="learning_plan_revalidate")
+            current_by_code = {s.scope_id: s for s in knowledge.snapshots}
+            for code, expected in binding.get("snapshots", {}).items():
+                current = current_by_code.get(code)
+                if current is None or self._knowledge_snapshot_digest(current) != expected:
+                    self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="knowledge_state_changed")
+                    raise LearningPlanStale()
+            if any(current_by_code.get(code) and self._quality_rank(current_by_code[code].data_quality) >
+                   self._quality_rank(binding.get("quality", {}).get(code))
+                   for code in binding.get("snapshots", {})):
+                self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="data_quality_worsened")
+                raise LearningPlanStale()
+
+    def replan(self, *, user_id: str, plan_id: str, idempotency_key: str | None = None) -> LearningPlanRow:
+        old = self.repository.get_plan(plan_id, user_id=user_id)
+        if old is None:
+            raise NotFoundError()
+        key = idempotency_key or f"replan:{plan_id}"
+        existing = self.repository.find_by_idempotency_key(user_id=user_id, idempotency_key=key)
+        if existing:
+            return existing
+        result = self.generate(
+            user_id=user_id, available_minutes=old.run.available_minutes, course_id=old.run.course_scope,
+            window_start=old.run.window_start, window_end=old.run.window_end, idempotency_key=key,
+            force_new=True, supersedes_plan_id=plan_id, replan_key=key, ignore_rejection=True,
+        )
+        self.repository.link_superseded(old_plan_id=plan_id, new_plan_id=result.plan_id, user_id=user_id, replan_key=key)
+        return self.repository.get_plan(result.plan_id, user_id=user_id)  # type: ignore[return-value]
+
+    def record_feedback(self, *, user_id: str, plan_id: str, feedback: str) -> None:
+        if self.repository.get_plan(plan_id, user_id=user_id) is None:
+            raise NotFoundError()
+        self.repository.add_feedback(plan_id=plan_id, user_id=user_id, feedback=feedback)
+
+    def evaluate(self, *, user_id: str, plan_id: str) -> dict[str, Any]:
+        plan = self.repository.get_plan(plan_id, user_id=user_id)
+        if plan is None:
+            raise NotFoundError()
+        from ..services.learner_state_service import _parse as parse_state_time
+        baseline = _parse(plan.run.as_of) or parse_state_time(plan.run.as_of)
+        evaluated = datetime.now(timezone.utc)
+        events, total_events = self._event_repository().list_for_user(
+            user_id=user_id, event_type="practice_answered", since=baseline, until=evaluated, page=1, page_size=100
+        )
+        action_rows = self.repository.list_actions(plan_id=plan_id, user_id=user_id)
+        planned = len(plan.items)
+        executed = sum(1 for item in plan.items if item.execution_status == "SUCCEEDED" or any(
+            action.item_id == item.item_id and action.status == "SUCCEEDED" for action in action_rows
+        ))
+        completed_tasks = 0
+        for action in action_rows:
+            if action.target_task_id:
+                task = self.task_repository.get_task(action.target_task_id, user_id=user_id)
+                if task and task.source == "learning_plan" and task.status == "completed":
+                    completed_tasks += 1
+        evidence_count = sum(len(item.evidence) for item in plan.items)
+        evidence_coverage = round(min(1.0, evidence_count / planned), 6) if planned else 0.0
+        supported = sum(1 for event in events if event.data_quality in {"verified", "partial"})
+        warnings = list(plan.run.warning_codes)
+        if total_events > 100:
+            warnings.append("followup_events_truncated")
+        if any(event.data_quality in {"partial", "unverified", "stale"} for event in events):
+            warnings.append("followup_evidence_partial")
+        if plan.run.input_truncated:
+            warnings.append("plan_input_truncated")
+        status = "OUTCOME_OBSERVED" if events else "INSUFFICIENT_EVIDENCE"
+        metrics = {
+            "evaluation_status": status, "planned_item_count": planned, "executed_item_count": executed,
+            "completed_plan_task_count": completed_tasks, "followup_practice_count": len(events),
+            "supported_outcome_count": supported, "evidence_coverage": evidence_coverage,
+        }
+        input_digest = _digest({"plan_id": plan_id, "items": [(x.item_id, x.execution_status) for x in plan.items],
+                                "actions": [(x.action_id, x.status, x.target_task_id) for x in action_rows],
+                                "events": [(x.event_id, x.occurred_at, x.data_quality) for x in events],
+                                "warnings": sorted(set(warnings))})
+        version = "learning-plan-observational-v1"
+        existing = self.repository.get_latest_evaluation(plan_id=plan_id, user_id=user_id,
+                                                         evaluator_version=version, input_digest=input_digest)
+        if existing:
+            metrics = json.loads(existing["metrics_json"])
+            warnings = json.loads(existing["warning_codes_json"] or "[]")
+            baseline_value, evaluated_value = existing["baseline_as_of"], existing["evaluated_as_of"]
+        else:
+            baseline_value, evaluated_value = plan.run.as_of, _iso(evaluated)
+            self.repository.add_evaluation(plan_id=plan_id, user_id=user_id, evaluator_version=version,
+                                           input_digest=input_digest, baseline_as_of=baseline_value,
+                                           evaluated_as_of=evaluated_value, metrics=metrics, warning_codes=warnings)
+        return {"plan_id": plan_id, **metrics, "baseline_as_of": baseline_value,
+                "evaluated_as_of": evaluated_value, "warning_codes": sorted(set(warnings)),
+                "evaluator_version": version}
+
+    def _event_repository(self):
+        return self.knowledge_service.event_repository
 
 
 __all__ = ["LearningPlannerService", "PLANNER_VERSION", "WEIGHTS"]

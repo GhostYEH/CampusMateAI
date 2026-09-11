@@ -9,7 +9,10 @@ from ...models.learning_plan import LearningPlanRow
 from ...models.multi_role import UserRow
 from ...schemas.learning_plan import (
     LearningPlanDecisionRequest,
+    LearningPlanEvaluationOut,
     LearningPlanEvidenceOut,
+    LearningPlanFeedbackOut,
+    LearningPlanFeedbackRequest,
     LearningPlanGenerateRequest,
     LearningPlanItemOut,
     LearningPlanOut,
@@ -32,6 +35,8 @@ def _out(plan: LearningPlanRow) -> LearningPlanOut:
         available_minutes=plan.run.available_minutes, allocated_minutes=plan.run.allocated_minutes,
         warning_codes=plan.run.warning_codes, created_at=plan.created_at,
         llm_summary=plan.llm_summary,
+        supersedes_plan_id=plan.supersedes_plan_id,
+        superseded_by_plan_id=plan.superseded_by_plan_id,
         items=[LearningPlanItemOut(
             item_id=item.item_id, item_type=item.item_type, course_id=item.course_id, task_id=item.task_id,
             knowledge_component_code=item.knowledge_component_code, estimated_minutes=item.estimated_minutes,
@@ -111,6 +116,36 @@ def undo_learning_plan(
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanOut:
     return _out(container.learning_planner_service.undo(user_id=user.id, plan_id=plan_id))
+
+
+@router.post("/{plan_id}/replan", response_model=LearningPlanOut)
+def replan_learning_plan(
+    plan_id: str,
+    idempotency_header: str | None = Header(None, alias="Idempotency-Key", max_length=128),
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    return _out(container.learning_planner_service.replan(user_id=user.id, plan_id=plan_id,
+                                                           idempotency_key=idempotency_header))
+
+
+@router.post("/{plan_id}/feedback", response_model=LearningPlanFeedbackOut)
+def feedback_learning_plan(
+    plan_id: str, req: LearningPlanFeedbackRequest,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanFeedbackOut:
+    container.learning_planner_service.record_feedback(user_id=user.id, plan_id=plan_id, feedback=req.feedback)
+    return LearningPlanFeedbackOut(plan_id=plan_id, feedback=req.feedback)
+
+
+@router.get("/{plan_id}/evaluation", response_model=LearningPlanEvaluationOut)
+def evaluate_learning_plan(
+    plan_id: str,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanEvaluationOut:
+    return LearningPlanEvaluationOut(**container.learning_planner_service.evaluate(user_id=user.id, plan_id=plan_id))
 
 
 __all__ = ["router"]

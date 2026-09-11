@@ -25,6 +25,31 @@ class LearningPlanDecisionRequest(BaseModel):
     decision: str = Field(..., pattern="^(ACCEPT|REJECT)$")
 
 
+class LearningPlanFeedbackRequest(BaseModel):
+    feedback: str = Field(..., pattern="^(HELPFUL|NOT_HELPFUL|TOO_LONG|TOO_SHORT|WRONG_PRIORITY|ALREADY_DONE|MISSING_CONTEXT)$")
+
+
+class LearningPlanFeedbackOut(BaseModel):
+    plan_id: str
+    feedback: str
+    recorded: bool = True
+
+
+class LearningPlanEvaluationOut(BaseModel):
+    plan_id: str
+    evaluation_status: str
+    baseline_as_of: str
+    evaluated_as_of: str
+    planned_item_count: int
+    executed_item_count: int
+    completed_plan_task_count: int
+    followup_practice_count: int
+    supported_outcome_count: int
+    evidence_coverage: float
+    warning_codes: list[str]
+    evaluator_version: str
+
+
 class LearningPlanEvidenceOut(BaseModel):
     evidence_type: str
     relation: str
@@ -58,6 +83,8 @@ class LearningPlanOut(BaseModel):
     created_at: str
     items: list[LearningPlanItemOut]
     llm_summary: str | None = None
+    supersedes_plan_id: str | None = None
+    superseded_by_plan_id: str | None = None
 
 
 class LearningPlanPage(BaseModel):
@@ -70,5 +97,6 @@ class LearningPlanPage(BaseModel):
 
 __all__ = [
     "LearningPlanGenerateRequest", "LearningPlanDecisionRequest", "LearningPlanEvidenceOut",
+    "LearningPlanFeedbackRequest", "LearningPlanFeedbackOut", "LearningPlanEvaluationOut",
     "LearningPlanItemOut", "LearningPlanOut", "LearningPlanPage",
 ]

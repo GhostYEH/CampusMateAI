@@ -20,6 +20,13 @@ class LearningPlanRunRow:
     warning_codes: list[str] = field(default_factory=list)
     idempotency_key: str | None = None
     created_at: str = ""
+    core_run_id: str | None = None
+    core_input_digest: str | None = None
+    knowledge_bindings: dict[str, Any] = field(default_factory=dict)
+    task_binding_digest: str | None = None
+    task_bindings: dict[str, str] = field(default_factory=dict)
+    input_truncated: bool = False
+    core_quality: str = "verified"
 
 
 @dataclass(frozen=True)
@@ -47,6 +54,8 @@ class LearningPlanRow:
     llm_summary: str | None
     created_at: str
     items: list[LearningPlanItemRow] = field(default_factory=list)
+    supersedes_plan_id: str | None = None
+    superseded_by_plan_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +70,7 @@ class LearningPlanActionRow:
     error_code: str | None
     created_at: str
     completed_at: str | None
+    target_task_digest: str | None = None
 
 
 __all__ = [

@@ -1243,6 +1243,13 @@ CREATE TABLE IF NOT EXISTS learning_plan_runs (
     window_end TEXT,
     warning_codes_json TEXT NOT NULL DEFAULT '[]',
     idempotency_key TEXT,
+    core_run_id TEXT,
+    core_input_digest TEXT,
+    knowledge_bindings_json TEXT NOT NULL DEFAULT '{}',
+    task_binding_digest TEXT,
+    task_bindings_json TEXT NOT NULL DEFAULT '{}',
+    input_truncated INTEGER NOT NULL DEFAULT 0,
+    core_quality TEXT NOT NULL DEFAULT 'verified',
     created_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, idempotency_key)
@@ -1258,6 +1265,10 @@ CREATE TABLE IF NOT EXISTS learning_plans (
     user_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('PROPOSED','ACCEPTED','REJECTED','EXECUTED','PARTIALLY_EXECUTED','UNDONE','EXPIRED')),
     llm_summary TEXT,
+    supersedes_plan_id TEXT,
+    superseded_by_plan_id TEXT,
+    stale_reason TEXT,
+    replan_key TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY(run_id) REFERENCES learning_plan_runs(run_id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1320,6 +1331,7 @@ CREATE TABLE IF NOT EXISTS learning_plan_execution_actions (
     error_code TEXT,
     created_at TEXT NOT NULL,
     completed_at TEXT,
+    target_task_digest TEXT,
     FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
     FOREIGN KEY(item_id) REFERENCES learning_plan_items(item_id) ON DELETE CASCADE,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1327,6 +1339,35 @@ CREATE TABLE IF NOT EXISTS learning_plan_execution_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_learning_plan_actions_plan
     ON learning_plan_execution_actions(plan_id, created_at, action_id);
+
+CREATE TABLE IF NOT EXISTS learning_plan_feedback (
+    feedback_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    feedback TEXT NOT NULL CHECK(feedback IN ('HELPFUL','NOT_HELPFUL','TOO_LONG','TOO_SHORT','WRONG_PRIORITY','ALREADY_DONE','MISSING_CONTEXT')),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, user_id, feedback)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_feedback_plan ON learning_plan_feedback(plan_id, created_at);
+
+CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
+    evaluation_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    evaluator_version TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    baseline_as_of TEXT NOT NULL,
+    evaluated_as_of TEXT NOT NULL,
+    metrics_json TEXT NOT NULL,
+    warning_codes_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, evaluator_version, input_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
 """
 
 
@@ -1416,11 +1457,44 @@ class Database:
             },
             "practice_attempts": {"evidence_origin": "TEXT NOT NULL DEFAULT 'CLIENT'"},
             "misconception_hypotheses": {"supporting_evidence_count": "INTEGER NOT NULL DEFAULT 0"},
+            "learning_plan_runs": {
+                "core_run_id": "TEXT", "core_input_digest": "TEXT",
+                "knowledge_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
+                "task_binding_digest": "TEXT", "task_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
+                "input_truncated": "INTEGER NOT NULL DEFAULT 0", "core_quality": "TEXT NOT NULL DEFAULT 'verified'",
+            },
+            "learning_plans": {
+                "supersedes_plan_id": "TEXT", "superseded_by_plan_id": "TEXT",
+                "stale_reason": "TEXT", "replan_key": "TEXT",
+            },
+            "learning_plan_execution_actions": {"target_task_digest": "TEXT"},
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS learning_plan_feedback (
+            feedback_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, user_id TEXT NOT NULL,
+            feedback TEXT NOT NULL, created_at TEXT NOT NULL,
+            FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(plan_id, user_id, feedback)
+        );
+        CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
+            evaluation_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, user_id TEXT NOT NULL,
+            evaluator_version TEXT NOT NULL, input_digest TEXT NOT NULL,
+            baseline_as_of TEXT NOT NULL, evaluated_as_of TEXT NOT NULL,
+            metrics_json TEXT NOT NULL, warning_codes_json TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(plan_id, evaluator_version, input_digest)
+        );
+        CREATE INDEX IF NOT EXISTS idx_learning_plan_feedback_plan ON learning_plan_feedback(plan_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
+        """)
         conn.execute("DROP INDEX IF EXISTS idx_learner_state_runs_current")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current "
