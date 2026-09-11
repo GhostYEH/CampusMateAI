@@ -1228,6 +1228,107 @@ CREATE INDEX IF NOT EXISTS idx_misconception_history_hypothesis
     ON misconception_hypothesis_history(hypothesis_id, changed_at);
 """
 
+LEARNING_PLAN_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learning_plan_runs (
+    run_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    planner_version TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    as_of TEXT NOT NULL,
+    valid_until TEXT NOT NULL,
+    available_minutes INTEGER NOT NULL CHECK(available_minutes > 0),
+    allocated_minutes INTEGER NOT NULL DEFAULT 0 CHECK(allocated_minutes >= 0),
+    course_scope TEXT,
+    window_start TEXT,
+    window_end TEXT,
+    warning_codes_json TEXT NOT NULL DEFAULT '[]',
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_runs_user_created
+    ON learning_plan_runs(user_id, created_at DESC, run_id DESC);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_runs_digest
+    ON learning_plan_runs(user_id, planner_version, input_digest, valid_until);
+
+CREATE TABLE IF NOT EXISTS learning_plans (
+    plan_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PROPOSED','ACCEPTED','REJECTED','EXECUTED','PARTIALLY_EXECUTED','UNDONE','EXPIRED')),
+    llm_summary TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES learning_plan_runs(run_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plans_user_created
+    ON learning_plans(user_id, created_at DESC, plan_id DESC);
+
+CREATE TABLE IF NOT EXISTS learning_plan_items (
+    item_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    course_id TEXT,
+    task_id TEXT,
+    knowledge_component_code TEXT,
+    estimated_minutes INTEGER NOT NULL CHECK(estimated_minutes > 0),
+    priority_score REAL NOT NULL,
+    priority_components_json TEXT NOT NULL,
+    explanation_codes_json TEXT NOT NULL,
+    execution_status TEXT NOT NULL DEFAULT 'PENDING' CHECK(execution_status IN ('PENDING','SUCCEEDED','FAILED','SKIPPED','UNDONE')),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_items_plan_order
+    ON learning_plan_items(plan_id, priority_score DESC, item_id ASC);
+
+CREATE TABLE IF NOT EXISTS learning_plan_evidence (
+    evidence_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    reference_id TEXT NOT NULL,
+    relevance_score REAL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id) REFERENCES learning_plan_items(item_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_evidence_item
+    ON learning_plan_evidence(item_id, evidence_id);
+
+CREATE TABLE IF NOT EXISTS learning_plan_decisions (
+    decision_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('ACCEPT','REJECT')),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_decisions_plan
+    ON learning_plan_decisions(plan_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS learning_plan_execution_actions (
+    action_id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','SUCCEEDED','FAILED','UNDONE')),
+    target_task_id TEXT,
+    error_code TEXT,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id) REFERENCES learning_plan_items(item_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, item_id, action_type)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_actions_plan
+    ON learning_plan_execution_actions(plan_id, created_at, action_id);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1291,6 +1392,7 @@ class Database:
                 conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
                 conn.executescript(C_KNOWLEDGE_SCHEMA_SQL)
+                conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

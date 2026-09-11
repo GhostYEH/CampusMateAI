@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Header, Query
+
+from ...core.exceptions import InvalidTransition, ValidationFailed
+from ...models.learning_plan import LearningPlanRow
+from ...models.multi_role import UserRow
+from ...schemas.learning_plan import (
+    LearningPlanDecisionRequest,
+    LearningPlanEvidenceOut,
+    LearningPlanGenerateRequest,
+    LearningPlanItemOut,
+    LearningPlanOut,
+    LearningPlanPage,
+)
+from ...services.container import ServiceContainer, get_container
+from ..deps import student_only
+
+router = APIRouter(prefix="/learning-plans", tags=["learning-plans"])
+
+
+def _container() -> ServiceContainer:
+    return get_container()
+
+
+def _out(plan: LearningPlanRow) -> LearningPlanOut:
+    return LearningPlanOut(
+        plan_id=plan.plan_id, planner_version=plan.run.planner_version, input_digest=plan.run.input_digest,
+        status=plan.status, as_of=plan.run.as_of, valid_until=plan.run.valid_until,
+        available_minutes=plan.run.available_minutes, allocated_minutes=plan.run.allocated_minutes,
+        warning_codes=plan.run.warning_codes, created_at=plan.created_at,
+        llm_summary=plan.llm_summary,
+        items=[LearningPlanItemOut(
+            item_id=item.item_id, item_type=item.item_type, course_id=item.course_id, task_id=item.task_id,
+            knowledge_component_code=item.knowledge_component_code, estimated_minutes=item.estimated_minutes,
+            priority_score=item.priority_score, priority_components=item.priority_components,
+            explanation_codes=item.explanation_codes,
+            evidence=[LearningPlanEvidenceOut(
+                evidence_type=e["evidence_type"], relation=str(e.get("metadata", {}).get("relation", "SUPPORTS")),
+                relevance_score=e.get("relevance_score"),
+            ) for e in item.evidence], execution_status=item.execution_status,
+        ) for item in plan.items],
+    )
+
+
+@router.post("/generate", response_model=LearningPlanOut)
+async def generate_learning_plan(
+    req: LearningPlanGenerateRequest,
+    idempotency_header: str | None = Header(None, alias="Idempotency-Key", max_length=128),
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    try:
+        plan = container.learning_planner_service.generate(
+            user_id=user.id, available_minutes=req.available_minutes, course_id=req.course_id,
+            window_start=req.window_start, window_end=req.window_end,
+            idempotency_key=idempotency_header or req.idempotency_key,
+        )
+    except ValueError as exc:
+        raise ValidationFailed(str(exc)) from exc
+    if req.enhance_with_llm:
+        plan = await container.learning_planner_service.enhance_with_llm(plan)
+    return _out(plan)
+
+
+@router.get("", response_model=LearningPlanPage)
+def list_learning_plans(
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanPage:
+    rows, total = container.learning_plan_repository.list_plans(user_id=user.id, page=page, page_size=page_size)
+    return LearningPlanPage(items=[_out(row) for row in rows], total=total, page=page, page_size=page_size,
+                             has_more=page * page_size < total)
+
+
+@router.get("/{plan_id}", response_model=LearningPlanOut)
+def get_learning_plan(
+    plan_id: str, user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    plan = container.learning_plan_repository.get_plan(plan_id, user_id=user.id)
+    if plan is None:
+        from ...core.exceptions import NotFoundError
+        raise NotFoundError()
+    return _out(plan)
+
+
+@router.post("/{plan_id}/decision", response_model=LearningPlanOut)
+def decide_learning_plan(
+    plan_id: str, req: LearningPlanDecisionRequest,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    return _out(container.learning_planner_service.decide(user_id=user.id, plan_id=plan_id, decision=req.decision))
+
+
+@router.post("/{plan_id}/execute", response_model=LearningPlanOut)
+def execute_learning_plan(
+    plan_id: str, user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    return _out(container.learning_planner_service.execute(user_id=user.id, plan_id=plan_id))
+
+
+@router.post("/{plan_id}/undo", response_model=LearningPlanOut)
+def undo_learning_plan(
+    plan_id: str, user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanOut:
+    return _out(container.learning_planner_service.undo(user_id=user.id, plan_id=plan_id))
+
+
+__all__ = ["router"]

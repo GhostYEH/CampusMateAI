@@ -41,6 +41,7 @@ from ..repositories.edu_data_repository import EduDataRepository
 from ..repositories.edu_repository import EduRepository
 from ..repositories.learner_event_repository import LearnerEventRepository
 from ..repositories.learner_state_repository import LearnerStateRepository
+from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..repositories.c_knowledge_repository import KnowledgeRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
@@ -50,6 +51,8 @@ from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
 from ..services.c_knowledge_service import KnowledgeService
+from ..services.learning_planner_service import LearningPlannerService
+from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
 from ..services.notice_extraction_service import NoticeExtractionService
@@ -105,6 +108,9 @@ class ServiceContainer:
     learner_state_service: LearnerStateProjectionService
     knowledge_repository: KnowledgeRepository
     knowledge_service: KnowledgeService
+    learning_plan_repository: LearningPlanRepository
+    learning_planner_service: LearningPlannerService
+    learning_agent_tools: LearningAgentToolRegistry
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -174,6 +180,13 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         knowledge_repository, learner_event_repository, learner_state_repository
     )
     knowledge_service.seed_c_taxonomy()
+    learning_plan_repository = LearningPlanRepository(db)
+    learning_planner_service = LearningPlannerService(
+        repository=learning_plan_repository, state_service=learner_state_service,
+        state_repository=learner_state_repository, knowledge_service=knowledge_service,
+        knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
+        content_repository=course_content_repository, llm=llm,
+    )
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
@@ -237,11 +250,15 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_service=learner_state_service,
         knowledge_repository=knowledge_repository,
         knowledge_service=knowledge_service,
+        learning_plan_repository=learning_plan_repository,
+        learning_planner_service=learning_planner_service,
+        learning_agent_tools=LearningAgentToolRegistry(None),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
         edu_connector=edu_connector,
     )
+    container.learning_agent_tools.container = container
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)
     try:
         retrieval.rebuild()

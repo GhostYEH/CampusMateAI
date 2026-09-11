@@ -66,6 +66,9 @@ def _decode_access_token(
         raise Unauthorized("用户不存在或已停用")
     # 运行时降级旧 teacher 账号
     if user.role == "teacher":
+        # Preserve the persisted role for feature gates that explicitly exclude
+        # legacy teacher accounts, while retaining old client compatibility.
+        user.original_role = user.role  # type: ignore[attr-defined]
         user.role = "student"
     return user
 
@@ -125,6 +128,13 @@ def require_role(*roles: str):
     return _check
 
 
+def student_only(user: UserRow = Depends(current_user)) -> UserRow:
+    """Student-only gate that does not treat legacy teacher accounts as students."""
+    if user.role != "student" or getattr(user, "original_role", None) == "teacher":
+        raise Forbidden("当前角色无权访问学生学习计划")
+    return user
+
+
 # ===== 业务权限辅助 =====
 
 
@@ -147,5 +157,6 @@ __all__ = [
     "current_user",
     "current_user_optional",
     "require_role",
+    "student_only",
     "assert_student_in_class",
 ]
