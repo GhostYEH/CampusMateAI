@@ -36,7 +36,7 @@ test("liquid metal keeps its base plate without allocating WebGL until interacti
   assert.match(markup, />全部待办<\/button><\/span>$/);
 });
 
-test("liquid metal button supports nav variant with active and defer props", async () => {
+test("navigation buttons leave canvas ownership to the shared client renderer", async () => {
   const { default: LiquidMetalButton } = await vite.ssrLoadModule(
     "/src/components/LiquidMetalButton.jsx",
   );
@@ -46,6 +46,7 @@ test("liquid metal button supports nav variant with active and defer props", asy
       variant: "nav",
       active: true,
       defer: true,
+      useSharedNavigationRenderer: true,
       className: "floating-nav-button",
       "aria-label": "首页",
       "aria-current": "page",
@@ -55,7 +56,7 @@ test("liquid metal button supports nav variant with active and defer props", asy
 
   assert.match(markup, /sylva-liquid-stage--nav/);
   assert.match(markup, /data-active="true"/);
-  assert.match(markup, /class="sylva-liquid-fx" aria-hidden="true"/);
+  assert.doesNotMatch(markup, /class="sylva-liquid-fx"/);
   assert.match(markup, /aria-current="page"/);
   assert.match(markup, /<button[^>]*class="sylva-liquid-control floating-nav-button"/);
 });
@@ -176,4 +177,27 @@ test("liquid metal runtime removes its visibility listener on cleanup", async ()
   const runtime = readFileSync(new URL("../src/components/liquidMetalScene.js", import.meta.url), "utf8");
   assert.match(runtime, /visibilitychange/);
   assert.match(runtime, /removeEventListener/);
+});
+
+test("navigation liquid renderer exposes one reusable target lifecycle", async () => {
+  const runtime = await vite.ssrLoadModule("/src/components/liquidMetalScene.js");
+
+  assert.equal(typeof runtime.getSharedNavigationLiquidRenderer, "function");
+});
+
+test("navigation hover gate ignores layout-only pointer boundary changes", async () => {
+  const { createStableHoverGate } = await vite.ssrLoadModule(
+    "/src/components/FloatingNav/LiquidMetalNav.jsx",
+  );
+  const gate = createStableHoverGate();
+
+  gate.notePointerMove();
+  assert.equal(gate.claim(1), true);
+  assert.equal(gate.release(1), false);
+  assert.equal(gate.claim(2), false);
+
+  gate.notePointerMove();
+  assert.equal(gate.release(1), true);
+  assert.equal(gate.claim(2), true);
+  assert.equal(gate.release(2, { force: true }), true);
 });

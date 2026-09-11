@@ -372,15 +372,18 @@ export function releaseWebGLContext(gl) {
 }
 
 export function mountLiquidMetal(stage, {
+  canvas: providedCanvas,
   getActive = () => false,
   getEngaged = getActive,
   maxFps = LIQUID_METAL_MAX_FPS,
   dprCap = LIQUID_METAL_DPR_CAP,
+  manageControlEvents = true,
+  manageWindowPointerMove = true,
 } = {}) {
   const effectiveMaxFps = normalizeMaxFps(maxFps);
   const effectiveDprCap = normalizeDprCap(dprCap);
-  const canvas = stage?.querySelector(".sylva-liquid-fx");
-  const control = stage?.querySelector(".sylva-liquid-control");
+  const canvas = providedCanvas || stage?.querySelector(".sylva-liquid-fx");
+  let control = stage?.querySelector(".sylva-liquid-control");
   if (!canvas || !control || typeof window === "undefined") return () => {};
 
   if (canvas[CONTEXT_RELEASE_TIMER] !== undefined) {
@@ -866,14 +869,25 @@ export function mountLiquidMetal(stage, {
     }
   };
 
-  control.addEventListener("pointerenter", handlePointerEnter);
-  control.addEventListener("pointerleave", handlePointerLeave);
-  control.addEventListener("pointerdown", handlePointerDown);
-  control.addEventListener("focusin", handleFocus);
-  control.addEventListener("focusout", handleBlur);
-  control.addEventListener("keydown", handleKeyDown);
-  control.addEventListener("keyup", handleKeyUp);
-  window.addEventListener("pointermove", handlePointerMove, { passive: true });
+  const bindControlEvents = (target) => {
+    target?.addEventListener("pointerenter", handlePointerEnter);
+    target?.addEventListener("pointerleave", handlePointerLeave);
+    target?.addEventListener("pointerdown", handlePointerDown);
+    target?.addEventListener("focusin", handleFocus);
+    target?.addEventListener("focusout", handleBlur);
+    target?.addEventListener("keydown", handleKeyDown);
+    target?.addEventListener("keyup", handleKeyUp);
+  };
+  const unbindControlEvents = (target) => {
+    target?.removeEventListener("pointerenter", handlePointerEnter);
+    target?.removeEventListener("pointerleave", handlePointerLeave);
+    target?.removeEventListener("pointerdown", handlePointerDown);
+    target?.removeEventListener("focusin", handleFocus);
+    target?.removeEventListener("focusout", handleBlur);
+    target?.removeEventListener("keydown", handleKeyDown);
+    target?.removeEventListener("keyup", handleKeyUp);
+  };
+  if (manageWindowPointerMove) window.addEventListener("pointermove", handlePointerMove, { passive: true });
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
   window.addEventListener("scroll", handleScroll, { passive: true });
@@ -881,23 +895,85 @@ export function mountLiquidMetal(stage, {
   reducedMotion.addEventListener?.("change", handleMotionChange);
 
   const resizeObserver = new ResizeObserver(() => { needsResize = true; requestFrame(); });
+  const resetTargetState = () => {
+    interaction.over = false;
+    interaction.press = false;
+    interaction.focus = false;
+    pointer.x = 0;
+    pointer.y = 0;
+    smoothedPointer.x = 0;
+    smoothedPointer.y = 0;
+    pointerAmount = 0;
+    pointerSpeed = 0;
+    hover = 0;
+    hoverTarget = 0;
+    press = 0;
+    pressTarget = 0;
+    clock = 0;
+    previousTime = performance.now();
+    previousDrawTime = 0;
+    lastStaticSignature = null;
+    rippleIndex = 0;
+    rippleSlots.forEach((ripple) => {
+      ripple.x = 0;
+      ripple.y = 0;
+      ripple.time = -99;
+      ripple.active = 0;
+    });
+  };
+  const detachTarget = () => {
+    if (!stage) return;
+    unbindControlEvents(control);
+    resizeObserver.disconnect();
+    stage.classList.remove("hot", "press", "active");
+    if (animationFrame !== null) {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    resetTargetState();
+    if (canvas.parentElement === stage) canvas.remove();
+    stage = null;
+    control = null;
+  };
+  const attachTarget = (nextStage, {
+    getActive: nextGetActive = () => false,
+    getEngaged: nextGetEngaged = nextGetActive,
+  } = {}) => {
+    const nextControl = nextStage?.querySelector(".sylva-liquid-control");
+    if (disposed || !nextStage || !nextControl) return false;
+    const alreadyAttached = stage === nextStage;
+    if (!alreadyAttached) detachTarget();
+    stage = nextStage;
+    control = nextControl;
+    getActive = nextGetActive;
+    getEngaged = nextGetEngaged;
+    if (!alreadyAttached) {
+      if (canvas.parentElement !== stage) stage.insertBefore(canvas, control);
+      if (manageControlEvents) bindControlEvents(control);
+      resizeObserver.observe(stage);
+    }
+    isScrolling = false;
+    pageHidden = isDocumentHidden();
+    if (!alreadyAttached) {
+      needsResize = true;
+      resetTargetState();
+    }
+    syncInteraction();
+    requestFrame();
+    return true;
+  };
+  if (manageControlEvents) bindControlEvents(control);
   resizeObserver.observe(stage);
   resize();
   syncInteraction();
   requestFrame();
 
-  return () => {
+  const cleanup = () => {
     disposed = true;
     if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     resizeObserver.disconnect();
-    control.removeEventListener("pointerenter", handlePointerEnter);
-    control.removeEventListener("pointerleave", handlePointerLeave);
-    control.removeEventListener("pointerdown", handlePointerDown);
-    control.removeEventListener("focusin", handleFocus);
-    control.removeEventListener("focusout", handleBlur);
-    control.removeEventListener("keydown", handleKeyDown);
-    control.removeEventListener("keyup", handleKeyUp);
-    window.removeEventListener("pointermove", handlePointerMove);
+    if (manageControlEvents) unbindControlEvents(control);
+    if (manageWindowPointerMove) window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerUp);
     window.removeEventListener("scroll", handleScroll);
@@ -919,5 +995,93 @@ export function mountLiquidMetal(stage, {
       delete canvas[CONTEXT_RELEASE_TIMER];
       if (!canvas.isConnected) releaseWebGLContext(gl);
     }, 0);
+  };
+  cleanup.attachTarget = attachTarget;
+  cleanup.detachTarget = detachTarget;
+  cleanup.getTarget = () => stage;
+  cleanup.handlePointerEnter = handlePointerEnter;
+  cleanup.handlePointerLeave = handlePointerLeave;
+  cleanup.handlePointerMove = handlePointerMove;
+  cleanup.handlePointerDown = handlePointerDown;
+  cleanup.handlePointerUp = handlePointerUp;
+  cleanup.handleFocus = handleFocus;
+  cleanup.handleBlur = handleBlur;
+  cleanup.handleKeyDown = handleKeyDown;
+  cleanup.handleKeyUp = handleKeyUp;
+  return cleanup;
+}
+
+let sharedNavigationRenderer = null;
+
+export function getSharedNavigationLiquidRenderer() {
+  return {
+    attach(stage, options = {}) {
+      if (typeof document === "undefined" || !stage) return false;
+      if (!sharedNavigationRenderer) {
+        const canvas = document.createElement("canvas");
+        canvas.className = "sylva-liquid-fx";
+        canvas.setAttribute("aria-hidden", "true");
+        const control = stage.querySelector(".sylva-liquid-control");
+        if (!control) return false;
+        stage.insertBefore(canvas, control);
+        sharedNavigationRenderer = mountLiquidMetal(stage, {
+          ...options,
+          canvas,
+          manageControlEvents: false,
+          manageWindowPointerMove: false,
+        });
+        return true;
+      }
+      return sharedNavigationRenderer.attachTarget(stage, options);
+    },
+    detach(stage) {
+      if (!sharedNavigationRenderer || sharedNavigationRenderer.getTarget() !== stage) return false;
+      sharedNavigationRenderer.detachTarget();
+      return true;
+    },
+    getTarget() {
+      return sharedNavigationRenderer?.getTarget() || null;
+    },
+    enter(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handlePointerEnter(event);
+      return true;
+    },
+    leave(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handlePointerLeave(event);
+      return true;
+    },
+    move(event) {
+      sharedNavigationRenderer?.handlePointerMove(event);
+    },
+    down(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handlePointerDown(event);
+      return true;
+    },
+    up() {
+      sharedNavigationRenderer?.handlePointerUp();
+    },
+    focus(stage) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handleFocus();
+      return true;
+    },
+    blur(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handleBlur(event);
+      return true;
+    },
+    keyDown(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handleKeyDown(event);
+      return true;
+    },
+    keyUp(stage, event) {
+      if (sharedNavigationRenderer?.getTarget() !== stage) return false;
+      sharedNavigationRenderer.handleKeyUp(event);
+      return true;
+    },
   };
 }

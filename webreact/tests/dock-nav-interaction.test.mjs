@@ -19,9 +19,12 @@ test("floating navigation applies spring proximity scaling to every dock item", 
 });
 
 test("floating navigation caches item geometry instead of reading layout during pointer scaling", () => {
+  const dockItemSource = source.slice(source.indexOf("function DockItem"), source.indexOf("export default function LiquidMetalNav"));
+
   assert.match(source, /useLayoutEffect/);
   assert.match(source, /ResizeObserver/);
-  assert.doesNotMatch(source, /useTransform\([\s\S]*getBoundingClientRect\(\)/);
+  assert.match(source, /Array\.from\(list\.children\)\.forEach/);
+  assert.doesNotMatch(dockItemSource, /getBoundingClientRect/);
 });
 
 test("floating navigation coalesces pointer updates to one animation frame", () => {

@@ -40,6 +40,25 @@ def install_session_and_api_fixtures(page):
         """
         window.requestAnimationFrame = callback =>
           window.setTimeout(() => callback(performance.now()), 50);
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        const navigationContexts = new WeakSet();
+        const navigationGlContexts = new WeakSet();
+        window.__navigationWebGLContextCreates = 0;
+        window.__navigationShaderCompiles = 0;
+        HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+          const context = originalGetContext.call(this, type, ...args);
+          if (type === 'webgl2' && context && this.closest('.floating-nav') && !navigationContexts.has(this)) {
+            navigationContexts.add(this);
+            navigationGlContexts.add(context);
+            window.__navigationWebGLContextCreates += 1;
+          }
+          return context;
+        };
+        const originalCompileShader = WebGL2RenderingContext.prototype.compileShader;
+        WebGL2RenderingContext.prototype.compileShader = function(shader) {
+          if (navigationGlContexts.has(this)) window.__navigationShaderCompiles += 1;
+          return originalCompileShader.call(this, shader);
+        };
         localStorage.setItem('campus_access_token', 'navigation-regression');
         localStorage.setItem('campus_session', JSON.stringify({role: 'student', name: '测试同学'}));
         localStorage.setItem('campus_dashboard_style', 'classic');
@@ -125,60 +144,89 @@ def run():
         expect(abs(stage_center - icon_center) < 0.75, f"当前页面图标与特效圆心相差 {stage_center - icon_center:.1f}px")
 
         home_surface = surface_signature(page)
-        compact_nav_width = nav["width"]
         nav_canvas_count = page.evaluate(
             "() => document.querySelectorAll('.floating-nav .sylva-liquid-fx').length"
         )
         expect(nav_canvas_count == 1, f"首页初始导航液态画布应为 1，实际为 {nav_canvas_count}")
+        initial_nav_contexts = page.evaluate("() => window.__navigationWebGLContextCreates")
+        expect(initial_nav_contexts == 1, f"首页初始导航应只创建 1 个 WebGL 上下文，实际为 {initial_nav_contexts}")
+        initial_nav_shader_compiles = page.evaluate("() => window.__navigationShaderCompiles")
+        expect(initial_nav_shader_compiles == 10, f"首页初始导航应编译 10 个着色器，实际为 {initial_nav_shader_compiles}")
         task_selector = '.floating-nav-button[aria-label="待办与作业"]'
-        for _ in range(3):
-            task_box = rect(page, task_selector)
-            page.mouse.move(task_box["x"] + task_box["width"] / 2, task_box["y"] + task_box["height"] / 2)
-            page.wait_for_timeout(350)
+        page.evaluate(
+            """() => {
+              window.__navigationCanvasTargets = [];
+              const nav = document.querySelector('.floating-nav');
+              const capture = () => {
+                const canvas = nav.querySelector('.sylva-liquid-fx');
+                const label = canvas?.closest('.sylva-liquid-stage')?.querySelector('.floating-nav-button')?.getAttribute('aria-label');
+                if (label) window.__navigationCanvasTargets.push(label);
+              };
+              new MutationObserver(capture).observe(nav, { childList: true, subtree: true });
+            }"""
+        )
+        task_box = rect(page, task_selector)
+        page.mouse.move(task_box["x"] + task_box["width"] / 2, task_box["y"] + task_box["height"] / 2)
+        page.wait_for_timeout(1_200)
         print("task navigation hovered", flush=True)
-        page.wait_for_timeout(900)
         task_state = page.evaluate(
             """selector => {
               const navFxCount = document.querySelectorAll('.floating-nav .sylva-liquid-fx').length;
               const stage = document.querySelector(selector)?.closest('.sylva-liquid-stage');
               const canvas = stage.querySelector('canvas');
-              const plate = stage.querySelector('.sylva-liquid-plate');
-              const plateOpacity = plate ? getComputedStyle(plate).opacity : null;
-              const plateShadow = plate ? getComputedStyle(plate).boxShadow : null;
-              const activeStage = document.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav');
-              const activeCanvas = activeStage ? activeStage.querySelector('canvas') : null;
               return {
-                hot: stage.classList.contains('hot'),
                 fallback: stage.classList.contains('sylva-liquid-fallback'),
                 hasCanvas: Boolean(canvas),
-                plateOpacity,
-                plateShadow,
                 navFxCount,
-                activeHasCanvas: Boolean(activeCanvas),
+                contextCreates: window.__navigationWebGLContextCreates,
+                shaderCompiles: window.__navigationShaderCompiles,
+                canvasTargets: window.__navigationCanvasTargets,
               };
             }""",
             task_selector,
         )
-        expect(not task_state["hasCanvas"], "非当前页面按钮悬停时不应重复创建液态金属画布")
-        expect(task_state["plateOpacity"] == "1", "待办与作业悬停时缺少轻量液态悬停反馈")
-        expect("0px 0px 0px 1px" in task_state["plateShadow"], "待办与作业悬停时缺少清晰边缘高光")
-        expect(task_state["activeHasCanvas"], "当前页面按钮应保留完整液态金属画布")
+        expect(task_state["hasCanvas"], "待办与作业悬停时共享液态画布没有切换到当前目标")
+        expect(not task_state["fallback"], "待办与作业悬停时液态金属渲染器降级")
         expect(task_state["navFxCount"] == 1, f"悬停时导航内应保持唯一液态画布，实际为 {task_state['navFxCount']}")
-        hovered_nav = rect(page, ".floating-nav")
-        task_label = rect(page, f'{task_selector} .floating-nav-label')
-        expect(hovered_nav["width"] > compact_nav_width + 200, "指针悬停后导航没有展开")
-        expect(task_label["width"] > 40, "指针悬停后没有显示待办与作业的详细名称")
+        expect(task_state["contextCreates"] == initial_nav_contexts, "悬停时不应创建新的导航 WebGL 上下文")
+        expect(task_state["shaderCompiles"] == initial_nav_shader_compiles, "悬停时不应重复编译导航着色器")
+        expect(set(task_state["canvasTargets"]) == {"待办与作业"}, f"静止指针展开期间切换了悬停目标：{task_state['canvasTargets']}")
+        for label in ("我的课程", "校园社区", "待办与作业", "AI 校园助手", "通知整理", "学习陪伴", "个人中心"):
+            page.mouse.move(20, 180)
+            page.wait_for_timeout(500)
+            item_selector = f'.floating-nav-button[aria-label="{label}"]'
+            item_box = rect(page, item_selector)
+            page.mouse.move(item_box["x"] + item_box["width"] / 2, item_box["y"] + item_box["height"] / 2)
+            page.wait_for_timeout(450)
+            item_state = page.evaluate(
+                """selector => {
+                  return {
+                    navFxCount: document.querySelectorAll('.floating-nav .sylva-liquid-fx').length,
+                    contextCreates: window.__navigationWebGLContextCreates,
+                    shaderCompiles: window.__navigationShaderCompiles,
+                  };
+                }""",
+                item_selector,
+            )
+            expect(item_state["navFxCount"] == 1, f"{label} 悬停时导航内画布数量异常：{item_state['navFxCount']}")
+            expect(item_state["contextCreates"] == initial_nav_contexts, f"{label} 悬停时重复创建了 WebGL 上下文")
+            expect(item_state["shaderCompiles"] == initial_nav_shader_compiles, f"{label} 悬停时重复编译了着色器")
+
         page.mouse.move(20, 180)
         page.wait_for_timeout(500)
         released_state = page.evaluate(
             """selector => ({
-              hasCanvas: Boolean(document.querySelector(selector)?.closest('.sylva-liquid-stage')?.querySelector('canvas')),
+              activeHasCanvas: Boolean(document.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav')?.querySelector('canvas')),
               navFxCount: document.querySelectorAll('.floating-nav .sylva-liquid-fx').length,
+              contextCreates: window.__navigationWebGLContextCreates,
+              shaderCompiles: window.__navigationShaderCompiles,
             })""",
             task_selector,
         )
-        expect(not released_state["hasCanvas"], "离开非活动导航项后应保持无重复液态画布")
+        expect(released_state["activeHasCanvas"], "离开导航后共享液态画布应回到当前页面按钮")
         expect(released_state["navFxCount"] == 1, f"离开悬停后导航内应保持 1 个液态画布，实际为 {released_state['navFxCount']}")
+        expect(released_state["contextCreates"] == initial_nav_contexts, "离开导航后不应创建新的 WebGL 上下文")
+        expect(released_state["shaderCompiles"] == initial_nav_shader_compiles, "离开导航后不应重复编译着色器")
         expect(not shader_errors, f"液态金属着色器报错：{shader_errors}")
 
         page.goto(f"{BASE_URL}/tasks", wait_until="domcontentloaded", timeout=30_000)
