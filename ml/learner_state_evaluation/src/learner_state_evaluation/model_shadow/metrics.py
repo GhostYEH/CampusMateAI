@@ -207,9 +207,10 @@ def _performance(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             "average_input_tokens": _mean(input_tokens), "average_output_tokens": _mean(output_tokens),
             "malformed_output_rate": _ratio(sum(p.get("error_code") == "MODEL_SCHEMA_INVALID" for p in predictions), len(predictions)),
             "fallback_rate": _ratio(sum(bool(p.get("used_fallback")) for p in predictions), len(predictions)),
-            "peak_memory_mb": max(memory) if memory else None,
+            "peak_memory_mb": max(memory) if memory else None, "model_file_size_mb": None,
             "device_type": next(iter({p.get("device_type") for p in predictions if p.get("device_type")}), None),
-            "estimated_cost_per_1000_requests": _mean([float(p["estimated_cost_per_1000_requests"]) for p in predictions if isinstance(p.get("estimated_cost_per_1000_requests"), (int, float))])}
+            "estimated_cost_per_1000_requests": _mean([float(p["estimated_cost_per_1000_requests"]) for p in predictions if isinstance(p.get("estimated_cost_per_1000_requests"), (int, float))]),
+            "throughput_concurrency_1": None, "throughput_concurrency_2": None, "throughput_concurrency_4": None}
 
 
 def evaluate_shadow_predictions(rows: list[dict[str, Any]], predictions: list[dict[str, Any]]) -> dict[str, Any]:
