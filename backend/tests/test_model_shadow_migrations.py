@@ -10,6 +10,7 @@ from app.models.model_capability import ModelCapabilityRequest
 from app.services.model_capability_registry import ModelCapabilityRegistry
 from app.services.model_shadow_runner import ModelShadowRunner
 from app.repositories.model_shadow_repository import ShadowIdempotencyConflict
+from app.database.sqlite_db import Database
 from test_phase4_learning_plans import _setup
 
 
@@ -82,3 +83,21 @@ def test_user_shadow_rows_cascade_without_deleting_global_offline_metrics() -> N
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         assert conn.execute("SELECT COUNT(*) FROM model_shadow_runs WHERE user_id=?", (user_id,)).fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM model_shadow_metric_records WHERE metrics_digest=?", (digest,)).fetchone()[0] == 1
+
+
+def test_database_without_phase5_tables_is_upgraded_idempotently(tmp_path) -> None:
+    path = tmp_path / "legacy.db"
+    legacy = Database(path)
+    with legacy.transaction() as conn:
+        conn.executescript("""
+            DROP TABLE model_shadow_metric_records;
+            DROP TABLE model_shadow_results;
+            DROP TABLE model_shadow_runs;
+            DROP TABLE model_promotion_decisions;
+        """)
+    legacy.dispose()
+    upgraded = Database(path)
+    with upgraded.query() as conn:
+        names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    upgraded.dispose()
+    assert {"model_shadow_runs", "model_shadow_results", "model_shadow_metric_records", "model_promotion_decisions"}.issubset(names)
