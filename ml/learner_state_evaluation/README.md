@@ -31,3 +31,12 @@ python -m learner_state_evaluation.cli evaluate `
 Annotation rows contain only stable codes, boolean labels, bounded evidence counts, quality/decision enums, and explicit privacy metadata. Prediction rows contain only `sample_id`, boolean `predicted_label`, positive-class `score`, `model_version`, and `prediction_source`. Unknown fields are rejected so names, raw code, answers, compiler output, credentials, and free text cannot silently enter this dataset.
 
 Reports include TP/FP/TN/FN, Precision, Recall, F1, ROC AUC when both classes exist, Brier score, ECE, per-hypothesis metrics, and unsupported-assertion rate. Output has no wall-clock timestamp, so identical inputs produce identical bytes.
+
+The same evaluator also contains a separate, fully synthetic planning safety benchmark (120 cases by default). Reproduce it offline with:
+
+```powershell
+python -m learner_state_evaluation.cli evaluate-planning `
+  --output path/to/planning-evaluation.json
+```
+
+It reports priority agreement, deadline/evidence coverage, invalid recommendation rate, stale-plan detection, deterministic fallback, idempotent execution, unauthorized-action, and schema-validity metrics. It contains no learner identifiers, task text, event payloads, credentials, or raw course material.

@@ -8,6 +8,7 @@ from typing import Any
 
 from .contract import load_annotations, load_manifest, load_predictions
 from .metrics import evaluate_predictions
+from .planning import planning_evaluation_report
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
@@ -87,6 +88,10 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--output", type=Path, required=True)
     evaluate.add_argument("--predictions", type=Path, required=True)
     evaluate.add_argument("--calibration-bins", type=int, default=10)
+    planning = subparsers.add_parser("evaluate-planning")
+    planning.add_argument("--output", type=Path, required=True)
+    planning.add_argument("--count", type=int, default=120)
+    planning.add_argument("--seed", type=int, default=20260911)
     return parser
 
 
@@ -94,6 +99,8 @@ def main() -> None:
     args = _parser().parse_args()
     if args.command == "validate-dataset":
         validate_dataset_files(args.annotations, args.manifest, args.output)
+    elif args.command == "evaluate-planning":
+        _write_json(args.output, planning_evaluation_report(count=args.count, seed=args.seed))
     else:
         evaluate_files(
             args.annotations,
