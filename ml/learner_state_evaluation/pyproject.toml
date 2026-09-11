@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campusmate-learner-state-evaluation"
+version = "0.1.0"
+description = "Reproducible offline evaluation contracts for learner-state models."
+requires-python = ">=3.11,<3.14"
+
+[project.scripts]
+learner-state-eval = "learner_state_evaluation.cli:main"
+learner-state-generate-synthetic = "learner_state_evaluation.dataset:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
