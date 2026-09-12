@@ -30,7 +30,11 @@ export enum AppRoute {
   EXAM_FORM = 'exam_form',
   NOTIFICATION_DETAIL = 'notification_detail',
   EDU_SCHEDULE_DETAIL = 'edu_schedule_detail',
-  EXPRESSION_CONTRIBUTION = 'expression_contribution'
+  EXPRESSION_CONTRIBUTION = 'expression_contribution',
+  FINAL_REVIEW = 'final_review',
+  FINAL_REVIEW_PLAN = 'final_review_plan',
+  COURSE_RESEARCH = 'course_research',
+  NOTICE_WORKFLOW = 'notice_workflow'
 }
 
 export class AppRouteRegistry {
@@ -87,6 +91,10 @@ export class AppRouteRegistry {
       case AppRoute.NOTIFICATION_DETAIL:
       case AppRoute.EDU_SCHEDULE_DETAIL:
       case AppRoute.EXPRESSION_CONTRIBUTION:
+      case AppRoute.FINAL_REVIEW:
+      case AppRoute.FINAL_REVIEW_PLAN:
+      case AppRoute.COURSE_RESEARCH:
+      case AppRoute.NOTICE_WORKFLOW:
         return true;
       default:
         return false;
@@ -144,6 +152,10 @@ export class AppRouteRegistry {
       case AppRoute.NOTIFICATION_DETAIL: return '通知详情';
       case AppRoute.EDU_SCHEDULE_DETAIL: return '课程详情';
       case AppRoute.EXPRESSION_CONTRIBUTION: return '表情样本共建';
+      case AppRoute.FINAL_REVIEW: return '期末复习';
+      case AppRoute.FINAL_REVIEW_PLAN: return '复习计划';
+      case AppRoute.COURSE_RESEARCH: return '课程研究';
+      case AppRoute.NOTICE_WORKFLOW: return '通知事务';
       default: return '校园服务';
     }
   }
@@ -176,6 +188,12 @@ export class AppRouteRegistry {
       case AppRoute.EDU_SCHEDULE_DETAIL:
         return AppRoute.EDU_SCHEDULE;
       case AppRoute.EXPRESSION_CONTRIBUTION:
+        return 'profile';
+      case AppRoute.FINAL_REVIEW_PLAN:
+        return AppRoute.FINAL_REVIEW;
+      case AppRoute.FINAL_REVIEW:
+      case AppRoute.COURSE_RESEARCH:
+      case AppRoute.NOTICE_WORKFLOW:
         return 'profile';
       default:
         return '';

@@ -16,6 +16,7 @@ class EmptyRequest {
 export interface SseEvent {
   event: string;
   data: string;
+  id?: string;
 }
 
 function apiLog(message: string): void {
@@ -144,6 +145,28 @@ export class ApiClient implements ChaoxingApiClient {
     return this.executeRequest<T>(method, path, body, true);
   }
 
+  async requestWithHeaders<T>(
+    method: http.RequestMethod,
+    path: string,
+    extraHeaders: Record<string, string>,
+    body?: object
+  ): Promise<T> {
+    const result: T | undefined = await this.executeRequest<T>(method, path, body, true, extraHeaders);
+    if (result === undefined) {
+      throw new Error('服务器返回空数据');
+    }
+    return result;
+  }
+
+  async requestVoidWithHeaders(
+    method: http.RequestMethod,
+    path: string,
+    extraHeaders: Record<string, string>,
+    body?: object
+  ): Promise<void> {
+    await this.executeRequest<object>(method, path, body, true, extraHeaders);
+  }
+
   async requestVoid(method: http.RequestMethod, path: string, body?: object): Promise<void> {
     await this.executeRequest<object>(method, path, body, true);
   }
@@ -165,14 +188,21 @@ export class ApiClient implements ChaoxingApiClient {
     }
   }
 
-  private async executeRequest<T>(method: http.RequestMethod, path: string, body: object | undefined, allowRefresh: boolean): Promise<T | undefined> {
+  private async executeRequest<T>(method: http.RequestMethod, path: string, body: object | undefined, allowRefresh: boolean, extraHeaders?: Record<string, string>): Promise<T | undefined> {
     const client = http.createHttp();
     const url: string = this.normalizedUrl(path);
     apiLog(`${http.RequestMethod[method]} ${url}`);
     try {
+      const headers: Record<string, string> = this.buildHeaders();
+      if (extraHeaders !== undefined) {
+        const keys: string[] = Object.keys(extraHeaders);
+        for (let i: number = 0; i < keys.length; i++) {
+          headers[keys[i]] = extraHeaders[keys[i]];
+        }
+      }
       const response = await client.request(url, {
         method: method,
-        header: this.buildHeaders(),
+        header: headers,
         extraData: body ? JSON.stringify(body) : undefined,
         connectTimeout: 10000,
         readTimeout: 15000
@@ -180,7 +210,7 @@ export class ApiClient implements ChaoxingApiClient {
       if (response.responseCode === 401 && allowRefresh && this.auth !== null) {
         const refreshed: boolean = await ApiClient.refreshCoordinator.run(() => this.refreshAccessToken());
         if (refreshed) {
-          return this.executeRequest<T>(method, path, body, false);
+          return this.executeRequest<T>(method, path, body, false, extraHeaders);
         }
         await this.auth.onSessionExpired();
         throw this.createHttpError(401);
@@ -416,6 +446,106 @@ export class ApiClient implements ChaoxingApiClient {
     } catch (e) {
       if (e instanceof Error) throw e;
       throw new Error('AI 流式连接失败，请检查网络后重试');
+    } finally {
+      client.destroy();
+    }
+  }
+
+  /**
+   * Agent Runtime SSE 订阅。发送 Bearer（仅 header，禁止 token query）与
+   * Last-Event-ID 以支持断线恢复；解析 SSE id/event/data 行；401 时刷新
+   * token 后重试一次。回调接收带 id 的事件，由调用方按 sequence 去重。
+   */
+  async streamAgentEvents(
+    path: string,
+    lastEventId: string,
+    onEvent: (event: SseEvent) => void,
+    allowRefresh: boolean = true
+  ): Promise<void> {
+    const client = http.createHttp();
+    const url = this.normalizedUrl(path);
+    let buffer = '';
+    let currentId = '';
+    let currentEvent = '';
+    let dataLines: string[] = [];
+    let completed = false;
+    const decoder = new util.TextDecoder();
+    let resolveStream: (() => void) | undefined;
+    let rejectStream: ((error: Error) => void) | undefined;
+
+    const dispatch = (): void => {
+      if (dataLines.length > 0) {
+        onEvent({
+          event: currentEvent || 'message',
+          data: dataLines.join('\n'),
+          id: currentId.length > 0 ? currentId : undefined
+        });
+      }
+      currentId = '';
+      currentEvent = '';
+      dataLines = [];
+    };
+    const consumeLine = (raw: string): void => {
+      const line = raw.endsWith('\r') ? raw.substring(0, raw.length - 1) : raw;
+      if (line.length === 0) {
+        dispatch();
+      } else if (line.startsWith('id:')) {
+        currentId = line.substring(3).replace(/^ /, '');
+      } else if (line.startsWith('event:')) {
+        currentEvent = line.substring(6).replace(/^ /, '');
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.substring(5).replace(/^ /, ''));
+      }
+    };
+    const finish = (): void => {
+      if (completed) return;
+      completed = true;
+      if (buffer.length > 0) consumeLine(buffer);
+      dispatch();
+      resolveStream?.();
+    };
+
+    try {
+      const headers: Record<string, string> = this.buildHeaders(true);
+      if (lastEventId.length > 0) headers['Last-Event-ID'] = lastEventId;
+      const completion = new Promise<void>((resolve, reject) => {
+        resolveStream = resolve;
+        rejectStream = reject;
+      });
+      client.on('dataReceive', (chunk: ArrayBuffer) => {
+        buffer += decoder.decode(new Uint8Array(chunk));
+        let newline: number = buffer.indexOf('\n');
+        while (newline >= 0) {
+          consumeLine(buffer.substring(0, newline));
+          buffer = buffer.substring(newline + 1);
+          newline = buffer.indexOf('\n');
+        }
+      });
+      client.on('dataEnd', () => finish());
+      apiLog(`SSE GET ${url}`);
+      const statusCode = await client.requestInStream(url, {
+        method: http.RequestMethod.GET,
+        header: headers,
+        connectTimeout: 10000,
+        readTimeout: 0
+      });
+      if (statusCode === 401 && allowRefresh && this.auth !== null) {
+        client.destroy();
+        const refreshed: boolean = await ApiClient.refreshCoordinator.run(() => this.refreshAccessToken());
+        if (refreshed) {
+          return this.streamAgentEvents(path, lastEventId, onEvent, false);
+        }
+        await this.auth.onSessionExpired();
+        throw this.createHttpError(401);
+      }
+      if (statusCode < 200 || statusCode >= 300) {
+        completed = true;
+        throw this.createHttpError(statusCode);
+      }
+      await completion;
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      throw new Error('Agent 事件流连接失败，请检查网络后重试');
     } finally {
       client.destroy();
     }

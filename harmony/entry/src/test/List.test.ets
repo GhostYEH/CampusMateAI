@@ -39,6 +39,11 @@ import focusRealtimeVoiceRepositoryTest from './ets/focus/FocusRealtimeVoiceRepo
 import focusHallWallpaperTest from './ets/focus/FocusHallWallpaper.test';
 import hitokotoModelsTest from './ets/data/HitokotoModels.test';
 import bingDailyWallpaperModelsTest from './ets/data/BingDailyWallpaperModels.test';
+import agentRuntimeModelsTest from './ets/agent/AgentRuntimeModels.test';
+import agentEventReducerTest from './ets/agent/AgentEventReducer.test';
+import finalReviewStateTest from './ets/finalreview/FinalReviewState.test';
+import courseResearchStateTest from './ets/research/CourseResearchState.test';
+import noticeWorkflowStateTest from './ets/notification/NoticeWorkflowState.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -82,4 +87,9 @@ export default function testsuite(): void {
   focusHallWallpaperTest();
   hitokotoModelsTest();
   bingDailyWallpaperModelsTest();
+  agentRuntimeModelsTest();
+  agentEventReducerTest();
+  finalReviewStateTest();
+  courseResearchStateTest();
+  noticeWorkflowStateTest();
 }

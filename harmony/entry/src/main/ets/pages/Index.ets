@@ -83,6 +83,11 @@ import { AmbientMotionField } from '../ui/AmbientMotionField';
 import { HitokotoClient } from '../data/HitokotoClient';
 import { hitokotoDisplayText } from '../data/HitokotoModels';
 import { BingDailyWallpaperClient } from '../data/BingDailyWallpaperClient';
+import { AgentRuntimeRepository } from '../repository/AgentRuntimeRepository';
+import { FinalReviewPage } from '../features/finalreview/FinalReviewPage';
+import { FinalReviewPlanPage } from '../features/finalreview/FinalReviewPlanPage';
+import { CourseResearchPage } from '../features/research/CourseResearchPage';
+import { NoticeWorkflowPage } from '../features/notifications/NoticeWorkflowPage';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
@@ -207,6 +212,8 @@ struct Index {
   @State focusPlanError: string = '';
   @State focusVoiceState: FocusVoiceState = FocusVoiceEventReducer.initial();
   @State notificationCapability: NotificationCaptureCapability = NotificationCaptureCapability.ordinaryPhoneBuild();
+  @State agentCampaignId: string = '';
+  private agentRuntimeRepository: AgentRuntimeRepository | null = null;
 
   async aboutToAppear(): Promise<void> {
     this.pageVisible = true;
@@ -418,6 +425,30 @@ struct Index {
       onSessionExpired: () => this.handleSessionExpired()
     };
     return new ApiClient(API_BASE_URL, () => this.appState.getAccessToken(), auth);
+  }
+
+  createAgentRuntimeRepository(): AgentRuntimeRepository {
+    if (this.agentRuntimeRepository === null) {
+      this.agentRuntimeRepository = new AgentRuntimeRepository(this.createApiClient());
+    }
+    return this.agentRuntimeRepository;
+  }
+
+  openFinalReview(): void {
+    this.pushRoute(AppRoute.FINAL_REVIEW);
+  }
+
+  openFinalReviewPlan(campaignId: string): void {
+    this.agentCampaignId = campaignId;
+    this.pushRoute(AppRoute.FINAL_REVIEW_PLAN);
+  }
+
+  openCourseResearch(): void {
+    this.pushRoute(AppRoute.COURSE_RESEARCH);
+  }
+
+  openNoticeWorkflow(): void {
+    this.pushRoute(AppRoute.NOTICE_WORKFLOW);
   }
 
   async handleSessionExpired(): Promise<void> {
@@ -912,6 +943,7 @@ struct Index {
     this.notificationDetailId = '';
     this.notificationSettingsSource = null;
     this.scheduleDetailItem = undefined;
+    this.agentCampaignId = '';
   }
 
   async refreshSecondaryData(target: string): Promise<void> {
@@ -1466,18 +1498,39 @@ struct Index {
   }
 
   @Builder ProfileTab() {
-    ProfilePage({
-      darkMode: this.darkMode,
-      name: this.displayName,
-      detail: this.profileDetail,
-      onNavigate: (target: string) => {
-        if (target === 'counselor') {
-          this.selectTab(3);
-        } else {
-          this.navigateTo(target);
+    Column() {
+      ProfilePage({
+        darkMode: this.darkMode,
+        name: this.displayName,
+        detail: this.profileDetail,
+        onNavigate: (target: string) => {
+          if (target === 'counselor') {
+            this.selectTab(3);
+          } else {
+            this.navigateTo(target);
+          }
         }
-      }
-    })
+      }).layoutWeight(1)
+      this.AgentEntryBar()
+    }.width('100%').height('100%')
+  }
+
+  @Builder AgentEntryBar() {
+    Row({ space: 10 }) {
+      Column({ space: 3 }) {
+        SymbolGlyph($r('sys.symbol.book_closed')).fontSize(18).fontColor([this.primaryColor()])
+        Text('期末复习').fontSize(10).fontColor(this.textColor())
+      }.layoutWeight(1).onClick(() => this.openFinalReview())
+      Column({ space: 3 }) {
+        SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(18).fontColor([this.primaryColor()])
+        Text('课程研究').fontSize(10).fontColor(this.textColor())
+      }.layoutWeight(1).onClick(() => this.openCourseResearch())
+      Column({ space: 3 }) {
+        SymbolGlyph($r('sys.symbol.bell_badge')).fontSize(18).fontColor([this.primaryColor()])
+        Text('通知事务').fontSize(10).fontColor(this.textColor())
+      }.layoutWeight(1).onClick(() => this.openNoticeWorkflow())
+    }.width('100%').padding({ top: 10, bottom: 10, left: 12, right: 12 })
+    .backgroundColor(this.surface()).border({ width: { top: 1 }, color: this.lineColor() })
   }
 
   courseDetailItem(): CourseItem | undefined {
@@ -1535,6 +1588,14 @@ struct Index {
       SettingsPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, backendOnline: this.backendOnline, onBack: () => this.popRoute(), onThemeChange: (value: boolean) => { if (value !== this.darkMode) this.toggleTheme(); }, onMotionChange: async (value: boolean) => { await this.appState.setReduceMotion(value); this.reduceMotion = value; }, onNavigate: (target: string) => this.navigateTo(target), onSignOut: () => this.showLogoutDialog = true })
     } else if (route === AppRoute.EXPRESSION_CONTRIBUTION) {
       ExpressionContributionPage({ authToken: this.appState.getAccessToken(), apiBaseUrl: API_BASE_URL })
+    } else if (route === AppRoute.FINAL_REVIEW) {
+      FinalReviewPage({ exams: this.exams, darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute(), onOpenPlan: (campaignId: string) => this.openFinalReviewPlan(campaignId) })
+    } else if (route === AppRoute.FINAL_REVIEW_PLAN) {
+      FinalReviewPlanPage({ campaignId: this.agentCampaignId, darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
+    } else if (route === AppRoute.COURSE_RESEARCH) {
+      CourseResearchPage({ courses: this.courses, darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
+    } else if (route === AppRoute.NOTICE_WORKFLOW) {
+      NoticeWorkflowPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, deviceNotificationCapabilityLabel: this.notificationCapability.detail, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
     } else if (route === AppRoute.QR_SCANNER) {
       QrScannerPage({
         darkMode: this.darkMode,

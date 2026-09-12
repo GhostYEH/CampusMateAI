@@ -33,7 +33,11 @@ export default function appRouteTest(): void {
         AppRoute.EXAM_DETAIL,
         AppRoute.EXAM_FORM,
         AppRoute.NOTIFICATION_DETAIL,
-        AppRoute.EDU_SCHEDULE_DETAIL
+        AppRoute.EDU_SCHEDULE_DETAIL,
+        AppRoute.FINAL_REVIEW,
+        AppRoute.FINAL_REVIEW_PLAN,
+        AppRoute.COURSE_RESEARCH,
+        AppRoute.NOTICE_WORKFLOW
       ];
 
       for (let index: number = 0; index < routes.length; index++) {
@@ -67,6 +71,10 @@ export default function appRouteTest(): void {
       expect(AppRouteRegistry.parent(AppRoute.NOTIFICATION_DETAIL)).assertEqual(AppRoute.NOTIFICATIONS);
       expect(AppRouteRegistry.parent(AppRoute.EDU_SCHEDULE_DETAIL)).assertEqual(AppRoute.EDU_SCHEDULE);
       expect(AppRouteRegistry.parent(AppRoute.FOCUS_PLAN)).assertEqual(AppRoute.FOCUS);
+      expect(AppRouteRegistry.parent(AppRoute.FINAL_REVIEW_PLAN)).assertEqual(AppRoute.FINAL_REVIEW);
+      expect(AppRouteRegistry.parent(AppRoute.FINAL_REVIEW)).assertEqual('profile');
+      expect(AppRouteRegistry.parent(AppRoute.COURSE_RESEARCH)).assertEqual('profile');
+      expect(AppRouteRegistry.parent(AppRoute.NOTICE_WORKFLOW)).assertEqual('profile');
       expect(AppRouteRegistry.parent(AppRoute.EXAMS)).assertEqual('');
     });
 
