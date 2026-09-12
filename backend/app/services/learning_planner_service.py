@@ -448,10 +448,10 @@ class LearningPlannerService:
         self.repository.link_superseded(old_plan_id=plan_id, new_plan_id=result.plan_id, user_id=user_id, replan_key=key)
         return self.repository.get_plan(result.plan_id, user_id=user_id)  # type: ignore[return-value]
 
-    def record_feedback(self, *, user_id: str, plan_id: str, feedback: str) -> None:
+    def record_feedback(self, *, user_id: str, plan_id: str, feedback: str) -> str:
         if self.repository.get_plan(plan_id, user_id=user_id) is None:
             raise NotFoundError()
-        self.repository.add_feedback(plan_id=plan_id, user_id=user_id, feedback=feedback)
+        return self.repository.add_feedback(plan_id=plan_id, user_id=user_id, feedback=feedback)
 
     def evaluate(self, *, user_id: str, plan_id: str) -> dict[str, Any]:
         plan = self.repository.get_plan(plan_id, user_id=user_id)

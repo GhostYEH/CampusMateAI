@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -53,6 +55,8 @@ from ...schemas.edu import (
     EduSystemOut,
     EduSystemUpsert,
 )
+
+logger = logging.getLogger(__name__)
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user, require_role
 
@@ -296,6 +300,60 @@ def _require_binding_or_failed(user: UserRow, container: ServiceContainer):
     return container.edu_connector.get_binding(user.id)
 
 
+def _project_sync_events_safely(
+    *, user_id: str, binding, result: EduSyncResult, container: ServiceContainer
+) -> None:
+    """Project only persisted, structured sync facts; never fail the sync response."""
+    if result.status != "success" or not result.persisted or not result.sync_batch_id:
+        return
+    observed_at = datetime.now(timezone.utc)
+    try:
+        if result.sync_type == "schedule":
+            container.learner_event_service.record_edu_schedule_synced(
+                user_id=user_id,
+                binding_id=binding.id,
+                semester=result.semester,
+                scheduled_item_count=result.items_count,
+                observed_at=observed_at,
+                sync_batch_id=result.sync_batch_id,
+            )
+        elif result.sync_type == "grade":
+            for item in container.edu_connector.list_grade_items(
+                user_id, semester=result.semester, include_stale=False
+            ):
+                container.learner_event_service.record_edu_grade_observed(
+                    user_id=user_id,
+                    binding_id=binding.id,
+                    semester=item.semester,
+                    course_code=item.course_code,
+                    credit_value=item.credit,
+                    score=item.score,
+                    assessment_category=item.category,
+                    grade_id=item.id,
+                    observed_at=observed_at,
+                )
+        elif result.sync_type == "exam":
+            for item in container.edu_connector.list_exam_items(
+                user_id, semester=result.semester, include_stale=False
+            ):
+                container.learner_event_service.record_edu_exam_discovered(
+                    user_id=user_id,
+                    binding_id=binding.id,
+                    semester=item.semester,
+                    course_code=item.course_code,
+                    exam_id=item.id,
+                    starts_at=item.starts_at,
+                    observed_at=observed_at,
+                )
+    except Exception as exc:  # event projection is deliberately best-effort
+        logger.warning(
+            "learner_event_projection_failed user_id=%s action=%s exception_type=%s",
+            user_id,
+            result.sync_type,
+            type(exc).__name__,
+        )
+
+
 @router.post("/sync/profile", response_model=EduSyncResult)
 async def sync_profile(
     user: UserRow = Depends(current_user),
@@ -312,9 +370,12 @@ async def sync_schedule(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
-    if _require_binding_or_failed(user, container) is None:
+    binding = _require_binding_or_failed(user, container)
+    if binding is None:
         return EduSyncResult(sync_type="schedule", status="failed", error_message="未绑定教务账号")
-    return await container.edu_connector.sync_schedule(user.id, semester=semester)
+    result = await container.edu_connector.sync_schedule(user.id, semester=semester)
+    _project_sync_events_safely(user_id=user.id, binding=binding, result=result, container=container)
+    return result
 
 
 @router.post("/sync/grade", response_model=EduSyncResult)
@@ -323,9 +384,12 @@ async def sync_grade(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
-    if _require_binding_or_failed(user, container) is None:
+    binding = _require_binding_or_failed(user, container)
+    if binding is None:
         return EduSyncResult(sync_type="grade", status="failed", error_message="未绑定教务账号")
-    return await container.edu_connector.sync_grade(user.id, semester=semester)
+    result = await container.edu_connector.sync_grade(user.id, semester=semester)
+    _project_sync_events_safely(user_id=user.id, binding=binding, result=result, container=container)
+    return result
 
 
 @router.post("/sync/exam", response_model=EduSyncResult)
@@ -334,9 +398,12 @@ async def sync_exam(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
-    if _require_binding_or_failed(user, container) is None:
+    binding = _require_binding_or_failed(user, container)
+    if binding is None:
         return EduSyncResult(sync_type="exam", status="failed", error_message="未绑定教务账号")
-    return await container.edu_connector.sync_exam(user.id, semester=semester)
+    result = await container.edu_connector.sync_exam(user.id, semester=semester)
+    _project_sync_events_safely(user_id=user.id, binding=binding, result=result, container=container)
+    return result
 
 
 @router.get("/sync/records", response_model=list[EduSyncRecordOut])

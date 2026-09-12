@@ -585,7 +585,7 @@ class LearnerEventService:
             subject_id=report_id,
             outcome="completed",
             evidence_reference=EvidenceReference(
-                kind="row", table="learner_self_reports", row_id=report_id
+                kind="row", table="study_sessions", row_id=report_id
             ),
             data_quality=data_quality,
             consent_scope="core_learning_record",
@@ -619,7 +619,7 @@ class LearnerEventService:
             subject_id=feedback_id,
             outcome="observed_completed",
             evidence_reference=EvidenceReference(
-                kind="row", table="ai_learning_feedback", row_id=feedback_id
+                kind="row", table="learning_plan_feedback", row_id=feedback_id
             ),
             data_quality=data_quality,
             consent_scope="core_learning_record",

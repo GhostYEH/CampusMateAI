@@ -323,12 +323,18 @@ class LearningPlanRepository:
             self.update_status(plan_id=plan_id, user_id=user_id, status="UNDONE", conn=conn)
         return False
 
-    def add_feedback(self, *, plan_id: str, user_id: str, feedback: str) -> None:
+    def add_feedback(self, *, plan_id: str, user_id: str, feedback: str) -> str:
+        feedback_id = _id("plfb")
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO learning_plan_feedback(feedback_id,plan_id,user_id,feedback,created_at) VALUES (?,?,?,?,?)",
-                (_id("plfb"), plan_id, user_id, feedback, _now()),
+                (feedback_id, plan_id, user_id, feedback, _now()),
             )
+            row = conn.execute(
+                "SELECT feedback_id FROM learning_plan_feedback WHERE plan_id=? AND user_id=? AND feedback=?",
+                (plan_id, user_id, feedback),
+            ).fetchone()
+        return row["feedback_id"]
 
     def get_latest_evaluation(self, *, plan_id: str, user_id: str, evaluator_version: str, input_digest: str):
         with self._db.query() as conn:

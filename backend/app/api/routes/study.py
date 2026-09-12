@@ -351,17 +351,32 @@ def finish_session(
             else None
         ),
     )
-    try:
-        event_service.record_study_session_finished(session)
-    except Exception as exc:
-        logger.warning(
-            "learner_event_append_failed action={} user_id={} subject_type={} subject_id={} exception_type={}",
-            "study_session_finished",
-            user.id,
-            "study_session",
-            session.id,
-            type(exc).__name__,
+    event_actions = [("study_session_finished", lambda: event_service.record_study_session_finished(session))]
+    if session.self_report is not None:
+        event_actions.append(
+            (
+                "self_report_submitted",
+                lambda: event_service.record_self_report_submitted(
+                    user_id=user.id,
+                    report_id=session.id,
+                    report_kind="study_session_reflection",
+                    occurred_at=datetime.fromisoformat(session.ended_at.replace("Z", "+00:00")),
+                    duration_minutes=max(0, session.duration_seconds // 60),
+                ),
+            )
         )
+    for action, append_event in event_actions:
+        try:
+            append_event()
+        except Exception as exc:
+            logger.warning(
+                "learner_event_append_failed action={} user_id={} subject_type={} subject_id={} exception_type={}",
+                action,
+                user.id,
+                "study_session",
+                session.id,
+                type(exc).__name__,
+            )
     breaks = repo.list_breaks(session_id, user_id=user.id)
     return _session_to_out(session, breaks=breaks)
 
