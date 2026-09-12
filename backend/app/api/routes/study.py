@@ -22,7 +22,7 @@ API:
 """
 from __future__ import annotations
 
-from datetime import date as date_type, timedelta
+from datetime import date as date_type, datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -163,7 +163,7 @@ def _checkin_to_out(row) -> StudyCheckinOut:
 
 def _checkin_stats(rows) -> tuple[int, int, int, bool]:
     dates = {date_type.fromisoformat(row.date) for row in rows}
-    today = date_type.today()
+    today = datetime.now(timezone.utc).date()
     today_checked = today in dates
     cursor = today if today_checked else today - timedelta(days=1)
     streak = 0

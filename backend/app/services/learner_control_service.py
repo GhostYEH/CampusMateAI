@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from ..core.exceptions import (
     LearnerCorrectionNotFound,
+    LearnerCorrectionSnapshotMismatch,
     LearnerModelDataNotFound,
     LearnerSourceNotSupported,
     NotFoundError,
@@ -59,6 +60,7 @@ class LearnerControlService:
 
         纠正不能修改历史 Snapshot，只作为新的可审计输入。
         验证目标快照存在且属于当前用户。
+        验证请求字段与目标快照完全一致，不一致返回稳定 409，不泄露真实字段。
         """
         snapshot = self._state_repo.get_snapshot(
             user_id=user_id,
@@ -68,6 +70,12 @@ class LearnerControlService:
         )
         if snapshot is None:
             raise NotFoundError()
+        if (
+            snapshot.scope_type != scope_type
+            or snapshot.scope_id != scope_id
+            or snapshot.state_type != state_type
+        ):
+            raise LearnerCorrectionSnapshotMismatch()
         return self._repo.create_correction(
             user_id=user_id,
             projection_kind=projection_kind,
@@ -131,26 +139,20 @@ class LearnerControlService:
         scope: str,
         idempotency_key: str,
     ) -> DeleteRequestRow:
-        """原子化删除指定范围的学生模型数据。"""
-        before = self._repo.count_learner_model_data(user_id=user_id)
-        method_map = {
-            "STATE_ONLY": self._repo.delete_state_only,
-            "EVENTS_AND_STATE": self._repo.delete_events_and_state,
-            "KNOWLEDGE_ONLY": self._repo.delete_knowledge_only,
-            "PLANS_ONLY": self._repo.delete_plans_only,
-            "MODEL_SHADOW_ONLY": self._repo.delete_model_shadow_only,
-            "ALL_LEARNER_MODEL_DATA": self._repo.delete_all_learner_model_data,
+        """原子化删除指定范围的学生模型数据。
+
+        单事务内完成：幂等检查 + before count + delete + after count + record。
+        中途任一步骤失败，整体回滚。
+        """
+        valid_scopes = {
+            "STATE_ONLY", "EVENTS_AND_STATE", "KNOWLEDGE_ONLY",
+            "PLANS_ONLY", "MODEL_SHADOW_ONLY", "ALL_LEARNER_MODEL_DATA",
         }
-        delete_fn = method_map.get(scope)
-        if delete_fn is None:
+        if scope not in valid_scopes:
             raise NotFoundError()
-        delete_fn(user_id=user_id)
-        after = self._repo.count_learner_model_data(user_id=user_id)
-        return self._repo.record_delete_request(
+        return self._repo.request_deletion_atomic(
             user_id=user_id,
             scope=scope,
-            before_counts=before,
-            after_counts=after,
             idempotency_key=idempotency_key,
         )
 

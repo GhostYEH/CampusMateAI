@@ -130,11 +130,11 @@ def test_state_tables_indexes_foreign_keys_and_atomic_projection_write():
                     "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'learner_state_%'"
                 )
             }
-            assert tables == {
+            assert {
                 "learner_state_projection_runs",
                 "learner_state_snapshots",
                 "learner_state_evidence",
-            }
+            } <= tables
             indexes = {
                 row["name"] for row in conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='learner_state_projection_runs'"

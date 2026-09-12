@@ -246,7 +246,7 @@ def test_knowledge_decay_cache_expires_at_next_discrete_bucket():
     container = _container()
     service = container.knowledge_service
     student, course = _course_and_mapping(container)
-    base = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=2)
+    base = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
     service.record_practice_attempt(
         user_id=student.id,
         attempt=_attempt(
@@ -269,3 +269,39 @@ def test_knowledge_decay_cache_expires_at_next_discrete_bucket():
     )
     bucket_start = base.replace(hour=0, minute=0, second=0, microsecond=0)
     assert valid_until <= bucket_start + timedelta(days=1)
+
+def test_knowledge_decay_utc_midnight_boundary():
+    """UTC 午夜边界测试：不依赖执行机器本地时区。
+
+    验证：
+    - 同一 UTC 日桶复用 run；
+    - 跨入下一 UTC 日桶创建新 run；
+    - valid_until 不晚于下一 UTC 日桶边界。
+    """
+    container = _container()
+    service = container.knowledge_service
+    student, course = _course_and_mapping(container)
+    midnight = datetime(2026, 9, 10, 0, 0, tzinfo=UTC)
+    before_midnight = midnight - timedelta(minutes=30)
+    service.record_practice_attempt(
+        user_id=student.id,
+        attempt=_attempt(
+            client_id="midnight-1", course_id=course.id, exercise_id="ex-1",
+            occurred_at=before_midnight - timedelta(hours=1),
+        ),
+    )
+    first = service.project_knowledge(
+        user_id=student.id, course_id=course.id, as_of=before_midnight
+    )
+    same_bucket = service.project_knowledge(
+        user_id=student.id, course_id=course.id, as_of=midnight - timedelta(minutes=1)
+    )
+    next_bucket = service.project_knowledge(
+        user_id=student.id, course_id=course.id, as_of=midnight + timedelta(minutes=1)
+    )
+    assert same_bucket.run_id == first.run_id
+    assert next_bucket.run_id != first.run_id
+    valid_until = datetime.fromisoformat(
+        next(item for item in first.snapshots if item.scope_id == "c.pointer.indirection").valid_until
+    )
+    assert valid_until <= midnight + timedelta(days=1)

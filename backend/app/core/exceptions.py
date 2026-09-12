@@ -319,6 +319,12 @@ class LearnerCorrectionConflict(AppException):
     message = "状态纠正幂等键已用于不同的纠正请求。"
 
 
+class LearnerCorrectionSnapshotMismatch(AppException):
+    code = "LEARNER_CORRECTION_SNAPSHOT_MISMATCH"
+    http_status = 409
+    message = "纠正请求字段与目标快照不一致。"
+
+
 class LearnerCorrectionAlreadyRevoked(AppException):
     code = "LEARNER_CORRECTION_ALREADY_REVOKED"
     http_status = 409
@@ -347,6 +353,12 @@ class LearnerDeleteInProgress(AppException):
     code = "LEARNER_DELETE_IN_PROGRESS"
     http_status = 409
     message = "删除操作正在进行中。"
+
+
+class LearnerDeleteIdempotencyConflict(AppException):
+    code = "LEARNER_DELETE_IDEMPOTENCY_CONFLICT"
+    http_status = 409
+    message = "删除幂等键已用于不同的删除范围。"
 
 
 class LearnerModelDataNotFound(AppException):

@@ -1,7 +1,10 @@
 """Phase 6C: 演示场景测试。"""
 from __future__ import annotations
 
+import pytest
+
 from app.core.config import Settings
+from app.core.exceptions import DemoSeedRefused
 from app.demo import learner_model as demo
 from app.services.container import reset_container_for_tests
 
@@ -55,22 +58,25 @@ def test_clear_does_not_affect_other_scenarios():
 
 
 def test_production_env_refused():
-    try:
-        s = Settings(app_env="production", database_url="sqlite:///prod.db")
+    s = Settings(
+        app_env="production",
+        database_url="sqlite:///prod.db",
+        jwt_secret="a" * 32,
+        edu_session_store="encrypted_sqlite",
+        edu_session_encryption_key="Gf0VL5Rs4+Dc1IpcPpTajuoZAxe3rtdlWzTWnRAT7CU=",
+        edu_session_encryption_key_id="prod-key-1",
+        auto_seed_demo_users=False,
+        auto_import_demo=False,
+    )
+    with pytest.raises(DemoSeedRefused):
         demo.seed("deadline-pressure", settings=s)
-        assert False, "should refuse"
-    except Exception:
-        pass
 
 
 def test_unknown_scenario_rejected():
     s = _settings()
     reset_container_for_tests(s)
-    try:
+    with pytest.raises(ValueError):
         demo.seed("unknown", settings=s)
-        assert False
-    except ValueError:
-        pass
 
 
 def test_demo_users_are_synthetic():
