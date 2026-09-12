@@ -908,6 +908,12 @@
 
 /* the fixed brand fades out of the living scene instead of a hard band */
 
+/* 经典首页工作台只有「页脚 + 品牌舞台」，比一屏矮：不再撑满 100vh，
+   否则品牌舞台下方会多出一整块只有视频的空白 */
+.sylva-dashboard:has(.home-footer-fixed-brand) {
+  min-height: 0;
+}
+
 /* 底部品牌舞台收成一条窄带：整层铺满后只保留约 1/5 视窗高度的视频区 */
 .sylva-dashboard .home-footer-fixed-brand {
   --home-brand-stage-height: clamp(160px, 22vh, 300px);

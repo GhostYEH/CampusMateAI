@@ -89,3 +89,9 @@ test("the classic dashboard keeps the bottom video band as a short stage", async
 
   assert.match(stageRule, /--home-brand-stage-height:\s*clamp\(160px,\s*22vh,\s*300px\)/);
 });
+
+test("the classic dashboard keeps its own content height instead of filling the viewport", async () => {
+  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
+
+  assert.match(sylvaStyles, /\.sylva-dashboard:has\(\.home-footer-fixed-brand\)\s*\{[^}]*min-height:\s*0/);
+});
