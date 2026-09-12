@@ -75,6 +75,7 @@ function redirectToLogin() {
 }
 
 const client = createClient();
+export { client };
 const dataOf = (response) => response.data;
 
 export function saveTokenPair(data, storage = globalThis.localStorage) {

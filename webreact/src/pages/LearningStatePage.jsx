@@ -70,15 +70,20 @@ const DELETE_SCOPES = [
 function useAsync(fn, deps) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+  const run = useCallback(() => {
     setState((s) => ({ ...s, loading: true, error: null }));
-    Promise.resolve(fn())
+    Promise.resolve(fnRef.current())
       .then((data) => mounted.current && setState({ loading: false, data, error: null }))
       .catch((error) => mounted.current && setState({ loading: false, data: null, error }));
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    run();
     return () => { mounted.current = false; };
   }, deps);
-  return state;
+  return { ...state, reload: run };
 }
 
 function Spinner({ label = "加载中" }) {
@@ -257,8 +262,11 @@ const BAND_LABEL = {
 };
 
 // ===== D. 证据抽屉 =====
-function EvidenceDrawer({ snapshot, onClose }) {
+function EvidenceDrawer({ snapshot, onClose, onCorrection }) {
   const [page, setPage] = useState(1);
+  const [correctionType, setCorrectionType] = useState(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [correctionMsg, setCorrectionMsg] = useState(null);
   const { loading, data, error } = useAsync(
     () => api.getSnapshotEvidence(snapshot.snapshot_id, page),
     [snapshot.snapshot_id, page]
@@ -269,6 +277,28 @@ function EvidenceDrawer({ snapshot, onClose }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const handleSubmitCorrection = useCallback(async () => {
+    if (!correctionType) return;
+    setCorrectionBusy(true);
+    try {
+      await api.createCorrection({
+        target_snapshot_id: snapshot.snapshot_id,
+        scope_type: snapshot.scope_type,
+        scope_id: snapshot.scope_id,
+        state_type: snapshot.state_type,
+        correction_type: correctionType,
+        reason_code: "user_observed_inaccuracy",
+        idempotency_key: `corr-${snapshot.snapshot_id}-${Date.now()}`,
+      });
+      setCorrectionMsg("已提交纠正，投影将在下次读取时更新");
+      if (onCorrection) onCorrection(snapshot);
+    } catch (e) {
+      setCorrectionMsg(e.message);
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }, [correctionType, snapshot, onCorrection]);
 
   return (
     <div className="ls-drawer-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="证据详情">
@@ -294,6 +324,20 @@ function EvidenceDrawer({ snapshot, onClose }) {
             <button className="ls-more-btn" onClick={() => setPage((p) => p + 1)}>加载更多</button>
           )}
         </div>
+        <div className="ls-drawer__correction">
+          <h3>标记此状态</h3>
+          {correctionMsg && <p className="ls-correction-msg">{correctionMsg}</p>}
+          <div className="ls-correction-options">
+            <button className="ls-btn ls-btn--sm" onClick={() => setCorrectionType("MARK_INACCURATE")} disabled={correctionBusy}>标记不准确</button>
+            <button className="ls-btn ls-btn--sm" onClick={() => setCorrectionType("SOURCE_OUTDATED")} disabled={correctionBusy}>数据源已过时</button>
+            <button className="ls-btn ls-btn--sm" onClick={() => setCorrectionType("NOT_APPLICABLE")} disabled={correctionBusy}>不适用</button>
+          </div>
+          {correctionType && (
+            <button className="ls-btn ls-btn--primary" onClick={handleSubmitCorrection} disabled={correctionBusy}>
+              {correctionBusy ? "提交中…" : `确认提交（${correctionType}）`}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -306,7 +350,7 @@ const EVIDENCE_KIND_LABEL = {
 };
 
 // ===== E. 学习困难假设 =====
-function MisconceptionHypotheses({ hypotheses, onDecide }) {
+function MisconceptionHypotheses({ hypotheses, onDecide, busy }) {
   if (!hypotheses?.items?.length) return <EmptyState text="暂时没有学习困难假设" />;
   return (
     <section className="ls-section ls-hypotheses" aria-label="学习困难假设">
@@ -321,8 +365,8 @@ function MisconceptionHypotheses({ hypotheses, onDecide }) {
           </div>
           {h.status === "OPEN" && (
             <div className="ls-hypothesis-card__actions">
-              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "CONFIRM")}>确认这个问题</button>
-              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "REJECT")}>这不符合我的情况</button>
+              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "CONFIRM")} disabled={busy}>确认这个问题</button>
+              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "REJECT")} disabled={busy}>这不符合我的情况</button>
               <button className="ls-btn ls-btn--ghost" disabled>稍后再判断</button>
             </div>
           )}
@@ -342,7 +386,7 @@ const MISCONCEPTION_LABEL = {
 };
 
 // ===== F. 学习计划中心 =====
-function LearningPlanCenter({ plans, onAction }) {
+function LearningPlanCenter({ plans, onAction, busy }) {
   const current = plans?.items?.find((p) => p.status === "PROPOSED" || p.status === "ACCEPTED" || p.status === "EXECUTED");
   if (!current) return <EmptyState text="暂时没有学习计划" />;
   return (
@@ -366,17 +410,17 @@ function LearningPlanCenter({ plans, onAction }) {
       <div className="ls-plan__actions">
         {current.status === "PROPOSED" && (
           <>
-            <button className="ls-btn ls-btn--primary" onClick={() => onAction("accept", current.plan_id)}>接受计划</button>
-            <button className="ls-btn" onClick={() => onAction("reject", current.plan_id)}>拒绝</button>
+            <button className="ls-btn ls-btn--primary" onClick={() => onAction("accept", current.plan_id)} disabled={busy}>接受计划</button>
+            <button className="ls-btn" onClick={() => onAction("reject", current.plan_id)} disabled={busy}>拒绝</button>
           </>
         )}
         {current.status === "ACCEPTED" && (
-          <button className="ls-btn ls-btn--primary" onClick={() => onAction("execute", current.plan_id)}>创建个人学习任务</button>
+          <button className="ls-btn ls-btn--primary" onClick={() => onAction("execute", current.plan_id)} disabled={busy}>创建个人学习任务</button>
         )}
         {current.status === "EXECUTED" && (
           <>
-            <button className="ls-btn" onClick={() => onAction("undo", current.plan_id)}>撤销</button>
-            <button className="ls-btn" onClick={() => onAction("replan", current.plan_id)}>重新规划</button>
+            <button className="ls-btn" onClick={() => onAction("undo", current.plan_id)} disabled={busy}>撤销</button>
+            <button className="ls-btn" onClick={() => onAction("replan", current.plan_id)} disabled={busy}>重新规划</button>
           </>
         )}
         {current.status === "EXPIRED" && (
@@ -419,8 +463,23 @@ function PlanEvaluation({ evaluation }) {
   );
 }
 
+function PlanEvaluationSection({ plans }) {
+  const executedPlan = useMemo(() => {
+    const items = plans?.items || [];
+    return items.find((p) => p.status === "EXECUTED" || p.status === "PARTIALLY_EXECUTED") || null;
+  }, [plans]);
+  const evaluation = useAsync(
+    () => (executedPlan ? api.getPlanEvaluation(executedPlan.plan_id) : Promise.resolve(null)),
+    [executedPlan?.plan_id],
+  );
+  if (!executedPlan) return null;
+  if (evaluation.loading) return <Spinner label="加载效果观察" />;
+  if (evaluation.error) return <ErrorBar error={evaluation.error} />;
+  return <PlanEvaluation evaluation={evaluation.data} />;
+}
+
 // ===== H. 数据与隐私控制 =====
-function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corrections, onRevokeCorrection }) {
+function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corrections, onRevokeCorrection, busy }) {
   const [deleteScope, setDeleteScope] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -431,8 +490,8 @@ function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corre
         <div key={src.source_key} className="ls-source-row">
           <span className="ls-source-row__name">{SOURCE_LABEL[src.source_key] || src.source_key}</span>
           <span className={`ls-source-row__status ls-source-row__status--${(src.status || "").toLowerCase()}`}>{SOURCE_STATUS_LABEL[src.status] || src.status}</span>
-          {src.can_pause && <button className="ls-btn ls-btn--sm" onClick={() => onToggleSource(src.source_key, "PAUSED")}>暂停</button>}
-          {src.can_resume && <button className="ls-btn ls-btn--sm" onClick={() => onToggleSource(src.source_key, "ENABLED")}>恢复</button>}
+          {src.can_pause && <button className="ls-btn ls-btn--sm" onClick={() => onToggleSource(src.source_key, "PAUSED")} disabled={busy}>暂停</button>}
+          {src.can_resume && <button className="ls-btn ls-btn--sm" onClick={() => onToggleSource(src.source_key, "ENABLED")} disabled={busy}>恢复</button>}
         </div>
       ))}
 
@@ -460,7 +519,7 @@ function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corre
         {deleteScope && (
           <div className="ls-delete-confirm">
             <p>确认删除「{DELETE_SCOPES.find((s) => s.value === deleteScope)?.label}」？此操作不可撤销。</p>
-            <button className="ls-btn ls-btn--danger" onClick={() => { onDelete(deleteScope); setConfirmDelete(false); }} disabled={confirmDelete}>确认删除</button>
+            <button className="ls-btn ls-btn--danger" onClick={() => { onDelete(deleteScope); setConfirmDelete(false); }} disabled={confirmDelete || busy}>确认删除</button>
           </div>
         )}
       </div>
@@ -473,7 +532,7 @@ function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corre
               <span>{c.correction_type}</span>
               <span>{c.reason_code}</span>
               <span>{c.status === "ACTIVE" ? "活跃" : "已撤销"}</span>
-              {c.status === "ACTIVE" && <button className="ls-btn ls-btn--sm" onClick={() => onRevokeCorrection(c.correction_id)}>撤销</button>}
+              {c.status === "ACTIVE" && <button className="ls-btn ls-btn--sm" onClick={() => onRevokeCorrection(c.correction_id)} disabled={busy}>撤销</button>}
             </div>
           ))}
         </>
@@ -524,32 +583,39 @@ const PROMOTION_LABEL = {
 export default function LearningStatePage() {
   const [evidenceSnapshot, setEvidenceSnapshot] = useState(null);
   const [toast, setToast] = useState(null);
-  const [demoMode, setDemoMode] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const snapshots = useAsync(() => api.getLearnerStateSnapshots({ pageSize: 50 }), []);
-  const changes = useAsync(() => api.getLearnerStateChanges({ pageSize: 20 }), []);
-  const knowledge = useAsync(() => api.getKnowledgeState(""), []);
-  const taxonomy = useAsync(() => api.getTaxonomy(), []);
-  const hypotheses = useAsync(() => api.getMisconceptionHypotheses(""), []);
-  const plans = useAsync(() => api.getLearningPlans(1, 10), []);
-  const controls = useAsync(() => api.getDataControls(), []);
-  const summary = useAsync(() => api.getDataSummary(), []);
-  const corrections = useAsync(() => api.getCorrections(1, 20), []);
-  const transparency = useAsync(() => api.getModelTransparency(), []);
+  const snapshots = useAsync(() => api.getLearnerStateSnapshots({ pageSize: 50 }), [refreshKey]);
+  const changes = useAsync(() => api.getLearnerStateChanges({ pageSize: 20 }), [refreshKey]);
+  const knowledge = useAsync(() => api.getKnowledgeState(""), [refreshKey]);
+  const taxonomy = useAsync(() => api.getTaxonomy(), [refreshKey]);
+  const hypotheses = useAsync(() => api.getMisconceptionHypotheses(""), [refreshKey]);
+  const plans = useAsync(() => api.getLearningPlans(1, 10), [refreshKey]);
+  const controls = useAsync(() => api.getDataControls(), [refreshKey]);
+  const summary = useAsync(() => api.getDataSummary(), [refreshKey]);
+  const corrections = useAsync(() => api.getCorrections(1, 20), [refreshKey]);
+  const transparency = useAsync(() => api.getModelTransparency(), [refreshKey]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
   const handleDecideHypothesis = useCallback(async (hid, decision) => {
+    setBusy(true);
     try {
       await api.decideHypothesis(hid, decision);
       showToast(decision === "CONFIRM" ? "已确认假设" : "已否定假设");
+      refresh();
     } catch (e) { showToast(e.message); }
-  }, [showToast]);
+    finally { setBusy(false); }
+  }, [showToast, refresh]);
 
   const handlePlanAction = useCallback(async (action, planId) => {
+    setBusy(true);
     try {
       if (action === "accept") await api.decideLearningPlan(planId, "ACCEPT");
       else if (action === "reject") await api.decideLearningPlan(planId, "REJECT");
@@ -557,37 +623,47 @@ export default function LearningStatePage() {
       else if (action === "undo") await api.undoLearningPlan(planId);
       else if (action === "replan") await api.replanLearningPlan(planId, { idempotency_key: `replan-${Date.now()}` });
       showToast(`操作成功：${action}`);
+      refresh();
     } catch (e) { showToast(e.message); }
-  }, [showToast]);
+    finally { setBusy(false); }
+  }, [showToast, refresh]);
 
   const handleToggleSource = useCallback(async (sourceKey, status) => {
+    setBusy(true);
     try {
       await api.updateDataControl(sourceKey, status, `toggle-${Date.now()}`);
       showToast(status === "PAUSED" ? "已暂停" : "已恢复");
+      refresh();
     } catch (e) { showToast(e.message); }
-  }, [showToast]);
+    finally { setBusy(false); }
+  }, [showToast, refresh]);
 
   const handleDelete = useCallback(async (scope) => {
+    setBusy(true);
     try {
       await api.requestDeletion(scope, `delete-${Date.now()}`);
       showToast("删除完成");
+      refresh();
     } catch (e) { showToast(e.message); }
-  }, [showToast]);
+    finally { setBusy(false); }
+  }, [showToast, refresh]);
 
   const handleRevokeCorrection = useCallback(async (cid) => {
+    setBusy(true);
     try {
       await api.revokeCorrection(cid, `revoke-${Date.now()}`);
       showToast("已撤销纠正");
+      refresh();
     } catch (e) { showToast(e.message); }
-  }, [showToast]);
+    finally { setBusy(false); }
+  }, [showToast, refresh]);
 
   const handleMarkInaccurate = useCallback((snap) => {
     setEvidenceSnapshot(snap);
   }, []);
 
   return (
-    <div className="learning-state-page" aria-busy={snapshots.loading}>
-      {demoMode && <div className="ls-demo-banner" role="status">演示数据 · 不包含真实学生记录</div>}
+    <div className="learning-state-page" aria-busy={snapshots.loading || busy}>
       <header className="ls-header">
         <h1 className="ls-title">我的学习状态</h1>
         <p className="ls-subtitle">根据你授权的学习记录生成，可查看依据并随时纠正</p>
@@ -610,14 +686,14 @@ export default function LearningStatePage() {
           <KnowledgeMap knowledge={knowledge.data} taxonomy={taxonomy.data} onViewEvidence={setEvidenceSnapshot} />
         </div>
         <div className="ls-layout__side">
-          <LearningPlanCenter plans={plans.data} onAction={handlePlanAction} />
-          <MisconceptionHypotheses hypotheses={hypotheses.data} onDecide={handleDecideHypothesis} />
+          <LearningPlanCenter plans={plans.data} onAction={handlePlanAction} busy={busy} />
+          <MisconceptionHypotheses hypotheses={hypotheses.data} onDecide={handleDecideHypothesis} busy={busy} />
         </div>
       </div>
 
       <div className="ls-layout ls-layout--bottom">
         <div className="ls-layout__main">
-          <PlanEvaluation evaluation={null} />
+          <PlanEvaluationSection plans={plans.data} />
         </div>
         <div className="ls-layout__side">
           <DataPrivacyControl
@@ -627,13 +703,14 @@ export default function LearningStatePage() {
             onToggleSource={handleToggleSource}
             onDelete={handleDelete}
             onRevokeCorrection={handleRevokeCorrection}
+            busy={busy}
           />
         </div>
       </div>
 
       <ModelTransparency transparency={transparency.data} />
 
-      {evidenceSnapshot && <EvidenceDrawer snapshot={evidenceSnapshot} onClose={() => setEvidenceSnapshot(null)} />}
+      {evidenceSnapshot && <EvidenceDrawer snapshot={evidenceSnapshot} onClose={() => setEvidenceSnapshot(null)} onCorrection={handleMarkInaccurate} />}
     </div>
   );
 }
