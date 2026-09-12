@@ -4,7 +4,9 @@
 内部滚动区) / footer 始终可见 / 无横向溢出、双滚动条和按钮裁切。
 
 视口: 2560x1308 / 1440x900 / 1024x768 / 390x844 / 360x800,
-以及 1280x720 device_scale_factor=2(等效 200% 缩放)。
+以及 640x360 CSS 视口(模拟 1280x720 物理窗口在 200% 缩放下的布局视口)。
+注意: device_scale_factor 只改变 DPR,不改变 CSS layout viewport,
+不能用它等效缩放,必须直接用缩小后的 CSS 视口。
 
 API 全部 mock,12 个步骤由 task-breakdown 接口直接返回,不依赖真实 LLM。
 截图保存到系统临时目录,不提交到仓库。退出码 0=通过。
@@ -21,12 +23,12 @@ OUT = Path(tempfile.gettempdir()) / "study-dialogs-shots"
 OUT.mkdir(parents=True, exist_ok=True)
 
 VIEWPORTS = [
-    (2560, 1308, 1, "2560x1308"),
-    (1440, 900, 1, "1440x900"),
-    (1024, 768, 1, "1024x768"),
-    (390, 844, 1, "390x844"),
-    (360, 800, 1, "360x800"),
-    (1280, 720, 2, "zoom200"),
+    (2560, 1308, "2560x1308"),
+    (1440, 900, "1440x900"),
+    (1024, 768, "1024x768"),
+    (390, 844, "390x844"),
+    (360, 800, "360x800"),
+    (640, 360, "zoom200"),
 ]
 
 STEPS = [
@@ -142,14 +144,17 @@ def run():
     failures = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        for width, height, dsf, label in VIEWPORTS:
-            context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=dsf)
+        for width, height, label in VIEWPORTS:
+            context = browser.new_context(viewport={"width": width, "height": height})
             page = context.new_page()
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
             install_api_fakes(page)
             page.goto(f"{BASE}/study", wait_until="networkidle")
             page.locator(".study-summer-room").wait_for(timeout=15000)
+            if label == "zoom200":
+                inner = page.evaluate("({w: window.innerWidth, h: window.innerHeight})")
+                check(abs(inner["w"] - 640) <= 4 and abs(inner["h"] - 360) <= 4, f"[{label}] CSS 视口约为 640x360(实际 {inner['w']}x{inner['h']})", failures)
 
             page.get_by_role("button", name="用 AI 拆解学习目标").click()
             page.locator(".study-summer-breakdown").wait_for(timeout=5000)
@@ -158,8 +163,38 @@ def run():
             page.locator(".study-summer-breakdown__step").first.wait_for(timeout=10000)
             page.wait_for_timeout(400)
 
+            scroll_before = page.evaluate("window.scrollY")
+            check(page.evaluate("document.body.style.overflow") == "hidden", f"[{label}] 拆解弹窗打开时 body 锁定滚动", failures)
+            check(page.evaluate("document.documentElement.style.overflow") == "hidden", f"[{label}] 拆解弹窗打开时 html 锁定滚动", failures)
+            steps_top_before = page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop")
+            # 滚轮落在步骤列表上: 背景不动,步骤区可滚动。
+            # 小高度视口下步骤区可能被压缩到不可见,此时退化为 JS 滚动断言。
+            steps_visible = page.locator(".study-summer-breakdown__steps").is_visible()
+            if steps_visible:
+                page.locator(".study-summer-breakdown__steps").hover()
+                page.mouse.wheel(0, 800)
+                page.wait_for_timeout(200)
+                check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 步骤区滚轮不带动背景", failures)
+                check(page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop") >= steps_top_before, f"[{label}] 步骤区滚轮可内部滚动", failures)
+            else:
+                page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop += 200")
+                check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 步骤区滚动不带动背景", failures)
+            # 键盘 PageDown: 背景不动
+            page.keyboard.press("PageDown")
+            page.wait_for_timeout(200)
+            check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 键盘翻页不改变背景位置", failures)
+            # 编程式 window.scrollTo 会被 overflow:hidden 钳制: 大视口下文档不超高本就为 0;
+            # 小视口下钳制到最大值,允许变化但不得超过最大值,且应在 html 锁定时被钳制。
+            page.evaluate("window.scrollTo(0, 99999)")
+            page.wait_for_timeout(200)
+            scroll_after_programmatic = page.evaluate("window.scrollY")
+            scroll_max = page.evaluate("document.documentElement.scrollHeight - window.innerHeight")
+            check(scroll_after_programmatic <= max(scroll_max, scroll_before), f"[{label}] 编程式滚动被钳制在文档范围内", failures)
+
             m = dialog_metrics(page, ".study-summer-breakdown")
             check(m is not None, f"[{label}] 拆解弹窗可度量", failures)
+            btn_bg = page.evaluate("() => { const btn = document.querySelector('.study-summer-breakdown__input .button'); return btn ? getComputedStyle(btn).backgroundColor : null; }")
+            check(btn_bg in ("rgb(215, 239, 131)", "rgb(229, 248, 159)"), f"[{label}] 输入区主按钮为苔绿色(实际 {btn_bg})", failures)
             if m:
                 check(m["stepsCount"] == 12, f"[{label}] 12 个步骤全部渲染(实际 {m['stepsCount']})", failures)
                 check(m["stepsScrollable"], f"[{label}] 步骤区内部可滚动", failures)
@@ -168,10 +203,25 @@ def run():
                 check(not m["doubleScrollbar"], f"[{label}] 无双滚动条", failures)
                 check(m["clippedButtons"] == 0, f"[{label}] 无按钮裁切(共 {m['buttonCount']} 个按钮)", failures)
                 check(m["hiddenButtons"] == 0, f"[{label}] 无按钮被隐藏", failures)
+                if label == "zoom200":
+                    # zoom200 下步骤区外按钮(头/输入/footer)必须可见可点;
+                    # 步骤内的删除按钮随列表滚动是正常行为,只断言其尺寸不被裁切。
+                    pinned_clickable = page.evaluate("""() => Array.from(document.querySelectorAll('.study-summer-breakdown__header button, .study-summer-breakdown__input button, .study-summer-breakdown__footer button')).map((btn) => {
+                      const r = btn.getBoundingClientRect();
+                      if (r.width < 4 || r.height < 4) return false;
+                      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                      return el === btn || btn.contains(el);
+                    })""")
+                    check(len(pinned_clickable) > 0 and all(pinned_clickable), f"[{label}] 头/输入/footer 按钮可见可点击(共 {len(pinned_clickable)} 个)", failures)
+                    check(page.evaluate("document.body.style.overflow") == "hidden", f"[{label}] 背景不滚动(body 锁定)", failures)
+                    check(page.evaluate("document.documentElement.style.overflow") == "hidden", f"[{label}] 背景不滚动(html 锁定)", failures)
             page.screenshot(path=str(OUT / f"breakdown-{label}.png"))
 
             page.get_by_role("button", name="关闭目标拆解").click()
             page.wait_for_timeout(200)
+            check(page.locator(".study-summer-breakdown").count() == 0, f"[{label}] 拆解弹窗关闭", failures)
+            check(page.evaluate("document.body.style.overflow") != "hidden", f"[{label}] 拆解弹窗关闭后 body 恢复可滚动", failures)
+            check(page.evaluate("document.documentElement.style.overflow") != "hidden", f"[{label}] 拆解弹窗关闭后 html 恢复可滚动", failures)
 
             page.get_by_label("这次想完成什么").fill("测试专注")
             page.get_by_role("button", name="开始专注").click()

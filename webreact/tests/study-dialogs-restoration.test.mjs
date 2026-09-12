@@ -58,6 +58,26 @@ test("AI breakdown dialog uses workbench layout not narrow tall scroll", () => {
   assert.match(studySummerCss, /\.study-summer-breakdown__footer\s*\{[^}]*flex:\s*0\s*0\s*auto/, "底部固定可见");
 });
 
+test("AI breakdown input button uses moss-green theme not global blue", () => {
+  // 输入区主按钮(生成步骤/重新生成)必须用苔绿色,不继承全局蓝色 button-primary
+  const inputBtnBlock = studySummerCss.match(/\.study-summer-breakdown__input \.button\s*\{[^}]+\}/);
+  assert.ok(inputBtnBlock, "能匹配 .study-summer-breakdown__input .button 规则块");
+  assert.match(inputBtnBlock[0], /#d7ef83|var\(--summer-primary/, "输入区主按钮使用苔绿色 #d7ef83 系列");
+  assert.match(inputBtnBlock[0], /#07120e/, "输入区主按钮使用深色文字");
+  assert.doesNotMatch(inputBtnBlock[0], /var\(--blue\)|#3267d6|765eea/, "输入区主按钮不得使用蓝色或紫色");
+  assert.match(studySummerCss, /\.study-summer-breakdown__input \.button:hover/, "输入区主按钮有 hover 状态");
+  assert.match(studySummerCss, /\.study-summer-breakdown__input \.button:focus-visible/, "输入区主按钮有 focus-visible 状态");
+  assert.match(studySummerCss, /\.study-summer-breakdown__input \.button:disabled/, "输入区主按钮有 disabled 状态");
+});
+
+test("AI breakdown dialog locks background scroll on open and restores on close", () => {
+  // 拆解弹窗打开期间必须锁定 body 与 html( scrollingElement 是 html,只锁 body 会被 scrollTo 绕过)
+  assert.match(focusRoom, /document\.body\.style\.overflow\s*=\s*"hidden"/, "打开时锁定 body 滚动");
+  assert.match(focusRoom, /document\.documentElement\.style\.overflow\s*=\s*"hidden"/, "打开时锁定 html 滚动");
+  assert.match(focusRoom, /prevBodyOverflow/, "记录 body 原状态用于恢复");
+  assert.match(focusRoom, /prevHtmlOverflow/, "记录 html 原状态用于恢复");
+});
+
 test("breakdownStudyTask uses independent timeout greater than backend default", () => {
   // breakdownStudyTask 必须设置独立超时,大于后端 30s 默认
   assert.match(apiJs, /breakdownStudyTask/, "breakdownStudyTask 函数存在");
@@ -108,7 +128,12 @@ test("Modal focus management: useEffect does not depend on onClose (fixes focus 
 });
 
 test("Modal focus behavior: real browser keeps textarea focus, traps Tab, restores focus (Playwright)", async () => {
-  // 真实浏览器行为测试(仓库现有 Playwright,不新增 jsdom 依赖):
+  // 真实浏览器行为测试(仓库现有 Playwright,不新增 jsdom 依赖)。
+  // 需要已启动的 Vite dev 服务,入口为 npm run test:e2e:study(自动起服并回收)。
+  // 默认 npm test 保持快速独立: 未显式开启时跳过,不隐式依赖外部服务器。
+  if (process.env.STUDY_E2E !== "1") {
+    return;
+  }
   // 打开后 textarea 获焦 / 连续输入值完整且焦点不丢 / Tab 与 Shift+Tab 不逃出 /
   // Escape 关闭 / 点击遮罩关闭 / 关闭后焦点回到触发按钮 / body 滚动锁定与恢复。
   const script = fileURLToPath(new URL("./e2e/study-dialogs-modal-focus.py", import.meta.url));

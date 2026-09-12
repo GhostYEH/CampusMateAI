@@ -230,6 +230,11 @@
 .study-summer-breakdown__input textarea, .study-summer-breakdown__step input, .study-summer-breakdown__step textarea { width: 100%; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; outline: 0; color: #fff; background: rgba(255,255,255,.06); font: inherit; }
 .study-summer-breakdown__input textarea { min-height: 82px; padding: 11px; resize: vertical; line-height: 1.65; }
 .study-summer-breakdown__input textarea:focus, .study-summer-breakdown__step input:focus, .study-summer-breakdown__step textarea:focus { border-color: rgba(215,239,131,.65); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
+/* 输入区主按钮:苔绿色主题,不再继承全局蓝色 button-primary */
+.study-summer-breakdown__input .button { min-height: 38px; border-radius: 9px; color: #07120e; background: var(--summer-primary, #d7ef83); box-shadow: none; font-size: 12px; }
+.study-summer-breakdown__input .button:hover { background: #e5f89f; }
+.study-summer-breakdown__input .button:focus-visible { outline: 2px solid rgba(215,239,131,.7); outline-offset: 2px; }
+.study-summer-breakdown__input .button:disabled { opacity: .45; cursor: not-allowed; }
 /* 降级说明:辅助状态,不抢占主体视觉 */
 .study-summer-breakdown__note { margin: 0 24px; padding: 8px 12px; border-radius: 9px; color: rgba(215,239,131,.72); background: rgba(215,239,131,.06); font-size: 11px; line-height: 1.6; }
 .study-summer-breakdown__warnings { margin: 8px 24px 0; padding-left: 17px; color: #ffcf91; font-size: 11px; line-height: 1.7; }
@@ -258,6 +263,8 @@
 .study-summer-breakdown-trigger { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid rgba(215,239,131,.28); border-radius: 8px; color: #d7ef83; background: rgba(215,239,131,.08); font-size: 11px; }
 .study-summer-breakdown-trigger:hover { background: rgba(215,239,131,.15); }
 @media (max-width: 600px) { .study-summer-breakdown-backdrop { padding: 12px; } .study-summer-breakdown { max-height: calc(100dvh - 24px); } .study-summer-breakdown__header { padding: 18px 16px 12px; } .study-summer-breakdown__input { grid-template-columns: 1fr; padding: 0 16px 12px; } .study-summer-breakdown__input .button { width: 100%; } .study-summer-breakdown__note, .study-summer-breakdown__warnings { margin-left: 16px; margin-right: 16px; } .study-summer-breakdown__steps { margin-left: 16px; margin-right: 16px; } .study-summer-breakdown__footer { align-items: flex-start; flex-direction: column; padding: 12px 16px 16px; } .study-summer-breakdown__footer .button { width: 100%; } }
+/* 小高度(如 200% 缩放):压缩装饰性间距,保住步骤区最小可视高度,不挤出 footer */
+@media (max-height: 500px) { .study-summer-breakdown-backdrop { padding: 12px; } .study-summer-breakdown__header { padding: 10px 16px 6px; } .study-summer-breakdown__header h2 { font-size: 17px; } .study-summer-breakdown__header p { display: none; } .study-summer-breakdown__input { padding: 0 16px 6px; } .study-summer-breakdown__input textarea { min-height: 44px; } .study-summer-breakdown__steps { margin-top: 6px; min-height: 60px; } .study-summer-breakdown__footer { margin-top: 8px; padding: 8px 16px 10px; } }
 .study-sub-link-button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: rgba(215, 239, 131, .82); background: transparent; font-size: 11px; }
 .study-sub-link-button:hover { color: var(--summer-primary); }
 .study-ai-planner { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.08); }

@@ -115,7 +115,17 @@ export default function SummerFocusRoom({
     if (!breakdownOpen) return undefined;
     const handleKeyDown = (event) => { if (event.key === "Escape") onClosePlanning?.(); };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    // 背景滚动锁定: scrollingElement 是 html,只锁 body 会被 window.scrollTo 绕过,
+    // 必须同时锁定 documentElement。immersive 用 body class 锁,两者正交不互斥。
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
   }, [breakdownOpen, onClosePlanning]);
 
   const status = isBreak ? (isRunning ? "休息中" : "准备休息") : active?.status === "paused" ? "暂时休息" : active ? "正在专注" : "准备开始";
