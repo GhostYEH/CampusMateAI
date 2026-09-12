@@ -362,7 +362,7 @@ export default function StudyPage() {
     {review && <Modal title="本次学习复盘" variant="study" onClose={() => setReview(null)} actions={<><Button variant="quiet" onClick={() => setReview(null)}>返回专注</Button><Button icon="PhCheckCircle" onClick={confirmFinish}>结束并保存记录</Button></>}>
       <div className="study-review-dialog">
         <p>本次专注即将结束，写一句话记录这段时间的感受（可选）。</p>
-        <textarea id="study-self-report" name="self_report" rows="3" autoFocus value={selfReport} onChange={(event) => setSelfReport(event.target.value)} placeholder="例如：完成了阅读，后半段注意力有些分散…" />
+        <textarea id="study-self-report" name="self_report" rows="3" autoFocus data-autofocus value={selfReport} onChange={(event) => setSelfReport(event.target.value)} placeholder="例如：完成了阅读，后半段注意力有些分散…" />
       </div>
     </Modal>}
   </PageFrame><SummerNavDock sceneAudio={ambient} /></>;

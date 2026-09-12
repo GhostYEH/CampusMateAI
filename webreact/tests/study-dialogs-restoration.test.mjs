@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+
+const execFileAsync = promisify(execFile);
 
 const studyPage = await readFile(new URL("../src/pages/StudyPage.jsx", import.meta.url), "utf8");
 const focusRoom = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
@@ -90,7 +95,7 @@ test("rule_fallback shows user-friendly Chinese note not internal class names", 
 });
 
 test("Modal focus management: useEffect does not depend on onClose (fixes focus loss)", () => {
-  // 根因: 旧实现 useEffect(..., [onClose]) 中 onClose 是内联函数,
+  // 源码静态约束: 旧实现 useEffect(..., [onClose]) 中 onClose 是内联函数,
   // 每次父组件重渲染都产生新引用,导致 effect 重复执行并抢走 textarea 焦点。
   // 修复: 用 ref 保存最新 onClose,effect 依赖数组为空 []。
   assert.match(primitives, /onCloseRef\s*=\s*useRef\(onClose\)/, "用 ref 保存 onClose");
@@ -102,10 +107,19 @@ test("Modal focus management: useEffect does not depend on onClose (fixes focus 
   assert.doesNotMatch(useEffectBlock[1], /onClose/, "useEffect 依赖数组不得包含 onClose");
 });
 
-test("Modal focus management: respects autofocus on textarea/input", () => {
-  // 初始焦点应优先聚焦带 autofocus 的元素(如 textarea),而非总是第一个 button
-  assert.match(primitives, /autofocus/, "初始焦点检查 autofocus 属性");
-  assert.match(primitives, /autoFocusEl\.focus\(\)/, "优先聚焦 autofocus 元素");
+test("Modal focus behavior: real browser keeps textarea focus, traps Tab, restores focus (Playwright)", async () => {
+  // 真实浏览器行为测试(仓库现有 Playwright,不新增 jsdom 依赖):
+  // 打开后 textarea 获焦 / 连续输入值完整且焦点不丢 / Tab 与 Shift+Tab 不逃出 /
+  // Escape 关闭 / 点击遮罩关闭 / 关闭后焦点回到触发按钮 / body 滚动锁定与恢复。
+  const script = fileURLToPath(new URL("./e2e/study-dialogs-modal-focus.py", import.meta.url));
+  let result;
+  try {
+    result = await execFileAsync("python", [script], { timeout: 120000, env: { ...process.env, WEB_BASE_URL: process.env.WEB_BASE_URL || "http://127.0.0.1:5174" } });
+  } catch (err) {
+    assert.fail(`Modal 焦点行为脚本执行失败:\n${err.stdout || ""}\n${err.stderr || err.message}`);
+  }
+  assert.match(result.stdout, /ALL MODAL FOCUS CHECKS PASSED/, `Modal 焦点行为脚本应全部通过,输出:\n${result.stdout}`);
+  assert.doesNotMatch(result.stdout, /FAIL /, `Modal 焦点行为不得有失败项,输出:\n${result.stdout}`);
 });
 
 test("Modal preserves close, escape, mask close and aria attributes", () => {

@@ -46,7 +46,7 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
     };
     document.addEventListener("keydown", handleKeyDown);
     const focusables = modalRef.current?.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
-    const autoFocusEl = modalRef.current?.querySelector("[autofocus]");
+    const autoFocusEl = modalRef.current?.querySelector("[autoFocus], [autofocus], [data-autofocus]");
     if (autoFocusEl && typeof autoFocusEl.focus === "function") { autoFocusEl.focus(); }
     else if (focusables && focusables.length) { focusables[0].focus(); }
     const prevOverflow = document.body.style.overflow;
