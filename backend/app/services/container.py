@@ -54,6 +54,7 @@ from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
 from ..services.c_knowledge_service import KnowledgeService
 from ..services.learner_control_service import LearnerControlService
+from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -120,6 +121,7 @@ class ServiceContainer:
     learning_agent_tools: LearningAgentToolRegistry
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
+    learner_model_source_policy: LearnerModelSourcePolicy
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -220,6 +222,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         state_repository=learner_state_repository,
         shadow_repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
     )
+    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
@@ -289,6 +292,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,
+        learner_model_source_policy=learner_model_source_policy,
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
