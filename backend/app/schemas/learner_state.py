@@ -22,6 +22,9 @@ StateType = Literal[
     "exam_exposure",
     "schedule_load",
     "goal_state",
+    "knowledge_mastery_forecast",
+    "performance_prediction",
+    "learning_velocity",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
@@ -165,6 +168,50 @@ class GoalStateValue(BaseModel):
     warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
+ForecastTrend = Literal["improving", "steady", "declining", "insufficient_evidence"]
+
+
+class KnowledgeMasteryForecastValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_component_code: str = Field(min_length=1, max_length=128)
+    current_estimate: float = Field(ge=0, le=1)
+    forecast_7d: float = Field(ge=0, le=1)
+    forecast_30d: float = Field(ge=0, le=1)
+    velocity: float
+    trend: ForecastTrend
+    evidence_count: int = Field(ge=0)
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+PredictedScoreBand = Literal["likely_fail", "likely_partial", "likely_pass", "insufficient_evidence"]
+
+
+class PerformancePredictionValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_component_code: str = Field(min_length=1, max_length=128)
+    predicted_pass_probability: float = Field(ge=0, le=1)
+    predicted_score_band: PredictedScoreBand
+    evidence_count: int = Field(ge=0)
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+VelocityTrend = Literal["accelerating", "steady", "decelerating", "insufficient_evidence"]
+
+
+class LearningVelocityValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_component_code: str = Field(min_length=1, max_length=128)
+    velocity_7d: float
+    velocity_30d: float
+    trend: VelocityTrend
+    consistency: float = Field(ge=0, le=1)
+    evidence_count: int = Field(ge=0)
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
 StateValue = Annotated[
     Union[
         ObservedLearningActivityValue,
@@ -179,6 +226,9 @@ StateValue = Annotated[
         ExamExposureValue,
         ScheduleLoadValue,
         GoalStateValue,
+        KnowledgeMasteryForecastValue,
+        PerformancePredictionValue,
+        LearningVelocityValue,
     ],
     Field(union_mode="smart"),
 ]
@@ -221,6 +271,9 @@ class LearnerStateSnapshotOut(BaseModel):
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
             "goal_state": GoalStateValue,
+            "knowledge_mastery_forecast": KnowledgeMasteryForecastValue,
+            "performance_prediction": PerformancePredictionValue,
+            "learning_velocity": LearningVelocityValue,
         }[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
@@ -290,7 +343,7 @@ class LearnerStateRunOut(BaseModel):
     is_current: bool
     warning_codes: list[str] = Field(default_factory=list, max_length=32)
     snapshot_count: int = Field(ge=0)
-    projection_kind: Literal["CORE", "KNOWLEDGE", "ACADEMIC"] = "CORE"
+    projection_kind: Literal["CORE", "KNOWLEDGE", "ACADEMIC", "PREDICTION"] = "CORE"
     projection_scope: str = "__user__"
 
     _aware_times = field_validator("as_of", "computed_at")(_aware)

@@ -89,7 +89,7 @@ def list_changes(
     from_run_id: str | None = Query(None, min_length=1, max_length=128),
     to_run_id: str | None = Query(None, min_length=1, max_length=128),
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|knowledge_mastery_forecast|performance_prediction|learning_velocity)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     include_unchanged: bool = Query(False),
@@ -121,7 +121,7 @@ def list_changes(
 @router.get("/snapshots", response_model=LearnerStateSnapshotPage)
 def list_snapshots(
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|knowledge_mastery_forecast|performance_prediction|learning_velocity)$"),
     course_id: str | None = Query(None, min_length=1, max_length=128),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
@@ -210,6 +210,36 @@ def get_academic_state(
     return LearnerStateSnapshotPage(
         items=[_snapshot_out(item) for item in academic_items],
         total=len(academic_items), page=page, page_size=page_size,
+        has_more=False,
+    )
+
+
+@router.get("/predictions/{course_id}", response_model=LearnerStateSnapshotPage)
+def get_prediction_state(
+    course_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(_container),
+) -> LearnerStateSnapshotPage:
+    """获取 PREDICTION 投影快照：基于学习证据的确定性预测。"""
+    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    container.learner_state_service.project_prediction(
+        user.id, course_id=course_id, as_of=as_of, trigger="api_prediction"
+    )
+    prediction_types = (
+        "knowledge_mastery_forecast",
+        "performance_prediction",
+        "learning_velocity",
+    )
+    items, total = container.learner_state_repository.list_snapshots(
+        user_id=user.id, page=page, page_size=page_size,
+        scope_type=None, state_type=None, course_id=None,
+    )
+    prediction_items = [item for item in items if item.state_type in prediction_types]
+    return LearnerStateSnapshotPage(
+        items=[_snapshot_out(item) for item in prediction_items],
+        total=len(prediction_items), page=page, page_size=page_size,
         has_more=False,
     )
 

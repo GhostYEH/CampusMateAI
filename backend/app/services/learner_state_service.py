@@ -13,9 +13,15 @@ from ..repositories.learner_state_repository import LearnerStateRepository
 
 ESTIMATOR_VERSION = "deterministic-observed-v1"
 ACADEMIC_ESTIMATOR_VERSION = "academic-observed-v1"
+PREDICTION_ESTIMATOR_VERSION = "prediction-linear-v1"
 _SHORT_TTL = timedelta(minutes=5)
 _CHAOXING_TTL = timedelta(hours=24)
 _ACADEMIC_TTL = timedelta(hours=1)
+_PREDICTION_TTL = timedelta(minutes=30)
+_FORECAST_DECAY_7D = 0.85
+_FORECAST_DECAY_30D = 0.70
+_VELOCITY_THRESHOLD = 0.01
+_MIN_PREDICTION_EVIDENCE = 2
 
 
 def _iso(value: datetime) -> str:
@@ -80,13 +86,14 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None, knowledge_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
         self._control_repository = control_repository
         self._source_policy = source_policy
         self._edu_data_repository = edu_data_repository
         self._learner_event_repository = learner_event_repository
+        self._knowledge_repository = knowledge_repository
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -221,6 +228,336 @@ class LearnerStateProjectionService:
             if current is not None:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_result(user_id=user_id, as_of=as_of)
+
+    def project_prediction(
+        self, user_id: str, *, course_id: str, as_of: datetime, trigger: str = "read"
+    ) -> ProjectionResult:
+        """PREDICTION 投影：基于学习证据确定性预测未来表现。
+
+        使用线性外推从历史练习趋势预测掌握度变化，不使用 ML 模型。
+        预测结果诚实表达不确定性，证据不足时降级为 insufficient_evidence。
+        """
+        as_of = _require_utc(as_of)
+        current = None
+        try:
+            current = self.repository.get_current_run(
+                user_id=user_id, projection_kind="PREDICTION", projection_scope=course_id
+            )
+            inputs = self._collect_prediction_inputs(user_id=user_id, course_id=course_id)
+            input_digest = _digest(inputs)
+            current_as_of = _parse(current.as_of) if current else None
+            if (
+                current
+                and current.estimator_version == PREDICTION_ESTIMATOR_VERSION
+                and current.input_digest == input_digest
+                and current_as_of is not None
+                and as_of >= current_as_of
+                and self._prediction_snapshots_valid(user_id, course_id, as_of)
+            ):
+                existing = self._result_from_current(current, as_of=as_of)
+                if existing is not None:
+                    return existing
+            result, snapshot_rows, evidence = self._compute_prediction(
+                user_id=user_id, course_id=course_id, inputs=inputs, as_of=as_of,
+                input_digest=input_digest, trigger=trigger,
+            )
+            if current is None or current_as_of is None or as_of >= current_as_of:
+                self.repository.save_projection(
+                    run={
+                        "run_id": result.run_id,
+                        "user_id": user_id,
+                        "as_of": result.as_of,
+                        "computed_at": result.computed_at,
+                        "estimator_version": PREDICTION_ESTIMATOR_VERSION,
+                        "input_digest": input_digest,
+                        "trigger": trigger,
+                        "projection_kind": "PREDICTION",
+                        "projection_scope": course_id,
+                        "warnings": result.warnings,
+                    },
+                    snapshots=[self._to_dict(row) for row in snapshot_rows],
+                    evidence=evidence,
+                )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "prediction_projection_failed user_id={} course_id={} trigger={} exception_type={}",
+                user_id, course_id, trigger, type(exc).__name__,
+            )
+            if current is not None:
+                return self._stale_result(current, as_of=as_of)
+            return self._unavailable_prediction_result(user_id=user_id, as_of=as_of)
+
+    def _collect_prediction_inputs(self, *, user_id: str, course_id: str) -> dict[str, Any]:
+        inputs: dict[str, Any] = {"knowledge_snapshots": [], "practice_attempts": [], "mappings": []}
+        try:
+            snapshots = self.repository.list_all_current_snapshots(
+                user_id=user_id, projection_kind="KNOWLEDGE", projection_scope=course_id
+            )
+            inputs["knowledge_snapshots"] = [
+                {"scope_id": s.scope_id, "state_type": s.state_type, "value": s.value,
+                 "confidence": s.confidence, "data_quality": s.data_quality,
+                 "computed_at": s.computed_at}
+                for s in snapshots
+            ]
+        except Exception:
+            pass
+        if self._knowledge_repository is not None:
+            try:
+                attempts = self._knowledge_repository.list_attempts(
+                    user_id=user_id, course_id=course_id, limit=5000
+                )
+                inputs["practice_attempts"] = [
+                    {"attempt_id": a.attempt_id, "exercise_id": a.exercise_id,
+                     "occurred_at": a.occurred_at, "result_type": a.result_type,
+                     "score": a.score, "max_score": a.max_score,
+                     "error_codes": list(a.error_codes)}
+                    for a in attempts
+                ]
+            except Exception:
+                pass
+            try:
+                mappings = self._knowledge_repository.list_mappings(course_id=course_id)
+                inputs["mappings"] = [
+                    {"exercise_id": m.exercise_id, "knowledge_component_code": m.knowledge_component_code}
+                    for m in mappings
+                ]
+            except Exception:
+                pass
+        return inputs
+
+    def _compute_prediction(
+        self, *, user_id: str, course_id: str, inputs: dict[str, Any], as_of: datetime,
+        input_digest: str, trigger: str,
+    ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
+        computed_at = _iso(as_of)
+        run_id = f"lrun_{uuid.uuid4().hex[:16]}"
+        valid_until = _iso(as_of + _PREDICTION_TTL)
+        snapshots: list[ComputedSnapshot] = []
+        evidence: list[dict[str, Any]] = []
+        warnings: list[str] = []
+
+        knowledge_snapshots = inputs.get("knowledge_snapshots", [])
+        practice_attempts = inputs.get("practice_attempts", [])
+        mappings = inputs.get("mappings", [])
+
+        kc_estimates: dict[str, dict] = {}
+        for snap in knowledge_snapshots:
+            if snap["state_type"] == "knowledge_mastery_estimate":
+                kc_estimates[snap["scope_id"]] = snap
+
+        exercise_to_kc = {m["exercise_id"]: m["knowledge_component_code"] for m in mappings}
+        kc_attempts: dict[str, list[dict]] = {}
+        for attempt in practice_attempts:
+            kc_code = exercise_to_kc.get(attempt["exercise_id"])
+            if kc_code:
+                kc_attempts.setdefault(kc_code, []).append(attempt)
+
+        all_kc_codes = set(kc_estimates.keys()) | set(kc_attempts.keys())
+        for kc_code in sorted(all_kc_codes):
+            est_data = kc_estimates.get(kc_code, {})
+            est_value = est_data.get("value", {}) if est_data else {}
+            current_estimate = est_value.get("estimate", 0.0)
+            evidence_count = est_value.get("evidence_count", 0)
+            attempts = kc_attempts.get(kc_code, [])
+
+            vel = self._compute_velocity(attempts, as_of)
+            velocity = vel["velocity"]
+            velocity_7d = vel["velocity_7d"]
+            velocity_30d = vel["velocity_30d"]
+            vel_trend = vel["trend"]
+            consistency = vel["consistency"]
+
+            forecast_7d = max(0.0, min(1.0, current_estimate + velocity * 7 * _FORECAST_DECAY_7D))
+            forecast_30d = max(0.0, min(1.0, current_estimate + velocity * 30 * _FORECAST_DECAY_30D))
+
+            if evidence_count < _MIN_PREDICTION_EVIDENCE:
+                forecast_trend = "insufficient_evidence"
+            elif velocity > _VELOCITY_THRESHOLD:
+                forecast_trend = "improving"
+            elif velocity < -_VELOCITY_THRESHOLD:
+                forecast_trend = "declining"
+            else:
+                forecast_trend = "steady"
+
+            if evidence_count < _MIN_PREDICTION_EVIDENCE:
+                predicted_pass_prob = current_estimate
+                predicted_band = "insufficient_evidence"
+            else:
+                predicted_pass_prob = current_estimate
+                if forecast_trend == "improving":
+                    predicted_pass_prob = min(1.0, current_estimate + abs(velocity) * 7)
+                elif forecast_trend == "declining":
+                    predicted_pass_prob = max(0.0, current_estimate - abs(velocity) * 7)
+                if predicted_pass_prob < 0.45:
+                    predicted_band = "likely_fail"
+                elif predicted_pass_prob < 0.7:
+                    predicted_band = "likely_partial"
+                else:
+                    predicted_band = "likely_pass"
+
+            if evidence_count >= _MIN_PREDICTION_EVIDENCE and len(attempts) >= _MIN_PREDICTION_EVIDENCE:
+                data_quality = "partial"
+                confidence = min(0.6, evidence_count / (evidence_count + 3.0))
+            elif evidence_count > 0 or len(attempts) > 0:
+                data_quality = "partial"
+                confidence = min(0.3, (evidence_count + len(attempts)) / 10.0)
+            else:
+                data_quality = "unavailable"
+                confidence = 0.0
+
+            observed_from = est_data.get("computed_at") if est_data else None
+
+            snapshots.append(ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
+                state_type="knowledge_mastery_forecast",
+                value={
+                    "knowledge_component_code": kc_code,
+                    "current_estimate": round(current_estimate, 6),
+                    "forecast_7d": round(forecast_7d, 6),
+                    "forecast_30d": round(forecast_30d, 6),
+                    "velocity": round(velocity, 6),
+                    "trend": forecast_trend,
+                    "evidence_count": evidence_count,
+                    "explanation_codes": ["linear_extrapolation"] if evidence_count >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
+                },
+                confidence=confidence, data_quality=data_quality,
+                observed_from=observed_from, observed_through=computed_at,
+                valid_until=valid_until, computed_at=computed_at,
+            ))
+            snapshots.append(ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
+                state_type="performance_prediction",
+                value={
+                    "knowledge_component_code": kc_code,
+                    "predicted_pass_probability": round(predicted_pass_prob, 6),
+                    "predicted_score_band": predicted_band,
+                    "evidence_count": evidence_count,
+                    "explanation_codes": ["mastery_based_estimate"] if evidence_count >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
+                },
+                confidence=confidence, data_quality=data_quality,
+                observed_from=observed_from, observed_through=computed_at,
+                valid_until=valid_until, computed_at=computed_at,
+            ))
+            snapshots.append(ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
+                state_type="learning_velocity",
+                value={
+                    "knowledge_component_code": kc_code,
+                    "velocity_7d": round(velocity_7d, 6),
+                    "velocity_30d": round(velocity_30d, 6),
+                    "trend": vel_trend,
+                    "consistency": round(consistency, 6),
+                    "evidence_count": len(attempts),
+                    "explanation_codes": ["attempt_rate_analysis"] if len(attempts) >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
+                },
+                confidence=confidence, data_quality=data_quality,
+                observed_from=observed_from, observed_through=computed_at,
+                valid_until=valid_until, computed_at=computed_at,
+            ))
+
+        if not snapshots:
+            warnings.append("no_prediction_evidence")
+
+        result = ProjectionResult(
+            run_id=run_id, user_id=user_id, as_of=computed_at, computed_at=computed_at,
+            estimator_version=PREDICTION_ESTIMATOR_VERSION, input_digest=input_digest,
+            snapshots=snapshots, warnings=warnings,
+        )
+        return result, snapshots, evidence
+
+    @staticmethod
+    def _compute_velocity(attempts: list[dict], as_of: datetime) -> dict[str, Any]:
+        if len(attempts) < _MIN_PREDICTION_EVIDENCE:
+            return {"velocity": 0.0, "velocity_7d": 0.0, "velocity_30d": 0.0,
+                    "trend": "insufficient_evidence", "consistency": 0.0}
+
+        sorted_attempts = sorted(attempts, key=lambda a: a["occurred_at"])
+        ratios: list[tuple[datetime, float]] = []
+        for a in sorted_attempts:
+            max_score = a.get("max_score", 0)
+            if max_score and max_score > 0:
+                ratio = max(0.0, min(1.0, a["score"] / max_score))
+            else:
+                ratio = 1.0 if a.get("result_type") == "passed" else 0.0
+            occurred = _parse(a["occurred_at"])
+            if occurred is not None:
+                ratios.append((occurred, ratio))
+
+        if len(ratios) < _MIN_PREDICTION_EVIDENCE:
+            return {"velocity": 0.0, "velocity_7d": 0.0, "velocity_30d": 0.0,
+                    "trend": "insufficient_evidence", "consistency": 0.0}
+
+        mid = len(ratios) // 2
+        first_half = ratios[:mid]
+        second_half = ratios[mid:]
+        first_avg = sum(r for _, r in first_half) / len(first_half)
+        second_avg = sum(r for _, r in second_half) / len(second_half)
+        first_time = min(t for t, _ in first_half)
+        second_time = max(t for t, _ in second_half)
+        time_span_days = max(1.0, (second_time - first_time).total_seconds() / 86400)
+        velocity = (second_avg - first_avg) / time_span_days
+
+        cutoff_7d = as_of - timedelta(days=7)
+        recent_7d = [(t, r) for t, r in ratios if t >= cutoff_7d]
+        older_7d = [(t, r) for t, r in ratios if t < cutoff_7d]
+        if recent_7d and older_7d:
+            velocity_7d = (sum(r for _, r in recent_7d) / len(recent_7d)) - (sum(r for _, r in older_7d) / len(older_7d))
+        else:
+            velocity_7d = velocity
+
+        cutoff_30d = as_of - timedelta(days=30)
+        recent_30d = [(t, r) for t, r in ratios if t >= cutoff_30d]
+        older_30d = [(t, r) for t, r in ratios if t < cutoff_30d]
+        if recent_30d and older_30d:
+            span_30d = max(1.0, (max(t for t, _ in recent_30d) - min(t for t, _ in older_30d)).total_seconds() / 86400)
+            velocity_30d = ((sum(r for _, r in recent_30d) / len(recent_30d)) - (sum(r for _, r in older_30d) / len(older_30d))) / span_30d
+        else:
+            velocity_30d = velocity
+
+        if len(ratios) < 3:
+            trend = "insufficient_evidence"
+        elif velocity_7d > velocity_30d + _VELOCITY_THRESHOLD:
+            trend = "accelerating"
+        elif velocity_7d < velocity_30d - _VELOCITY_THRESHOLD:
+            trend = "decelerating"
+        else:
+            trend = "steady"
+
+        if len(ratios) >= 3:
+            diffs = [ratios[i + 1][1] - ratios[i][1] for i in range(len(ratios) - 1)]
+            if diffs:
+                mean_diff = sum(diffs) / len(diffs)
+                variance = sum((d - mean_diff) ** 2 for d in diffs) / len(diffs)
+                consistency = max(0.0, 1.0 - variance * 4)
+            else:
+                consistency = 0.0
+        else:
+            consistency = 0.0
+
+        return {"velocity": velocity, "velocity_7d": velocity_7d,
+                "velocity_30d": velocity_30d, "trend": trend, "consistency": consistency}
+
+    def _prediction_snapshots_valid(self, user_id: str, course_id: str, as_of: datetime) -> bool:
+        rows = self.repository.list_all_current_snapshots(
+            user_id=user_id, projection_kind="PREDICTION", projection_scope=course_id
+        )
+        return bool(rows) and all(
+            (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
+            for row in rows
+        )
+
+    @staticmethod
+    def _unavailable_prediction_result(*, user_id: str, as_of: datetime) -> ProjectionResult:
+        computed = _iso(as_of)
+        return ProjectionResult(
+            run_id="", user_id=user_id, as_of=computed, computed_at=computed,
+            estimator_version=PREDICTION_ESTIMATOR_VERSION, input_digest="",
+            snapshots=[], warnings=["projection_failed"],
+        )
 
     def _collect_academic_inputs(self, *, user_id: str) -> dict[str, Any]:
         inputs: dict[str, Any] = {
