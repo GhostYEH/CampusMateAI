@@ -164,6 +164,12 @@ class TestArtifacts:
 
 
 class TestNoticesManual:
+    """POST /notices/manual 由 notices.py 提供,返回 notice_id 供后续 workflow 创建。
+
+    早期 agent_runtime.notices_manual_router 返回 job_id/status 的占位实现已被
+    notices.py 的 canonical 实现(§8.3)取代:先持久化通知文本再返回 notice_id。
+    """
+
     def test_create_manual_notice(self):
         _, client = _client()
         headers = _login(client)
@@ -174,8 +180,8 @@ class TestNoticesManual:
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        assert body["status"] == "QUEUED"
-        assert body["job_id"]
+        assert body["notice_id"]
+        assert body["title"] == "测试通知"
 
     def test_manual_notice_idempotency(self):
         _, client = _client()
@@ -190,4 +196,5 @@ class TestNoticesManual:
             json={"title": "测试", "content": "内容"},
             headers={**headers, "Idempotency-Key": "n1"},
         )
-        assert resp1.json()["job_id"] == resp2.json()["job_id"]
+        # 同内容幂等返回相同 notice_id
+        assert resp1.json()["notice_id"] == resp2.json()["notice_id"]
