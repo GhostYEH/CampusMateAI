@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from typing import Optional
 
@@ -79,6 +80,34 @@ def _hidden_input_value(html: str, name: str) -> Optional[str]:
         if match:
             return match.group(1)
     return None
+
+
+class _SelectedFieldParser(HTMLParser):
+    def __init__(self, names: set[str]) -> None:
+        super().__init__(convert_charrefs=True)
+        self._names = names
+        self._select: Optional[str] = None
+        self.values: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        attributes = {name.lower(): value for name, value in attrs}
+        field = attributes.get("name") or attributes.get("id")
+        if tag.lower() == "input" and field in self._names and attributes.get("value") is not None:
+            self.values[field] = attributes["value"] or ""
+        elif tag.lower() == "select":
+            self._select = field if field in self._names else None
+        elif tag.lower() == "option" and self._select and "selected" in attributes:
+            self.values[self._select] = attributes.get("value") or ""
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "select":
+            self._select = None
+
+
+def _selected_field_values(html: str, names: tuple[str, ...]) -> dict[str, str]:
+    parser = _SelectedFieldParser(set(names))
+    parser.feed(html or "")
+    return {name: value for name, value in parser.values.items() if value}
 
 
 def _encrypt_jwgl2_password(password: str, public_key_json: str) -> str:
@@ -259,6 +288,7 @@ class ZhengfangAdapter(EduAdapter):
             encoding=school.encoding,
             allow_private=False,
             extra_headers=school.extra_headers,
+            tls_max_version=school.tls_max_version,
         )
 
         try:
@@ -357,6 +387,7 @@ class ZhengfangAdapter(EduAdapter):
             encoding=school.encoding,
             allow_private=False,
             extra_headers=school.extra_headers,
+            tls_max_version=school.tls_max_version,
         )
 
         try:
@@ -462,6 +493,10 @@ class ZhengfangAdapter(EduAdapter):
             location,
             base=resp.url,
         )
+        if authenticated_menu_path is None and school.authenticated_menu_path:
+            authenticated_menu_path = _validated_protocol_request_path(
+                school, school.authenticated_menu_path
+            )
 
         result = {
             "provider": self.provider,
@@ -515,6 +550,7 @@ class ZhengfangAdapter(EduAdapter):
             encoding=school.encoding,
             allow_private=False,
             extra_headers=extra_headers,
+            tls_max_version=school.tls_max_version,
         )
         try:
             return await self._login_with_cookies_client(
@@ -731,6 +767,15 @@ class ZhengfangAdapter(EduAdapter):
     ) -> EduSchedule:
         path = _validated_protocol_request_path(school, protocol.data_path)
         params = dict(school.schedule_payload_extra)
+        if semester is None and protocol.semester_params:
+            entry_path = _validated_protocol_request_path(school, protocol.entry_path)
+            entry = await client.get(entry_path, referer=school.base_url)
+            params.update(_selected_field_values(entry.text, protocol.semester_params))
+            if any(name not in params for name in protocol.semester_params):
+                raise EduAdapterError(
+                    "SCHEDULE_SEMESTER_UNRESOLVED",
+                    "课表页面未提供当前学期参数",
+                )
         if semester:
             direct_names = [
                 name for name in protocol.semester_params
@@ -820,6 +865,7 @@ class ZhengfangAdapter(EduAdapter):
                 **school.extra_headers,
                 **({"User-Agent": _validated_user_agent(session.get("user_agent"))} if session.get("user_agent") else {}),
             },
+            tls_max_version=school.tls_max_version,
         )
         cookie_jar = session.get("cookie_jar") or []
         cookies = session.get("cookies") or {}

@@ -288,6 +288,20 @@ _KNOWN_SCHOOL_CONFIGS: dict[str, dict] = {
         "captcha_path": "/jwglxt/kaptcha",
         "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
         "allowed_origin": "https://xk.huel.edu.cn",
+        # HUEL's TLS 1.3 endpoint intermittently returns bad-record-MAC to
+        # Python/OpenSSL clients; TLS 1.2 is stable and still certificate-verified.
+        "tls_max_version": "TLSv1.2",
+        "authenticated_menu_path": "/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
+        "schedule_payload_extra": {"kzlx": "ck"},
+        "schedule_protocol": {
+            "entry_path": "/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151",
+            "data_path": "/jwglxt/kbcx/xskbcx_cxXsgrkb.html",
+            "method": "POST",
+            "semester_params": ["xnm", "xqm"],
+            "response_format": "json",
+            "source": "static_verified",
+            "fingerprint": "18e5098152ee999d1b242cc4e5c2ecf61ca6cae74443597ca3caa437fd40d8d8",
+        },
         "endpoint_overrides": {
             "profile_path": "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw",
             "profile_format": "html",

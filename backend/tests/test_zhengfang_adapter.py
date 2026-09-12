@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import socket
 import base64
+import ssl
 from pathlib import Path
 
 import httpx
@@ -51,6 +52,49 @@ def test_http_wrap_preserves_binary_response_content():
 
     assert wrapped.content == png_bytes
     assert wrapped.content_type == "image/png"
+
+
+def test_http_client_applies_configured_tls_maximum(monkeypatch):
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+    client = ZhengfangHttpClient(
+        base_url="https://jwxt.example.edu.cn",
+        tls_max_version="TLSv1.2",
+    )
+    client._pooled_client()
+
+    context = captured["verify"]
+    assert isinstance(context, ssl.SSLContext)
+    assert context.maximum_version == ssl.TLSVersion.TLSv1_2
+
+
+@pytest.mark.asyncio
+async def test_http_client_translates_raw_ssl_failures(monkeypatch):
+    class FailingAsyncClient:
+        calls = 0
+
+        def __init__(self, **_kwargs):
+            pass
+
+        async def get(self, *_args, **_kwargs):
+            self.calls += 1
+            raise ssl.SSLError("fixture bad record mac")
+
+    monkeypatch.setattr(httpx, "AsyncClient", FailingAsyncClient)
+    monkeypatch.setattr("app.services.edu.adapters.zhengfang_http.assert_safe_url", lambda *_args, **_kwargs: None)
+    client = ZhengfangHttpClient(base_url="https://jwxt.example.edu.cn")
+
+    with pytest.raises(EduAdapterError) as error:
+        await client.get("/login")
+
+    assert error.value.code == "NETWORK_TLS_ERROR"
+    assert client._pooled_client().calls == client.GET_MAX_ATTEMPTS
 
 
 def test_http_cookie_jar_preserves_same_name_across_domains_and_paths():
@@ -346,6 +390,25 @@ def test_parse_login_response_captcha_error():
     assert result.get("need_captcha") is True
 
 
+def test_schedule_parser_expands_combined_section_range():
+    payload = {
+        "kbList": [
+            {
+                "kcmc": "Fixture Course",
+                "xqj": "2",
+                "jc": "3-4",
+                "zcd": "1-16",
+            }
+        ]
+    }
+
+    schedule = ZhengfangParser().parse_schedule_json(json.dumps(payload))
+
+    assert len(schedule.items) == 1
+    assert schedule.items[0].start_section == 3
+    assert schedule.items[0].end_section == 4
+
+
 def test_login_page_scripts_do_not_count_as_visible_sms_or_captcha():
     page = '''
         <script>var dxyz = "短信验证码"; function refreshCode() { return "yzmDiv"; }</script>
@@ -384,6 +447,18 @@ def test_huel_login_configuration_is_bound_to_its_exact_origin():
         "captcha_path": "/jwglxt/kaptcha",
         "public_key_path": "/jwglxt/xtgl/login_getPublicKey.html",
         "allowed_origin": "https://xk.huel.edu.cn",
+        "tls_max_version": "TLSv1.2",
+        "authenticated_menu_path": "/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
+        "schedule_payload_extra": {"kzlx": "ck"},
+        "schedule_protocol": {
+            "entry_path": "/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151",
+            "data_path": "/jwglxt/kbcx/xskbcx_cxXsgrkb.html",
+            "method": "POST",
+            "semester_params": ["xnm", "xqm"],
+            "response_format": "json",
+            "source": "static_verified",
+            "fingerprint": "18e5098152ee999d1b242cc4e5c2ecf61ca6cae74443597ca3caa437fd40d8d8",
+        },
         "endpoint_overrides": {
             "profile_path": "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw",
             "profile_format": "html",
@@ -415,10 +490,119 @@ def test_huel_configuration_uses_verified_identity_endpoint_only():
 
     assert school is not None
     assert school.captcha_type == "none"
+    assert school.tls_max_version == "TLSv1.2"
+    assert school.authenticated_menu_path == "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"
+    assert school.schedule_protocol is not None
+    assert school.schedule_protocol.source == "static_verified"
     assert school.endpoints.profile_path == "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw"
     assert school.endpoints.profile_format == "html"
     assert school.endpoints.schedule_path is None
     assert school.endpoints.grade_path is None
+
+
+@pytest.mark.asyncio
+async def test_huel_prepare_login_passes_school_tls_policy_to_http_client(monkeypatch):
+    class HuelTlsClient:
+        init_kwargs = None
+
+        def __init__(self, **kwargs):
+            HuelTlsClient.init_kwargs = kwargs
+
+        async def get(self, path, **_kwargs):
+            if path == "/jwglxt/xtgl/login_slogin.html":
+                return HttpResponse(
+                    200,
+                    '<form><input name="csrftoken" type="hidden" value="fixture-csrf"></form>',
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/login_getPublicKey.html":
+                return HttpResponse(
+                    200,
+                    '{"modulus":"fixture","exponent":"fixture"}',
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_getPublicKey.html",
+                    {},
+                )
+            raise AssertionError(f"unexpected GET: {path}")
+
+        async def aclose(self):
+            pass
+
+        @property
+        def cookies(self):
+            return {}
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", HuelTlsClient)
+    result = await zhengfang_module.ZhengfangAdapter().prepare_login(
+        config=ProviderDetector().known_school_config(
+            "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+        )
+    )
+
+    assert result["csrftoken"] == "fixture-csrf"
+    assert HuelTlsClient.init_kwargs["tls_max_version"] == "TLSv1.2"
+
+
+@pytest.mark.asyncio
+async def test_schedule_protocol_uses_selected_entry_semester_values():
+    class ScheduleClient:
+        def __init__(self):
+            self.post_data = None
+
+        async def get(self, path, **_kwargs):
+            assert path == "/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151"
+            return HttpResponse(
+                200,
+                """
+                <select id="xnm"><option value="2025">2025</option><option value="2026" selected>2026</option></select>
+                <select name="xqm"><option selected value="3">3</option></select>
+                """,
+                "https://xk.huel.edu.cn/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151",
+                {},
+            )
+
+        async def post(self, path, *, data=None, **_kwargs):
+            assert path == "/jwglxt/kbcx/xskbcx_cxXsgrkb.html"
+            self.post_data = data
+            return HttpResponse(
+                200,
+                json.dumps(
+                    {
+                        "kbList": [
+                            {
+                                "kcmc": "Fixture Course",
+                                "xqj": "2",
+                                "jc": "3-4",
+                            }
+                        ]
+                    }
+                ),
+                "https://xk.huel.edu.cn/jwglxt/kbcx/xskbcx_cxXsgrkb.html",
+                {"content-type": "application/json"},
+            )
+
+    school = SchoolConfig(
+        base_url="https://xk.huel.edu.cn",
+        allowed_origin="https://xk.huel.edu.cn",
+        schedule_payload_extra={"kzlx": "ck"},
+    )
+    protocol = zhengfang_module.ScheduleProtocol(
+        entry_path="/jwglxt/kbcx/xskbcx_cxXskbcxIndex.html?gnmkdm=N2151",
+        data_path="/jwglxt/kbcx/xskbcx_cxXsgrkb.html",
+        method="POST",
+        semester_params=("xnm", "xqm"),
+        response_format="json",
+        source="static_verified",
+        fingerprint="fixture",
+    )
+    client = ScheduleClient()
+
+    schedule = await zhengfang_module.ZhengfangAdapter()._fetch_with_protocol(
+        client, school, protocol, semester=None
+    )
+
+    assert schedule.items
+    assert client.post_data == {"kzlx": "ck", "xnm": "2026", "xqm": "3"}
 
 
 @pytest.mark.asyncio
@@ -437,7 +621,10 @@ async def test_huel_schedule_fetch_discovers_only_authenticated_menu_protocol(mo
             if "index_initMenu" in path:
                 text = _load("menu_schedule.html")
             elif "xskbcx_cxXsKb" in path:
-                text = _load("schedule_page.html")
+                text = _load("schedule_page.html") + (
+                    '<select id="xnm"><option selected value="2026">2026</option></select>'
+                    '<select name="xqm"><option value="3" selected>3</option></select>'
+                )
             else:
                 raise AssertionError(f"unexpected discovery path: {path}")
             return HttpResponse(200, text, f"https://xk.huel.edu.cn{path}", {})
@@ -447,10 +634,12 @@ async def test_huel_schedule_fetch_discovers_only_authenticated_menu_protocol(mo
             return HttpResponse(200, _load("schedule_jwgl2.json"), f"https://xk.huel.edu.cn{path}", {})
 
     monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", AuthenticatedDiscoveryClient)
+    adapter_config = ProviderDetector().known_school_config(
+        "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+    )
+    adapter_config.pop("schedule_protocol")
     session = {
-        "adapter_config": ProviderDetector().known_school_config(
-            "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
-        ),
+        "adapter_config": adapter_config,
         "authenticated_menu_path": "/jwglxt/xtgl/index_initMenu.html?jsdm=xs",
         "cookies": {},
     }
@@ -1032,6 +1221,67 @@ async def test_jwgl2_login_loads_csrf_and_encrypts_password_before_submit(monkey
     assert any("login_getPublicKey" in path for path in client.get_calls)
     assert internal["external_student_id"] == "FIXTURE-S000000001"
     assert client.closed is True
+    assert internal["authenticated_menu_path"] == "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"
+
+
+@pytest.mark.asyncio
+async def test_login_uses_configured_menu_when_success_response_has_no_redirect(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=1024).public_key().public_numbers()
+    modulus = base64.b64encode(key.n.to_bytes((key.n.bit_length() + 7) // 8, "big")).decode()
+    exponent = base64.b64encode(key.e.to_bytes((key.e.bit_length() + 7) // 8, "big")).decode()
+
+    class LoginClient:
+        def __init__(self, **_kwargs):
+            self.cookies = {"JSESSIONID": "fixture-session"}
+
+        async def get(self, path, **_kwargs):
+            if path == "/jwglxt/xtgl/login_slogin.html":
+                return HttpResponse(
+                    200,
+                    '<input type="hidden" name="csrftoken" value="fixture-csrf">',
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/login_getPublicKey.html":
+                return HttpResponse(
+                    200,
+                    json.dumps({"modulus": modulus, "exponent": exponent}),
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/login_getPublicKey.html",
+                    {},
+                )
+            if path == "/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw":
+                return HttpResponse(
+                    200,
+                    "<table><tr><td>xh</td><td>fixture-user</td></tr></table>",
+                    "https://xk.huel.edu.cn/jwglxt/xtgl/index_cxYhxxIndex.html?xt=jw",
+                    {},
+                )
+            raise AssertionError(f"unexpected GET: {path}")
+
+        async def post(self, path, **_kwargs):
+            assert path == "/jwglxt/xtgl/login_slogin.html"
+            return HttpResponse(
+                200,
+                json.dumps({"success": True}),
+                "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html",
+                {"content-type": "application/json"},
+            )
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(zhengfang_module, "ZhengfangHttpClient", LoginClient)
+
+    internal = await zhengfang_module.ZhengfangAdapter().login(
+        username="fixture-user",
+        password="fixture-password",
+        config=ProviderDetector().known_school_config(
+            "https://xk.huel.edu.cn/jwglxt/xtgl/login_slogin.html"
+        ),
+    )
+
     assert internal["authenticated_menu_path"] == "/jwglxt/xtgl/index_initMenu.html?jsdm=xs"
 
 

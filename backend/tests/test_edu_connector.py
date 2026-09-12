@@ -49,7 +49,7 @@ from app.services.edu.adapters.mock import MockEduAdapter
 from app.services.edu.adapters.qiangzhi import QiangzhiAdapter
 from app.services.edu.adapters.qingguo import QingguoAdapter
 from app.services.edu.connector import EduConnectorService
-from app.services.edu.adapters.zhengfang_http import NeedUserAction
+from app.services.edu.adapters.zhengfang_http import EduAdapterError, NeedUserAction
 from app.services.edu.schedule_validator import ScheduleValidationError
 from app.services.edu import discovery_service
 
@@ -872,6 +872,76 @@ def test_backend_http_first_credential_continue_connects() -> None:
     assert binding["connection_status"] == BINDING_ACTIVE
     sync_resp = client.post("/api/v1/edu/sync/schedule", headers=headers)
     assert sync_resp.json()["status"] == "success"
+
+
+def test_adapter_network_error_returns_retryable_connection_state(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "zhengfang",
+            "base_url": "https://jwxt.example.edu",
+            "login_execution_mode": "backend_http",
+        },
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+
+    async def fail_tls(**_kwargs):
+        raise EduAdapterError("NETWORK_TLS_ERROR", "fixture TLS failure")
+
+    connector = get_container().edu_connector
+    monkeypatch.setattr(connector._select_adapter("zhengfang")[0], "login", fail_tls)
+    response = client.post(
+        f"/api/v1/edu/connections/{connection['id']}/continue",
+        headers=headers,
+        json={"username": "fixture-user", "password": "fixture-password"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["state"] == CONN_AUTH_REQUIRED
+    assert body["error_code"] == "NETWORK_TLS_ERROR"
+    assert "安全连接" in body["error_message"]
+
+
+def test_stale_connecting_connection_accepts_credential_retry(monkeypatch) -> None:
+    client = _client()
+    headers = _headers(client)
+    university_id = _select_demo_university(client, headers)
+    system = client.post(
+        f"/api/v1/edu/systems/{university_id}",
+        headers=_admin_headers_for(client),
+        json={
+            "system_key": "undergraduate-main",
+            "provider": "zhengfang",
+            "base_url": "https://jwxt.example.edu",
+            "login_execution_mode": "backend_http",
+        },
+    ).json()
+    connection = client.post(
+        "/api/v1/edu/connections", headers=headers, json={"edu_system_id": system["id"]}
+    ).json()
+    connector = get_container().edu_connector
+    connector._edu_repo.update_connection_state(connection["id"], state="connecting")
+
+    async def login_ok(**_kwargs):
+        return {"provider": "zhengfang", "cookies": {"fixture": "authenticated"}}
+
+    monkeypatch.setattr(connector._select_adapter("zhengfang")[0], "login", login_ok)
+    response = client.post(
+        f"/api/v1/edu/connections/{connection['id']}/continue",
+        headers=headers,
+        json={"username": "fixture-user", "password": "fixture-password"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == CONN_CONNECTED
 
 
 def test_real_credentials_needing_captcha_wait_for_client_webview(monkeypatch) -> None:

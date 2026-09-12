@@ -60,7 +60,7 @@ from .adapters.mock import MockEduAdapter
 from .adapters.qingguo import QingguoAdapter
 from .adapters.qiangzhi import QiangzhiAdapter
 from .adapters.zhengfang import ZhengfangAdapter, _user_action_from_login_page
-from .adapters.zhengfang_http import NeedUserAction
+from .adapters.zhengfang_http import EduAdapterError, NeedUserAction
 from .adapters.zhengfang_strategy import school_allowed_origins, school_config_from_dict
 from .detector import DetectResult, SystemDetector
 from .provider_detector import ProviderDetector
@@ -483,7 +483,7 @@ class EduConnectorService:
                 "public_key_text": None,
             }
 
-        if (conn.state == CONN_AUTH_REQUIRED and username and password) or submit_with_captcha:
+        if (conn.state in (CONN_AUTH_REQUIRED, CONN_CONNECTING) and username and password) or submit_with_captcha:
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
                 self._edu_repo.update_connection_state(
                     connection_id,
@@ -521,6 +521,22 @@ class EduConnectorService:
                     error_message="登录失败：用户名或密码错误",
                 )
                 return CONN_AUTH_FAILED
+            except EduAdapterError as exc:
+                message = {
+                    "NETWORK_TLS_ERROR": "与学校教务系统建立安全连接失败，请重试",
+                    "NETWORK_TIMEOUT": "连接学校教务系统超时，请重试",
+                    "NETWORK_ERROR": "暂时无法连接学校教务系统，请重试",
+                    "SYSTEM_UNAVAILABLE": "学校教务系统暂不可用，请稍后重试",
+                    "RATE_LIMITED": "学校教务系统请求过于频繁，请稍后重试",
+                    "LOGIN_PROTOCOL_ERROR": "学校教务登录协议响应异常，请稍后重试",
+                }.get(exc.code, "学校教务系统连接异常，请稍后重试")
+                self._edu_repo.update_connection_state(
+                    connection_id,
+                    state=CONN_AUTH_REQUIRED,
+                    error_code=exc.code,
+                    error_message=message,
+                )
+                return CONN_AUTH_REQUIRED
             await self._finalize_authenticated(connection_id, conn, adapter, internal, username=username)
             return CONN_CONNECTED
 

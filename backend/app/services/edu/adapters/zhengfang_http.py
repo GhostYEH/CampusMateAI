@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from http.cookiejar import Cookie, DefaultCookiePolicy
+import ssl
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
 
@@ -86,12 +87,20 @@ class ZhengfangHttpClient:
         timeout: float = DEFAULT_TIMEOUT,
         allow_private: bool = False,
         extra_headers: Optional[dict] = None,
+        tls_max_version: Optional[str] = None,
     ) -> None:
         self._base_url = base_url
         self._encoding = encoding
         self._timeout = timeout
         self._allow_private = allow_private
         self._extra_headers = extra_headers or {}
+        self._verify: bool | ssl.SSLContext = True
+        if tls_max_version is not None:
+            if tls_max_version != "TLSv1.2":
+                raise ValueError("unsupported TLS maximum version")
+            context = ssl.create_default_context()
+            context.maximum_version = ssl.TLSVersion.TLSv1_2
+            self._verify = context
         if any(str(name).lower() == "cookie" for name in self._extra_headers):
             raise ValueError("Cookie header cannot be supplied through extra_headers")
         base_origin = self._exact_https_origin(base_url)
@@ -107,6 +116,7 @@ class ZhengfangHttpClient:
             self._http_client = httpx.AsyncClient(
                 timeout=self._timeout,
                 follow_redirects=False,
+                verify=self._verify,
             )
         return self._http_client
 
@@ -374,6 +384,9 @@ class ZhengfangHttpClient:
             except (httpx.ReadError, httpx.RemoteProtocolError) as e:
                 if attempt + 1 == self.GET_MAX_ATTEMPTS:
                     raise EduAdapterError("NETWORK_ERROR", f"读取失败: {e}") from e
+            except ssl.SSLError as e:
+                if attempt + 1 == self.GET_MAX_ATTEMPTS:
+                    raise EduAdapterError("NETWORK_TLS_ERROR", "TLS 安全连接失败") from e
             except SSRFBlockedError:
                 raise
             except httpx.HTTPError as e:
@@ -410,6 +423,8 @@ class ZhengfangHttpClient:
             raise EduAdapterError("NETWORK_ERROR", f"连接失败: {e}") from e
         except (httpx.ReadError, httpx.RemoteProtocolError) as e:
             raise EduAdapterError("NETWORK_ERROR", f"读取失败: {e}") from e
+        except ssl.SSLError as e:
+            raise EduAdapterError("NETWORK_TLS_ERROR", "TLS 安全连接失败") from e
         except SSRFBlockedError:
             raise
         except httpx.HTTPError as e:

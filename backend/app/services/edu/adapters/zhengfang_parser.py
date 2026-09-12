@@ -44,6 +44,16 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
+def _section_bounds(value: Any) -> tuple[Optional[int], Optional[int]]:
+    text = _clean(value)
+    if text is None:
+        return None, None
+    sections = [int(part) for part in re.findall(r"\d+", text)]
+    if not sections:
+        return None, None
+    return sections[0], sections[-1]
+
+
 def _to_float(value: Any) -> Optional[float]:
     if value is None:
         return None
@@ -207,6 +217,7 @@ class ZhengfangParser:
             )
             teachers_list = _split_teachers(teacher_raw)
             weeks_raw = it.get("zcd") or it.get("weeks") or it.get("kkzc")
+            combined_start, combined_end = _section_bounds(it.get("jc"))
             # 收集标准模型未覆盖但对用户有意义的字段到 extra_info
             extra: dict = {}
             for k, v in it.items():
@@ -244,8 +255,8 @@ class ZhengfangParser:
                     building=_clean(it.get("jxlmc") or it.get("jxl") or it.get("building")),
                     classroom=_clean(it.get("jsdm") or it.get("jsmc2") or it.get("classroom")),
                     weekday=_to_int(it.get("xqj") or it.get("weekday") or it.get("day")),
-                    start_section=_to_int(it.get("jc1") or it.get("jc") or it.get("start_section") or it.get("start_jc")),
-                    end_section=_to_int(it.get("jc2") or it.get("end_section") or it.get("end_jc")),
+                    start_section=_to_int(it.get("jc1") or it.get("start_section") or it.get("start_jc")) or combined_start,
+                    end_section=_to_int(it.get("jc2") or it.get("end_section") or it.get("end_jc")) or combined_end,
                     start_time=_clean(it.get("kssj") or it.get("start_time")),
                     end_time=_clean(it.get("jssj") or it.get("end_time")),
                     weeks=_parse_weeks(weeks_raw),

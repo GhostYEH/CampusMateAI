@@ -148,6 +148,8 @@ class SchoolConfig:
     vpn_url: Optional[str] = None
     requires_campus_network: bool = False
     login_execution_mode: str = "backend_http"
+    tls_max_version: Optional[str] = None
+    authenticated_menu_path: Optional[str] = None
 
     @property
     def endpoints(self) -> ZhengfangEndpoints:
@@ -240,6 +242,8 @@ def school_config_from_dict(config: Optional[dict]) -> Optional[SchoolConfig]:
         vpn_url=config.get("vpn_url") or config.get("webvpn_url"),
         requires_campus_network=bool(config.get("requires_campus_network", False)),
         login_execution_mode=config.get("login_execution_mode") or "backend_http",
+        tls_max_version=config.get("tls_max_version"),
+        authenticated_menu_path=config.get("authenticated_menu_path"),
         encoding=config.get("encoding") or "utf-8",
         use_referer=bool(config.get("use_referer", True)),
         extra_headers=dict(config.get("extra_headers") or {}),
@@ -288,6 +292,8 @@ def school_config_to_dict(school: SchoolConfig) -> dict:
         "vpn_url": school.vpn_url,
         "requires_campus_network": school.requires_campus_network,
         "login_execution_mode": school.login_execution_mode,
+        "tls_max_version": school.tls_max_version,
+        "authenticated_menu_path": school.authenticated_menu_path,
     }
     if school.schedule_protocol is not None:
         data["schedule_protocol"] = school.schedule_protocol.to_dict()
