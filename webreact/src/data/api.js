@@ -66,6 +66,8 @@ async function refreshAccessToken(baseUrl, storage) {
   }
 }
 
+export { refreshAccessToken };
+
 function clearAuth(storage = globalThis.localStorage) {
   ["campus_access_token", "campus_refresh_token", "campus_session"].forEach((key) => storage?.removeItem(key));
 }

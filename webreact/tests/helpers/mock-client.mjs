@@ -58,6 +58,12 @@ export function createMockClient(client) {
       return api;
     },
 
+    onPatch(url, data, status = 200) {
+      handlers.set(`patch:${url}`, (config) =>
+        Promise.resolve({ status, data, config: config || {}, headers: {} }));
+      return api;
+    },
+
     onError(method, url, status, data) {
       handlers.set(`${method}:${url}`, (config) =>
         Promise.reject({ config: config || {}, response: { status, data, config: config || {} } }));
