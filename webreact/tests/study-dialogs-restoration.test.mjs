@@ -89,7 +89,26 @@ test("rule_fallback shows user-friendly Chinese note not internal class names", 
   assert.doesNotMatch(focusRoom, /SSLError/, "不向用户显示 SSLError 类名");
 });
 
-test("review dialog preserves close, escape, mask close and focus management", () => {
+test("Modal focus management: useEffect does not depend on onClose (fixes focus loss)", () => {
+  // 根因: 旧实现 useEffect(..., [onClose]) 中 onClose 是内联函数,
+  // 每次父组件重渲染都产生新引用,导致 effect 重复执行并抢走 textarea 焦点。
+  // 修复: 用 ref 保存最新 onClose,effect 依赖数组为空 []。
+  assert.match(primitives, /onCloseRef\s*=\s*useRef\(onClose\)/, "用 ref 保存 onClose");
+  assert.match(primitives, /onCloseRef\.current\s*=\s*onClose/, "每次渲染更新 ref");
+  assert.match(primitives, /onCloseRef\.current\(\)/, "keydown handler 通过 ref 调用 onClose");
+  // useEffect 依赖数组必须为空,不含 onClose
+  const useEffectBlock = primitives.match(/useEffect\(\(\)\s*=>\s*\{[\s\S]*?\}\s*,\s*\[([^\]]*)\]\)/);
+  assert.ok(useEffectBlock, "能匹配 useEffect 依赖数组");
+  assert.doesNotMatch(useEffectBlock[1], /onClose/, "useEffect 依赖数组不得包含 onClose");
+});
+
+test("Modal focus management: respects autofocus on textarea/input", () => {
+  // 初始焦点应优先聚焦带 autofocus 的元素(如 textarea),而非总是第一个 button
+  assert.match(primitives, /autofocus/, "初始焦点检查 autofocus 属性");
+  assert.match(primitives, /autoFocusEl\.focus\(\)/, "优先聚焦 autofocus 元素");
+});
+
+test("Modal preserves close, escape, mask close and aria attributes", () => {
   // Modal 支持 Escape 关闭
   assert.match(primitives, /Escape/, "Modal 支持 Escape 关闭");
   // 点击遮罩关闭
@@ -97,9 +116,8 @@ test("review dialog preserves close, escape, mask close and focus management", (
   // aria-modal 和 aria-labelledby
   assert.match(primitives, /aria-modal="true"/, "aria-modal 存在");
   assert.match(primitives, /aria-labelledby="modal-title"/, "aria-labelledby 存在");
-  // 焦点管理:初始焦点和关闭后恢复
+  // 焦点恢复
   assert.match(primitives, /previouslyFocusedRef/, "焦点恢复管理存在");
-  assert.match(primitives, /focus\(\)/, "初始焦点设置存在");
   // Tab 焦点约束
   assert.match(primitives, /Tab/, "Tab 焦点约束存在");
   // 背景滚动锁定

@@ -129,13 +129,12 @@ class OpenAICompatibleClient:
             msg = data["choices"][0]["message"]
             content = msg.get("content") or ""
             # DeepSeek 推理模型把思考过程放在 reasoning_content 字段。
-            # 结构化 JSON 解析只应使用最终 content;只有当 content 为空
-            # 而仅有 reasoning_content 时(部分模型偶发),才回退使用它,
-            # 避免完全丢失回答。绝不把 reasoning 前置拼到 content 前,
-            # 否则会让已经成功的结构化 JSON 再次解析失败而误降级。
-            reasoning = msg.get("reasoning_content") or ""
-            if not content and reasoning:
-                content = reasoning
+            # reasoning_content 是模型内部思维链,绝不作为最终答案返回给用户:
+            #   - content 非空 → 正常返回 content
+            #   - content 为空 → 返回空字符串,由调用方决定降级策略
+            #     (check_llm_provider 报 empty_response,task_breakdown 降级规则)
+            # 这样避免把未完成的思维链当作结构化 JSON 解析,也防止
+            # 思维过程泄露给终端用户。
             finish = data["choices"][0].get("finish_reason", "stop")
         except (KeyError, IndexError, TypeError) as e:
             raise LLMError(f"LLM 返回结构异常: {e}") from e

@@ -235,7 +235,7 @@ class TaskBreakdownService:
                 warnings.extend(llm_warn)
             except (LLMError, LLMTimeoutError) as e:
                 logger.warning(
-                    "task_breakdown.llm_failed fallback=rule error_type=%s",
+                    "task_breakdown.llm_failed fallback=rule error_type={}",
                     type(e).__name__,
                 )
                 warnings.append(
@@ -249,7 +249,7 @@ class TaskBreakdownService:
                 # 任何未预期的生成失败都不向用户抛 500,
                 # 遵循本服务的契约: LLM 失败一律降级为规则拆解。
                 logger.warning(
-                    "task_breakdown.llm_unexpected fallback=rule error_type=%s",
+                    "task_breakdown.llm_unexpected fallback=rule error_type={}",
                     type(e).__name__,
                 )
                 warnings.append(
@@ -427,12 +427,21 @@ class TaskBreakdownService:
         # 真正的 async/await: 不再使用 run_until_complete,
         # 避免跨事件循环复用同一个 AsyncClient 导致连接污染。
         # 超时使用 Settings 配置值,不再硬编码 20.0。
+        # max_tokens 使用 Settings.llm_max_tokens,给推理模型足够预算
+        # 覆盖 reasoning_content + 最终 JSON 输出。
         response = await self._llm.chat(  # type: ignore[union-attr]
             messages,
             temperature=0.3,
-            max_tokens=1500,
+            max_tokens=self._settings.llm_max_tokens,
             timeout=float(self._settings.llm_timeout_seconds),
         )
+        # 检测截断: 推理模型可能因 max_tokens 不足而 finish_reason="length",
+        # 此时 content 中的 JSON 不完整,解析必然失败。明确报错以便降级。
+        if response.finish_reason == "length":
+            raise LLMError(
+                "LLM 输出被 max_tokens 截断(finish_reason=length),"
+                "请增大 LLM_MAX_TOKENS 或减少提示长度"
+            )
         content = response.content.strip()
         steps_raw = self._parse_llm_json(content)
         if not steps_raw:

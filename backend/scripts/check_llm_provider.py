@@ -98,7 +98,7 @@ async def _test_chat(llm: LLMClient) -> tuple[str, float, str, str]:
     t0 = time.perf_counter()
     try:
         resp = await asyncio.wait_for(
-            llm.chat(test_messages, temperature=0.0, max_tokens=20, timeout=15.0),
+            llm.chat(test_messages, temperature=0.0, max_tokens=256, timeout=15.0),
             timeout=20.0,
         )
         elapsed = (time.perf_counter() - t0) * 1000.0

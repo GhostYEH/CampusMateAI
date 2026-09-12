@@ -174,15 +174,20 @@ def test_reasoning_content_not_prepended_when_content_present() -> None:
     assert parsed[0]["title"] == "步骤一"
 
 
-def test_reasoning_content_used_only_when_content_empty() -> None:
-    """content 为空而仅有 reasoning_content 时,回退使用 reasoning(避免完全丢失回答)。"""
+def test_reasoning_content_not_used_when_content_empty() -> None:
+    """content 为空时,reasoning_content 绝不作为答案返回。
+
+    回归: 旧实现把 reasoning_content 回退当作 content 返回,
+    导致模型内部思维链泄露给用户,且被当作结构化 JSON 解析而误降级。
+    正确行为: content 为空 → 返回空字符串,由调用方决定降级。
+    """
     response_data = {
         "choices": [
             {
                 "message": {
                     "role": "assistant",
                     "content": "",
-                    "reasoning_content": "最终答案是 OK",
+                    "reasoning_content": "让我思考一下这个目标应该如何拆解...",
                 },
                 "finish_reason": "stop",
             }
@@ -191,7 +196,10 @@ def test_reasoning_content_used_only_when_content_empty() -> None:
     client = _make_client_with_response(response_data)
     resp = asyncio.run(client.chat([{"role": "user", "content": "ping"}]))
 
-    assert resp.content == "最终答案是 OK"
+    # content 必须为空,不包含 reasoning
+    assert resp.content == ""
+    assert "思考" not in resp.content
+    assert "reasoning" not in resp.content.lower()
 
 
 def test_content_without_reasoning_unchanged() -> None:

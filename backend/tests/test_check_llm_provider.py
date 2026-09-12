@@ -212,3 +212,32 @@ def test_run_check_does_not_leak_api_key_in_error():
     assert secret not in result.sample_response
     # api_key_masked 也不得包含完整 Key
     assert secret not in result.api_key_masked
+
+def test_run_check_empty_content_returns_empty_response():
+    """LLM 返回空 content(如推理模型只输出 reasoning_content)时报 empty_response,不是 ok。
+
+    回归: 旧实现把 reasoning_content 回退当作 content,导致 check_llm_provider
+    误报 ok。正确行为: content 为空 → empty_response,提示用户检查模型配置。
+    """
+    from app.services.llm.base import LLMResponse
+
+    class _EmptyContentLLM:
+        name = "empty-content"
+        available = True
+
+        async def chat(self, messages, **kwargs):
+            return LLMResponse(content="", finish_reason="stop")
+
+        async def aclose(self):
+            pass
+
+    settings = Settings(
+        app_env="test",
+        llm_provider="openai_compatible",
+        llm_base_url="https://api.example.com",
+        llm_api_key="sk-test-key-12345",
+        llm_model="test-model",
+    )
+    result = asyncio.run(run_check(settings=settings, llm_client=_EmptyContentLLM()))
+    assert result.connection_status == "empty_response"
+    assert result.sample_response == ""

@@ -168,3 +168,121 @@ def test_task_breakdown_timeout_uses_settings_not_hardcoded() -> None:
 
     assert captured["timeout"] == 42.0, \
         "LLM 调用超时必须使用 Settings.llm_timeout_seconds(42),而非硬编码 20.0"
+
+# ===== 截断检测 =====
+
+
+class _TruncatingLLM:
+    """模拟推理模型 max_tokens 不足: finish_reason=length, content 是截断 JSON。"""
+
+    name = "truncating"
+    available = True
+
+    async def chat(self, messages, **kwargs):
+        from app.services.llm.base import LLMResponse
+        return LLMResponse(
+            content='[\\D\n  {\n    "step_number": "',
+            finish_reason="length",
+        )
+
+
+def test_task_breakdown_truncated_json_degrades_to_rule_fallback() -> None:
+    """finish_reason=length 时必须检测截断并降级,不把残缺 JSON 当作有效输出。"""
+    service = _build_service(_TruncatingLLM())
+    user = SimpleNamespace(id="usr_test", role="student")
+
+    response = asyncio.run(
+        service.breakdown(
+            TaskBreakdownRequest(goal="我想准备篮球比赛"),
+            user=user,
+        )
+    )
+
+    assert response.mode == "rule_fallback"
+    assert response.steps, "截断降级也必须产出步骤"
+
+
+def test_task_breakdown_max_tokens_uses_settings() -> None:
+    """LLM 调用 max_tokens 必须来自 Settings.llm_max_tokens,而非硬编码 1500。"""
+    from app.services.llm.openai_compatible import StubLLMClient
+
+    captured = {}
+
+    class _MaxTokensCapturingStub(StubLLMClient):
+        async def chat(self, messages, **kwargs):
+            captured["max_tokens"] = kwargs.get("max_tokens")
+            return await super().chat(messages, **kwargs)
+
+    stub = _MaxTokensCapturingStub(
+        response_text=(
+            '[{"step_number":1,"title":"步骤","description":"做",'
+            '"estimated_minutes":10,"dependencies":[],"completion_criteria":"完成",'
+            '"is_policy_step":false,"knowledge_source":null}]'
+        )
+    )
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite:///:memory:",
+        llm_provider="openai_compatible",
+        llm_base_url="http://localhost",
+        llm_api_key="test-key",
+        llm_model="test-model",
+        llm_max_tokens=8192,
+    )
+    db = reset_db_for_tests()
+    task_repo = PersonalTaskRepository(db)
+    doc_repo = DocumentRepository(db)
+    retrieval = RetrievalService(doc_repo)
+    service = TaskBreakdownService(
+        personal_task_repo=task_repo,
+        retrieval=retrieval,
+        llm=stub,
+        settings=settings,
+    )
+    user = SimpleNamespace(id="usr_test", role="student")
+
+    asyncio.run(
+        service.breakdown(TaskBreakdownRequest(goal="复习高数"), user=user)
+    )
+
+    assert captured["max_tokens"] == 8192, \
+        "max_tokens 必须使用 Settings.llm_max_tokens(8192),而非硬编码 1500"
+
+
+# ===== Loguru 格式化 =====
+
+
+def test_task_breakdown_loguru_uses_brace_placeholder(caplog) -> None:
+    """logger.warning 必须用 loguru {} 占位,而非 %s。
+
+    回归: 旧实现用 error_type=%s + type(e).__name__ 作为位置参数,
+    loguru 不识别 %s 格式,日志中会出现字面量 "error_type=%s" 而非实际类名。
+    """
+    from loguru import logger as loguru_logger
+
+    records = []
+
+    def sink(message):
+        records.append(str(message))
+
+    sink_id = loguru_logger.add(sink, level="WARNING")
+
+    try:
+        service = _build_service(_SslFailingLLM())
+        user = SimpleNamespace(id="usr_test", role="student")
+
+        asyncio.run(
+            service.breakdown(
+                TaskBreakdownRequest(goal="复习高数"),
+                user=user,
+            )
+        )
+    finally:
+        loguru_logger.remove(sink_id)
+
+    # 日志中必须出现实际异常类名(SSLError),而非字面量 %s
+    joined = "".join(records)
+    assert "SSLError" in joined, \
+        "loguru 日志必须用 {} 占位替换实际值,不应出现字面量 %s"
+    assert "error_type=%s" not in joined, \
+        "不得残留 loguru 无法解析的 %s 占位符"

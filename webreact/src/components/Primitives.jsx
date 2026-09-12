@@ -28,10 +28,12 @@ export function StatCard({ label, value, detail, icon, tone = "blue" }) { return
 export function Modal({ title, children, onClose, actions, variant = "", className = "" }) {
   const modalRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement;
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
+      if (event.key === "Escape") { event.stopPropagation(); onCloseRef.current(); return; }
       if (event.key !== "Tab") return;
       const root = modalRef.current;
       if (!root) return;
@@ -43,7 +45,10 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", handleKeyDown);
-    modalRef.current?.querySelector("button, input, textarea, select")?.focus();
+    const focusables = modalRef.current?.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+    const autoFocusEl = modalRef.current?.querySelector("[autofocus]");
+    if (autoFocusEl && typeof autoFocusEl.focus === "function") { autoFocusEl.focus(); }
+    else if (focusables && focusables.length) { focusables[0].focus(); }
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -53,7 +58,7 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
         try { previouslyFocusedRef.current.focus(); } catch {}
       }
     };
-  }, [onClose]);
+  }, []);
   const variantClass = variant ? `modal--${variant}` : "";
   const extraClass = className ? ` ${className}` : "";
   return <div className={`modal-backdrop ${variantClass}`.trim()} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={modalRef} className={`modal ${variantClass}${extraClass}`.trim()} role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={onClose}><Icon name="PhX" /></button></header><div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}</section></div>;
