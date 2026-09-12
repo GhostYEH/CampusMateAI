@@ -113,7 +113,7 @@
 .study-summer-room .white-noise-control__copy span { color: rgba(255, 255, 255, .45); }
 .study-summer-room .white-noise-control__value { color: var(--summer-primary); }
 .study-page { max-width: 2048px; padding-bottom: 108px; }
-.study-summer-dock { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; width: min(680px, calc(100vw - 24px)); transform: translateX(-50%); border: 1px solid rgba(255, 255, 255, .13); border-radius: 999px; color: #fff; background: rgba(7, 23, 17, .72); box-shadow: 0 18px 46px rgba(0, 0, 0, .28); backdrop-filter: blur(22px) saturate(135%); -webkit-backdrop-filter: blur(22px) saturate(135%); }
+.study-summer-dock { --summer-primary: #d7ef83; position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 40; width: min(680px, calc(100vw - 24px)); transform: translateX(-50%); border: 1px solid rgba(255, 255, 255, .13); border-radius: 999px; color: #fff; background: rgba(7, 23, 17, .72); box-shadow: 0 18px 46px rgba(0, 0, 0, .28); backdrop-filter: blur(22px) saturate(135%); -webkit-backdrop-filter: blur(22px) saturate(135%); }
 .study-summer-dock__inner { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 10px 8px 16px; }
 .study-summer-dock__brand { display: inline-flex; align-items: center; gap: 8px; color: rgba(255, 255, 255, .92); font-size: 14px; font-weight: 700; white-space: nowrap; }
 .study-summer-dock__brand:hover { color: var(--summer-primary); }
