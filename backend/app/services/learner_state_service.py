@@ -125,6 +125,7 @@ class LearnerStateProjectionService:
                 as_of=as_of,
                 input_digest=input_digest,
                 trigger=trigger,
+                corrections=corrections if self._control_repository is not None else None,
             )
             if current is None or current_as_of is None or as_of >= current_as_of:
                 self.repository.save_projection(
@@ -196,22 +197,63 @@ class LearnerStateProjectionService:
 
     def _compute(
         self, *, user_id: str, inputs: dict[str, Any], as_of: datetime,
-        input_digest: str, trigger: str,
+        input_digest: str, trigger: str, corrections: list | None = None,
     ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
         computed_at = _iso(as_of)
         run_id = f"lrun_{uuid.uuid4().hex[:16]}"
         rows: list[ComputedSnapshot] = []
         evidence: list[dict[str, Any]] = []
+        active_corrections = corrections or []
+
+        def _apply_correction_semantics(
+            *, scope_type: str, scope_id: str, state_type: str,
+            quality: str, confidence: float,
+        ) -> tuple[str, float, list[str]]:
+            """对匹配 ACTIVE correction 的快照应用保守语义。"""
+            q = quality
+            c = confidence
+            extra_warnings: list[str] = []
+            for corr in active_corrections:
+                if corr.status != "ACTIVE":
+                    continue
+                if not (
+                    corr.scope_type == scope_type
+                    and corr.scope_id == scope_id
+                    and corr.state_type == state_type
+                ):
+                    continue
+                ct = corr.correction_type
+                if ct == "MARK_INACCURATE":
+                    if q == "verified":
+                        q = "partial"
+                    c = min(c, 0.49)
+                    extra_warnings.append("learner_correction_marked_inaccurate")
+                elif ct == "SOURCE_OUTDATED":
+                    q = "stale"
+                    c = min(c, 0.35)
+                    extra_warnings.append("learner_correction_source_outdated")
+                elif ct == "NOT_APPLICABLE":
+                    extra_warnings.append("learner_correction_not_applicable")
+                elif ct == "ALREADY_RESOLVED":
+                    extra_warnings.append("learner_correction_already_resolved")
+                elif ct == "REQUEST_RECOMPUTE":
+                    extra_warnings.append("learner_correction_recompute_requested")
+            return q, c, extra_warnings
 
         def add(
             *, scope_type: str, scope_id: str, state_type: str, value: dict[str, Any],
             quality: str, observed_from: datetime | None, observed_through: datetime | None,
             valid_until: datetime | None, sources: list[dict[str, Any]],
         ) -> None:
+            base_confidence = _confidence(quality)
+            quality, base_confidence, corr_warnings = _apply_correction_semantics(
+                scope_type=scope_type, scope_id=scope_id, state_type=state_type,
+                quality=quality, confidence=base_confidence,
+            )
             snapshot = ComputedSnapshot(
                 snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
                 scope_type=scope_type, scope_id=scope_id, state_type=state_type,
-                value=value, confidence=_confidence(quality), data_quality=quality,
+                value=value, confidence=base_confidence, data_quality=quality,
                 observed_from=_iso(observed_from) if observed_from else None,
                 observed_through=_iso(observed_through) if observed_through else None,
                 valid_until=_iso(valid_until) if valid_until else None,
