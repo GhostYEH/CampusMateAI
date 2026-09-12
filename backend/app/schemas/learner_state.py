@@ -470,10 +470,17 @@ class PredictionEvaluationResult(BaseModel):
     test_count: int = Field(ge=0)
     cutoff_at: datetime
     accuracy: float = Field(ge=0, le=1)
+    roc_auc: float = Field(ge=0, le=1)
     pr_auc: float = Field(ge=0, le=1)
     log_loss: float = Field(ge=0)
     brier_score: float = Field(ge=0, le=1)
     calibration_error: float = Field(ge=0, le=1)
+    training_exercise_count: int = Field(ge=0)
+    test_exercise_count: int = Field(ge=0)
+    exercise_group_overlap_count: int = Field(ge=0)
+    estimator_version: str
+    evaluation_provenance: Literal["ONLINE_DETERMINISTIC_ESTIMATOR"]
+    eligible_for_model_promotion: bool = False
     truthfulness_gate_passed: bool
     gate_failure_reasons: list[str] = Field(default_factory=list, max_length=16)
     explanation_codes: list[str] = Field(default_factory=list, max_length=16)

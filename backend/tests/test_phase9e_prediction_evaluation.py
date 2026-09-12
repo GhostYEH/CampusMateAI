@@ -116,9 +116,13 @@ def test_evaluation_returns_metrics():
     assert result["total_attempts"] == 10
     assert result["training_count"] + result["test_count"] == 10
     assert 0.0 <= result["accuracy"] <= 1.0
+    assert 0.0 <= result["roc_auc"] <= 1.0
     assert 0.0 <= result["pr_auc"] <= 1.0
     assert result["log_loss"] >= 0.0
     assert 0.0 <= result["brier_score"] <= 1.0
+    assert result["evaluation_provenance"] == "ONLINE_DETERMINISTIC_ESTIMATOR"
+    assert result["estimator_version"] == "prediction-linear-v1"
+    assert result["eligible_for_model_promotion"] is False
 
 
 def test_evaluation_insufficient_data_fails_gate():
@@ -163,6 +167,9 @@ def test_evaluation_chronological_split():
     result = svc.evaluate_predictions("user1", course_id="course_c", as_of=now, test_ratio=0.3)
     assert result["training_count"] == 14
     assert result["test_count"] == 6
+    assert result["training_exercise_count"] == 1
+    assert result["test_exercise_count"] == 1
+    assert result["exercise_group_overlap_count"] == 1
 
 
 def test_evaluation_log_loss_better_than_random_with_good_predictions():

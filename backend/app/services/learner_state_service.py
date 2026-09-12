@@ -1603,10 +1603,17 @@ class LearnerStateProjectionService:
                 "test_count": test_count,
                 "cutoff_at": _iso(as_of),
                 "accuracy": 0.0,
+                "roc_auc": 0.0,
                 "pr_auc": 0.0,
                 "log_loss": 0.6931,
                 "brier_score": 0.25,
                 "calibration_error": 1.0,
+                "training_exercise_count": 0,
+                "test_exercise_count": 0,
+                "exercise_group_overlap_count": 0,
+                "estimator_version": PREDICTION_ESTIMATOR_VERSION,
+                "evaluation_provenance": "ONLINE_DETERMINISTIC_ESTIMATOR",
+                "eligible_for_model_promotion": False,
                 "truthfulness_gate_passed": False,
                 "gate_failure_reasons": gate_reasons or ["insufficient_data"],
                 "explanation_codes": ["insufficient_data"],
@@ -1615,6 +1622,9 @@ class LearnerStateProjectionService:
         cutoff_time = attempts[training_count - 1]["occurred_at"]
         training_attempts = attempts[:training_count]
         test_attempts = attempts[training_count:]
+        training_exercises = {a["exercise_id"] for a in training_attempts}
+        test_exercises = {a["exercise_id"] for a in test_attempts}
+        exercise_overlap = training_exercises & test_exercises
 
         training_avg = sum(a["ratio"] for a in training_attempts) / len(training_attempts)
         if len(training_attempts) >= 2:
@@ -1632,6 +1642,7 @@ class LearnerStateProjectionService:
         correct = sum(1 for p, y in predictions if (p >= 0.5) == (y == 1))
         accuracy = correct / len(predictions) if predictions else 0.0
 
+        roc_auc = self._compute_roc_auc(predictions)
         pr_auc = self._compute_pr_auc(predictions)
         log_loss = self._compute_log_loss(predictions)
         brier = sum((p - y) ** 2 for p, y in predictions) / len(predictions) if predictions else 0.25
@@ -1655,10 +1666,17 @@ class LearnerStateProjectionService:
             "test_count": test_count,
             "cutoff_at": _iso(cutoff_time),
             "accuracy": round(accuracy, 6),
+            "roc_auc": round(roc_auc, 6),
             "pr_auc": round(pr_auc, 6),
             "log_loss": round(log_loss, 6),
             "brier_score": round(brier, 6),
             "calibration_error": round(calibration_error, 6),
+            "training_exercise_count": len(training_exercises),
+            "test_exercise_count": len(test_exercises),
+            "exercise_group_overlap_count": len(exercise_overlap),
+            "estimator_version": PREDICTION_ESTIMATOR_VERSION,
+            "evaluation_provenance": "ONLINE_DETERMINISTIC_ESTIMATOR",
+            "eligible_for_model_promotion": False,
             "truthfulness_gate_passed": gate_passed,
             "gate_failure_reasons": gate_reasons,
             "explanation_codes": ["chronological_split_evaluation"],
@@ -1685,6 +1703,21 @@ class LearnerStateProjectionService:
             auc += precision * (recall - prev_recall)
             prev_recall = recall
         return auc
+
+    @staticmethod
+    def _compute_roc_auc(predictions: list[tuple[float, int]]) -> float:
+        positives = [score for score, label in predictions if label == 1]
+        negatives = [score for score, label in predictions if label == 0]
+        if not positives or not negatives:
+            return 0.0
+        wins = 0.0
+        for positive in positives:
+            for negative in negatives:
+                if positive > negative:
+                    wins += 1.0
+                elif positive == negative:
+                    wins += 0.5
+        return wins / (len(positives) * len(negatives))
 
     @staticmethod
     def _compute_log_loss(predictions: list[tuple[float, int]]) -> float:
