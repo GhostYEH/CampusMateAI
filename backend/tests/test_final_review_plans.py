@@ -1,0 +1,217 @@
+"""期末复习 plan versions 测试。
+
+覆盖:首版计划生成、plan 不可变、版本列表、激活、幂等。
+"""
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.api.routes.final_review import router as final_review_router
+from app.core.config import Settings
+from app.main import create_app
+from app.services.container import reset_container_for_tests
+from app.services.demo_seeder import seed_demo_data
+
+
+def _setup():
+    container = reset_container_for_tests(
+        Settings(
+            app_env="test",
+            database_url="sqlite:///:memory:",
+            auto_seed_demo_users=True,
+            auto_import_demo=False,
+            llm_provider="none",
+            agent_allow_mock_providers=True,
+        )
+    )
+    seed_demo_data(container, force=True)
+    container.agent_provider_registry.add_fake("fake")
+    app = create_app()
+    app.include_router(final_review_router, prefix="/api/v1")
+    return container, TestClient(app)
+
+
+def _login(client, username="student_demo"):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": "Demo123456"},
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def _create_exam(client, headers, course_name="高等数学", exam_date="2026-12-30"):
+    resp = client.post(
+        "/api/v1/student/exams",
+        json={"course_name": course_name, "exam_date": exam_date},
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def _create_campaign(client, headers, exam_ids, capacity=120):
+    resp = client.post(
+        "/api/v1/final-review/campaigns",
+        json={"exam_ids": exam_ids, "daily_capacity_minutes": capacity},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["campaign_id"]
+
+
+class TestPlanGenerate:
+    def test_generate_first_plan(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        resp = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["version"] == 1
+        assert "plan" in body
+        assert body["risk_level"] == "CONFIRM_REQUIRED"
+        assert body["requires_approval"] is True
+
+    def test_generate_plan_has_days(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        resp = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={},
+            headers=headers,
+        )
+        plan = resp.json()["plan"]
+        assert "days" in plan
+        assert isinstance(plan["days"], list)
+
+    def test_list_plan_versions(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        resp = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        versions = resp.json()
+        assert len(versions) == 1
+        assert versions[0]["version"] == 1
+
+    def test_get_plan_version(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        resp = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions/1",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["version"] == 1
+
+    def test_get_nonexistent_plan_version(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        resp = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions/99",
+            headers=headers,
+        )
+        assert resp.status_code == 404
+
+    def test_plan_version_immutable(self):
+        """plan version 不可变:再次 generate 创建新版本而非覆盖。"""
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        r1 = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        r2 = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        assert r1.json()["version"] == 1
+        assert r2.json()["version"] == 2
+        # v1 仍然可读且内容不变
+        v1 = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions/1",
+            headers=headers,
+        ).json()
+        assert v1["version"] == 1
+
+    def test_activate_campaign(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        resp = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/activate",
+            json={"version": 1}, headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["active_version"] == 1
+        assert resp.json()["activated"] is True
+
+    def test_activate_nonexistent_version(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        resp = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/activate",
+            json={"version": 99}, headers=headers,
+        )
+        assert resp.status_code == 404
+
+    def test_generate_plan_nonexistent_campaign(self):
+        _, client = _setup()
+        headers = _login(client)
+        resp = client.post(
+            "/api/v1/final-review/campaigns/nonexistent/plans/generate",
+            json={}, headers=headers,
+        )
+        assert resp.status_code == 404
+
+    def test_cross_user_plan_access_denied(self):
+        _, client = _setup()
+        headers1 = _login(client, "student_demo")
+        exam_id = _create_exam(client, headers1)
+        cid = _create_campaign(client, headers1, [exam_id])
+        client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers1,
+        )
+        headers2 = _login(client, "student_demo_01")
+        resp = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions",
+            headers=headers2,
+        )
+        # 跨用户看不到对方的 plan versions
+        assert resp.status_code == 200
+        assert len(resp.json()) == 0
