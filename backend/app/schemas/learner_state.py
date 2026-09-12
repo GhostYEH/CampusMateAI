@@ -461,6 +461,26 @@ class CounterfactualSimulateResponse(BaseModel):
     explanation_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
+class PredictionEvaluationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str
+    total_attempts: int = Field(ge=0)
+    training_count: int = Field(ge=0)
+    test_count: int = Field(ge=0)
+    cutoff_at: datetime
+    accuracy: float = Field(ge=0, le=1)
+    pr_auc: float = Field(ge=0, le=1)
+    log_loss: float = Field(ge=0)
+    brier_score: float = Field(ge=0, le=1)
+    calibration_error: float = Field(ge=0, le=1)
+    truthfulness_gate_passed: bool
+    gate_failure_reasons: list[str] = Field(default_factory=list, max_length=16)
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+    _aware_cutoff = field_validator("cutoff_at")(_aware)
+
+
 __all__ = [
     "AcademicCourseLoadValue",
     "CourseParticipationValue",
@@ -486,4 +506,5 @@ __all__ = [
     "CounterfactualSimulateResponse",
     "CounterfactualIntervention",
     "CounterfactualDelta",
+    "PredictionEvaluationResult",
 ]

@@ -1508,6 +1508,171 @@ class LearnerStateProjectionService:
             "explanation_codes": ["deterministic_counterfactual"],
         }
 
+    def evaluate_predictions(
+        self, user_id: str, *, course_id: str, as_of: datetime,
+        test_ratio: float = 0.3,
+    ) -> dict[str, Any]:
+        """时序评测：在历史数据上做 chronological split，度量预测质量。
+
+        用 cutoff 之前的数据生成预测，与 cutoff 之后的实际结果比较。
+        真实性门禁检查预测是否优于随机猜测。
+        """
+        as_of = _require_utc(as_of)
+        if not 0.1 <= test_ratio <= 0.5:
+            raise ValueError("test_ratio must be between 0.1 and 0.5")
+
+        attempts: list[dict[str, Any]] = []
+        if self._knowledge_repository is not None:
+            try:
+                raw = self._knowledge_repository.list_attempts(
+                    user_id=user_id, course_id=course_id, limit=5000,
+                )
+                for a in raw:
+                    occurred = _parse(a.occurred_at)
+                    if occurred is None:
+                        continue
+                    max_score = a.max_score if a.max_score > 0 else 100.0
+                    ratio = max(0.0, min(1.0, a.score / max_score))
+                    attempts.append({
+                        "occurred_at": occurred,
+                        "passed": 1 if a.result_type == "passed" else 0,
+                        "ratio": ratio,
+                        "exercise_id": a.exercise_id,
+                    })
+            except Exception:
+                pass
+
+        attempts.sort(key=lambda a: a["occurred_at"])
+        total = len(attempts)
+        test_count = int(total * test_ratio)
+        training_count = total - test_count
+
+        gate_reasons: list[str] = []
+        if test_count < 3:
+            gate_reasons.append("insufficient_test_data")
+        if training_count < 3:
+            gate_reasons.append("insufficient_training_data")
+        if total < 6:
+            gate_reasons.append("insufficient_total_data")
+
+        if total < 2 or test_count < 1 or training_count < 1:
+            return {
+                "course_id": course_id,
+                "total_attempts": total,
+                "training_count": training_count,
+                "test_count": test_count,
+                "cutoff_at": _iso(as_of),
+                "accuracy": 0.0,
+                "pr_auc": 0.0,
+                "log_loss": 0.6931,
+                "brier_score": 0.25,
+                "calibration_error": 1.0,
+                "truthfulness_gate_passed": False,
+                "gate_failure_reasons": gate_reasons or ["insufficient_data"],
+                "explanation_codes": ["insufficient_data"],
+            }
+
+        cutoff_time = attempts[training_count - 1]["occurred_at"]
+        training_attempts = attempts[:training_count]
+        test_attempts = attempts[training_count:]
+
+        training_avg = sum(a["ratio"] for a in training_attempts) / len(training_attempts)
+        if len(training_attempts) >= 2:
+            t_span = max(1.0, (training_attempts[-1]["occurred_at"] - training_attempts[0]["occurred_at"]).total_seconds() / 86400)
+            velocity = (training_attempts[-1]["ratio"] - training_attempts[0]["ratio"]) / t_span
+        else:
+            velocity = 0.0
+
+        predictions: list[tuple[float, int]] = []
+        for ta in test_attempts:
+            days_ahead = (ta["occurred_at"] - cutoff_time).total_seconds() / 86400
+            pred = max(0.0, min(1.0, training_avg + velocity * days_ahead * _FORECAST_DECAY_7D))
+            predictions.append((pred, ta["passed"]))
+
+        correct = sum(1 for p, y in predictions if (p >= 0.5) == (y == 1))
+        accuracy = correct / len(predictions) if predictions else 0.0
+
+        pr_auc = self._compute_pr_auc(predictions)
+        log_loss = self._compute_log_loss(predictions)
+        brier = sum((p - y) ** 2 for p, y in predictions) / len(predictions) if predictions else 0.25
+
+        bins = [0.0, 0.25, 0.5, 0.75, 1.0]
+        calibration_error = self._compute_calibration_error(predictions, bins)
+
+        if log_loss >= 0.6931:
+            gate_reasons.append("no_better_than_random")
+        if all(p >= 0.5 for p, _ in predictions) or all(p < 0.5 for p, _ in predictions):
+            if len(predictions) > 3:
+                gate_reasons.append("systematically_biased")
+        if abs(calibration_error) > 0.3:
+            gate_reasons.append("poorly_calibrated")
+
+        gate_passed = len(gate_reasons) == 0
+        return {
+            "course_id": course_id,
+            "total_attempts": total,
+            "training_count": training_count,
+            "test_count": test_count,
+            "cutoff_at": _iso(cutoff_time),
+            "accuracy": round(accuracy, 6),
+            "pr_auc": round(pr_auc, 6),
+            "log_loss": round(log_loss, 6),
+            "brier_score": round(brier, 6),
+            "calibration_error": round(calibration_error, 6),
+            "truthfulness_gate_passed": gate_passed,
+            "gate_failure_reasons": gate_reasons,
+            "explanation_codes": ["chronological_split_evaluation"],
+        }
+
+    @staticmethod
+    def _compute_pr_auc(predictions: list[tuple[float, int]]) -> float:
+        if not predictions:
+            return 0.0
+        positives = sum(1 for _, y in predictions if y == 1)
+        if positives == 0 or positives == len(predictions):
+            return 0.0
+        sorted_pred = sorted(predictions, key=lambda x: -x[0])
+        tp = fp = 0
+        prev_recall = 0.0
+        auc = 0.0
+        for p, y in sorted_pred:
+            if y == 1:
+                tp += 1
+            else:
+                fp += 1
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / positives
+            auc += precision * (recall - prev_recall)
+            prev_recall = recall
+        return auc
+
+    @staticmethod
+    def _compute_log_loss(predictions: list[tuple[float, int]]) -> float:
+        if not predictions:
+            return 0.6931
+        import math
+        eps = 1e-15
+        total = 0.0
+        for p, y in predictions:
+            p = max(eps, min(1.0 - eps, p))
+            total += -(y * math.log(p) + (1 - y) * math.log(1.0 - p))
+        return total / len(predictions)
+
+    @staticmethod
+    def _compute_calibration_error(predictions: list[tuple[float, int]], bins: list[float]) -> float:
+        if not predictions:
+            return 1.0
+        errors = []
+        for i in range(len(bins) - 1):
+            lo, hi = bins[i], bins[i + 1]
+            in_bin = [(p, y) for p, y in predictions if lo <= p < hi]
+            if not in_bin:
+                continue
+            avg_pred = sum(p for p, _ in in_bin) / len(in_bin)
+            avg_actual = sum(y for _, y in in_bin) / len(in_bin)
+            errors.append(abs(avg_pred - avg_actual))
+        return sum(errors) / len(errors) if errors else 1.0
+
     @staticmethod
     def _apply_counterfactual_intervention(
         inputs: dict[str, Any], intervention: dict[str, Any], as_of: datetime,

@@ -16,6 +16,7 @@ from ...schemas.learner_state import (
     LearnerStateRunPage,
     LearnerStateSnapshotOut,
     LearnerStateSnapshotPage,
+    PredictionEvaluationResult,
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import require_role
@@ -271,6 +272,21 @@ def simulate_counterfactual(
         warning_codes=result["warning_codes"],
         explanation_codes=result["explanation_codes"],
     )
+
+
+@router.get("/predictions/{course_id}/evaluation", response_model=PredictionEvaluationResult)
+def evaluate_prediction_quality(
+    course_id: str,
+    test_ratio: float = Query(0.3, ge=0.1, le=0.5),
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(_container),
+) -> PredictionEvaluationResult:
+    """时序评测：chronological split 度量预测质量，真实性门禁检查。"""
+    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    result = container.learner_state_service.evaluate_predictions(
+        user.id, course_id=course_id, as_of=as_of, test_ratio=test_ratio,
+    )
+    return PredictionEvaluationResult(**result)
 
 
 __all__ = ["router"]
