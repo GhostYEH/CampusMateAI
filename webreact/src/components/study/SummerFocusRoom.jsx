@@ -119,12 +119,15 @@ export default function SummerFocusRoom({
     // 必须同时锁定 documentElement。immersive 用 body class 锁,两者正交不互斥。
     const prevBodyOverflow = document.body.style.overflow;
     const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevScrollbarGutter = document.documentElement.style.scrollbarGutter;
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.scrollbarGutter = "auto";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = prevBodyOverflow;
       document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.style.scrollbarGutter = prevScrollbarGutter;
     };
   }, [breakdownOpen, onClosePlanning]);
 

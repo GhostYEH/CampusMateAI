@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { Icon } from "./Icon.jsx";
 
@@ -50,10 +51,16 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
     if (autoFocusEl && typeof autoFocusEl.focus === "function") { autoFocusEl.focus(); }
     else if (focusables && focusables.length) { focusables[0].focus(); }
     const prevOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevScrollbarGutter = document.documentElement.style.scrollbarGutter;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.scrollbarGutter = "auto";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = prevOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.style.scrollbarGutter = prevScrollbarGutter;
       if (previouslyFocusedRef.current && typeof previouslyFocusedRef.current.focus === "function") {
         try { previouslyFocusedRef.current.focus(); } catch {}
       }
@@ -61,5 +68,5 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
   }, []);
   const variantClass = variant ? `modal--${variant}` : "";
   const extraClass = className ? ` ${className}` : "";
-  return <div className={`modal-backdrop ${variantClass}`.trim()} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={modalRef} className={`modal ${variantClass}${extraClass}`.trim()} role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={onClose}><Icon name="PhX" /></button></header><div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}</section></div>;
+  return createPortal(<div className={`modal-backdrop ${variantClass}`.trim()} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={modalRef} className={`modal ${variantClass}${extraClass}`.trim()} role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={onClose}><Icon name="PhX" /></button></header><div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}</section></div>, document.body);
 }

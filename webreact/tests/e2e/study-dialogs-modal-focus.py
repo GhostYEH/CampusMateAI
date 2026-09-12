@@ -69,6 +69,8 @@ def run():
         page.goto(f"{BASE}/study", wait_until="networkidle")
         page.locator(".study-summer-room").wait_for(timeout=15000)
         body_overflow_before = page.evaluate("document.body.style.overflow")
+        html_overflow_before = page.evaluate("document.documentElement.style.overflow")
+        gutter_before = page.evaluate("document.documentElement.style.scrollbarGutter")
 
         page.get_by_label("这次想完成什么").fill("测试专注")
         page.get_by_role("button", name="开始专注").click()
@@ -82,6 +84,8 @@ def run():
         page.wait_for_timeout(400)
         check(active_id(page) == "study-self-report", "打开复盘弹窗后 textarea 获得焦点", failures)
         check(page.evaluate("document.body.style.overflow") == "hidden", "弹窗打开时 body 锁定滚动", failures)
+        check(page.evaluate("document.documentElement.style.overflow") == "hidden", "弹窗打开时 html 锁定滚动", failures)
+        check(page.evaluate("document.documentElement.style.scrollbarGutter") == "auto", "弹窗打开时取消稳定滚动槽", failures)
 
         page.locator("#study-self-report").press_sequentially(TYPED, delay=15)
         check(page.locator("#study-self-report").input_value() == TYPED, "连续输入多个字符后值完整", failures)
@@ -108,6 +112,8 @@ def run():
         check(page.locator("section.modal--study").count() == 0, "Escape 关闭弹窗", failures)
         check("结束并记录" in page.evaluate("document.activeElement && document.activeElement.textContent || ''"), "Escape 关闭后焦点回到触发按钮", failures)
         check(page.evaluate("document.body.style.overflow") == body_overflow_before, "Escape 关闭后 body 滚动恢复原值", failures)
+        check(page.evaluate("document.documentElement.style.overflow") == html_overflow_before, "Escape 关闭后 html 滚动恢复原值", failures)
+        check(page.evaluate("document.documentElement.style.scrollbarGutter") == gutter_before, "Escape 关闭后滚动槽恢复原值", failures)
 
         trigger.click()
         page.locator("section.modal--study").wait_for(timeout=5000)
@@ -141,6 +147,8 @@ def run():
         check(page.locator("section.modal--study").count() == 0, "点击遮罩关闭弹窗", failures)
         check("结束并记录" in page.evaluate("document.activeElement && document.activeElement.textContent || ''"), "遮罩关闭后焦点回到触发按钮", failures)
         check(page.evaluate("document.body.style.overflow") == body_overflow_before, "遮罩关闭后 body 滚动恢复原值", failures)
+        check(page.evaluate("document.documentElement.style.overflow") == html_overflow_before, "遮罩关闭后 html 滚动恢复原值", failures)
+        check(page.evaluate("document.documentElement.style.scrollbarGutter") == gutter_before, "遮罩关闭后滚动槽恢复原值", failures)
 
         check(not errors, "无页面异常", failures)
         if errors:

@@ -7,7 +7,7 @@
 
 行为:
 - 在 5174 起按顺序探测空闲端口(最多试 10 个),不再写死单一端口。
-- 用该端口启动 `npx vite --port <port> --strictPort`,等待 / 返回 200。
+- 用 Node 直接启动 Vite,等待 / 返回 200。
 - 设置 WEB_BASE_URL 后依次执行 study-dialogs-modal-focus.py 与
   study-dialogs-viewports.py,任一失败即整体失败。
 - 成功或失败都会终止 Vite 进程,不残留。
@@ -15,6 +15,8 @@
 """
 import argparse
 import os
+import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -68,6 +70,70 @@ def wait_for_vite(port):
     raise RuntimeError(f"Vite 在 {START_TIMEOUT_SECONDS}s 内未就绪({url}),最后错误: {last_error}")
 
 
+def port_is_free(port):
+    with socket.socket() as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def wait_for_port_release(port, timeout=10):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if port_is_free(port):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def start_vite(port):
+    node = shutil.which("node")
+    vite = WEBREACT / "node_modules" / "vite" / "bin" / "vite.js"
+    if not node:
+        raise RuntimeError("未找到 node 可执行文件")
+    if not vite.exists():
+        raise RuntimeError(f"未找到 Vite 入口: {vite};请先安装 webreact 依赖")
+    kwargs = {"cwd": str(WEBREACT), "stdout": None, "stderr": subprocess.STDOUT}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(
+        [node, str(vite), "--port", str(port), "--strictPort", "--host", "127.0.0.1"],
+        **kwargs,
+    )
+
+
+def stop_process_tree(proc):
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            proc.kill()
+        else:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        proc.wait(timeout=5)
+
+
 def main():
     parser = argparse.ArgumentParser(description="学习弹窗 E2E: 自动起服并执行 Playwright 检查")
     group = parser.add_mutually_exclusive_group()
@@ -94,43 +160,40 @@ def main():
         return 2
     print(f"启动 Vite dev 服务,端口 {port}")
 
-    # Windows 下 npx 为 .cmd 脚本,需经 shell 解析;命令不含用户输入,无注入风险。
-    proc = subprocess.Popen(
-        f"npx vite --port {port} --strictPort --host 127.0.0.1",
-        cwd=str(WEBREACT),
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    try:
+        proc = start_vite(port)
+    except RuntimeError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 2
+    exit_code = 0
     try:
         try:
             wait_for_vite(port)
         except RuntimeError as exc:
             print(f"错误: {exc}", file=sys.stderr)
-            return 2
-        print(f"Vite 已就绪: http://127.0.0.1:{port}/")
-
-        env = {**os.environ, "WEB_BASE_URL": f"http://127.0.0.1:{port}"}
-        failures = []
-        for name in selected:
-            print(f"执行 {SCRIPTS[name].name}")
-            result = subprocess.run([sys.executable, str(SCRIPTS[name])], env=env)
-            if result.returncode != 0:
-                failures.append(SCRIPTS[name].name)
-        if failures:
-            print(f"失败: {', '.join(failures)}", file=sys.stderr)
-            return 1
-        print("ALL STUDY E2E CHECKS PASSED")
-        return 0
+            exit_code = 2
+        else:
+            print(f"Vite 已就绪: http://127.0.0.1:{port}/")
+            env = {**os.environ, "WEB_BASE_URL": f"http://127.0.0.1:{port}"}
+            failures = []
+            for name in selected:
+                print(f"执行 {SCRIPTS[name].name}")
+                result = subprocess.run([sys.executable, str(SCRIPTS[name])], env=env)
+                if result.returncode != 0:
+                    failures.append(SCRIPTS[name].name)
+            if failures:
+                print(f"失败: {', '.join(failures)}", file=sys.stderr)
+                exit_code = 1
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-        print("Vite dev 服务已回收")
+        stop_process_tree(proc)
+        if wait_for_port_release(port):
+            print("Vite dev 服务已回收,端口已释放")
+        else:
+            print(f"错误: Vite 退出后端口 {port} 仍被占用", file=sys.stderr)
+            exit_code = 1
+    if exit_code == 0:
+        print("ALL STUDY E2E CHECKS PASSED")
+    return exit_code
 
 
 if __name__ == "__main__":

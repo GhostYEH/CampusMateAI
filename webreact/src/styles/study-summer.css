@@ -423,7 +423,7 @@
   .island-heat { width: 100%; }
 }
 /* ── 学习复盘弹窗:森林玻璃变体(覆盖全局白色 Modal) ── */
-.modal-backdrop.modal--study { background: rgba(2, 10, 7, .66); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.modal-backdrop.modal--study { z-index: 70; background: rgba(2, 10, 7, .66); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .modal.modal--study {
   --study-accent: #d7ef83;
   width: min(520px, 100%);

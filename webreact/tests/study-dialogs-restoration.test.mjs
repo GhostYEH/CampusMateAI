@@ -1,11 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-
-const execFileAsync = promisify(execFile);
 
 const studyPage = await readFile(new URL("../src/pages/StudyPage.jsx", import.meta.url), "utf8");
 const focusRoom = await readFile(new URL("../src/components/study/SummerFocusRoom.jsx", import.meta.url), "utf8");
@@ -125,26 +120,6 @@ test("Modal focus management: useEffect does not depend on onClose (fixes focus 
   const useEffectBlock = primitives.match(/useEffect\(\(\)\s*=>\s*\{[\s\S]*?\}\s*,\s*\[([^\]]*)\]\)/);
   assert.ok(useEffectBlock, "能匹配 useEffect 依赖数组");
   assert.doesNotMatch(useEffectBlock[1], /onClose/, "useEffect 依赖数组不得包含 onClose");
-});
-
-test("Modal focus behavior: real browser keeps textarea focus, traps Tab, restores focus (Playwright)", async () => {
-  // 真实浏览器行为测试(仓库现有 Playwright,不新增 jsdom 依赖)。
-  // 需要已启动的 Vite dev 服务,入口为 npm run test:e2e:study(自动起服并回收)。
-  // 默认 npm test 保持快速独立: 未显式开启时跳过,不隐式依赖外部服务器。
-  if (process.env.STUDY_E2E !== "1") {
-    return;
-  }
-  // 打开后 textarea 获焦 / 连续输入值完整且焦点不丢 / Tab 与 Shift+Tab 不逃出 /
-  // Escape 关闭 / 点击遮罩关闭 / 关闭后焦点回到触发按钮 / body 滚动锁定与恢复。
-  const script = fileURLToPath(new URL("./e2e/study-dialogs-modal-focus.py", import.meta.url));
-  let result;
-  try {
-    result = await execFileAsync("python", [script], { timeout: 120000, env: { ...process.env, WEB_BASE_URL: process.env.WEB_BASE_URL || "http://127.0.0.1:5174" } });
-  } catch (err) {
-    assert.fail(`Modal 焦点行为脚本执行失败:\n${err.stdout || ""}\n${err.stderr || err.message}`);
-  }
-  assert.match(result.stdout, /ALL MODAL FOCUS CHECKS PASSED/, `Modal 焦点行为脚本应全部通过,输出:\n${result.stdout}`);
-  assert.doesNotMatch(result.stdout, /FAIL /, `Modal 焦点行为不得有失败项,输出:\n${result.stdout}`);
 });
 
 test("Modal preserves close, escape, mask close and aria attributes", () => {
