@@ -1,0 +1,97 @@
+{
+  "contract_version": "v1",
+  "comment": "Final-review domain fixture — campaign + immutable plan version + daily agenda.",
+  "job": {
+    "job_id": "job_fr_001",
+    "user_id": "user_demo_001",
+    "job_kind": "final_review",
+    "status": "SUCCEEDED",
+    "created_at": "2026-09-12T10:00:00+08:00",
+    "updated_at": "2026-09-12T10:20:00+08:00",
+    "latest_run_id": "run_fr_001"
+  },
+  "run": {
+    "run_id": "run_fr_001",
+    "job_id": "job_fr_001",
+    "user_id": "user_demo_001",
+    "status": "SUCCEEDED",
+    "phase": "IDLE",
+    "risk_level": "CONFIRM_REQUIRED",
+    "started_at": "2026-09-12T10:00:01+08:00",
+    "finished_at": "2026-09-12T10:20:00+08:00",
+    "created_at": "2026-09-12T10:00:00+08:00",
+    "updated_at": "2026-09-12T10:20:00+08:00",
+    "error": null,
+    "artifact_ids": ["art_fr_plan_v1"]
+  },
+  "artifact": {
+    "artifact_id": "art_fr_plan_v1",
+    "run_id": "run_fr_001",
+    "user_id": "user_demo_001",
+    "artifact_type": "FINAL_REVIEW_PLAN",
+    "version": 1,
+    "mime_type": "application/json",
+    "size_bytes": 4096,
+    "content_hash": "sha256:final_review_v1_hash",
+    "download_url": "/api/v1/agent-artifacts/art_fr_plan_v1",
+    "created_at": "2026-09-12T10:20:00+08:00"
+  },
+  "events": [
+    {
+      "id": "evt_fr_001",
+      "type": "RUN_STARTED",
+      "run_id": "run_fr_001",
+      "sequence": 1,
+      "status": "RUNNING",
+      "phase": "CONTEXT_BUILDING",
+      "role": "planner",
+      "summary": "构建期末复习上下文",
+      "progress": {"current": 0, "total": 5, "percent": 0},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T10:00:01+08:00"
+    },
+    {
+      "id": "evt_fr_010",
+      "type": "MODEL_COMPLETED",
+      "run_id": "run_fr_001",
+      "sequence": 10,
+      "status": "RUNNING",
+      "phase": "VALIDATING_OUTPUT",
+      "role": "planner",
+      "summary": "Zhipu 生成计划提案",
+      "progress": {"current": 2, "total": 5, "percent": 40},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T10:08:00+08:00"
+    },
+    {
+      "id": "evt_fr_020",
+      "type": "APPROVAL_RESOLVED",
+      "run_id": "run_fr_001",
+      "sequence": 20,
+      "status": "RUNNING",
+      "phase": "PERSISTING_RESULT",
+      "role": "planner",
+      "summary": "计划 v1 已激活",
+      "progress": {"current": 4, "total": 5, "percent": 80},
+      "artifact_id": null,
+      "approval_id": "apv_fr_001",
+      "created_at": "2026-09-12T10:15:00+08:00"
+    },
+    {
+      "id": "evt_fr_030",
+      "type": "ARTIFACT_CREATED",
+      "run_id": "run_fr_001",
+      "sequence": 30,
+      "status": "SUCCEEDED",
+      "phase": "IDLE",
+      "role": "planner",
+      "summary": "期末复习计划产物已生成",
+      "progress": {"current": 5, "total": 5, "percent": 100},
+      "artifact_id": "art_fr_plan_v1",
+      "approval_id": null,
+      "created_at": "2026-09-12T10:20:00+08:00"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "contract_version": "v1",
+  "comment": "Course-research domain fixture — role pipeline + source policy + academic policy.",
+  "job": {
+    "job_id": "job_cr_001",
+    "user_id": "user_demo_001",
+    "job_kind": "course_research",
+    "status": "PARTIAL",
+    "created_at": "2026-09-12T11:00:00+08:00",
+    "updated_at": "2026-09-12T11:15:00+08:00",
+    "latest_run_id": "run_cr_001"
+  },
+  "run": {
+    "run_id": "run_cr_001",
+    "job_id": "job_cr_001",
+    "user_id": "user_demo_001",
+    "status": "PARTIAL",
+    "phase": "IDLE",
+    "risk_level": "AUTO_SAFE",
+    "started_at": "2026-09-12T11:00:01+08:00",
+    "finished_at": "2026-09-12T11:15:00+08:00",
+    "created_at": "2026-09-12T11:00:00+08:00",
+    "updated_at": "2026-09-12T11:15:00+08:00",
+    "error": null,
+    "artifact_ids": ["art_cr_report"]
+  },
+  "source_policy": {
+    "course_material_priority": true,
+    "allow_web": true,
+    "allow_user_upload": true
+  },
+  "academic_policy": "LIMITED",
+  "assistance_mode": "EXPLAIN",
+  "events": [
+    {
+      "id": "evt_cr_001",
+      "type": "RUN_STARTED",
+      "run_id": "run_cr_001",
+      "sequence": 1,
+      "status": "RUNNING",
+      "phase": "CONTEXT_BUILDING",
+      "role": "coordinator",
+      "summary": "分解研究问题",
+      "progress": {"current": 0, "total": 6, "percent": 0},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T11:00:01+08:00"
+    },
+    {
+      "id": "evt_cr_010",
+      "type": "MODEL_FALLBACK",
+      "run_id": "run_cr_001",
+      "sequence": 10,
+      "status": "RUNNING",
+      "phase": "WAITING_FOR_MODEL",
+      "role": "web_researcher",
+      "summary": "Xunfei 不可用,降级到规则检索",
+      "progress": {"current": 2, "total": 6, "percent": 33},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T11:05:00+08:00"
+    },
+    {
+      "id": "evt_cr_020",
+      "type": "RUN_PARTIAL",
+      "run_id": "run_cr_001",
+      "sequence": 20,
+      "status": "PARTIAL",
+      "phase": "IDLE",
+      "role": "synthesizer",
+      "summary": "部分来源不可用,已生成带标注的报告",
+      "progress": {"current": 5, "total": 6, "percent": 83},
+      "artifact_id": "art_cr_report",
+      "approval_id": null,
+      "created_at": "2026-09-12T11:15:00+08:00"
+    }
+  ],
+  "artifact": {
+    "artifact_id": "art_cr_report",
+    "run_id": "run_cr_001",
+    "user_id": "user_demo_001",
+    "artifact_type": "COURSE_RESEARCH_REPORT",
+    "version": 1,
+    "mime_type": "text/markdown",
+    "size_bytes": 8192,
+    "content_hash": "sha256:course_research_hash",
+    "download_url": "/api/v1/agent-artifacts/art_cr_report",
+    "created_at": "2026-09-12T11:15:00+08:00"
+  }
+}

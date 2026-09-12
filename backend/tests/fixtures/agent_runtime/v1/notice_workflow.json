@@ -1,0 +1,90 @@
+{
+  "contract_version": "v1",
+  "comment": "Notice-workflow domain fixture — risk classification + MANUAL_ONLY enforcement.",
+  "job": {
+    "job_id": "job_nw_001",
+    "user_id": "user_demo_001",
+    "job_kind": "notice_workflow",
+    "status": "AWAITING_APPROVAL",
+    "created_at": "2026-09-12T12:00:00+08:00",
+    "updated_at": "2026-09-12T12:05:00+08:00",
+    "latest_run_id": "run_nw_001"
+  },
+  "run": {
+    "run_id": "run_nw_001",
+    "job_id": "job_nw_001",
+    "user_id": "user_demo_001",
+    "status": "AWAITING_APPROVAL",
+    "phase": "WAITING_FOR_APPROVAL",
+    "risk_level": "MANUAL_ONLY",
+    "started_at": "2026-09-12T12:00:01+08:00",
+    "finished_at": null,
+    "created_at": "2026-09-12T12:00:00+08:00",
+    "updated_at": "2026-09-12T12:05:00+08:00",
+    "error": null,
+    "artifact_ids": []
+  },
+  "events": [
+    {
+      "id": "evt_nw_001",
+      "type": "RUN_STARTED",
+      "run_id": "run_nw_001",
+      "sequence": 1,
+      "status": "RUNNING",
+      "phase": "CONTEXT_BUILDING",
+      "role": "notice_interpreter",
+      "summary": "解析通知文本",
+      "progress": {"current": 0, "total": 4, "percent": 0},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T12:00:01+08:00"
+    },
+    {
+      "id": "evt_nw_010",
+      "type": "TOOL_COMPLETED",
+      "run_id": "run_nw_001",
+      "sequence": 10,
+      "status": "RUNNING",
+      "phase": "WAITING_FOR_TOOL",
+      "role": "workflow_planner",
+      "summary": "已创建个人待办(AUTO_SAFE)",
+      "progress": {"current": 2, "total": 4, "percent": 50},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T12:02:00+08:00"
+    },
+    {
+      "id": "evt_nw_020",
+      "type": "APPROVAL_REQUIRED",
+      "run_id": "run_nw_001",
+      "sequence": 20,
+      "status": "AWAITING_APPROVAL",
+      "phase": "WAITING_FOR_APPROVAL",
+      "role": "workflow_planner",
+      "summary": "外部提交动作需用户手动完成",
+      "progress": {"current": 3, "total": 4, "percent": 75},
+      "artifact_id": null,
+      "approval_id": "apv_nw_001",
+      "created_at": "2026-09-12T12:05:00+08:00"
+    }
+  ],
+  "approval": {
+    "approval_id": "apv_nw_001",
+    "run_id": "run_nw_001",
+    "status": "PENDING",
+    "risk_level": "MANUAL_ONLY",
+    "action_summary": "在教务系统手动提交作业",
+    "expires_at": "2026-09-12T12:35:00+08:00",
+    "resolved_at": null,
+    "decision_reason": null
+  },
+  "error_envelope": {
+    "code": "AGENT_ACADEMIC_POLICY_RESTRICTED",
+    "message": "该作业在考试限制期,仅提供讲解",
+    "request_id": "req_nw_001",
+    "details": {
+      "run_id": "run_nw_001",
+      "academic_policy": "EXAM_RESTRICTED"
+    }
+  }
+}

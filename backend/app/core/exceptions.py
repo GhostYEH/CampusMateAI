@@ -475,12 +475,94 @@ class TrustedDeviceRevoked(AppException):
     message = "可信设备已被撤销。"
 
 
+# ===== CampusAgentRuntime =====
+# 稳定错误码与 AgentErrorCode 对齐(§9.2)。
+# request_id 由中间件注入,便于跨客户端追踪。
+
+
+class AgentRuntimeError(AppException):
+    """Agent 运行时基类。子类设置 code/http_status。"""
+
+    code = "AGENT_INVALID_STATE"
+    http_status = 409
+    message = "Agent 运行时状态无效。"
+
+
+class AgentPermissionDenied(AgentRuntimeError):
+    code = "AGENT_PERMISSION_DENIED"
+    http_status = 403
+    message = "Agent 操作未被授权。"
+
+
+class AgentToolRejected(AgentRuntimeError):
+    code = "AGENT_TOOL_REJECTED"
+    http_status = 403
+    message = "工具调用被拒绝。"
+
+
+class AgentApprovalRequired(AgentRuntimeError):
+    code = "AGENT_APPROVAL_REQUIRED"
+    http_status = 409
+    message = "需要用户确认后继续。"
+
+
+class AgentProviderUnavailable(AgentRuntimeError):
+    code = "AGENT_PROVIDER_UNAVAILABLE"
+    http_status = 503
+    message = "模型 provider 暂不可用。"
+
+
+class AgentContextExpired(AgentRuntimeError):
+    code = "AGENT_CONTEXT_EXPIRED"
+    http_status = 409
+    message = "上下文快照已过期。"
+
+
+class AgentIdempotencyConflict(AgentRuntimeError):
+    code = "AGENT_IDEMPOTENCY_CONFLICT"
+    http_status = 409
+    message = "幂等键已用于不同的请求。"
+
+
+class AgentRunNotFound(AgentRuntimeError):
+    code = "AGENT_RUN_NOT_FOUND"
+    http_status = 404
+    message = "Agent run 不存在。"
+
+
+class AgentRunCancelled(AgentRuntimeError):
+    code = "AGENT_RUN_CANCELLED"
+    http_status = 409
+    message = "Agent run 已取消。"
+
+
+class AgentOutputSchemaInvalid(AgentRuntimeError):
+    code = "AGENT_OUTPUT_SCHEMA_INVALID"
+    http_status = 422
+    message = "模型输出未通过 schema 校验。"
+
+
+class AgentSourcePolicyViolation(AgentRuntimeError):
+    code = "AGENT_SOURCE_POLICY_VIOLATION"
+    http_status = 403
+    message = "来源策略不允许该操作。"
+
+
+class AgentAcademicPolicyRestricted(AgentRuntimeError):
+    code = "AGENT_ACADEMIC_POLICY_RESTRICTED"
+    http_status = 403
+    message = "学术策略限制该操作。"
+
+
 def _build_error_body(
     code: str,
     message: str,
     details: Optional[Any] = None,
+    request_id: Optional[str] = None,
 ) -> dict:
-    body = {"code": code, "message": message, "details": details}
+    body: dict = {"code": code, "message": message, "details": details}
+    if request_id:
+        body["request_id"] = request_id
     return body
 
 
@@ -488,14 +570,15 @@ def register_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器，输出统一结构。"""
 
     @app.exception_handler(AppException)
-    async def _app_exception_handler(_: Request, exc: AppException):
+    async def _app_exception_handler(request: Request, exc: AppException):
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=exc.http_status,
-            content=_build_error_body(exc.code, exc.message, exc.details),
+            content=_build_error_body(exc.code, exc.message, exc.details, request_id),
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_handler(_: Request, exc: RequestValidationError):
+    async def _validation_handler(request: Request, exc: RequestValidationError):
         # Pydantic 自定义校验器的 ctx 可能携带 ValueError 实例；先做
         # JSON 安全转换，保证所有校验失败都稳定返回 422。
         # Validation errors must never echo untrusted request values (extra fields
@@ -509,35 +592,41 @@ def register_exception_handlers(app: FastAPI) -> None:
             }
             for item in raw_details
         ] if isinstance(raw_details, list) else None
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=422,
             content=_build_error_body(
                 "VALIDATION_FAILED",
                 "请求参数校验失败",
                 details=details if isinstance(details, list) else None,
+                request_id=request_id,
             ),
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_exception_handler(_: Request, exc: StarletteHTTPException):
+    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
         # 把 404 / 405 等也包装成统一结构
         code_map = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 500: "INTERNAL_ERROR"}
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=exc.status_code,
             content=_build_error_body(
                 code_map.get(exc.status_code, "HTTP_ERROR"),
                 str(exc.detail) if exc.detail else "请求错误",
+                request_id=request_id,
             ),
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(_: Request, exc: Exception):
+    async def _unhandled_exception_handler(request: Request, exc: Exception):
         # 不向客户端暴露内部堆栈，仅返回通用错误
+        request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=500,
             content=_build_error_body(
                 "INTERNAL_ERROR",
                 "服务器内部错误，请稍后重试。",
+                request_id=request_id,
             ),
         )
 
@@ -598,5 +687,17 @@ __all__ = [
     "LearnerStateStale",
     "ModelShadowDisabled",
     "DemoSeedRefused",
+    "AgentRuntimeError",
+    "AgentPermissionDenied",
+    "AgentToolRejected",
+    "AgentApprovalRequired",
+    "AgentProviderUnavailable",
+    "AgentContextExpired",
+    "AgentIdempotencyConflict",
+    "AgentRunNotFound",
+    "AgentRunCancelled",
+    "AgentOutputSchemaInvalid",
+    "AgentSourcePolicyViolation",
+    "AgentAcademicPolicyRestricted",
     "register_exception_handlers",
 ]

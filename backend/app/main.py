@@ -6,12 +6,14 @@
 """
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .api.router import api_router
 from .core.config import get_settings
@@ -21,6 +23,21 @@ from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human
 from .api.routes.home_banners import banner_image_storage_dir
 from .services.container import build_container, get_container
 from .services.demo_seeder import seed_demo_data
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """为每个请求注入 request_id,供错误信封与日志追踪。
+
+    优先复用客户端 X-Request-Id(截断到 128 字符),否则生成 UUID。
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        raw = request.headers.get("x-request-id", "")
+        request_id = raw[:128] if raw else f"req_{uuid.uuid4().hex[:16]}"
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["x-request-id"] = request_id
+        return response
 
 
 @asynccontextmanager
@@ -110,6 +127,7 @@ def create_app() -> FastAPI:
         )
 
     register_exception_handlers(app)
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 
     images_dir = Path(__file__).resolve().parent.parent / "data" / "community_images"

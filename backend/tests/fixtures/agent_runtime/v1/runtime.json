@@ -1,0 +1,130 @@
+{
+  "contract_version": "v1",
+  "comment": "Runtime foundation fixture — covers job/run/event/approval/artifact shapes.",
+  "job": {
+    "job_id": "job_01H8XKQD1",
+    "user_id": "user_demo_001",
+    "job_kind": "final_review",
+    "status": "SUCCEEDED",
+    "created_at": "2026-09-12T10:00:00+08:00",
+    "updated_at": "2026-09-12T10:12:30+08:00",
+    "latest_run_id": "run_01H8XKQD2"
+  },
+  "run": {
+    "run_id": "run_01H8XKQD2",
+    "job_id": "job_01H8XKQD1",
+    "user_id": "user_demo_001",
+    "status": "SUCCEEDED",
+    "phase": "IDLE",
+    "risk_level": "CONFIRM_REQUIRED",
+    "started_at": "2026-09-12T10:00:01+08:00",
+    "finished_at": "2026-09-12T10:12:30+08:00",
+    "created_at": "2026-09-12T10:00:00+08:00",
+    "updated_at": "2026-09-12T10:12:30+08:00",
+    "error": null,
+    "artifact_ids": ["art_01H8XKQD3"]
+  },
+  "events": [
+    {
+      "id": "evt_10001",
+      "type": "RUN_QUEUED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 1,
+      "status": "QUEUED",
+      "phase": "IDLE",
+      "role": null,
+      "summary": "Run 已入队",
+      "progress": null,
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T10:00:00+08:00"
+    },
+    {
+      "id": "evt_10002",
+      "type": "RUN_STARTED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 2,
+      "status": "RUNNING",
+      "phase": "CONTEXT_BUILDING",
+      "role": "planner",
+      "summary": "开始构建上下文",
+      "progress": {"current": 0, "total": 7, "percent": 0},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T10:00:01+08:00"
+    },
+    {
+      "id": "evt_10018",
+      "type": "TOOL_COMPLETED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 18,
+      "status": "RUNNING",
+      "phase": "WAITING_FOR_TOOL",
+      "role": "planner",
+      "summary": "已完成课程信息查询",
+      "progress": {"current": 3, "total": 7, "percent": 42},
+      "artifact_id": null,
+      "approval_id": null,
+      "created_at": "2026-09-12T10:05:00+08:00"
+    },
+    {
+      "id": "evt_10030",
+      "type": "APPROVAL_REQUIRED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 30,
+      "status": "AWAITING_APPROVAL",
+      "phase": "WAITING_FOR_APPROVAL",
+      "role": "planner",
+      "summary": "需要用户确认后继续",
+      "progress": {"current": 5, "total": 7, "percent": 71},
+      "artifact_id": null,
+      "approval_id": "apv_01H8XKQD4",
+      "created_at": "2026-09-12T10:08:00+08:00"
+    },
+    {
+      "id": "evt_10040",
+      "type": "RUN_COMPLETED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 40,
+      "status": "SUCCEEDED",
+      "phase": "IDLE",
+      "role": "planner",
+      "summary": "Run 已完成",
+      "progress": {"current": 7, "total": 7, "percent": 100},
+      "artifact_id": "art_01H8XKQD3",
+      "approval_id": null,
+      "created_at": "2026-09-12T10:12:30+08:00"
+    }
+  ],
+  "approval": {
+    "approval_id": "apv_01H8XKQD4",
+    "run_id": "run_01H8XKQD2",
+    "status": "APPROVED",
+    "risk_level": "CONFIRM_REQUIRED",
+    "action_summary": "激活期末复习计划 v1",
+    "expires_at": "2026-09-12T10:18:00+08:00",
+    "resolved_at": "2026-09-12T10:09:00+08:00",
+    "decision_reason": "用户确认"
+  },
+  "artifact": {
+    "artifact_id": "art_01H8XKQD3",
+    "run_id": "run_01H8XKQD2",
+    "user_id": "user_demo_001",
+    "artifact_type": "FINAL_REVIEW_PLAN",
+    "version": 1,
+    "mime_type": "application/json",
+    "size_bytes": 2048,
+    "content_hash": "sha256:abc123def456",
+    "download_url": "/api/v1/agent-artifacts/art_01H8XKQD3",
+    "created_at": "2026-09-12T10:12:30+08:00"
+  },
+  "error_envelope": {
+    "code": "AGENT_APPROVAL_REQUIRED",
+    "message": "需要用户确认后继续",
+    "request_id": "req_01H8XKQD0",
+    "details": {
+      "run_id": "run_01H8XKQD2",
+      "approval_id": "apv_01H8XKQD4"
+    }
+  }
+}
