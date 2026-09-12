@@ -416,6 +416,51 @@ class LearnerStateChangePage(BaseModel):
     has_more: bool
 
 
+InterventionType = Literal["additional_practice", "remediation", "review_session"]
+
+
+class CounterfactualIntervention(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    intervention_type: InterventionType
+    knowledge_component_code: str = Field(min_length=1, max_length=128)
+    additional_practice_count: int = Field(default=0, ge=0, le=100)
+    expected_score: float = Field(default=0.0, ge=0, le=100)
+    misconception_code: str | None = Field(default=None, max_length=128)
+
+
+class CounterfactualDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_component_code: str = Field(min_length=1, max_length=128)
+    baseline_forecast_7d: float = Field(ge=0, le=1)
+    counterfactual_forecast_7d: float = Field(ge=0, le=1)
+    baseline_pass_probability: float = Field(ge=0, le=1)
+    counterfactual_pass_probability: float = Field(ge=0, le=1)
+    mastery_delta: float
+    pass_probability_delta: float
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class CounterfactualSimulateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(min_length=1, max_length=128)
+    intervention: CounterfactualIntervention
+
+
+class CounterfactualSimulateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str
+    intervention: CounterfactualIntervention
+    deltas: list[CounterfactualDelta]
+    baseline_snapshot_count: int = Field(ge=0)
+    counterfactual_snapshot_count: int = Field(ge=0)
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
 __all__ = [
     "AcademicCourseLoadValue",
     "CourseParticipationValue",
@@ -437,4 +482,8 @@ __all__ = [
     "ScheduleLoadValue",
     "SnapshotDataQuality",
     "TaskWorkloadValue",
+    "CounterfactualSimulateRequest",
+    "CounterfactualSimulateResponse",
+    "CounterfactualIntervention",
+    "CounterfactualDelta",
 ]

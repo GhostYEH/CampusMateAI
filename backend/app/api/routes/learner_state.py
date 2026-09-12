@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
+    CounterfactualSimulateRequest,
+    CounterfactualSimulateResponse,
     LearnerStateChangePage,
     LearnerStateEvidenceOut,
     LearnerStateEvidencePage,
@@ -241,6 +243,33 @@ def get_prediction_state(
         items=[_snapshot_out(item) for item in prediction_items],
         total=len(prediction_items), page=page, page_size=page_size,
         has_more=False,
+    )
+
+
+@router.post("/simulate", response_model=CounterfactualSimulateResponse)
+def simulate_counterfactual(
+    request: CounterfactualSimulateRequest,
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(_container),
+) -> CounterfactualSimulateResponse:
+    """安全反事实模拟：假设干预后的预测变化，不修改实际状态。"""
+    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    result = container.learner_state_service.simulate_counterfactual(
+        user.id,
+        course_id=request.course_id,
+        as_of=as_of,
+        intervention=request.intervention.model_dump(),
+    )
+    return CounterfactualSimulateResponse(
+        course_id=result["course_id"],
+        intervention=CounterfactualSimulateRequest.__fields__["intervention"].type_(
+            **result["intervention"],
+        ),
+        deltas=result["deltas"],
+        baseline_snapshot_count=result["baseline_snapshot_count"],
+        counterfactual_snapshot_count=result["counterfactual_snapshot_count"],
+        warning_codes=result["warning_codes"],
+        explanation_codes=result["explanation_codes"],
     )
 
 

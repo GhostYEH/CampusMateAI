@@ -491,21 +491,17 @@ class LearnerStateProjectionService:
             return {"velocity": 0.0, "velocity_7d": 0.0, "velocity_30d": 0.0,
                     "trend": "insufficient_evidence", "consistency": 0.0}
 
-        mid = len(ratios) // 2
-        first_half = ratios[:mid]
-        second_half = ratios[mid:]
-        first_avg = sum(r for _, r in first_half) / len(first_half)
-        second_avg = sum(r for _, r in second_half) / len(second_half)
-        first_time = min(t for t, _ in first_half)
-        second_time = max(t for t, _ in second_half)
-        time_span_days = max(1.0, (second_time - first_time).total_seconds() / 86400)
-        velocity = (second_avg - first_avg) / time_span_days
+        first_time = ratios[0][0]
+        last_time = ratios[-1][0]
+        time_span_days = max(1.0, (last_time - first_time).total_seconds() / 86400)
+        velocity = (ratios[-1][1] - ratios[0][1]) / time_span_days
 
         cutoff_7d = as_of - timedelta(days=7)
         recent_7d = [(t, r) for t, r in ratios if t >= cutoff_7d]
         older_7d = [(t, r) for t, r in ratios if t < cutoff_7d]
         if recent_7d and older_7d:
-            velocity_7d = (sum(r for _, r in recent_7d) / len(recent_7d)) - (sum(r for _, r in older_7d) / len(older_7d))
+            recent_span = max(1.0, (recent_7d[-1][0] - recent_7d[0][0]).total_seconds() / 86400)
+            velocity_7d = (recent_7d[-1][1] - recent_7d[0][1]) / recent_span
         else:
             velocity_7d = velocity
 
@@ -513,8 +509,8 @@ class LearnerStateProjectionService:
         recent_30d = [(t, r) for t, r in ratios if t >= cutoff_30d]
         older_30d = [(t, r) for t, r in ratios if t < cutoff_30d]
         if recent_30d and older_30d:
-            span_30d = max(1.0, (max(t for t, _ in recent_30d) - min(t for t, _ in older_30d)).total_seconds() / 86400)
-            velocity_30d = ((sum(r for _, r in recent_30d) / len(recent_30d)) - (sum(r for _, r in older_30d) / len(older_30d))) / span_30d
+            span_30d = max(1.0, (recent_30d[-1][0] - older_30d[0][0]).total_seconds() / 86400)
+            velocity_30d = (recent_30d[-1][1] - older_30d[0][1]) / span_30d
         else:
             velocity_30d = velocity
 
@@ -1441,6 +1437,128 @@ class LearnerStateProjectionService:
             "current_confidence": row.get("current_confidence"),
             "explanation_codes": codes,
         }
+
+    def simulate_counterfactual(
+        self, user_id: str, *, course_id: str, as_of: datetime,
+        intervention: dict[str, Any],
+    ) -> dict[str, Any]:
+        """安全反事实模拟：假设干预后的预测变化，不修改实际状态。
+
+        确定性、隐私安全、不持久化、不做心理诊断。
+        """
+        as_of = _require_utc(as_of)
+        inputs = self._collect_prediction_inputs(user_id=user_id, course_id=course_id)
+        baseline_result, _, _ = self._compute_prediction(
+            user_id=user_id, course_id=course_id, inputs=inputs, as_of=as_of,
+            input_digest=_digest(inputs), trigger="counterfactual_baseline",
+        )
+
+        modified_inputs = self._apply_counterfactual_intervention(inputs, intervention, as_of)
+        cf_result, _, _ = self._compute_prediction(
+            user_id=user_id, course_id=course_id, inputs=modified_inputs, as_of=as_of,
+            input_digest=_digest(modified_inputs), trigger="counterfactual_simulated",
+        )
+
+        target_kc = intervention.get("knowledge_component_code", "")
+        deltas: list[dict[str, Any]] = []
+
+        baseline_by_kc: dict[str, dict[str, ComputedSnapshot]] = {}
+        for snap in baseline_result.snapshots:
+            baseline_by_kc.setdefault(snap.scope_id, {})[snap.state_type] = snap
+
+        cf_by_kc: dict[str, dict[str, ComputedSnapshot]] = {}
+        for snap in cf_result.snapshots:
+            cf_by_kc.setdefault(snap.scope_id, {})[snap.state_type] = snap
+
+        relevant_kcs = {target_kc} if target_kc else set(baseline_by_kc.keys()) | set(cf_by_kc.keys())
+        for kc_code in sorted(relevant_kcs):
+            base = baseline_by_kc.get(kc_code, {})
+            cf = cf_by_kc.get(kc_code, {})
+            base_fore = base.get("knowledge_mastery_forecast")
+            cf_fore = cf.get("knowledge_mastery_forecast")
+            base_perf = base.get("performance_prediction")
+            cf_perf = cf.get("performance_prediction")
+            if not base_fore or not cf_fore or not base_perf or not cf_perf:
+                continue
+            base_f7 = base_fore.value.get("forecast_7d", 0.0)
+            cf_f7 = cf_fore.value.get("forecast_7d", 0.0)
+            base_pp = base_perf.value.get("predicted_pass_probability", 0.0)
+            cf_pp = cf_perf.value.get("predicted_pass_probability", 0.0)
+            deltas.append({
+                "knowledge_component_code": kc_code,
+                "baseline_forecast_7d": round(base_f7, 6),
+                "counterfactual_forecast_7d": round(cf_f7, 6),
+                "baseline_pass_probability": round(base_pp, 6),
+                "counterfactual_pass_probability": round(cf_pp, 6),
+                "mastery_delta": round(cf_f7 - base_f7, 6),
+                "pass_probability_delta": round(cf_pp - base_pp, 6),
+                "explanation_codes": ["counterfactual_simulation"],
+            })
+
+        warnings: list[str] = []
+        if not deltas:
+            warnings.append("no_simulated_change")
+        return {
+            "course_id": course_id,
+            "intervention": intervention,
+            "deltas": deltas,
+            "baseline_snapshot_count": len(baseline_result.snapshots),
+            "counterfactual_snapshot_count": len(cf_result.snapshots),
+            "warning_codes": warnings,
+            "explanation_codes": ["deterministic_counterfactual"],
+        }
+
+    @staticmethod
+    def _apply_counterfactual_intervention(
+        inputs: dict[str, Any], intervention: dict[str, Any], as_of: datetime,
+    ) -> dict[str, Any]:
+        modified = json.loads(json.dumps(inputs, default=str))
+        itype = intervention.get("intervention_type", "")
+        target_kc = intervention.get("knowledge_component_code", "")
+        count = intervention.get("additional_practice_count", 0)
+        expected_score = intervention.get("expected_score", 0.0)
+
+        if itype == "additional_practice" and count > 0:
+            mappings = modified.get("mappings", [])
+            exercise_id = "simulated_ex"
+            mappings.append({"exercise_id": exercise_id, "knowledge_component_code": target_kc})
+            attempts = modified.get("practice_attempts", [])
+            for i in range(count):
+                attempts.append({
+                    "attempt_id": f"sim_att_{i}",
+                    "exercise_id": exercise_id,
+                    "occurred_at": _iso(as_of - timedelta(minutes=count - i)),
+                    "result_type": "passed" if expected_score >= 60 else "failed",
+                    "score": expected_score,
+                    "max_score": 100.0,
+                    "error_codes": [],
+                })
+            modified["practice_attempts"] = attempts
+            modified["mappings"] = mappings
+
+        elif itype == "remediation":
+            knowledge_snapshots = modified.get("knowledge_snapshots", [])
+            for snap in knowledge_snapshots:
+                if snap.get("scope_id") == target_kc:
+                    value = dict(snap.get("value", {}))
+                    current_est = value.get("estimate", 0.0)
+                    value["estimate"] = min(1.0, current_est + 0.15)
+                    value["evidence_count"] = value.get("evidence_count", 0) + 3
+                    snap["value"] = value
+            modified["knowledge_snapshots"] = knowledge_snapshots
+
+        elif itype == "review_session":
+            knowledge_snapshots = modified.get("knowledge_snapshots", [])
+            for snap in knowledge_snapshots:
+                if snap.get("scope_id") == target_kc:
+                    value = dict(snap.get("value", {}))
+                    current_est = value.get("estimate", 0.0)
+                    value["estimate"] = min(1.0, current_est + 0.08)
+                    value["evidence_count"] = value.get("evidence_count", 0) + 1
+                    snap["value"] = value
+            modified["knowledge_snapshots"] = knowledge_snapshots
+
+        return modified
 
 
 __all__ = ["ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]
