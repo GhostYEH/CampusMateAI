@@ -283,12 +283,14 @@ function EvidenceDrawer({ snapshot, onClose, onCorrection }) {
     setCorrectionBusy(true);
     try {
       await api.createCorrection({
+        projection_kind: snapshot.projection_kind || "CORE",
+        projection_scope: snapshot.projection_scope || "__user__",
         target_snapshot_id: snapshot.snapshot_id,
         scope_type: snapshot.scope_type,
         scope_id: snapshot.scope_id,
         state_type: snapshot.state_type,
         correction_type: correctionType,
-        reason_code: "user_observed_inaccuracy",
+        reason_code: "OTHER_CONTROLLED_REASON",
         idempotency_key: `corr-${snapshot.snapshot_id}-${Date.now()}`,
       });
       setCorrectionMsg("已提交纠正，投影将在下次读取时更新");

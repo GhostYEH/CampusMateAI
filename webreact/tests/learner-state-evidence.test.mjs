@@ -147,7 +147,7 @@ describe("createCorrection", () => {
       scope_id: "user-1",
       state_type: "task_workload",
       correction_type: "MARK_INACCURATE",
-      reason_code: "user_observed_inaccuracy",
+      reason_code: "OTHER_CONTROLLED_REASON",
       idempotency_key: "corr-snap-1-12345",
     };
     const result = await api.createCorrection(body);
@@ -157,7 +157,7 @@ describe("createCorrection", () => {
     assert.equal(req.data.scope_type, "USER");
     assert.equal(req.data.state_type, "task_workload");
     assert.equal(req.data.correction_type, "MARK_INACCURATE");
-    assert.equal(req.data.reason_code, "user_observed_inaccuracy");
+    assert.equal(req.data.reason_code, "OTHER_CONTROLLED_REASON");
     assert.equal(req.data.idempotency_key, "corr-snap-1-12345");
     assert.equal(result.correction_id, "corr-1");
     assert.equal(result.status, "ACTIVE");
@@ -173,7 +173,7 @@ describe("createCorrection", () => {
         scope_id: "u",
         state_type: "task_workload",
         correction_type: type,
-        reason_code: "user_observed_inaccuracy",
+        reason_code: "OTHER_CONTROLLED_REASON",
         idempotency_key: `key-${type}`,
       });
       assert.equal(mock.lastRequest().data.correction_type, type);
@@ -232,7 +232,7 @@ describe("纠正后数据刷新", () => {
       scope_id: "u1",
       state_type: "task_workload",
       correction_type: "MARK_INACCURATE",
-      reason_code: "user_observed_inaccuracy",
+      reason_code: "OTHER_CONTROLLED_REASON",
       idempotency_key: "k1",
     });
 
