@@ -167,7 +167,20 @@ class LearnerControlService:
     # ===== 模型透明度 =====
 
     def get_model_transparency(self, *, user_id: str) -> dict[str, Any]:
-        """返回非敏感能力状态，供前端展示模型透明度。"""
+        """返回非敏感能力状态，供前端展示模型透明度。
+
+        从环境变量和最新 promotion decision 动态返回，不硬编码。
+        """
+        import os
+
+        shadow_enabled = os.getenv("CAMPUSMATE_LM_SHADOW_ENABLED", "").lower() in ("true", "1", "yes")
+        base_url_configured = bool(os.getenv("CAMPUSMATE_LM_BASE_URL", ""))
+        model_configured = bool(os.getenv("CAMPUSMATE_LM_MODEL", ""))
+
+        campusmate_lm_enabled = shadow_enabled and base_url_configured and model_configured
+        uses_real_model_inference = campusmate_lm_enabled
+        uses_fixed_prediction_file = not uses_real_model_inference
+
         capabilities = []
         capability_defs = [
             ("c_kc_classification_v1", "1.0", "deterministic_taxonomy_match"),
@@ -175,6 +188,7 @@ class LearnerControlService:
             ("learning_summary_v1", "1.0", "evidence_grounded_summary"),
             ("read_only_tool_routing_v1", "1.0", "read_only_allowlist"),
         ]
+        read_only_canary_active = False
         with self._shadow_repo._db.transaction() as conn:
             for cap_name, cap_version, prod_method in capability_defs:
                 promo_row = conn.execute(
@@ -192,13 +206,17 @@ class LearnerControlService:
                     campusmate_lm_status = promo_row["decision"]
                     failed_gates = json.loads(promo_row["failed_gates_json"] or "[]")
                     quality_gate_passed = len(failed_gates) == 0
-                    performance_gate_passed = False
-                    performance_measured = False
+                    performance_gate_passed = "PERFORMANCE_NOT_MEASURED" not in failed_gates
+                    performance_measured = performance_gate_passed
                     last_evaluated_at = (
                         datetime.fromisoformat(promo_row["created_at"])
                         if promo_row["created_at"]
                         else None
                     )
+                    if campusmate_lm_status == "ELIGIBLE_FOR_CANARY" and cap_name in (
+                        "learning_summary_v1", "read_only_tool_routing_v1"
+                    ):
+                        read_only_canary_active = True
                 capabilities.append({
                     "capability_name": cap_name,
                     "capability_version": cap_version,
@@ -208,14 +226,17 @@ class LearnerControlService:
                     "performance_gate_passed": performance_gate_passed,
                     "performance_measured": performance_measured,
                     "last_evaluated_at": last_evaluated_at,
-                    "uses_real_model_inference": False,
-                    "uses_fixed_prediction_file": True,
+                    "uses_real_model_inference": uses_real_model_inference,
+                    "uses_fixed_prediction_file": uses_fixed_prediction_file,
                 })
         return {
             "capabilities": capabilities,
-            "campusmate_lm_enabled": False,
+            "campusmate_lm_enabled": campusmate_lm_enabled,
             "campusmate_lm_affects_production": False,
             "shadow_results_modify_plans": False,
+            "read_only_canary_active": read_only_canary_active,
+            "uses_real_model_inference": uses_real_model_inference,
+            "uses_fixed_prediction_file": uses_fixed_prediction_file,
         }
 
     # ===== 产品事件 =====
