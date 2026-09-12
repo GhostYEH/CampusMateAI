@@ -197,6 +197,7 @@ class LearnerControlService:
         capabilities = []
         read_only_canary_active = False
         any_real_inference = False
+        any_fixture = False
         any_shadow_run = False
         last_real_inference_at = None
 
@@ -223,6 +224,7 @@ class LearnerControlService:
 
             sources = self._shadow_repo.get_inference_sources(user_id=user_id, capability_name=cap_name)
             real_inference_observed = "REAL_MODEL" in sources
+            has_fixture = "FIXTURE" in sources
             cap_last_real_at = self._shadow_repo.get_last_real_inference_at(
                 user_id=user_id, capability_name=cap_name
             )
@@ -232,6 +234,8 @@ class LearnerControlService:
 
             if real_inference_observed:
                 any_real_inference = True
+            if has_fixture:
+                any_fixture = True
             if cap_has_shadow:
                 any_shadow_run = True
             if cap_last_real_at and (
@@ -239,12 +243,25 @@ class LearnerControlService:
             ):
                 last_real_inference_at = cap_last_real_at
 
-            fixture_only = cap_has_shadow and sources and sources <= {"FIXTURE", "DETERMINISTIC_FALLBACK"}
+            fixture_only = cap_has_shadow and sources == {"FIXTURE"}
+            if real_inference_observed:
+                cap_inference_source = "REAL_MODEL"
+            elif sources == {"FIXTURE"}:
+                cap_inference_source = "FIXTURE"
+            elif not cap_has_shadow:
+                cap_inference_source = "NOT_OBSERVED"
+            elif "LEGACY_UNVERIFIED" in sources:
+                cap_inference_source = "LEGACY_UNVERIFIED"
+            else:
+                cap_inference_source = "DETERMINISTIC_FALLBACK"
 
             is_read_only = cap_name in read_only_capabilities
             circuit_closed = True
             if self._shadow_runner is not None:
                 circuit_closed = self._shadow_runner.canary_allowed(cap_name)
+            provenance_verified = real_inference_observed or sources == {"FIXTURE"} or (
+                cap_has_shadow and "LEGACY_UNVERIFIED" not in sources and "NOT_OBSERVED" not in sources
+            )
             canary_active = (
                 is_read_only
                 and campusmate_lm_status == "ELIGIBLE_FOR_CANARY"
@@ -256,6 +273,7 @@ class LearnerControlService:
                 and canary_flag_enabled
                 and user_shadow_enabled
                 and circuit_closed
+                and provenance_verified
             )
             if canary_active:
                 read_only_canary_active = True
@@ -270,14 +288,12 @@ class LearnerControlService:
                 "performance_measured": performance_measured,
                 "last_evaluated_at": last_evaluated_at,
                 "uses_real_model_inference": real_inference_observed,
-                "uses_fixed_prediction_file": not real_inference_observed,
-                "inference_source": "REAL_MODEL" if real_inference_observed else (
-                    "FIXTURE" if sources == {"FIXTURE"} else (
-                        "DETERMINISTIC_FALLBACK" if cap_has_shadow else "DETERMINISTIC_FALLBACK"
-                    )
-                ),
+                "uses_fixed_prediction_file": has_fixture,
+                "inference_source": cap_inference_source,
             })
 
+        all_sources = self._shadow_repo.get_inference_sources(user_id=user_id)
+        fixture_only_global = bool(all_sources) and all_sources == {"FIXTURE"}
         return {
             "capabilities": capabilities,
             "campusmate_lm_enabled": enabled,
@@ -285,10 +301,10 @@ class LearnerControlService:
             "shadow_results_modify_plans": False,
             "read_only_canary_active": read_only_canary_active,
             "uses_real_model_inference": any_real_inference,
-            "uses_fixed_prediction_file": not any_real_inference,
+            "uses_fixed_prediction_file": any_fixture,
             "real_inference_observed": any_real_inference,
             "last_real_inference_at": last_real_inference_at,
-            "fixture_only": any_shadow_run and not any_real_inference,
+            "fixture_only": fixture_only_global,
         }
 
     def canary_gate(self, *, capability_name: str, user_id: str) -> dict[str, Any]:

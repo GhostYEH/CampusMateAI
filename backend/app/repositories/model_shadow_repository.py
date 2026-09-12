@@ -76,8 +76,8 @@ class ModelShadowRepository:
 
     def _record_from_row(self, row) -> ModelShadowRecord:
         inference_source = row["inference_source"] if "inference_source" in row.keys() else None
-        if inference_source not in ("REAL_MODEL", "FIXTURE", "DETERMINISTIC_FALLBACK"):
-            inference_source = "REAL_MODEL" if not bool(row["used_fallback"]) else "DETERMINISTIC_FALLBACK"
+        if inference_source not in ("REAL_MODEL", "FIXTURE", "DETERMINISTIC_FALLBACK", "LEGACY_UNVERIFIED", "NOT_OBSERVED"):
+            inference_source = "LEGACY_UNVERIFIED"
         return ModelShadowRecord(
             shadow_run_id=row["shadow_run_id"], scope=row["scope"], user_id=row["user_id"], request_id=row["request_id"],
             capability_name=row["capability_name"], capability_version=row["capability_version"],

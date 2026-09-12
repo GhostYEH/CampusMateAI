@@ -1408,7 +1408,7 @@ CREATE TABLE IF NOT EXISTS model_shadow_results (
     evaluator_version TEXT NOT NULL,
     created_at TEXT NOT NULL,
     inference_source TEXT NOT NULL DEFAULT 'DETERMINISTIC_FALLBACK'
-        CHECK(inference_source IN ('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK')),
+        CHECK(inference_source IN ('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK','LEGACY_UNVERIFIED','NOT_OBSERVED')),
     FOREIGN KEY(shadow_run_id) REFERENCES model_shadow_runs(shadow_run_id) ON DELETE CASCADE
 );
 
@@ -1632,10 +1632,16 @@ class Database:
         if "inference_source" not in shadow_result_cols:
             conn.execute(
                 "ALTER TABLE model_shadow_results ADD COLUMN inference_source TEXT NOT NULL "
-                "DEFAULT 'DETERMINISTIC_FALLBACK'"
+                "DEFAULT 'LEGACY_UNVERIFIED'"
             )
             conn.execute(
-                "UPDATE model_shadow_results SET inference_source='REAL_MODEL' WHERE used_fallback=0"
+                "UPDATE model_shadow_results SET inference_source='LEGACY_UNVERIFIED'"
+            )
+        else:
+            conn.execute(
+                "UPDATE model_shadow_results SET inference_source='LEGACY_UNVERIFIED' "
+                "WHERE inference_source NOT IN "
+                "('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK','LEGACY_UNVERIFIED','NOT_OBSERVED')"
             )
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
         conn.executescript("""

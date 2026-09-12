@@ -399,7 +399,7 @@ class LearnerStateRepository:
             rows = conn.execute(
                 f"""SELECT s.*, r.projection_kind, r.projection_scope FROM learner_state_snapshots s
                     JOIN learner_state_projection_runs r ON r.run_id=s.run_id
-                    WHERE {where} ORDER BY s.scope_type,s.scope_id,s.state_type
+                    WHERE {where} ORDER BY CASE s.scope_type WHEN 'USER' THEN 0 ELSE 1 END,s.scope_type,s.scope_id,s.state_type
                     LIMIT ? OFFSET ?""",
                 params + [page_size, offset],
             ).fetchall()
