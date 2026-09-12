@@ -44,8 +44,8 @@ BASE_URL = f"http://127.0.0.1:{VITE_PORT}"
 API_BASE = f"{BACKEND_URL}/api/v1"
 
 VIEWPORTS = [
-    {"width": 1440, "height": 900, "name": "desktop"},
-    {"width": 390, "height": 844, "name": "mobile"},
+    {"width": 1440, "height": 900, "name": "desktop", "username": "student_demo"},
+    {"width": 390, "height": 844, "name": "mobile", "username": "student_demo_01"},
 ]
 
 _processes: list[subprocess.Popen] = []
@@ -190,15 +190,15 @@ def _page_api_post(page, path: str, data: dict | None = None) -> dict:
             },
             body: JSON.stringify(d || {}),
           });
-          const text = await r.text();
-          return { status: r.status, text: text.slice(0, 2000) };
+          let body = null;
+          try { body = await r.json(); } catch (e) { body = null; }
+          return { status: r.status, body };
         }""",
         [f"/api/v1{path}", data or {}],
     )
-    assert result["status"] < 400, f"POST {path} failed: {result['status']} {result['text']}"
-    import json as jsonlib
-
-    return jsonlib.loads(result["text"]) if result["text"] else {}
+    assert result["status"] < 400, f"POST {path} failed: {result['status']} {result['body']}"
+    assert result["body"] is not None, f"POST {path} returned empty body"
+    return result["body"]
 
 
 def _page_api_get(page, path: str):
@@ -207,15 +207,15 @@ def _page_api_get(page, path: str):
           const r = await fetch(p, {
             headers: { Authorization: 'Bearer ' + localStorage.getItem('campus_access_token') },
           });
-          const text = await r.text();
-          return { status: r.status, text: text.slice(0, 2000) };
+          let body = null;
+          try { body = await r.json(); } catch (e) { body = null; }
+          return { status: r.status, body };
         }""",
         [f"/api/v1{path}"],
     )
-    assert result["status"] < 400, f"GET {path} failed: {result['status']} {result['text']}"
-    import json as jsonlib
-
-    return jsonlib.loads(result["text"]) if result["text"] else None
+    assert result["status"] < 400, f"GET {path} failed: {result['status']} {result['body']}"
+    assert result["body"] is not None, f"GET {path} returned empty body"
+    return result["body"]
 
 
 def _seed_learner_data(page) -> None:
@@ -259,16 +259,18 @@ def _ui_token_and_user(page) -> tuple[str, dict]:
 def run_closed_loop(page, viewport, token: str, user: dict) -> None:
     """执行完整闭环测试。任一断言失败抛异常，无任何跳过。"""
     vp_name = viewport["name"]
+    username = viewport.get("username", "student_demo")
     page.set_viewport_size({"width": viewport["width"], "height": viewport["height"]})
 
     # 1. 登录（UI 真实流程，token 与页面同源同用户）
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.wait_for_selector("input[autoComplete='username']", timeout=10000)
-    page.fill("input[autoComplete='username']", "student_demo")
+    page.fill("input[autoComplete='username']", username)
     page.fill("input[autoComplete='current-password']", "Demo123456")
     page.click("button.login-submit")
     page.wait_for_url(f"{BASE_URL}/home", timeout=15000)
     token, user = _ui_token_and_user(page)
+    assert username in (user.get("username"), user.get("name")), f"viewport {vp_name} user mismatch: {user}"
 
     # 2. 打开学习状态页面
     page.goto(f"{BASE_URL}/learning-state", wait_until="networkidle")
@@ -291,15 +293,27 @@ def run_closed_loop(page, viewport, token: str, user: dict) -> None:
     page.wait_for_selector(".ls-state-card .ls-link-btn", timeout=15000)
     view_evidence_btns = page.query_selector_all(".ls-state-card .ls-link-btn")
     assert len(view_evidence_btns) > 0, "no CORE evidence buttons found"
+    core_snapshots = _page_api_get(page, "/learner-state/snapshots?scope_type=USER&page=1&page_size=50")
+    assert core_snapshots.get("total", 0) > 0, f"no CORE snapshots: {core_snapshots}"
+    assert len(core_snapshots.get("items", [])) > 0, "CORE snapshot items empty"
+    first_core = core_snapshots["items"][0]
+    assert first_core.get("snapshot_id"), f"CORE snapshot missing id: {first_core}"
+    core_evidence = _page_api_get(page, f"/learner-state/snapshots/{first_core['snapshot_id']}/evidence?page=1&page_size=20")
+    assert core_evidence is not None, "CORE evidence API returned nothing"
     view_evidence_btns[0].click()
     page.wait_for_selector(".ls-drawer", timeout=10000)
     drawer = page.query_selector(".ls-drawer")
     assert drawer is not None, "evidence drawer did not open"
 
-    # KNOWLEDGE evidence：页面必须有知识地图或明确的空状态（不是静默跳过）
-    knowledge_section = page.query_selector(".ls-knowledge")
-    knowledge_empty = page.query_selector(".ls-knowledge + .ls-empty, .ls-empty")
-    assert knowledge_section is not None or knowledge_empty is not None, "knowledge section missing entirely"
+    # KNOWLEDGE evidence：用真实课程验证 knowledge API，不能用空状态代替
+    courses = _page_api_get(page, "/courses?page=1&page_size=20")
+    course_items = courses.get("items", courses) if isinstance(courses, dict) else courses
+    assert isinstance(course_items, list) and len(course_items) > 0, f"no courses for knowledge check: {courses}"
+    course_id = course_items[0].get("id") or course_items[0].get("course_id")
+    assert course_id, f"course missing id: {course_items[0]}"
+    knowledge = _page_api_get(page, f"/learner-state/knowledge?course_id={course_id}")
+    assert isinstance(knowledge, list), f"knowledge API must return list: {knowledge}"
+    page.wait_for_selector(".ls-knowledge, .ls-empty", timeout=15000)
 
     # 7. 提交纠正（抽屉内纠正选项必须存在）
     correction_opts = page.query_selector_all(".ls-correction-options .ls-btn")
