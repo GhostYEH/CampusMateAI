@@ -35,10 +35,17 @@ class LearnerControlService:
         repository: LearnerControlRepository,
         state_repository: LearnerStateRepository,
         shadow_repository: ModelShadowRepository,
+        *,
+        settings=None,
+        source_policy=None,
+        model_shadow_runner=None,
     ) -> None:
         self._repo = repository
         self._state_repo = state_repository
         self._shadow_repo = shadow_repository
+        self._settings = settings
+        self._source_policy = source_policy
+        self._shadow_runner = model_shadow_runner
 
     # ===== 状态纠正 =====
 
@@ -169,100 +176,145 @@ class LearnerControlService:
     def get_model_transparency(self, *, user_id: str) -> dict[str, Any]:
         """返回非敏感能力状态，供前端展示模型透明度。
 
-        从环境变量和最新 promotion decision 动态返回，不硬编码。
+        从 Settings 和实际 shadow runs 动态计算，不硬编码，不直接读 os.environ。
         """
-        import os
+        settings = self._settings
+        configured = bool(settings and settings.campusmate_lm_available)
+        enabled = bool(settings and settings.campusmate_lm_enabled)
 
-        shadow_enabled = os.getenv("CAMPUSMATE_LM_SHADOW_ENABLED", "").lower() in ("true", "1", "yes")
-        base_url_configured = bool(os.getenv("CAMPUSMATE_LM_BASE_URL", ""))
-        model_configured = bool(os.getenv("CAMPUSMATE_LM_MODEL", ""))
-
-        campusmate_lm_enabled = shadow_enabled and base_url_configured and model_configured
-        uses_real_model_inference = campusmate_lm_enabled
-        uses_fixed_prediction_file = not uses_real_model_inference
-
-        capabilities = []
         capability_defs = [
             ("c_kc_classification_v1", "1.0", "deterministic_taxonomy_match"),
             ("c_error_classification_v1", "1.0", "error_code_whitelist_match"),
             ("learning_summary_v1", "1.0", "evidence_grounded_summary"),
             ("read_only_tool_routing_v1", "1.0", "read_only_allowlist"),
         ]
+        read_only_capabilities = {"learning_summary_v1", "read_only_tool_routing_v1"}
+
+        capabilities = []
         read_only_canary_active = False
-        with self._shadow_repo._db.transaction() as conn:
-            for cap_name, cap_version, prod_method in capability_defs:
-                promo_row = conn.execute(
-                    """SELECT * FROM model_promotion_decisions
-                    WHERE capability_name=? ORDER BY created_at DESC LIMIT 1""",
-                    (cap_name,),
-                ).fetchone()
-                if promo_row is None:
-                    campusmate_lm_status = "SHADOW_ONLY"
-                    quality_gate_passed = False
-                    performance_gate_passed = False
-                    performance_measured = False
-                    last_evaluated_at = None
-                else:
-                    campusmate_lm_status = promo_row["decision"]
-                    failed_gates = json.loads(promo_row["failed_gates_json"] or "[]")
-                    quality_gate_passed = len(failed_gates) == 0
-                    performance_gate_passed = "PERFORMANCE_NOT_MEASURED" not in failed_gates
-                    performance_measured = performance_gate_passed
-                    last_evaluated_at = (
-                        datetime.fromisoformat(promo_row["created_at"])
-                        if promo_row["created_at"]
-                        else None
-                    )
-                    if campusmate_lm_status == "ELIGIBLE_FOR_CANARY" and cap_name in (
-                        "learning_summary_v1", "read_only_tool_routing_v1"
-                    ):
-                        read_only_canary_active = True
-                capabilities.append({
-                    "capability_name": cap_name,
-                    "capability_version": cap_version,
-                    "production_method": prod_method,
-                    "campusmate_lm_status": campusmate_lm_status,
-                    "quality_gate_passed": quality_gate_passed,
-                    "performance_gate_passed": performance_gate_passed,
-                    "performance_measured": performance_measured,
-                    "last_evaluated_at": last_evaluated_at,
-                    "uses_real_model_inference": uses_real_model_inference,
-                    "uses_fixed_prediction_file": uses_fixed_prediction_file,
-                })
+        any_real_inference = False
+        any_shadow_run = False
+        last_real_inference_at = None
+
+        for cap_name, cap_version, prod_method in capability_defs:
+            promo = self._shadow_repo.get_latest_promotion_decision(capability_name=cap_name)
+            if promo is None:
+                campusmate_lm_status = "SHADOW_ONLY"
+                quality_gate_passed = False
+                performance_gate_passed = False
+                performance_measured = False
+                last_evaluated_at = None
+                failed_gates: list[str] = []
+            else:
+                campusmate_lm_status = promo["decision"]
+                failed_gates = json.loads(promo["failed_gates_json"] or "[]")
+                quality_gate_passed = len(failed_gates) == 0
+                performance_gate_passed = "PERFORMANCE_NOT_MEASURED" not in failed_gates
+                performance_measured = performance_gate_passed
+                last_evaluated_at = (
+                    datetime.fromisoformat(promo["created_at"])
+                    if promo["created_at"]
+                    else None
+                )
+
+            real_inference_observed = self._shadow_repo.has_real_inference(
+                user_id=user_id, capability_name=cap_name
+            )
+            cap_last_real_at = self._shadow_repo.get_last_real_inference_at(
+                user_id=user_id, capability_name=cap_name
+            )
+            cap_has_shadow = self._shadow_repo.has_any_shadow_run(
+                user_id=user_id, capability_name=cap_name
+            )
+
+            if real_inference_observed:
+                any_real_inference = True
+            if cap_has_shadow:
+                any_shadow_run = True
+            if cap_last_real_at and (
+                last_real_inference_at is None or cap_last_real_at > last_real_inference_at
+            ):
+                last_real_inference_at = cap_last_real_at
+
+            fixture_only = cap_has_shadow and not real_inference_observed
+
+            is_read_only = cap_name in read_only_capabilities
+            canary_active = (
+                is_read_only
+                and campusmate_lm_status == "ELIGIBLE_FOR_CANARY"
+                and quality_gate_passed
+                and performance_measured
+                and configured
+            )
+            if canary_active:
+                read_only_canary_active = True
+
+            capabilities.append({
+                "capability_name": cap_name,
+                "capability_version": cap_version,
+                "production_method": prod_method,
+                "campusmate_lm_status": campusmate_lm_status,
+                "quality_gate_passed": quality_gate_passed,
+                "performance_gate_passed": performance_gate_passed,
+                "performance_measured": performance_measured,
+                "last_evaluated_at": last_evaluated_at,
+                "uses_real_model_inference": real_inference_observed,
+                "uses_fixed_prediction_file": fixture_only or not real_inference_observed,
+            })
+
         return {
             "capabilities": capabilities,
-            "campusmate_lm_enabled": campusmate_lm_enabled,
+            "campusmate_lm_enabled": enabled,
             "campusmate_lm_affects_production": False,
             "shadow_results_modify_plans": False,
             "read_only_canary_active": read_only_canary_active,
-            "uses_real_model_inference": uses_real_model_inference,
-            "uses_fixed_prediction_file": uses_fixed_prediction_file,
+            "uses_real_model_inference": any_real_inference,
+            "uses_fixed_prediction_file": not any_real_inference,
+            "real_inference_observed": any_real_inference,
+            "last_real_inference_at": last_real_inference_at,
+            "fixture_only": any_shadow_run and not any_real_inference,
         }
 
-    def canary_gate(self, *, capability_name: str) -> dict[str, Any]:
+    def canary_gate(self, *, capability_name: str, user_id: str) -> dict[str, Any]:
         """只读金丝雀门禁：检查能力是否可以通过 canary 路径执行。
 
-        规则：
-        - 只有 ELIGIBLE_FOR_CANARY 状态的能力可以走 canary
-        - 只有只读能力（learning_summary_v1, read_only_tool_routing_v1）可以走 canary
-        - 写能力永远不走 canary
-        - MODEL_SHADOW 暂停时不走 canary
+        按顺序检查 7 项门禁：
+        1. 全局 canary feature flag
+        2. 当前用户的 MODEL_SHADOW 数据源未暂停
+        3. 真实候选模型配置可用
+        4. capability 是只读能力
+        5. 最新 promotion 为 ELIGIBLE_FOR_CANARY
+        6. 安全/schema/evidence/性能门禁均通过
+        7. 当前 capability 熔断器未打开
         """
+        settings = self._settings
+        if settings is None or not settings.campusmate_lm_canary_enabled:
+            return {"allowed": False, "reason": "canary_feature_flag_disabled"}
+
+        if self._source_policy is not None and self._source_policy.should_skip_shadow_run(user_id=user_id):
+            return {"allowed": False, "reason": "model_shadow_paused_for_user"}
+
+        if settings is None or not settings.campusmate_lm_available:
+            return {"allowed": False, "reason": "candidate_model_not_configured"}
+
         read_only_capabilities = {"learning_summary_v1", "read_only_tool_routing_v1"}
-        is_read_only = capability_name in read_only_capabilities
-        if not is_read_only:
+        if capability_name not in read_only_capabilities:
             return {"allowed": False, "reason": "capability_is_not_read_only"}
-        with self._shadow_repo._db.transaction() as conn:
-            promo_row = conn.execute(
-                """SELECT * FROM model_promotion_decisions
-                WHERE capability_name=? ORDER BY created_at DESC LIMIT 1""",
-                (capability_name,),
-            ).fetchone()
-        if promo_row is None:
+
+        promo = self._shadow_repo.get_latest_promotion_decision(capability_name=capability_name)
+        if promo is None:
             return {"allowed": False, "reason": "no_promotion_decision"}
-        status = promo_row["decision"]
+        status = promo["decision"]
         if status != "ELIGIBLE_FOR_CANARY":
             return {"allowed": False, "reason": f"status_is_{status}"}
+
+        failed_gates = json.loads(promo["failed_gates_json"] or "[]")
+        if failed_gates:
+            return {"allowed": False, "reason": "quality_gates_failed", "failed_gates": failed_gates}
+
+        if self._shadow_runner is not None and not self._shadow_runner._circuit_allows(capability_name):
+            return {"allowed": False, "reason": "circuit_breaker_open"}
+
         return {"allowed": True, "reason": None}
 
     # ===== 产品事件 =====

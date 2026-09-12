@@ -213,6 +213,12 @@ class ModelTransparencyOut(BaseModel):
     campusmate_lm_enabled: bool
     campusmate_lm_affects_production: bool = False
     shadow_results_modify_plans: bool = False
+    read_only_canary_active: bool = False
+    uses_real_model_inference: bool = False
+    uses_fixed_prediction_file: bool = True
+    real_inference_observed: bool = False
+    last_real_inference_at: Optional[datetime] = None
+    fixture_only: bool = False
 
 
 __all__ = [

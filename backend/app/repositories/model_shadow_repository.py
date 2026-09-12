@@ -129,5 +129,67 @@ class ModelShadowRepository:
             )
         return digest
 
+    # ===== Public query methods for canary gate and model transparency =====
+
+    def get_latest_promotion_decision(self, *, capability_name: str) -> dict | None:
+        """Return the latest promotion decision for a capability, or None."""
+        with self._db.query() as conn:
+            row = conn.execute(
+                """SELECT * FROM model_promotion_decisions
+                   WHERE capability_name=? ORDER BY created_at DESC LIMIT 1""",
+                (capability_name,),
+            ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+    def has_real_inference(self, *, user_id: str, capability_name: str | None = None) -> bool:
+        """Check if any shadow run for this user used a real model (not fallback)."""
+        where = ["r.scope='ONLINE'", "r.user_id=?", "x.used_fallback=0"]
+        params: list = [user_id]
+        if capability_name:
+            where.append("r.capability_name=?")
+            params.append(capability_name)
+        with self._db.query() as conn:
+            row = conn.execute(
+                f"""SELECT COUNT(*) AS n FROM model_shadow_runs r
+                    JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
+                    WHERE {' AND '.join(where)}""",
+                params,
+            ).fetchone()
+        return int(row["n"] or 0) > 0
+
+    def get_last_real_inference_at(self, *, user_id: str, capability_name: str | None = None) -> str | None:
+        """Return the timestamp of the most recent real (non-fallback) shadow run, or None."""
+        where = ["r.scope='ONLINE'", "r.user_id=?", "x.used_fallback=0"]
+        params: list = [user_id]
+        if capability_name:
+            where.append("r.capability_name=?")
+            params.append(capability_name)
+        with self._db.query() as conn:
+            row = conn.execute(
+                f"""SELECT r.created_at FROM model_shadow_runs r
+                    JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
+                    WHERE {' AND '.join(where)} ORDER BY r.created_at DESC LIMIT 1""",
+                params,
+            ).fetchone()
+        return row["created_at"] if row else None
+
+    def has_any_shadow_run(self, *, user_id: str, capability_name: str | None = None) -> bool:
+        """Check if any shadow run exists for this user."""
+        where = ["r.scope='ONLINE'", "r.user_id=?"]
+        params: list = [user_id]
+        if capability_name:
+            where.append("r.capability_name=?")
+            params.append(capability_name)
+        with self._db.query() as conn:
+            row = conn.execute(
+                f"""SELECT COUNT(*) AS n FROM model_shadow_runs r
+                    JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
+                    WHERE {' AND '.join(where)}""",
+                params,
+            ).fetchone()
+        return int(row["n"] or 0) > 0
+
 
 __all__ = ["ModelShadowRepository", "ShadowIdempotencyConflict"]

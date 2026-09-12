@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = 30
+    # 推理模型(如 DeepSeek v4-flash)会先在 reasoning_content 中"思考",
+    # 再在 content 中输出最终答案。max_tokens 预算需要同时覆盖思考和输出,
+    # 否则 finish_reason="length" 导致 JSON 被截断。默认 4096 给推理模型
+    # 足够的预算;非推理模型可设更小值。
+    llm_max_tokens: int = 4096
     enable_fallback_mode: bool = True
     # 非敏感: 部分部署(如 Windows + 某些 TLS 1.3 中间件)存在
     # SSLV3_ALERT_BAD_RECORD_MAC 兼容问题。留空=自动协商;

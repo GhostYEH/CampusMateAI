@@ -222,6 +222,12 @@ def get_model_transparency(
         campusmate_lm_enabled=data["campusmate_lm_enabled"],
         campusmate_lm_affects_production=data["campusmate_lm_affects_production"],
         shadow_results_modify_plans=data["shadow_results_modify_plans"],
+        read_only_canary_active=data.get("read_only_canary_active", False),
+        uses_real_model_inference=data.get("uses_real_model_inference", False),
+        uses_fixed_prediction_file=data.get("uses_fixed_prediction_file", True),
+        real_inference_observed=data.get("real_inference_observed", False),
+        last_real_inference_at=data.get("last_real_inference_at"),
+        fixture_only=data.get("fixture_only", False),
     )
 
 
@@ -231,7 +237,7 @@ def check_canary_gate(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ):
-    result = container.learner_control_service.canary_gate(capability_name=capability_name)
+    result = container.learner_control_service.canary_gate(capability_name=capability_name, user_id=user.id)
     return result
 
 
