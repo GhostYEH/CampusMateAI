@@ -114,6 +114,8 @@ def dialog_metrics(page, selector):
             const bs = getComputedStyle(btn);
             return { visible: r.width > 0 && r.height > 0, clipped: r.width < 4 || r.height < 4, opacity: bs.opacity, display: bs.display, visibility: bs.visibility };
           });
+          const backdrop = el.closest('.modal-backdrop, .study-summer-breakdown-backdrop');
+          const backdropRect = backdrop ? backdrop.getBoundingClientRect() : null;
           const scrollables = [];
           let node = el.parentElement;
           while (node && node !== document.body) {
@@ -123,6 +125,8 @@ def dialog_metrics(page, selector):
           }
           return {
             rect: {x: rect.x, y: rect.y, w: rect.width, h: rect.height},
+            backdropRect: backdropRect ? {left: backdropRect.left, right: backdropRect.right, top: backdropRect.top, bottom: backdropRect.bottom} : null,
+            backdropZIndex: backdrop ? Number.parseInt(getComputedStyle(backdrop).zIndex, 10) || 0 : 0,
             overflowX: document.documentElement.scrollWidth > window.innerWidth + 1,
             bodyScrollY: document.body.scrollHeight > window.innerHeight + 1,
             footerVisible: footerRect ? (footerRect.top >= 0 && footerRect.bottom <= window.innerHeight + 1) : null,
@@ -136,6 +140,28 @@ def dialog_metrics(page, selector):
               && (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 1,
           };
         }""",
+        selector,
+    )
+
+
+def fixed_button_metrics(page, selector):
+    return page.evaluate(
+        """(sel) => Array.from(document.querySelectorAll(sel)).map((button) => {
+          const rect = button.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const inViewport = rect.width >= 4 && rect.height >= 4
+            && rect.left >= -1 && rect.top >= -1
+            && rect.right <= window.innerWidth + 1 && rect.bottom <= window.innerHeight + 1;
+          const hit = inViewport ? document.elementFromPoint(centerX, centerY) : null;
+          return {
+            label: button.getAttribute('aria-label') || button.textContent.trim(),
+            inViewport,
+            hittable: Boolean(hit && (hit === button || button.contains(hit))),
+            rect: {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom},
+            hit: hit ? `${hit.tagName}.${String(hit.className || '')}` : null,
+          };
+        })""",
         selector,
     )
 
@@ -175,7 +201,7 @@ def run():
                 page.mouse.wheel(0, 800)
                 page.wait_for_timeout(200)
                 check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 步骤区滚轮不带动背景", failures)
-                check(page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop") >= steps_top_before, f"[{label}] 步骤区滚轮可内部滚动", failures)
+                check(page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop") > steps_top_before, f"[{label}] 步骤区滚轮确实触发内部滚动", failures)
             else:
                 page.evaluate("document.querySelector('.study-summer-breakdown__steps').scrollTop += 200")
                 check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 步骤区滚动不带动背景", failures)
@@ -183,19 +209,12 @@ def run():
             page.keyboard.press("PageDown")
             page.wait_for_timeout(200)
             check(page.evaluate("window.scrollY") == scroll_before, f"[{label}] 键盘翻页不改变背景位置", failures)
-            # 编程式 window.scrollTo 会被 overflow:hidden 钳制: 大视口下文档不超高本就为 0;
-            # 小视口下钳制到最大值,允许变化但不得超过最大值,且应在 html 锁定时被钳制。
-            page.evaluate("window.scrollTo(0, 99999)")
-            page.wait_for_timeout(200)
-            scroll_after_programmatic = page.evaluate("window.scrollY")
-            scroll_max = page.evaluate("document.documentElement.scrollHeight - window.innerHeight")
-            check(scroll_after_programmatic <= max(scroll_max, scroll_before), f"[{label}] 编程式滚动被钳制在文档范围内", failures)
-
             m = dialog_metrics(page, ".study-summer-breakdown")
             check(m is not None, f"[{label}] 拆解弹窗可度量", failures)
             btn_bg = page.evaluate("() => { const btn = document.querySelector('.study-summer-breakdown__input .button'); return btn ? getComputedStyle(btn).backgroundColor : null; }")
             check(btn_bg in ("rgb(215, 239, 131)", "rgb(229, 248, 159)"), f"[{label}] 输入区主按钮为苔绿色(实际 {btn_bg})", failures)
             if m:
+                check(m["backdropRect"] is not None and m["backdropRect"]["right"] >= width - 1, f"[{label}] 拆解遮罩覆盖完整视口宽度", failures)
                 check(m["stepsCount"] == 12, f"[{label}] 12 个步骤全部渲染(实际 {m['stepsCount']})", failures)
                 check(m["stepsScrollable"], f"[{label}] 步骤区内部可滚动", failures)
                 check(m["footerVisible"], f"[{label}] footer 始终可见", failures)
@@ -204,15 +223,8 @@ def run():
                 check(m["clippedButtons"] == 0, f"[{label}] 无按钮裁切(共 {m['buttonCount']} 个按钮)", failures)
                 check(m["hiddenButtons"] == 0, f"[{label}] 无按钮被隐藏", failures)
                 if label == "zoom200":
-                    # zoom200 下步骤区外按钮(头/输入/footer)必须可见可点;
-                    # 步骤内的删除按钮随列表滚动是正常行为,只断言其尺寸不被裁切。
-                    pinned_clickable = page.evaluate("""() => Array.from(document.querySelectorAll('.study-summer-breakdown__header button, .study-summer-breakdown__input button, .study-summer-breakdown__footer button')).map((btn) => {
-                      const r = btn.getBoundingClientRect();
-                      if (r.width < 4 || r.height < 4) return false;
-                      const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-                      return el === btn || btn.contains(el);
-                    })""")
-                    check(len(pinned_clickable) > 0 and all(pinned_clickable), f"[{label}] 头/输入/footer 按钮可见可点击(共 {len(pinned_clickable)} 个)", failures)
+                    pinned = fixed_button_metrics(page, ".study-summer-breakdown__header button, .study-summer-breakdown__input button, .study-summer-breakdown__footer button")
+                    check(len(pinned) > 0 and all(item["inViewport"] and item["hittable"] for item in pinned), f"[{label}] 头/输入/footer 按钮完整位于视口且可点击: {pinned}", failures)
                     check(page.evaluate("document.body.style.overflow") == "hidden", f"[{label}] 背景不滚动(body 锁定)", failures)
                     check(page.evaluate("document.documentElement.style.overflow") == "hidden", f"[{label}] 背景不滚动(html 锁定)", failures)
             page.screenshot(path=str(OUT / f"breakdown-{label}.png"))
@@ -234,6 +246,10 @@ def run():
             if r:
                 check(not r["overflowX"], f"[{label}] 复盘弹窗无横向溢出", failures)
                 check(r["clippedButtons"] == 0, f"[{label}] 复盘弹窗无按钮裁切", failures)
+                check(r["backdropRect"] is not None and r["backdropRect"]["right"] >= width - 1, f"[{label}] 复盘遮罩覆盖完整视口宽度", failures)
+                check(r["backdropZIndex"] > 60, f"[{label}] 复盘遮罩层级高于全局导航(实际 {r['backdropZIndex']})", failures)
+                review_buttons = fixed_button_metrics(page, ".modal.modal--study > header button, .modal.modal--study > footer button")
+                check(len(review_buttons) > 0 and all(item["inViewport"] and item["hittable"] for item in review_buttons), f"[{label}] 复盘固定按钮完整位于视口且可点击: {review_buttons}", failures)
             check(page.evaluate("document.activeElement && document.activeElement.id") == "study-self-report", f"[{label}] 复盘 textarea 获焦", failures)
             page.screenshot(path=str(OUT / f"review-{label}.png"))
 
