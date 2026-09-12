@@ -58,26 +58,22 @@ class ModelShadowRepository:
             )
             conn.execute(
                 """INSERT INTO model_shadow_results
-                   (shadow_run_id,schema_valid,policy_valid,abstained,used_fallback,failure_code,latency_ms,resource_metrics_json,evaluator_version,created_at,inference_source)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   (shadow_run_id,schema_valid,policy_valid,abstained,used_fallback,failure_code,latency_ms,resource_metrics_json,evaluator_version,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (shadow_id, int(result.schema_valid), int(result.policy_valid),
                  int(bool(result.output_payload and result.output_payload.get("abstained"))), int(result.used_fallback),
                  result.failure_code, result.latency_ms, json.dumps(result.resource_metrics, sort_keys=True),
-                 evaluator_version, created, result.inference_source),
+                 evaluator_version, created),
             )
             row = conn.execute(
                 """SELECT r.*, x.schema_valid, x.policy_valid, x.abstained, x.used_fallback,
-                          x.failure_code, x.latency_ms, x.resource_metrics_json, x.evaluator_version,
-                          x.inference_source
+                          x.failure_code, x.latency_ms, x.resource_metrics_json, x.evaluator_version
                    FROM model_shadow_runs r JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
                    WHERE r.shadow_run_id=?""", (shadow_id,)
             ).fetchone()
         return self._record_from_row(row)
 
     def _record_from_row(self, row) -> ModelShadowRecord:
-        inference_source = row["inference_source"] if "inference_source" in row.keys() else None
-        if inference_source not in ("REAL_MODEL", "FIXTURE", "DETERMINISTIC_FALLBACK", "LEGACY_UNVERIFIED", "NOT_OBSERVED"):
-            inference_source = "LEGACY_UNVERIFIED"
         return ModelShadowRecord(
             shadow_run_id=row["shadow_run_id"], scope=row["scope"], user_id=row["user_id"], request_id=row["request_id"],
             capability_name=row["capability_name"], capability_version=row["capability_version"],
@@ -88,7 +84,7 @@ class ModelShadowRepository:
             schema_valid=bool(row["schema_valid"]), policy_valid=bool(row["policy_valid"]), abstained=bool(row["abstained"]),
             used_fallback=bool(row["used_fallback"]), failure_code=row["failure_code"], latency_ms=int(row["latency_ms"]),
             resource_metrics=json.loads(row["resource_metrics_json"] or "{}"), evaluator_version=row["evaluator_version"],
-            created_at=row["created_at"], expires_at=row["expires_at"], inference_source=inference_source,
+            created_at=row["created_at"], expires_at=row["expires_at"],
         )
 
     def list_for_user(self, *, user_id: str, capability_name: str | None = None, limit: int = 100) -> list[ModelShadowRecord]:
@@ -100,8 +96,7 @@ class ModelShadowRepository:
         with self._db.query() as conn:
             rows = conn.execute(
                 f"""SELECT r.*, x.schema_valid, x.policy_valid, x.abstained, x.used_fallback,
-                           x.failure_code, x.latency_ms, x.resource_metrics_json, x.evaluator_version,
-                           x.inference_source
+                           x.failure_code, x.latency_ms, x.resource_metrics_json, x.evaluator_version
                     FROM model_shadow_runs r JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
                     WHERE {' AND '.join(where)} ORDER BY r.created_at DESC,r.shadow_run_id DESC LIMIT ?""",
                 params + [limit],
@@ -149,8 +144,8 @@ class ModelShadowRepository:
         return dict(row)
 
     def has_real_inference(self, *, user_id: str, capability_name: str | None = None) -> bool:
-        """Check if any shadow run for this user used explicit REAL_MODEL inference."""
-        where = ["r.scope='ONLINE'", "r.user_id=?", "x.inference_source='REAL_MODEL'"]
+        """Check if any shadow run for this user used a real model (not fallback)."""
+        where = ["r.scope='ONLINE'", "r.user_id=?", "x.used_fallback=0"]
         params: list = [user_id]
         if capability_name:
             where.append("r.capability_name=?")
@@ -165,8 +160,8 @@ class ModelShadowRepository:
         return int(row["n"] or 0) > 0
 
     def get_last_real_inference_at(self, *, user_id: str, capability_name: str | None = None) -> str | None:
-        """Return the timestamp of the most recent REAL_MODEL shadow run, or None."""
-        where = ["r.scope='ONLINE'", "r.user_id=?", "x.inference_source='REAL_MODEL'"]
+        """Return the timestamp of the most recent real (non-fallback) shadow run, or None."""
+        where = ["r.scope='ONLINE'", "r.user_id=?", "x.used_fallback=0"]
         params: list = [user_id]
         if capability_name:
             where.append("r.capability_name=?")
@@ -179,32 +174,6 @@ class ModelShadowRepository:
                 params,
             ).fetchone()
         return row["created_at"] if row else None
-
-    def get_inference_sources(self, *, user_id: str, capability_name: str | None = None) -> set[str]:
-        """Return explicit inference_source values observed for this user."""
-        where = ["r.scope='ONLINE'", "r.user_id=?"]
-        params: list = [user_id]
-        if capability_name:
-            where.append("r.capability_name=?")
-            params.append(capability_name)
-        with self._db.query() as conn:
-            rows = conn.execute(
-                f"""SELECT DISTINCT x.inference_source AS source FROM model_shadow_runs r
-                    JOIN model_shadow_results x ON x.shadow_run_id=r.shadow_run_id
-                    WHERE {' AND '.join(where)}""",
-                params,
-            ).fetchall()
-        return {row["source"] for row in rows if row["source"]}
-
-    def has_performance_measurement(self, *, capability_name: str) -> bool:
-        """Performance is measured only when an offline metric record exists."""
-        with self._db.query() as conn:
-            row = conn.execute(
-                """SELECT COUNT(*) AS n FROM model_shadow_metric_records
-                   WHERE capability_name=?""",
-                (capability_name,),
-            ).fetchone()
-        return int(row["n"] or 0) > 0
 
     def has_any_shadow_run(self, *, user_id: str, capability_name: str | None = None) -> bool:
         """Check if any shadow run exists for this user."""

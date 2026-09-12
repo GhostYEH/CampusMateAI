@@ -181,10 +181,6 @@ class LearnerControlService:
         settings = self._settings
         configured = bool(settings and settings.campusmate_lm_available)
         enabled = bool(settings and settings.campusmate_lm_enabled)
-        canary_flag_enabled = bool(settings and settings.campusmate_lm_canary_enabled)
-        user_shadow_enabled = True
-        if self._source_policy is not None:
-            user_shadow_enabled = not self._source_policy.should_skip_shadow_run(user_id=user_id)
 
         capability_defs = [
             ("c_kc_classification_v1", "1.0", "deterministic_taxonomy_match"),
@@ -197,7 +193,6 @@ class LearnerControlService:
         capabilities = []
         read_only_canary_active = False
         any_real_inference = False
-        any_fixture = False
         any_shadow_run = False
         last_real_inference_at = None
 
@@ -213,18 +208,18 @@ class LearnerControlService:
             else:
                 campusmate_lm_status = promo["decision"]
                 failed_gates = json.loads(promo["failed_gates_json"] or "[]")
-                quality_gate_passed = not any(name != "PERFORMANCE_NOT_MEASURED" for name in failed_gates)
-                performance_measured = self._shadow_repo.has_performance_measurement(capability_name=cap_name)
-                performance_gate_passed = performance_measured and "PERFORMANCE_NOT_MEASURED" not in failed_gates
+                quality_gate_passed = len(failed_gates) == 0
+                performance_gate_passed = "PERFORMANCE_NOT_MEASURED" not in failed_gates
+                performance_measured = performance_gate_passed
                 last_evaluated_at = (
                     datetime.fromisoformat(promo["created_at"])
                     if promo["created_at"]
                     else None
                 )
 
-            sources = self._shadow_repo.get_inference_sources(user_id=user_id, capability_name=cap_name)
-            real_inference_observed = "REAL_MODEL" in sources
-            has_fixture = "FIXTURE" in sources
+            real_inference_observed = self._shadow_repo.has_real_inference(
+                user_id=user_id, capability_name=cap_name
+            )
             cap_last_real_at = self._shadow_repo.get_last_real_inference_at(
                 user_id=user_id, capability_name=cap_name
             )
@@ -234,8 +229,6 @@ class LearnerControlService:
 
             if real_inference_observed:
                 any_real_inference = True
-            if has_fixture:
-                any_fixture = True
             if cap_has_shadow:
                 any_shadow_run = True
             if cap_last_real_at and (
@@ -243,37 +236,15 @@ class LearnerControlService:
             ):
                 last_real_inference_at = cap_last_real_at
 
-            fixture_only = cap_has_shadow and sources == {"FIXTURE"}
-            if real_inference_observed:
-                cap_inference_source = "REAL_MODEL"
-            elif sources == {"FIXTURE"}:
-                cap_inference_source = "FIXTURE"
-            elif not cap_has_shadow:
-                cap_inference_source = "NOT_OBSERVED"
-            elif "LEGACY_UNVERIFIED" in sources:
-                cap_inference_source = "LEGACY_UNVERIFIED"
-            else:
-                cap_inference_source = "DETERMINISTIC_FALLBACK"
+            fixture_only = cap_has_shadow and not real_inference_observed
 
             is_read_only = cap_name in read_only_capabilities
-            circuit_closed = True
-            if self._shadow_runner is not None:
-                circuit_closed = self._shadow_runner.canary_allowed(cap_name)
-            provenance_verified = real_inference_observed or sources == {"FIXTURE"} or (
-                cap_has_shadow and "LEGACY_UNVERIFIED" not in sources and "NOT_OBSERVED" not in sources
-            )
             canary_active = (
                 is_read_only
                 and campusmate_lm_status == "ELIGIBLE_FOR_CANARY"
                 and quality_gate_passed
                 and performance_measured
-                and performance_gate_passed
                 and configured
-                and enabled
-                and canary_flag_enabled
-                and user_shadow_enabled
-                and circuit_closed
-                and provenance_verified
             )
             if canary_active:
                 read_only_canary_active = True
@@ -288,12 +259,9 @@ class LearnerControlService:
                 "performance_measured": performance_measured,
                 "last_evaluated_at": last_evaluated_at,
                 "uses_real_model_inference": real_inference_observed,
-                "uses_fixed_prediction_file": has_fixture,
-                "inference_source": cap_inference_source,
+                "uses_fixed_prediction_file": fixture_only or not real_inference_observed,
             })
 
-        all_sources = self._shadow_repo.get_inference_sources(user_id=user_id)
-        fixture_only_global = bool(all_sources) and all_sources == {"FIXTURE"}
         return {
             "capabilities": capabilities,
             "campusmate_lm_enabled": enabled,
@@ -301,10 +269,10 @@ class LearnerControlService:
             "shadow_results_modify_plans": False,
             "read_only_canary_active": read_only_canary_active,
             "uses_real_model_inference": any_real_inference,
-            "uses_fixed_prediction_file": any_fixture,
+            "uses_fixed_prediction_file": not any_real_inference,
             "real_inference_observed": any_real_inference,
             "last_real_inference_at": last_real_inference_at,
-            "fixture_only": fixture_only_global,
+            "fixture_only": any_shadow_run and not any_real_inference,
         }
 
     def canary_gate(self, *, capability_name: str, user_id: str) -> dict[str, Any]:
@@ -344,7 +312,7 @@ class LearnerControlService:
         if failed_gates:
             return {"allowed": False, "reason": "quality_gates_failed", "failed_gates": failed_gates}
 
-        if self._shadow_runner is not None and not self._shadow_runner.canary_allowed(capability_name):
+        if self._shadow_runner is not None and not self._shadow_runner._circuit_allows(capability_name):
             return {"allowed": False, "reason": "circuit_breaker_open"}
 
         return {"allowed": True, "reason": None}

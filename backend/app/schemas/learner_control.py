@@ -206,9 +206,6 @@ class ModelCapabilityTransparencyOut(BaseModel):
     last_evaluated_at: Optional[datetime] = None
     uses_real_model_inference: bool
     uses_fixed_prediction_file: bool
-    inference_source: Literal[
-        "REAL_MODEL", "FIXTURE", "DETERMINISTIC_FALLBACK", "LEGACY_UNVERIFIED", "NOT_OBSERVED"
-    ] = "NOT_OBSERVED"
 
 
 class ModelTransparencyOut(BaseModel):
@@ -218,7 +215,7 @@ class ModelTransparencyOut(BaseModel):
     shadow_results_modify_plans: bool = False
     read_only_canary_active: bool = False
     uses_real_model_inference: bool = False
-    uses_fixed_prediction_file: bool = False
+    uses_fixed_prediction_file: bool = True
     real_inference_observed: bool = False
     last_real_inference_at: Optional[datetime] = None
     fixture_only: bool = False

@@ -62,11 +62,9 @@ def _insert_promotion_decision(container, capability_name, decision, failed_gate
         )
 
 
-def _insert_shadow_run(container, user_id, capability_name, used_fallback=True, inference_source=None):
+def _insert_shadow_run(container, user_id, capability_name, used_fallback=True):
     now = datetime.now(timezone.utc).isoformat()
     shadow_id = f"shadow_{capability_name}_{now}"
-    if inference_source is None:
-        inference_source = "REAL_MODEL" if not used_fallback else "DETERMINISTIC_FALLBACK"
     with container.db.transaction() as conn:
         conn.execute(
             """INSERT INTO model_shadow_runs
@@ -81,21 +79,9 @@ def _insert_shadow_run(container, user_id, capability_name, used_fallback=True, 
         conn.execute(
             """INSERT INTO model_shadow_results
                (shadow_run_id, schema_valid, policy_valid, abstained, used_fallback,
-                failure_code, latency_ms, resource_metrics_json, evaluator_version, created_at, inference_source)
-               VALUES (?, 1, 1, 0, ?, NULL, 100, '{}', 'eval-v1', ?, ?)""",
-            (shadow_id, int(used_fallback), now, inference_source),
-        )
-
-
-def _insert_metric_record(container, capability_name):
-    now = datetime.now(timezone.utc).isoformat()
-    with container.db.transaction() as conn:
-        conn.execute(
-            """INSERT INTO model_shadow_metric_records
-               (metric_record_id, shadow_run_id, scope, capability_name, capability_version,
-                dataset_version, evaluator_version, metrics_digest, metrics_json, created_at)
-               VALUES (?, NULL, 'OFFLINE', ?, 'v1', 'ds-v1', 'eval-v1', 'digest', '{}', ?)""",
-            (f"metric_{capability_name}_{now}", capability_name, now),
+                failure_code, latency_ms, resource_metrics_json, evaluator_version, created_at)
+               VALUES (?, 1, 1, 0, ?, NULL, 100, '{}', 'eval-v1', ?)""",
+            (shadow_id, int(used_fallback), now),
         )
 
 
@@ -308,172 +294,37 @@ def test_api_endpoint_allowed():
 
 
 def test_model_transparency_no_shadow_runs():
-    """没有 shadow run 时来源为 NOT_OBSERVED，不伪装成 fallback。"""
+    """没有 shadow run 时 real_inference_observed=False, fixture_only=False。"""
     client, container, auth, uid = _setup()
     data = container.learner_control_service.get_model_transparency(user_id=uid)
     assert data["real_inference_observed"] is False
     assert data["fixture_only"] is False
     assert data["uses_real_model_inference"] is False
-    assert data["uses_fixed_prediction_file"] is False
+    assert data["uses_fixed_prediction_file"] is True
     assert data["last_real_inference_at"] is None
-    for cap in data["capabilities"]:
-        assert cap["inference_source"] == "NOT_OBSERVED"
 
 
 def test_model_transparency_fixture_only():
-    """只有明确 FIXTURE 来源时 fixture_only=True。"""
+    """有 shadow run 但全部 fallback 时 fixture_only=True。"""
     client, container, auth, uid = _setup()
-    _insert_shadow_run(container, uid, "learning_summary_v1", used_fallback=True, inference_source="FIXTURE")
+    _insert_shadow_run(container, uid, "learning_summary_v1", used_fallback=True)
     data = container.learner_control_service.get_model_transparency(user_id=uid)
     assert data["real_inference_observed"] is False
     assert data["fixture_only"] is True
     assert data["uses_real_model_inference"] is False
     assert data["uses_fixed_prediction_file"] is True
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "FIXTURE"
-
-
-def test_model_transparency_fallback_is_not_fixture():
-    """普通 fallback 不得被推断成 fixed fixture。"""
-    client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True,
-        inference_source="DETERMINISTIC_FALLBACK",
-    )
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "DETERMINISTIC_FALLBACK"
-    assert cap["uses_real_model_inference"] is False
-    assert cap["uses_fixed_prediction_file"] is False
-    assert data["fixture_only"] is False
-    assert data["uses_fixed_prediction_file"] is False
-
-
-def test_model_transparency_mixed_sources_are_not_fixture_only():
-    """FIXTURE 与 FALLBACK 混合时 fixture_only=False。"""
-    client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True, inference_source="FIXTURE",
-    )
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True,
-        inference_source="DETERMINISTIC_FALLBACK",
-    )
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "DETERMINISTIC_FALLBACK"
-    assert data["fixture_only"] is False
-    assert data["uses_fixed_prediction_file"] is True
-
-
-def test_model_transparency_legacy_unverified_blocks_canary():
-    """旧库未验证记录不得标为真实推理，也不得激活 canary。"""
-    client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=False,
-        inference_source="LEGACY_UNVERIFIED",
-    )
-    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    _insert_metric_record(container, "learning_summary_v1")
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "LEGACY_UNVERIFIED"
-    assert cap["uses_real_model_inference"] is False
-    assert cap["uses_fixed_prediction_file"] is False
-    assert data["real_inference_observed"] is False
-    assert data["fixture_only"] is False
-    assert data["read_only_canary_active"] is False
-
-
-def test_model_transparency_explicit_fixture_source():
-    """明确 FIXTURE 来源才算 fixture。"""
-    client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True, inference_source="FIXTURE",
-    )
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "FIXTURE"
-    assert data["fixture_only"] is True
 
 
 def test_model_transparency_real_inference():
-    """明确 REAL_MODEL 记录时 real_inference_observed=True。"""
+    """有非 fallback shadow run 时 real_inference_observed=True。"""
     client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=False, inference_source="REAL_MODEL",
-    )
+    _insert_shadow_run(container, uid, "learning_summary_v1", used_fallback=False)
     data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "REAL_MODEL"
     assert data["real_inference_observed"] is True
     assert data["fixture_only"] is False
     assert data["uses_real_model_inference"] is True
     assert data["uses_fixed_prediction_file"] is False
     assert data["last_real_inference_at"] is not None
-
-
-def test_model_transparency_legacy_migration_marks_unverified():
-    """旧库 used_fallback=0 记录迁移后为 LEGACY_UNVERIFIED，而非 REAL_MODEL。"""
-    import sqlite3
-    import tempfile
-    from pathlib import Path
-
-    from app.database.sqlite_db import Database
-
-    tmp = Path(tempfile.mkdtemp(prefix="legacy_shadow_"))
-    db_path = tmp / "legacy.db"
-    legacy = Database(db_path)
-    try:
-        with legacy.transaction() as conn:
-            conn.execute("ALTER TABLE model_shadow_results DROP COLUMN inference_source")
-            conn.execute(
-                "INSERT INTO users (id, username, password_hash, role, created_at, updated_at) "
-                "VALUES ('legacy_user', 'legacy_user', 'x', 'student', "
-                "'2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
-            )
-            conn.execute(
-                """INSERT INTO model_shadow_runs
-                   (shadow_run_id, scope, user_id, request_id, capability_name, capability_version,
-                    production_model_key, candidate_model_key, dataset_version, online_sample_version,
-                    prompt_version, input_digest, expected_output_digest, candidate_output_digest,
-                    created_at, expires_at)
-                   VALUES ('shadow_legacy_1', 'ONLINE', 'legacy_user', 'req_legacy_1',
-                    'learning_summary_v1', 'v1', 'mature', 'campusmate-lm',
-                    'ds-v1', 'online-v1', 'pv1', 'dig1', NULL, 'out1', '2026-01-01T00:00:00+00:00',
-                    '2026-01-01T00:00:00+00:00')"""
-            )
-            conn.execute(
-                """INSERT INTO model_shadow_results
-                   (shadow_run_id, schema_valid, policy_valid, abstained, used_fallback,
-                    failure_code, latency_ms, resource_metrics_json, evaluator_version, created_at)
-                   VALUES ('shadow_legacy_1', 1, 1, 0, 0, NULL, 100, '{}', 'eval-v1',
-                    '2026-01-01T00:00:00+00:00')"""
-            )
-    finally:
-        legacy.dispose()
-    upgraded = Database(db_path)
-    try:
-        with upgraded.query() as conn:
-            row = conn.execute(
-                "SELECT inference_source, used_fallback FROM model_shadow_results WHERE shadow_run_id='shadow_legacy_1'",
-            ).fetchone()
-        assert row["used_fallback"] == 0
-        assert row["inference_source"] == "LEGACY_UNVERIFIED"
-    finally:
-        upgraded.dispose()
-
-    client, container, auth, uid = _setup()
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=False,
-        inference_source="LEGACY_UNVERIFIED",
-    )
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["inference_source"] == "LEGACY_UNVERIFIED"
-    assert data["real_inference_observed"] is False
-    assert data["fixture_only"] is False
-    assert data["read_only_canary_active"] is False
 
 
 def test_model_transparency_cross_user():
@@ -482,9 +333,7 @@ def test_model_transparency_cross_user():
     student_b = container.user_repository.create_user(
         username="canary_student_b", password_hash=hash_password("Demo123456"), role="student", display_name="B"
     )
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=False, inference_source="REAL_MODEL",
-    )
+    _insert_shadow_run(container, uid, "learning_summary_v1", used_fallback=False)
     data_a = container.learner_control_service.get_model_transparency(user_id=uid)
     data_b = container.learner_control_service.get_model_transparency(user_id=student_b.id)
     assert data_a["real_inference_observed"] is True
@@ -492,79 +341,14 @@ def test_model_transparency_cross_user():
 
 
 def test_model_transparency_canary_active():
-    """ELIGIBLE_FOR_CANARY + 只读 + 门禁通过 + 模型配置 + 已验证来源 → canary_active=True。"""
+    """ELIGIBLE_FOR_CANARY + 只读 + 门禁通过 + 模型配置 → canary_active=True。"""
     client, container, auth, uid = _setup()
     _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    _insert_metric_record(container, "learning_summary_v1")
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True,
-        inference_source="DETERMINISTIC_FALLBACK",
-    )
     data = container.learner_control_service.get_model_transparency(user_id=uid)
     assert data["read_only_canary_active"] is True
     cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
     assert cap["quality_gate_passed"] is True
     assert cap["performance_measured"] is True
-
-
-def test_model_transparency_performance_needs_metric_record():
-    """promotion 通过但没有性能指标记录时 performance_measured=False。"""
-    client, container, auth, uid = _setup()
-    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
-    assert cap["performance_measured"] is False
-    assert cap["performance_gate_passed"] is False
-    assert data["read_only_canary_active"] is False
-
-
-def test_model_transparency_canary_needs_user_shadow_switch():
-    """用户关闭 MODEL_SHADOW 时 canary_active=False。"""
-    client, container, auth, uid = _setup()
-    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    _insert_metric_record(container, "learning_summary_v1")
-    container.learner_control_service.update_source_control(
-        user_id=uid, source_key="MODEL_SHADOW", status="PAUSED"
-    )
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    assert data["read_only_canary_active"] is False
-
-
-def test_model_transparency_canary_needs_circuit_closed():
-    """熔断器打开时 canary_active=False。"""
-    client, container, auth, uid = _setup()
-    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    _insert_metric_record(container, "learning_summary_v1")
-    runner = container.model_shadow_runner
-    for _ in range(runner.circuit_breaker_threshold):
-        runner._record_failure("learning_summary_v1")
-    data = container.learner_control_service.get_model_transparency(user_id=uid)
-    assert data["read_only_canary_active"] is False
-
-
-def test_model_transparency_cross_user_isolation():
-    """用户 B 的禁用/熔断状态不影响用户 A。"""
-    client, container, auth, uid = _setup()
-    student_b = container.user_repository.create_user(
-        username="canary_student_iso", password_hash=hash_password("Demo123456"), role="student", display_name="I"
-    )
-    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
-    _insert_metric_record(container, "learning_summary_v1")
-    _insert_shadow_run(
-        container, uid, "learning_summary_v1", used_fallback=True,
-        inference_source="DETERMINISTIC_FALLBACK",
-    )
-    _insert_shadow_run(
-        container, student_b.id, "learning_summary_v1", used_fallback=True,
-        inference_source="DETERMINISTIC_FALLBACK",
-    )
-    container.learner_control_service.update_source_control(
-        user_id=student_b.id, source_key="MODEL_SHADOW", status="PAUSED"
-    )
-    data_a = container.learner_control_service.get_model_transparency(user_id=uid)
-    data_b = container.learner_control_service.get_model_transparency(user_id=student_b.id)
-    assert data_a["read_only_canary_active"] is True
-    assert data_b["read_only_canary_active"] is False
 
 
 def test_model_transparency_canary_not_active_when_not_configured():
