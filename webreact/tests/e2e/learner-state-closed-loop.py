@@ -238,12 +238,14 @@ def _seed_learner_data(page) -> None:
     assert created == 3, f"expected 3 seeded sessions, got {created}"
 
 
-def _assert_evidence_structure(body, label: str) -> dict:
+def _assert_evidence(body, label: str, require_items: bool) -> dict:
     assert isinstance(body, dict), f"{label} evidence must be an object: {body}"
     for field in ("items", "total", "page", "page_size", "has_more"):
         assert field in body, f"{label} evidence missing field {field}: {body}"
     items = body["items"]
     assert isinstance(items, list), f"{label} evidence items must be a list: {body}"
+    if require_items:
+        assert len(items) > 0, f"{label} evidence items empty: {body}"
     for index, item in enumerate(items):
         assert isinstance(item, dict), f"{label} evidence item {index} must be an object: {item}"
         assert item.get("evidence_kind") in ("EVENT", "SOURCE_ROW", "SYNC_STATUS"), (
@@ -263,27 +265,6 @@ def _check_no_overflow(page, viewport_name: str) -> None:
     scroll_width = page.evaluate("document.documentElement.scrollWidth")
     client_width = page.evaluate("document.documentElement.clientWidth")
     assert scroll_width <= client_width + 1, f"horizontal overflow at {viewport_name}: {scroll_width} > {client_width}"
-
-
-def _assert_evidence_page(body, label: str) -> dict:
-    assert isinstance(body, dict), f"{label} evidence must be an object: {body}"
-    for field in ("items", "total", "page", "page_size", "has_more"):
-        assert field in body, f"{label} evidence missing field {field}: {body}"
-    items = body["items"]
-    assert isinstance(items, list) and len(items) > 0, f"{label} evidence items empty: {body}"
-    for index, item in enumerate(items):
-        assert isinstance(item, dict), f"{label} evidence item {index} must be an object: {item}"
-        assert item.get("evidence_kind") in ("EVENT", "SOURCE_ROW", "SYNC_STATUS"), (
-            f"{label} evidence item {index} bad evidence_kind: {item}"
-        )
-        assert item.get("source_category"), f"{label} evidence item {index} missing source_category: {item}"
-        assert item.get("role") in ("SUPPORTS", "LIMITS", "INVALIDATES"), (
-            f"{label} evidence item {index} bad role: {item}"
-        )
-        assert item.get("explanation_code"), f"{label} evidence item {index} missing explanation_code: {item}"
-        for forbidden in ("source_id", "table_name", "payload", "prompt", "source_text", "answer"):
-            assert forbidden not in item, f"{label} evidence item {index} leaks {forbidden}: {item}"
-    return body
 
 
 def _ui_token_and_user(page) -> tuple[str, dict]:
@@ -341,7 +322,7 @@ def run_closed_loop(page, viewport, token: str, user: dict) -> None:
     first_core = core_snapshots["items"][0]
     assert first_core.get("snapshot_id"), f"CORE snapshot missing id: {first_core}"
     core_evidence = _page_api_get(page, f"/learner-state/snapshots/{first_core['snapshot_id']}/evidence?page=1&page_size=20")
-    _assert_evidence_page(core_evidence, "CORE")
+    _assert_evidence(core_evidence, "CORE", True)
     view_evidence_btns[0].click()
     page.wait_for_selector(".ls-drawer", timeout=10000)
     drawer = page.query_selector(".ls-drawer")
@@ -366,24 +347,7 @@ def run_closed_loop(page, viewport, token: str, user: dict) -> None:
     knowledge_evidence = _page_api_get(
         page, f"/learner-state/snapshots/{knowledge_snapshot_id}/evidence?page=1&page_size=20"
     )
-    assert isinstance(knowledge_evidence, dict), f"KNOWLEDGE evidence must be an object: {knowledge_evidence}"
-    for field in ("items", "total", "page", "page_size", "has_more"):
-        assert field in knowledge_evidence, f"KNOWLEDGE evidence missing field {field}: {knowledge_evidence}"
-    assert isinstance(knowledge_evidence["items"], list), (
-        f"KNOWLEDGE evidence items must be a list: {knowledge_evidence}"
-    )
-    for index, item in enumerate(knowledge_evidence["items"]):
-        assert isinstance(item, dict), f"KNOWLEDGE evidence item {index} must be an object: {item}"
-        assert item.get("evidence_kind") in ("EVENT", "SOURCE_ROW", "SYNC_STATUS"), (
-            f"KNOWLEDGE evidence item {index} bad evidence_kind: {item}"
-        )
-        assert item.get("source_category"), f"KNOWLEDGE evidence item {index} missing source_category: {item}"
-        assert item.get("role") in ("SUPPORTS", "LIMITS", "INVALIDATES"), (
-            f"KNOWLEDGE evidence item {index} bad role: {item}"
-        )
-        assert item.get("explanation_code"), f"KNOWLEDGE evidence item {index} missing explanation_code: {item}"
-        for forbidden in ("source_id", "table_name", "payload", "prompt", "source_text", "answer"):
-            assert forbidden not in item, f"KNOWLEDGE evidence item {index} leaks {forbidden}: {item}"
+    _assert_evidence(knowledge_evidence, "KNOWLEDGE", False)
     page.wait_for_selector(".ls-knowledge, .ls-empty", timeout=15000)
 
     # 7. 提交纠正（抽屉内纠正选项必须存在）
