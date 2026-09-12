@@ -9,7 +9,7 @@ import json
 import re
 import sqlite3
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from ...models.multi_role import UserRow
 from ...schemas.multi_role import Page
@@ -32,7 +32,8 @@ from ...services.notice_extraction_service import (
     SemanticDecision,
     compute_notice_hash,
 )
-from ..deps import current_user
+from ...schemas.notice_workflow import ManualNoticeIn, ManualNoticeOut
+from ..deps import current_user, student_only
 
 router = APIRouter()
 
@@ -462,3 +463,46 @@ async def ingest_notice_batch(
     container: ServiceContainer = Depends(_container),
 ) -> NoticeBatchIngestResponse:
     return await _ingest_batch(req, user, container)
+
+@router.post("/notices/manual", response_model=ManualNoticeOut)
+def create_manual_notice(
+    body: ManualNoticeIn,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+) -> ManualNoticeOut:
+    """手动提交通知文本,持久化为服务端 notice_id(§8.3)。
+
+    先把粘贴文本写入 notices 表,返回 notice_id,客户端再调用
+    POST /notices/{notice_id}/workflow 创建工作流。同内容幂等返回。
+    """
+    normalized = re.sub(r"\s+", " ", body.content).strip()
+    fingerprint = hashlib.sha256(
+        "\x1f".join((user.id, normalized)).encode("utf-8")
+    ).hexdigest()
+    external_id = f"manual:{fingerprint[:32]}"
+    existing = None
+    for n in container.notice_repository.list_notices(user.id):
+        if n.source == "manual_input" and n.external_id == external_id:
+            existing = n
+            break
+    notice = container.notice_repository.create_or_update_notice(
+        user_id=user.id,
+        source="manual_input",
+        external_id=external_id,
+        title=body.title,
+        content=body.content,
+        source_url=None,
+        last_synced_at=datetime.now(timezone.utc).isoformat(),
+    )
+    return ManualNoticeOut(
+        notice_id=notice.id,
+        title=notice.title,
+        duplicate=existing is not None,
+    )
+
+
+# 挂载通知工作流路由(§9.4),避免修改共享 router.py
+from .notice_workflows import router as _notice_workflows_router  # noqa: E402
+
+router.include_router(_notice_workflows_router)
