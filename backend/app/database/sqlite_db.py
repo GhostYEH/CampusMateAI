@@ -1524,6 +1524,203 @@ CREATE INDEX IF NOT EXISTS idx_learner_product_events_user
 """
 
 
+# CampusAgentRuntime schema —— jobs/runs/steps/events/traces/artifacts(§5.6-§5.9、§7.1)。
+# 所有迁移均为 additive + idempotent(CREATE TABLE IF NOT EXISTS)。
+# trace 表只保存摘要、hash、延迟、路由与错误,不保存完整 prompt、隐藏推理或敏感上下文。
+AGENT_RUNTIME_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS agent_jobs (
+    job_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    job_kind TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    idempotency_key TEXT,
+    input_ref_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_user ON agent_jobs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_kind ON agent_jobs(job_kind, status);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    run_id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    phase TEXT NOT NULL DEFAULT 'IDLE',
+    risk_level TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    request_id TEXT,
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(job_id) REFERENCES agent_jobs(job_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_job ON agent_runs(job_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_user_status ON agent_runs(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status_phase ON agent_runs(status, phase);
+
+CREATE TABLE IF NOT EXISTS agent_run_steps (
+    step_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    summary TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run ON agent_run_steps(run_id, sequence);
+
+CREATE TABLE IF NOT EXISTS agent_context_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    run_id TEXT,
+    user_id TEXT NOT NULL,
+    scope_json TEXT NOT NULL DEFAULT '{}',
+    facts_json TEXT NOT NULL DEFAULT '{}',
+    source_refs_json TEXT NOT NULL DEFAULT '[]',
+    source_digest TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    valid_until TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_context_snapshots_run ON agent_context_snapshots(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_context_snapshots_user ON agent_context_snapshots(user_id, generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_tool_calls (
+    call_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    step_id TEXT,
+    tool_name TEXT NOT NULL,
+    idempotency_key TEXT,
+    request_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    result_digest TEXT,
+    error_code TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, idempotency_key, request_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_run ON agent_tool_calls(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_idem ON agent_tool_calls(idempotency_key, request_hash);
+
+CREATE TABLE IF NOT EXISTS agent_model_calls (
+    call_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    step_id TEXT,
+    provider TEXT NOT NULL,
+    route_policy TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    latency_ms INTEGER,
+    fallback_reason TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_model_calls_run ON agent_model_calls(run_id);
+
+CREATE TABLE IF NOT EXISTS agent_events (
+    event_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    role TEXT,
+    summary TEXT,
+    progress_json TEXT,
+    artifact_id TEXT,
+    approval_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_run_seq ON agent_events(run_id, sequence);
+
+CREATE TABLE IF NOT EXISTS agent_memories (
+    memory_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    content_summary TEXT NOT NULL,
+    sensitivity TEXT NOT NULL DEFAULT 'low',
+    confirmed INTEGER NOT NULL DEFAULT 0,
+    withdrawn INTEGER NOT NULL DEFAULT 0,
+    model_may_consume INTEGER NOT NULL DEFAULT 0,
+    provenance TEXT,
+    valid_until TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CHECK(kind IN ('CONFIRMED_PREFERENCE','CONFIRMED_STUDY_GOAL','CONFIRMED_CONSTRAINT','USER_APPROVED_SUMMARY')),
+    CHECK(sensitivity IN ('low','medium','high'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_memories_user ON agent_memories(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_approvals (
+    approval_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    risk_level TEXT NOT NULL,
+    action_summary TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    resolved_at TEXT,
+    decision_reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CHECK(status IN ('PENDING','APPROVED','REJECTED','EXPIRED')),
+    CHECK(risk_level IN ('AUTO_SAFE','CONFIRM_REQUIRED','MANUAL_ONLY'))
+);
+CREATE INDEX IF NOT EXISTS idx_agent_approvals_run ON agent_approvals(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_approvals_user_status ON agent_approvals(user_id, status);
+
+CREATE TABLE IF NOT EXISTS agent_citations (
+    citation_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    title TEXT,
+    accessed_at TEXT NOT NULL,
+    is_accessible INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_citations_run ON agent_citations(run_id);
+
+CREATE TABLE IF NOT EXISTS agent_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    download_url TEXT,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_run ON agent_artifacts(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_user ON agent_artifacts(user_id, created_at DESC);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1589,6 +1786,7 @@ class Database:
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
+                conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
