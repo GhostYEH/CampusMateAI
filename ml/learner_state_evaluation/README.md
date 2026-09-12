@@ -40,3 +40,40 @@ python -m learner_state_evaluation.cli evaluate-planning `
 ```
 
 It reports priority agreement, deadline/evidence coverage, invalid recommendation rate, stale-plan detection, deterministic fallback, idempotent execution, unauthorized-action, and schema-validity metrics. It contains no learner identifiers, task text, event payloads, credentials, or raw course material.
+
+## Phase 8A — CampusMate-LM real-inference baseline (held-out test only)
+
+Scope: `ml/learner_state_evaluation` only. No business backend/frontend changes.
+No fixture or deterministic output may claim `REAL_MODEL` inference.
+Without authorized weights the harness stays blocked and reports `BLOCKED_NO_WEIGHTS`.
+
+Reproducible commands (from this directory, outputs go to a temp dir, never committed):
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m learner_state_evaluation.model_shadow.real_benchmark inventory
+python -m learner_state_evaluation.model_shadow.real_benchmark run-blocked `
+  --dataset datasets/campusmate_lm_shadow_v1.jsonl `
+  --output-dir $env:TEMP/phase8a-blocked
+python -m pytest tests/test_real_benchmark.py -q
+python -m pytest -q
+```
+
+With authorized weights and a configured OpenAI-compatible service:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:CAMPUSMATE_LM_SHADOW_ENABLED = "true"
+python -m learner_state_evaluation.model_shadow.real_benchmark run-real `
+  --dataset datasets/campusmate_lm_shadow_v1.jsonl `
+  --output-dir $env:TEMP/phase8a-real `
+  --model-version campusmate-lm-v1 `
+  --seed 20260911
+```
+
+Notes:
+
+- Inference is strictly limited to the held-out `test` split (52 rows: KC 18, error 14, summary 10, tool routing 10). `train`/`validation` are excluded from inference and tuning.
+- Reports record model path availability (name only, never absolute paths), model version, seed, inference params, dataset sha256, evaluator/threshold versions, quality/safety/latency/resource metrics, and per-capability promotion decisions.
+- `production_enabled` and `canary_enabled` are always `false` in Phase 8A artifacts.
+- Do not commit model weights, caches, logs, reports, or machine-local paths.
