@@ -13,7 +13,6 @@ import argparse
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +33,11 @@ CAPABILITIES = (
 DEFAULT_SEED = 20260911
 DEFAULT_INFERENCE_PARAMS = {"temperature": 0.0, "max_tokens": 512, "timeout_seconds": 30.0}
 WEIGHT_ENV_KEYS = ("CAMPUSMATE_LM_MODEL_PATH", "MINIMIND_MODEL_PATH", "CAMPUSMATE_LM_WEIGHTS_DIR")
-WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".bin")
 BASELINE_PREDICTION_SOURCE = "DETERMINISTIC_BASELINE"
 REAL_PREDICTION_SOURCE = "REAL_MODEL"
 MAX_ASSET_FILES = 256
+BLOCK_REASON_CODES = {"MODEL_RUNTIME_UNAVAILABLE", "LOCAL_INFERENCE_RUNTIME_UNAVAILABLE",
+                      "REAL_MODEL_INFERENCE_UNAVAILABLE", "NO_VALID_REAL_MODEL_OUTPUT"}
 
 
 def _sha256_file(path: Path) -> str:
@@ -218,18 +218,41 @@ def _blocked_decisions(reason: str, *, model_version: str | None = None) -> dict
     } for capability in CAPABILITIES}
 
 
-def _valid_output(capability: str, output: Any) -> bool:
+def _valid_output(capability: str, output: Any, features: dict[str, Any]) -> bool:
     if not isinstance(output, dict) or set(output) != CAPABILITY_OUTPUT_FIELDS[capability]:
         return False
+    confidence = output.get("confidence")
+    if confidence is not None and (not isinstance(confidence, (int, float))
+                                   or isinstance(confidence, bool) or not 0 <= confidence <= 1):
+        return False
     if capability in {"c_kc_classification_v1", "c_error_classification_v1"}:
-        return (isinstance(output.get("knowledge_component_codes"), list)
-                and isinstance(output.get("confidence"), (int, float))
+        codes = output.get("knowledge_component_codes")
+        allowed_kcs = set(features.get("candidate_kc_codes", []))
+        if not isinstance(codes, list) or not set(codes).issubset(allowed_kcs):
+            return False
+        if capability == "c_kc_classification_v1":
+            allowed_reasons = {"CONTROLLED_CANDIDATE_MATCH", "CONTROLLED_TOPIC_MATCH",
+                               "INSUFFICIENT_EVIDENCE"}
+            return (isinstance(output.get("reason_codes"), list)
+                    and set(output["reason_codes"]).issubset(allowed_reasons)
+                    and isinstance(output.get("abstained"), bool))
+        error = output.get("error_code")
+        return ((error is None or error in set(features.get("candidate_error_codes", [])))
                 and isinstance(output.get("abstained"), bool))
     if capability == "learning_summary_v1":
-        return isinstance(output.get("summary"), str) and isinstance(output.get("claim_codes"), list)
-    return ((output.get("tool_name") is None or isinstance(output.get("tool_name"), str))
-            and isinstance(output.get("arguments"), dict)
-            and isinstance(output.get("confidence"), (int, float))
+        allowed_claims = {"PRIORITIZE_NEAR_DEADLINE", "REVIEW_KNOWLEDGE_COMPONENT",
+                          "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL"}
+        return (isinstance(output.get("summary"), str) and 1 <= len(output["summary"]) <= 240
+                and isinstance(output.get("claim_codes"), list)
+                and set(output["claim_codes"]).issubset(allowed_claims))
+    tool = output.get("tool_name")
+    arguments = output.get("arguments")
+    allowed_tools = set(features.get("candidate_read_tools", []))
+    allowed_arguments = features.get("parameter_schema", {})
+    return ((tool is None or tool in allowed_tools)
+            and isinstance(arguments, dict)
+            and "user_id" not in arguments
+            and (tool is None or arguments == allowed_arguments)
             and isinstance(output.get("abstained"), bool))
 
 
@@ -291,6 +314,7 @@ def run_baseline_benchmark(*, dataset_path: Path, output_dir: Path,
         "test_split_only": True, "train_validation_excluded": True,
         "heldout_sample_count": len(heldout), "capability_metrics": metrics["by_capability"],
         "overall_safety": metrics["overall_safety"], "performance": metrics["performance"],
+        "performance_status": "NOT_MEASURED", "resource_measurement_status": "NOT_MEASURED",
         "promotion_decisions": _blocked_decisions("BASELINE_NOT_PROMOTION_ELIGIBLE",
                                                    model_version="deterministic-baseline-v2"),
         "production_enabled": False, "canary_enabled": False, "absolute_paths_omitted": True,
@@ -309,8 +333,9 @@ def run_blocked_benchmark(*, dataset_path: Path, output_dir: Path, reason: str,
     baseline_decisions = _blocked_decisions("BASELINE_NOT_PROMOTION_ELIGIBLE",
                                             model_version="deterministic-baseline-v2")
     blocked_decisions = _blocked_decisions("REAL_MODEL_INFERENCE_UNAVAILABLE")
-    report = {"benchmark_version": BENCHMARK_VERSION, "blocked": True, "block_reason": reason,
-              "inference_source": "BLOCKED_NO_WEIGHTS", "real_model_inference": False,
+    safe_reason = reason if reason in BLOCK_REASON_CODES else "MODEL_RUNTIME_UNAVAILABLE"
+    report = {"benchmark_version": BENCHMARK_VERSION, "blocked": True, "block_reason": safe_reason,
+              "inference_source": "BLOCKED", "real_model_inference": False,
               "prediction_source": BASELINE_PREDICTION_SOURCE, "model_path": None, "model_version": None,
               "baseline_type": "DETERMINISTIC_BASELINE", "baseline_version": "input-only-v1",
               "uses_expected_output": False, "eligible_for_comparison": True,
@@ -324,6 +349,7 @@ def run_blocked_benchmark(*, dataset_path: Path, output_dir: Path, reason: str,
               "baseline_metrics": metrics_report["by_capability"],
               "baseline_overall_safety": metrics_report["overall_safety"],
               "baseline_performance": metrics_report["performance"],
+              "performance_status": "NOT_MEASURED", "resource_measurement_status": "NOT_MEASURED",
               "baseline_promotion_decisions": baseline_decisions,
               "promotion_decisions": blocked_decisions,
               "production_enabled": False, "canary_enabled": False, "absolute_paths_omitted": True}
@@ -354,7 +380,7 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
                                "max_tokens": params.get("max_tokens", 512), "seed": seed})
         response = client.predict(request)
         output = dict(response.prediction) if isinstance(response.prediction, dict) else {}
-        if response.used_fallback or not _valid_output(row["capability_name"], output):
+        if response.used_fallback or not _valid_output(row["capability_name"], output, row["input"]):
             fallback_count += 1
             predictions.append({"sample_id": row["sample_id"], "capability_name": row["capability_name"],
                                 "output": {}, "confidence": 0.0, "latency_ms": response.latency_ms,
@@ -370,9 +396,19 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
                             "schema_valid": True, "used_fallback": False, "error_code": None,
                             "model_key": response.model_key, "model_version": response.model_version})
     metrics_report = evaluate_shadow_predictions(heldout, predictions)
-    real_inference = fallback_count == 0
+    real_model_sample_count = len(predictions) - fallback_count
+    fully_real = fallback_count == 0
+    any_real = real_model_sample_count > 0
+    inference_source = ("REAL_MODEL" if fully_real else
+                        "MIXED_REAL_AND_FALLBACK" if any_real else "DETERMINISTIC_FALLBACK")
     source_counts = {source: sum(p["prediction_source"] == source for p in predictions)
                      for source in (REAL_PREDICTION_SOURCE, "DETERMINISTIC_FALLBACK")}
+    source_counts_by_capability = {
+        capability: {source: sum(p["capability_name"] == capability
+                                and p["prediction_source"] == source for p in predictions)
+                     for source in (REAL_PREDICTION_SOURCE, "DETERMINISTIC_FALLBACK")}
+        for capability in CAPABILITIES
+    }
     decisions = _promotion_decisions(metrics_report, model_key="campusmate-lm",
                                      model_version=model_version, dataset_version=DATASET_VERSION)
     for capability in CAPABILITIES:
@@ -381,11 +417,15 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
             decisions[capability]["decision"] = "BLOCKED"
             decisions[capability]["failed_gates"] = sorted(set(
                 decisions[capability]["failed_gates"] + ["REAL_MODEL_COVERAGE_INCOMPLETE"]))
-    report = {"benchmark_version": BENCHMARK_VERSION, "blocked": False, "block_reason": None,
-              "inference_source": "REAL_MODEL" if real_inference else "MIXED_REAL_AND_FALLBACK",
-              "real_model_inference": real_inference, "prediction_source": REAL_PREDICTION_SOURCE,
+    report = {"benchmark_version": BENCHMARK_VERSION, "blocked": not any_real,
+              "block_reason": None if any_real else "NO_VALID_REAL_MODEL_OUTPUT",
+              "inference_source": inference_source,
+              "real_model_inference": any_real, "fully_real_model_inference": fully_real,
+              "real_model_sample_count": real_model_sample_count,
+              "prediction_source": REAL_PREDICTION_SOURCE,
               "execution_mode": "OPENAI_COMPATIBLE_SERVICE", "model_path": None,
               "model_weight_name": None, "source_counts": source_counts,
+              "source_counts_by_capability": source_counts_by_capability,
               "model_version": model_version, "seed": seed,
               "inference_params": params, "fallback_count": fallback_count,
               "dataset_version": DATASET_VERSION, "dataset_sha256": _sha256_file(dataset_path),
@@ -394,6 +434,8 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
               "capability_metrics": metrics_report["by_capability"],
               "overall_safety": metrics_report["overall_safety"],
               "performance": metrics_report["performance"],
+              "performance_status": "MEASURED" if metrics_report["performance"].get("p95_latency_ms") is not None else "NOT_MEASURED",
+              "resource_measurement_status": "NOT_MEASURED",
               "promotion_decisions": decisions,
               "production_enabled": False, "canary_enabled": False, "absolute_paths_omitted": True}
     _write_report(output_dir, stem="phase8a-real", report=report, predictions=predictions)
@@ -438,6 +480,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Phase 8A real-model benchmark harness (held-out test only)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inventory")
+    preflight = sub.add_parser("preflight")
+    preflight.add_argument("--dataset", type=Path, required=True)
+    baseline = sub.add_parser("run-baseline")
+    baseline.add_argument("--dataset", type=Path, required=True)
+    baseline.add_argument("--output-dir", type=Path, required=True)
     blocked = sub.add_parser("run-blocked")
     blocked.add_argument("--dataset", type=Path, required=True)
     blocked.add_argument("--output-dir", type=Path, required=True)
@@ -447,6 +494,8 @@ def main() -> None:
     real.add_argument("--output-dir", type=Path, required=True)
     real.add_argument("--model-version", required=True)
     real.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    real.add_argument("--temperature", type=float, default=0.0)
+    real.add_argument("--max-tokens", type=int, default=512)
     evaluate = sub.add_parser("evaluate")
     evaluate.add_argument("--dataset", type=Path, required=True)
     evaluate.add_argument("--manifest", type=Path, required=False, default=None)
@@ -462,7 +511,15 @@ def main() -> None:
     compare.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "inventory":
-        print(json.dumps(inventory_model_weights(), ensure_ascii=False, indent=2, sort_keys=True))
+        print(json.dumps(inventory_model_runtime(), ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command == "preflight":
+        print(json.dumps(preflight_benchmark(dataset_path=args.dataset),
+                         ensure_ascii=False, indent=2, sort_keys=True))
+    elif args.command == "run-baseline":
+        report = run_baseline_benchmark(dataset_path=args.dataset, output_dir=args.output_dir)
+        print(json.dumps({"inference_source": report["inference_source"],
+                          "heldout_sample_count": report["heldout_sample_count"],
+                          "eligible_for_promotion": report["eligible_for_promotion"]}, sort_keys=True))
     elif args.command == "run-blocked":
         report = run_blocked_benchmark(dataset_path=args.dataset, output_dir=args.output_dir,
                                        reason=args.reason)
@@ -470,9 +527,16 @@ def main() -> None:
                           "heldout_sample_count": report["heldout_sample_count"]},
                          ensure_ascii=False, sort_keys=True))
     elif args.command == "run-real":
-        client = require_real_client(create_client_from_env())
+        client = create_client_from_env()
+        if not isinstance(client, OpenAICompatibleClient):
+            print(json.dumps({"blocked": True, "block_reason_code": "MODEL_RUNTIME_UNAVAILABLE",
+                              "inference_source": "BLOCKED"}, sort_keys=True))
+            raise SystemExit(2)
+        client = require_real_client(client)
         report = run_real_benchmark(dataset_path=args.dataset, output_dir=args.output_dir,
-                                    client=client, model_version=args.model_version, seed=args.seed)
+                                    client=client, model_version=args.model_version, seed=args.seed,
+                                    inference_params={"temperature": args.temperature,
+                                                      "max_tokens": args.max_tokens})
         print(json.dumps({"blocked": report["blocked"], "inference_source": report["inference_source"],
                           "real_model_inference": report["real_model_inference"]},
                          ensure_ascii=False, sort_keys=True))

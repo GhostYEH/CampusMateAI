@@ -180,6 +180,9 @@ class TestOpenAICompatibleClientSecurity:
         assert captured["payload"]["temperature"] == 0.25
         assert captured["payload"]["max_tokens"] == 96
         assert captured["payload"]["seed"] == 7
+        system_prompt = captured["payload"]["messages"][0]["content"]
+        assert "c_kc_classification_v1" in system_prompt
+        assert "knowledge_component_codes" in system_prompt
         serialized = json.dumps(captured["payload"], sort_keys=True)
         assert "expected_output" not in serialized
         assert "gold" not in serialized

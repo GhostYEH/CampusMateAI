@@ -41,39 +41,52 @@ python -m learner_state_evaluation.cli evaluate-planning `
 
 It reports priority agreement, deadline/evidence coverage, invalid recommendation rate, stale-plan detection, deterministic fallback, idempotent execution, unauthorized-action, and schema-validity metrics. It contains no learner identifiers, task text, event payloads, credentials, or raw course material.
 
-## Phase 8A — CampusMate-LM real-inference baseline (held-out test only)
+## Phase 8A/8B — truthful CampusMate-LM benchmark
 
-Scope: `ml/learner_state_evaluation` only. No business backend/frontend changes.
-No fixture or deterministic output may claim `REAL_MODEL` inference.
-Without authorized weights the harness stays blocked and reports `BLOCKED_NO_WEIGHTS`.
+Only a successful, schema-valid response from the explicitly configured
+OpenAI-compatible client may claim `REAL_MODEL`. The input-only
+`DETERMINISTIC_BASELINE` never reads `expected_output` and is comparison-only;
+fixtures, oracle references, and fallbacks are never promotion evidence.
 
-Reproducible commands (from this directory, outputs go to a temp dir, never committed):
+The repository currently contains no authorized CampusMate-LM weights. Asset
+inventory recognizes a non-empty GGUF file or a bounded Hugging Face-style
+directory containing config, tokenizer metadata, and weights. Local assets
+still require an authorized serving runtime. The executable route today is an
+explicitly enabled OpenAI-compatible CampusMate-LM service. Configuration alone
+does not prove inference: only valid observed responses count. Production and
+Canary remain disabled.
+
+Reproduce the safe local checks from this directory:
 
 ```powershell
 $env:PYTHONPATH = "src"
+$dataset = "datasets/campusmate_lm_shadow_v1.jsonl"
 python -m learner_state_evaluation.model_shadow.real_benchmark inventory
+python -m learner_state_evaluation.model_shadow.real_benchmark preflight --dataset $dataset
+python -m learner_state_evaluation.model_shadow.real_benchmark run-baseline `
+  --dataset $dataset --output-dir (Join-Path $env:TEMP "campusmate-phase8-baseline")
 python -m learner_state_evaluation.model_shadow.real_benchmark run-blocked `
-  --dataset datasets/campusmate_lm_shadow_v1.jsonl `
-  --output-dir $env:TEMP/phase8a-blocked
-python -m pytest tests/test_real_benchmark.py -q
-python -m pytest -q
+  --dataset $dataset --output-dir (Join-Path $env:TEMP "campusmate-phase8-blocked") `
+  --reason MODEL_RUNTIME_UNAVAILABLE
 ```
 
-With authorized weights and a configured OpenAI-compatible service:
+For an authorized service, set placeholders only in the current shell and never
+commit their values:
 
 ```powershell
-$env:PYTHONPATH = "src"
 $env:CAMPUSMATE_LM_SHADOW_ENABLED = "true"
+$env:CAMPUSMATE_LM_BASE_URL = "<authorized-openai-compatible-url>"
+$env:CAMPUSMATE_LM_MODEL = "<authorized-model-id>"
+$env:CAMPUSMATE_LM_API_KEY = "<runtime-secret>"
+python -m learner_state_evaluation.model_shadow.real_benchmark preflight --dataset $dataset
 python -m learner_state_evaluation.model_shadow.real_benchmark run-real `
-  --dataset datasets/campusmate_lm_shadow_v1.jsonl `
-  --output-dir $env:TEMP/phase8a-real `
-  --model-version campusmate-lm-v1 `
-  --seed 20260911
+  --dataset $dataset --output-dir (Join-Path $env:TEMP "campusmate-phase8-real") `
+  --model-version "<authorized-model-version>" --temperature 0 --max-tokens 512
 ```
 
-Notes:
-
-- Inference is strictly limited to the held-out `test` split (52 rows: KC 18, error 14, summary 10, tool routing 10). `train`/`validation` are excluded from inference and tuning.
-- Reports record model path availability (name only, never absolute paths), model version, seed, inference params, dataset sha256, evaluator/threshold versions, quality/safety/latency/resource metrics, and per-capability promotion decisions.
-- `production_enabled` and `canary_enabled` are always `false` in Phase 8A artifacts.
-- Do not commit model weights, caches, logs, reports, or machine-local paths.
+Inference is limited to the held-out `test` split (52 rows: KC 18, error 14,
+summary 10, tool routing 10). Reports distinguish complete real coverage,
+mixed fallback, and total fallback per capability. Missing token, device,
+memory, or cost measurements stay `null`, never zero. Use `evaluate` for an
+external prediction file and `compare` for generated reports. Never commit
+weights, caches, predictions, reports, logs, secrets, URLs, or machine paths.

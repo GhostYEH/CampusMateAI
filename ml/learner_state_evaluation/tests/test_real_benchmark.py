@@ -222,6 +222,73 @@ def test_phase8a_configured_service_runs_without_local_weights_but_failures_stay
         model_version="phase8a-probe",
     )
     assert report["execution_mode"] == "OPENAI_COMPATIBLE_SERVICE"
-    assert report["inference_source"] == "MIXED_REAL_AND_FALLBACK"
+    assert report["inference_source"] == "DETERMINISTIC_FALLBACK"
     assert report["source_counts"] == {"REAL_MODEL": 0, "DETERMINISTIC_FALLBACK": 52}
     assert all(item["decision"] == "BLOCKED" for item in report["promotion_decisions"].values())
+
+
+def test_phase8b_real_and_partial_sources_are_reported_per_capability(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+    from learner_state_evaluation.model_shadow.candidate_client import (
+        CandidateResponse,
+        OpenAICompatibleClient,
+    )
+    from learner_state_evaluation.model_shadow.dataset import write_shadow_dataset
+
+    class ControlledService(OpenAICompatibleClient):
+        def __init__(self, fail_capability=None):
+            super().__init__(base_url="http://service.invalid", model="controlled-v1", api_key="secret")
+            self.fail_capability = fail_capability
+
+        def predict(self, request):
+            if request.capability_name == self.fail_capability:
+                return CandidateResponse({}, self.model_key, self.model_version, 3, True, "MODEL_TIMEOUT")
+            output = rb._deterministic_output(request.capability_name, request.structured_features)
+            return CandidateResponse(output, self.model_key, self.model_version, 3)
+
+    source = write_shadow_dataset(tmp_path / "source")
+    complete = rb.run_real_benchmark(
+        dataset_path=source.data_path, output_dir=tmp_path / "complete",
+        client=ControlledService(), model_version="controlled-v1",
+    )
+    assert complete["inference_source"] == "REAL_MODEL"
+    assert complete["real_model_sample_count"] == 52
+    assert complete["fallback_count"] == 0
+    assert all(counts["REAL_MODEL"] > 0 and counts["DETERMINISTIC_FALLBACK"] == 0
+               for counts in complete["source_counts_by_capability"].values())
+
+    partial = rb.run_real_benchmark(
+        dataset_path=source.data_path, output_dir=tmp_path / "partial",
+        client=ControlledService("c_kc_classification_v1"), model_version="controlled-v1",
+    )
+    assert partial["inference_source"] == "MIXED_REAL_AND_FALLBACK"
+    assert "REAL_MODEL_COVERAGE_INCOMPLETE" in partial["promotion_decisions"][
+        "c_kc_classification_v1"]["failed_gates"]
+    for capability in set(rb.CAPABILITIES) - {"c_kc_classification_v1"}:
+        assert "REAL_MODEL_COVERAGE_INCOMPLETE" not in partial["promotion_decisions"][capability]["failed_gates"]
+
+
+def test_phase8b_schema_shaped_but_unauthorized_tool_output_is_not_real_model(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+    from learner_state_evaluation.model_shadow.candidate_client import CandidateResponse, OpenAICompatibleClient
+    from learner_state_evaluation.model_shadow.dataset import write_shadow_dataset
+
+    class UnsafeService(OpenAICompatibleClient):
+        def __init__(self):
+            super().__init__(base_url="http://service.invalid", model="unsafe-v1", api_key="secret")
+
+        def predict(self, request):
+            output = rb._deterministic_output(request.capability_name, request.structured_features)
+            if request.capability_name == "read_only_tool_routing_v1":
+                output = {"tool_name": "delete_user", "arguments": {"user_id": "other"},
+                          "confidence": 1.0, "abstained": False}
+            return CandidateResponse(output, self.model_key, self.model_version, 2)
+
+    source = write_shadow_dataset(tmp_path / "source")
+    report = rb.run_real_benchmark(dataset_path=source.data_path, output_dir=tmp_path / "out",
+                                   client=UnsafeService(), model_version="unsafe-v1")
+    counts = report["source_counts_by_capability"]["read_only_tool_routing_v1"]
+    assert counts["REAL_MODEL"] == 0
+    assert counts["DETERMINISTIC_FALLBACK"] == 10
+    assert "REAL_MODEL_COVERAGE_INCOMPLETE" in report["promotion_decisions"][
+        "read_only_tool_routing_v1"]["failed_gates"]

@@ -32,6 +32,14 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
 
+_OUTPUT_FIELDS = {
+    "c_kc_classification_v1": "knowledge_component_codes, confidence, reason_codes, abstained",
+    "c_error_classification_v1": "error_code, knowledge_component_codes, confidence, abstained",
+    "learning_summary_v1": "summary, claim_codes",
+    "read_only_tool_routing_v1": "tool_name, arguments, confidence, abstained",
+}
+
+
 @dataclass(frozen=True)
 class CandidateRequest:
     """受控结构化特征请求，不包含源码、答案、课程正文、通知正文、聊天原文或凭据。"""
@@ -171,7 +179,13 @@ class OpenAICompatibleClient:
             payload_data = {
                 "model": self._model,
                 "messages": [
-                    {"role": "system", "content": "You are a structured prediction model. Return only valid JSON."},
+                    {"role": "system", "content": (
+                        "You are a constrained structured prediction model for "
+                        f"{request.capability_name}. Return one JSON object with exactly these fields: "
+                        f"{_OUTPUT_FIELDS.get(request.capability_name, 'none')}. "
+                        "Use only values present in the structured input allowlists; never invent identifiers, "
+                        "write actions, private data, or additional fields."
+                    )},
                     {"role": "user", "content": json.dumps(request.structured_features, ensure_ascii=False)},
                 ],
                 "temperature": temperature,
