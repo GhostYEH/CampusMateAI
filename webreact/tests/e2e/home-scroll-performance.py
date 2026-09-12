@@ -130,7 +130,11 @@ def run():
         assert len(scroll_sample) >= 1, f"scroll produced only {len(scroll_sample)} frames"
         if len(scroll_sample) >= 35:
             assert slow_ratio <= 0.2, f"{slow_ratio:.0%} of scroll frames exceeded 34ms"
-        assert webgl_after - webgl_before <= 8, f"decorative WebGL drew {webgl_after - webgl_before} times during scroll"
+        # 底部栏（rising sheet）的视频与涟漪特效在上升过程中持续播放，所以滚动期间允许
+        # WebGL 继续绘制；这里守住"每帧不超过若干次绘制"，避免装饰层失控重绘。
+        draws = webgl_after - webgl_before
+        draws_per_frame = draws / max(1, len(scroll_sample))
+        assert draws_per_frame <= 4, f"decorative WebGL drew {draws_per_frame:.1f} times per scroll frame"
         browser.close()
         print(f"home scroll performance passed: {len(scroll_sample)} frames, {slow_ratio:.0%} slow")
 

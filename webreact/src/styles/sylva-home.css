@@ -1116,8 +1116,8 @@
    底部整体升起来覆盖舞台。背景由 SylvaHomeHero 的 fixed 全视窗层提
    供，永不随文档滚动。.rising-sheet 内复用登录页 RippleDistortion 视
    频背景覆盖整块下半区，scrim 提供轻深色遮罩保证文字可读；GSAP
-   ScrollTrigger 联动舞台 opacity 并以 snap 实现半屏智能吸附，主动画
-   由 sticky 文档流天然完成，GPU 友好且完全可逆。
+   ScrollTrigger 只联动舞台 opacity，升降幅度完全由用户滚动决定，
+   不自动吸附、不自动铺满；Sheet 内的视频与涟漪特效在上升过程中持续播放。
    ───────────────────────────────────────────────────────────────────── */
 
 .home-stage {

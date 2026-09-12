@@ -85,6 +85,7 @@ export default function RippleDistortion({
   clickStrength = 2,
   quality = "low",
   enabled = true,
+  pauseOnScroll = true,
   className = "",
   style,
 }) {
@@ -219,6 +220,7 @@ export default function RippleDistortion({
     visibilityObserver?.observe(mount);
     const onVisibilityChange = () => updatePlayback();
     const onScroll = () => {
+      if (!pauseOnScroll) return;
       isScrolling = true;
       if (raf) { cancelAnimationFrame(raf); raf = 0; previousTime = 0; }
       if (useVideo) mediaEl?.pause();
@@ -226,11 +228,11 @@ export default function RippleDistortion({
       scrollResumeTimer = window.setTimeout(() => { isScrolling = false; updatePlayback(); requestRender(); }, 500);
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("scroll", onScroll, { passive: true });
+    if (pauseOnScroll) window.addEventListener("scroll", onScroll, { passive: true });
     updatePlayback();
     requestRender();
     return () => { disposed = true; cancelAnimationFrame(raf); window.clearTimeout(scrollResumeTimer); ro.disconnect(); visibilityObserver?.disconnect(); document.removeEventListener("visibilitychange", onVisibilityChange); window.removeEventListener("scroll", onScroll); window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerdown", onDown); uniformsRef.current = null; if (useVideo && mediaEl) { mediaEl.pause(); mediaEl.removeAttribute("src"); mediaEl.load(); } if (canvas.parentNode === mount) mount.removeChild(canvas); gl.getExtension("WEBGL_lose_context")?.loseContext(); };
-  }, [enabled, quality, src]);
+  }, [enabled, pauseOnScroll, quality, src]);
 
   useEffect(() => {
     const uniforms = uniformsRef.current;

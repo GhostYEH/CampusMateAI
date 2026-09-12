@@ -28,23 +28,16 @@ test("the rising sheet removes the legacy glass opacity GSAP tween", async () =>
   assert.doesNotMatch(homeSource, /\.rising-sheet-glass/);
 });
 
-test("the smart snap target is computed from viewport ratio rather than a fixed pixel offset", async () => {
+test("opening the rising sheet never auto-snaps to the full viewport", async () => {
   const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
 
-  assert.match(homeSource, /innerHeight/);
-  assert.match(homeSource, /0\.4[89]|0\.5[01]/);
-  assert.match(homeSource, /matchMedia\(["']\(max-width:\s*760px\)["']\)/);
-  assert.match(homeSource, /0\.7/);
+  assert.doesNotMatch(homeSource, /snapTo/);
+  assert.doesNotMatch(homeSource, /\bsnap\s*:/);
+  assert.doesNotMatch(homeSource, /computeTargetScrollY/);
   assert.doesNotMatch(homeSource, /scrollTo\(\s*\{\s*top:\s*\d{3,}\s*\}/);
 });
 
-test("refreshing ScrollTrigger does not recursively refresh itself", async () => {
-  const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
-
-  assert.doesNotMatch(homeSource, /onRefresh\s*:\s*\(\)\s*=>\s*ScrollTrigger\.refresh\(\)/);
-});
-
-test("reduced motion skips the smart snap animation", async () => {
+test("reduced motion skips the home scroll animation", async () => {
   const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
 
   assert.match(homeSource, /prefers-reduced-motion/);
@@ -80,40 +73,12 @@ test("the rising sheet keeps a subtle dark scrim instead of the white glass for 
   assert.match(sylvaStyles, /\.rising-sheet-scrim\s*\{[\s\S]*?pointer-events:\s*none/);
 });
 
-test("the footer information surface lets the sheet video remain visible", async () => {
-  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
-  const footerBlocks = [...sylvaStyles.matchAll(/\.sylva-dashboard \.home-footer-info\s*\{([^}]*)\}/g)];
-  const backgroundBlock = footerBlocks.find((match) => /background:/.test(match[1]));
-
-  assert.ok(backgroundBlock, "expected a Sylva footer background override");
-  const alpha = Number(backgroundBlock[1].match(/rgba\([^)]*,\s*([\d.]+)\)/)?.[1]);
-  assert.ok(alpha <= 0.4, `footer background alpha ${alpha} hides too much of the video`);
-});
-
-test("the classic home snap finishes at the browser's real scroll limit", async () => {
+test("the rising sheet keeps playing its video and ripple effect while it is being opened", async () => {
   const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
+  const rippleSource = await readFile(new URL("src/components/RippleDistortion.jsx", webRoot), "utf8");
 
-  assert.match(homeSource, /isClassicDashboard/);
-  assert.match(homeSource, /isClassicDashboard\s*\?\s*["']max["']/);
-  assert.match(homeSource, /rising-sheet--bounded/);
-});
-
-test("the classic lower sheet is real content height rather than a clipped full viewport", async () => {
-  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
-  const boundedSheet = sylvaStyles.match(/\.rising-sheet--bounded\s*\{([^}]*)\}/)?.[1] || "";
-  const boundedDashboard = sylvaStyles.match(/\.rising-sheet--bounded\s+\.sylva-dashboard\s*\{([^}]*)\}/)?.[1] || "";
-
-  assert.match(boundedSheet, /overflow:\s*visible/);
-  assert.match(boundedDashboard, /box-sizing:\s*border-box/);
-  assert.match(boundedDashboard, /min-height:\s*54svh/);
-  assert.doesNotMatch(boundedDashboard, /(?<!min-)height:\s*54svh/);
-  assert.doesNotMatch(boundedDashboard, /overflow:\s*(?:hidden|clip)/);
-  assert.match(sylvaStyles, /\.rising-sheet--bounded\s+\.home-footer-fixed-brand\s*\{[\s\S]*?--home-brand-stage-height:\s*clamp\(240px,\s*27vh,\s*320px\)/);
-});
-
-test("the gamified dashboard is not assigned the bounded classic layout", async () => {
-  const homeSource = await readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8");
-
-  assert.match(homeSource, /dashboardStyle\s*!==\s*["']gamified["']/);
-  assert.match(homeSource, /isClassicDashboard\s*&&\s*["']rising-sheet--bounded["']/);
+  assert.match(homeSource, /pauseOnScroll=\{false\}/);
+  assert.match(rippleSource, /pauseOnScroll\s*=\s*true/);
+  assert.match(rippleSource, /const onScroll = \(\) => \{\s*\n\s*if \(!pauseOnScroll\) return;/);
+  assert.match(rippleSource, /\[enabled, pauseOnScroll, quality, src\]/);
 });

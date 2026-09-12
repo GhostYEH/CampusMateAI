@@ -24,9 +24,6 @@ import RippleDistortion from "../components/RippleDistortion.jsx";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-const DESKTOP_SHEET_RATIO = 0.48;
-const MOBILE_SHEET_RATIO = 0.7;
-
 const HOME_BOOT_TIMEOUT_MS = 1200;
 const HOME_CACHE_TTL_MS = 30_000;
 const homeDashboardCache = new Map();
@@ -252,8 +249,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const stage = stageRef.current;
-    const sheet = sheetRef.current;
-    if (!stage || !sheet) return undefined;
+    if (!stage) return undefined;
 
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     if (reducedMotion) return undefined;
@@ -268,30 +264,11 @@ export default function HomePage() {
           scrollTrigger: { trigger: stage, start: "top top", end: "bottom top", scrub: true },
         }
       );
-
-      const computeTargetScrollY = () => {
-        const isCompactViewport = window.matchMedia("(max-width: 760px)").matches;
-        const sheetRatio = isCompactViewport ? MOBILE_SHEET_RATIO : DESKTOP_SHEET_RATIO;
-        const sheetTop = sheet.getBoundingClientRect().top + window.scrollY;
-        return Math.max(0, sheetTop - window.innerHeight * sheetRatio);
-      };
-
-      ScrollTrigger.create({
-        trigger: document.documentElement,
-        start: 0,
-        end: () => isClassicDashboard ? "max" : `+=${computeTargetScrollY()}`,
-        snap: {
-          snapTo: [0, 1],
-          duration: { min: 0.35, max: 0.6 },
-          ease: "power3.inOut",
-          delay: 0.18,
-        },
-      });
     }, stageRef);
 
     const refreshTimer = window.setTimeout(() => ScrollTrigger.refresh(), 800);
     return () => { window.clearTimeout(refreshTimer); ctx.revert(); };
-  }, [isClassicDashboard]);
+  }, []);
 
   const risingSheetClassName = [
     "rising-sheet",
@@ -305,7 +282,9 @@ export default function HomePage() {
     </section>
     <section ref={sheetRef} className={risingSheetClassName} aria-label="CampusMate 学习工作台">
       <div className="rising-sheet-video" aria-hidden="true">
-        <RippleDistortion className="rising-sheet-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} />
+        {/* pauseOnScroll={false}: 让视频与涟漪特效在底部栏被推起的过程中就持续播放，
+            而不是等滚动停下（整层铺满视窗）之后才开始。 */}
+        <RippleDistortion className="rising-sheet-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} pauseOnScroll={false} />
       </div>
       <div className="rising-sheet-scrim" aria-hidden="true" />
       <div className="rising-sheet-content">
