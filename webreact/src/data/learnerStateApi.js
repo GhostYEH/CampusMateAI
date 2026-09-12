@@ -174,4 +174,24 @@ export async function getModelTransparency() {
   return _get("/learner-state/model-transparency");
 }
 
+// ===== 预测型世界模型（Phase 9D） =====
+
+export async function getPredictions(courseId) {
+  return _get(`/learner-state/predictions/${encodeURIComponent(courseId)}`);
+}
+
+// ===== 安全反事实模拟（Phase 9D.1） =====
+
+export async function simulateCounterfactual(courseId, intervention) {
+  return _post("/learner-state/simulate", { course_id: courseId, intervention });
+}
+
+// ===== 预测评测与真实性门禁（Phase 9E） =====
+
+export async function getPredictionEvaluation(courseId, testRatio = 0.3) {
+  return _get(`/learner-state/predictions/${encodeURIComponent(courseId)}/evaluation`, {
+    test_ratio: testRatio,
+  });
+}
+
 export { itemsOf };
