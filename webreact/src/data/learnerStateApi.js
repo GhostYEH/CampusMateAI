@@ -11,14 +11,19 @@ function _wrap(promise) {
     (error) => {
       if (error.response) {
         const body = error.response.data || {};
-        const msg = userErrorMessage(body);
+        const msg = userErrorMessage(error);
         const err = new Error(msg);
         err.code = body.code || "UNKNOWN";
         err.status = error.response.status;
         throw err;
       }
-      const err = new Error("网络连接失败，请稍后重试");
-      err.code = "NETWORK_ERROR";
+      if (error?.request) {
+        const err = new Error("网络连接失败，请稍后重试");
+        err.code = "NETWORK_ERROR";
+        throw err;
+      }
+      const err = new Error(error?.message || "网络连接失败，请稍后重试");
+      err.code = error?.code || "NETWORK_ERROR";
       throw err;
     },
   );
