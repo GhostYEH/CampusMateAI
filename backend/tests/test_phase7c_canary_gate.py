@@ -62,9 +62,11 @@ def _insert_promotion_decision(container, capability_name, decision, failed_gate
         )
 
 
-def _insert_shadow_run(container, user_id, capability_name, used_fallback=True):
+def _insert_shadow_run(container, user_id, capability_name, used_fallback=True, inference_source=None):
     now = datetime.now(timezone.utc).isoformat()
     shadow_id = f"shadow_{capability_name}_{now}"
+    if inference_source is None:
+        inference_source = "REAL_MODEL" if not used_fallback else "DETERMINISTIC_FALLBACK"
     with container.db.transaction() as conn:
         conn.execute(
             """INSERT INTO model_shadow_runs
@@ -79,9 +81,21 @@ def _insert_shadow_run(container, user_id, capability_name, used_fallback=True):
         conn.execute(
             """INSERT INTO model_shadow_results
                (shadow_run_id, schema_valid, policy_valid, abstained, used_fallback,
-                failure_code, latency_ms, resource_metrics_json, evaluator_version, created_at)
-               VALUES (?, 1, 1, 0, ?, NULL, 100, '{}', 'eval-v1', ?)""",
-            (shadow_id, int(used_fallback), now),
+                failure_code, latency_ms, resource_metrics_json, evaluator_version, created_at, inference_source)
+               VALUES (?, 1, 1, 0, ?, NULL, 100, '{}', 'eval-v1', ?, ?)""",
+            (shadow_id, int(used_fallback), now, inference_source),
+        )
+
+
+def _insert_metric_record(container, capability_name):
+    now = datetime.now(timezone.utc).isoformat()
+    with container.db.transaction() as conn:
+        conn.execute(
+            """INSERT INTO model_shadow_metric_records
+               (metric_record_id, shadow_run_id, scope, capability_name, capability_version,
+                dataset_version, evaluator_version, metrics_digest, metrics_json, created_at)
+               VALUES (?, NULL, 'OFFLINE', ?, 'v1', 'ds-v1', 'eval-v1', 'digest', '{}', ?)""",
+            (f"metric_{capability_name}_{now}", capability_name, now),
         )
 
 
@@ -315,6 +329,32 @@ def test_model_transparency_fixture_only():
     assert data["uses_fixed_prediction_file"] is True
 
 
+def test_model_transparency_fallback_is_not_fixture():
+    """普通 fallback 不得被推断成 fixed fixture。"""
+    client, container, auth, uid = _setup()
+    _insert_shadow_run(
+        container, uid, "learning_summary_v1", used_fallback=True,
+        inference_source="DETERMINISTIC_FALLBACK",
+    )
+    data = container.learner_control_service.get_model_transparency(user_id=uid)
+    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
+    assert cap["inference_source"] == "DETERMINISTIC_FALLBACK"
+    assert cap["uses_real_model_inference"] is False
+    assert data["fixture_only"] is True
+
+
+def test_model_transparency_explicit_fixture_source():
+    """明确 FIXTURE 来源才算 fixture。"""
+    client, container, auth, uid = _setup()
+    _insert_shadow_run(
+        container, uid, "learning_summary_v1", used_fallback=True, inference_source="FIXTURE",
+    )
+    data = container.learner_control_service.get_model_transparency(user_id=uid)
+    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
+    assert cap["inference_source"] == "FIXTURE"
+    assert data["fixture_only"] is True
+
+
 def test_model_transparency_real_inference():
     """有非 fallback shadow run 时 real_inference_observed=True。"""
     client, container, auth, uid = _setup()
@@ -344,11 +384,64 @@ def test_model_transparency_canary_active():
     """ELIGIBLE_FOR_CANARY + 只读 + 门禁通过 + 模型配置 → canary_active=True。"""
     client, container, auth, uid = _setup()
     _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
+    _insert_metric_record(container, "learning_summary_v1")
     data = container.learner_control_service.get_model_transparency(user_id=uid)
     assert data["read_only_canary_active"] is True
     cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
     assert cap["quality_gate_passed"] is True
     assert cap["performance_measured"] is True
+
+
+def test_model_transparency_performance_needs_metric_record():
+    """promotion 通过但没有性能指标记录时 performance_measured=False。"""
+    client, container, auth, uid = _setup()
+    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
+    data = container.learner_control_service.get_model_transparency(user_id=uid)
+    cap = next(c for c in data["capabilities"] if c["capability_name"] == "learning_summary_v1")
+    assert cap["performance_measured"] is False
+    assert cap["performance_gate_passed"] is False
+    assert data["read_only_canary_active"] is False
+
+
+def test_model_transparency_canary_needs_user_shadow_switch():
+    """用户关闭 MODEL_SHADOW 时 canary_active=False。"""
+    client, container, auth, uid = _setup()
+    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
+    _insert_metric_record(container, "learning_summary_v1")
+    container.learner_control_service.update_source_control(
+        user_id=uid, source_key="MODEL_SHADOW", status="PAUSED"
+    )
+    data = container.learner_control_service.get_model_transparency(user_id=uid)
+    assert data["read_only_canary_active"] is False
+
+
+def test_model_transparency_canary_needs_circuit_closed():
+    """熔断器打开时 canary_active=False。"""
+    client, container, auth, uid = _setup()
+    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
+    _insert_metric_record(container, "learning_summary_v1")
+    runner = container.model_shadow_runner
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+    data = container.learner_control_service.get_model_transparency(user_id=uid)
+    assert data["read_only_canary_active"] is False
+
+
+def test_model_transparency_cross_user_isolation():
+    """用户 B 的禁用/熔断状态不影响用户 A。"""
+    client, container, auth, uid = _setup()
+    student_b = container.user_repository.create_user(
+        username="canary_student_iso", password_hash=hash_password("Demo123456"), role="student", display_name="I"
+    )
+    _insert_promotion_decision(container, "learning_summary_v1", "ELIGIBLE_FOR_CANARY")
+    _insert_metric_record(container, "learning_summary_v1")
+    container.learner_control_service.update_source_control(
+        user_id=student_b.id, source_key="MODEL_SHADOW", status="PAUSED"
+    )
+    data_a = container.learner_control_service.get_model_transparency(user_id=uid)
+    data_b = container.learner_control_service.get_model_transparency(user_id=student_b.id)
+    assert data_a["read_only_canary_active"] is True
+    assert data_b["read_only_canary_active"] is False
 
 
 def test_model_transparency_canary_not_active_when_not_configured():

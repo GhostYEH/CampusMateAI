@@ -30,6 +30,7 @@ class ModelShadowRecord:
     evaluator_version: str = ""
     created_at: str = ""
     expires_at: str | None = None
+    inference_source: str = "DETERMINISTIC_FALLBACK"
 
 
 __all__ = ["ModelShadowRecord"]

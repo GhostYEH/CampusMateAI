@@ -48,6 +48,8 @@ def _snapshot(row) -> StateSnapshotRow:
         observed_through=row["observed_through"],
         valid_until=row["valid_until"],
         computed_at=row["computed_at"],
+        projection_kind=row["projection_kind"] if "projection_kind" in row.keys() else "CORE",
+        projection_scope=row["projection_scope"] if "projection_scope" in row.keys() else "__user__",
     )
 
 
@@ -395,7 +397,7 @@ class LearnerStateRepository:
                 params,
             ).fetchone()["n"])
             rows = conn.execute(
-                f"""SELECT s.* FROM learner_state_snapshots s
+                f"""SELECT s.*, r.projection_kind, r.projection_scope FROM learner_state_snapshots s
                     JOIN learner_state_projection_runs r ON r.run_id=s.run_id
                     WHERE {where} ORDER BY s.scope_type,s.scope_id,s.state_type
                     LIMIT ? OFFSET ?""",
@@ -409,7 +411,7 @@ class LearnerStateRepository:
     ) -> Optional[StateSnapshotRow]:
         with self._db.query() as conn:
             row = conn.execute(
-                """SELECT s.* FROM learner_state_snapshots s
+                """SELECT s.*, r.projection_kind, r.projection_scope FROM learner_state_snapshots s
                    JOIN learner_state_projection_runs r ON r.run_id=s.run_id
                    WHERE s.snapshot_id=? AND r.user_id=?
                    AND r.projection_kind=? AND r.projection_scope=?""",

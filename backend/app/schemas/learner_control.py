@@ -206,6 +206,7 @@ class ModelCapabilityTransparencyOut(BaseModel):
     last_evaluated_at: Optional[datetime] = None
     uses_real_model_inference: bool
     uses_fixed_prediction_file: bool
+    inference_source: Literal["REAL_MODEL", "FIXTURE", "DETERMINISTIC_FALLBACK"] = "DETERMINISTIC_FALLBACK"
 
 
 class ModelTransparencyOut(BaseModel):

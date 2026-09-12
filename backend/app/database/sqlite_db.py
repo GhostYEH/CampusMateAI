@@ -1407,6 +1407,8 @@ CREATE TABLE IF NOT EXISTS model_shadow_results (
     resource_metrics_json TEXT NOT NULL DEFAULT '{}',
     evaluator_version TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    inference_source TEXT NOT NULL DEFAULT 'DETERMINISTIC_FALLBACK'
+        CHECK(inference_source IN ('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK')),
     FOREIGN KEY(shadow_run_id) REFERENCES model_shadow_runs(shadow_run_id) ON DELETE CASCADE
 );
 
@@ -1626,6 +1628,15 @@ class Database:
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        shadow_result_cols = {row["name"] for row in conn.execute("PRAGMA table_info(model_shadow_results)").fetchall()}
+        if "inference_source" not in shadow_result_cols:
+            conn.execute(
+                "ALTER TABLE model_shadow_results ADD COLUMN inference_source TEXT NOT NULL "
+                "DEFAULT 'DETERMINISTIC_FALLBACK'"
+            )
+            conn.execute(
+                "UPDATE model_shadow_results SET inference_source='REAL_MODEL' WHERE used_fallback=0"
+            )
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS learning_plan_feedback (

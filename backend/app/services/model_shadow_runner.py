@@ -67,7 +67,8 @@ class ModelShadowRunner:
 
     def _base_result(self, request: ModelCapabilityRequest, *, output: dict[str, Any], failure: str | None,
                      used_fallback: bool, schema_valid: bool = True, policy_valid: bool = True,
-                     started: float, model_key: str = "deterministic-baseline", model_version: str = "v1") -> ModelCapabilityResult:
+                     started: float, model_key: str = "deterministic-baseline", model_version: str = "v1",
+                     inference_source: str = "DETERMINISTIC_FALLBACK") -> ModelCapabilityResult:
         try:
             spec = self.registry.get(request.capability_name)
         except CapabilityValidationError:
@@ -80,7 +81,7 @@ class ModelShadowRunner:
             schema_valid=schema_valid, policy_valid=policy_valid, used_fallback=used_fallback,
             failure_code=failure, latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
             prompt_version=spec.prompt_version, inference_config_digest=self._config_digest(spec),
-            input_digest=input_digest, output_digest=output_digest,
+            input_digest=input_digest, output_digest=output_digest, inference_source=inference_source,
         )
 
     def _config_digest(self, spec) -> str:
@@ -91,7 +92,8 @@ class ModelShadowRunner:
     def _fallback(self, request, payload, failure, started, *, schema_valid=True, policy_valid=True):
         output = self.registry.fallback(request, payload, failure)
         return self._base_result(request, output=output, failure=failure, used_fallback=True,
-                                 schema_valid=schema_valid, policy_valid=policy_valid, started=started)
+                                 schema_valid=schema_valid, policy_valid=policy_valid, started=started,
+                                 inference_source="DETERMINISTIC_FALLBACK")
 
     def _persist(self, request: ModelCapabilityRequest, result: ModelCapabilityResult) -> ModelCapabilityResult:
         if self.repository is not None:
@@ -120,6 +122,30 @@ class ModelShadowRunner:
             return False
         state.probe_in_flight = True
         return True
+
+    def circuit_status(self, name: str) -> dict[str, Any]:
+        """只读熔断器状态查询，无副作用，不占用 half-open probe。"""
+        state = self._circuits.get(name)
+        if state is None:
+            return {"state": "CLOSED", "failures": 0, "probe_in_flight": False, "cooldown_remaining_seconds": 0.0}
+        if state.opened_at is None:
+            return {"state": "CLOSED", "failures": state.failures,
+                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0}
+        remaining = self.circuit_breaker_cooldown_seconds - (time.monotonic() - state.opened_at)
+        if remaining > 0:
+            return {"state": "OPEN", "failures": state.failures,
+                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": remaining}
+        return {"state": "HALF_OPEN", "failures": state.failures,
+                "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0}
+
+    def canary_allowed(self, name: str) -> bool:
+        """只读 canary 查询，无副作用，不占用 half-open probe。"""
+        state = self._circuits.get(name)
+        if state is None or state.opened_at is None:
+            return True
+        if time.monotonic() - state.opened_at < self.circuit_breaker_cooldown_seconds:
+            return False
+        return not state.probe_in_flight
 
     def _record_failure(self, name: str) -> None:
         state = self._circuits.setdefault(name, _Circuit())
@@ -192,7 +218,8 @@ class ModelShadowRunner:
                 return self._persist(request, self._fallback(request, payload, "MODEL_POLICY_VIOLATION", started, policy_valid=False))
             self._record_success(request.capability_name)
             result = self._base_result(request, output=safe_output, failure=None, used_fallback=False, started=started,
-                                       model_key=getattr(self.candidate_llm, "name", "campusmate-lm"), model_version="candidate-v1")
+                                       model_key=getattr(self.candidate_llm, "name", "campusmate-lm"), model_version="candidate-v1",
+                                       inference_source="REAL_MODEL")
             return self._persist(request, result)
         except (asyncio.TimeoutError, LLMTimeoutError):
             self._record_failure(request.capability_name)

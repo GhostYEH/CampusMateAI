@@ -34,6 +34,8 @@ class StateSnapshotRow:
     observed_through: str | None
     valid_until: str | None
     computed_at: str
+    projection_kind: str = "CORE"
+    projection_scope: str = "__user__"
 
 
 @dataclass(frozen=True)

@@ -92,3 +92,65 @@ def test_circuit_breaker_opens_after_repeated_failures_and_recovers_after_cooldo
     import time; time.sleep(0.02)
     recovered = asyncio.run(runner.run(request))
     assert recovered.failure_code == "MODEL_SCHEMA_INVALID"
+
+
+def test_circuit_status_is_read_only_and_does_not_consume_half_open_probe() -> None:
+    runner = ModelShadowRunner(registry=ModelCapabilityRegistry(), enabled=False,
+                               circuit_breaker_threshold=1, circuit_breaker_cooldown_seconds=0.01)
+    assert runner.circuit_status("learning_summary_v1")["state"] == "CLOSED"
+    assert runner.canary_allowed("learning_summary_v1") is True
+    runner._record_failure("learning_summary_v1")
+    assert runner.circuit_status("learning_summary_v1")["state"] == "OPEN"
+    assert runner.canary_allowed("learning_summary_v1") is False
+    import time; time.sleep(0.02)
+    assert runner.circuit_status("learning_summary_v1")["state"] == "HALF_OPEN"
+    assert runner.canary_allowed("learning_summary_v1") is True
+    assert runner.circuit_status("learning_summary_v1")["state"] == "HALF_OPEN"
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is False
+    assert runner.canary_allowed("learning_summary_v1") is True
+    assert runner._circuit_allows("learning_summary_v1") is True
+    assert runner.canary_allowed("learning_summary_v1") is False
+    runner._record_success("learning_summary_v1")
+    assert runner.circuit_status("learning_summary_v1")["state"] == "CLOSED"
+    assert runner.canary_allowed("learning_summary_v1") is True
+
+
+def test_canary_gate_uses_read_only_circuit_query_without_side_effects() -> None:
+    from app.core.config import Settings
+    from app.core.security import hash_password
+    from app.main import create_app
+    from app.services.container import reset_container_for_tests
+    from fastapi.testclient import TestClient
+    import json as jsonlib
+    from datetime import datetime, timezone
+
+    settings = Settings(
+        app_env="test", database_url="sqlite:///:memory:", campusmate_lm_canary_enabled=True,
+        campusmate_lm_enabled=True, campusmate_lm_base_url="http://test-candidate:8000",
+        campusmate_lm_api_key="test-key", campusmate_lm_model_name="test-model",
+        campusmate_lm_circuit_breaker_cooldown_seconds=60.0,
+    )
+    container = reset_container_for_tests(settings)
+    container.user_repository.create_user(
+        username="canary_gate_probe", password_hash=hash_password("Demo123456"), role="student", display_name="P")
+    TestClient(create_app())
+    uid = container.user_repository.get_user_by_username("canary_gate_probe").id
+    now = datetime.now(timezone.utc).isoformat()
+    with container.db.transaction() as conn:
+        conn.execute(
+            """INSERT INTO model_promotion_decisions
+               (decision_id, model_key, model_version, capability_name, capability_version,
+                dataset_version, evaluator_version, threshold_version, metrics_digest,
+                decision, failed_gates_json, created_at)
+               VALUES (?, 'campusmate-lm', 'candidate-v1', 'learning_summary_v1', 'v1',
+                'ds-v1', 'eval-v1', 'th-v1', 'digest', 'ELIGIBLE_FOR_CANARY', '[]', ?)""",
+            ("promo_probe", now),
+        )
+    runner = container.model_shadow_runner
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+    first = container.learner_control_service.canary_gate(capability_name="learning_summary_v1", user_id=uid)
+    second = container.learner_control_service.canary_gate(capability_name="learning_summary_v1", user_id=uid)
+    assert first["allowed"] is False and first["reason"] == "circuit_breaker_open"
+    assert second["allowed"] is False and second["reason"] == "circuit_breaker_open"
+    assert jsonlib.dumps(first, sort_keys=True) == jsonlib.dumps(second, sort_keys=True)

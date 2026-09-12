@@ -40,6 +40,8 @@ def _snapshot_out(snapshot) -> LearnerStateSnapshotOut:
         observed_through=snapshot.observed_through,
         valid_until=snapshot.valid_until,
         computed_at=snapshot.computed_at,
+        projection_kind=getattr(snapshot, "projection_kind", "CORE") or "CORE",
+        projection_scope=getattr(snapshot, "projection_scope", "__user__") or "__user__",
     )
 
 

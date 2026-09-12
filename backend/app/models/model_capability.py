@@ -31,6 +31,7 @@ class ModelCapabilityResult:
     input_digest: str = ""
     output_digest: str | None = None
     resource_metrics: dict[str, Any] = field(default_factory=dict)
+    inference_source: str = "DETERMINISTIC_FALLBACK"
 
 
 __all__ = ["ModelCapabilityRequest", "ModelCapabilityResult"]

@@ -124,6 +124,8 @@ class LearnerStateSnapshotOut(BaseModel):
     observed_through: datetime | None = None
     valid_until: datetime | None = None
     computed_at: datetime
+    projection_kind: str = "CORE"
+    projection_scope: str = "__user__"
 
     _aware_times = field_validator(
         "observed_from", "observed_through", "valid_until", "computed_at"
