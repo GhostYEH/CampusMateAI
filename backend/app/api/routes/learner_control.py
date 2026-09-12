@@ -225,4 +225,14 @@ def get_model_transparency(
     )
 
 
+@router.get("/canary-gate/{capability_name}")
+def check_canary_gate(
+    capability_name: str,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+):
+    result = container.learner_control_service.canary_gate(capability_name=capability_name)
+    return result
+
+
 __all__ = ["router"]

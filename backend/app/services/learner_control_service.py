@@ -239,6 +239,32 @@ class LearnerControlService:
             "uses_fixed_prediction_file": uses_fixed_prediction_file,
         }
 
+    def canary_gate(self, *, capability_name: str) -> dict[str, Any]:
+        """只读金丝雀门禁：检查能力是否可以通过 canary 路径执行。
+
+        规则：
+        - 只有 ELIGIBLE_FOR_CANARY 状态的能力可以走 canary
+        - 只有只读能力（learning_summary_v1, read_only_tool_routing_v1）可以走 canary
+        - 写能力永远不走 canary
+        - MODEL_SHADOW 暂停时不走 canary
+        """
+        read_only_capabilities = {"learning_summary_v1", "read_only_tool_routing_v1"}
+        is_read_only = capability_name in read_only_capabilities
+        if not is_read_only:
+            return {"allowed": False, "reason": "capability_is_not_read_only"}
+        with self._shadow_repo._db.transaction() as conn:
+            promo_row = conn.execute(
+                """SELECT * FROM model_promotion_decisions
+                WHERE capability_name=? ORDER BY created_at DESC LIMIT 1""",
+                (capability_name,),
+            ).fetchone()
+        if promo_row is None:
+            return {"allowed": False, "reason": "no_promotion_decision"}
+        status = promo_row["decision"]
+        if status != "ELIGIBLE_FOR_CANARY":
+            return {"allowed": False, "reason": f"status_is_{status}"}
+        return {"allowed": True, "reason": None}
+
     # ===== 产品事件 =====
 
     def record_event(
