@@ -92,6 +92,52 @@ class KnowledgeService:
         )
         return self.event_repository.append_idempotent(user_id=user_id, event=event)
 
+    def _code_analysis_event_for_attempt(self, *, user_id: str, row: PracticeAttemptRow):
+        """Record a privacy-safe code_attempt_analyzed event.
+
+        Only structured, white-listed fields are persisted. Source code, compiler
+        output, prompts and answers are never accepted or stored.
+        """
+        correctness = row.result_type == "passed"
+        if row.test_count > 0 and row.passed_test_count == row.test_count:
+            test_pass_band = "all_passed"
+        elif row.test_count > 0 and row.passed_test_count > 0:
+            test_pass_band = "partial"
+        elif row.test_count > 0:
+            test_pass_band = "none_passed"
+        else:
+            test_pass_band = "no_tests"
+        compiler_error_categories = [c for c in row.error_codes if c in ERROR_TO_HYPOTHESIS]
+        revision = hashlib.sha256(
+            json.dumps(
+                {"attempt_id": row.attempt_id, "correctness": correctness,
+                 "test_pass_band": test_pass_band,
+                 "compiler_error_categories": sorted(compiler_error_categories)},
+                sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        event = LearnerEventCreate(
+            source="code_analysis", event_type="code_attempt_analyzed",
+            occurred_at=_parse(row.occurred_at),
+            course_id=row.course_id, subject_type="code_attempt", subject_id=row.attempt_id,
+            external_ref=row.client_attempt_id, outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="practice_attempt", table="practice_attempts", row_id=row.attempt_id
+            ),
+            data_quality="partial", consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"code_analysis:code_attempt_analyzed:{row.attempt_id}:{revision}",
+            payload={
+                "exercise_id": row.exercise_id,
+                "correctness": correctness,
+                "test_pass_band": test_pass_band,
+                "compiler_error_categories": compiler_error_categories,
+                "runtime_error_categories": [],
+                "data_quality": "partial",
+            },
+        )
+        return self.event_repository.append_idempotent(user_id=user_id, event=event)
+
     def record_practice_attempt(self, *, user_id: str, attempt: PracticeAttemptCreate):
         if not self.repository.user_can_access_course(user_id=user_id, course_id=attempt.course_id):
             raise Forbidden("无权访问该课程")
@@ -104,8 +150,12 @@ class KnowledgeService:
             result = self._event_for_attempt(user_id=user_id, row=row)
             event_id, event_created = result.event_id, result.created
         except Exception:
-            # The attempt is authoritative business data; event projection is safely retryable.
             pass
+        try:
+            self._code_analysis_event_for_attempt(user_id=user_id, row=row)
+        except Exception:
+            pass
+
         return self._attempt_out(row, event_id=event_id, event_created=event_created)
 
     def backfill_practice_events(self, *, user_id: str, course_id: str | None = None) -> int:

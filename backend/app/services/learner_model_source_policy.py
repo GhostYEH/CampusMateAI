@@ -37,6 +37,7 @@ class LearnerModelSourcePolicy:
             "chaoxing": "CHAOXING",
             "edu": "EDU",
             "practice": "PRACTICE",
+            "code_analysis": "PRACTICE",
             "core_study": "CORE_STUDY",
             "personal_task": "PERSONAL_TASK",
         }
