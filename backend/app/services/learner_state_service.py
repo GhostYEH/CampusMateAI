@@ -289,7 +289,16 @@ class LearnerStateProjectionService:
             return self._unavailable_prediction_result(user_id=user_id, as_of=as_of)
 
     def _collect_prediction_inputs(self, *, user_id: str, course_id: str) -> dict[str, Any]:
-        inputs: dict[str, Any] = {"knowledge_snapshots": [], "practice_attempts": [], "mappings": []}
+        inputs: dict[str, Any] = {
+            "knowledge_snapshots": [], "practice_attempts": [], "mappings": [],
+            "paused_sources": [],
+        }
+        if self._source_policy is not None:
+            inputs["paused_sources"] = sorted(
+                self._source_policy.get_paused_sources(user_id=user_id)
+            )
+        if "PRACTICE" in inputs["paused_sources"]:
+            return inputs
         try:
             snapshots = self.repository.list_all_current_snapshots(
                 user_id=user_id, projection_kind="KNOWLEDGE", projection_scope=course_id
@@ -458,6 +467,32 @@ class LearnerStateProjectionService:
                 observed_from=observed_from, observed_through=computed_at,
                 valid_until=valid_until, computed_at=computed_at,
             ))
+            for snapshot in snapshots[-3:]:
+                evidence_attempts = attempts[:100]
+                for attempt in evidence_attempts:
+                    evidence.append({
+                        "evidence_id": f"lev_{uuid.uuid4().hex[:16]}",
+                        "snapshot_id": snapshot.snapshot_id,
+                        "evidence_kind": "SOURCE_ROW",
+                        "event_id": None,
+                        "source_type": "practice_attempts",
+                        "source_id": attempt["attempt_id"],
+                        "role": "SUPPORTS",
+                        "quality": "partial",
+                        "explanation_code": "practice_result",
+                    })
+                if not evidence_attempts:
+                    evidence.append({
+                        "evidence_id": f"lev_{uuid.uuid4().hex[:16]}",
+                        "snapshot_id": snapshot.snapshot_id,
+                        "evidence_kind": "SYNC_STATUS",
+                        "event_id": None,
+                        "source_type": "practice_attempts",
+                        "source_id": f"{course_id}:{kc_code}",
+                        "role": "LIMITS",
+                        "quality": data_quality,
+                        "explanation_code": "practice_result",
+                    })
 
         if not snapshots:
             warnings.append("no_prediction_evidence")
@@ -629,6 +664,11 @@ class LearnerStateProjectionService:
         grade_items = inputs.get("grade_items", [])
         exam_items = inputs.get("exam_items", [])
         edu_events = inputs.get("edu_events", [])
+        if "EDU" in inputs.get("paused_sources", []):
+            schedule_items = []
+            grade_items = []
+            exam_items = []
+            edu_events = []
 
         has_data = bool(schedule_items or grade_items or exam_items)
         base_quality = "verified" if has_data else "unavailable"

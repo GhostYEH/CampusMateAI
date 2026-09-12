@@ -295,6 +295,13 @@ def test_academic_projection_with_paused_source():
     service = _make_service(db, edu_data_repository=edu_repo, source_policy=MockPolicy())
     result = service.project_academic("user1", as_of=_now())
     assert "learner_data_source_paused" in result.warnings
+    assert all(snapshot.data_quality == "unavailable" for snapshot in result.snapshots)
+    course_load = next(
+        snapshot for snapshot in result.snapshots
+        if snapshot.state_type == "academic_course_load"
+    )
+    assert course_load.value["current_semester_course_count"] == 0
+    assert course_load.value["effective_credit_load"] == 0
 
 
 def test_academic_projection_new_data_triggers_recompute():

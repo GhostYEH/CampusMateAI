@@ -488,6 +488,7 @@ class LearnerStateRepository:
             "study_sessions": "study_session",
             "study": "study_session",
             "personal_task": "personal_task",
+            "practice_attempts": "practice_attempt",
             "course_content_items": "course_content",
             "course_sync_sections": "course_sync",
             "core_learning_record": "core_learning_record",

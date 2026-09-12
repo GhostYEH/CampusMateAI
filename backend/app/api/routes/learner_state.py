@@ -208,6 +208,7 @@ def get_academic_state(
     items, total = container.learner_state_repository.list_snapshots(
         user_id=user.id, page=page, page_size=page_size,
         scope_type=None, state_type=None, course_id=None,
+        projection_kind="ACADEMIC", projection_scope="__user__",
     )
     academic_items = [item for item in items if item.state_type in academic_types]
     return LearnerStateSnapshotPage(
@@ -238,6 +239,7 @@ def get_prediction_state(
     items, total = container.learner_state_repository.list_snapshots(
         user_id=user.id, page=page, page_size=page_size,
         scope_type=None, state_type=None, course_id=None,
+        projection_kind="PREDICTION", projection_scope=course_id,
     )
     prediction_items = [item for item in items if item.state_type in prediction_types]
     return LearnerStateSnapshotPage(
