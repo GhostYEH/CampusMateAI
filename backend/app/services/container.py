@@ -49,6 +49,20 @@ from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
 )
+from ..repositories.agent_runtime_repository import AgentRuntimeRepository
+from ..repositories.agent_artifact_repository import AgentArtifactRepository
+from ..services.agent_runtime.event_store import AgentEventStore
+from ..services.agent_runtime.run_manager import RunManager
+from ..services.agent_runtime.artifact_manager import ArtifactManager
+from ..services.agent_runtime.context_manager import ContextManager
+from ..services.agent_runtime.memory_manager import MemoryManager
+from ..services.agent_runtime.agent_registry import AgentRegistry
+from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.agent_runtime.risk_engine import RiskEngine
+from ..services.agent_runtime.approval_gate import ApprovalGate
+from ..services.agent_runtime.executor import AgentExecutor
+from ..services.llm.provider_registry import ProviderRegistry
+from ..services.llm.model_router import ModelRouter
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
@@ -128,6 +142,21 @@ class ServiceContainer:
     # EduConnector
     edu_repository: EduRepository
     edu_connector: EduConnectorService
+    # CampusAgentRuntime
+    agent_runtime_repository: AgentRuntimeRepository
+    agent_artifact_repository: AgentArtifactRepository
+    agent_event_store: AgentEventStore
+    agent_run_manager: RunManager
+    agent_artifact_manager: ArtifactManager
+    agent_context_manager: ContextManager
+    agent_memory_manager: MemoryManager
+    agent_registry: AgentRegistry
+    agent_tool_registry: ToolRegistry
+    agent_risk_engine: RiskEngine
+    agent_approval_gate: ApprovalGate
+    agent_executor: AgentExecutor
+    agent_provider_registry: ProviderRegistry
+    agent_model_router: ModelRouter
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def ensure_index(self) -> int:
@@ -264,6 +293,26 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
     )
+    # CampusAgentRuntime services
+    agent_runtime_repository = AgentRuntimeRepository(db)
+    agent_artifact_repository = AgentArtifactRepository(db, settings.agent_artifact_dir)
+    agent_event_store = AgentEventStore(agent_runtime_repository)
+    agent_run_manager = RunManager(agent_runtime_repository, agent_event_store)
+    agent_artifact_manager = ArtifactManager(agent_artifact_repository)
+    agent_context_manager = ContextManager(agent_runtime_repository)
+    agent_memory_manager = MemoryManager(agent_runtime_repository)
+    agent_registry_obj = AgentRegistry()
+    agent_tool_registry = ToolRegistry()
+    agent_risk_engine = RiskEngine()
+    agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_executor = AgentExecutor(
+        agent_runtime_repository,
+        registry=agent_registry_obj,
+        tools=agent_tool_registry,
+        event_store=agent_event_store,
+    )
+    agent_provider_registry = ProviderRegistry(settings)
+    agent_model_router = ModelRouter(agent_provider_registry)
     container = ServiceContainer(
         settings=settings,
         db=db,
@@ -314,6 +363,20 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
         edu_connector=edu_connector,
+        agent_runtime_repository=agent_runtime_repository,
+        agent_artifact_repository=agent_artifact_repository,
+        agent_event_store=agent_event_store,
+        agent_run_manager=agent_run_manager,
+        agent_artifact_manager=agent_artifact_manager,
+        agent_context_manager=agent_context_manager,
+        agent_memory_manager=agent_memory_manager,
+        agent_registry=agent_registry_obj,
+        agent_tool_registry=agent_tool_registry,
+        agent_risk_engine=agent_risk_engine,
+        agent_approval_gate=agent_approval_gate,
+        agent_executor=agent_executor,
+        agent_provider_registry=agent_provider_registry,
+        agent_model_router=agent_model_router,
     )
     container.learning_agent_tools.container = container
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)

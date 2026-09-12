@@ -36,6 +36,7 @@ from .routes import (
     c_knowledge,
     learning_plans,
     learner_control,
+    agent_runtime,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -82,5 +83,12 @@ api_router.include_router(learning_plans.router)
 api_router.include_router(learner_control.router)
 # CampusMate EduConnector — 高校教务系统统一连接层
 api_router.include_router(edu.router)
+# CampusAgentRuntime — Agent 运行时 API(§9.1)
+api_router.include_router(agent_runtime.router)
+api_router.include_router(agent_runtime.jobs_router)
+api_router.include_router(agent_runtime.runs_router)
+api_router.include_router(agent_runtime.approvals_router)
+api_router.include_router(agent_runtime.artifacts_router)
+api_router.include_router(agent_runtime.notices_manual_router)
 
 __all__ = ["api_router"]
