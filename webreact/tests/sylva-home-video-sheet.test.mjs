@@ -82,3 +82,10 @@ test("the rising sheet keeps playing its video and ripple effect while it is bei
   assert.match(rippleSource, /const onScroll = \(\) => \{\s*\n\s*if \(!pauseOnScroll\) return;/);
   assert.match(rippleSource, /\[enabled, pauseOnScroll, quality, src\]/);
 });
+
+test("the classic dashboard keeps the bottom video band as a short stage", async () => {
+  const sylvaStyles = await readFile(new URL("src/styles/sylva-home.css", webRoot), "utf8");
+  const stageRule = sylvaStyles.match(/\.sylva-dashboard \.home-footer-fixed-brand\s*\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(stageRule, /--home-brand-stage-height:\s*clamp\(160px,\s*22vh,\s*300px\)/);
+});

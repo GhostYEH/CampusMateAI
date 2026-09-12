@@ -908,6 +908,11 @@
 
 /* the fixed brand fades out of the living scene instead of a hard band */
 
+/* 底部品牌舞台收成一条窄带：整层铺满后只保留约 1/5 视窗高度的视频区 */
+.sylva-dashboard .home-footer-fixed-brand {
+  --home-brand-stage-height: clamp(160px, 22vh, 300px);
+}
+
 .sylva-dashboard .home-footer-fixed-brand .home-foreground {
   margin-bottom: var(--home-brand-stage-height);
 }
