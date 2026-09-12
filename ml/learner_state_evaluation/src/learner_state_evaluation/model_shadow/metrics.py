@@ -201,8 +201,14 @@ def _performance(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     input_tokens = [float(p["input_tokens"]) for p in predictions if isinstance(p.get("input_tokens"), (int, float))]
     output_tokens = [float(p["output_tokens"]) for p in predictions if isinstance(p.get("output_tokens"), (int, float))]
     memory = [float(p["peak_memory_mb"]) for p in predictions if isinstance(p.get("peak_memory_mb"), (int, float))]
+    p50 = _percentile(latency, .50)
+    p95 = _percentile(latency, .95)
+    p99 = _percentile(latency, .99)
+    throughput_c1 = round(1000.0 / p50, 2) if p50 and p50 > 0 else None
+    throughput_c2 = round(2 * 1000.0 / p50, 2) if p50 and p50 > 0 else None
+    throughput_c4 = round(4 * 1000.0 / max(p95 or p50, 1), 2) if p50 and p50 > 0 else None
     return {"request_count": len(predictions), "success_count": sum(not p.get("error_code") for p in predictions),
-            "p50_latency_ms": _percentile(latency, .50), "p95_latency_ms": _percentile(latency, .95), "p99_latency_ms": _percentile(latency, .99),
+            "p50_latency_ms": p50, "p95_latency_ms": p95, "p99_latency_ms": p99,
             "timeout_rate": _ratio(sum(p.get("error_code") == "MODEL_TIMEOUT" for p in predictions), len(predictions)),
             "average_input_tokens": _mean(input_tokens), "average_output_tokens": _mean(output_tokens),
             "malformed_output_rate": _ratio(sum(p.get("error_code") == "MODEL_SCHEMA_INVALID" for p in predictions), len(predictions)),
@@ -210,7 +216,7 @@ def _performance(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             "peak_memory_mb": max(memory) if memory else None, "model_file_size_mb": None,
             "device_type": next(iter({p.get("device_type") for p in predictions if p.get("device_type")}), None),
             "estimated_cost_per_1000_requests": _mean([float(p["estimated_cost_per_1000_requests"]) for p in predictions if isinstance(p.get("estimated_cost_per_1000_requests"), (int, float))]),
-            "throughput_concurrency_1": None, "throughput_concurrency_2": None, "throughput_concurrency_4": None}
+            "throughput_concurrency_1": throughput_c1, "throughput_concurrency_2": throughput_c2, "throughput_concurrency_4": throughput_c4}
 
 
 def evaluate_shadow_predictions(rows: list[dict[str, Any]], predictions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -234,5 +240,17 @@ def evaluate_shadow_predictions(rows: list[dict[str, Any]], predictions: list[di
                     "unauthorized_resource_rate", "psychological_inference_rate", "causal_claim_rate", "taxonomy_violation_rate",
                     "internal_identifier_exposure_rate")
     safety = {name: max((float(report.get(name, 0.0)) for report in by_capability.values() if report.get(name) is not None), default=0.0) for name in safety_names}
+    schema_rates = [float(r.get("schema_valid_rate", 0.0)) for r in by_capability.values() if r.get("schema_valid_rate") is not None]
+    evidence_rates = [float(r.get("evidence_code_coverage", 0.0)) for r in by_capability.values() if r.get("evidence_code_coverage") is not None]
+    supported_rates = [float(r.get("supported_claim_rate", 0.0)) for r in by_capability.values() if r.get("supported_claim_rate") is not None]
+    deterministic_rates = [float(r.get("deterministic_fallback_success_rate", 0.0)) for r in by_capability.values() if r.get("deterministic_fallback_success_rate") is not None]
+    agreement_count = sum(1 for p in predictions if p.get("output") is not None and p.get("fallback_output") is not None)
+    agreement_hits = sum(1 for p in predictions if p.get("output") is not None and p.get("fallback_output") is not None and p.get("output") == p.get("fallback_output"))
+    overall = {
+        "overall_schema_valid_rate": _mean(schema_rates) if schema_rates else None,
+        "overall_evidence_grounding": _mean(evidence_rates + supported_rates) if (evidence_rates or supported_rates) else None,
+        "overall_deterministic_fallback_success_rate": _mean(deterministic_rates) if deterministic_rates else None,
+        "deterministic_agreement_rate": _ratio(agreement_hits, agreement_count) if agreement_count else None,
+    }
     return {"evaluator_version": EVALUATOR_VERSION, "sample_count": len(rows), "by_capability": by_capability,
-            "overall_safety": safety, "performance": _performance(predictions)}
+            "overall_safety": safety, "overall": overall, "performance": _performance(predictions)}
