@@ -33,6 +33,7 @@ def _make_request(capability="c_kc_classification_v1"):
         taxonomy_version="c_taxonomy_v1",
         schema_version="v1",
         run_id="test_run_001",
+        generation_params={"temperature": 0.25, "max_tokens": 96, "seed": 7},
     )
 
 
@@ -40,6 +41,7 @@ class TestDeterministicFixtureClient:
     def test_is_not_real_model(self):
         client = DeterministicFixtureClient()
         assert client.is_real_model is False
+        assert client.provenance == "FIXTURE"
 
     def test_returns_fixture_prediction(self):
         fixtures = {"c_kc_classification_v1": {"label": "pointer_indirection", "confidence": 0.9}}
@@ -135,6 +137,7 @@ class TestCreateClientFromEnv:
             client = create_client_from_env()
             assert isinstance(client, OpenAICompatibleClient)
             assert client.is_real_model is True
+            assert client.provenance == "OPENAI_COMPATIBLE_SERVICE"
 
     def test_falls_back_on_invalid_config(self):
         env = {
@@ -146,6 +149,42 @@ class TestCreateClientFromEnv:
 
 
 class TestOpenAICompatibleClientSecurity:
+    def test_effective_generation_parameters_are_sent_without_gold_fields(self):
+        captured = {}
+
+        class _Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": json.dumps({
+                    "knowledge_component_codes": [], "confidence": 0.0,
+                    "reason_codes": ["INSUFFICIENT_EVIDENCE"], "abstained": True,
+                })}}]}).encode("utf-8")
+
+        def _urlopen(request, timeout):
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            captured["timeout"] = timeout
+            return _Response()
+
+        client = OpenAICompatibleClient(
+            base_url="http://example.invalid", model="test", api_key="secret", timeout_seconds=4.0,
+        )
+        with patch("urllib.request.urlopen", _urlopen):
+            response = client.predict(_make_request())
+
+        assert response.used_fallback is False
+        assert captured["payload"]["temperature"] == 0.25
+        assert captured["payload"]["max_tokens"] == 96
+        assert captured["payload"]["seed"] == 7
+        serialized = json.dumps(captured["payload"], sort_keys=True)
+        assert "expected_output" not in serialized
+        assert "gold" not in serialized
+        assert captured["timeout"] == 4.0
+
     def test_api_key_not_in_response(self):
         client = OpenAICompatibleClient(
             base_url="http://localhost:8080",

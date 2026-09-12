@@ -1,6 +1,112 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from learner_state_evaluation.model_shadow.dataset import build_shadow_dataset
+
+
+def test_phase8a_baseline_never_reads_expected_output() -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+
+    heldout = rb.build_heldout_rows(build_shadow_dataset())
+    without_gold = [{key: value for key, value in row.items() if key != "expected_output"} for row in heldout]
+    poisoned = [dict(row, expected_output={"poison": row["sample_id"]}) for row in heldout]
+
+    expected = rb.build_baseline_predictions(without_gold)
+    actual = rb.build_baseline_predictions(poisoned)
+
+    assert actual == expected
+    assert all(row["prediction_source"] == "DETERMINISTIC_BASELINE" for row in actual)
+    assert all(row["uses_expected_output"] is False for row in actual)
+    assert all(row["eligible_for_promotion"] is False for row in actual)
+
+
+def test_phase8a_inventory_distinguishes_service_and_model_assets(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+
+    hf_dir = tmp_path / "model"
+    hf_dir.mkdir()
+    (hf_dir / "config.json").write_text("{}", encoding="utf-8")
+    (hf_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (hf_dir / "model.safetensors").write_bytes(b"weights")
+    local = rb.inventory_model_runtime(env={"CAMPUSMATE_LM_WEIGHTS_DIR": str(hf_dir)})
+    assert local["local_weights_available"] is True
+    assert local["execution_mode"] == "LOCAL_WEIGHTS"
+    assert str(tmp_path) not in json.dumps(local)
+
+    service = rb.inventory_model_runtime(env={
+        "CAMPUSMATE_LM_SHADOW_ENABLED": "true",
+        "CAMPUSMATE_LM_BASE_URL": "http://service.invalid",
+        "CAMPUSMATE_LM_MODEL": "campusmate-lm-v1",
+        "CAMPUSMATE_LM_API_KEY": "secret",
+    })
+    assert service["service_configured"] is True
+    assert service["execution_mode"] == "OPENAI_COMPATIBLE_SERVICE"
+    assert service["blocked"] is False
+    assert "secret" not in json.dumps(service)
+    assert "service.invalid" not in json.dumps(service)
+
+
+def test_phase8a_inventory_rejects_unrelated_or_incomplete_assets(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+
+    vision_dir = tmp_path / "vision"
+    vision_dir.mkdir()
+    (vision_dir / "expression_recognition.onnx").write_bytes(b"vision")
+    assert rb.inventory_model_runtime(env={"CAMPUSMATE_LM_WEIGHTS_DIR": str(vision_dir)})["blocked"] is True
+
+    incomplete = tmp_path / "incomplete"
+    incomplete.mkdir()
+    (incomplete / "tokenizer.json").write_text("{}", encoding="utf-8")
+    assert rb.inventory_model_runtime(env={"CAMPUSMATE_LM_WEIGHTS_DIR": str(incomplete)})["blocked"] is True
+
+
+def test_phase8b_preflight_is_blocked_without_runtime_and_ready_for_service(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+    from learner_state_evaluation.model_shadow.dataset import write_shadow_dataset
+
+    source = write_shadow_dataset(tmp_path / "source")
+    blocked = rb.preflight_benchmark(dataset_path=source.data_path, env={})
+    assert blocked["ready"] is False
+    assert blocked["block_reason_code"] == "MODEL_RUNTIME_UNAVAILABLE"
+    assert blocked["heldout_sample_count"] == 52
+
+    ready = rb.preflight_benchmark(dataset_path=source.data_path, env={
+        "CAMPUSMATE_LM_SHADOW_ENABLED": "true",
+        "CAMPUSMATE_LM_BASE_URL": "http://service.invalid",
+        "CAMPUSMATE_LM_MODEL": "campusmate-lm-v1",
+        "CAMPUSMATE_LM_API_KEY": "secret",
+    })
+    assert ready["ready"] is True
+    assert ready["execution_mode"] == "OPENAI_COMPATIBLE_SERVICE"
+    assert "secret" not in json.dumps(ready)
+    assert "service.invalid" not in json.dumps(ready)
+
+
+def test_phase8b_baseline_report_is_never_promotion_eligible(tmp_path) -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+    from learner_state_evaluation.model_shadow.dataset import write_shadow_dataset
+
+    source = write_shadow_dataset(tmp_path / "source")
+    report = rb.run_baseline_benchmark(dataset_path=source.data_path, output_dir=tmp_path / "out")
+    assert report["inference_source"] == "DETERMINISTIC_BASELINE"
+    assert report["uses_expected_output"] is False
+    assert report["eligible_for_promotion"] is False
+    assert report["performance"]["p95_latency_ms"] is None
+    assert all(decision["decision"] == "BLOCKED" for decision in report["promotion_decisions"].values())
+
+
+def test_phase8a_arbitrary_real_flag_cannot_bypass_provenance() -> None:
+    from learner_state_evaluation.model_shadow import real_benchmark as rb
+
+    class Pretender:
+        is_real_model = True
+        provenance = "OPENAI_COMPATIBLE_SERVICE"
+
+    with pytest.raises(ValueError, match="trusted"):
+        rb.require_real_client(Pretender())
 
 
 def test_phase8a_real_benchmark_harness_exists() -> None:
@@ -101,7 +207,7 @@ def test_phase8a_compare_keeps_quality_safety_latency_resource_context(tmp_path)
     }
 
 
-def test_phase8a_real_run_stays_blocked_without_weights(tmp_path) -> None:
+def test_phase8a_configured_service_runs_without_local_weights_but_failures_stay_blocked(tmp_path) -> None:
     from learner_state_evaluation.model_shadow import real_benchmark as rb
     from learner_state_evaluation.model_shadow.candidate_client import OpenAICompatibleClient
     from learner_state_evaluation.model_shadow.dataset import write_shadow_dataset
@@ -109,14 +215,13 @@ def test_phase8a_real_run_stays_blocked_without_weights(tmp_path) -> None:
     source = write_shadow_dataset(tmp_path / "source")
     client = OpenAICompatibleClient(
         base_url="http://127.0.0.1:1", model="phase8a-probe", api_key="probe-key", timeout_seconds=0.1)
-    try:
-        rb.run_real_benchmark(
-            dataset_path=source.data_path,
-            output_dir=tmp_path / "real",
-            client=client,
-            model_version="phase8a-probe",
-        )
-    except RuntimeError as exc:
-        assert "blocked" in str(exc).lower()
-    else:
-        raise AssertionError("real benchmark must stay blocked without authorized weights")
+    report = rb.run_real_benchmark(
+        dataset_path=source.data_path,
+        output_dir=tmp_path / "real",
+        client=client,
+        model_version="phase8a-probe",
+    )
+    assert report["execution_mode"] == "OPENAI_COMPATIBLE_SERVICE"
+    assert report["inference_source"] == "MIXED_REAL_AND_FALLBACK"
+    assert report["source_counts"] == {"REAL_MODEL": 0, "DETERMINISTIC_FALLBACK": 52}
+    assert all(item["decision"] == "BLOCKED" for item in report["promotion_decisions"].values())

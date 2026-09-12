@@ -17,8 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .candidate_client import CandidateRequest, create_client_from_env
-from .dataset import DATASET_VERSION, load_shadow_dataset
+from .candidate_client import CandidateRequest, OpenAICompatibleClient, create_client_from_env
+from .dataset import CAPABILITY_OUTPUT_FIELDS, DATASET_VERSION, load_shadow_dataset
 from .evaluate import evaluate_files
 from .metrics import EVALUATOR_VERSION, evaluate_shadow_predictions
 from .promotion import THRESHOLD_VERSION, evaluate_promotion
@@ -34,47 +34,76 @@ CAPABILITIES = (
 DEFAULT_SEED = 20260911
 DEFAULT_INFERENCE_PARAMS = {"temperature": 0.0, "max_tokens": 512, "timeout_seconds": 30.0}
 WEIGHT_ENV_KEYS = ("CAMPUSMATE_LM_MODEL_PATH", "MINIMIND_MODEL_PATH", "CAMPUSMATE_LM_WEIGHTS_DIR")
-WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".pt", ".bin", ".onnx")
-BASELINE_PREDICTION_SOURCE = "deterministic_baseline"
-REAL_PREDICTION_SOURCE = "real_model_inference"
+WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".bin")
+BASELINE_PREDICTION_SOURCE = "DETERMINISTIC_BASELINE"
+REAL_PREDICTION_SOURCE = "REAL_MODEL"
+MAX_ASSET_FILES = 256
 
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def inventory_model_weights(env: dict[str, str] | None = None) -> dict[str, Any]:
-    """盘点可用权重与真实推理入口，只返回存在性布尔值，不回显路径与密钥。"""
+def _valid_model_asset(candidate: Path) -> tuple[bool, str | None]:
+    try:
+        if candidate.is_file():
+            valid = candidate.suffix.lower() == ".gguf" and candidate.stat().st_size > 0
+            return valid, candidate.name if valid else None
+        if not candidate.is_dir():
+            return False, None
+        children = list(candidate.iterdir())[: MAX_ASSET_FILES + 1]
+        if len(children) > MAX_ASSET_FILES:
+            return False, None
+        names = {child.name for child in children if child.is_file()}
+        has_config = "config.json" in names
+        has_tokenizer = bool(names & {"tokenizer.json", "tokenizer.model", "tokenizer_config.json"})
+        weights = [child for child in children if child.is_file()
+                   and child.suffix.lower() in {".safetensors", ".bin"} and child.stat().st_size > 0]
+        return has_config and has_tokenizer and bool(weights), weights[0].name if weights else None
+    except OSError:
+        return False, None
+
+
+def inventory_model_runtime(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Return safe availability facts without paths, URLs, credentials, or probing a service."""
     source = dict(os.environ) if env is None else dict(env)
     checked = [key for key in (*WEIGHT_ENV_KEYS, "CAMPUSMATE_LM_SHADOW_ENABLED",
                                "CAMPUSMATE_LM_BASE_URL", "CAMPUSMATE_LM_MODEL") if key in source]
-    weight_file: Path | None = None
+    asset_name: str | None = None
     for key in WEIGHT_ENV_KEYS:
         raw = (source.get(key) or "").strip()
         if not raw:
             continue
-        candidate = Path(raw)
-        if candidate.suffix.lower() in WEIGHT_SUFFIXES and candidate.is_file():
-            try:
-                if candidate.stat().st_size > 0:
-                    weight_file = candidate
-                    break
-            except OSError:
-                continue
+        valid, safe_name = _valid_model_asset(Path(raw))
+        if valid:
+            asset_name = safe_name
+            break
     shadow_enabled = (source.get("CAMPUSMATE_LM_SHADOW_ENABLED") or "").lower() in ("true", "1", "yes")
     service_configured = bool(
         shadow_enabled and source.get("CAMPUSMATE_LM_BASE_URL") and source.get("CAMPUSMATE_LM_MODEL")
         and source.get("CAMPUSMATE_LM_API_KEY")
     )
-    if weight_file is not None:
-        status, blocked, reason = "AVAILABLE", False, None
+    local_available = asset_name is not None
+    if service_configured:
+        mode, blocked, code = "OPENAI_COMPATIBLE_SERVICE", False, None
+    elif local_available:
+        mode, blocked, code = "LOCAL_WEIGHTS", True, "LOCAL_INFERENCE_RUNTIME_UNAVAILABLE"
     else:
-        status, blocked = "MISSING", True
-        reason = "no authorized MiniMind/CampusMate-LM weights available"
-    return {"benchmark_version": BENCHMARK_VERSION, "weight_status": status, "blocked": blocked,
-            "block_reason": reason, "weight_file_name": weight_file.name if weight_file else None,
+        mode, blocked, code = "BLOCKED", True, "MODEL_RUNTIME_UNAVAILABLE"
+    return {"benchmark_version": BENCHMARK_VERSION,
+            "weight_status": "AVAILABLE" if local_available else "MISSING",
+            "local_weights_available": local_available, "runtime_available": service_configured,
+            "execution_mode": mode, "blocked": blocked, "block_reason_code": code,
+            "weight_file_name": asset_name,
             "service_configured": service_configured, "checked_keys": sorted(checked),
             "absolute_paths_omitted": True}
+
+
+def inventory_model_weights(env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Backward-compatible name for the safe runtime inventory."""
+    result = inventory_model_runtime(env)
+    result["block_reason"] = result["block_reason_code"]
+    return result
 
 
 def build_heldout_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -87,25 +116,81 @@ def build_heldout_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return heldout
 
 
+def preflight_benchmark(*, dataset_path: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
+    heldout = build_heldout_rows(load_shadow_dataset(dataset_path))
+    inventory = inventory_model_runtime(env)
+    return {
+        "benchmark_version": BENCHMARK_VERSION,
+        "dataset_version": DATASET_VERSION,
+        "dataset_sha256": _sha256_file(dataset_path),
+        "test_split_only": True,
+        "heldout_sample_count": len(heldout),
+        "heldout_capability_counts": {
+            capability: sum(row["capability_name"] == capability for row in heldout)
+            for capability in CAPABILITIES
+        },
+        "execution_mode": inventory["execution_mode"],
+        "local_weights_available": inventory["local_weights_available"],
+        "service_configured": inventory["service_configured"],
+        "runtime_available": inventory["runtime_available"],
+        "ready": not inventory["blocked"],
+        "block_reason_code": inventory["block_reason_code"],
+        "absolute_paths_omitted": True,
+    }
+
+
 def require_real_client(client: Any) -> Any:
     """fixture / 确定性客户端永远不得通过真实模型门禁。"""
-    if not getattr(client, "is_real_model", False):
-        raise ValueError("fixture or deterministic client cannot claim REAL_MODEL inference")
+    if not isinstance(client, OpenAICompatibleClient) or client.provenance != "OPENAI_COMPATIBLE_SERVICE":
+        raise ValueError("trusted real model client required; fixture or arbitrary client rejected")
     return client
 
 
-def _baseline_predictions(heldout: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _deterministic_output(capability: str, features: dict[str, Any]) -> dict[str, Any]:
+    if capability == "c_kc_classification_v1":
+        codes = [code for code in features.get("candidate_kc_codes", []) if isinstance(code, str)]
+        return {"knowledge_component_codes": codes, "confidence": 0.65 if codes else 0.0,
+                "reason_codes": ["CONTROLLED_CANDIDATE_MATCH"] if codes else ["INSUFFICIENT_EVIDENCE"],
+                "abstained": not codes}
+    if capability == "c_error_classification_v1":
+        errors = [code for code in features.get("candidate_error_codes", []) if isinstance(code, str)]
+        kcs = [code for code in features.get("candidate_kc_codes", []) if isinstance(code, str)]
+        return {"error_code": errors[0] if errors else None,
+                "knowledge_component_codes": kcs if errors else [],
+                "confidence": 0.6 if errors else 0.0, "abstained": not errors}
+    if capability == "learning_summary_v1":
+        explanations = set(features.get("explanation_codes", []))
+        claims = []
+        if "deadline_urgent" in explanations:
+            claims.append("PRIORITIZE_NEAR_DEADLINE")
+        if "kc_review" in explanations:
+            claims.append("REVIEW_KNOWLEDGE_COMPONENT")
+        if "short_session" in explanations:
+            claims.append("USE_SHORT_SESSION")
+        if "data_quality_partial" in explanations:
+            claims.append("DATA_QUALITY_PARTIAL")
+        summary = "建议根据当前受控证据安排下一步学习。" if claims else "当前证据不足，建议先补充一次受控学习记录。"
+        return {"summary": summary, "claim_codes": claims}
+    candidates = [name for name in features.get("candidate_read_tools", []) if isinstance(name, str)]
+    tool = candidates[0] if candidates else None
+    arguments = features.get("parameter_schema", {}) if tool else {}
+    return {"tool_name": tool, "arguments": dict(arguments) if isinstance(arguments, dict) else {},
+            "confidence": 0.7 if tool else 0.0, "abstained": tool is None}
+
+
+def build_baseline_predictions(heldout: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Run an input-only deterministic baseline; gold labels are never read."""
     rows: list[dict[str, Any]] = []
     for row in heldout:
-        start = time.perf_counter()
-        output = dict(row["expected_output"])
-        latency_ms = max(int((time.perf_counter() - start) * 1000), 0)
+        output = _deterministic_output(row["capability_name"], dict(row["input"]))
         rows.append({"sample_id": row["sample_id"], "capability_name": row["capability_name"],
                      "output": output, "confidence": float(output.get("confidence", 0.0)),
-                     "latency_ms": latency_ms, "input_tokens": None, "output_tokens": None,
+                     "latency_ms": None, "input_tokens": None, "output_tokens": None,
                      "peak_memory_mb": None, "device_type": "cpu",
-                     "estimated_cost_per_1000_requests": 0.0,
-                     "prediction_source": BASELINE_PREDICTION_SOURCE})
+                     "estimated_cost_per_1000_requests": None,
+                     "prediction_source": BASELINE_PREDICTION_SOURCE,
+                     "uses_expected_output": False, "eligible_for_comparison": True,
+                     "eligible_for_promotion": False})
     return rows
 
 
@@ -120,6 +205,32 @@ def _promotion_decisions(report: dict[str, Any], *, model_key: str, model_versio
             performance=report.get("performance", {}),
             evaluator_version=report.get("evaluator_version", EVALUATOR_VERSION))
     return decisions
+
+
+def _blocked_decisions(reason: str, *, model_version: str | None = None) -> dict[str, dict[str, Any]]:
+    return {capability: {
+        "model_key": "campusmate-lm", "model_version": model_version,
+        "capability_name": capability, "capability_version": "v1",
+        "dataset_version": DATASET_VERSION, "evaluator_version": EVALUATOR_VERSION,
+        "threshold_version": THRESHOLD_VERSION, "decision": "BLOCKED",
+        "failed_gates": [reason], "quality_gate_status": "NOT_RUN",
+        "performance_gate_status": "NOT_RUN",
+    } for capability in CAPABILITIES}
+
+
+def _valid_output(capability: str, output: Any) -> bool:
+    if not isinstance(output, dict) or set(output) != CAPABILITY_OUTPUT_FIELDS[capability]:
+        return False
+    if capability in {"c_kc_classification_v1", "c_error_classification_v1"}:
+        return (isinstance(output.get("knowledge_component_codes"), list)
+                and isinstance(output.get("confidence"), (int, float))
+                and isinstance(output.get("abstained"), bool))
+    if capability == "learning_summary_v1":
+        return isinstance(output.get("summary"), str) and isinstance(output.get("claim_codes"), list)
+    return ((output.get("tool_name") is None or isinstance(output.get("tool_name"), str))
+            and isinstance(output.get("arguments"), dict)
+            and isinstance(output.get("confidence"), (int, float))
+            and isinstance(output.get("abstained"), bool))
 
 
 def _write_report(output_dir: Path, *, stem: str, report: dict[str, Any],
@@ -164,27 +275,46 @@ def _write_report(output_dir: Path, *, stem: str, report: dict[str, Any],
     return written
 
 
+def run_baseline_benchmark(*, dataset_path: Path, output_dir: Path,
+                           seed: int = DEFAULT_SEED) -> dict[str, Any]:
+    heldout = build_heldout_rows(load_shadow_dataset(dataset_path))
+    predictions = build_baseline_predictions(heldout)
+    metrics = evaluate_shadow_predictions(heldout, predictions)
+    report = {
+        "benchmark_version": BENCHMARK_VERSION, "blocked": False, "block_reason": None,
+        "inference_source": BASELINE_PREDICTION_SOURCE, "real_model_inference": False,
+        "baseline_type": "DETERMINISTIC_BASELINE", "baseline_version": "input-only-v1",
+        "uses_expected_output": False, "eligible_for_comparison": True,
+        "eligible_for_promotion": False, "seed": seed,
+        "inference_params": {}, "dataset_version": DATASET_VERSION,
+        "dataset_sha256": _sha256_file(dataset_path), "evaluator_version": EVALUATOR_VERSION,
+        "test_split_only": True, "train_validation_excluded": True,
+        "heldout_sample_count": len(heldout), "capability_metrics": metrics["by_capability"],
+        "overall_safety": metrics["overall_safety"], "performance": metrics["performance"],
+        "promotion_decisions": _blocked_decisions("BASELINE_NOT_PROMOTION_ELIGIBLE",
+                                                   model_version="deterministic-baseline-v2"),
+        "production_enabled": False, "canary_enabled": False, "absolute_paths_omitted": True,
+    }
+    _write_report(output_dir, stem="phase8a-baseline", report=report, predictions=predictions)
+    return report
+
+
 def run_blocked_benchmark(*, dataset_path: Path, output_dir: Path, reason: str,
                           seed: int = DEFAULT_SEED) -> dict[str, Any]:
     """无可用权重时的阻塞基线：只跑确定性基线做对照，真实侧保持阻塞。"""
     rows = load_shadow_dataset(dataset_path)
     heldout = build_heldout_rows(rows)
-    predictions = _baseline_predictions(heldout)
+    predictions = build_baseline_predictions(heldout)
     metrics_report = evaluate_shadow_predictions(heldout, predictions)
-    baseline_decisions = _promotion_decisions(
-        metrics_report, model_key="deterministic-baseline",
-        model_version="deterministic-baseline-v1", dataset_version=DATASET_VERSION)
-    blocked_decisions: dict[str, dict[str, Any]] = {}
-    for capability in CAPABILITIES:
-        blocked_decisions[capability] = {
-            "model_key": "campusmate-lm", "model_version": None, "capability_name": capability,
-            "capability_version": "v1", "dataset_version": DATASET_VERSION,
-            "evaluator_version": EVALUATOR_VERSION, "threshold_version": THRESHOLD_VERSION,
-            "decision": "BLOCKED", "failed_gates": ["REAL_MODEL_INFERENCE_UNAVAILABLE"],
-            "quality_gate_status": "NOT_RUN", "performance_gate_status": "NOT_RUN"}
+    baseline_decisions = _blocked_decisions("BASELINE_NOT_PROMOTION_ELIGIBLE",
+                                            model_version="deterministic-baseline-v2")
+    blocked_decisions = _blocked_decisions("REAL_MODEL_INFERENCE_UNAVAILABLE")
     report = {"benchmark_version": BENCHMARK_VERSION, "blocked": True, "block_reason": reason,
               "inference_source": "BLOCKED_NO_WEIGHTS", "real_model_inference": False,
               "prediction_source": BASELINE_PREDICTION_SOURCE, "model_path": None, "model_version": None,
+              "baseline_type": "DETERMINISTIC_BASELINE", "baseline_version": "input-only-v1",
+              "uses_expected_output": False, "eligible_for_comparison": True,
+              "eligible_for_promotion": False,
               "seed": seed, "inference_params": dict(DEFAULT_INFERENCE_PARAMS),
               "dataset_version": DATASET_VERSION, "dataset_sha256": _sha256_file(dataset_path),
               "evaluator_version": EVALUATOR_VERSION, "test_split_only": True,
@@ -207,10 +337,8 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
                        run_id: str = "phase8a-heldout") -> dict[str, Any]:
     """使用真实客户端在 held-out test 上推理；fixture 与阻塞状态直接失败。"""
     require_real_client(client)
-    inventory = inventory_model_weights()
-    if inventory["blocked"]:
-        raise RuntimeError(f"real benchmark is blocked: {inventory['block_reason']}")
     params = dict(DEFAULT_INFERENCE_PARAMS) if inference_params is None else dict(inference_params)
+    params["timeout_seconds"] = client.timeout_seconds
     rows = load_shadow_dataset(dataset_path)
     heldout = build_heldout_rows(rows)
     predictions: list[dict[str, Any]] = []
@@ -221,27 +349,43 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
             structured_features=row["input"],
             prompt_template_version=f"{row['capability_name']}-prompt-v1",
             taxonomy_version="c_taxonomy_v1", schema_version=row["input_schema_version"],
-            run_id=f"{run_id}-{seed}-{row['sample_id']}")
+            run_id=f"{run_id}-{seed}-{row['sample_id']}",
+            generation_params={"temperature": params.get("temperature", 0.0),
+                               "max_tokens": params.get("max_tokens", 512), "seed": seed})
         response = client.predict(request)
         output = dict(response.prediction) if isinstance(response.prediction, dict) else {}
-        if response.used_fallback or not output:
+        if response.used_fallback or not _valid_output(row["capability_name"], output):
             fallback_count += 1
             predictions.append({"sample_id": row["sample_id"], "capability_name": row["capability_name"],
                                 "output": {}, "confidence": 0.0, "latency_ms": response.latency_ms,
-                                "used_fallback": True, "error_code": response.error_code,
-                                "prediction_source": "unavailable"})
+                                "used_fallback": True,
+                                "error_code": response.error_code or "MODEL_SCHEMA_INVALID",
+                                "schema_valid": False, "prediction_source": "DETERMINISTIC_FALLBACK",
+                                "model_key": response.model_key, "model_version": response.model_version})
             continue
         predictions.append({"sample_id": row["sample_id"], "capability_name": row["capability_name"],
                             "output": output, "confidence": float(output.get("confidence", 0.0)),
                             "latency_ms": response.latency_ms, "peak_memory_mb": None,
                             "device_type": None, "prediction_source": REAL_PREDICTION_SOURCE,
-                            "model_version": response.model_version})
+                            "schema_valid": True, "used_fallback": False, "error_code": None,
+                            "model_key": response.model_key, "model_version": response.model_version})
     metrics_report = evaluate_shadow_predictions(heldout, predictions)
     real_inference = fallback_count == 0
+    source_counts = {source: sum(p["prediction_source"] == source for p in predictions)
+                     for source in (REAL_PREDICTION_SOURCE, "DETERMINISTIC_FALLBACK")}
+    decisions = _promotion_decisions(metrics_report, model_key="campusmate-lm",
+                                     model_version=model_version, dataset_version=DATASET_VERSION)
+    for capability in CAPABILITIES:
+        selected = [p for p in predictions if p["capability_name"] == capability]
+        if not selected or any(p["prediction_source"] != REAL_PREDICTION_SOURCE for p in selected):
+            decisions[capability]["decision"] = "BLOCKED"
+            decisions[capability]["failed_gates"] = sorted(set(
+                decisions[capability]["failed_gates"] + ["REAL_MODEL_COVERAGE_INCOMPLETE"]))
     report = {"benchmark_version": BENCHMARK_VERSION, "blocked": False, "block_reason": None,
               "inference_source": "REAL_MODEL" if real_inference else "MIXED_REAL_AND_FALLBACK",
               "real_model_inference": real_inference, "prediction_source": REAL_PREDICTION_SOURCE,
-              "model_path": None, "model_weight_name": inventory.get("weight_file_name"),
+              "execution_mode": "OPENAI_COMPATIBLE_SERVICE", "model_path": None,
+              "model_weight_name": None, "source_counts": source_counts,
               "model_version": model_version, "seed": seed,
               "inference_params": params, "fallback_count": fallback_count,
               "dataset_version": DATASET_VERSION, "dataset_sha256": _sha256_file(dataset_path),
@@ -250,9 +394,7 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
               "capability_metrics": metrics_report["by_capability"],
               "overall_safety": metrics_report["overall_safety"],
               "performance": metrics_report["performance"],
-              "promotion_decisions": _promotion_decisions(
-                  metrics_report, model_key="campusmate-lm", model_version=model_version,
-                  dataset_version=DATASET_VERSION),
+              "promotion_decisions": decisions,
               "production_enabled": False, "canary_enabled": False, "absolute_paths_omitted": True}
     _write_report(output_dir, stem="phase8a-real", report=report, predictions=predictions)
     return report

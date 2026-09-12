@@ -28,7 +28,7 @@ import os
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
 
@@ -42,6 +42,7 @@ class CandidateRequest:
     taxonomy_version: str
     schema_version: str
     run_id: str
+    generation_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,9 @@ class CandidateModelClient(Protocol):
 
     @property
     def model_version(self) -> str: ...
+
+    @property
+    def provenance(self) -> str: ...
 
     def predict(self, request: CandidateRequest) -> CandidateResponse: ...
 
@@ -96,6 +100,10 @@ class DeterministicFixtureClient:
     @property
     def model_version(self) -> str:
         return self._model_version
+
+    @property
+    def provenance(self) -> str:
+        return "FIXTURE"
 
     def predict(self, request: CandidateRequest) -> CandidateResponse:
         start = time.monotonic()
@@ -143,19 +151,35 @@ class OpenAICompatibleClient:
     def model_version(self) -> str:
         return self._model
 
+    @property
+    def provenance(self) -> str:
+        return "OPENAI_COMPATIBLE_SERVICE"
+
+    @property
+    def timeout_seconds(self) -> float:
+        return self._timeout
+
     def predict(self, request: CandidateRequest) -> CandidateResponse:
         """执行预测。失败时回退确定性逻辑，不抛异常。"""
         start = time.monotonic()
         try:
-            payload = json.dumps({
+            params = dict(request.generation_params)
+            temperature = float(params.get("temperature", 0.0))
+            max_tokens = int(params.get("max_tokens", 512))
+            if not 0.0 <= temperature <= 2.0 or not 1 <= max_tokens <= 4096:
+                raise ValueError("invalid generation parameters")
+            payload_data = {
                 "model": self._model,
                 "messages": [
                     {"role": "system", "content": "You are a structured prediction model. Return only valid JSON."},
                     {"role": "user", "content": json.dumps(request.structured_features, ensure_ascii=False)},
                 ],
-                "temperature": 0,
-                "max_tokens": 512,
-            }).encode("utf-8")
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if params.get("seed") is not None:
+                payload_data["seed"] = int(params["seed"])
+            payload = json.dumps(payload_data).encode("utf-8")
 
             req = urllib.request.Request(
                 f"{self._base_url}/v1/chat/completions",
