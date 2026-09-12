@@ -23,17 +23,44 @@ def evaluate_files(*, dataset_path: Path, manifest_path: Path | None, prediction
     predictions = _load_predictions(predictions_path)
     report = evaluate_shadow_predictions(rows, predictions)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path else {}
+
+    prediction_sources = {row.get("prediction_source", "fixture_prediction") for row in predictions}
+    if len(prediction_sources) == 1:
+        prediction_source = prediction_sources.pop()
+    else:
+        prediction_source = "mixed"
+    is_real_model = prediction_source == "real_model_inference"
+    is_unavailable = prediction_source == "unavailable"
+
     report = {"dataset_version": manifest.get("dataset_version", DATASET_VERSION), "evaluator_version": EVALUATOR_VERSION,
               "model_key": model_key, "mode": mode, "synthetic_dataset": True,
               "prediction_file_sha256": hashlib.sha256(predictions_path.read_bytes()).hexdigest(),
               "capability_metrics": report["by_capability"], "overall_safety": report["overall_safety"],
-              "performance": report["performance"], "real_model_inference": False,
-              "prediction_file_only": True, "real_training": False, "absolute_paths_omitted": True}
+              "performance": report["performance"],
+              "prediction_source": prediction_source,
+              "real_model_inference": is_real_model,
+              "prediction_file_only": not is_real_model,
+              "real_training": False, "absolute_paths_omitted": True,
+              "latency_source": "real_measurement" if is_real_model else "fixture_or_unavailable",
+              "throughput_source": "real_measurement" if is_real_model else "unavailable",
+              "promotion_block_reason": "real_model_inference_unavailable" if is_unavailable else None}
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{model_key.replace('/', '_')}.json"
     output_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     markdown = output_dir / f"{model_key.replace('/', '_')}.md"
-    lines = [f"# {model_key} shadow evaluation", "", f"- dataset_version: `{report['dataset_version']}`", f"- evaluator_version: `{EVALUATOR_VERSION}`", f"- mode: `{mode}`", "- synthetic_dataset: `true`", "- prediction_file_only: `true`", "- real_model_inference: `false`", "- real_training: `false`", ""]
+    lines = [f"# {model_key} shadow evaluation", "",
+             f"- dataset_version: `{report['dataset_version']}`",
+             f"- evaluator_version: `{EVALUATOR_VERSION}`",
+             f"- mode: `{mode}`",
+             "- synthetic_dataset: `true`",
+             f"- prediction_source: `{prediction_source}`",
+             f"- real_model_inference: `{is_real_model}`",
+             f"- real_training: `false`",
+             f"- latency_source: `{report['latency_source']}`",
+             f"- throughput_source: `{report['throughput_source']}`"]
+    if report.get("promotion_block_reason"):
+        lines.append(f"- promotion_block_reason: `{report['promotion_block_reason']}`")
+    lines.append("")
     for capability, metrics in sorted(report["capability_metrics"].items()):
         lines.append(f"## {capability}")
         for key in sorted(metrics):
