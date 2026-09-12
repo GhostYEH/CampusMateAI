@@ -15,7 +15,7 @@ from ..models.learning_plan import LearningPlanRow
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..services.llm.base import LLMError
 
-PLANNER_VERSION = "deterministic-learning-plan-v1"
+PLANNER_VERSION = "deterministic-learning-plan-v2"
 PLAN_TTL = timedelta(minutes=15)
 REJECTION_COOLDOWN = timedelta(hours=6)
 MAX_TASKS = 200
@@ -86,6 +86,9 @@ class LearningPlannerService:
             raise InvalidTransition("主动建议已被暂停")
 
         core = self.state_service.project_user(user_id, as_of=now, trigger="learning_plan")
+        academic = self.state_service.project_academic(
+            user_id, as_of=now, trigger="learning_plan"
+        )
         tasks, task_total = self.task_repository.list_tasks(user_id, page=1, page_size=MAX_TASKS)
         warnings = list(core.warnings)
         if any(s.data_quality in {"stale", "partial", "unavailable"} for s in core.snapshots):
@@ -99,6 +102,8 @@ class LearningPlannerService:
             tasks = [task for task in tasks if task.course_id in {None, course_id}]
         course_data: dict[str, list[Any]] = {}
         knowledge_data: dict[str, tuple[Any, list[Any]]] = {}
+        prediction_data: dict[str, Any] = {}
+        counterfactual_data: dict[str, dict[str, Any]] = {}
         for cid in sorted(courses):
             items = self.content_repository.list_items(
                 user_id=user_id, course_id=cid, include_stale=True, page=1, page_size=MAX_CONTENT_PER_COURSE
@@ -116,6 +121,25 @@ class LearningPlannerService:
                 warnings.extend(knowledge.warnings)
                 if any(s.data_quality in {"stale", "partial", "unavailable"} for s in knowledge.snapshots):
                     warnings.append("knowledge_data_quality_partial")
+                prediction = self.state_service.project_prediction(
+                    user_id, course_id=cid, as_of=now, trigger="learning_plan"
+                )
+                prediction_data[cid] = prediction
+                warnings.extend(prediction.warnings)
+                target_codes = sorted({s.scope_id for s in knowledge.snapshots})
+                if target_codes:
+                    counterfactual_data[cid] = self.state_service.simulate_counterfactual(
+                        user_id,
+                        course_id=cid,
+                        as_of=now,
+                        intervention={
+                            "intervention_type": "additional_practice",
+                            "knowledge_component_code": target_codes[0],
+                            "additional_practice_count": 3,
+                            "expected_score": 75.0,
+                            "misconception_code": None,
+                        },
+                    )
             except Exception:
                 warnings.append("knowledge_unavailable")
 
@@ -135,8 +159,36 @@ class LearningPlannerService:
              "valid_until": s.valid_until} for s in data[1]]} for cid, data in knowledge_data.items()}
         for value in safe_knowledge.values():
             value["snapshots"] = sorted(value["snapshots"], key=lambda x: x["scope_id"])
+        safe_academic = {
+            "run_id": academic.run_id,
+            "snapshots": [
+                {"state_type": s.state_type, "value": s.value, "confidence": s.confidence,
+                 "data_quality": s.data_quality, "valid_until": s.valid_until}
+                for s in sorted(academic.snapshots, key=lambda x: x.state_type)
+            ],
+        }
+        safe_predictions = {
+            cid: {"run_id": result.run_id, "snapshots": [
+                {"scope_id": s.scope_id, "state_type": s.state_type, "value": s.value,
+                 "confidence": s.confidence, "data_quality": s.data_quality,
+                 "valid_until": s.valid_until}
+                for s in sorted(result.snapshots, key=lambda x: (x.scope_id, x.state_type))
+            ]}
+            for cid, result in prediction_data.items()
+        }
+        safe_counterfactuals = {
+            cid: {
+                "deltas": value.get("deltas", []),
+                "warning_codes": value.get("warning_codes", []),
+                "explanation_codes": value.get("explanation_codes", []),
+            }
+            for cid, value in counterfactual_data.items()
+        }
         input_digest = _digest({"planner_version": PLANNER_VERSION, "core": core_inputs, "tasks": safe_tasks,
-                                "content": safe_content, "knowledge": safe_knowledge, "available_minutes": available_minutes,
+                                "content": safe_content, "knowledge": safe_knowledge,
+                                "academic": safe_academic, "predictions": safe_predictions,
+                                "counterfactuals": safe_counterfactuals,
+                                "available_minutes": available_minutes,
                                 "course_id": course_id, "window_start": window_start, "window_end": window_end,
                                 "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS})
         if idempotency_key:
@@ -154,13 +206,21 @@ class LearningPlannerService:
                                                 since=_iso(now - REJECTION_COOLDOWN)):
             raise InvalidTransition("相同建议仍在拒绝冷却期内")
 
-        items = self._build_items(tasks, course_data, knowledge_data, available_minutes, now)
+        items = self._build_items(
+            tasks, course_data, knowledge_data, prediction_data,
+            counterfactual_data, academic.snapshots, available_minutes, now,
+        )
         items = items[:MAX_PLAN_ITEMS]
         if len(items) >= MAX_PLAN_ITEMS:
             warnings.append("plan_items_truncated")
         valid_until = min(now + PLAN_TTL, self._next_hour(now))
         for knowledge, snapshots in knowledge_data.values():
             for snapshot in snapshots:
+                boundary = _parse(snapshot.valid_until)
+                if boundary:
+                    valid_until = min(valid_until, boundary)
+        for result in [academic, *prediction_data.values()]:
+            for snapshot in result.snapshots:
                 boundary = _parse(snapshot.valid_until)
                 if boundary:
                     valid_until = min(valid_until, boundary)
@@ -181,9 +241,18 @@ class LearningPlannerService:
             selected_knowledge_bindings[cid] = {
                 "run_id": knowledge.run_id,
                 "input_digest": knowledge.input_digest,
+                "prediction_input_digest": getattr(
+                    prediction_data.get(cid), "input_digest", None
+                ),
                 "snapshots": {s.scope_id: self._knowledge_snapshot_digest(s) for s in snapshots if s.scope_id in selected_codes},
                 "quality": {s.scope_id: s.data_quality for s in snapshots if s.scope_id in selected_codes},
             }
+        selected_knowledge_bindings["__academic__"] = {
+            "input_digest": getattr(academic, "input_digest", None),
+            "quality": {
+                s.state_type: s.data_quality for s in academic.snapshots
+            },
+        }
         truncated = any(code in {"tasks_truncated", "course_content_truncated", "plan_items_truncated", "input_truncated", "evidence_truncated"} for code in warnings)
         # Reusable plans are selected by the digest; run IDs must remain fresh
         # when an identical input becomes eligible again after expiry.
@@ -237,8 +306,32 @@ class LearningPlannerService:
     def _next_hour(now: datetime) -> datetime:
         return (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
 
-    def _build_items(self, tasks, content_data, knowledge_data, available: int, now: datetime) -> list[dict[str, Any]]:
+    def _build_items(
+        self, tasks, content_data, knowledge_data, prediction_data,
+        counterfactual_data, academic_snapshots, available: int, now: datetime,
+    ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
+        exam_snapshot = next(
+            (s for s in academic_snapshots if s.state_type == "exam_exposure"), None
+        )
+        if exam_snapshot is not None and exam_snapshot.data_quality != "unavailable":
+            upcoming = int((exam_snapshot.value or {}).get("upcoming_exam_count", 0))
+            if upcoming > 0:
+                item = self._item_base(
+                    estimated=30, urgency=min(1.0, 0.55 + upcoming * 0.1), need=0.35,
+                    confidence=exam_snapshot.confidence, readiness=1.0,
+                    fit=min(1.0, available / 30), freshness=0.0,
+                )
+                item.update(
+                    item_type="ACADEMIC_PREPARATION", course_id=None,
+                    explanation_codes=["upcoming_exam_exposure"],
+                    evidence=[{
+                        "evidence_type": "ACADEMIC_SNAPSHOT",
+                        "reference_id": exam_snapshot.snapshot_id,
+                        "metadata": {"relation": "SUPPORTS", "data_quality": exam_snapshot.data_quality},
+                    }],
+                )
+                items.append(item)
         for task in tasks:
             urgency = self._deadline_urgency(task.deadline, now)
             freshness = self._freshness_penalty(task.last_synced_at, now)
@@ -259,6 +352,22 @@ class LearningPlannerService:
                 need = 0.25 if evidence_count == 0 else max(0.0, min(1.0, 1.0 - estimate))
                 confidence = snapshot.confidence if snapshot.data_quality not in {"stale", "unavailable"} else .25
 
+                prediction = next(
+                    (
+                        s for s in getattr(prediction_data.get(cid), "snapshots", [])
+                        if s.scope_id == snapshot.scope_id
+                        and s.state_type == "performance_prediction"
+                    ),
+                    None,
+                )
+                predicted_probability = None
+                if prediction is not None and prediction.data_quality != "unavailable":
+                    predicted_probability = float(
+                        (prediction.value or {}).get("predicted_pass_probability", 0.5)
+                    )
+                    need = max(need, 1.0 - predicted_probability)
+                    confidence = min(confidence, max(0.1, prediction.confidence))
+
                 readiness = self._prerequisite_readiness(snapshot.scope_id, snapshots)
                 freshness = .4 if any(x.is_stale for x in contents) else 0.0
                 codes = ["diagnostic_or_review_recommended"] if evidence_count == 0 else ["practice_evidence"]
@@ -266,8 +375,23 @@ class LearningPlannerService:
                     codes.append("knowledge_need")
                 if readiness < .5:
                     codes.append("prerequisite_gap")
+                if predicted_probability is not None and predicted_probability < .7:
+                    codes.append("prediction_low_pass_probability")
                 evidence = [{"evidence_type": "KNOWLEDGE_SNAPSHOT", "reference_id": snapshot.snapshot_id,
                              "metadata": {"relation": "SUPPORTS", "data_quality": snapshot.data_quality}}]
+                if prediction is not None:
+                    evidence.append({
+                        "evidence_type": "PREDICTION_SNAPSHOT",
+                        "reference_id": prediction.snapshot_id,
+                        "metadata": {"relation": "SUPPORTS", "data_quality": prediction.data_quality},
+                    })
+                deltas = counterfactual_data.get(cid, {}).get("deltas", [])
+                matching_delta = next(
+                    (d for d in deltas if d.get("knowledge_component_code") == snapshot.scope_id),
+                    None,
+                )
+                if matching_delta and float(matching_delta.get("pass_probability_delta", 0.0)) > 0:
+                    codes.append("counterfactual_practice_benefit")
                 if contents:
                     evidence.append({"evidence_type": "COURSE_MATERIAL", "reference_id": contents[0].id,
                                      "relevance_score": 1.0, "metadata": {"relation": "SUPPORTS"}})
@@ -417,7 +541,20 @@ class LearningPlannerService:
             if expected and self._task_summary_digest(task) != expected:
                 self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="task_semantics_changed")
                 raise LearningPlanStale()
+        academic_binding = plan.run.knowledge_bindings.get("__academic__", {})
+        if academic_binding.get("input_digest"):
+            current_academic = self.state_service.project_academic(
+                user_id, as_of=now, trigger="learning_plan_revalidate"
+            )
+            if current_academic.input_digest != academic_binding["input_digest"]:
+                self.repository.mark_stale(
+                    plan_id=plan.plan_id, user_id=user_id,
+                    reason="academic_state_changed",
+                )
+                raise LearningPlanStale()
         for cid, binding in plan.run.knowledge_bindings.items():
+            if cid == "__academic__":
+                continue
             knowledge = self.knowledge_service.project_knowledge(user_id=user_id, course_id=cid, as_of=now,
                                                                  trigger="learning_plan_revalidate")
             current_by_code = {s.scope_id: s for s in knowledge.snapshots}
@@ -431,6 +568,17 @@ class LearningPlannerService:
                    for code in binding.get("snapshots", {})):
                 self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="data_quality_worsened")
                 raise LearningPlanStale()
+            if binding.get("prediction_input_digest"):
+                prediction = self.state_service.project_prediction(
+                    user_id, course_id=cid, as_of=now,
+                    trigger="learning_plan_revalidate",
+                )
+                if prediction.input_digest != binding["prediction_input_digest"]:
+                    self.repository.mark_stale(
+                        plan_id=plan.plan_id, user_id=user_id,
+                        reason="prediction_state_changed",
+                    )
+                    raise LearningPlanStale()
 
     def replan(self, *, user_id: str, plan_id: str, idempotency_key: str | None = None) -> LearningPlanRow:
         old = self.repository.get_plan(plan_id, user_id=user_id)
