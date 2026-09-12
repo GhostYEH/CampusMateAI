@@ -43,6 +43,12 @@ export default function StudyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [breakdownGoal, setBreakdownGoal] = useState("");
+  const [breakdown, setBreakdown] = useState(null);
+  const [breakdownSteps, setBreakdownSteps] = useState([]);
+  const [breaking, setBreaking] = useState(false);
+  const [breakdownSaving, setBreakdownSaving] = useState(false);
   const [review, setReview] = useState(null);
   const [selfReport, setSelfReport] = useState("");
   const [blockNotifications, setBlockNotifications] = useState(true);
@@ -237,6 +243,64 @@ export default function StudyPage() {
       setError(userErrorMessage(err, "待办添加失败"));
     }
   }
+
+  function openPlanning(goalOverride = goal) {
+    setBreakdownGoal(goalOverride.trim() || activeRef.current?.goal || "");
+    setBreakdownOpen(true);
+  }
+
+  async function onBreakdown() {
+    const target = breakdownGoal.trim();
+    if (!target || breaking) return;
+    setBreaking(true); setError("");
+    try {
+      const result = await api.breakdownStudyTask({ goal: target });
+      setBreakdown(result);
+      setBreakdownSteps((result.steps || []).map((step, index) => ({
+        _key: `${index}-${step.step_number || index + 1}`,
+        title: step.title || "",
+        description: step.description || "",
+        estimated_minutes: Number(step.estimated_minutes) || 30,
+      })));
+    } catch (err) {
+      logApiError("study-breakdown", err);
+      setError(userErrorMessage(err, "目标拆解失败，请重试"));
+    } finally {
+      setBreaking(false);
+    }
+  }
+
+  function updateBreakdownStep(index, patch) {
+    setBreakdownSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+  }
+
+  function removeBreakdownStep(index) {
+    setBreakdownSteps((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  async function saveBreakdownSteps() {
+    const valid = breakdownSteps.filter((step) => step.title.trim());
+    if (!valid.length || breakdownSaving) return;
+    setBreakdownSaving(true); setError("");
+    try {
+      await Promise.all(valid.map((step) => api.createTask({
+        title: step.title.trim(),
+        description: step.description?.trim() || undefined,
+        source_name: "AI 拆解步骤",
+        source_text: breakdown?.goal || breakdownGoal.trim(),
+      })));
+      await refreshTasks();
+      setBreakdownOpen(false);
+      setBreakdown(null);
+      setBreakdownSteps([]);
+      setNotice(`已将 ${valid.length} 个步骤加入今日待办`);
+    } catch (err) {
+      logApiError("study-breakdown-save", err);
+      setError(userErrorMessage(err, "步骤保存失败，请重试"));
+    } finally {
+      setBreakdownSaving(false);
+    }
+  }
   async function toggleTaskFromRoom(task) {
     try {
       await api.completeTask(task.id, !isDone(task));
@@ -279,7 +343,20 @@ export default function StudyPage() {
       onToggleTask={toggleTaskFromRoom}
       onAddTask={addTaskFromRoom}
       onOpenPlans={() => navigate("/plans")}
-      onOpenPlanning={() => navigate("/plans?ai=1")}
+      onOpenPlanning={openPlanning}
+      breakdownOpen={breakdownOpen}
+      breakdownGoal={breakdownGoal}
+      breakdownMode={breakdown?.mode}
+      breakdownWarnings={breakdown?.warnings || []}
+      breakdownSteps={breakdownSteps}
+      breaking={breaking}
+      breakdownSaving={breakdownSaving}
+      onBreakdownGoalChange={setBreakdownGoal}
+      onBreakdown={onBreakdown}
+      onUpdateBreakdownStep={updateBreakdownStep}
+      onRemoveBreakdownStep={removeBreakdownStep}
+      onSaveBreakdownSteps={saveBreakdownSteps}
+      onClosePlanning={() => setBreakdownOpen(false)}
       onRefresh={load}
     />}
     {review && <Modal title="本次学习复盘" onClose={() => setReview(null)} actions={<><Button variant="quiet" onClick={() => setReview(null)}>返回专注</Button><Button icon="PhCheckCircle" onClick={confirmFinish}>结束并保存记录</Button></>}>

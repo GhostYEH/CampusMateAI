@@ -94,6 +94,31 @@ def main() -> int:
 
         # /plans AI 拆解真实流程
         page.set_viewport_size({"width": 1440, "height": 900})
+        page.goto(f"{BASE}/study", wait_until="networkidle")
+        page.wait_for_timeout(500)
+        # 即使已有进行中的专注会话，右侧入口也应能打开拆解台。
+        page.get_by_role("button", name="用 AI 拆解学习目标").click()
+        page.locator(".study-summer-breakdown").wait_for()
+        page.locator(".study-summer-breakdown__input textarea").fill("复习线性代数第一章并完成课后习题")
+        page.locator(".study-summer-breakdown__input .button").click()
+        page.wait_for_function(
+            "() => document.querySelector('.study-summer-breakdown__step') || "
+            "document.querySelector('.notice-error') || "
+            "!document.querySelector('.study-summer-breakdown__input .button:disabled')",
+            timeout=35000,
+        )
+        page.wait_for_timeout(500)
+        focus_step_count = page.locator(".study-summer-breakdown__step").count()
+        print(f"study focus ai steps after generate: {focus_step_count}")
+        if focus_step_count == 0:
+            failures.append("study: no in-place AI breakdown steps generated")
+        else:
+            page.locator(".study-summer-breakdown__footer .button").click()
+            page.wait_for_timeout(1200)
+            if page.locator(".study-summer-breakdown").count():
+                failures.append("study: saving breakdown steps did not close the panel")
+
+        # /plans AI 拆解真实流程
         page.goto(f"{BASE}/plans?ai=1", wait_until="networkidle")
         page.wait_for_timeout(500)
         if page.locator(".study-ai-planner").count() == 0:
