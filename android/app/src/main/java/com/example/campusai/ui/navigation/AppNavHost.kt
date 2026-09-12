@@ -59,6 +59,9 @@ import com.example.campusai.ui.screens.profile.HelpFeedbackScreen
 import com.example.campusai.ui.screens.tasks.TasksScreen
 import com.example.campusai.ui.screens.tasks.TaskDetailScreen
 import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
+import com.example.campusai.ui.screens.agent.FinalReviewScreen
+import com.example.campusai.ui.screens.agent.CourseResearchScreen
+import com.example.campusai.ui.screens.agent.NoticeWorkflowScreen
 import com.example.campusai.ui.screens.v3.AcademicScreen
 import com.example.campusai.ui.screens.community.CommunityScreen
 import com.example.campusai.ui.screens.community.CommunityDetailScreen
@@ -636,6 +639,23 @@ fun AppNavHost(
                 planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false,
                 onReturnHome = returnToFocusHome,
                 onStartNext = startNextStep,
+            )
+        }
+
+        // ── Agent Runtime：期末复习 / 课程研究 / 通知事务 ──
+        composable("agent_final_review") {
+            FinalReviewScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable("agent_course_research") {
+            CourseResearchScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable("agent_notice_workflow") {
+            NoticeWorkflowScreen(
+                onBack = { navController.popBackStack() },
             )
         }
 

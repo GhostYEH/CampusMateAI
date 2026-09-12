@@ -1,6 +1,31 @@
 package com.example.campusai.data.remote
 
 import com.example.campusai.data.model.ExtractResult
+import com.example.campusai.data.remote.agent.AgentArtifactDto
+import com.example.campusai.data.remote.agent.AgentApprovalDto
+import com.example.campusai.data.remote.agent.AgentCapabilitiesDto
+import com.example.campusai.data.remote.agent.AgentEventDto
+import com.example.campusai.data.remote.agent.AgentJobDto
+import com.example.campusai.data.remote.agent.AgentRunDto
+import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
+import com.example.campusai.data.remote.agent.CourseResearchCitationDto
+import com.example.campusai.data.remote.agent.CourseResearchRoleProgressDto
+import com.example.campusai.data.remote.agent.CourseResearchRunCreateRequest
+import com.example.campusai.data.remote.agent.CourseResearchRunDto
+import com.example.campusai.data.remote.agent.FinalReviewAdjustmentProposalDto
+import com.example.campusai.data.remote.agent.FinalReviewCampaignCreateRequest
+import com.example.campusai.data.remote.agent.FinalReviewCampaignDto
+import com.example.campusai.data.remote.agent.FinalReviewDailyAgendaDto
+import com.example.campusai.data.remote.agent.FinalReviewDailyCheckinRequest
+import com.example.campusai.data.remote.agent.FinalReviewEvidenceRequest
+import com.example.campusai.data.remote.agent.FinalReviewPlanVersionDto
+import com.example.campusai.data.remote.agent.NoticeManualCreateRequest
+import com.example.campusai.data.remote.agent.NoticeManualResponseDto
+import com.example.campusai.data.remote.agent.NoticeWorkflowActionDto
+import com.example.campusai.data.remote.agent.NoticeWorkflowCreateRequest
+import com.example.campusai.data.remote.agent.NoticeWorkflowDto
+import com.example.campusai.data.remote.agent.NotificationSourceDto
+import com.example.campusai.data.remote.agent.NotificationSourcePatchRequest
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
@@ -1161,6 +1186,181 @@ interface ApiService {
 
     @POST("auth/qr/cancel")
     suspend fun qrCancel(@Body request: QrScanRequest): Response<Map<String, Any>>
+
+    // ===== Agent Runtime =====
+    @GET("agent-runtime/capabilities")
+    suspend fun agentCapabilities(): Response<AgentCapabilitiesDto>
+
+    @POST("agent-jobs")
+    suspend fun agentCreateJob(
+        @Body body: Map<String, Any?>,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentJobDto>
+
+    @GET("agent-jobs/{jobId}")
+    suspend fun agentGetJob(@Path("jobId") jobId: String): Response<AgentJobDto>
+
+    @GET("agent-runs/{runId}")
+    suspend fun agentGetRun(@Path("runId") runId: String): Response<AgentRunDto>
+
+    @POST("agent-runs/{runId}/cancel")
+    suspend fun agentCancelRun(
+        @Path("runId") runId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentRunDto>
+
+    @GET("agent-runs/{runId}/events")
+    suspend fun agentListRunEvents(@Path("runId") runId: String): Response<PagedResponse<AgentEventDto>>
+
+    @POST("agent-approvals/{approvalId}/decision")
+    suspend fun agentDecideApproval(
+        @Path("approvalId") approvalId: String,
+        @Body request: ApprovalDecisionRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentApprovalDto>
+
+    @GET("agent-artifacts/{artifactId}")
+    suspend fun agentGetArtifact(@Path("artifactId") artifactId: String): Response<AgentArtifactDto>
+
+    // ===== Final Review =====
+    @POST("final-review/campaigns")
+    suspend fun agentCreateFinalReviewCampaign(
+        @Body request: FinalReviewCampaignCreateRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<FinalReviewCampaignDto>
+
+    @GET("final-review/campaigns")
+    suspend fun agentListFinalReviewCampaigns(): Response<PagedResponse<FinalReviewCampaignDto>>
+
+    @GET("final-review/campaigns/{campaignId}")
+    suspend fun agentGetFinalReviewCampaign(@Path("campaignId") campaignId: String): Response<FinalReviewCampaignDto>
+
+    @POST("final-review/campaigns/{campaignId}/plans/generate")
+    suspend fun agentGenerateFinalReviewPlan(
+        @Path("campaignId") campaignId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @GET("final-review/campaigns/{campaignId}/plan-versions")
+    suspend fun agentListFinalReviewPlanVersions(@Path("campaignId") campaignId: String): Response<PagedResponse<FinalReviewPlanVersionDto>>
+
+    @GET("final-review/campaigns/{campaignId}/plan-versions/{version}")
+    suspend fun agentGetFinalReviewPlanVersion(
+        @Path("campaignId") campaignId: String,
+        @Path("version") version: Int,
+    ): Response<FinalReviewPlanVersionDto>
+
+    @POST("final-review/campaigns/{campaignId}/activate")
+    suspend fun agentActivateFinalReviewPlan(
+        @Path("campaignId") campaignId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @GET("final-review/campaigns/{campaignId}/agendas/today")
+    suspend fun agentGetFinalReviewTodayAgenda(@Path("campaignId") campaignId: String): Response<FinalReviewDailyAgendaDto>
+
+    @POST("final-review/daily-items/{itemId}/complete")
+    suspend fun agentCompleteFinalReviewDailyItem(
+        @Path("itemId") itemId: String,
+        @Body request: FinalReviewEvidenceRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @POST("final-review/campaigns/{campaignId}/daily-checkins")
+    suspend fun agentFinalReviewDailyCheckin(
+        @Path("campaignId") campaignId: String,
+        @Body request: FinalReviewDailyCheckinRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @POST("final-review/campaigns/{campaignId}/adjustments/analyze")
+    suspend fun agentAnalyzeFinalReviewAdjustments(
+        @Path("campaignId") campaignId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @GET("final-review/campaigns/{campaignId}/adjustment-proposals")
+    suspend fun agentListFinalReviewAdjustmentProposals(@Path("campaignId") campaignId: String): Response<PagedResponse<FinalReviewAdjustmentProposalDto>>
+
+    @POST("final-review/adjustment-proposals/{proposalId}/decision")
+    suspend fun agentDecideFinalReviewAdjustment(
+        @Path("proposalId") proposalId: String,
+        @Body request: ApprovalDecisionRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    // ===== Course Research =====
+    @POST("course-research/runs")
+    suspend fun agentCreateCourseResearchRun(
+        @Body request: CourseResearchRunCreateRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<CourseResearchRunDto>
+
+    @GET("course-research/runs")
+    suspend fun agentListCourseResearchRuns(): Response<PagedResponse<CourseResearchRunDto>>
+
+    @GET("course-research/runs/{runId}")
+    suspend fun agentGetCourseResearchRun(@Path("runId") runId: String): Response<CourseResearchRunDto>
+
+    @POST("course-research/runs/{runId}/cancel")
+    suspend fun agentCancelCourseResearchRun(
+        @Path("runId") runId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<Unit>
+
+    @GET("course-research/runs/{runId}/artifacts")
+    suspend fun agentListCourseResearchArtifacts(@Path("runId") runId: String): Response<PagedResponse<AgentArtifactDto>>
+
+    @GET("course-research/runs/{runId}/role-progress")
+    suspend fun agentListCourseResearchRoleProgress(@Path("runId") runId: String): Response<PagedResponse<CourseResearchRoleProgressDto>>
+
+    @GET("course-research/runs/{runId}/citations")
+    suspend fun agentListCourseResearchCitations(@Path("runId") runId: String): Response<PagedResponse<CourseResearchCitationDto>>
+
+    // ===== Notice Workflow =====
+    @GET("notification-sources")
+    suspend fun agentListNotificationSources(): Response<PagedResponse<NotificationSourceDto>>
+
+    @PATCH("notification-sources/{sourceId}")
+    suspend fun agentPatchNotificationSource(
+        @Path("sourceId") sourceId: String,
+        @Body request: NotificationSourcePatchRequest,
+    ): Response<NotificationSourceDto>
+
+    @POST("notices/manual")
+    suspend fun agentCreateManualNotice(
+        @Body request: NoticeManualCreateRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<NoticeManualResponseDto>
+
+    @POST("notices/{noticeId}/workflow")
+    suspend fun agentCreateNoticeWorkflow(
+        @Path("noticeId") noticeId: String,
+        @Body request: NoticeWorkflowCreateRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<NoticeWorkflowDto>
+
+    @GET("notice-workflows/{workflowId}")
+    suspend fun agentGetNoticeWorkflow(@Path("workflowId") workflowId: String): Response<NoticeWorkflowDto>
+
+    @POST("notice-workflows/{workflowId}/reanalyze")
+    suspend fun agentReanalyzeNoticeWorkflow(
+        @Path("workflowId") workflowId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<NoticeWorkflowDto>
+
+    @POST("notice-workflow-actions/{actionId}/decision")
+    suspend fun agentDecideNoticeWorkflowAction(
+        @Path("actionId") actionId: String,
+        @Body request: ApprovalDecisionRequest,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<NoticeWorkflowActionDto>
+
+    @POST("notice-workflow-actions/{actionId}/execute")
+    suspend fun agentExecuteNoticeWorkflowAction(
+        @Path("actionId") actionId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<NoticeWorkflowActionDto>
 }
 
 // ===== QR 扫码登录 DTO =====

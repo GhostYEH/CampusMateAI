@@ -94,6 +94,31 @@ object ApiClient {
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
+    val agentSseStreamClient: OkHttpClient = okHttpClient.newBuilder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+
+    val agentSse: com.example.campusai.data.remote.agent.AgentSseClient =
+        com.example.campusai.data.remote.agent.AgentSseClient(
+            baseUrl = BASE_URL,
+            tokenProvider = ::currentAccessToken,
+            tokenRefresher = tokenRefresh@{
+                val current = accessToken
+                if (current.isNullOrBlank()) return@tokenRefresh null
+                try {
+                    val response = kotlinx.coroutines.runBlocking {
+                        authApi.refresh(RefreshRequest(current))
+                    }
+                    val newToken: String? = response.body()?.access_token
+                    if (response.isSuccessful && newToken != null) {
+                        setToken(newToken)
+                        newToken
+                    } else null
+                } catch (_: Exception) { null }
+            },
+            client = agentSseStreamClient,
+        )
+
     private val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
         .build()

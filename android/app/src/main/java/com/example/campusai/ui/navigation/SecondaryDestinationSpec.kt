@@ -93,4 +93,7 @@ private val staticDestinationTitles = mapOf(
     "focus" to "专注大厅",
     "focus_summary" to "本次专注总结",
     "focus_history" to "专注记录",
+    "agent_final_review" to "期末复习",
+    "agent_course_research" to "课程研究",
+    "agent_notice_workflow" to "通知事务",
 )

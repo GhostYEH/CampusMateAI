@@ -13,10 +13,20 @@ class ModuleRepositories(
     val focus: ApiFocusRepository,
     val focusPlans: FocusPlanRepository,
     val community: CommunityRepository,
+    val agentRuntime: AgentRuntimeRepository,
+    val finalReview: FinalReviewRepository,
+    val courseResearch: CourseResearchRepository,
+    val noticeWorkflow: NoticeWorkflowRepository,
 ) {
     companion object {
         fun create(application: Application, appRepository: AppRepository): ModuleRepositories {
             val storage = AppDataStore(application)
+            val userIdProvider: () -> String = {
+                appRepository.session.value?.accountId
+                    ?.ifBlank { null }
+                    ?: appRepository.session.value?.studentId
+                    ?: "anonymous"
+            }
             return ModuleRepositories(
                 exams = LocalExamRepository(
                     storage = storage,
@@ -26,14 +36,28 @@ class ModuleRepositories(
                 focusPlans = FocusPlanRepository(
                     storage = storage,
                     api = ApiClient.api,
-                    accountKey = {
-                        appRepository.session.value?.accountId
-                            ?.ifBlank { null }
-                            ?: appRepository.session.value?.studentId
-                            ?: "anonymous"
-                    },
+                    accountKey = userIdProvider,
                 ),
                 community = CommunityRepository(),
+                agentRuntime = AgentRuntimeRepository(
+                    api = ApiClient.api,
+                    sseClient = ApiClient.agentSse,
+                    userIdProvider = userIdProvider,
+                ),
+                finalReview = FinalReviewRepository(
+                    api = ApiClient.api,
+                    sseClient = ApiClient.agentSse,
+                    userIdProvider = userIdProvider,
+                ),
+                courseResearch = CourseResearchRepository(
+                    api = ApiClient.api,
+                    sseClient = ApiClient.agentSse,
+                    userIdProvider = userIdProvider,
+                ),
+                noticeWorkflow = NoticeWorkflowRepository(
+                    api = ApiClient.api,
+                    userIdProvider = userIdProvider,
+                ),
             )
         }
     }
