@@ -92,6 +92,22 @@ class Settings(BaseSettings):
     campusmate_lm_data_retention_days: int = 30
     campusmate_lm_canary_enabled: bool = False
 
+    # ===== CampusAgentRuntime model providers (§6) =====
+    # Zhipu reasoning primary; Xunfei fast structured.复用 OpenAICompatibleClient。
+    # 真实凭据只存在于未追踪的 backend/.env,绝不进入客户端/日志/fixture/commit。
+    zhipu_llm_base_url: str = ""
+    zhipu_llm_api_key: str = ""
+    zhipu_llm_model: str = ""
+    zhipu_llm_timeout_seconds: int = 30
+    xunfei_llm_base_url: str = "https://spark-api-open.xf-yun.com/v1"
+    xunfei_llm_api_key: str = ""
+    xunfei_llm_model: str = "lite"
+    xunfei_llm_timeout_seconds: int = 30
+    # Agent artifact 存储目录(相对 backend/ 根目录)
+    agent_artifact_path: str = "./data/agent_artifacts"
+    # production 禁止 mock providers
+    agent_allow_mock_providers: bool = False
+
     # ===== MiMo TTS =====
     mimo_base_url: str = "https://api.xiaomimimo.com/v1"
     mimo_api_key: str = ""
@@ -217,6 +233,21 @@ class Settings(BaseSettings):
         return bool(self.volc_seeduplex_api_key)
 
     @property
+    def zhipu_llm_available(self) -> bool:
+        return bool(self.zhipu_llm_base_url and self.zhipu_llm_api_key and self.zhipu_llm_model)
+
+    @property
+    def xunfei_llm_available(self) -> bool:
+        return bool(self.xunfei_llm_base_url and self.xunfei_llm_api_key and self.xunfei_llm_model)
+
+    @property
+    def agent_artifact_dir(self) -> Path:
+        p = Path(self.agent_artifact_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
     def knowledge_base_dir(self) -> Path:
         p = Path(self.knowledge_base_path)
         if not p.is_absolute():
@@ -305,6 +336,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "production 环境禁止启用 EDU_ALLOW_INSECURE_SSL;"
                     "教务系统探测必须验证 SSL 证书"
+                )
+            if self.agent_allow_mock_providers:
+                raise ValueError(
+                    "production 环境禁止启用 AGENT_ALLOW_MOCK_PROVIDERS;"
+                    "Agent runtime 不得使用 mock providers"
                 )
             self.trusted_device_cookie_secure = True
         return self
