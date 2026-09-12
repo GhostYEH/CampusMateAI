@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .c_knowledge import KnowledgeMasteryValue
 
 SnapshotDataQuality = Literal["verified", "partial", "stale", "unavailable"]
-ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"]
+ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"]
 StateType = Literal[
     "observed_learning_activity",
     "task_workload",
@@ -16,6 +16,12 @@ StateType = Literal[
     "course_participation",
     "data_source_health",
     "knowledge_mastery_estimate",
+    "academic_course_load",
+    "grade_observation",
+    "credit_progress",
+    "exam_exposure",
+    "schedule_load",
+    "goal_state",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
@@ -96,6 +102,69 @@ class DataSourceHealthValue(BaseModel):
         return self
 
 
+class AcademicCourseLoadValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_semester_course_count: int = Field(ge=0)
+    effective_credit_load: float = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class GradeObservationValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_grade_count: int = Field(ge=0)
+    score_band_distribution: dict[str, int] = Field(default_factory=dict)
+    has_observed_grades: bool
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class CreditProgressValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_credits: float = Field(ge=0)
+    current_semester_credits: float = Field(ge=0)
+    total_required_credits: float | None = None
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class ExamExposureValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    upcoming_exam_count: int = Field(ge=0)
+    time_bucket_distribution: dict[str, int] = Field(default_factory=dict)
+    unknown_time_exam_count: int = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class ScheduleLoadValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    future_7d_course_density: float = Field(ge=0)
+    high_density_periods: list[str] = Field(default_factory=list, max_length=16)
+    density_description: str = Field(default="observed", max_length=64)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+GoalSourceLabel = Literal["student_initiated", "system_suggested", "plan_accepted"]
+
+
+class GoalStateValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active_daily_goals: int = Field(ge=0)
+    session_goals_summary: dict[str, int] = Field(default_factory=dict)
+    accepted_plan_goals: int = Field(ge=0)
+    source_labels: list[GoalSourceLabel] = Field(default_factory=list, max_length=16)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
 StateValue = Annotated[
     Union[
         ObservedLearningActivityValue,
@@ -104,6 +173,12 @@ StateValue = Annotated[
         CourseParticipationValue,
         DataSourceHealthValue,
         KnowledgeMasteryValue,
+        AcademicCourseLoadValue,
+        GradeObservationValue,
+        CreditProgressValue,
+        ExamExposureValue,
+        ScheduleLoadValue,
+        GoalStateValue,
     ],
     Field(union_mode="smart"),
 ]
@@ -140,6 +215,12 @@ class LearnerStateSnapshotOut(BaseModel):
             "course_participation": CourseParticipationValue,
             "data_source_health": DataSourceHealthValue,
             "knowledge_mastery_estimate": KnowledgeMasteryValue,
+            "academic_course_load": AcademicCourseLoadValue,
+            "grade_observation": GradeObservationValue,
+            "credit_progress": CreditProgressValue,
+            "exam_exposure": ExamExposureValue,
+            "schedule_load": ScheduleLoadValue,
+            "goal_state": GoalStateValue,
         }[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
@@ -168,7 +249,8 @@ class LearnerStateEvidenceOut(BaseModel):
     evidence_kind: Literal["EVENT", "SOURCE_ROW", "SYNC_STATUS"]
     source_category: Literal[
         "study_session", "personal_task", "practice_attempt", "course_content", "course_sync",
-        "core_learning_record", "chaoxing", "unknown"
+        "core_learning_record", "chaoxing", "edu_schedule", "edu_grade", "edu_exam",
+        "self_report", "ai_learning_feedback", "code_analysis", "unknown"
     ]
     event_id: str | None = None
     event_type: str | None = None
@@ -180,6 +262,8 @@ class LearnerStateEvidenceOut(BaseModel):
         "chapter_sync_complete", "chapter_data_stale", "source_disconnected",
         "event_projection_gap", "input_truncated", "historical_submission_not_current",
         "orphan_assignment_submitted", "platform_event_observed", "state_observed", "practice_result",
+        "edu_schedule_observed", "edu_grade_observed", "edu_exam_observed",
+        "academic_data_unavailable", "goal_student_initiated", "goal_system_suggested",
     ]
 
     _aware_occurred = field_validator("occurred_at")(_aware)
@@ -206,7 +290,7 @@ class LearnerStateRunOut(BaseModel):
     is_current: bool
     warning_codes: list[str] = Field(default_factory=list, max_length=32)
     snapshot_count: int = Field(ge=0)
-    projection_kind: Literal["CORE", "KNOWLEDGE"] = "CORE"
+    projection_kind: Literal["CORE", "KNOWLEDGE", "ACADEMIC"] = "CORE"
     projection_scope: str = "__user__"
 
     _aware_times = field_validator("as_of", "computed_at")(_aware)
@@ -252,6 +336,12 @@ class LearnerStateChangeOut(BaseModel):
             "deadline_exposure": DeadlineExposureValue,
             "course_participation": CourseParticipationValue,
             "data_source_health": DataSourceHealthValue,
+            "academic_course_load": AcademicCourseLoadValue,
+            "grade_observation": GradeObservationValue,
+            "credit_progress": CreditProgressValue,
+            "exam_exposure": ExamExposureValue,
+            "schedule_load": ScheduleLoadValue,
+            "goal_state": GoalStateValue,
         }[self.state_type]
         if self.previous_value is not None and not isinstance(self.previous_value, expected):
             raise ValueError("previous_value does not match state_type")
@@ -274,9 +364,14 @@ class LearnerStateChangePage(BaseModel):
 
 
 __all__ = [
+    "AcademicCourseLoadValue",
     "CourseParticipationValue",
+    "CreditProgressValue",
     "DataSourceHealthValue",
     "DeadlineExposureValue",
+    "ExamExposureValue",
+    "GoalStateValue",
+    "GradeObservationValue",
     "LearnerStateEvidenceOut",
     "LearnerStateEvidencePage",
     "LearnerStateChangeOut",
@@ -286,6 +381,7 @@ __all__ = [
     "LearnerStateSnapshotOut",
     "LearnerStateSnapshotPage",
     "ObservedLearningActivityValue",
+    "ScheduleLoadValue",
     "SnapshotDataQuality",
     "TaskWorkloadValue",
 ]

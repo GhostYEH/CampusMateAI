@@ -12,8 +12,10 @@ from ..models.learner_state import ProjectionRunRow, StateSnapshotRow
 from ..repositories.learner_state_repository import LearnerStateRepository
 
 ESTIMATOR_VERSION = "deterministic-observed-v1"
+ACADEMIC_ESTIMATOR_VERSION = "academic-observed-v1"
 _SHORT_TTL = timedelta(minutes=5)
 _CHAOXING_TTL = timedelta(hours=24)
+_ACADEMIC_TTL = timedelta(hours=1)
 
 
 def _iso(value: datetime) -> str:
@@ -78,11 +80,13 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
         self._control_repository = control_repository
         self._source_policy = source_policy
+        self._edu_data_repository = edu_data_repository
+        self._learner_event_repository = learner_event_repository
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -156,6 +160,319 @@ class LearnerStateProjectionService:
             if current is not None:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_result(user_id=user_id, as_of=as_of)
+
+    def project_academic(
+        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+    ) -> ProjectionResult:
+        """ACADEMIC 投影：将教务事实安全地投影到学生状态世界模型。
+
+        不把成绩直接解释成能力或心理结论。
+        数据不足时返回 UNAVAILABLE，不伪造毕业进度。
+        """
+        as_of = _require_utc(as_of)
+        current = None
+        try:
+            current = self.repository.get_current_run(
+                user_id=user_id, projection_kind="ACADEMIC", projection_scope="__user__"
+            )
+            inputs = self._collect_academic_inputs(user_id=user_id)
+            if self._source_policy is not None:
+                inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
+            input_digest = _digest(inputs)
+            current_as_of = _parse(current.as_of) if current else None
+            if (
+                current
+                and current.estimator_version == ACADEMIC_ESTIMATOR_VERSION
+                and current.input_digest == input_digest
+                and current_as_of is not None
+                and as_of >= current_as_of
+                and self._academic_snapshots_valid(current.user_id, as_of)
+            ):
+                existing = self._result_from_current(current, as_of=as_of)
+                if existing is not None:
+                    return existing
+            result, snapshot_rows, evidence = self._compute_academic(
+                user_id=user_id, inputs=inputs, as_of=as_of,
+                input_digest=input_digest, trigger=trigger,
+            )
+            if current is None or current_as_of is None or as_of >= current_as_of:
+                self.repository.save_projection(
+                    run={
+                        "run_id": result.run_id,
+                        "user_id": user_id,
+                        "as_of": result.as_of,
+                        "computed_at": result.computed_at,
+                        "estimator_version": ACADEMIC_ESTIMATOR_VERSION,
+                        "input_digest": input_digest,
+                        "trigger": trigger,
+                        "projection_kind": "ACADEMIC",
+                        "projection_scope": "__user__",
+                        "warnings": result.warnings,
+                    },
+                    snapshots=[self._to_dict(row) for row in snapshot_rows],
+                    evidence=evidence,
+                )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "academic_projection_failed user_id={} trigger={} exception_type={}",
+                user_id, trigger, type(exc).__name__,
+            )
+            if current is not None:
+                return self._stale_result(current, as_of=as_of)
+            return self._unavailable_result(user_id=user_id, as_of=as_of)
+
+    def _collect_academic_inputs(self, *, user_id: str) -> dict[str, Any]:
+        inputs: dict[str, Any] = {
+            "schedule_items": [],
+            "grade_items": [],
+            "exam_items": [],
+            "edu_events": [],
+        }
+        if self._edu_data_repository is not None:
+            try:
+                inputs["schedule_items"] = [
+                    {"id": i.id, "semester": i.semester, "course_code": i.course_code,
+                     "credit": i.credit, "weekday": i.weekday, "is_stale": i.is_stale}
+                    for i in self._edu_data_repository.list_schedule_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["grade_items"] = [
+                    {"id": i.id, "semester": i.semester, "course_code": i.course_code,
+                     "credit": i.credit, "score": i.score, "is_stale": i.is_stale}
+                    for i in self._edu_data_repository.list_grade_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["exam_items"] = [
+                    {"id": i.id, "semester": i.semester, "course_code": i.course_code,
+                     "starts_at": i.starts_at, "is_stale": i.is_stale}
+                    for i in self._edu_data_repository.list_exam_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+            except Exception:
+                pass
+        if self._learner_event_repository is not None:
+            try:
+                events, _ = self._learner_event_repository.list_for_user(
+                    user_id=user_id, source="edu", page=1, page_size=100
+                )
+                inputs["edu_events"] = [
+                    {"event_id": e.event_id, "event_type": e.event_type, "occurred_at": e.occurred_at}
+                    for e in events
+                ]
+            except Exception:
+                pass
+        return inputs
+
+    def _academic_snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
+        rows = self.repository.list_all_current_snapshots(
+            user_id=user_id, projection_kind="ACADEMIC", projection_scope="__user__"
+        )
+        return bool(rows) and all(
+            (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
+            for row in rows
+        )
+
+    def _compute_academic(
+        self, *, user_id: str, inputs: dict[str, Any], as_of: datetime,
+        input_digest: str, trigger: str,
+    ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
+        computed_at = _iso(as_of)
+        run_id = f"lrun_{uuid.uuid4().hex[:16]}"
+        rows: list[ComputedSnapshot] = []
+        evidence: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        valid_until = as_of + _ACADEMIC_TTL
+
+        if self._source_policy is not None:
+            policy_warning = self._source_policy.get_projection_warning(user_id=user_id)
+            if policy_warning is not None:
+                warnings.append(policy_warning)
+
+        schedule_items = inputs.get("schedule_items", [])
+        grade_items = inputs.get("grade_items", [])
+        exam_items = inputs.get("exam_items", [])
+        edu_events = inputs.get("edu_events", [])
+
+        has_data = bool(schedule_items or grade_items or exam_items)
+        base_quality = "verified" if has_data else "unavailable"
+
+        def add_academic(
+            *, state_type: str, value: dict[str, Any], quality: str,
+            sources: list[dict[str, Any]] | None = None,
+        ) -> None:
+            confidence = _confidence(quality)
+            snapshot = ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="USER", scope_id=user_id, state_type=state_type,
+                value=value, confidence=confidence, data_quality=quality,
+                observed_from=_iso(as_of - timedelta(days=90)) if has_data else None,
+                observed_through=_iso(as_of) if has_data else None,
+                valid_until=_iso(valid_until),
+                computed_at=computed_at,
+            )
+            rows.append(snapshot)
+            for source in (sources or [])[:100]:
+                evidence.append({
+                    "evidence_id": f"lev_{uuid.uuid4().hex[:16]}",
+                    "snapshot_id": snapshot.snapshot_id,
+                    "evidence_kind": source.get("evidence_kind", "EVENT"),
+                    "event_id": source.get("event_id"),
+                    "source_type": source.get("source_type", "edu_schedule"),
+                    "source_id": source.get("source_id", user_id),
+                    "role": source.get("role", "SUPPORTS"),
+                    "quality": source.get("quality", quality),
+                    "explanation_code": source.get("explanation_code", "state_observed"),
+                })
+
+        # 1. academic_course_load
+        semesters = {item.get("semester") for item in schedule_items if item.get("semester")}
+        current_sem_count = len({item.get("course_code") for item in schedule_items if item.get("course_code")})
+        credit_load = sum(float(item.get("credit") or 0) for item in schedule_items)
+        add_academic(
+            state_type="academic_course_load",
+            value={
+                "current_semester_course_count": current_sem_count,
+                "effective_credit_load": round(credit_load, 2),
+                "data_completeness": base_quality,
+                "warning_codes": list(warnings),
+            },
+            quality=base_quality,
+            sources=[{"source_type": "edu_schedule", "source_id": item["id"], "explanation_code": "edu_schedule_observed"} for item in schedule_items[:10]],
+        )
+
+        # 2. grade_observation
+        score_bands: dict[str, int] = {}
+        for item in grade_items:
+            score = item.get("score")
+            if not score:
+                continue
+            try:
+                numeric = float(score)
+            except (TypeError, ValueError):
+                score_bands["non_numeric"] = score_bands.get("non_numeric", 0) + 1
+                continue
+            if numeric >= 90:
+                band = "90_100"
+            elif numeric >= 80:
+                band = "80_89"
+            elif numeric >= 70:
+                band = "70_79"
+            elif numeric >= 60:
+                band = "60_69"
+            else:
+                band = "0_59"
+            score_bands[band] = score_bands.get(band, 0) + 1
+        add_academic(
+            state_type="grade_observation",
+            value={
+                "observed_grade_count": len(grade_items),
+                "score_band_distribution": score_bands,
+                "has_observed_grades": bool(grade_items),
+                "data_completeness": base_quality,
+                "warning_codes": list(warnings),
+            },
+            quality=base_quality,
+            sources=[{"source_type": "edu_grade", "source_id": item["id"], "explanation_code": "edu_grade_observed"} for item in grade_items[:10]],
+        )
+
+        # 3. credit_progress
+        observed_credits = sum(float(item.get("credit") or 0) for item in grade_items)
+        current_sem_credits = sum(float(item.get("credit") or 0) for item in schedule_items)
+        add_academic(
+            state_type="credit_progress",
+            value={
+                "observed_credits": round(observed_credits, 2),
+                "current_semester_credits": round(current_sem_credits, 2),
+                "total_required_credits": None,
+                "data_completeness": base_quality,
+                "warning_codes": ["total_required_credits_unknown"] if has_data else list(warnings),
+            },
+            quality=base_quality,
+        )
+
+        # 4. exam_exposure
+        upcoming_exams = []
+        unknown_time_count = 0
+        time_buckets: dict[str, int] = {}
+        for item in exam_items:
+            starts_at = item.get("starts_at")
+            if not starts_at:
+                unknown_time_count += 1
+                continue
+            try:
+                exam_dt = datetime.fromisoformat(str(starts_at).replace("Z", "+00:00"))
+                if exam_dt.tzinfo is None:
+                    exam_dt = exam_dt.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                unknown_time_count += 1
+                continue
+            if exam_dt < as_of:
+                continue
+            upcoming_exams.append(item)
+            delta_days = (exam_dt - as_of).days
+            if delta_days <= 7:
+                bucket = "within_7d"
+            elif delta_days <= 30:
+                bucket = "within_30d"
+            else:
+                bucket = "beyond_30d"
+            time_buckets[bucket] = time_buckets.get(bucket, 0) + 1
+        add_academic(
+            state_type="exam_exposure",
+            value={
+                "upcoming_exam_count": len(upcoming_exams),
+                "time_bucket_distribution": time_buckets,
+                "unknown_time_exam_count": unknown_time_count,
+                "data_completeness": base_quality,
+                "warning_codes": list(warnings),
+            },
+            quality=base_quality,
+            sources=[{"source_type": "edu_exam", "source_id": item["id"], "explanation_code": "edu_exam_observed"} for item in upcoming_exams[:10]],
+        )
+
+        # 5. schedule_load
+        future_7d_count = 0
+        for item in schedule_items:
+            future_7d_count += 1
+        density = float(future_7d_count) / 7.0 if future_7d_count > 0 else 0.0
+        high_density = ["high"] if density > 4.0 else []
+        add_academic(
+            state_type="schedule_load",
+            value={
+                "future_7d_course_density": round(density, 2),
+                "high_density_periods": high_density,
+                "density_description": "observed",
+                "data_completeness": base_quality,
+                "warning_codes": list(warnings),
+            },
+            quality=base_quality,
+        )
+
+        # 6. goal_state
+        goal_events = [e for e in edu_events if e.get("event_type") == "self_report_submitted"]
+        add_academic(
+            state_type="goal_state",
+            value={
+                "active_daily_goals": 0,
+                "session_goals_summary": {},
+                "accepted_plan_goals": 0,
+                "source_labels": [],
+                "data_completeness": "unavailable" if not goal_events else "partial",
+                "warning_codes": list(warnings),
+            },
+            quality="unavailable" if not goal_events else "partial",
+        )
+
+        result = ProjectionResult(
+            run_id=run_id, user_id=user_id, as_of=_iso(as_of), computed_at=computed_at,
+            estimator_version=ACADEMIC_ESTIMATOR_VERSION, input_digest=input_digest,
+            snapshots=rows, warnings=warnings,
+        )
+        return result, rows, evidence
 
     def _snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
         rows = self.repository.list_all_current_snapshots(
