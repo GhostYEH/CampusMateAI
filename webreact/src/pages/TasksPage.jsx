@@ -30,7 +30,7 @@ function TaskRow({ task, onToggle, onEdit, onDelete, onPostpone, onOpen, onDragS
   return <article className={`task-row panel task-state-${state}`} draggable onDragStart={() => onDragStart?.(task)} onDragOver={(event) => { event.preventDefault(); onDragOver?.(task); }} onDrop={() => onDrop?.(task)}>
     <span className="task-drag-handle" aria-hidden="true" title="拖动排序"><Icon name="PhDotsSixVertical" size={17} /></span>
     <button className="task-row-main" onClick={() => (onOpen ? onOpen(task) : onToggle?.(task))}>
-      <span className={`task-check ${task.done ? "done" : ""}`} aria-hidden="true"><Icon name={task.done ? "PhCheckCircle" : "PhCircle"} size={21} /></span>
+      <span className={`task-check ${task.done ? "done" : ""}`} aria-hidden="true"><Icon name="PhCheck" size={12} weight="bold" /></span>
       <span className="task-row-copy"><strong>{task.title || "未命名任务"}</strong><small>{task.typeLabel} · {task.source}</small><span className="task-progress" aria-label={`进度 ${progress}%`}><i style={{ width: `${progress}%` }} /></span></span>
     </button>
     <span className="task-row-deadline"><small>{task.done ? "已完成" : state === "overdue" ? "已逾期" : "截止"}</small><time>{dateText(task.deadline)}</time></span>
@@ -42,7 +42,7 @@ function TaskRow({ task, onToggle, onEdit, onDelete, onPostpone, onOpen, onDragS
         <Button variant="quiet" onClick={() => onToggle(task)}>{task.done ? "恢复" : "完成"}</Button>
         <Button variant="quiet" onClick={() => onEdit(task)}>编辑</Button>
         <Button variant="quiet" onClick={() => onPostpone(task)}>延期</Button>
-        <Button variant="danger" onClick={() => onDelete(task)}>删除</Button>
+        <button className="task-row-delete" type="button" aria-label={`删除 ${task.title || "任务"}`} title="删除" onClick={() => onDelete(task)}><Icon name="PhTrash" size={15} /></button>
       </>}
       {task.kind === "assignment" && <Link className="text-button" to={`/tasks/assignment/${task.sourceId}`}>查看作业</Link>}
     </div>

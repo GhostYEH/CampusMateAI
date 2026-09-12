@@ -96,12 +96,15 @@
 .study-summer-todos__add button { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; color: #0a1c12; background: var(--summer-primary); }
 .study-summer-todos__add button:disabled { opacity: .3; }
 .study-summer-todos__list { min-height: 0; flex: 1; padding: 4px 9px 3px; overflow-y: auto; }
-.study-summer-todos__list > button { display: flex; width: 100%; align-items: center; gap: 8px; min-height: 38px; padding: 6px 8px; border: 0; border-radius: 8px; color: rgba(255,255,255,.78); background: transparent; font-size: 13px; text-align: left; }
+.study-summer-todos__list > button { display: flex; width: 100%; align-items: center; gap: 11px; min-height: 40px; padding: 6px 8px; border: 0; border-radius: 8px; color: rgba(255,255,255,.78); background: transparent; font-size: 13px; text-align: left; }
 .study-summer-todos__list > button:hover { background: rgba(255,255,255,.06); }
 .study-summer-todos__list > button > span:nth-child(2) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .study-summer-todos__list > button small { flex: 0 0 auto; color: rgba(255,255,255,.32); font-size: 11px; }
 .study-summer-todos__list > button.is-done > span:nth-child(2) { color: rgba(255,255,255,.38); text-decoration: line-through; }
-.study-summer-todo-check { color: rgba(215,239,131,.6); }
+.study-summer-todo-check { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; border: 1.5px solid rgba(215,239,131,.4); border-radius: 50%; color: transparent; background: transparent; transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.study-summer-todos__list > button:hover .study-summer-todo-check { border-color: rgba(215,239,131,.72); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
+.study-summer-todos__list > button.is-done .study-summer-todo-check { border-color: var(--summer-primary); color: #0a1c12; background: var(--summer-primary); }
+.study-summer-todos__list > button.is-done .study-summer-todo-check:active { transform: scale(.88); }
 .study-summer-todos__empty { display: grid; min-height: 180px; place-items: center; align-content: center; gap: 7px; color: rgba(215,239,131,.6); text-align: center; }
 .study-summer-todos__empty p { margin: 4px 0 0; color: rgba(255,255,255,.7); font-size: 13px; }
 .study-summer-todos__empty small { color: rgba(255,255,255,.38); font-size: 11px; }
@@ -162,14 +165,22 @@
 .study-sub-create button { min-height: 31px; padding: 0 11px; border-radius: 8px; color: #07120e; background: var(--summer-primary); font-size: 10px; font-weight: 700; }
 .study-sub-create button:disabled { cursor: not-allowed; opacity: .45; }
 .study-plan-list, .study-doc-list, .study-course-list, .study-record-list { margin-top: 16px; }
-.study-plan-row, .study-doc-row, .study-record-list article { display: flex; align-items: center; gap: 10px; min-height: 57px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,.07); }
+.study-plan-row, .study-doc-row, .study-record-list article { display: flex; align-items: center; gap: 11px; min-height: 58px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,.07); }
 .study-plan-row > div, .study-doc-row > div, .study-record-list article > div { min-width: 0; flex: 1; }
 .study-plan-row strong, .study-doc-row strong, .study-record-list strong { display: block; overflow: hidden; color: rgba(255,255,255,.84); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .study-plan-row small, .study-doc-row small, .study-record-list small { display: block; margin-top: 4px; color: rgba(255,255,255,.38); font-size: 10px; }
 .study-plan-row.is-done strong { color: rgba(255,255,255,.4); text-decoration: line-through; }
-.study-plan-check, .study-plan-delete { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 auto; color: rgba(215,239,131,.68); background: transparent; }
-.study-plan-delete { color: rgba(255,255,255,.3); }
-.study-plan-delete:hover { color: #ffaaa0; }
+.study-plan-check { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 auto; border: 0; border-radius: 50%; background: transparent; }
+.study-plan-check-box { display: grid; width: 19px; height: 19px; place-items: center; border: 1.5px solid rgba(255,255,255,.34); border-radius: 50%; color: transparent; transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.study-plan-row:hover .study-plan-check-box { border-color: rgba(215,239,131,.68); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
+.study-plan-check:focus-visible { outline: 2px solid rgba(215,239,131,.6); outline-offset: 2px; }
+.study-plan-row.is-done .study-plan-check-box { border-color: var(--summer-primary); color: #0a1c12; background: var(--summer-primary); }
+.study-plan-row.is-done .study-plan-check:active .study-plan-check-box { transform: scale(.88); }
+.study-plan-delete { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border: 0; border-radius: 8px; color: rgba(255,255,255,.3); background: transparent; opacity: 0; transform: translateX(2px); transition: opacity .18s ease, color .18s ease, background .18s ease, transform .18s ease; }
+.study-plan-row:hover .study-plan-delete, .study-plan-row:focus-within .study-plan-delete { opacity: 1; transform: none; }
+.study-plan-delete:hover { color: #ffaaa0; background: rgba(255,138,128,.12); }
+.study-plan-delete:focus-visible { opacity: 1; transform: none; outline: 2px solid rgba(255,170,160,.55); outline-offset: 1px; }
+@media (hover: none), (pointer: coarse) { .study-plan-delete { opacity: .72; transform: none; } }
 .study-doc-icon, .study-record-list article > span { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(215,239,131,.16); border-radius: 8px; color: var(--summer-primary); background: rgba(215,239,131,.08); }
 .study-reading-grid, .study-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .study-course-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 10px; border-top: 1px solid rgba(255,255,255,.07); color: rgba(255,255,255,.72); background: transparent; font-size: 12px; text-align: left; }
@@ -179,6 +190,18 @@
 .study-resource-card { display: grid; gap: 7px; min-height: 105px; padding: 13px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; color: var(--summer-primary); background: rgba(0,0,0,.14); }
 .study-resource-card strong { color: rgba(255,255,255,.82); font-size: 11px; line-height: 1.5; }
 .study-resource-card small { color: rgba(255,255,255,.36); font-size: 10px; }
+/* 阅读页：页面固定视口高度（扣除顶部导航 88px + 路由底部 24px），校内资料 / 课程阅读 / 阅读详情卡片各自独立滚动，不再依赖全局上下滚动 */
+.study-summer-subpage--docs { display: flex; flex-direction: column; height: calc(100dvh - 112px); min-height: 0; }
+.study-summer-subpage--docs .study-summer-subpage__header { flex: 0 0 auto; }
+.study-summer-subpage--docs .study-summer-subpage__content { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+.study-summer-subpage--docs .study-reading-grid { flex: 1; min-height: 0; align-items: stretch; }
+.study-summer-subpage--docs .study-sub-panel { display: flex; min-height: 0; flex-direction: column; }
+.study-summer-subpage--docs .study-doc-list, .study-summer-subpage--docs .study-course-list { flex: 1; min-height: 0; margin-top: 12px; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; scrollbar-color: rgba(215, 239, 131, .28) transparent; }
+.study-summer-subpage--docs .study-reading-detail { display: flex; flex: 0 0 auto; min-height: 0; max-height: 40%; flex-direction: column; overflow: hidden; }
+.study-summer-subpage--docs .study-resource-grid { flex: 1; min-height: 0; margin-top: 12px; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; scrollbar-color: rgba(215, 239, 131, .28) transparent; }
+.study-summer-subpage--docs ::-webkit-scrollbar { width: 6px; height: 6px; }
+.study-summer-subpage--docs ::-webkit-scrollbar-thumb { border-radius: 99px; background: rgba(215, 239, 131, .28); }
+.study-summer-subpage--docs ::-webkit-scrollbar-track { background: transparent; }
 .study-stat-grid { align-items: stretch; }
 .study-panel-number { color: var(--summer-primary); font-size: 28px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .study-stat-chart { display: flex; align-items: end; gap: 10px; height: 185px; margin-top: 18px; padding: 15px 5px 0; border-top: 1px solid rgba(255,255,255,.07); }
@@ -190,11 +213,41 @@
 .study-sub-empty p { margin: 0; color: rgba(255,255,255,.48); font-size: 12px; }
 .study-sub-empty button { color: var(--summer-primary); font-size: 11px; }
 .study-sub-empty--inline { min-height: 120px; }
-@media (max-width: 860px) { .study-summer-subpage__header { display: grid; } .study-summer-subpage__scene-picker { justify-self: start; } .study-sub-stats { grid-template-columns: repeat(2, 1fr); } .study-reading-grid, .study-stat-grid { grid-template-columns: 1fr; } }
+@media (max-width: 860px) { .study-summer-subpage__header { display: grid; } .study-summer-subpage__scene-picker { justify-self: start; } .study-sub-stats { grid-template-columns: repeat(2, 1fr); } .study-reading-grid, .study-stat-grid { grid-template-columns: 1fr; } .study-summer-subpage--docs { display: block; height: auto; min-height: calc(100dvh - 88px); } .study-summer-subpage--docs .study-summer-subpage__content { display: grid; overflow: visible; } .study-summer-subpage--docs .study-reading-grid { flex: none; } .study-summer-subpage--docs .study-sub-panel { display: block; } .study-summer-subpage--docs .study-doc-list, .study-summer-subpage--docs .study-course-list { flex: none; margin-top: 16px; padding-right: 0; } .study-summer-subpage--docs .study-reading-detail { display: block; max-height: none; } .study-summer-subpage--docs .study-resource-grid { margin-top: 17px; padding-right: 0; } }
 @media (max-width: 560px) { .study-summer-subpage { padding-right: 12px; padding-left: 12px; } .study-sub-panel { padding: 15px; } .study-sub-stats { gap: 7px; } .study-sub-stat { min-height: 68px; padding: 10px; } .study-sub-stat strong { font-size: 18px; } .study-resource-grid { grid-template-columns: 1fr; } }
 
 /* ── 计划页：诚实任务清单 + AI 拆解工作台 ── */
 .study-plan-note { margin: 12px 0 0; color: rgba(215, 239, 131, .62); font-size: 10px; line-height: 1.7; }
+
+/* Focus goal breakdown: keep the AI step editor in the focus room. */
+.study-summer-breakdown-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(1, 8, 6, .72); backdrop-filter: blur(12px); }
+.study-summer-breakdown { width: min(680px, 100%); max-height: min(760px, calc(100vh - 48px)); overflow: auto; padding: 25px; border: 1px solid rgba(215, 239, 131, .2); border-radius: 18px; color: rgba(255,255,255,.86); background: rgba(7, 23, 17, .96); box-shadow: 0 24px 80px rgba(0,0,0,.44); }
+.study-summer-breakdown__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.study-summer-breakdown__header h2 { margin: 8px 0 5px; color: #f5fff5; font-size: 25px; letter-spacing: -.04em; }
+.study-summer-breakdown__header p { margin: 0; color: rgba(255,255,255,.5); font-size: 12px; }
+.study-summer-breakdown__input { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 10px; margin-top: 22px; }
+.study-summer-breakdown__input textarea, .study-summer-breakdown__step input, .study-summer-breakdown__step textarea { width: 100%; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; outline: 0; color: #fff; background: rgba(255,255,255,.06); font: inherit; }
+.study-summer-breakdown__input textarea { min-height: 82px; padding: 11px; resize: vertical; line-height: 1.65; }
+.study-summer-breakdown__input textarea:focus, .study-summer-breakdown__step input:focus, .study-summer-breakdown__step textarea:focus { border-color: rgba(215,239,131,.65); box-shadow: 0 0 0 3px rgba(215,239,131,.1); }
+.study-summer-breakdown__note, .study-summer-breakdown__warnings { margin: 15px 0 0; color: rgba(215,239,131,.76); font-size: 11px; line-height: 1.7; }
+.study-summer-breakdown__warnings { padding-left: 17px; color: #ffcf91; }
+.study-summer-breakdown__steps { display: grid; gap: 9px; margin-top: 17px; }
+.study-summer-breakdown__step { display: grid; grid-template-columns: 25px minmax(0,1fr) 30px; gap: 10px; align-items: start; padding: 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; background: rgba(255,255,255,.045); }
+.study-summer-breakdown__step > b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; color: #07120e; background: #d7ef83; font-size: 11px; }
+.study-summer-breakdown__step > div { display: grid; gap: 7px; min-width: 0; }
+.study-summer-breakdown__step input, .study-summer-breakdown__step textarea { padding: 8px 9px; font-size: 12px; }
+.study-summer-breakdown__step textarea { min-height: 53px; resize: vertical; line-height: 1.55; }
+.study-summer-breakdown__step label { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,.5); font-size: 11px; }
+.study-summer-breakdown__step label input { width: 66px; }
+.study-summer-breakdown__step label em { color: rgba(255,255,255,.46); font-style: normal; }
+.study-summer-breakdown__step .study-summer-icon-action { color: rgba(255,255,255,.45); }
+.study-summer-breakdown__empty { display: grid; justify-items: center; gap: 8px; padding: 28px 0 10px; color: rgba(255,255,255,.38); text-align: center; }
+.study-summer-breakdown__empty p { margin: 0; font-size: 12px; }
+.study-summer-breakdown__footer { display: flex; align-items: center; gap: 12px; margin-top: 17px; }
+.study-summer-breakdown__footer span { color: rgba(255,255,255,.42); font-size: 11px; }
+.study-summer-breakdown-trigger { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid rgba(215,239,131,.28); border-radius: 8px; color: #d7ef83; background: rgba(215,239,131,.08); font-size: 11px; }
+.study-summer-breakdown-trigger:hover { background: rgba(215,239,131,.15); }
+@media (max-width: 600px) { .study-summer-breakdown-backdrop { padding: 12px; } .study-summer-breakdown { max-height: calc(100vh - 24px); padding: 19px; } .study-summer-breakdown__input { grid-template-columns: 1fr; } .study-summer-breakdown__input .button { width: 100%; } .study-summer-breakdown__footer { align-items: flex-start; flex-direction: column; } }
 .study-sub-link-button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: rgba(215, 239, 131, .82); background: transparent; font-size: 11px; }
 .study-sub-link-button:hover { color: var(--summer-primary); }
 .study-ai-planner { display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.08); }

@@ -51,6 +51,19 @@ export default function SummerFocusRoom({
   onAddTask,
   onOpenPlans,
   onOpenPlanning,
+  breakdownOpen = false,
+  breakdownGoal = "",
+  breakdownMode = "",
+  breakdownWarnings = [],
+  breakdownSteps = [],
+  breaking = false,
+  breakdownSaving = false,
+  onBreakdownGoalChange,
+  onBreakdown,
+  onUpdateBreakdownStep,
+  onRemoveBreakdownStep,
+  onSaveBreakdownSteps,
+  onClosePlanning,
   onRefresh,
 }) {
   const [immersive, setImmersive] = useState(false);
@@ -98,6 +111,13 @@ export default function SummerFocusRoom({
 
   useEffect(() => setGoalDraft(String(dailyGoalMinutes)), [dailyGoalMinutes]);
 
+  useEffect(() => {
+    if (!breakdownOpen) return undefined;
+    const handleKeyDown = (event) => { if (event.key === "Escape") onClosePlanning?.(); };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [breakdownOpen, onClosePlanning]);
+
   const status = isBreak ? (isRunning ? "休息中" : "准备休息") : active?.status === "paused" ? "暂时休息" : active ? "正在专注" : "准备开始";
   const focusTitle = isBreak ? "给自己几分钟喘口气" : active?.goal || "开始专注";
   const ambientText = isBreak ? "let the mind reset" : isRunning ? "stay with it" : "a quiet place for today";
@@ -138,7 +158,7 @@ export default function SummerFocusRoom({
 
           {!active && !isBreak && <div className="study-summer-presets" role="group" aria-label="选择专注时长">{[25, 45, 60].map((minutes) => <button key={minutes} type="button" className={preset === minutes ? "is-active" : ""} onClick={() => onPresetChange(minutes)}>{minutes} 分钟</button>)}<button type="button" className={preset === "custom" ? "is-active" : ""} onClick={() => onPresetChange("custom")}>自定义</button>{preset === "custom" && <input type="number" min="5" max="180" aria-label="自定义专注分钟数" value={customMinutes} onChange={(event) => onCustomMinutesChange(event.target.value)} />}</div>}
 
-          {active || isBreak ? <div className="study-summer-focus__actions"><Button variant="secondary" icon={isRunning ? "PhPause" : "PhPlay"} onClick={onTogglePause}>{isRunning ? "暂停" : isBreak ? "开始休息" : "继续"}</Button>{!isBreak && <Button icon="PhStop" onClick={onFinish}>结束并记录</Button>}<button type="button" className="study-summer-icon-action" onClick={onReset} aria-label="重置计时"><Icon name="PhArrowCounterClockwise" size={16} /></button><button type="button" className="study-summer-icon-action" onClick={onSkip} aria-label={isBreak ? "跳过休息" : "跳过当前阶段"}><Icon name="PhSkipForward" size={16} /></button></div> : <form className="study-summer-start" onSubmit={(event) => { event.preventDefault(); onStart(); }}><label htmlFor="summer-study-goal">这次想完成什么</label><div><input id="summer-study-goal" name="study-goal" value={goal} onChange={(event) => onGoalChange(event.target.value)} placeholder="例如：完成高数第三章习题" /><Button icon="PhPlay">开始专注</Button></div></form>}
+          {active || isBreak ? <div className="study-summer-focus__actions"><Button variant="secondary" icon={isRunning ? "PhPause" : "PhPlay"} onClick={onTogglePause}>{isRunning ? "暂停" : isBreak ? "开始休息" : "继续"}</Button>{!isBreak && <Button icon="PhStop" onClick={onFinish}>结束并记录</Button>}<button type="button" className="study-summer-icon-action" onClick={onReset} aria-label="重置计时"><Icon name="PhArrowCounterClockwise" size={16} /></button><button type="button" className="study-summer-icon-action" onClick={onSkip} aria-label={isBreak ? "跳过休息" : "跳过当前阶段"}><Icon name="PhSkipForward" size={16} /></button></div> : <form className="study-summer-start" onSubmit={(event) => { event.preventDefault(); onStart(); }}><label htmlFor="summer-study-goal">这次想完成什么</label><div><input id="summer-study-goal" name="study-goal" value={goal} onChange={(event) => onGoalChange(event.target.value)} placeholder="例如：完成高数第三章习题" /><Button icon="PhPlay">开始专注</Button><button type="button" className="study-summer-breakdown-trigger" onClick={() => onOpenPlanning?.(goal)}><Icon name="PhSparkle" size={14} />AI 拆解本次目标</button></div></form>}
 
           <div className="study-summer-meta">
             <form className="study-summer-goal" onSubmit={(event) => { event.preventDefault(); onSaveDailyGoal?.(goalDraft); }}><span>今日目标 <strong>{todayFocusMinutes}/{dailyGoalMinutes} 分钟</strong></span><label htmlFor="study-daily-goal">目标分钟数</label><input id="study-daily-goal" type="number" min="15" max="480" step="15" value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} /><button type="submit">保存</button></form>
@@ -164,14 +184,28 @@ export default function SummerFocusRoom({
           <div className="study-summer-todos__progress"><span style={{ width: `${taskTotal ? Math.round((taskCompleted / taskTotal) * 100) : 0}%` }} /></div>
           <form className="study-summer-todos__add" onSubmit={submitNewTodo}><Icon name="PhPlus" size={14} /><input value={todoDraft} onChange={(event) => setTodoDraft(event.target.value)} placeholder="添加一件要做的事" aria-label="添加待办" /><button type="submit" disabled={!todoDraft.trim()} aria-label="添加到清单"><Icon name="PhCheck" size={14} weight="bold" /></button></form>
           <div className="study-summer-todos__list">
-            {tasks.length ? tasks.slice(0, 8).map((task) => { const done = String(task.status || "pending").toLowerCase() === "completed"; return <button type="button" className={done ? "is-done" : ""} key={task.id} onClick={() => onToggleTask(task)}><span className="study-summer-todo-check"><Icon name={done ? "PhCheckCircle" : "PhCircle"} size={15} weight={done ? "fill" : "regular"} /></span><span>{task.title}</span><small>{task.deadline ? deadlineText(task.deadline) : ""}</small></button>; }) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}
+            {tasks.length ? tasks.slice(0, 8).map((task) => { const done = String(task.status || "pending").toLowerCase() === "completed"; return <button type="button" className={done ? "is-done" : ""} key={task.id} onClick={() => onToggleTask(task)} aria-pressed={done}><span className="study-summer-todo-check" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span><span>{task.title}</span><small>{task.deadline ? deadlineText(task.deadline) : ""}</small></button>; }) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}
           </div>
           <div className="study-summer-todos__footer">
-            <button type="button" onClick={onOpenPlanning}><Icon name="PhSparkle" size={14} />用 AI 拆解学习目标</button>
+            <button type="button" onClick={() => onOpenPlanning?.(goal)}><Icon name="PhSparkle" size={14} />用 AI 拆解学习目标</button>
             <Link to="/plans" onClick={onOpenPlans}>查看完整计划 <Icon name="PhArrowRight" size={13} /></Link>
           </div>
         </aside>
       </div>
+
+      {breakdownOpen && createPortal(
+        <div className="study-summer-breakdown-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClosePlanning?.(); }}>
+          <section className="study-summer-breakdown" role="dialog" aria-modal="true" aria-labelledby="study-breakdown-title">
+            <header className="study-summer-breakdown__header"><div><span className="study-summer-eyebrow">AI planner</span><h2 id="study-breakdown-title">把目标拆成下一步</h2><p>先看清路径，再决定从哪一步开始专注。</p></div><button type="button" className="study-summer-icon-action" onClick={onClosePlanning} aria-label="关闭目标拆解"><Icon name="PhX" size={18} /></button></header>
+            <form className="study-summer-breakdown__input" onSubmit={(event) => { event.preventDefault(); onBreakdown?.(); }}><textarea value={breakdownGoal} onChange={(event) => onBreakdownGoalChange?.(event.target.value)} rows="3" placeholder="例如：复习高等数学第一章，并完成课后习题" aria-label="任务分解目标" /><Button icon="PhSparkle" disabled={breaking || !breakdownGoal.trim()}>{breaking ? "正在拆解…" : breakdownSteps.length ? "重新生成" : "生成步骤"}</Button></form>
+            {breakdownMode === "rule_fallback" && <p className="study-summer-breakdown__note">当前模型暂不可用，已使用通用规则生成步骤；仍可编辑后加入待办。</p>}
+            {breakdownWarnings.length > 0 && <ul className="study-summer-breakdown__warnings">{breakdownWarnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+            {breakdownSteps.length > 0 ? <div className="study-summer-breakdown__steps">{breakdownSteps.map((step, index) => <article className="study-summer-breakdown__step" key={step._key}><b>{index + 1}</b><div><input value={step.title} onChange={(event) => onUpdateBreakdownStep?.(index, { title: event.target.value })} aria-label={`第 ${index + 1} 步标题`} /><textarea value={step.description} onChange={(event) => onUpdateBreakdownStep?.(index, { description: event.target.value })} rows="2" aria-label={`第 ${index + 1} 步说明`} placeholder="这一步具体怎么做…" /><label><span>预计</span><input type="number" min="5" max="120" value={step.estimated_minutes} onChange={(event) => onUpdateBreakdownStep?.(index, { estimated_minutes: Number(event.target.value) || 30 })} aria-label={`第 ${index + 1} 步预计分钟`} /><em>分钟</em></label></div><button type="button" className="study-summer-icon-action" onClick={() => onRemoveBreakdownStep?.(index)} aria-label={`删除第 ${index + 1} 步`}><Icon name="PhTrash" size={15} /></button></article>)}</div> : <div className="study-summer-breakdown__empty"><Icon name="PhSparkle" size={22} /><p>输入一个目标，AI 会帮你整理出可执行步骤。</p></div>}
+            {breakdownSteps.length > 0 && <footer className="study-summer-breakdown__footer"><Button icon="PhListPlus" disabled={breakdownSaving || !breakdownSteps.some((step) => step.title.trim())} onClick={onSaveBreakdownSteps}>{breakdownSaving ? "加入中…" : "加入今日待办"}</Button><span>{breakdownSteps.length} 个步骤，可继续编辑</span></footer>}
+          </section>
+        </div>,
+        document.body,
+      )}
 
       {immersive && createPortal(
         <div className="study-summer-immersive" data-immersive-scene={scene}>

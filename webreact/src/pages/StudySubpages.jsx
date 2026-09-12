@@ -23,8 +23,8 @@ function useStudyScene() {
   return { scene, select, audio };
 }
 
-function StudyShell({ eyebrow, title, description, scene, onSelectScene, audio, children }) {
-  return <main className="study-summer-subpage" data-study-scene={scene}>
+function StudyShell({ eyebrow, title, description, scene, onSelectScene, audio, children, variant = "" }) {
+  return <main className={`study-summer-subpage${variant ? ` study-summer-subpage--${variant}` : ""}`} data-study-scene={scene}>
     <header className="study-summer-subpage__header">
       <div><span className="study-summer-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>
       <div className="study-summer-subpage__scene-picker" aria-label="场景切换">
@@ -128,7 +128,7 @@ export function PlansPage() {
       </div>
       <form className="study-sub-create" onSubmit={addTask}><Icon name="PhPlus" size={18} /><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="写下一个可以马上开始的步骤…" aria-label="新建学习任务" /><button type="submit" disabled={saving || !title.trim()}>{saving ? "保存中" : "加入清单"}</button></form>
       <p className="study-plan-note">目前每个待办作为独立个人任务保存；「计划 → 子任务 + 独立进度」的完整计划模型后端暂未提供，若需分组跟踪请等待契约升级。</p>
-      {loading ? <LoadingState /> : error ? <LoadingState error={error} onRetry={load} /> : <div className="study-plan-list">{tasks.length ? tasks.map((task) => <article className={`study-plan-row${isDone(task) ? " is-done" : ""}`} key={task.id}><button className="study-plan-check" type="button" aria-label={isDone(task) ? "恢复任务" : "完成任务"} onClick={() => void toggleTask(task)}><Icon name={isDone(task) ? "PhCheckCircle" : "PhCircle"} size={20} weight={isDone(task) ? "fill" : "regular"} /></button><div><strong>{task.title || "未命名任务"}</strong><small>{task.deadline ? `截止 ${dateLabel(task.deadline)}` : task.source_name || "学习清单"}</small></div><button className="study-plan-delete" type="button" aria-label={`删除 ${task.title || "任务"}`} onClick={() => void removeTask(task)}><Icon name="PhTrash" size={16} /></button></article>) : <div className="study-sub-empty"><Icon name="PhFlag" size={30} /><p>清单还是空的，从一个明确的目标开始。</p></div>}</div>}
+      {loading ? <LoadingState /> : error ? <LoadingState error={error} onRetry={load} /> : <div className="study-plan-list">{tasks.length ? tasks.map((task) => <article className={`study-plan-row${isDone(task) ? " is-done" : ""}`} key={task.id}><button className="study-plan-check" type="button" aria-pressed={isDone(task)} aria-label={isDone(task) ? "恢复任务" : "完成任务"} onClick={() => void toggleTask(task)}><span className="study-plan-check-box" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span></button><div><strong>{task.title || "未命名任务"}</strong><small>{task.deadline ? `截止 ${dateLabel(task.deadline)}` : task.source_name || "学习清单"}</small></div><button className="study-plan-delete" type="button" aria-label={`删除 ${task.title || "任务"}`} onClick={() => void removeTask(task)}><Icon name="PhTrash" size={15} /></button></article>) : <div className="study-sub-empty"><Icon name="PhFlag" size={30} /><p>清单还是空的，从一个明确的目标开始。</p></div>}</div>}
     </section>
 
     <section className="study-sub-panel study-plan-ai">
@@ -168,7 +168,7 @@ export function DocsPage() {
   useEffect(() => { Promise.all([api.getKnowledgeDocuments().catch(() => []), api.getCourses().catch(() => [])]).then(([docs, courseList]) => { setDocuments(itemsOf(docs)); setCourses(itemsOf(courseList)); }).catch((err) => setError(errorText(err, "阅读内容加载失败"))).finally(() => setLoading(false)); }, []);
   async function openCourse(course) { setSelected(course); setCourseDetail(null); try { setCourseDetail(await api.getCourseDetail(course.id)); } catch (err) { setError(errorText(err, "课程阅读内容加载失败")); } }
   const resources = itemsOf(courseDetail?.remoteContent);
-  return <StudyShell eyebrow="Reading room" title="阅读" description="把课程资料、校内文档和下一次要读的内容，放在同一个安静入口。" scene={scene} onSelectScene={select} audio={audio}>
+  return <StudyShell variant="docs" eyebrow="Reading room" title="阅读" description="把课程资料、校内文档和下一次要读的内容，放在同一个安静入口。" scene={scene} onSelectScene={select} audio={audio}>
     <div className="study-reading-grid">
       <section className="study-sub-panel"><div className="study-sub-panel__heading"><div><span className="study-sub-kicker">KNOWLEDGE BASE</span><h2>校内资料</h2><p>来自主项目知识库的可检索文档。</p></div><span className="study-sub-count">{documents.length} 篇</span></div>{loading ? <LoadingState /> : <div className="study-doc-list">{documents.length ? documents.map((doc) => <article key={doc.document_id || doc.id} className="study-doc-row"><span className="study-doc-icon"><Icon name="PhFileText" size={18} /></span><div><strong>{doc.title || doc.original_filename || "未命名资料"}</strong><small>{doc.source_department || doc.source_type || "学习资料"} · {doc.updated_at ? dateLabel(doc.updated_at) : "已收录"}</small></div><Icon name="PhArrowUpRight" size={16} /></article>) : <div className="study-sub-empty"><Icon name="PhBookOpen" size={30} /><p>知识库还没有资料，先从课程阅读开始。</p></div>}</div>}</section>
       <section className="study-sub-panel"><div className="study-sub-panel__heading"><div><span className="study-sub-kicker">COURSE READING</span><h2>课程阅读</h2><p>打开课程后可查看真实课程内容与资料。</p></div><span className="study-sub-count">{courses.length} 门</span></div><div className="study-course-list">{courses.length ? courses.map((course) => <button type="button" className={`study-course-row${selected?.id === course.id ? " is-active" : ""}`} key={course.id} onClick={() => void openCourse(course)}><span>{course.name || course.title || "未命名课程"}</span><Icon name="PhArrowRight" size={16} /></button>) : <div className="study-sub-empty"><p>暂无课程数据</p></div>}</div></section>
