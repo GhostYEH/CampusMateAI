@@ -78,14 +78,19 @@ def test_task_breakdown_ssl_failure_degrades_to_rule_fallback() -> None:
     service = _build_service(_SslFailingLLM())
     user = SimpleNamespace(id="usr_test", role="student")
 
-    response = service.breakdown(
-        TaskBreakdownRequest(goal="复习高等数学第一章并完成课后习题"),
-        user=user,
+    response = asyncio.run(
+        service.breakdown(
+            TaskBreakdownRequest(goal="复习高等数学第一章并完成课后习题"),
+            user=user,
+        )
     )
 
     assert response.mode == "rule_fallback"
     assert response.steps, "规则降级也必须产出步骤"
-    assert any("降级" in warning for warning in response.warnings)
+    # warnings 必须是用户友好中文,不得暴露内部异常类名(如 SSLError)
+    assert any("不可用" in warning or "降级" in warning for warning in response.warnings)
+    assert all("SSLError" not in warning and "Error" not in warning for warning in response.warnings), \
+        "warnings 不得向用户暴露内部异常类名"
 
 
 def test_task_breakdown_with_valid_llm_returns_llm_mode() -> None:
@@ -102,10 +107,64 @@ def test_task_breakdown_with_valid_llm_returns_llm_mode() -> None:
     service = _build_service(stub)
     user = SimpleNamespace(id="usr_test", role="student")
 
-    response = service.breakdown(
-        TaskBreakdownRequest(goal="复习高等数学第一章定义"),
-        user=user,
+    response = asyncio.run(
+        service.breakdown(
+            TaskBreakdownRequest(goal="复习高等数学第一章定义"),
+            user=user,
+        )
     )
 
     assert response.mode == "llm"
     assert response.steps[0].title == "复习定义"
+
+
+def test_task_breakdown_does_not_use_run_until_complete() -> None:
+    """breakdown 必须是 async 协程,不再使用 run_until_complete 同步包装。"""
+    import inspect
+
+    from app.services.task_breakdown_service import TaskBreakdownService
+    assert inspect.iscoroutinefunction(TaskBreakdownService.breakdown), \
+        "TaskBreakdownService.breakdown 必须是 async 方法"
+    assert inspect.iscoroutinefunction(TaskBreakdownService._build_llm_steps), \
+        "_build_llm_steps 必须是 async 方法"
+
+
+def test_task_breakdown_timeout_uses_settings_not_hardcoded() -> None:
+    """LLM 调用超时必须来自 Settings.llm_timeout_seconds,不再是硬编码 20.0。"""
+    from app.services.llm.openai_compatible import StubLLMClient
+
+    captured = {}
+
+    class _TimeoutCapturingStub(StubLLMClient):
+        async def chat(self, messages, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+            return await super().chat(messages, **kwargs)
+
+    stub = _TimeoutCapturingStub(response_text="[]")
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite:///:memory:",
+        llm_provider="openai_compatible",
+        llm_base_url="http://localhost",
+        llm_api_key="test-key",
+        llm_model="test-model",
+        llm_timeout_seconds=42,
+    )
+    db = reset_db_for_tests()
+    task_repo = PersonalTaskRepository(db)
+    doc_repo = DocumentRepository(db)
+    retrieval = RetrievalService(doc_repo)
+    service = TaskBreakdownService(
+        personal_task_repo=task_repo,
+        retrieval=retrieval,
+        llm=stub,
+        settings=settings,
+    )
+    user = SimpleNamespace(id="usr_test", role="student")
+
+    asyncio.run(
+        service.breakdown(TaskBreakdownRequest(goal="复习高数"), user=user)
+    )
+
+    assert captured["timeout"] == 42.0, \
+        "LLM 调用超时必须使用 Settings.llm_timeout_seconds(42),而非硬编码 20.0"

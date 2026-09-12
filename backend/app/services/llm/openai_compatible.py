@@ -26,6 +26,7 @@ class OpenAICompatibleClient:
         model: str,
         *,
         timeout: float = 30.0,
+        tls_max_version: Optional[str] = None,
     ) -> None:
         if not base_url or not api_key or not model:
             raise LLMConfigError("OpenAI 兼容客户端需要 base_url / api_key / model")
@@ -34,7 +35,36 @@ class OpenAICompatibleClient:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout
+        self._ssl_context = self._build_ssl_context(tls_max_version)
         self._client: Optional[httpx.AsyncClient] = None
+
+    @staticmethod
+    def _build_ssl_context(tls_max_version: Optional[str]) -> "ssl.SSLContext":
+        """构造默认 SSL 上下文,可选限制 maximum_version。
+
+        - 默认(None 或空字符串): 使用 ssl.create_default_context(),
+          保持自动协商,不修改任何 TLS 版本边界。
+        - "1.2": maximum_version=TLSv1.2,用于规避个别 TLS 1.3 中间件的
+          SSLV3_ALERT_BAD_RECORD_MAC 问题。仍验证证书与主机名。
+        - "1.3": maximum_version=TLSv1.3。
+        - 非法值: 抛 LLMConfigError,不静默回退。
+        """
+        ctx = ssl.create_default_context()
+        if not tls_max_version:
+            return ctx
+        normalized = str(tls_max_version).strip().lstrip("vV")
+        mapping = {
+            "1.0": ssl.TLSVersion.TLSv1,
+            "1.1": ssl.TLSVersion.TLSv1_1,
+            "1.2": ssl.TLSVersion.TLSv1_2,
+            "1.3": ssl.TLSVersion.TLSv1_3,
+        }
+        if normalized not in mapping:
+            raise LLMConfigError(
+                f"LLM_TLS_MAX_VERSION 仅支持 1.0/1.1/1.2/1.3,收到: {tls_max_version!r}"
+            )
+        ctx.maximum_version = mapping[normalized]
+        return ctx
 
     @property
     def name(self) -> str:
@@ -53,6 +83,7 @@ class OpenAICompatibleClient:
                     "Content-Type": "application/json",
                 },
                 timeout=httpx.Timeout(self._timeout, connect=10.0),
+                verify=self._ssl_context,
             )
         return self._client
 
@@ -89,21 +120,22 @@ class OpenAICompatibleClient:
             # ssl.SSLError 是 OSError 子类；代理/网关偶发的 TLS 失败会以
             # 原始 ssl 异常穿透 httpx 包装层,这里统一归一为 LLMError,
             # 让上层"LLM 失败 → 规则降级"路径真正生效,而不是抛 500。
-            raise LLMError(f"LLM 网络错误: {e}") from e
+            # 消息只含异常类型名,不透传底层字符串(可能含敏感信息)。
+            raise LLMError(f"LLM 网络错误: {type(e).__name__}") from e
         if resp.status_code != 200:
             raise LLMError(f"LLM HTTP {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
         try:
             msg = data["choices"][0]["message"]
             content = msg.get("content") or ""
-            # DeepSeek 推理模型把思考过程放在 reasoning_content 字段，
-            # content 可能为空或只包含最终答案；两者都需要保留。
+            # DeepSeek 推理模型把思考过程放在 reasoning_content 字段。
+            # 结构化 JSON 解析只应使用最终 content;只有当 content 为空
+            # 而仅有 reasoning_content 时(部分模型偶发),才回退使用它,
+            # 避免完全丢失回答。绝不把 reasoning 前置拼到 content 前,
+            # 否则会让已经成功的结构化 JSON 再次解析失败而误降级。
             reasoning = msg.get("reasoning_content") or ""
-            # 合并 reasoning + content，避免 content 为空时丢失回答
             if not content and reasoning:
                 content = reasoning
-            elif reasoning:
-                content = f"{reasoning}\n\n{content}"
             finish = data["choices"][0].get("finish_reason", "stop")
         except (KeyError, IndexError, TypeError) as e:
             raise LLMError(f"LLM 返回结构异常: {e}") from e
@@ -170,7 +202,7 @@ class OpenAICompatibleClient:
         except httpx.TimeoutException as e:
             raise LLMTimeoutError("LLM 流式请求超时") from e
         except (httpx.HTTPError, ssl.SSLError, OSError) as e:
-            raise LLMError(f"LLM 流式网络错误: {e}") from e
+            raise LLMError(f"LLM 流式网络错误: {type(e).__name__}") from e
 
 
 class StubLLMClient:

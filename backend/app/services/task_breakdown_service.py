@@ -156,7 +156,7 @@ class TaskBreakdownService:
 
     # ===== 公共入口 =====
 
-    def breakdown(
+    async def breakdown(
         self,
         req: TaskBreakdownRequest,
         *,
@@ -228,17 +228,18 @@ class TaskBreakdownService:
         mode: str
         if self._llm is not None and self._llm.available:
             try:
-                steps, llm_warn = self._build_llm_steps(
+                steps, llm_warn = await self._build_llm_steps(
                     goal_text, policy_kb=policy_kb, user=user
                 )
                 mode = "llm"
                 warnings.extend(llm_warn)
             except (LLMError, LLMTimeoutError) as e:
                 logger.warning(
-                    "task_breakdown.llm_failed fallback=rule error=%s", e
+                    "task_breakdown.llm_failed fallback=rule error_type=%s",
+                    type(e).__name__,
                 )
                 warnings.append(
-                    f"LLM 调用失败({type(e).__name__}),已降级为规则拆解"
+                    "模型连接暂时不可用,已生成通用步骤"
                 )
                 steps = self._build_rule_steps(
                     goal_text, policy_kb=policy_kb
@@ -248,11 +249,11 @@ class TaskBreakdownService:
                 # 任何未预期的生成失败都不向用户抛 500,
                 # 遵循本服务的契约: LLM 失败一律降级为规则拆解。
                 logger.warning(
-                    "task_breakdown.llm_unexpected fallback=rule error=%s",
+                    "task_breakdown.llm_unexpected fallback=rule error_type=%s",
                     type(e).__name__,
                 )
                 warnings.append(
-                    f"LLM 生成失败({type(e).__name__}),已降级为规则拆解"
+                    "模型生成暂时不可用,已生成通用步骤"
                 )
                 steps = self._build_rule_steps(
                     goal_text, policy_kb=policy_kb
@@ -377,7 +378,7 @@ class TaskBreakdownService:
 
     # ===== LLM 拆解 =====
 
-    def _build_llm_steps(
+    async def _build_llm_steps(
         self,
         goal: str,
         *,
@@ -390,6 +391,7 @@ class TaskBreakdownService:
         - 政策关键词步骤必须依赖知识库,LLM 仅做"整理"而非"编造"。
         - 普通学习步骤可由 LLM 自由生成。
         - 严格输出 JSON,失败则抛 LLMError(由调用方降级)。
+        - 超时使用 Settings.llm_timeout_seconds,不再硬编码。
         """
         warnings: List[str] = []
         kb_context = self._format_kb_context(policy_kb)
@@ -422,22 +424,14 @@ class TaskBreakdownService:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        # 同步调用(LLMClient.chat 是 async,但在路由层我们用 sync 包装)
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        response = loop.run_until_complete(
-            self._llm.chat(  # type: ignore[union-attr]
-                messages,
-                temperature=0.3,
-                max_tokens=1500,
-                timeout=20.0,
-            )
+        # 真正的 async/await: 不再使用 run_until_complete,
+        # 避免跨事件循环复用同一个 AsyncClient 导致连接污染。
+        # 超时使用 Settings 配置值,不再硬编码 20.0。
+        response = await self._llm.chat(  # type: ignore[union-attr]
+            messages,
+            temperature=0.3,
+            max_tokens=1500,
+            timeout=float(self._settings.llm_timeout_seconds),
         )
         content = response.content.strip()
         steps_raw = self._parse_llm_json(content)

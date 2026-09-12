@@ -93,6 +93,122 @@ def test_status_labels_coverage():
     """确保 _STATUS_LABELS 包含所有可能的状态。"""
     expected_statuses = {
         "ok", "auth_failed", "model_not_found", "rate_limited",
-        "timeout", "server_error", "empty_response", "config_error", "not_enabled",
+        "timeout", "network_error", "server_error", "empty_response", "config_error", "not_enabled",
     }
     assert set(_STATUS_LABELS.keys()) == expected_statuses
+
+
+# ===== network_error 分类测试 =====
+
+
+def test_run_check_classifies_ssl_error_as_network_error():
+    """TLS/SSL 错误应归类为 network_error,而不是 server_error。"""
+    import ssl
+    from app.services.llm.base import LLMError
+
+    class _SslFailingLLM:
+        name = "ssl-failing"
+        available = True
+
+        async def chat(self, messages, **kwargs):
+            raise LLMError("LLM 网络错误: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac")
+
+        async def aclose(self):
+            pass
+
+    settings = Settings(
+        app_env="test",
+        llm_provider="openai_compatible",
+        llm_base_url="https://api.deepseek.com",
+        llm_api_key="sk-test-key-12345",
+        llm_model="deepseek-v4-flash",
+    )
+    result = asyncio.run(run_check(settings=settings, llm_client=_SslFailingLLM()))
+    assert result.connection_status == "network_error"
+    assert "SSL" in result.error_message or "ssl" in result.error_message.lower()
+
+
+def test_run_check_classifies_connection_error_as_network_error():
+    """连接拒绝/DNS 失败应归类为 network_error。"""
+    from app.services.llm.base import LLMError
+
+    class _ConnectionFailingLLM:
+        name = "conn-failing"
+        available = True
+
+        async def chat(self, messages, **kwargs):
+            raise LLMError("LLM 网络错误: [Errno 111] Connection refused")
+
+        async def aclose(self):
+            pass
+
+    settings = Settings(
+        app_env="test",
+        llm_provider="openai_compatible",
+        llm_base_url="https://api.example.com",
+        llm_api_key="sk-test-key-12345",
+        llm_model="test-model",
+    )
+    result = asyncio.run(run_check(settings=settings, llm_client=_ConnectionFailingLLM()))
+    assert result.connection_status == "network_error"
+
+
+def test_run_check_classifies_http_500_as_server_error():
+    """HTTP 5xx 仍归类为 server_error(不是 network_error)。"""
+    from app.services.llm.base import LLMError
+
+    class _Server500LLM:
+        name = "server-500"
+        available = True
+
+        async def chat(self, messages, **kwargs):
+            raise LLMError("LLM HTTP 500: internal server error")
+
+        async def aclose(self):
+            pass
+
+    settings = Settings(
+        app_env="test",
+        llm_provider="openai_compatible",
+        llm_base_url="https://api.example.com",
+        llm_api_key="sk-test-key-12345",
+        llm_model="test-model",
+    )
+    result = asyncio.run(run_check(settings=settings, llm_client=_Server500LLM()))
+    assert result.connection_status == "server_error"
+
+
+def test_run_check_does_not_leak_api_key_in_error():
+    """错误消息中不得泄露完整 API Key。
+
+    现实场景: LLMError 消息只含异常类型名(网络错误已脱敏),
+    check_llm_provider 不得在 error_message 中主动添加 Key。
+    """
+    from app.services.llm.base import LLMError
+
+    secret = "sk-super-secret-key-1234567890abcdef"
+
+    class _ErrorLLM:
+        name = "error-llm"
+        available = True
+
+        async def chat(self, messages, **kwargs):
+            # 网络错误消息只含异常类型名,不含 Key(与 openai_compatible 一致)
+            raise LLMError("LLM 网络错误: ConnectionError")
+
+        async def aclose(self):
+            pass
+
+    settings = Settings(
+        app_env="test",
+        llm_provider="openai_compatible",
+        llm_base_url="https://api.example.com",
+        llm_api_key=secret,
+        llm_model="test-model",
+    )
+    result = asyncio.run(run_check(settings=settings, llm_client=_ErrorLLM()))
+    # error_message 不得包含完整 API Key
+    assert secret not in result.error_message
+    assert secret not in result.sample_response
+    # api_key_masked 也不得包含完整 Key
+    assert secret not in result.api_key_masked

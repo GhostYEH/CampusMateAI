@@ -25,13 +25,36 @@ export function AsyncState({ loading, error, empty, onRetry, children }) {
 
 export function StatCard({ label, value, detail, icon, tone = "blue" }) { return <article className={`stat-card tone-${tone}`}><span className="stat-icon"><Icon name={icon} size={22} /></span><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></article>; }
 
-export function Modal({ title, children, onClose, actions }) {
+export function Modal({ title, children, onClose, actions, variant = "", className = "" }) {
   const modalRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
   useEffect(() => {
-    const handleKeyDown = (event) => { if (event.key === "Escape") onClose(); };
+    previouslyFocusedRef.current = document.activeElement;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const root = modalRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll('button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", handleKeyDown);
-    modalRef.current?.querySelector("button")?.focus();
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    modalRef.current?.querySelector("button, input, textarea, select")?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = prevOverflow;
+      if (previouslyFocusedRef.current && typeof previouslyFocusedRef.current.focus === "function") {
+        try { previouslyFocusedRef.current.focus(); } catch {}
+      }
+    };
   }, [onClose]);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={onClose}><Icon name="PhX" /></button></header><div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}</section></div>;
+  const variantClass = variant ? `modal--${variant}` : "";
+  const extraClass = className ? ` ${className}` : "";
+  return <div className={`modal-backdrop ${variantClass}`.trim()} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={modalRef} className={`modal ${variantClass}${extraClass}`.trim()} role="dialog" aria-modal="true" aria-labelledby="modal-title"><header><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="关闭" onClick={onClose}><Icon name="PhX" /></button></header><div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}</section></div>;
 }

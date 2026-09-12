@@ -43,7 +43,7 @@ class CheckResult:
     model: str
     api_key_present: bool
     api_key_masked: str
-    connection_status: str  # ok|auth_failed|model_not_found|rate_limited|timeout|server_error|empty_response|config_error|not_enabled
+    connection_status: str  # ok|auth_failed|model_not_found|rate_limited|timeout|network_error|server_error|empty_response|config_error|not_enabled
     latency_ms: float
     error_message: str
     sample_response: str
@@ -80,7 +80,17 @@ async def _test_chat(llm: LLMClient) -> tuple[str, float, str, str]:
 
     Returns:
         (status, latency_ms, error_message, sample_response)
+
+    错误分类:
+    - network_error: TLS/SSL、DNS 解析、连接拒绝等传输层失败
+    - server_error:  HTTP 5xx
+    - auth_failed:    HTTP 401
+    - model_not_found: HTTP 404
+    - rate_limited:   HTTP 429
+    - timeout:        超时
     """
+    import ssl as _ssl
+
     test_messages = [
         {"role": "system", "content": "你是测试助手,只回复 'OK' 两个字。"},
         {"role": "user", "content": "ping"},
@@ -104,8 +114,21 @@ async def _test_chat(llm: LLMClient) -> tuple[str, float, str, str]:
     except LLMError as e:
         elapsed = (time.perf_counter() - t0) * 1000.0
         msg = str(e)
-        # 识别常见错误模式
         lower = msg.lower()
+        # 传输层/TLS/DNS/连接失败归为 network_error
+        if (
+            "ssl" in lower
+            or "tls" in lower
+            or "bad_record_mac" in lower
+            or "handshake" in lower
+            or "connection" in lower
+            or "resolve" in lower
+            or "name or service not known" in lower
+            or "network" in lower
+            or "unreachable" in lower
+            or "eof" in lower
+        ):
+            return ("network_error", elapsed, msg[:200], "")
         if "401" in lower or "unauthorized" in lower or "auth" in lower:
             return ("auth_failed", elapsed, msg[:200], "")
         if "404" in lower or "model" in lower and "not found" in lower:
@@ -114,7 +137,12 @@ async def _test_chat(llm: LLMClient) -> tuple[str, float, str, str]:
             return ("rate_limited", elapsed, msg[:200], "")
         if "500" in lower or "502" in lower or "503" in lower or "504" in lower:
             return ("server_error", elapsed, msg[:200], "")
+        # 兜底: 未知 LLM 错误归为 server_error(可能是上游 5xx 未识别)
         return ("server_error", elapsed, msg[:200], "")
+    except (ssl.SSLError, OSError) as e:
+        # 原始网络/TLS 异常穿透到这一层: 归为 network_error
+        elapsed = (time.perf_counter() - t0) * 1000.0
+        return ("network_error", elapsed, f"{type(e).__name__}: {str(e)[:200]}", "")
     except Exception as e:
         elapsed = (time.perf_counter() - t0) * 1000.0
         return ("server_error", elapsed, f"未知异常: {type(e).__name__}: {str(e)[:200]}", "")
@@ -228,6 +256,7 @@ _STATUS_LABELS = {
     "model_not_found": "模型不存在",
     "rate_limited": "限流",
     "timeout": "超时",
+    "network_error": "网络错误",
     "server_error": "服务错误",
     "empty_response": "响应为空",
     "config_error": "配置错误",
@@ -266,6 +295,8 @@ def print_report(result: CheckResult) -> None:
         print("[WARN] 限流,请稍后重试或提升配额。")
     elif result.connection_status == "timeout":
         print("[WARN] 请求超时,请检查网络或 LLM_BASE_URL 是否可达。")
+    elif result.connection_status == "network_error":
+        print("[ERROR] 网络/TLS 错误,请检查网络、代理或设置 LLM_TLS_MAX_VERSION=1.2 后重试。")
     elif result.connection_status == "server_error":
         print("[ERROR] 服务错误,请稍后重试或联系 Provider。")
     elif result.connection_status == "empty_response":

@@ -406,7 +406,7 @@ def update_session(
 
 
 @router.post("/task-breakdown", response_model=TaskBreakdownResponse)
-def task_breakdown(
+async def task_breakdown(
     req: TaskBreakdownRequest,
     user: UserRow = Depends(current_user),
     service: TaskBreakdownService = Depends(_breakdown_service),
@@ -416,7 +416,7 @@ def task_breakdown(
     输入 task_id(后端 assignment ID,需权限校验) 或自由文本 goal,可同时提供。
     输出结构化步骤,mode 标注 llm | rule_fallback。
     """
-    return service.breakdown(req, user=user)
+    return await service.breakdown(req, user=user)
 
 
 __all__ = ["router"]

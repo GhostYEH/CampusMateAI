@@ -150,6 +150,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             api_key=settings.campusmate_lm_api_key,
             model=settings.campusmate_lm_model_name,
             timeout=settings.campusmate_lm_timeout_ms / 1000,
+            tls_max_version=settings.llm_tls_max_version or None,
         )
     model_shadow_runner = ModelShadowRunner(
         registry=ModelCapabilityRegistry(), candidate_llm=candidate_llm,
@@ -229,6 +230,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         repository=learner_control_repository,
         state_repository=learner_state_repository,
         shadow_repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+        settings=settings,
+        source_policy=learner_model_source_policy,
+        model_shadow_runner=model_shadow_runner,
     )
 
     # EduConnector

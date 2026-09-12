@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout_seconds: int = 30
     enable_fallback_mode: bool = True
+    # 非敏感: 部分部署(如 Windows + 某些 TLS 1.3 中间件)存在
+    # SSLV3_ALERT_BAD_RECORD_MAC 兼容问题。留空=自动协商;
+    # 设为 "1.2" 则将 SSLContext.maximum_version 限制为 TLSv1.2,
+    # 仍验证证书与主机名。仅作为兼容开关,不关闭校验。
+    llm_tls_max_version: str = ""
 
     # ===== CampusMate-LM shadow candidate (disabled by default) =====
     campusmate_lm_enabled: bool = False
@@ -80,6 +85,7 @@ class Settings(BaseSettings):
     campusmate_lm_circuit_breaker_threshold: int = 3
     campusmate_lm_circuit_breaker_cooldown_seconds: float = 30.0
     campusmate_lm_data_retention_days: int = 30
+    campusmate_lm_canary_enabled: bool = False
 
     # ===== MiMo TTS =====
     mimo_base_url: str = "https://api.xiaomimimo.com/v1"

@@ -7,12 +7,16 @@ from __future__ import annotations
 from typing import Optional
 
 from ...core.config import Settings
-from .base import LLMClient
+from .base import LLMClient, LLMConfigError
 from .openai_compatible import OpenAICompatibleClient
 
 
 def build_llm_client(settings: Settings) -> Optional[LLMClient]:
-    """根据 Settings 构造 LLM 客户端。"""
+    """根据 Settings 构造 LLM 客户端。
+
+    LLMConfigError(如非法 TLS 版本)向上抛出,便于诊断;
+    其他构造期异常记录后返回 None,保持降级路径可用。
+    """
     if not settings.llm_available:
         return None
     if settings.llm_provider == "openai_compatible":
@@ -22,7 +26,10 @@ def build_llm_client(settings: Settings) -> Optional[LLMClient]:
                 api_key=settings.llm_api_key,
                 model=settings.llm_model,
                 timeout=float(settings.llm_timeout_seconds),
+                tls_max_version=settings.llm_tls_max_version or None,
             )
+        except LLMConfigError:
+            raise
         except Exception:
             return None
     return None

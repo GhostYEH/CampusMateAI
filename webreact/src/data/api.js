@@ -184,7 +184,11 @@ export async function startStudySession(payload) { return dataOf(await client.po
 export async function pauseStudySession(id, reason) { return dataOf(await client.post(`/study/sessions/${id}/pause`, null, { params: reason ? { reason } : {} })); }
 export async function resumeStudySession(id) { return dataOf(await client.post(`/study/sessions/${id}/resume`)); }
 export async function finishStudySession(id, payload = {}) { return dataOf(await client.post(`/study/sessions/${id}/finish`, payload)); }
-export async function breakdownStudyTask(payload) { return dataOf(await client.post("/study/task-breakdown", payload)); }
+export async function breakdownStudyTask(payload) {
+  // 任务拆解会调用 LLM,后端默认超时 30s。前端独立设置 45s,
+  // 既大于后端模型超时以容纳网络往返,又不影响其它普通 API 的 8s 默认超时。
+  return dataOf(await client.post("/study/task-breakdown", payload, { timeout: 45000 }));
+}
 async function studyCheckinsSupported() {
   try {
     const response = await client.get("/health");
