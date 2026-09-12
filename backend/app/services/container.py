@@ -238,6 +238,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
+    learner_event_service._edu_data_repository = edu_data_repo
+    learner_event_service._edu_repository = edu_repo
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":

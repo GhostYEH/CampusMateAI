@@ -8,7 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic_core import InitErrorDetails, PydanticCustomError
 from pydantic_core import ValidationError as CoreValidationError
 
-WritableSource = Literal["study", "personal_task", "chaoxing", "practice"]
+WritableSource = Literal[
+    "study",
+    "personal_task",
+    "chaoxing",
+    "practice",
+    "edu",
+    "self_report",
+    "ai_learning_feedback",
+    "code_analysis",
+]
 WritableEventType = Literal[
     "study_session_finished",
     "task_completed",
@@ -18,10 +27,15 @@ WritableEventType = Literal[
     "assignment_submitted",
     "notice_synced",
     "practice_answered",
-]
-ReservedSource = Literal["edu"]
-ReservedEventType = Literal[
-    "edu_grade_synced",
+    "edu_schedule_synced",
+    "edu_grade_observed",
+    "edu_exam_discovered",
+    "self_report_submitted",
+    "ai_learning_feedback_recorded",
+    "code_attempt_analyzed",
+    "assignment_graded",
+    "discussion_participated",
+    "exam_discovered",
 ]
 EventOutcome = Literal["completed", "synced", "discovered", "observed_completed"]
 DataQuality = Literal["verified", "partial"]
@@ -36,8 +50,19 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
         "assignment_discovered",
         "assignment_submitted",
         "notice_synced",
+        "assignment_graded",
+        "discussion_participated",
+        "exam_discovered",
     },
     "practice": {"practice_answered"},
+    "edu": {
+        "edu_schedule_synced",
+        "edu_grade_observed",
+        "edu_exam_discovered",
+    },
+    "self_report": {"self_report_submitted"},
+    "ai_learning_feedback": {"ai_learning_feedback_recorded"},
+    "code_analysis": {"code_attempt_analyzed"},
 }
 
 EVENT_OUTCOMES: dict[str, str] = {
@@ -49,6 +74,15 @@ EVENT_OUTCOMES: dict[str, str] = {
     "notice_synced": "synced",
     "chapter_completed": "observed_completed",
     "practice_answered": "observed_completed",
+    "edu_schedule_synced": "synced",
+    "edu_grade_observed": "observed_completed",
+    "edu_exam_discovered": "discovered",
+    "self_report_submitted": "completed",
+    "ai_learning_feedback_recorded": "observed_completed",
+    "code_attempt_analyzed": "observed_completed",
+    "assignment_graded": "observed_completed",
+    "discussion_participated": "observed_completed",
+    "exam_discovered": "discovered",
 }
 
 SENSITIVE_KEYS = frozenset(
@@ -168,7 +202,7 @@ class LearnerEventCreate(BaseModel):
             raise ValueError("outcome does not match event type")
         expected_consent = (
             "connected_learning_platform"
-            if self.source == "chaoxing"
+            if self.source in ("chaoxing", "edu")
             else "core_learning_record"
         )
         if self.consent_scope != expected_consent:

@@ -24,6 +24,8 @@ class LearnerEventService:
         course_repository=None,
         notice_repository=None,
         course_content_repository=None,
+        edu_data_repository=None,
+        edu_repository=None,
         source_policy=None,
     ) -> None:
         self._repository = repository
@@ -32,6 +34,8 @@ class LearnerEventService:
         self._course_repository = course_repository
         self._notice_repository = notice_repository
         self._course_content_repository = course_content_repository
+        self._edu_data_repository = edu_data_repository
+        self._edu_repository = edu_repository
         self._source_policy = source_policy
 
     @property
@@ -362,6 +366,438 @@ class LearnerEventService:
         )
         return self.record_event(user_id=task.user_id, event=event)
 
+    @staticmethod
+    def _controlled_semester_key(semester: Optional[str]) -> Optional[str]:
+        if not semester:
+            return None
+        return hashlib.sha256(f"sem:{semester}".encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _score_band(score: Optional[str]) -> Optional[str]:
+        if not score:
+            return None
+        try:
+            numeric = float(score)
+        except (TypeError, ValueError):
+            return "non_numeric"
+        if numeric >= 90:
+            return "90_100"
+        if numeric >= 80:
+            return "80_89"
+        if numeric >= 70:
+            return "70_79"
+        if numeric >= 60:
+            return "60_69"
+        return "0_59"
+
+    @staticmethod
+    def _exam_time_bucket(starts_at: Optional[str]) -> Optional[str]:
+        if not starts_at:
+            return "unknown"
+        try:
+            exam_dt = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return "unknown"
+        if exam_dt.tzinfo is None:
+            exam_dt = exam_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta_days = (exam_dt - now).days
+        if delta_days < 0:
+            return "past"
+        if delta_days <= 7:
+            return "within_7d"
+        if delta_days <= 30:
+            return "within_30d"
+        return "beyond_30d"
+
+    def record_edu_schedule_synced(
+        self,
+        *,
+        user_id: str,
+        binding_id: str,
+        semester: Optional[str],
+        scheduled_item_count: int,
+        observed_at: datetime,
+        sync_batch_id: str,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="edu"):
+            return None
+        sem_key = self._controlled_semester_key(semester)
+        revision = self._revision_hash(
+            {
+                "binding_id": binding_id,
+                "semester_key": sem_key,
+                "scheduled_item_count": scheduled_item_count,
+                "sync_batch_id": sync_batch_id,
+            }
+        )
+        event = LearnerEventCreate(
+            source="edu",
+            event_type="edu_schedule_synced",
+            occurred_at=observed_at,
+            subject_type="edu_schedule",
+            subject_id=sync_batch_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="edu_schedule_items", row_id=sync_batch_id
+            ),
+            data_quality=data_quality,
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"edu:edu_schedule_synced:{binding_id}:{sem_key or 'none'}:{revision}",
+            payload={
+                "semester_key": sem_key,
+                "scheduled_item_count": scheduled_item_count,
+                "data_quality": data_quality,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_edu_grade_observed(
+        self,
+        *,
+        user_id: str,
+        binding_id: str,
+        semester: Optional[str],
+        course_code: Optional[str],
+        credit_value: Optional[float],
+        score: Optional[str],
+        assessment_category: Optional[str],
+        grade_id: str,
+        observed_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="edu"):
+            return None
+        sem_key = self._controlled_semester_key(semester)
+        score_band = self._score_band(score)
+        revision = self._revision_hash(
+            {
+                "binding_id": binding_id,
+                "semester_key": sem_key,
+                "course_code": course_code,
+                "credit_value": credit_value,
+                "score_band": score_band,
+                "assessment_category": assessment_category,
+            }
+        )
+        event = LearnerEventCreate(
+            source="edu",
+            event_type="edu_grade_observed",
+            occurred_at=observed_at,
+            subject_type="edu_grade",
+            subject_id=grade_id,
+            external_ref=course_code,
+            outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="edu_grades", row_id=grade_id
+            ),
+            data_quality=data_quality,
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"edu:edu_grade_observed:{grade_id}:{revision}",
+            payload={
+                "semester_key": sem_key,
+                "course_id": course_code,
+                "assessment_category": assessment_category,
+                "normalized_score_band": score_band,
+                "credit_value": credit_value,
+                "data_quality": data_quality,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_edu_exam_discovered(
+        self,
+        *,
+        user_id: str,
+        binding_id: str,
+        semester: Optional[str],
+        course_code: Optional[str],
+        exam_id: str,
+        starts_at: Optional[str],
+        observed_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="edu"):
+            return None
+        sem_key = self._controlled_semester_key(semester)
+        time_bucket = self._exam_time_bucket(starts_at)
+        revision = self._revision_hash(
+            {
+                "binding_id": binding_id,
+                "semester_key": sem_key,
+                "course_code": course_code,
+                "exam_time_bucket": time_bucket,
+            }
+        )
+        event = LearnerEventCreate(
+            source="edu",
+            event_type="edu_exam_discovered",
+            occurred_at=observed_at,
+            subject_type="edu_exam",
+            subject_id=exam_id,
+            external_ref=course_code,
+            outcome="discovered",
+            evidence_reference=EvidenceReference(
+                kind="row", table="edu_exam_items", row_id=exam_id
+            ),
+            data_quality=data_quality,
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"edu:edu_exam_discovered:{exam_id}:{revision}",
+            payload={
+                "semester_key": sem_key,
+                "course_id": course_code,
+                "exam_time_bucket": time_bucket,
+                "data_quality": data_quality,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_self_report_submitted(
+        self,
+        *,
+        user_id: str,
+        report_id: str,
+        report_kind: str,
+        occurred_at: datetime,
+        duration_minutes: Optional[int] = None,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="self_report"):
+            return None
+        revision = self._revision_hash(
+            {"report_id": report_id, "report_kind": report_kind}
+        )
+        payload: dict[str, Any] = {
+            "report_kind": report_kind,
+            "data_quality": data_quality,
+        }
+        if duration_minutes is not None:
+            payload["duration_minutes"] = duration_minutes
+        event = LearnerEventCreate(
+            source="self_report",
+            event_type="self_report_submitted",
+            occurred_at=occurred_at,
+            subject_type="self_report",
+            subject_id=report_id,
+            outcome="completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="learner_self_reports", row_id=report_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"self_report:self_report_submitted:{report_id}:{revision}",
+            payload=payload,
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_ai_learning_feedback_recorded(
+        self,
+        *,
+        user_id: str,
+        feedback_id: str,
+        feedback_kind: str,
+        course_id: Optional[str] = None,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="ai_learning_feedback"):
+            return None
+        revision = self._revision_hash(
+            {"feedback_id": feedback_id, "feedback_kind": feedback_kind}
+        )
+        event = LearnerEventCreate(
+            source="ai_learning_feedback",
+            event_type="ai_learning_feedback_recorded",
+            occurred_at=occurred_at,
+            course_id=course_id,
+            subject_type="ai_learning_feedback",
+            subject_id=feedback_id,
+            outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="ai_learning_feedback", row_id=feedback_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"ai_learning_feedback:ai_learning_feedback_recorded:{feedback_id}:{revision}",
+            payload={
+                "feedback_kind": feedback_kind,
+                "data_quality": data_quality,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_code_attempt_analyzed(
+        self,
+        *,
+        user_id: str,
+        attempt_id: str,
+        course_id: Optional[str],
+        exercise_id: Optional[str],
+        correctness: bool,
+        test_pass_count: int,
+        test_total_count: int,
+        compiler_error_categories: list[str],
+        runtime_error_categories: list[str],
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="code_analysis"):
+            return None
+        test_pass_band = self._test_pass_band(test_pass_count, test_total_count)
+        revision = self._revision_hash(
+            {
+                "attempt_id": attempt_id,
+                "correctness": correctness,
+                "test_pass_band": test_pass_band,
+                "compiler_error_categories": sorted(compiler_error_categories),
+                "runtime_error_categories": sorted(runtime_error_categories),
+            }
+        )
+        event = LearnerEventCreate(
+            source="code_analysis",
+            event_type="code_attempt_analyzed",
+            occurred_at=occurred_at,
+            course_id=course_id,
+            subject_type="code_attempt",
+            subject_id=attempt_id,
+            outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="practice_attempts", row_id=attempt_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"code_analysis:code_attempt_analyzed:{attempt_id}:{revision}",
+            payload={
+                "exercise_id": exercise_id,
+                "correctness": correctness,
+                "test_pass_band": test_pass_band,
+                "compiler_error_categories": compiler_error_categories,
+                "runtime_error_categories": runtime_error_categories,
+                "data_quality": data_quality,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    @staticmethod
+    def _test_pass_band(passed: int, total: int) -> str:
+        if total <= 0:
+            return "no_tests"
+        ratio = passed / total
+        if ratio >= 1.0:
+            return "all_passed"
+        if ratio >= 0.5:
+            return "partial"
+        return "none_passed"
+
+    def record_chaoxing_assignment_graded(
+        self,
+        *,
+        user_id: str,
+        task_id: str,
+        course_id: Optional[str],
+        score_band: Optional[str],
+        observed_at: datetime,
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="chaoxing"):
+            return None
+        revision = self._revision_hash(
+            {"task_id": task_id, "score_band": score_band}
+        )
+        event = LearnerEventCreate(
+            source="chaoxing",
+            event_type="assignment_graded",
+            occurred_at=observed_at,
+            course_id=course_id,
+            subject_type="personal_task",
+            subject_id=task_id,
+            outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="personal_tasks", row_id=task_id
+            ),
+            data_quality="partial",
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"chaoxing:assignment_graded:{task_id}:{revision}",
+            payload={
+                "normalized_score_band": score_band,
+                "data_quality": "partial",
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_chaoxing_discussion_participated(
+        self,
+        *,
+        user_id: str,
+        discussion_id: str,
+        course_id: Optional[str],
+        observed_at: datetime,
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="chaoxing"):
+            return None
+        revision = self._revision_hash({"discussion_id": discussion_id})
+        event = LearnerEventCreate(
+            source="chaoxing",
+            event_type="discussion_participated",
+            occurred_at=observed_at,
+            course_id=course_id,
+            subject_type="discussion",
+            subject_id=discussion_id,
+            outcome="observed_completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="chaoxing_discussions", row_id=discussion_id
+            ),
+            data_quality="partial",
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"chaoxing:discussion_participated:{discussion_id}:{revision}",
+            payload={"data_quality": "partial"},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_chaoxing_exam_discovered(
+        self,
+        *,
+        user_id: str,
+        exam_id: str,
+        course_id: Optional[str],
+        exam_time_bucket: str,
+        observed_at: datetime,
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="chaoxing"):
+            return None
+        revision = self._revision_hash(
+            {"exam_id": exam_id, "exam_time_bucket": exam_time_bucket}
+        )
+        event = LearnerEventCreate(
+            source="chaoxing",
+            event_type="exam_discovered",
+            occurred_at=observed_at,
+            course_id=course_id,
+            subject_type="exam",
+            subject_id=exam_id,
+            outcome="discovered",
+            evidence_reference=EvidenceReference(
+                kind="row", table="chaoxing_exams", row_id=exam_id
+            ),
+            data_quality="partial",
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"chaoxing:exam_discovered:{exam_id}:{revision}",
+            payload={
+                "exam_time_bucket": exam_time_bucket,
+                "data_quality": "partial",
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
     def list_events(
         self,
         *,
@@ -489,6 +925,154 @@ class LearnerEventService:
             result=result,
         )
         return result
+
+    def backfill_edu_learning_events(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        batch_size: int = 100,
+    ) -> dict[str, int]:
+        """从已持久化的教务数据幂等补写 Learner Events。"""
+        if batch_size < 1 or batch_size > 100:
+            raise ValueError("batch_size must stay within 1..100")
+        if self._edu_data_repository is None or self._edu_repository is None:
+            raise RuntimeError("edu learning event backfill repositories are not configured")
+        result = {
+            "scanned": 0,
+            "created": 0,
+            "reused": 0,
+            "skipped": 0,
+            "failed": 0,
+        }
+        self._backfill_edu_schedules(user_id=user_id, batch_size=batch_size, result=result)
+        self._backfill_edu_grades(user_id=user_id, batch_size=batch_size, result=result)
+        self._backfill_edu_exams(user_id=user_id, batch_size=batch_size, result=result)
+        return result
+
+    def _backfill_edu_schedules(
+        self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
+    ) -> None:
+        if user_id is None:
+            return
+        binding = self._edu_repository.get_binding_by_user(user_id)
+        if binding is None:
+            return
+        semesters = self._edu_data_repository.list_semesters_with_schedule(user_id)
+        now = datetime.now(timezone.utc)
+        for semester in semesters:
+            items = self._edu_data_repository.list_schedule_items(
+                user_id=user_id, semester=semester, include_stale=False
+            )
+            if not items:
+                continue
+            result["scanned"] += 1
+            try:
+                append_result = self.record_edu_schedule_synced(
+                    user_id=user_id,
+                    binding_id=binding.id,
+                    semester=semester,
+                    scheduled_item_count=len(items),
+                    observed_at=now,
+                    sync_batch_id=f"backfill:{semester}",
+                )
+            except Exception as exc:
+                result["failed"] += 1
+                logger.warning(
+                    "learner_event_backfill_failed subject_type=edu_schedule subject_id={} exception_type={}",
+                    semester,
+                    type(exc).__name__,
+                )
+            else:
+                if append_result is None:
+                    result["skipped"] += 1
+                elif append_result.created:
+                    result["created"] += 1
+                else:
+                    result["reused"] += 1
+
+    def _backfill_edu_grades(
+        self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
+    ) -> None:
+        if user_id is None:
+            return
+        binding = self._edu_repository.get_binding_by_user(user_id)
+        if binding is None:
+            return
+        semesters = self._edu_data_repository.list_semesters_with_grades(user_id)
+        now = datetime.now(timezone.utc)
+        for semester in semesters:
+            items = self._edu_data_repository.list_grade_items(
+                user_id=user_id, semester=semester, include_stale=False
+            )
+            for item in items:
+                result["scanned"] += 1
+                try:
+                    append_result = self.record_edu_grade_observed(
+                        user_id=user_id,
+                        binding_id=binding.id,
+                        semester=semester,
+                        course_code=item.course_code,
+                        credit_value=item.credit,
+                        score=item.score,
+                        assessment_category=item.category,
+                        grade_id=item.id,
+                        observed_at=now,
+                    )
+                except Exception as exc:
+                    result["failed"] += 1
+                    logger.warning(
+                        "learner_event_backfill_failed subject_type=edu_grade subject_id={} exception_type={}",
+                        item.id,
+                        type(exc).__name__,
+                    )
+                else:
+                    if append_result is None:
+                        result["skipped"] += 1
+                    elif append_result.created:
+                        result["created"] += 1
+                    else:
+                        result["reused"] += 1
+
+    def _backfill_edu_exams(
+        self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
+    ) -> None:
+        if user_id is None:
+            return
+        binding = self._edu_repository.get_binding_by_user(user_id)
+        if binding is None:
+            return
+        semesters = self._edu_data_repository.list_semesters_with_exams(user_id)
+        now = datetime.now(timezone.utc)
+        for semester in semesters:
+            items = self._edu_data_repository.list_exam_items(
+                user_id=user_id, semester=semester, include_stale=False
+            )
+            for item in items:
+                result["scanned"] += 1
+                try:
+                    append_result = self.record_edu_exam_discovered(
+                        user_id=user_id,
+                        binding_id=binding.id,
+                        semester=semester,
+                        course_code=item.course_code,
+                        exam_id=item.id,
+                        starts_at=item.starts_at,
+                        observed_at=now,
+                    )
+                except Exception as exc:
+                    result["failed"] += 1
+                    logger.warning(
+                        "learner_event_backfill_failed subject_type=edu_exam subject_id={} exception_type={}",
+                        item.id,
+                        type(exc).__name__,
+                    )
+                else:
+                    if append_result is None:
+                        result["skipped"] += 1
+                    elif append_result.created:
+                        result["created"] += 1
+                    else:
+                        result["reused"] += 1
 
     def _backfill_chaoxing_tasks(
         self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
