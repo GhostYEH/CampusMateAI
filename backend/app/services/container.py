@@ -200,7 +200,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         course_content_repository=course_content_repository,
     )
     learner_state_repository = LearnerStateRepository(db)
-    learner_state_service = LearnerStateProjectionService(learner_state_repository)
+    learner_control_repository = LearnerControlRepository(db)
+    learner_state_service = LearnerStateProjectionService(learner_state_repository, control_repository=learner_control_repository)
     knowledge_repository = KnowledgeRepository(db)
     knowledge_service = KnowledgeService(
         knowledge_repository, learner_event_repository, learner_state_repository
@@ -213,7 +214,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
     )
-    learner_control_repository = LearnerControlRepository(db)
+
     learner_control_service = LearnerControlService(
         repository=learner_control_repository,
         state_repository=learner_state_repository,

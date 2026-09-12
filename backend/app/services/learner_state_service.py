@@ -78,9 +78,10 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
+        self._control_repository = control_repository
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -92,6 +93,19 @@ class LearnerStateProjectionService:
                 user_id=user_id, projection_kind="CORE", projection_scope="__user__"
             )
             inputs = self.repository.collect_inputs(user_id=user_id, limit=self.input_limit)
+            if self._control_repository is not None:
+                corrections = self._control_repository.list_active_corrections(user_id=user_id)
+                inputs["active_corrections"] = [
+                    {
+                        "correction_id": c.correction_id,
+                        "correction_version": c.correction_version,
+                        "correction_type": c.correction_type,
+                        "reason_code": c.reason_code,
+                        "target_snapshot_id": c.target_snapshot_id,
+                        "status": c.status,
+                    }
+                    for c in corrections
+                ]
             input_digest = _digest(inputs)
             current_as_of = _parse(current.as_of) if current else None
             if (
