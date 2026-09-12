@@ -78,10 +78,11 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
         self._control_repository = control_repository
+        self._source_policy = source_policy
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -106,6 +107,8 @@ class LearnerStateProjectionService:
                     }
                     for c in corrections
                 ]
+            if self._source_policy is not None:
+                inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
             input_digest = _digest(inputs)
             current_as_of = _parse(current.as_of) if current else None
             if (
@@ -282,6 +285,10 @@ class LearnerStateProjectionService:
         sections = inputs["sections"]
         truncated = bool(inputs.get("input_metadata", {}).get("truncated"))
         warnings = ["input_truncated"] if truncated else []
+        if self._source_policy is not None:
+            policy_warning = self._source_policy.get_projection_warning(user_id=user_id)
+            if policy_warning is not None:
+                warnings.append(policy_warning)
 
         activity_value, activity_quality, activity_sources, activity_last = self._activity(
             events, sessions, tasks, as_of, user_id

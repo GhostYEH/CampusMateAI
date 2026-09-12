@@ -24,6 +24,7 @@ class LearnerEventService:
         course_repository=None,
         notice_repository=None,
         course_content_repository=None,
+        source_policy=None,
     ) -> None:
         self._repository = repository
         self._study_session_repository = study_session_repository
@@ -31,10 +32,16 @@ class LearnerEventService:
         self._course_repository = course_repository
         self._notice_repository = notice_repository
         self._course_content_repository = course_content_repository
+        self._source_policy = source_policy
 
     @property
     def repository(self) -> LearnerEventRepository:
         return self._repository
+
+    def _is_source_skipped(self, *, user_id: str, source: str) -> bool:
+        if self._source_policy is None:
+            return False
+        return self._source_policy.should_skip_learner_event(user_id=user_id, source=source)
 
     def record_event(
         self, *, user_id: str, event: LearnerEventCreate
@@ -89,6 +96,8 @@ class LearnerEventService:
     ) -> Optional[LearnerEventAppendResult]:
         if course.provider != "chaoxing" or not course.owner_user_id:
             return None
+        if self._is_source_skipped(user_id=course.owner_user_id, source="chaoxing"):
+            return None
         occurred_at = self._parse_aware_datetime(course.last_synced_at)
         if occurred_at is None:
             return None
@@ -131,6 +140,8 @@ class LearnerEventService:
     ) -> Optional[LearnerEventAppendResult]:
         if task.source != "chaoxing":
             return None
+        if self._is_source_skipped(user_id=task.user_id, source="chaoxing"):
+            return None
         occurred_at = self._parse_aware_datetime(task.created_at)
         if occurred_at is None:
             return None
@@ -162,6 +173,8 @@ class LearnerEventService:
         self, task: PersonalTaskRow, *, observed_at: Any = None
     ) -> Optional[LearnerEventAppendResult]:
         if task.source != "chaoxing" or task.status != "completed":
+            return None
+        if self._is_source_skipped(user_id=task.user_id, source="chaoxing"):
             return None
         occurred_at = self._parse_aware_datetime(
             observed_at or task.last_synced_at or task.completed_at
@@ -195,6 +208,8 @@ class LearnerEventService:
         self, notice: NoticeRow
     ) -> Optional[LearnerEventAppendResult]:
         if notice.source != "chaoxing":
+            return None
+        if self._is_source_skipped(user_id=notice.user_id, source="chaoxing"):
             return None
         occurred_at = self._parse_aware_datetime(notice.last_synced_at)
         if occurred_at is None:
@@ -238,6 +253,8 @@ class LearnerEventService:
             or item.is_stale
             or section_status != "complete"
         ):
+            return None
+        if self._is_source_skipped(user_id=item.user_id, source="chaoxing"):
             return None
         occurred_at = self._parse_aware_datetime(item.last_synced_at)
         if occurred_at is None:

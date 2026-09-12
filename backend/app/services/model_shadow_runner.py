@@ -40,7 +40,7 @@ class ModelShadowRunner:
                  sample_rate: float = 0.0, concurrency_limit: int = 2, timeout_ms: int = 1500,
                  max_tokens: int = 256, temperature: float = 0.0, seed: int = 0,
                  circuit_breaker_threshold: int = 3, circuit_breaker_cooldown_seconds: float = 30.0,
-                 repository=None) -> None:
+                 repository=None, source_policy=None) -> None:
         self.registry = registry
         self.candidate_llm = candidate_llm
         self.enabled = bool(enabled)
@@ -53,6 +53,7 @@ class ModelShadowRunner:
         self.circuit_breaker_threshold = max(1, int(circuit_breaker_threshold))
         self.circuit_breaker_cooldown_seconds = max(0.0, float(circuit_breaker_cooldown_seconds))
         self.repository = repository
+        self._source_policy = source_policy
         self._circuits: dict[str, _Circuit] = {}
         self._semaphores: dict[int, asyncio.Semaphore] = {}
 
@@ -147,7 +148,13 @@ class ModelShadowRunner:
             return self._persist(request, self._base_result(request, output=output, failure="MODEL_CAPABILITY_NOT_ALLOWED",
                                      used_fallback=True, schema_valid=False, policy_valid=False, started=started))
         if not self.enabled or self.candidate_llm is None or not getattr(self.candidate_llm, "available", False):
+            if self._source_policy is not None and request.subject_user_id is not None:
+                if self._source_policy.should_skip_shadow_run(user_id=request.subject_user_id):
+                    return self._persist(request, self._fallback(request, payload, "MODEL_SHADOW_PAUSED", started))
             return self._persist(request, self._fallback(request, payload, "MODEL_DISABLED", started))
+        if self._source_policy is not None and request.subject_user_id is not None:
+            if self._source_policy.should_skip_shadow_run(user_id=request.subject_user_id):
+                return self._persist(request, self._fallback(request, payload, "MODEL_SHADOW_PAUSED", started))
         if not self._sampled(request):
             return self._persist(request, self._fallback(request, payload, "MODEL_RATE_LIMITED", started))
         if not self._circuit_allows(request.capability_name):

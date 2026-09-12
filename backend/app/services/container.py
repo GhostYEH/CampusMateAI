@@ -193,6 +193,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     home_banner_repository = HomeBannerRepository(db)
     home_banner_repository.seed_defaults()
     learner_event_repository = LearnerEventRepository(db)
+    learner_control_repository = LearnerControlRepository(db)
+    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
+    model_shadow_runner._source_policy = learner_model_source_policy
     learner_event_service = LearnerEventService(
         learner_event_repository,
         study_session_repository=study_session_repo,
@@ -200,10 +203,14 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         course_repository=course_repo,
         notice_repository=NoticeRepository(db),
         course_content_repository=course_content_repository,
+        source_policy=learner_model_source_policy,
     )
     learner_state_repository = LearnerStateRepository(db)
-    learner_control_repository = LearnerControlRepository(db)
-    learner_state_service = LearnerStateProjectionService(learner_state_repository, control_repository=learner_control_repository)
+    learner_state_service = LearnerStateProjectionService(
+        learner_state_repository,
+        control_repository=learner_control_repository,
+        source_policy=learner_model_source_policy,
+    )
     knowledge_repository = KnowledgeRepository(db)
     knowledge_service = KnowledgeService(
         knowledge_repository, learner_event_repository, learner_state_repository
@@ -215,6 +222,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         state_repository=learner_state_repository, knowledge_service=knowledge_service,
         knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
+        source_policy=learner_model_source_policy,
     )
 
     learner_control_service = LearnerControlService(
@@ -222,7 +230,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         state_repository=learner_state_repository,
         shadow_repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
     )
-    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
+
     # EduConnector
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)

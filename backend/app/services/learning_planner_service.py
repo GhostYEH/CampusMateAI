@@ -56,7 +56,7 @@ class LearningPlannerService:
 
     def __init__(self, *, repository: LearningPlanRepository, state_service, state_repository,
                  knowledge_service, knowledge_repository, task_repository, content_repository,
-                 llm=None) -> None:
+                 llm=None, source_policy=None) -> None:
         self.repository = repository
         self.state_service = state_service
         self.state_repository = state_repository
@@ -65,6 +65,7 @@ class LearningPlannerService:
         self.task_repository = task_repository
         self.content_repository = content_repository
         self.llm = llm
+        self._source_policy = source_policy
 
     def generate(self, *, user_id: str, available_minutes: int, course_id: str | None = None,
                  window_start: str | None = None, window_end: str | None = None,
@@ -80,6 +81,9 @@ class LearningPlannerService:
             raise ValueError("window_end must be timezone-aware ISO 8601")
         if window_start and window_end and _parse(window_end) <= _parse(window_start):
             raise ValueError("window_end must be after window_start")
+
+        if self._source_policy is not None and self._source_policy.should_skip_proactive_suggestions(user_id=user_id):
+            raise InvalidTransition("主动建议已被暂停")
 
         core = self.state_service.project_user(user_id, as_of=now, trigger="learning_plan")
         tasks, task_total = self.task_repository.list_tasks(user_id, page=1, page_size=MAX_TASKS)
@@ -254,6 +258,7 @@ class LearningPlannerService:
                 estimate = float(value.get("estimate", 0.5))
                 need = 0.25 if evidence_count == 0 else max(0.0, min(1.0, 1.0 - estimate))
                 confidence = snapshot.confidence if snapshot.data_quality not in {"stale", "unavailable"} else .25
+
                 readiness = self._prerequisite_readiness(snapshot.scope_id, snapshots)
                 freshness = .4 if any(x.is_stale for x in contents) else 0.0
                 codes = ["diagnostic_or_review_recommended"] if evidence_count == 0 else ["practice_evidence"]
