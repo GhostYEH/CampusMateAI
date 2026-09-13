@@ -8,14 +8,14 @@ import assert from "node:assert/strict";
 import * as C from "../src/data/agentContracts.js";
 
 describe("agentContracts enums", () => {
-  it("run status 包含设计文档定义的 7 个值", () => {
+  it("run status 包含可暂停的完整生命周期", () => {
     assert.deepEqual(C.RUN_STATUS, [
-      "QUEUED", "RUNNING", "AWAITING_APPROVAL", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED",
+      "QUEUED", "RUNNING", "AWAITING_APPROVAL", "PAUSED", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED",
     ]);
   });
 
-  it("event type 包含 16 个设计文档事件", () => {
-    assert.equal(C.EVENT_TYPE.length, 16);
+  it("event type 包含生命周期控制事件", () => {
+    assert.equal(C.EVENT_TYPE.length, 19);
     assert.ok(C.EVENT_TYPE.includes("APPROVAL_REQUIRED"));
     assert.ok(C.EVENT_TYPE.includes("RUN_PARTIAL"));
     assert.ok(C.EVENT_TYPE.includes("MODEL_FALLBACK"));

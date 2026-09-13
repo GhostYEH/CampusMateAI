@@ -41,6 +41,20 @@ describe("runtime common endpoints", () => {
     assert.equal(mock.lastRequest().headers["Idempotency-Key"], "idem-c");
   });
 
+  it("目标中心支持任务列表与暂停/恢复/重试", async () => {
+    mock.onGet("/agent-jobs", [{ job_id: "j1", status: "PAUSED" }]);
+    await api.listAgentJobs(1, 20);
+    assert.equal(mock.lastRequest().url, "/agent-jobs");
+    mock.onPost("/agent-runs/r1/pause", { status: "PAUSED" });
+    await api.pauseAgentRun("r1", "暂时离开", "k-p");
+    assert.equal(mock.lastRequest().headers["Idempotency-Key"], "k-p");
+    mock.onPost("/agent-runs/r1/resume", { status: "RUNNING" });
+    await api.resumeAgentRun("r1", "k-r");
+    mock.onPost("/agent-runs/r1/retry", { status: "RUNNING" });
+    await api.retryAgentRun("r1", "k-t");
+    assert.equal(mock.lastRequest().url, "/agent-runs/r1/retry");
+  });
+
   it("resolveAgentApproval 传递 decision 与 reason", async () => {
     mock.onPost("/agent-approvals/a1/decision", { status: "APPROVED" });
     await api.resolveAgentApproval("a1", "APPROVED", "用户确认", "idem-a");

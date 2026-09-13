@@ -51,6 +51,24 @@
   margin-bottom: 20px;
 }
 .ls-section h3 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+.ls-section__heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.ls-section__heading h2 { font-size: 20px; font-weight: 600; margin: 0; }
+.ls-section__hint { color: var(--muted, #6e788b); font-size: 12px; }
+.ls-goal-create { display: grid; grid-template-columns: 1fr 120px auto; gap: 8px; margin-bottom: 12px; }
+.ls-goal-create select, .ls-goal-create input { min-height: 36px; border: 1px solid var(--line, #e3e8f0); border-radius: 8px; padding: 6px 10px; background: var(--surface, #fff); color: var(--ink, #182134); }
+.ls-goal-execution__summary { display: grid; gap: 4px; background: var(--blue-soft, #eaf0ff); border-radius: 10px; padding: 12px; margin-bottom: 12px; font-size: 13px; }
+.ls-goal-execution__summary strong { font-size: 15px; }
+.ls-goal-execution__summary small { color: var(--muted, #6e788b); }
+.ls-goal-execution__run { border-top: 1px solid var(--line, #e3e8f0); padding: 10px 0; }
+.ls-goal-execution__run > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
+.ls-goal-execution__run > small { color: var(--muted, #6e788b); }
+.ls-goal-execution__actions { display: flex; gap: 6px; margin-top: 7px; }
+
+@media (max-width: 640px) {
+  .ls-section__heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .ls-goal-create { grid-template-columns: 1fr 100px; }
+  .ls-goal-create .ls-btn { grid-column: 1 / -1; }
+}
 
 /* ===== Card Grid ===== */
 .ls-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }

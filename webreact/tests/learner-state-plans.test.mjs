@@ -164,6 +164,18 @@ describe("getPlanEvaluation", () => {
   });
 });
 
+describe("getPlanSummary", () => {
+  it("GET /learning-plans/:id/summary 返回阶段与下一步", async () => {
+    mock.onGet("/learning-plans/p1/summary", {
+      plan_id: "p1", stage: "AWAITING_CONFIRMATION", next_action: "确认计划后创建个人待办",
+      completion_percent: 0,
+    });
+    const result = await api.getPlanSummary("p1");
+    assert.equal(mock.lastRequest().url, "/learning-plans/p1/summary");
+    assert.equal(result.stage, "AWAITING_CONFIRMATION");
+  });
+});
+
 // ===== 数据源控制 =====
 
 describe("getDataControls", () => {

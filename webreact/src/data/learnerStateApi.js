@@ -117,6 +117,10 @@ export async function getPlanEvaluation(planId) {
   return _get(`/learning-plans/${planId}/evaluation`);
 }
 
+export async function getPlanSummary(planId) {
+  return _get(`/learning-plans/${planId}/summary`);
+}
+
 // ===== 状态纠正 =====
 
 export async function createCorrection(body) {

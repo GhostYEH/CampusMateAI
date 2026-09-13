@@ -59,12 +59,52 @@ export async function getAgentJob(jobId) {
   return _get(`/agent-jobs/${jobId}`);
 }
 
+export async function listAgentJobs(page = 1, pageSize = 50) {
+  return _get("/agent-jobs", { page, page_size: pageSize });
+}
+
+export async function listAgentJobRuns(jobId) {
+  return _get(`/agent-jobs/${jobId}/runs`);
+}
+
 export async function getAgentRun(runId) {
   return _get(`/agent-runs/${runId}`);
 }
 
 export async function cancelAgentRun(runId, idempotencyKey) {
   return _post(`/agent-runs/${runId}/cancel`, {}, idempotencyKey);
+}
+
+export async function pauseAgentRun(runId, reason, idempotencyKey) {
+  return _post(`/agent-runs/${runId}/pause`, { ...(reason ? { reason } : {}) }, idempotencyKey);
+}
+
+export async function resumeAgentRun(runId, idempotencyKey) {
+  return _post(`/agent-runs/${runId}/resume`, {}, idempotencyKey);
+}
+
+export async function retryAgentRun(runId, idempotencyKey) {
+  return _post(`/agent-runs/${runId}/retry`, {}, idempotencyKey);
+}
+
+export async function listAgentRuns(page = 1, pageSize = 50) {
+  return _get("/agent-runs", { page, page_size: pageSize });
+}
+
+export async function getAgentSkills() {
+  return _get("/agent-runtime/skills");
+}
+
+export async function listAgentMemories() {
+  return _get("/agent-memories");
+}
+
+export async function createAgentMemory(body) {
+  return _post("/agent-memories", body);
+}
+
+export async function withdrawAgentMemory(memoryId) {
+  return _post(`/agent-memories/${memoryId}/withdraw`, {});
 }
 
 export async function getAgentRunEvents(runId, params = {}) {

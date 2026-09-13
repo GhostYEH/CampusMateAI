@@ -15,6 +15,7 @@ export const RUN_STATUS = Object.freeze([
   "QUEUED",
   "RUNNING",
   "AWAITING_APPROVAL",
+  "PAUSED",
   "SUCCEEDED",
   "PARTIAL",
   "FAILED",
@@ -51,6 +52,9 @@ export const EVENT_TYPE = Object.freeze([
   "RUN_COMPLETED",
   "RUN_FAILED",
   "RUN_CANCELLED",
+  "RUN_PAUSED",
+  "RUN_RESUMED",
+  "RUN_RETRIED",
 ]);
 
 // ===== Risk level（§5.5） =====
@@ -187,6 +191,7 @@ export const RUN_STATUS_LABEL = Object.freeze({
   QUEUED: "已排队",
   RUNNING: "进行中",
   AWAITING_APPROVAL: "等待确认",
+  PAUSED: "已暂停",
   SUCCEEDED: "已完成",
   PARTIAL: "部分完成",
   FAILED: "已失败",
