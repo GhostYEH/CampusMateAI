@@ -44,7 +44,7 @@ test("navigation uses OpenGlass while preserving the product entries", () => {
 });
 
 test("navigation tone follows the page scene instead of the operating-system theme", () => {
-  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \|\| dashboardStyle === "gamified" \? "dark" : "light";/);
+  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \? "dark" : "light";/);
   assert.match(appShell, /<FloatingNav tone=\{topbarGlassTone\}/);
   assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="light"\]/);
   assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="dark"\]/);

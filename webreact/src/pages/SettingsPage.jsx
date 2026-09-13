@@ -29,7 +29,7 @@ function SelectOption({ label, detail, value, options, onChange }) {
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { session, logout, reduceMotion, setReduceMotion, dashboardStyle, setDashboardStyle } = useApp();
+  const { session, logout, reduceMotion, setReduceMotion } = useApp();
   const [preferences, setPreferences] = useState(() => readPreferences());
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -73,11 +73,6 @@ export default function SettingsPage() {
   function updateMotion(value) {
     setReduceMotion(value);
     updatePreference("reduceMotion", value);
-  }
-
-  function updateDashboard(value) {
-    setDashboardStyle(value);
-    showSaved();
   }
 
   function signOut() {
@@ -128,7 +123,6 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection icon="PhPaintBrush" tone="blue" title="界面偏好" detail="按照你的使用习惯调整工作台显示方式" className="settings-display">
-        <SelectOption label="首页视图" detail="工作台适合快速处理，成长地图更强调进度" value={dashboardStyle} options={[{ value: "classic", label: "工作台" }, { value: "gamified", label: "成长地图" }]} onChange={updateDashboard} />
         <SelectOption label="主题" detail="跟随系统或固定使用浅色、深色模式" value={preferences.theme} options={[{ value: "auto", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }]} onChange={(value) => updatePreference("theme", value)} />
         <SettingToggle label="减少动效" detail="关闭页面进入和装饰性动画，降低视觉干扰" value={reduceMotion} onChange={updateMotion} />
         <SettingToggle label="紧凑列表" detail="减少长列表的垂直间距，提升信息密度" value={preferences.compactList} onChange={(value) => updatePreference("compactList", value)} />

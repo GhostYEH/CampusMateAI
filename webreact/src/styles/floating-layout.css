@@ -22,7 +22,7 @@ html {
    Every nav color flows from these tokens. The base block is the
    light-page default (dark text on whitish glass). data-contrast is set
    by the adaptive sampler on the Sylva home page; --light stays as the
-   legacy class for counselor / gamified routes. */
+   legacy class for counselor routes. */
 
 .floating-nav {
   --floating-nav-collapsed-width: 424px;

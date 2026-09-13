@@ -82,7 +82,6 @@ def run():
               window.setTimeout(() => callback(performance.now()), 50);
             localStorage.setItem('campus_access_token', 'sylva-smoke-token');
             localStorage.setItem('campus_session', JSON.stringify({role: 'student', name: '测试同学'}));
-            localStorage.setItem('campus_dashboard_style', 'classic');
             """
         )
 

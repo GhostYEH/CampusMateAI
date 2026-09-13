@@ -38,7 +38,7 @@ test("homepage keeps the Sylva hero as the fixed living-scene background", async
   assert.match(heroSource, /sylva-scene-background/);
   assert.match(homeSource, /<SylvaHomeHero\s*\/>/);
   assert.match(homeSource, /id=["']campus-dashboard["']/);
-  assert.match(homeSource, /<ClassicHome|<GamifiedHome/);
+  assert.match(homeSource, /<ClassicHome/);
 });
 
 test("homepage renders the CampusMate first-screen workbench above the background", async () => {

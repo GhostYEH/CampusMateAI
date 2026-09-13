@@ -1,6 +1,5 @@
 export const SETTING_KEYS = {
   theme: "campus_theme",
-  dashboardStyle: "campus_dashboard_style",
   reduceMotion: "campus_reduce_motion",
   compactList: "campus_compact_list",
   noticeReminder: "campus_notice_reminder",

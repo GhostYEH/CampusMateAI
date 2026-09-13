@@ -7,14 +7,13 @@ import { test } from "node:test";
 const reactRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("React home mounts the service and brand footer", async () => {
-  const [classicHome, gamifiedHome, footer] = await Promise.all([
+  const [classicHome, footer] = await Promise.all([
     readFile(path.join(reactRoot, "src/pages/home/ClassicHome.jsx"), "utf8"),
-    readFile(path.join(reactRoot, "src/pages/home/GamifiedHome.jsx"), "utf8"),
     readFile(path.join(reactRoot, "src/components/HomeFooter.jsx"), "utf8"),
   ]);
 
-  assert.match(`${classicHome}\n${gamifiedHome}`, /<HomeFooter>/);
-  assert.match(`${classicHome}\n${gamifiedHome}`, /<\/HomeFooter>/);
+  assert.match(classicHome, /<HomeFooter\b/);
+  assert.match(classicHome, /<\/HomeFooter>/);
   assert.doesNotMatch(classicHome, /需要时再打开/);
   assert.match(footer, /我的课程/);
   assert.match(footer, /校园社区/);

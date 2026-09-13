@@ -224,7 +224,6 @@ fun AppNavHost(
         composable("home") {
             DashboardScreen(
                 repository = repository,
-                examRepository = modules.exams,
                 focusRepository = modules.focus,
             ) { route ->
                 navController.navigate(route) {

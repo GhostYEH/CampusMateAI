@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.BuildConfig
-import com.example.campusai.features.gamification.DashboardStyle
+import com.example.campusai.data.local.DashboardStyle
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.Danger
@@ -213,12 +213,10 @@ private fun DashboardStyleSelector(
                 val active = selected == style
                 val label = when (style) {
                     DashboardStyle.CLASSIC -> "经典"
-                    DashboardStyle.GAMIFIED -> "游戏化"
                     DashboardStyle.IMMERSIVE -> "沉浸"
                 }
                 val icon = when (style) {
                     DashboardStyle.CLASSIC -> Icons.Default.Home
-                    DashboardStyle.GAMIFIED -> Icons.Default.AutoAwesome
                     DashboardStyle.IMMERSIVE -> Icons.Default.Waves
                 }
                 Row(

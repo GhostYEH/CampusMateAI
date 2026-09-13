@@ -46,7 +46,7 @@ function SearchBox({ tone, disableEffects = false }) {
 }
 
 export default function AppShell() {
-  const { session, unreadCount, pendingCount, reduceMotion, dashboardStyle } = useApp();
+  const { session, unreadCount, pendingCount, reduceMotion } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false);
@@ -56,7 +56,7 @@ export default function AppShell() {
   const isProfile = location.pathname === "/profile";
   const isStudy = ["/study", "/island", "/plans", "/docs", "/statistics"].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
   const [studyScene, setStudyScene] = useState(() => readStudyScene());
-  const topbarGlassTone = isHome || isStudy || dashboardStyle === "gamified" ? "dark" : "light";
+  const topbarGlassTone = isHome || isStudy ? "dark" : "light";
   const motionPaused = reduceMotion || systemReducedMotion;
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date()).replace("星期", "周"), []);
   const displayName = session?.name || session?.username || "同学";

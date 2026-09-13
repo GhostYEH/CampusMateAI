@@ -4,20 +4,10 @@ import * as api from "../data/api.js";
 
 import { useApp } from "../app/AppContext.jsx";
 import { buildHomeSearchResults } from "../data/alignment.js";
-import { buildDueItems, buildMainQuests, todayScheduleItems, selectUpcomingExam } from "../data/dashboardModel.js";
+import { buildDueItems, buildMainQuests, todayScheduleItems } from "../data/dashboardModel.js";
 import { resolveHomeLearningCommand } from "../data/homeLearningModel.js";
 import { resolveHomeOverviewMetrics } from "../data/overviewMetrics.js";
-import {
-  activityDatesFromFacts,
-  calculateLevel,
-  calculateStreak,
-  evaluateAchievements,
-  reconcileXpEvents,
-  summarizeGamification,
-} from "../data/gamificationModel.js";
-import { createLocalGamificationRepository } from "../data/gamificationRepository.js";
 import ClassicHome from "./home/ClassicHome.jsx";
-import GamifiedHome from "./home/GamifiedHome.jsx";
 import SylvaCampusOverview from "./home/SylvaCampusOverview.jsx";
 import SylvaHomeHero from "../components/SylvaHomeHero.jsx";
 import RippleDistortion from "../components/RippleDistortion.jsx";
@@ -98,7 +88,6 @@ function loadHomeState(dashboardCacheKey) {
 
 function useStudentDashboardData(searchQuery) {
   const { session, setDashboardSummary } = useApp();
-  const repository = useMemo(() => createLocalGamificationRepository(window.localStorage), []);
   const dashboardCacheKey = dashboardCacheKeyFor(session);
   const cachedHomeState = homeDashboardCache.get(dashboardCacheKey);
   const [loading, setLoading] = useState(() => !cachedHomeState);
@@ -114,7 +103,6 @@ function useStudentDashboardData(searchQuery) {
   const [searchFacts, setSearchFacts] = useState(() => cachedHomeState?.searchFacts || { assignments: [], notices: [] });
   const [scheduleLoading, setScheduleLoading] = useState(() => !cachedHomeState);
   const [liveOverview, setLiveOverview] = useState(() => cachedHomeState?.liveOverview || { courses: null, pendingAssignments: null, pendingTasks: null, unreadNotices: null });
-  const [gamificationSnapshot, setGamificationSnapshot] = useState({ version: 1, events: [], achievements: [] });
   const [hotPosts, setHotPosts] = useState(() => cachedHomeState?.hotPosts || []);
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -177,9 +165,6 @@ function useStudentDashboardData(searchQuery) {
   const todayCourses = useMemo(() => todayScheduleItems(scheduleItems, new Date(now)), [scheduleItems, now]);
   const mainQuests = useMemo(() => buildMainQuests({ scheduleItems, dueItems, exams }, new Date(now)), [scheduleItems, dueItems, exams, now]);
   const filteredMainQuests = useMemo(() => mainQuests.filter((item) => matches(item, ["title", "meta", "sourceType"])), [mainQuests, matches]);
-  const completedTasks = useMemo(() => personalTasks.filter((task) => task.status === "completed" && task.completed_at), [personalTasks]);
-  const completedFocusSessions = useMemo(() => studySessions.filter((session) => session.status === "completed" && session.mode === "focus"), [studySessions]);
-  const gamificationFacts = useMemo(() => ({ completedTasks, completedFocusSessions }), [completedTasks, completedFocusSessions]);
 
   const todayFocusSeconds = useMemo(() => {
     const current = new Date(now);
@@ -196,17 +181,6 @@ function useStudentDashboardData(searchQuery) {
     }, 0);
   }, [studySessions, now]);
 
-  const accountKey = session?.id || session?.username || session?.email || session?.name || "anonymous";
-
-  const gamification = useMemo(() => {
-    const current = new Date(now);
-    const stored = repository.load(accountKey);
-    const withEvents = reconcileXpEvents(stored, gamificationFacts, current);
-    const withAchievements = evaluateAchievements(withEvents, gamificationFacts, current);
-    const snapshot = repository.save(accountKey, withAchievements);
-    return summarizeGamification(snapshot, gamificationFacts, current);
-  }, [repository, accountKey, gamificationFacts, now]);
-
   const learningCommand = useMemo(() => resolveHomeLearningCommand({
     scheduleItems,
     dueItems,
@@ -221,15 +195,13 @@ function useStudentDashboardData(searchQuery) {
     loading, refreshing, error, now, dashboard, courses, studySessions, personalTasks, exams, searchResults,
     user: session, scheduleItems, scheduleLoading, normalizedSearch,
     filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests,
-    todayFocusSeconds, learningCommand, gamification, visibleHotPosts,
-  }), [loading, refreshing, error, now, dashboard, courses, studySessions, personalTasks, exams, searchResults, session, scheduleItems, scheduleLoading, normalizedSearch, filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests, todayFocusSeconds, learningCommand, gamification, visibleHotPosts]);
+    todayFocusSeconds, learningCommand, visibleHotPosts,
+  }), [loading, refreshing, error, now, dashboard, courses, studySessions, personalTasks, exams, searchResults, session, scheduleItems, scheduleLoading, normalizedSearch, filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests, todayFocusSeconds, learningCommand, visibleHotPosts]);
 
   return { state, reload };
 }
 
 export default function HomePage() {
-  const { dashboardStyle } = useApp();
-  const isClassicDashboard = dashboardStyle !== "gamified";
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
@@ -240,9 +212,7 @@ export default function HomePage() {
     navigate(item.route || (item.kind === "作业" ? `/tasks/assignment/${item.id}` : `/tasks/personal/${item.id}`));
   }
 
-  const dashboard = dashboardStyle === "gamified"
-    ? <GamifiedHome state={state} onNavigate={handleNavigate} onReload={reload} />
-    : <ClassicHome state={state} searchQuery={query} onNavigate={handleNavigate} onOpenDue={handleOpenDue} onReload={reload} />;
+  const dashboard = <ClassicHome state={state} searchQuery={query} onNavigate={handleNavigate} onOpenDue={handleOpenDue} onReload={reload} />;
 
   const stageRef = useRef(null);
   const sheetRef = useRef(null);
@@ -270,17 +240,12 @@ export default function HomePage() {
     return () => { window.clearTimeout(refreshTimer); ctx.revert(); };
   }, []);
 
-  const risingSheetClassName = [
-    "rising-sheet",
-    isClassicDashboard && "rising-sheet--bounded",
-  ].filter(Boolean).join(" ");
-
   return <div className="sylva-home-page">
     <SylvaHomeHero />
     <section ref={stageRef} className="home-stage">
       <SylvaCampusOverview state={state} onNavigate={handleNavigate} onOpenDue={handleOpenDue} />
     </section>
-    <section ref={sheetRef} className={risingSheetClassName} aria-label="CampusMate 学习工作台">
+    <section ref={sheetRef} className="rising-sheet rising-sheet--bounded" aria-label="CampusMate 学习工作台">
       <div className="rising-sheet-video" aria-hidden="true">
         {/* pauseOnScroll={false}: 让视频与涟漪特效在底部栏被推起的过程中就持续播放，
             而不是等滚动停下（整层铺满视窗）之后才开始。 */}

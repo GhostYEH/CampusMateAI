@@ -48,7 +48,7 @@ test("floating navigation foreground uses explicit contrast tokens", () => {
 });
 
 test("counselor uses the same global floating navigation as other routes", () => {
-  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \|\| dashboardStyle === "gamified" \? "dark" : "light";/);
+  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \? "dark" : "light";/);
   assert.match(appShell, /<FloatingNav tone=\{topbarGlassTone\}/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav\{/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-list\{/);

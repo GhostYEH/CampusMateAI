@@ -30,8 +30,7 @@ import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
 import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
-import com.example.campusai.features.gamification.DashboardStyle
-import com.example.campusai.features.gamification.GamificationStore
+import com.example.campusai.data.local.DashboardStyle
 import com.example.campusai.data.hitokoto.HitokotoRepository
 import com.example.campusai.data.wallpaper.BingDailyWallpaperRepository
 import kotlinx.coroutines.*
@@ -65,7 +64,6 @@ class AppRepository(
     private val credentialStore = CredentialStore(application)
     private val newsPreferences = campusNewsPreferences ?: dataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    val gamificationStore = GamificationStore(dataStore)
     private companion object {
         const val HOME_BANNER_CACHE_KEY = "home_banners_v1"
     }
@@ -179,7 +177,6 @@ class AppRepository(
                 val token = dataStore.readAccessToken()
                 ApiClient.setToken(token)
                 if (stored == null) {
-                    gamificationStore.activate(null)
                     // 无持久化会话：尝试用「记住的账号密码」自动登录（仅尝试一次）
                     if (!autoLoginAttempted) {
                         autoLoginAttempted = true
@@ -221,7 +218,6 @@ class AppRepository(
                 } else stored
                 _session.value = hydrated
                 if (hydrated != null && hydrated != stored) dataStore.saveSession(hydrated)
-                gamificationStore.activate(hydrated?.let(::accountStorageKey))
                 bindPersonalHub(hydrated)
                 bindTasks(hydrated)
             }

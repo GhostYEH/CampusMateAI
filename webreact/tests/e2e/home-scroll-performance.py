@@ -64,7 +64,6 @@ def run():
         page.evaluate("""() => {
           localStorage.setItem('campus_access_token', 'scroll-performance-token');
           localStorage.setItem('campus_session', JSON.stringify({role: 'student', name: '测试同学'}));
-          localStorage.setItem('campus_dashboard_style', 'classic');
         }""")
         page.goto(f"{BASE_URL}/home", wait_until="domcontentloaded", timeout=15000)
         page.wait_for_timeout(700)

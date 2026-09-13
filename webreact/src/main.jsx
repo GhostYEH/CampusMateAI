@@ -6,7 +6,6 @@ import "./styles.css";
 import "./styles/counselor-reference.css";
 import "./styles/asset-pages.css";
 import "./styles/home-classic.css";
-import "./styles/home-gamified.css";
 import "./styles/floating-layout.css";
 import "./styles/study-summer.css";
 import "./styles/sylva-home.css";
