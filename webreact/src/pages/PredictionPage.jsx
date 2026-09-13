@@ -55,8 +55,11 @@ const DATA_QUALITY_LABEL = {
 
 const INTERVENTION_TYPES = [
   { value: "ALLOCATE_FOCUS_MINUTES", label: "分配专注时间" },
+  { value: "ACCEPT_PLAN", label: "接受行动计划" },
   { value: "REDUCE_DAILY_LOAD", label: "降低每日负载" },
+  { value: "RESCHEDULE_TASK", label: "调整任务截止" },
   { value: "PAUSE_DATA_SOURCE", label: "暂停数据源" },
+  { value: "ADJUST_GOAL_DEADLINE", label: "调整目标日期" },
 ];
 
 const DATA_SOURCE_CATEGORIES = [
@@ -192,6 +195,11 @@ export default function PredictionPage() {
     focus_minutes: 60,
     reduce_minutes_per_day: 30,
     source_category: "academic",
+    plan_id: "",
+    task_id: "",
+    new_deadline: "",
+    goal_id: "",
+    new_target_date: "",
   });
   const [simResult, setSimResult] = useState(null);
   const [simLoading, setSimLoading] = useState(false);
@@ -322,12 +330,21 @@ export default function PredictionPage() {
                     onChange={(e) => setSimForm({ ...simForm, focus_minutes: parseInt(e.target.value) || 0 })} />
                 </label>
               )}
+              {simForm.intervention_type === "ACCEPT_PLAN" && (
+                <label><span>计划 ID</span><input value={simForm.plan_id} onChange={(e) => setSimForm({ ...simForm, plan_id: e.target.value })} placeholder="粘贴计划 ID" /></label>
+              )}
               {simForm.intervention_type === "REDUCE_DAILY_LOAD" && (
                 <label>
                   <span>每日减少分钟数</span>
                   <input type="number" min="0" max="480" value={simForm.reduce_minutes_per_day}
                     onChange={(e) => setSimForm({ ...simForm, reduce_minutes_per_day: parseInt(e.target.value) || 0 })} />
                 </label>
+              )}
+              {simForm.intervention_type === "RESCHEDULE_TASK" && (
+                <>
+                  <label><span>任务 ID</span><input value={simForm.task_id} onChange={(e) => setSimForm({ ...simForm, task_id: e.target.value })} /></label>
+                  <label><span>新的截止时间</span><input type="datetime-local" value={simForm.new_deadline} onChange={(e) => setSimForm({ ...simForm, new_deadline: e.target.value })} /></label>
+                </>
               )}
               {simForm.intervention_type === "PAUSE_DATA_SOURCE" && (
                 <label>
@@ -339,6 +356,12 @@ export default function PredictionPage() {
                     ))}
                   </select>
                 </label>
+              )}
+              {simForm.intervention_type === "ADJUST_GOAL_DEADLINE" && (
+                <>
+                  <label><span>目标 ID</span><input value={simForm.goal_id} onChange={(e) => setSimForm({ ...simForm, goal_id: e.target.value })} /></label>
+                  <label><span>新的目标日期</span><input type="datetime-local" value={simForm.new_target_date} onChange={(e) => setSimForm({ ...simForm, new_target_date: e.target.value })} /></label>
+                </>
               )}
               <button onClick={handleSimulate} disabled={simLoading} className="pred-btn pred-btn--primary">
                 {simLoading ? "模拟中…" : "运行模拟"}
@@ -366,6 +389,9 @@ function buildIntervention(form) {
       reduce_minutes_per_day: form.reduce_minutes_per_day,
     };
   }
+  if (form.intervention_type === "ACCEPT_PLAN") return { intervention_type: "ACCEPT_PLAN", plan_id: form.plan_id };
+  if (form.intervention_type === "RESCHEDULE_TASK") return { intervention_type: "RESCHEDULE_TASK", task_id: form.task_id, new_deadline: new Date(form.new_deadline).toISOString() };
+  if (form.intervention_type === "ADJUST_GOAL_DEADLINE") return { intervention_type: "ADJUST_GOAL_DEADLINE", goal_id: form.goal_id, new_target_date: new Date(form.new_target_date).toISOString() };
   if (form.intervention_type === "PAUSE_DATA_SOURCE") {
     return {
       intervention_type: "PAUSE_DATA_SOURCE",
@@ -417,6 +443,7 @@ function SimulationResult({ result }) {
             </thead>
             <tbody>
               {changedForecasts.map((d, i) => (
+                <>
                 <tr key={`${d.forecast_type}-${d.scope_type}-${d.scope_id}-${i}`}>
                   <td>{FORECAST_TYPE_LABEL[d.forecast_type] || d.forecast_type}</td>
                   <td>{d.scope_type}/{d.scope_id}</td>
@@ -427,6 +454,8 @@ function SimulationResult({ result }) {
                     {d.magnitude > 0 ? "+" : ""}{pct(d.magnitude)}
                   </td>
                 </tr>
+                <tr key={`${d.forecast_type}-${d.scope_id}-${i}-detail`} className="pred-sim-table__detail"><td colSpan="6">基线：{JSON.stringify(d.baseline_value || {})} · 模拟：{JSON.stringify(d.intervention_value || {})} · 差值：{JSON.stringify(d.delta || {})}</td></tr>
+                </>
               ))}
             </tbody>
           </table>

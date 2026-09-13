@@ -484,6 +484,19 @@ class LearnerStateRepository:
             for row in rows
         ], total
 
+    def count_evidence(self, *, user_id: str, snapshot_id: str) -> int:
+        """Count evidence only after confirming the snapshot belongs to the user."""
+        with self._db.query() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) AS n
+                   FROM learner_state_evidence e
+                   JOIN learner_state_snapshots s ON s.snapshot_id=e.snapshot_id
+                   JOIN learner_state_projection_runs r ON r.run_id=s.run_id
+                   WHERE e.snapshot_id=? AND r.user_id=?""",
+                (snapshot_id, user_id),
+            ).fetchone()
+        return int(row["n"] if row else 0)
+
     @staticmethod
     def _source_category(source_type: str) -> str:
         return {

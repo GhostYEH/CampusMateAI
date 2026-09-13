@@ -61,7 +61,8 @@ class LearningPlannerService:
     def __init__(self, *, repository: LearningPlanRepository, state_service, state_repository,
                  task_repository, content_repository,
                  llm=None, source_policy=None,
-                 student_goal_repository=None, notice_repository=None) -> None:
+                 student_goal_repository=None, notice_repository=None,
+                 forecast_service=None) -> None:
         self.repository = repository
         self.state_service = state_service
         self.state_repository = state_repository
@@ -71,6 +72,7 @@ class LearningPlannerService:
         self._source_policy = source_policy
         self._student_goal_repository = student_goal_repository
         self._notice_repository = notice_repository
+        self._forecast_service = forecast_service
 
     def generate(self, *, user_id: str, available_minutes: int, course_id: str | None = None,
                  window_start: str | None = None, window_end: str | None = None,
@@ -93,9 +95,26 @@ class LearningPlannerService:
         academic = self.state_service.project_academic(
             user_id, as_of=now, trigger="learning_plan"
         )
+        world = self.state_service.project_world(user_id, as_of=now, trigger="learning_plan")
+        forecasts = []
+        if self._forecast_service is not None:
+            for forecast_type in (
+                "DEADLINE_COMPLETION_RISK", "UPCOMING_WORKLOAD",
+                "SCHEDULE_CONFLICT_RISK", "GOAL_PROGRESS_OUTLOOK", "ROUTINE_CONTINUITY",
+            ):
+                try:
+                    forecasts.append(self._forecast_service.forecast(
+                        user_id=user_id, as_of=now, forecast_type=forecast_type, horizon_days=7,
+                    ))
+                except Exception:
+                    # Forecasts are an enhancement; a plan remains usable if one is unavailable.
+                    continue
         tasks, task_total = self.task_repository.list_tasks(user_id, page=1, page_size=MAX_TASKS)
         warnings = list(core.warnings)
-        if any(s.data_quality in {"stale", "partial", "unavailable"} for s in core.snapshots):
+        warnings.extend(world.warnings)
+        if self._forecast_service is not None and len(forecasts) < 5:
+            warnings.append("forecast_unavailable")
+        if any(s.data_quality in {"stale", "partial", "unavailable"} for s in [*core.snapshots, *world.snapshots]):
             warnings.append("data_quality_partial")
         if task_total > MAX_TASKS:
             warnings.append("tasks_truncated")
@@ -148,6 +167,21 @@ class LearningPlannerService:
                 for s in sorted(academic.snapshots, key=lambda x: x.state_type)
             ],
         }
+        safe_world = {
+            "run_id": world.run_id,
+            "snapshots": [
+                {"state_type": s.state_type, "value": s.value, "confidence": s.confidence,
+                 "data_quality": s.data_quality, "valid_until": s.valid_until}
+                for s in sorted(world.snapshots, key=lambda x: x.state_type)
+            ],
+        }
+        safe_forecasts = [
+            {"forecast_type": forecast.forecast_type, "scope_type": forecast.scope_type,
+             "scope_id": forecast.scope_id, "value": forecast.value.model_dump(mode="json"),
+             "probability": forecast.probability, "confidence": forecast.confidence,
+             "data_quality": forecast.data_quality, "explanation_codes": forecast.explanation_codes}
+            for forecast in forecasts
+        ]
         safe_goals = [{"goal_id": g.goal_id, "category": g.category, "status": g.status,
                        "target_date": g.target_date, "progress_percent": g.progress_percent,
                        "milestone_count": g.milestone_count}
@@ -159,6 +193,7 @@ class LearningPlannerService:
         input_digest = _digest({"planner_version": PLANNER_VERSION, "core": core_inputs, "tasks": safe_tasks,
                                 "content": safe_content,
                                 "academic": safe_academic,
+                                "world": safe_world, "forecasts": safe_forecasts,
                                 "goals": safe_goals, "notices": safe_notices,
                                 "available_minutes": available_minutes,
                                 "course_id": course_id, "window_start": window_start, "window_end": window_end,
@@ -180,6 +215,7 @@ class LearningPlannerService:
 
         items = self._build_items(
             tasks, course_data, academic.snapshots, goals, notices, available_minutes, now,
+            forecast_context=forecasts,
         )
         items = items[:MAX_PLAN_ITEMS]
         if len(items) >= MAX_PLAN_ITEMS:
@@ -216,6 +252,11 @@ class LearningPlannerService:
                "course_scope": course_id, "window_start": window_start, "window_end": window_end,
                "warning_codes": sorted(set(warnings)), "idempotency_key": idempotency_key,
                "core_run_id": core.run_id, "core_input_digest": core.input_digest,
+               "knowledge_bindings": {
+                   "world_run_id": world.run_id,
+                   "forecast_input_digest": _digest(safe_forecasts),
+                   "forecast_types": [forecast["forecast_type"] for forecast in safe_forecasts],
+               },
 
                "task_binding_digest": _digest(selected_task_bindings),
                "task_bindings": selected_task_bindings, "input_truncated": truncated,
@@ -253,8 +294,14 @@ class LearningPlannerService:
 
     def _build_items(
         self, tasks, content_data, academic_snapshots, goals, notices, available: int, now: datetime,
+        forecast_context=None,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
+        workload_pressure = next(
+            (getattr(getattr(f, "value", None), "pressure_band", "") for f in (forecast_context or [])
+             if getattr(f, "forecast_type", "") == "UPCOMING_WORKLOAD"),
+            "",
+        )
         exam_snapshot = next(
             (s for s in academic_snapshots if s.state_type == "exam_exposure"), None
         )
@@ -288,7 +335,9 @@ class LearningPlannerService:
                 data_freshness=freshness,
             )
             item.update(item_type="TASK_FOCUS", course_id=task.course_id, task_id=task.id,
-                        explanation_codes=["pending_personal_task"] + (["deadline_urgent"] if urgency >= .75 else []),
+                        explanation_codes=["pending_personal_task"]
+                        + (["deadline_urgent"] if urgency >= .75 else [])
+                        + (["forecast_workload_pressure"] if workload_pressure in {"HIGH", "VERY_HIGH"} else []),
                         evidence=[{"evidence_type": "PERSONAL_TASK", "reference_id": task.id,
                                    "metadata": {"relation": "SUPPORTS"}}])
             items.append(item)

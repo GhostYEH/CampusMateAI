@@ -38,6 +38,10 @@ SimulationLimitationCode = Literal[
     "not_measured_against_real_outcomes",
     "intervention_not_executed",
     "missing_baseline_data",
+    "plan_not_simulatable",
+    "plan_expired",
+    "no_movable_tasks",
+    "simulation_no_change",
 ]
 
 SimulationAssumptionCode = Literal[
@@ -88,6 +92,10 @@ class ReduceDailyLoadIntervention(BaseModel):
 
     intervention_type: Literal["REDUCE_DAILY_LOAD"] = "REDUCE_DAILY_LOAD"
     reduce_minutes_per_day: int = Field(ge=0, le=480)
+    target_date: datetime | None = Field(default=None)
+    movable_task_policy: Literal["PERSONAL_ONLY"] = "PERSONAL_ONLY"
+
+    _aware_target = field_validator("target_date")(_aware)
 
 
 class PauseDataSourceIntervention(BaseModel):
@@ -139,6 +147,9 @@ class ChangedForecastSummary(BaseModel):
     intervention_probability: float | None = Field(default=None, ge=0, le=1)
     baseline_risk_band: str | None = None
     intervention_risk_band: str | None = None
+    baseline_value: dict[str, Any] | None = None
+    intervention_value: dict[str, Any] | None = None
+    delta: dict[str, float] = Field(default_factory=dict, max_length=16)
     direction: Literal["increased", "decreased", "unchanged", "unknown"]
     magnitude: float = Field(default=0.0, ge=-1, le=1)
     explanation_codes: list[str] = Field(default_factory=list, max_length=16)
@@ -182,6 +193,7 @@ class SimulationResponse(BaseModel):
     data_quality: SimulationDataQuality
     estimator_version: str
     expires_at: datetime
+    causal_claim: Literal[False] = False
 
     _aware_expires = field_validator("expires_at")(_aware)
 

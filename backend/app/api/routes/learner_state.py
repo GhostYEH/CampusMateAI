@@ -26,7 +26,7 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
-def _snapshot_out(snapshot) -> LearnerStateSnapshotOut:
+def _snapshot_out(snapshot, *, run=None, evidence_count: int = 0) -> LearnerStateSnapshotOut:
     return LearnerStateSnapshotOut(
         snapshot_id=snapshot.snapshot_id,
         run_id=snapshot.run_id,
@@ -42,7 +42,19 @@ def _snapshot_out(snapshot) -> LearnerStateSnapshotOut:
         computed_at=snapshot.computed_at,
         projection_kind=getattr(snapshot, "projection_kind", "CORE") or "CORE",
         projection_scope=getattr(snapshot, "projection_scope", "__user__") or "__user__",
+        input_digest=getattr(run, "input_digest", "") if run is not None else "",
+        as_of=datetime.fromisoformat(run.as_of) if run is not None else None,
+        warning_codes=list(getattr(run, "warnings", []) or []) if run is not None else [],
+        evidence_count=evidence_count,
     )
+
+
+def _project_projection(container: ServiceContainer, *, user_id: str, projection_kind: str, as_of: datetime):
+    if projection_kind == "WORLD":
+        return container.learner_state_service.project_world(user_id, as_of=as_of, trigger="api_world")
+    if projection_kind == "ACADEMIC":
+        return container.learner_state_service.project_academic(user_id, as_of=as_of, trigger="api_academic")
+    return container.learner_state_service.project_user(user_id, as_of=as_of, trigger="api_read")
 
 
 def _evidence_out(row: StateEvidenceRow) -> LearnerStateEvidenceOut:
@@ -89,7 +101,7 @@ def list_changes(
     from_run_id: str | None = Query(None, min_length=1, max_length=128),
     to_run_id: str | None = Query(None, min_length=1, max_length=128),
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|workload_pressure|schedule_conflict|academic_progress|focus_rhythm|goal_progress|execution_consistency|growth_momentum|preference_profile)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     include_unchanged: bool = Query(False),
@@ -121,23 +133,36 @@ def list_changes(
 @router.get("/snapshots", response_model=LearnerStateSnapshotPage)
 def list_snapshots(
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|workload_pressure|schedule_conflict|academic_progress|focus_rhythm|goal_progress|execution_consistency|growth_momentum|preference_profile)$"),
     course_id: str | None = Query(None, min_length=1, max_length=128),
+    projection_kind: str = Query("CORE", pattern="^(CORE|ACADEMIC|WORLD)$"),
+    projection_scope: str = Query("__user__", pattern="^__user__$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateSnapshotPage:
     as_of = datetime.now(timezone.utc).replace(microsecond=0)
-    result = container.learner_state_service.project_user(
-        user.id, as_of=as_of, trigger="api_read"
+    _project_projection(
+        container, user_id=user.id, projection_kind=projection_kind, as_of=as_of
     )
     items, total = container.learner_state_repository.list_snapshots(
         user_id=user.id, page=page, page_size=page_size, scope_type=scope_type,
         state_type=state_type, course_id=course_id,
+        projection_kind=projection_kind, projection_scope=projection_scope,
     )
+    runs = {
+        item.run_id: container.learner_state_repository.get_run(item.run_id, user_id=user.id)
+        for item in items
+    }
     return LearnerStateSnapshotPage(
-        items=[_snapshot_out(item) for item in items],
+        items=[_snapshot_out(
+            item,
+            run=runs.get(item.run_id),
+            evidence_count=container.learner_state_repository.count_evidence(
+                user_id=user.id, snapshot_id=item.snapshot_id
+            ),
+        ) for item in items],
         total=total, page=page, page_size=page_size,
         has_more=page * page_size < total,
     )

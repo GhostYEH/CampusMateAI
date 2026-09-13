@@ -189,7 +189,43 @@ const STATE_TYPE_LABEL = {
   deadline_exposure: "截止压力",
   course_participation: "课程参与",
   data_source_health: "数据源健康度",
+  workload_pressure: "未来负载压力",
+  schedule_conflict: "日程冲突",
+  academic_progress: "学业进展",
+  focus_rhythm: "专注节律",
+  goal_progress: "目标进展",
+  execution_consistency: "执行连续性",
+  growth_momentum: "成长动量",
+  preference_profile: "偏好画像",
 };
+
+function WorldSnapshotSection({ snapshots, onViewEvidence }) {
+  const items = snapshots?.items || [];
+  if (items.length === 0) return <EmptyState text="暂时没有世界状态数据" />;
+  return (
+    <section className="ls-section ls-overview" aria-label="校园生活世界状态">
+      <div className="ls-section__heading"><h2>校园生活世界状态</h2><span className="ls-section__hint">基于已授权记录的可解释估计</span></div>
+      <div className="ls-card-grid">
+        {items.filter((s) => s.scope_type === "USER").map((snap) => (
+          <article key={snap.snapshot_id} className="ls-state-card">
+            <h3 className="ls-state-card__title">{STATE_TYPE_LABEL[snap.state_type] || snap.state_type}</h3>
+            <p className="ls-state-card__value">{formatWorldValue(snap)}</p>
+            <div className="ls-state-card__meta"><QualityBadge quality={snap.data_quality} /><ConfidenceBadge confidence={snap.confidence} /><span>{snap.evidence_count || 0} 条依据</span></div>
+            <p className="ls-state-card__time">更新于 {formatTime(snap.as_of || snap.computed_at)}</p>
+            <button className="ls-link-btn" onClick={() => onViewEvidence(snap)}>查看依据</button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatWorldValue(snap) {
+  const value = snap.value || {};
+  const entries = Object.entries(value).filter(([key]) => !["computed_at", "valid_until"].includes(key));
+  if (!entries.length) return "—";
+  return entries.slice(0, 2).map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : value}`).join(" · ");
+}
 
 function formatStateValue(snap) {
   const v = snap.value;
@@ -585,7 +621,7 @@ function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corre
 
 const SOURCE_LABEL = {
   CORE_STUDY: "核心学习记录", PERSONAL_TASK: "个人待办", CHAOXING: "学习通",
-  EDU: "教务系统", PRACTICE: "受控练习", MODEL_SHADOW: "模型影子评测", PROACTIVE_SUGGESTIONS: "主动建议",
+  EDU: "教务系统", MODEL_SHADOW: "模型影子评测", PROACTIVE_SUGGESTIONS: "主动建议",
 };
 const SOURCE_STATUS_LABEL = { ENABLED: "已启用", PAUSED: "已暂停", DISCONNECTED: "已断开", DELETE_REQUESTED: "删除请求中" };
 
@@ -629,6 +665,7 @@ export default function LearningStatePage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const snapshots = useAsync(() => api.getLearnerStateSnapshots({ pageSize: 50 }), [refreshKey]);
+  const worldSnapshots = useAsync(() => api.getLearnerStateSnapshots({ pageSize: 50, projectionKind: "WORLD" }), [refreshKey]);
   const changes = useAsync(() => api.getLearnerStateChanges({ pageSize: 20 }), [refreshKey]);
   const forecasts = useAsync(() => api.getForecasts({ horizonDays: 7, pageSize: 30 }), [refreshKey]);
   const goals = useAsync(() => api.getStudentGoals({ status: "active" }), [refreshKey]);
@@ -726,6 +763,7 @@ export default function LearningStatePage() {
       <div className="ls-layout">
         <div className="ls-layout__main">
           <StateOverview snapshots={snapshots.data} onViewEvidence={setEvidenceSnapshot} onMarkInaccurate={handleMarkInaccurate} />
+          <WorldSnapshotSection snapshots={worldSnapshots.data} onViewEvidence={setEvidenceSnapshot} />
           <StateTimeline changes={changes.data} />
           <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />
         </div>

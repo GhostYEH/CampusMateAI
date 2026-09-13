@@ -327,11 +327,15 @@ class LearnerStateSnapshotOut(BaseModel):
     observed_through: datetime | None = None
     valid_until: datetime | None = None
     computed_at: datetime
-    projection_kind: str = "CORE"
+    projection_kind: Literal["CORE", "ACADEMIC", "WORLD"] = "CORE"
     projection_scope: str = "__user__"
+    input_digest: str = ""
+    as_of: datetime | None = None
+    warning_codes: list[str] = Field(default_factory=list, max_length=32)
+    evidence_count: int = Field(default=0, ge=0)
 
     _aware_times = field_validator(
-        "observed_from", "observed_through", "valid_until", "computed_at"
+        "observed_from", "observed_through", "valid_until", "computed_at", "as_of"
     )(_aware)
 
     @model_validator(mode="after")
@@ -425,7 +429,7 @@ class LearnerStateRunOut(BaseModel):
     is_current: bool
     warning_codes: list[str] = Field(default_factory=list, max_length=32)
     snapshot_count: int = Field(ge=0)
-    projection_kind: Literal["CORE", "ACADEMIC"] = "CORE"
+    projection_kind: Literal["CORE", "ACADEMIC", "WORLD"] = "CORE"
     projection_scope: str = "__user__"
 
     _aware_times = field_validator("as_of", "computed_at")(_aware)

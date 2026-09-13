@@ -93,6 +93,9 @@ class ForecastInputs:
     grade_items: list[dict[str, Any]]
     events: list[dict[str, Any]]
     truncated: bool
+    simulated_focus_minutes: int = 0
+    simulated_load_reduction: int = 0
+    simulated_deferred_task_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -387,6 +390,9 @@ class ForecastService:
             "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
             "grade_items": inputs.grade_items, "events": inputs.events,
             "truncated": inputs.truncated,
+            "simulated_focus_minutes": inputs.simulated_focus_minutes,
+            "simulated_load_reduction": inputs.simulated_load_reduction,
+            "simulated_deferred_task_count": inputs.simulated_deferred_task_count,
         }
         return f"{user_id}|{_bucket_key(forecast_type=request.forecast_type, scope_type=request.scope_type, scope_id=request.scope_id, horizon_start=request.horizon_start, horizon_end=request.horizon_end)}|{_digest(digest_input)}"
 
@@ -434,7 +440,15 @@ class ForecastService:
             risk_band = "LOW"
             explanation_codes = ["deadline_outside_horizon"]
         else:
-            risk_raw = min(1.0, (pending_count * 0.15 + overdue * 0.3))
+            risk_raw = min(
+                1.0,
+                max(
+                    0.0,
+                    pending_count * 0.15 + overdue * 0.3
+                    + inputs.simulated_deferred_task_count * 0.05
+                    - inputs.simulated_focus_minutes / 1200,
+                ),
+            )
             probability = _clamp_probability(risk_raw)
             if probability <= 0.25:
                 risk_band = "LOW"
@@ -480,7 +494,11 @@ class ForecastService:
         if not has_data:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_tasks")
         quality = "partial" if inputs.truncated else "verified"
-        estimated_minutes = len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
+        estimated_minutes = max(
+            0,
+            len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
+            - inputs.simulated_load_reduction,
+        )
         total_items = len(upcoming_tasks) + len(upcoming_exams)
         if total_items == 0:
             pressure_band = "LOW"

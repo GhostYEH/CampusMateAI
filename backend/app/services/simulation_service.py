@@ -72,6 +72,19 @@ def _risk_band(value: Any) -> str | None:
     return getattr(value, "risk_band", None) or getattr(value, "pressure_band", None) or getattr(value, "outlook_band", None) or getattr(value, "continuity_band", None)
 
 
+def _parse(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 @dataclass(frozen=True)
 class SimulationKey:
     user_id: str
@@ -94,10 +107,12 @@ class SimulationService:
         forecast_service: ForecastService,
         learner_state_service=None,
         learner_state_repository=None,
+        learning_plan_repository=None,
     ) -> None:
         self._forecast_service = forecast_service
         self._learner_state_service = learner_state_service
         self._learner_state_repository = learner_state_repository
+        self._learning_plan_repository = learning_plan_repository
         self._cache: dict[str, SimulationResponse] = {}
 
     def simulate(
@@ -130,6 +145,16 @@ class SimulationService:
         if baseline_run_id is not None and baseline_run is None:
             raise LookupError("baseline run not found")
 
+        plan = None
+        if intervention.intervention_type == "ACCEPT_PLAN":
+            if self._learning_plan_repository is None:
+                raise LookupError("plan simulation is unavailable")
+            plan = self._learning_plan_repository.get_plan(
+                intervention.plan_id, user_id=user_id
+            )
+            if plan is None:
+                raise LookupError("plan not found")
+
         baseline_inputs = self._forecast_service.collect_inputs(user_id=user_id, as_of=as_of)
         baseline_digest = self._baseline_digest(user_id=user_id, inputs=baseline_inputs, baseline_run=baseline_run)
 
@@ -140,8 +165,8 @@ class SimulationService:
         )
         baseline_snapshots = self._collect_baseline_snapshots(user_id=user_id, as_of=as_of)
 
-        intervention_inputs = self._apply_intervention(
-            inputs=baseline_inputs, intervention=intervention, as_of=as_of,
+        intervention_inputs, intervention_limitations = self._apply_intervention(
+            inputs=baseline_inputs, intervention=intervention, as_of=as_of, plan=plan,
         )
         intervention_forecasts = self._compute_intervention_forecasts(
             user_id=user_id, inputs=intervention_inputs,
@@ -173,6 +198,9 @@ class SimulationService:
         else:
             data_quality = "verified"
             limitations = list(_BASELINE_LIMITATIONS)
+        limitations.extend(intervention_limitations)
+        if not changed_forecasts and not changed_states:
+            limitations.append("simulation_no_change")
 
         response = SimulationResponse(
             simulation_id=f"sim_{uuid.uuid4().hex[:16]}",
@@ -254,8 +282,8 @@ class SimulationService:
         return snapshots
 
     def _apply_intervention(
-        self, *, inputs: ForecastInputs, intervention, as_of: datetime,
-    ) -> ForecastInputs:
+        self, *, inputs: ForecastInputs, intervention, as_of: datetime, plan=None,
+    ) -> tuple[ForecastInputs, list[SimulationLimitationCode]]:
         tasks = copy.deepcopy(inputs.tasks)
         sessions = copy.deepcopy(inputs.sessions)
         goals = copy.deepcopy(inputs.goals)
@@ -263,6 +291,10 @@ class SimulationService:
         exam_items = copy.deepcopy(inputs.exam_items)
         grade_items = copy.deepcopy(inputs.grade_items)
         events = copy.deepcopy(inputs.events)
+        simulated_focus_minutes = 0
+        simulated_load_reduction = 0
+        simulated_deferred_task_count = 0
+        limitations: list[SimulationLimitationCode] = []
 
         itype = intervention.intervention_type
         if itype == "ALLOCATE_FOCUS_MINUTES":
@@ -280,9 +312,43 @@ class SimulationService:
                     task["deadline"] = intervention.new_deadline.isoformat()
                     break
         elif itype == "ACCEPT_PLAN":
-            pass
+            if plan is None or plan.status not in {"PROPOSED", "ACCEPTED"}:
+                limitations.append("plan_not_simulatable")
+            elif _parse(plan.run.valid_until) is not None and _parse(plan.run.valid_until) <= as_of:
+                limitations.append("plan_expired")
+            else:
+                simulated_focus_minutes = sum(
+                    int(item.estimated_minutes or 0) for item in plan.items
+                )
+                if simulated_focus_minutes:
+                    sessions.append({
+                        "id": f"sim_plan_{plan.plan_id}",
+                        "started_at": as_of.isoformat(),
+                        "ended_at": (as_of + timedelta(minutes=simulated_focus_minutes)).isoformat(),
+                        "duration_seconds": simulated_focus_minutes * 60,
+                        "status": "completed",
+                    })
         elif itype == "REDUCE_DAILY_LOAD":
-            pass
+            reduction = intervention.reduce_minutes_per_day
+            if reduction:
+                candidates = [
+                    task for task in tasks
+                    if task.get("status") == "pending"
+                    and not task.get("deleted_at")
+                    and not task.get("course_id")
+                    and task.get("importance", "unknown") not in {"urgent", "high", "important"}
+                    and task.get("deadline")
+                ]
+                candidates.sort(key=lambda task: _parse(task.get("deadline")) or as_of)
+                for task in candidates[: max(1, reduction // 45)]:
+                    deadline = _parse(task.get("deadline"))
+                    if deadline is None:
+                        continue
+                    task["deadline"] = (deadline + timedelta(days=1)).isoformat()
+                    simulated_deferred_task_count += 1
+                simulated_load_reduction = min(reduction, simulated_deferred_task_count * 45)
+            if simulated_deferred_task_count == 0:
+                limitations.append("no_movable_tasks")
         elif itype == "PAUSE_DATA_SOURCE":
             category = intervention.source_category
             if category == "academic":
@@ -305,7 +371,10 @@ class SimulationService:
             tasks=tasks, sessions=sessions, goals=goals,
             schedule_items=schedule_items, exam_items=exam_items,
             grade_items=grade_items, events=events, truncated=inputs.truncated,
-        )
+            simulated_focus_minutes=simulated_focus_minutes,
+            simulated_load_reduction=simulated_load_reduction,
+            simulated_deferred_task_count=simulated_deferred_task_count,
+        ), limitations
 
     def _compute_intervention_forecasts(
         self, *, user_id: str, inputs: ForecastInputs,
@@ -410,6 +479,15 @@ class SimulationService:
             i_prob = i.probability if i else None
             b_band = _risk_band(b.value) if b else None
             i_band = _risk_band(i.value) if i else None
+            b_value = b.value.model_dump(mode="json") if b else None
+            i_value = i.value.model_dump(mode="json") if i else None
+            delta = {}
+            if b_value and i_value:
+                for key in set(b_value) & set(i_value):
+                    if isinstance(b_value[key], (int, float)) and isinstance(i_value[key], (int, float)):
+                        difference = round(i_value[key] - b_value[key], 4)
+                        if difference:
+                            delta[key] = difference
             if b_prob is not None and i_prob is not None:
                 magnitude = round(i_prob - b_prob, 4)
                 if magnitude > 0.001:
@@ -431,6 +509,9 @@ class SimulationService:
                 intervention_probability=i_prob,
                 baseline_risk_band=b_band,
                 intervention_risk_band=i_band,
+                baseline_value=b_value,
+                intervention_value=i_value,
+                delta=delta,
                 direction=direction,
                 magnitude=magnitude,
                 explanation_codes=list((i.explanation_codes if i else []) or []),

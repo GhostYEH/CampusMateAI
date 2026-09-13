@@ -70,6 +70,8 @@ export async function getLearnerStateSnapshots(params = {}) {
     ...(params.scopeType ? { scope_type: params.scopeType } : {}),
     ...(params.stateType ? { state_type: params.stateType } : {}),
     ...(params.courseId ? { course_id: params.courseId } : {}),
+    ...(params.projectionKind ? { projection_kind: params.projectionKind } : {}),
+    ...(params.projectionScope ? { projection_scope: params.projectionScope } : {}),
   });
 }
 
