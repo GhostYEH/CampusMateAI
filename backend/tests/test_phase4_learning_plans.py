@@ -175,3 +175,60 @@ def test_llm_failure_returns_complete_deterministic_plan() -> None:
     assert response.status_code == 200
     assert response.json()["items"] is not None
     assert response.json()["llm_summary"] is None
+
+def test_plan_items_use_general_priority_factors() -> None:
+    client, container, headers, _ = _setup()
+    container.personal_task_repository.create_task(
+        user_id=container.user_repository.get_user_by_username("phase4_student").id,
+        title="交作业", deadline=(datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
+    )
+    body = client.post("/api/v1/learning-plans/generate", json=_request(60), headers=headers).json()
+    expected_factors = {
+        "goal_alignment", "deadline_urgency", "workload_relief",
+        "schedule_fit", "evidence_confidence", "expected_progress", "data_freshness",
+    }
+    for item in body["items"]:
+        assert set(item["priority_components"].keys()) == expected_factors
+        assert "knowledge_need" not in item["priority_components"]
+        assert "prerequisite_readiness" not in item["priority_components"]
+
+
+def test_plan_item_types_are_generalized() -> None:
+    client, container, headers, _ = _setup()
+    user_id = container.user_repository.get_user_by_username("phase4_student").id
+    container.personal_task_repository.create_task(
+        user_id=user_id, title="复习考试", deadline=(datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
+    )
+    container.student_goal_repository.create_goal(
+        user_id=user_id, name="期末目标", category="academic",
+        target_date=(datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+    )
+    body = client.post("/api/v1/learning-plans/generate", json=_request(120), headers=headers).json()
+    valid_types = {
+        "TASK_FOCUS", "EXAM_PREPARATION", "CAMPUS_AFFAIRS", "GOAL_PROGRESS",
+        "RESEARCH_OR_COMPETITION", "CAREER_PREPARATION", "RECOVERY_BUFFER", "REVIEW_AND_REFLECT",
+    }
+    item_types = {item["item_type"] for item in body["items"]}
+    assert item_types <= valid_types
+    assert "TASK_FOCUS" in item_types
+    assert "GOAL_PROGRESS" in item_types
+
+
+def test_campus_notices_generate_campus_affairs_items_without_tasks_or_goals() -> None:
+    client, container, headers, _ = _setup()
+    user_id = container.user_repository.get_user_by_username("phase4_student").id
+    container.notice_repository.create_or_update_notice(
+        user_id=user_id, source="chaoxing", external_id="notice-1",
+        title="图书馆开放时间调整", published_at=datetime.now(timezone.utc).isoformat(),
+    )
+    body = client.post("/api/v1/learning-plans/generate", json=_request(30), headers=headers).json()
+    assert body["items"]
+    assert any(item["item_type"] == "CAMPUS_AFFAIRS" for item in body["items"])
+
+
+def test_empty_input_returns_empty_input_error() -> None:
+    client, container, headers, _ = _setup()
+    response = client.post("/api/v1/learning-plans/generate", json=_request(30), headers=headers)
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_TRANSITION"
+    assert "EMPTY_INPUT" in response.json().get("message", "")

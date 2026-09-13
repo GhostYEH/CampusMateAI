@@ -1,6 +1,6 @@
 /**
- * Phase 6B: 证据抽屉、知识地图与状态纠正 API 契约测试。
- * 导入真实 learnerStateApi.js，验证证据获取、知识状态、纠正提交与撤销的真实请求。
+ * 证据抽屉与状态纠正 API 契约测试。
+ * 导入真实 learnerStateApi.js，验证证据获取、纠正提交与撤销的真实请求。
  */
 import "./helpers/setup-globals.mjs";
 import { describe, it, beforeEach, afterEach } from "node:test";
@@ -79,60 +79,6 @@ describe("getSnapshotEvidence", () => {
     const r2 = await api.getSnapshotEvidence("snap-1", 2, 20);
     assert.ok(!r2.has_more);
     assert.equal(mock.findRequests("get", "evidence").length, 2);
-  });
-});
-
-// ===== 知识状态 =====
-
-describe("getKnowledgeState", () => {
-  it("返回知识点列表，包含 kc_code / kc_name / category / band / evidence_count", async () => {
-    const knowledge = {
-      items: [
-        {
-          kc_code: "c_pointer_basics",
-          kc_name: "指针基础",
-          category: "pointers",
-          band: "DEVELOPING",
-          evidence_count: 5,
-          data_quality: "FRESH",
-          valid_until: "2026-09-30T00:00:00Z",
-        },
-        {
-          kc_code: "c_array_boundary",
-          kc_name: "数组边界",
-          category: "arrays",
-          band: "INSUFFICIENT_EVIDENCE",
-          evidence_count: 0,
-          data_quality: "UNAVAILABLE",
-          valid_until: null,
-        },
-      ],
-      total: 2,
-    };
-    mock.onGet("/learner-state/knowledge", knowledge);
-
-    const result = await api.getKnowledgeState("");
-    assert.equal(result.items.length, 2);
-    assert.equal(result.items[0].kc_code, "c_pointer_basics");
-    assert.equal(result.items[0].band, "DEVELOPING");
-    assert.equal(result.items[0].evidence_count, 5);
-    assert.equal(result.items[1].band, "INSUFFICIENT_EVIDENCE");
-    assert.equal(result.items[1].evidence_count, 0);
-  });
-});
-
-describe("getTaxonomy", () => {
-  it("返回分类结构", async () => {
-    const taxonomy = {
-      categories: [
-        { code: "foundations", name: "基础" },
-        { code: "pointers", name: "指针" },
-      ],
-    };
-    mock.onGet("/learner-state/taxonomy", taxonomy);
-    const result = await api.getTaxonomy();
-    assert.equal(result.categories.length, 2);
-    assert.equal(result.categories[0].code, "foundations");
   });
 });
 

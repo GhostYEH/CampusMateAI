@@ -61,6 +61,7 @@ from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
 
 from ..services.forecast_service import ForecastService
+from ..services.simulation_service import SimulationService
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
@@ -134,6 +135,7 @@ class ServiceContainer:
     learner_state_repository: LearnerStateRepository
     learner_state_service: LearnerStateProjectionService
     forecast_service: ForecastService
+    simulation_service: SimulationService
 
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
@@ -257,6 +259,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
         source_policy=learner_model_source_policy,
+        student_goal_repository=student_goal_repo,
     )
 
     learner_control_service = LearnerControlService(
@@ -272,6 +275,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     course_research_repository = CourseResearchRepository(db)
     notice_repository = NoticeRepository(db)
     notice_workflow_repository = NoticeWorkflowRepository(db)
+    learning_planner_service._notice_repository = notice_repository
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
@@ -317,6 +321,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         student_goal_repository=student_goal_repo,
         edu_data_repository=edu_data_repo,
         learner_event_repository=learner_event_repository,
+    )
+
+    simulation_service = SimulationService(
+        forecast_service=forecast_service,
+        learner_state_service=learner_state_service,
+        learner_state_repository=learner_state_repository,
     )
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
@@ -380,6 +390,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_repository=learner_state_repository,
         learner_state_service=learner_state_service,
         forecast_service=forecast_service,
+        simulation_service=simulation_service,
 
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,

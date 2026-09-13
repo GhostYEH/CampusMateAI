@@ -11,23 +11,27 @@ from ..core.exceptions import (
     AppException, InvalidTransition, LearningPlanExecutionFailed, LearningPlanExpired,
     LearningPlanIdempotencyConflict, LearningPlanStale, LearningPlanUndoConflict, NotFoundError,
 )
-from ..models.learning_plan import LearningPlanRow
+from ..models.learning_plan import LearningPlanRow, PLAN_ITEM_TYPES, TASK_CREATING_ITEM_TYPES
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..services.llm.base import LLMError
 
-PLANNER_VERSION = "deterministic-learning-plan-v2"
+PLANNER_VERSION = "campus-companion-plan-v1"
 PLAN_TTL = timedelta(minutes=15)
 REJECTION_COOLDOWN = timedelta(hours=6)
 MAX_TASKS = 200
 MAX_CONTENT_PER_COURSE = 100
 MAX_PLAN_ITEMS = 50
+MAX_GOALS = 50
+MAX_NOTICES = 20
+
 WEIGHTS = {
-    "deadline_urgency": 0.30,
-    "knowledge_need": 0.30,
+    "goal_alignment": 0.20,
+    "deadline_urgency": 0.25,
+    "workload_relief": 0.10,
+    "schedule_fit": 0.10,
     "evidence_confidence": 0.15,
-    "prerequisite_readiness": 0.10,
-    "estimated_effort_fit": 0.15,
-    "source_freshness_penalty": 0.10,
+    "expected_progress": 0.10,
+    "data_freshness": 0.10,
 }
 
 
@@ -56,7 +60,8 @@ class LearningPlannerService:
 
     def __init__(self, *, repository: LearningPlanRepository, state_service, state_repository,
                  task_repository, content_repository,
-                 llm=None, source_policy=None) -> None:
+                 llm=None, source_policy=None,
+                 student_goal_repository=None, notice_repository=None) -> None:
         self.repository = repository
         self.state_service = state_service
         self.state_repository = state_repository
@@ -64,6 +69,8 @@ class LearningPlannerService:
         self.content_repository = content_repository
         self.llm = llm
         self._source_policy = source_policy
+        self._student_goal_repository = student_goal_repository
+        self._notice_repository = notice_repository
 
     def generate(self, *, user_id: str, available_minutes: int, course_id: str | None = None,
                  window_start: str | None = None, window_end: str | None = None,
@@ -108,6 +115,20 @@ class LearningPlannerService:
             if any(x.is_stale for x in items):
                 warnings.append("course_content_stale")
 
+        goals: list[Any] = []
+        if self._student_goal_repository is not None:
+            goals, goal_total = self._student_goal_repository.list_goals(
+                user_id=user_id, status="active", page=1, page_size=MAX_GOALS,
+            )
+            if goal_total > MAX_GOALS:
+                warnings.append("goals_truncated")
+        notices: list[Any] = []
+        if self._notice_repository is not None:
+            all_notices = self._notice_repository.list_notices(user_id)
+            notices = all_notices[:MAX_NOTICES]
+            if len(all_notices) > MAX_NOTICES:
+                warnings.append("notices_truncated")
+
         core_inputs = {
             "run_id": core.run_id,
             "snapshots": [{"scope_type": s.scope_type, "scope_id": s.scope_id, "state_type": s.state_type,
@@ -127,9 +148,18 @@ class LearningPlannerService:
                 for s in sorted(academic.snapshots, key=lambda x: x.state_type)
             ],
         }
+        safe_goals = [{"goal_id": g.goal_id, "category": g.category, "status": g.status,
+                       "target_date": g.target_date, "progress_percent": g.progress_percent,
+                       "milestone_count": g.milestone_count}
+                      for g in goals]
+        safe_notices = [{"id": n.id, "source": n.source, "external_id": n.external_id,
+                         "course_id": n.course_id, "published_at": n.published_at,
+                         "last_synced_at": n.last_synced_at}
+                        for n in notices]
         input_digest = _digest({"planner_version": PLANNER_VERSION, "core": core_inputs, "tasks": safe_tasks,
                                 "content": safe_content,
                                 "academic": safe_academic,
+                                "goals": safe_goals, "notices": safe_notices,
                                 "available_minutes": available_minutes,
                                 "course_id": course_id, "window_start": window_start, "window_end": window_end,
                                 "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS})
@@ -149,7 +179,7 @@ class LearningPlannerService:
             raise InvalidTransition("相同建议仍在拒绝冷却期内")
 
         items = self._build_items(
-            tasks, course_data, academic.snapshots, available_minutes, now,
+            tasks, course_data, academic.snapshots, goals, notices, available_minutes, now,
         )
         items = items[:MAX_PLAN_ITEMS]
         if len(items) >= MAX_PLAN_ITEMS:
@@ -166,6 +196,10 @@ class LearningPlannerService:
                 continue
             allocated += item["estimated_minutes"]
             selected.append(item)
+        if not items:
+            if not tasks and not goals and not notices:
+                raise InvalidTransition("EMPTY_INPUT")
+            raise InvalidTransition("INSUFFICIENT_EVIDENCE")
         if not selected:
             raise InvalidTransition("INSUFFICIENT_EVIDENCE")
         if any(w in {"stale", "partial", "data_quality_partial", "input_truncated", "course_content_truncated", "course_content_stale"} for w in warnings):
@@ -218,7 +252,7 @@ class LearningPlannerService:
         return (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
 
     def _build_items(
-        self, tasks, content_data, academic_snapshots, available: int, now: datetime,
+        self, tasks, content_data, academic_snapshots, goals, notices, available: int, now: datetime,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         exam_snapshot = next(
@@ -228,12 +262,14 @@ class LearningPlannerService:
             upcoming = int((exam_snapshot.value or {}).get("upcoming_exam_count", 0))
             if upcoming > 0:
                 item = self._item_base(
-                    estimated=30, urgency=min(1.0, 0.55 + upcoming * 0.1), need=0.35,
-                    confidence=exam_snapshot.confidence, readiness=1.0,
-                    fit=min(1.0, available / 30), freshness=0.0,
+                    estimated=30, goal_alignment=0.30,
+                    deadline_urgency=min(1.0, 0.55 + upcoming * 0.1),
+                    workload_relief=0.20, schedule_fit=min(1.0, available / 30),
+                    evidence_confidence=exam_snapshot.confidence,
+                    expected_progress=0.40, data_freshness=0.0,
                 )
                 item.update(
-                    item_type="ACADEMIC_PREPARATION", course_id=None,
+                    item_type="EXAM_PREPARATION", course_id=None,
                     explanation_codes=["upcoming_exam_exposure"],
                     evidence=[{
                         "evidence_type": "ACADEMIC_SNAPSHOT",
@@ -245,22 +281,58 @@ class LearningPlannerService:
         for task in tasks:
             urgency = self._deadline_urgency(task.deadline, now)
             freshness = self._freshness_penalty(task.last_synced_at, now)
-            item = self._item_base(estimated=30, urgency=urgency, need=0.2, confidence=0.35,
-                                   readiness=1.0, fit=min(1.0, available / 30), freshness=freshness)
-            item.update(item_type="CREATE_PERSONAL_TASK", course_id=task.course_id, task_id=task.id,
+            item = self._item_base(
+                estimated=30, goal_alignment=0.20, deadline_urgency=urgency,
+                workload_relief=0.30, schedule_fit=min(1.0, available / 30),
+                evidence_confidence=0.35, expected_progress=0.30,
+                data_freshness=freshness,
+            )
+            item.update(item_type="TASK_FOCUS", course_id=task.course_id, task_id=task.id,
                         explanation_codes=["pending_personal_task"] + (["deadline_urgent"] if urgency >= .75 else []),
                         evidence=[{"evidence_type": "PERSONAL_TASK", "reference_id": task.id,
                                    "metadata": {"relation": "SUPPORTS"}}])
             items.append(item)
+        for goal in goals:
+            urgency = self._deadline_urgency(goal.target_date, now)
+            item = self._item_base(
+                estimated=30, goal_alignment=0.50, deadline_urgency=urgency,
+                workload_relief=0.20, schedule_fit=min(1.0, available / 30),
+                evidence_confidence=0.40, expected_progress=0.40,
+                data_freshness=0.10,
+            )
+            item.update(
+                item_type="GOAL_PROGRESS", course_id=None,
+                explanation_codes=["active_goal"] + (["deadline_urgent"] if urgency >= .75 else []),
+                evidence=[{"evidence_type": "STUDENT_GOAL", "reference_id": goal.goal_id,
+                           "metadata": {"relation": "SUPPORTS"}}],
+            )
+            items.append(item)
+        for notice in notices:
+            freshness = self._freshness_penalty(notice.last_synced_at, now)
+            item = self._item_base(
+                estimated=15, goal_alignment=0.10, deadline_urgency=0.30,
+                workload_relief=0.20, schedule_fit=min(1.0, available / 15),
+                evidence_confidence=0.30, expected_progress=0.20,
+                data_freshness=freshness,
+            )
+            item.update(
+                item_type="CAMPUS_AFFAIRS", course_id=notice.course_id,
+                explanation_codes=["campus_notice"],
+                evidence=[{"evidence_type": "CAMPUS_NOTICE", "reference_id": notice.id,
+                           "metadata": {"relation": "SUPPORTS"}}],
+            )
+            items.append(item)
         return items
 
     @staticmethod
-    def _item_base(*, estimated: int, urgency: float, need: float, confidence: float,
-                   readiness: float, fit: float, freshness: float) -> dict[str, Any]:
-        components = {"deadline_urgency": round(urgency, 6), "knowledge_need": round(need, 6),
-                      "evidence_confidence": round(confidence, 6), "prerequisite_readiness": round(readiness, 6),
-                      "estimated_effort_fit": round(fit, 6), "source_freshness_penalty": round(freshness, 6)}
-        score = sum(components[name] * weight for name, weight in WEIGHTS.items() if name != "source_freshness_penalty") - freshness * WEIGHTS["source_freshness_penalty"]
+    def _item_base(*, estimated: int, goal_alignment: float, deadline_urgency: float,
+                   workload_relief: float, schedule_fit: float, evidence_confidence: float,
+                   expected_progress: float, data_freshness: float) -> dict[str, Any]:
+        components = {"goal_alignment": round(goal_alignment, 6), "deadline_urgency": round(deadline_urgency, 6),
+                      "workload_relief": round(workload_relief, 6), "schedule_fit": round(schedule_fit, 6),
+                      "evidence_confidence": round(evidence_confidence, 6), "expected_progress": round(expected_progress, 6),
+                      "data_freshness": round(data_freshness, 6)}
+        score = sum(components[name] * weight for name, weight in WEIGHTS.items() if name != "data_freshness") - data_freshness * WEIGHTS["data_freshness"]
         return {"estimated_minutes": estimated, "priority_score": round(score, 6), "priority_components": components,
                 "explanation_codes": [], "evidence": []}
 
@@ -441,4 +513,4 @@ class LearningPlannerService:
                 "evaluator_version": version}
 
 
-__all__ = ["LearningPlannerService", "PLANNER_VERSION", "WEIGHTS"]
+__all__ = ["LearningPlannerService", "PLANNER_VERSION", "WEIGHTS", "PLAN_ITEM_TYPES", "TASK_CREATING_ITEM_TYPES"]

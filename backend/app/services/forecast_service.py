@@ -199,6 +199,44 @@ class ForecastService:
         )
         return self._compute_forecast(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
 
+    def collect_inputs(self, *, user_id: str, as_of: datetime) -> ForecastInputs:
+        """公开收集预测输入(只读)。供 SimulationService 在内存中应用 intervention。"""
+        return self._collect_inputs(user_id=user_id, as_of=_require_utc(as_of))
+
+    def compute_forecast_with_inputs(
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        forecast_type: str,
+        horizon_start: datetime,
+        horizon_end: datetime,
+        as_of: datetime,
+        goal_id: str | None = None,
+        course_id: str | None = None,
+    ) -> ForecastOut:
+        """用外部提供的 inputs 计算单个预测(只读,不写缓存)。
+
+        供 SimulationService 用 intervention 修改后的 inputs 重算反事实预测。
+        """
+        as_of = _require_utc(as_of)
+        scope_type, scope_id = self._resolve_scope(
+            forecast_type, user_id=user_id, goal_id=goal_id, course_id=course_id,
+        )
+        request = ForecastRequest(
+            forecast_type=forecast_type, scope_type=scope_type, scope_id=scope_id,
+            horizon_start=horizon_start, horizon_end=horizon_end,
+            goal_id=goal_id, course_id=course_id,
+        )
+        try:
+            return self._dispatch(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+        except Exception as exc:
+            logger.warning(
+                "simulation_forecast_failed user_id={} forecast_type={} exception_type={}",
+                user_id, forecast_type, type(exc).__name__,
+            )
+            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of)
+
     @staticmethod
     def _validate_horizon(horizon_days: int) -> int:
         if horizon_days < _MIN_HORIZON_DAYS:

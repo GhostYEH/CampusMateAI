@@ -213,8 +213,7 @@ describe("getDataSummary", () => {
     const summary = {
       event_count: 100,
       snapshot_count: 20,
-      knowledge_snapshot_count: 15,
-      misconception_count: 3,
+
       learning_plan_count: 5,
       shadow_run_count: 8,
     };
@@ -233,7 +232,7 @@ describe("getModelTransparency", () => {
     const transparency = {
       capabilities: [
         {
-          capability_name: "c_kc_classification_v1",
+          capability_name: "forecast_baseline_v1",
           production_method: "rule_based",
           campusmate_lm_status: "SHADOW_ONLY",
           quality_gate_passed: true,
@@ -263,7 +262,7 @@ describe("getModelTransparency", () => {
   it("performance_measured=false 时不声称已上线", async () => {
     mock.onGet("/learner-state/model-transparency", {
       capabilities: [{
-        capability_name: "c_kc_classification_v1",
+        capability_name: "forecast_baseline_v1",
         campusmate_lm_status: "SHADOW_ONLY",
         performance_measured: false,
         uses_real_model_inference: false,

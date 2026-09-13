@@ -35,6 +35,7 @@ from .routes import (
     bing_daily_wallpaper,
     learner_state,
     forecasts,
+    simulations,
 
     learning_plans,
     learner_control,
@@ -85,6 +86,7 @@ api_router.include_router(academic.router)
 api_router.include_router(bing_daily_wallpaper.router)
 api_router.include_router(learner_state.router)
 api_router.include_router(forecasts.router)
+api_router.include_router(simulations.router)
 
 api_router.include_router(learning_plans.router)
 api_router.include_router(learner_control.router)

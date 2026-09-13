@@ -1,5 +1,5 @@
 /**
- * Phase 6B: 学习状态页面 API 契约测试。
+ * 我的状态页面 API 契约测试。
  * 导入真实 learnerStateApi.js，mock axios adapter 边界，
  * 验证真实 URL、参数、请求体、错误映射、401 刷新、204 处理。
  */
@@ -111,48 +111,71 @@ describe("getSnapshotEvidence", () => {
   });
 });
 
-// ===== 知识点与误区 =====
+// ===== 预测 =====
 
-describe("getTaxonomy", () => {
-  it("请求 /learner-state/taxonomy", async () => {
-    mock.onGet("/learner-state/taxonomy", { categories: [] });
-    await api.getTaxonomy();
-    assert.equal(mock.lastRequest().url, "/learner-state/taxonomy");
-  });
-});
-
-describe("getKnowledgeState", () => {
-  it("无 courseId 时不发送 course_id 参数", async () => {
-    mock.onGet("/learner-state/knowledge", { items: [] });
-    await api.getKnowledgeState("");
+describe("getForecasts", () => {
+  it("请求 /learner-state/forecasts 并传递筛选参数", async () => {
+    mock.onGet("/learner-state/forecasts", { items: [], total: 0 });
+    await api.getForecasts({
+      forecastType: "UPCOMING_WORKLOAD",
+      horizonDays: 14,
+      goalId: "g-1",
+      courseId: "cs101",
+    });
     const req = mock.lastRequest();
-    assert.equal(req.url, "/learner-state/knowledge");
-    assert.ok(!("course_id" in req.params));
+    assert.equal(req.url, "/learner-state/forecasts");
+    assert.equal(req.params.forecast_type, "UPCOMING_WORKLOAD");
+    assert.equal(req.params.horizon_days, 14);
+    assert.equal(req.params.goal_id, "g-1");
+    assert.equal(req.params.course_id, "cs101");
   });
 
-  it("有 courseId 时发送 course_id 参数", async () => {
-    mock.onGet("/learner-state/knowledge", { items: [] });
-    await api.getKnowledgeState("cs101");
-    assert.equal(mock.lastRequest().params.course_id, "cs101");
-  });
-});
-
-describe("getMisconceptionHypotheses", () => {
-  it("请求 /learner-state/hypotheses 并可选传递 course_id", async () => {
-    mock.onGet("/learner-state/hypotheses", { items: [] });
-    await api.getMisconceptionHypotheses("cs101");
-    assert.equal(mock.lastRequest().url, "/learner-state/hypotheses");
-    assert.equal(mock.lastRequest().params.course_id, "cs101");
-  });
-});
-
-describe("decideHypothesis", () => {
-  it("POST 到 /hypotheses/:id/decision 并传递 decision body", async () => {
-    mock.onPost("/learner-state/hypotheses/h-7/decision", { ok: true });
-    await api.decideHypothesis("h-7", "CONFIRM");
+  it("默认 page=1 page_size=20 horizon_days 不发送", async () => {
+    mock.onGet("/learner-state/forecasts", { items: [], total: 0 });
+    await api.getForecasts();
     const req = mock.lastRequest();
-    assert.equal(req.url, "/learner-state/hypotheses/h-7/decision");
-    assert.deepEqual(req.data, { decision: "CONFIRM" });
+    assert.equal(req.params.page, 1);
+    assert.equal(req.params.page_size, 20);
+    assert.ok(!("horizon_days" in req.params));
+  });
+});
+
+// ===== 学生目标 =====
+
+describe("getStudentGoals", () => {
+  it("请求 /student-goals 并传递筛选参数", async () => {
+    mock.onGet("/student-goals", { items: [], total: 0 });
+    await api.getStudentGoals({
+      status: "active",
+      category: "academic",
+      page: 2,
+      pageSize: 30,
+    });
+    const req = mock.lastRequest();
+    assert.equal(req.url, "/student-goals");
+    assert.equal(req.params.status, "active");
+    assert.equal(req.params.category, "academic");
+    assert.equal(req.params.page, 2);
+    assert.equal(req.params.page_size, 30);
+  });
+
+  it("默认 page=1 page_size=50", async () => {
+    mock.onGet("/student-goals", { items: [], total: 0 });
+    await api.getStudentGoals();
+    const req = mock.lastRequest();
+    assert.equal(req.params.page, 1);
+    assert.equal(req.params.page_size, 50);
+  });
+});
+
+describe("archiveStudentGoal", () => {
+  it("POST /student-goals/:id/archive 传递空 body", async () => {
+    mock.onPost("/student-goals/g-1/archive", { goal_id: "g-1", status: "archived" });
+    const result = await api.archiveStudentGoal("g-1");
+    const req = mock.lastRequest();
+    assert.equal(req.url, "/student-goals/g-1/archive");
+    assert.deepEqual(req.data, {});
+    assert.equal(result.status, "archived");
   });
 });
 
@@ -204,8 +227,8 @@ describe("错误映射", () => {
 
 describe("204 No Content", () => {
   it("返回 null 而非 undefined", async () => {
-    mock.onPost("/learner-state/hypotheses/h-1/decision", null, 204);
-    const result = await api.decideHypothesis("h-1", "REJECT");
+    mock.onPost("/student-goals/g-1/archive", null, 204);
+    const result = await api.archiveStudentGoal("g-1");
     assert.equal(result, null);
   });
 });
@@ -223,25 +246,25 @@ describe("401 token 刷新", () => {
     });
 
     // 首次 401，重试 200
-    mock.onSequence("get", "/learner-state/taxonomy", [
+    mock.onSequence("get", "/learner-state/forecasts", [
       { error: true, status: 401, data: { detail: "token expired" } },
-      { status: 200, data: { categories: ["foundations"] } },
+      { status: 200, data: { items: [], total: 0 } },
     ]);
 
-    const result = await api.getTaxonomy();
-    assert.deepEqual(result, { categories: ["foundations"] });
+    const result = await api.getForecasts();
+    assert.deepEqual(result, { items: [], total: 0 });
 
     // 验证发了两次请求（第一次 401，第二次重试）
-    const reqs = mock.findRequests("get", "/learner-state/taxonomy");
+    const reqs = mock.findRequests("get", "/learner-state/forecasts");
     assert.equal(reqs.length, 2);
   });
 
   it("refresh token 不存在时抛出登录过期错误", async () => {
     mock.setTokens("expired-token", null);
-    mock.onError("get", "/learner-state/taxonomy", 401, { detail: "token expired" });
+    mock.onError("get", "/learner-state/forecasts", 401, { detail: "token expired" });
 
     await assert.rejects(
-      () => api.getTaxonomy(),
+      () => api.getForecasts(),
       (err) => err.message.includes("登录已过期"),
     );
   });
@@ -250,8 +273,8 @@ describe("401 token 刷新", () => {
 // ===== mutation 后数据刷新 =====
 
 describe("mutation 后数据刷新", () => {
-  it("decideHypothesis 后再次调用 getLearnerStateSnapshots 发出新请求", async () => {
-    mock.onPost("/learner-state/hypotheses/h-1/decision", { ok: true });
+  it("archiveStudentGoal 后再次调用 getLearnerStateSnapshots 发出新请求", async () => {
+    mock.onPost("/student-goals/g-1/archive", { status: "archived" });
     mock.onGet("/learner-state/snapshots", { items: [], total: 0 });
 
     // 初始加载
@@ -259,7 +282,7 @@ describe("mutation 后数据刷新", () => {
     assert.equal(mock.findRequests("get", "/learner-state/snapshots").length, 1);
 
     // mutation
-    await api.decideHypothesis("h-1", "CONFIRM");
+    await api.archiveStudentGoal("g-1");
 
     // 刷新
     await api.getLearnerStateSnapshots({ pageSize: 50 });

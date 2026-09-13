@@ -29,3 +29,17 @@ def test_evaluation_is_observational_and_preserves_history() -> None:
     assert body["plan_id"] == plan_id
     assert "caused" not in second.text and "improved" not in second.text
     assert body["evaluator_version"]
+
+def test_evaluation_preserves_general_priority_factors() -> None:
+    client, container, headers, _ = _setup()
+    user_id = container.user_repository.get_user_by_username("phase4_student").id
+    container.personal_task_repository.create_task(
+        user_id=user_id, title="因子验证", source="test", external_id="t1",
+    )
+    generated = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers).json()
+    expected_factors = {
+        "goal_alignment", "deadline_urgency", "workload_relief",
+        "schedule_fit", "evidence_confidence", "expected_progress", "data_freshness",
+    }
+    for item in generated["items"]:
+        assert set(item["priority_components"].keys()) == expected_factors

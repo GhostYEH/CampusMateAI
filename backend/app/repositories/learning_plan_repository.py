@@ -11,6 +11,7 @@ from ..models.learning_plan import (
     LearningPlanItemRow,
     LearningPlanRow,
     LearningPlanRunRow,
+    TASK_CREATING_ITEM_TYPES,
 )
 
 
@@ -265,7 +266,7 @@ class LearningPlanRepository:
                 (plan_id,),
             ).fetchall()
             for item in items:
-                action_type = "CREATE_PERSONAL_TASK" if item["item_type"] == "CREATE_PERSONAL_TASK" else "REVIEW_PLAN_ITEM"
+                action_type = "CREATE_PERSONAL_TASK" if item["item_type"] in TASK_CREATING_ITEM_TYPES else "REVIEW_PLAN_ITEM"
                 action = self.create_action(plan_id=plan_id, item_id=item["item_id"], user_id=user_id,
                                             action_type=action_type, conn=conn)
                 if action.status in {"SUCCEEDED", "UNDONE"}:

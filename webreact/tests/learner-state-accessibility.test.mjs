@@ -202,7 +202,7 @@ describe("模型透明度字段", () => {
   it("fixture_only=true 时不声称真实推理", async () => {
     mock.onGet("/learner-state/model-transparency", {
       capabilities: [{
-        capability_name: "c_kc_classification_v1",
+        capability_name: "forecast_baseline_v1",
         campusmate_lm_status: "SHADOW_ONLY",
         performance_measured: false,
         uses_real_model_inference: false,

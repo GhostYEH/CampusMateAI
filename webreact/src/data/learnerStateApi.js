@@ -1,6 +1,7 @@
 /**
- * Phase 6: 学生世界模型控制 API adapter。
- * 复用 api.js 的统一 axios client（含 token refresh），错误通过 contracts.userErrorMessage 转换。
+ * 校园陪伴世界模型 API adapter。
+ * 只调用后端真实存在的接口：状态投影、计划、纠正、数据控制、预测、模拟、学生目标。
+ * 错误通过 contracts.userErrorMessage 转换为中文文案。
  */
 import { client } from "./api.js";
 import { itemsOf, userErrorMessage } from "./contracts.js";
@@ -41,7 +42,11 @@ function _put(path, body) {
   return _wrap(client.put(path, body));
 }
 
-// ===== 状态投影（Phase 2） =====
+function _patch(path, body) {
+  return _wrap(client.patch(path, body));
+}
+
+// ===== 状态投影 =====
 
 export async function getLearnerStateRuns(page = 1, pageSize = 20) {
   return _get("/learner-state/runs", { page, page_size: pageSize });
@@ -72,25 +77,7 @@ export async function getSnapshotEvidence(snapshotId, page = 1, pageSize = 20) {
   return _get(`/learner-state/snapshots/${snapshotId}/evidence`, { page, page_size: pageSize });
 }
 
-// ===== 知识点与误区（Phase 3） =====
-
-export async function getTaxonomy() {
-  return _get("/learner-state/taxonomy");
-}
-
-export async function getKnowledgeState(courseId) {
-  return _get("/learner-state/knowledge", courseId ? { course_id: courseId } : {});
-}
-
-export async function getMisconceptionHypotheses(courseId) {
-  return _get("/learner-state/hypotheses", courseId ? { course_id: courseId } : {});
-}
-
-export async function decideHypothesis(hypothesisId, decision) {
-  return _post(`/learner-state/hypotheses/${hypothesisId}/decision`, { decision });
-}
-
-// ===== 学习计划（Phase 4） =====
+// ===== 学习计划 =====
 
 export async function generateLearningPlan(body) {
   return _post("/learning-plans/generate", body);
@@ -128,7 +115,7 @@ export async function getPlanEvaluation(planId) {
   return _get(`/learning-plans/${planId}/evaluation`);
 }
 
-// ===== 状态纠正（Phase 6A） =====
+// ===== 状态纠正 =====
 
 export async function createCorrection(body) {
   return _post("/learner-state/corrections", body);
@@ -142,7 +129,7 @@ export async function revokeCorrection(correctionId, idempotencyKey) {
   return _post(`/learner-state/corrections/${correctionId}/revoke`, { idempotency_key: idempotencyKey });
 }
 
-// ===== 数据源控制（Phase 6A） =====
+// ===== 数据源控制 =====
 
 export async function getDataControls() {
   return _get("/learner-state/data-controls");
@@ -152,7 +139,7 @@ export async function updateDataControl(sourceKey, status, idempotencyKey) {
   return _put(`/learner-state/data-controls/${sourceKey}`, { status, idempotency_key: idempotencyKey });
 }
 
-// ===== 世界模型删除（Phase 6A） =====
+// ===== 世界模型删除 =====
 
 export async function requestDeletion(scope, idempotencyKey) {
   return _post("/learner-state/delete-request", { scope, idempotency_key: idempotencyKey });
@@ -162,36 +149,66 @@ export async function getDeleteStatus() {
   return _get("/learner-state/delete-status");
 }
 
-// ===== 数据摘要（Phase 6A） =====
+// ===== 数据摘要 =====
 
 export async function getDataSummary() {
   return _get("/learner-state/data-summary");
 }
 
-// ===== 模型透明度（Phase 6A） =====
+// ===== 模型透明度 =====
 
 export async function getModelTransparency() {
   return _get("/learner-state/model-transparency");
 }
 
-// ===== 预测型世界模型（Phase 9D） =====
+// ===== 校园生活与目标执行风险预测 =====
 
-export async function getPredictions(courseId) {
-  return _get(`/learner-state/predictions/${encodeURIComponent(courseId)}`);
-}
-
-// ===== 安全反事实模拟（Phase 9D.1） =====
-
-export async function simulateCounterfactual(courseId, intervention) {
-  return _post("/learner-state/simulate", { course_id: courseId, intervention });
-}
-
-// ===== 预测评测与真实性门禁（Phase 9E） =====
-
-export async function getPredictionEvaluation(courseId, testRatio = 0.3) {
-  return _get(`/learner-state/predictions/${encodeURIComponent(courseId)}/evaluation`, {
-    test_ratio: testRatio,
+export async function getForecasts(params = {}) {
+  return _get("/learner-state/forecasts", {
+    page: params.page || 1,
+    page_size: params.pageSize || 20,
+    ...(params.forecastType ? { forecast_type: params.forecastType } : {}),
+    ...(params.horizonDays ? { horizon_days: params.horizonDays } : {}),
+    ...(params.goalId ? { goal_id: params.goalId } : {}),
+    ...(params.courseId ? { course_id: params.courseId } : {}),
   });
+}
+
+// ===== 反事实方案模拟 =====
+
+export async function createSimulation(body) {
+  return _post("/learner-state/simulations", body);
+}
+
+// ===== 学生通用目标 =====
+
+export async function getStudentGoals(params = {}) {
+  return _get("/student-goals", {
+    page: params.page || 1,
+    page_size: params.pageSize || 50,
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.category ? { category: params.category } : {}),
+  });
+}
+
+export async function createStudentGoal(body) {
+  return _post("/student-goals", body);
+}
+
+export async function getStudentGoal(goalId) {
+  return _get(`/student-goals/${goalId}`);
+}
+
+export async function updateStudentGoal(goalId, body) {
+  return _patch(`/student-goals/${goalId}`, body);
+}
+
+export async function recordGoalProgress(goalId, body) {
+  return _post(`/student-goals/${goalId}/progress`, body);
+}
+
+export async function archiveStudentGoal(goalId) {
+  return _post(`/student-goals/${goalId}/archive`, {});
 }
 
 export { itemsOf };
