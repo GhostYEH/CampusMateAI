@@ -35,12 +35,12 @@ test("adaptive navigation uses explicit contrast tokens and no mix-blend differe
   assert.doesNotMatch(navStyles, /mix-blend-mode:\s*difference/);
 });
 
-test("navigation uses OpenGlass while preserving the existing eight entries", () => {
+test("navigation uses OpenGlass while preserving the product entries", () => {
   assert.match(floatingNavSource, /import \{ Glass \} from ["']open-glass-ui["']/);
   assert.match(floatingNavSource, /<Glass[\s\S]*material="clear"[\s\S]*tone=\{tone\}[\s\S]*interactive/);
   assert.doesNotMatch(floatingNavSource, /LiquidGlassSurface/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav\.floating-nav-surface/);
-  assert.equal(navItems.length, 8);
+  assert.equal(navItems.length, 9);
 });
 
 test("navigation tone follows the page scene instead of the operating-system theme", () => {

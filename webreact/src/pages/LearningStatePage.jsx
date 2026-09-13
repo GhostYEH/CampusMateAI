@@ -8,6 +8,7 @@
  * 中性产品语言，避免心理画像/能力判定等负面表述。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
 
 const DATA_QUALITY_LABEL = {
@@ -667,7 +668,10 @@ export default function LearningStatePage() {
   return (
     <div className="learning-state-page" aria-busy={snapshots.loading || busy}>
       <header className="ls-header">
-        <h1 className="ls-title">我的学习状态</h1>
+        <div className="ls-header__title-row">
+          <h1 className="ls-title">我的学习状态</h1>
+          <Link className="ls-prediction-link" to="/prediction">查看预测与反事实模拟</Link>
+        </div>
         <p className="ls-subtitle">根据你授权的学习记录生成，可查看依据并随时纠正</p>
         {snapshots.data?.items?.[0] && (
           <p className="ls-update-time">

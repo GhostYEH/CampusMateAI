@@ -6,5 +6,6 @@ export const navItems = Object.freeze([
   { key: "counselor", label: "AI 校园助手", icon: "PhRobot" },
   { key: "notifications", label: "通知整理", icon: "PhBell" },
   { key: "study", label: "学习陪伴", icon: "PhChartLineUp" },
+  { key: "learning-state", label: "学习模型", icon: "PhBrain" },
   { key: "profile", label: "个人中心", icon: "PhUser" },
 ]);

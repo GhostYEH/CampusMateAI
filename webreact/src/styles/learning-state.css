@@ -22,9 +22,16 @@
 
 /* ===== Header ===== */
 .ls-header { margin-bottom: 28px; }
+.ls-header__title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .ls-title { font-size: 32px; font-weight: 700; margin: 0 0 4px; color: var(--ink, #182134); }
+.ls-prediction-link { color: var(--ls-accent, #48664b); font-size: 0.84rem; text-decoration: none; border: 1px solid currentColor; border-radius: 999px; padding: 7px 12px; }
+.ls-prediction-link:hover, .ls-prediction-link:focus-visible { text-decoration: underline; }
 .ls-subtitle { font-size: 16px; color: var(--muted, #6e788b); margin: 0 0 8px; }
 .ls-update-time { font-size: 14px; color: var(--muted, #6e788b); display: flex; align-items: center; gap: 4px; }
+
+@media (max-width: 640px) {
+  .ls-header__title-row { align-items: flex-start; flex-direction: column; }
+}
 
 /* ===== Layout ===== */
 .ls-layout {
