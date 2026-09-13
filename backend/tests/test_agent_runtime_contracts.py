@@ -59,6 +59,7 @@ def test_contract_version_is_v1() -> None:
                 "QUEUED",
                 "RUNNING",
                 "AWAITING_APPROVAL",
+                "PAUSED",
                 "SUCCEEDED",
                 "PARTIAL",
                 "FAILED",
@@ -99,6 +100,9 @@ def test_contract_version_is_v1() -> None:
                 "RUN_COMPLETED",
                 "RUN_FAILED",
                 "RUN_CANCELLED",
+                "RUN_PAUSED",
+                "RUN_RESUMED",
+                "RUN_RETRIED",
             },
         ),
         (

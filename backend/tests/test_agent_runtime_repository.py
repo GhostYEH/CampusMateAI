@@ -184,7 +184,7 @@ class TestAgentRuntimeRepository:
             confirmed=True,
             model_may_consume=True,
         )
-        repo.withdraw_memory(mid)
+        repo.withdraw_memory(mid, "u1")
         mems = repo.list_memories("u1")
         assert mems[0]["withdrawn"] == 1
         assert mems[0]["model_may_consume"] == 0
