@@ -1,7 +1,7 @@
-"""Run 状态机 + RECOVERY_CHECKING 恢复。
+"""Run 状态机与安全恢复。
 
 状态转换严格校验,非法转换抛 AgentRuntimeError。
-重启后未完成 run 进入 RECOVERY_CHECKING,检查持久化工具记录与权威域行后再决定恢复。
+重启后不会盲目重放中断的执行；无法安全恢复的执行 run 会明确失败。
 """
 from __future__ import annotations
 
@@ -146,24 +146,47 @@ class RunManager:
                 code="AGENT_RUN_CANCELLED",
                 http_status=409,
             )
-        return self.transition(
+        cancelled = self.transition(
             run_id,
             "CANCELLED",
             phase="IDLE",
             error_message=reason,
         )
+        self._events.append(
+            run_id=run_id,
+            type="RUN_CANCELLED",
+            status="CANCELLED",
+            phase="IDLE",
+            summary=reason or "运行已取消",
+        )
+        return cancelled
 
     def recover_incomplete_runs(self) -> list[dict]:
-        """RECOVERY_CHECKING:列出未完成 run 并标记为 RECOVERY_CHECKING phase。
+        """终止无法安全恢复的中断执行，并保留持久审批等待态。
 
-        调用方随后检查持久化工具记录与权威域行,决定恢复或失败。
-        不盲目重放模糊写入。
+        当前 final-review 执行发生在请求内，进程重启后不能安全重放模型或写入。
+        ``AWAITING_APPROVAL`` 是持久化的用户等待态，不属于中断执行，保持不变。
         """
         incomplete = self._repo.list_incomplete_runs()
         recovered: list[dict] = []
         for run in incomplete:
-            self._repo.update_run(run["run_id"], phase="RECOVERY_CHECKING")
-            recovered.append(self._repo.get_run(run["run_id"]))
+            if run["status"] == "AWAITING_APPROVAL":
+                continue
+            failed = self.transition(
+                run["run_id"],
+                "FAILED",
+                phase="IDLE",
+                error_code="AGENT_RECOVERY_UNSUPPORTED",
+                error_message="系统重启后无法安全恢复此运行，请重新发起请求。",
+            )
+            self._events.append(
+                run_id=run["run_id"],
+                type="RUN_FAILED",
+                status="FAILED",
+                phase="IDLE",
+                summary="系统重启后无法安全恢复，运行已终止",
+            )
+            recovered.append(failed)
         return recovered
 
 

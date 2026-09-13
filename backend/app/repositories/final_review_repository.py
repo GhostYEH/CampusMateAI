@@ -468,6 +468,66 @@ class FinalReviewRepository:
         finally:
             self._release(conn)
 
+    # ===== Check-in evidence =====
+
+    def upsert_checkin_evidence(
+        self,
+        *,
+        campaign_id: str,
+        plan_version: Optional[int],
+        user_id: str,
+        report_date: str,
+        completed_item_ids: list[str],
+        insufficient_time: bool,
+        difficulty_notes: Optional[str],
+    ) -> None:
+        now = _now()
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT INTO final_review_checkin_evidence "
+                "(checkin_id, campaign_id, plan_version, user_id, report_date, "
+                "completed_item_ids_json, insufficient_time, difficulty_notes, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(campaign_id, user_id, report_date) DO UPDATE SET "
+                "plan_version = excluded.plan_version, "
+                "completed_item_ids_json = excluded.completed_item_ids_json, "
+                "insufficient_time = excluded.insufficient_time, "
+                "difficulty_notes = excluded.difficulty_notes, updated_at = excluded.updated_at",
+                (
+                    _uuid("frce"), campaign_id, plan_version, user_id, report_date,
+                    json.dumps(completed_item_ids, ensure_ascii=False), int(insufficient_time),
+                    difficulty_notes, now, now,
+                ),
+            )
+            conn.commit()
+        finally:
+            self._release(conn)
+
+    def list_checkin_evidence(
+        self, campaign_id: str, *, user_id: str, limit: int = 7
+    ) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT report_date, plan_version, completed_item_ids_json, insufficient_time, "
+                "difficulty_notes FROM final_review_checkin_evidence "
+                "WHERE campaign_id = ? AND user_id = ? ORDER BY report_date DESC LIMIT ?",
+                (campaign_id, user_id, limit),
+            ).fetchall()
+            return [
+                {
+                    "report_date": row["report_date"],
+                    "plan_version": row["plan_version"],
+                    "completed_item_ids": json.loads(row["completed_item_ids_json"]),
+                    "insufficient_time": bool(row["insufficient_time"]),
+                    "difficulty_notes": row["difficulty_notes"],
+                }
+                for row in rows
+            ]
+        finally:
+            self._release(conn)
+
     def _item_row(self, conn, item_id: str) -> FinalReviewDailyItemRow:
         row = conn.execute(
             "SELECT * FROM final_review_daily_items WHERE item_id = ?",
