@@ -64,14 +64,23 @@ export default function CourseResearchPage() {
 
   useEffect(() => {
     if (!run.run?.artifact_ids?.length) return;
-    const id = run.run.artifact_ids[0];
-    if (artifact?.artifact_id === id) return;
+    const ids = run.run.artifact_ids;
+    if (artifact && ids.includes(artifact.artifact_id)) return;
     (async () => {
       try {
-        const art = await api.getAgentArtifact(id);
-        setArtifact(art);
-        if (art?.download_url && art.mime_type === "text/markdown") {
-          const resp = await baseApi.client.get(art.download_url, { responseType: "text" });
+        // 优先取 Markdown 报告产物;否则取第一个产物
+        let markdownArt = null;
+        let firstArt = null;
+        for (const id of ids) {
+          const art = await api.getAgentArtifact(id);
+          if (!firstArt) firstArt = art;
+          if (art?.mime_type === "text/markdown") { markdownArt = art; break; }
+        }
+        const target = markdownArt || firstArt;
+        if (!target) return;
+        setArtifact(target);
+        if (target.download_url && target.mime_type === "text/markdown") {
+          const resp = await baseApi.client.get(target.download_url, { responseType: "text" });
           setArtifactContent(resp.data);
         }
       } catch { /* 忽略产物加载错误 */ }

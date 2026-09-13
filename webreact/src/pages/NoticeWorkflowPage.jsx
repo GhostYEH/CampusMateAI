@@ -35,7 +35,11 @@ export default function NoticeWorkflowPage() {
     setError(null);
     setWorkflow(null);
     try {
-      const notice = await api.createManualNotice({ content, source_label, source: "manual_input" }, manual_key);
+      const notice = await api.createManualNotice({
+        title: source_label || content.slice(0, 64),
+        content,
+        source_name: source_label || null,
+      }, manual_key);
       if (!notice?.notice_id) throw new Error("未收到服务端通知 ID，请重试");
       const created = await api.createNoticeWorkflow(notice.notice_id, { idempotency_key: workflow_key }, workflow_key);
       setWorkflow(created);

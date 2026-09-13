@@ -46,6 +46,13 @@ async def lifespan(app: FastAPI):
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
+    # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
+    if settings.agent_allow_mock_providers and settings.app_env != "production":
+        try:
+            container.agent_provider_registry.add_fake("fake")
+            logger.info("Agent mock providers 已注入(fake)")
+        except Exception as e:
+            logger.warning("注入 mock providers 失败: {}", str(e)[:200])
     # 启动时导入内置测试环境资料(仅 dev/test 显式开启;production 已被 config 校验拦截)
     if settings.auto_import_demo:
         try:

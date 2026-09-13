@@ -9,7 +9,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from ...core.exceptions import AgentRuntimeError, AgentRunNotFound
 from ...models.multi_role import UserRow
@@ -283,6 +283,7 @@ async def stream_events(
                 current_run = repo.get_run(run_id)
                 if current_run and current_run["status"] in (
                     "SUCCEEDED",
+                    "PARTIAL",
                     "FAILED",
                     "CANCELLED",
                 ):
@@ -334,6 +335,23 @@ async def resolve_approval(
 
 
 # ===== artifacts =====
+
+
+@artifacts_router.get("/{artifact_id}/content")
+async def get_artifact_content(
+    artifact_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+):
+    """返回 artifact 文本内容(Markdown / JSON)。"""
+    repo = _artifact_repo(container)
+    meta = repo.get_artifact(artifact_id, user.id)
+    if not meta:
+        raise AgentRunNotFound("Artifact 不存在")
+    content = repo.read_content(artifact_id, user.id)
+    if content is None:
+        raise AgentRunNotFound("Artifact 内容不可读")
+    return PlainTextResponse(content, media_type=meta.get("mime_type") or "text/plain")
 
 
 @artifacts_router.get("/{artifact_id}")
