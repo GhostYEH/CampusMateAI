@@ -13,9 +13,11 @@ from ..repositories.learner_state_repository import LearnerStateRepository
 
 ESTIMATOR_VERSION = "deterministic-observed-v1"
 ACADEMIC_ESTIMATOR_VERSION = "academic-observed-v1"
+WORLD_ESTIMATOR_VERSION = "world-baseline-v1"
 _SHORT_TTL = timedelta(minutes=5)
 _CHAOXING_TTL = timedelta(hours=24)
 _ACADEMIC_TTL = timedelta(hours=1)
+_WORLD_TTL = timedelta(hours=1)
 
 
 def _iso(value: datetime) -> str:
@@ -80,13 +82,14 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None, student_goal_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
         self._control_repository = control_repository
         self._source_policy = source_policy
         self._edu_data_repository = edu_data_repository
         self._learner_event_repository = learner_event_repository
+        self._student_goal_repository = student_goal_repository
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -221,6 +224,525 @@ class LearnerStateProjectionService:
             if current is not None:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_result(user_id=user_id, as_of=as_of)
+
+    def project_world(
+        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+    ) -> ProjectionResult:
+        """WORLD 投影：通用大学生世界状态(校园生活/事务/个人成长)。
+
+        确定性、版本化、可重复的基线估计器。不评价用户人格或意志力。
+        数据不足时返回 UNAVAILABLE。
+        """
+        as_of = _require_utc(as_of)
+        current = None
+        try:
+            current = self.repository.get_current_run(
+                user_id=user_id, projection_kind="WORLD", projection_scope="__user__"
+            )
+            inputs = self._collect_world_inputs(user_id=user_id, as_of=as_of)
+            if self._source_policy is not None:
+                inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
+            input_digest = _digest(inputs)
+            current_as_of = _parse(current.as_of) if current else None
+            if (
+                current
+                and current.estimator_version == WORLD_ESTIMATOR_VERSION
+                and current.input_digest == input_digest
+                and current_as_of is not None
+                and as_of >= current_as_of
+                and self._world_snapshots_valid(current.user_id, as_of)
+            ):
+                existing = self._result_from_current(current, as_of=as_of)
+                if existing is not None:
+                    return existing
+            result, snapshot_rows, evidence = self._compute_world(
+                user_id=user_id, inputs=inputs, as_of=as_of,
+                input_digest=input_digest, trigger=trigger,
+            )
+            if current is None or current_as_of is None or as_of >= current_as_of:
+                self.repository.save_projection(
+                    run={
+                        "run_id": result.run_id,
+                        "user_id": user_id,
+                        "as_of": result.as_of,
+                        "computed_at": result.computed_at,
+                        "estimator_version": WORLD_ESTIMATOR_VERSION,
+                        "input_digest": input_digest,
+                        "trigger": trigger,
+                        "projection_kind": "WORLD",
+                        "projection_scope": "__user__",
+                        "warnings": result.warnings,
+                    },
+                    snapshots=[self._to_dict(row) for row in snapshot_rows],
+                    evidence=evidence,
+                )
+            return result
+        except Exception as exc:
+            logger.warning(
+                "world_projection_failed user_id={} trigger={} exception_type={}",
+                user_id, trigger, type(exc).__name__,
+            )
+            if current is not None:
+                return self._stale_result(current, as_of=as_of)
+            return self._unavailable_world_result(user_id=user_id, as_of=as_of)
+
+    def _collect_world_inputs(self, *, user_id: str, as_of: datetime) -> dict[str, Any]:
+        inputs: dict[str, Any] = {
+            "sessions": [],
+            "tasks": [],
+            "goals": [],
+            "goal_progress": [],
+            "schedule_items": [],
+            "exam_items": [],
+            "grade_items": [],
+            "events": [],
+        }
+        if self._student_goal_repository is not None:
+            try:
+                goals, _ = self._student_goal_repository.list_goals(
+                    user_id=user_id, page=1, page_size=200
+                )
+                inputs["goals"] = [
+                    {
+                        "goal_id": g.goal_id, "category": g.category, "status": g.status,
+                        "target_date": g.target_date, "progress_percent": g.progress_percent,
+                        "milestone_count": g.milestone_count, "updated_at": g.updated_at,
+                    }
+                    for g in goals
+                ]
+            except Exception:
+                pass
+        if self._edu_data_repository is not None:
+            try:
+                inputs["schedule_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "credit": i.credit}
+                    for i in self._edu_data_repository.list_schedule_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["exam_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "starts_at": i.starts_at}
+                    for i in self._edu_data_repository.list_exam_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["grade_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "credit": i.credit, "score": i.score}
+                    for i in self._edu_data_repository.list_grade_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+            except Exception:
+                pass
+        if self._learner_event_repository is not None:
+            try:
+                events, _ = self._learner_event_repository.list_for_user(
+                    user_id=user_id, page=1, page_size=200
+                )
+                inputs["events"] = [
+                    {"event_id": e.event_id, "event_type": e.event_type,
+                     "occurred_at": e.occurred_at, "source": e.source}
+                    for e in events
+                ]
+            except Exception:
+                pass
+        try:
+            with self.repository._db.query() as conn:
+                task_rows = conn.execute(
+                    """SELECT id,status,deadline,created_at,completed_at,deleted_at
+                       FROM personal_tasks WHERE user_id=?
+                       ORDER BY created_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+                inputs["tasks"] = [dict(row) for row in task_rows]
+                session_rows = conn.execute(
+                    """SELECT id,started_at,ended_at,duration_seconds,status
+                       FROM study_sessions WHERE user_id=?
+                       ORDER BY started_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+                inputs["sessions"] = [dict(row) for row in session_rows]
+        except Exception:
+            pass
+        return inputs
+
+    def _world_snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
+        rows = self.repository.list_all_current_snapshots(
+            user_id=user_id, projection_kind="WORLD", projection_scope="__user__"
+        )
+        return bool(rows) and all(
+            (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
+            for row in rows
+        )
+
+    @staticmethod
+    def _unavailable_world_result(*, user_id: str, as_of: datetime) -> ProjectionResult:
+        computed = _iso(as_of)
+        snapshots = [ComputedSnapshot(
+            snapshot_id="unavailable_world", run_id="", scope_type="USER",
+            scope_id=user_id, state_type="workload_pressure",
+            value={"window_days": 7, "task_count": 0, "exam_count": 0,
+                   "estimated_total_minutes": 0, "pressure_band": "LOW",
+                   "concentrated_dates": [], "data_completeness": "unavailable",
+                   "warning_codes": ["projection_failed"]},
+            confidence=0.0, data_quality="unavailable", observed_from=None,
+            observed_through=None, valid_until=None, computed_at=computed,
+        )]
+        return ProjectionResult(run_id="", user_id=user_id, as_of=computed, computed_at=computed,
+                                estimator_version=WORLD_ESTIMATOR_VERSION, input_digest="",
+                                snapshots=snapshots, warnings=["projection_failed"])
+
+    def _compute_world(
+        self, *, user_id: str, inputs: dict[str, Any], as_of: datetime,
+        input_digest: str, trigger: str,
+    ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
+        computed_at = _iso(as_of)
+        run_id = f"lrun_{uuid.uuid4().hex[:16]}"
+        rows: list[ComputedSnapshot] = []
+        evidence: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        valid_until = as_of + _WORLD_TTL
+
+        if self._source_policy is not None:
+            policy_warning = self._source_policy.get_projection_warning(user_id=user_id)
+            if policy_warning is not None:
+                warnings.append(policy_warning)
+
+        tasks = inputs.get("tasks", [])
+        sessions = inputs.get("sessions", [])
+        goals = inputs.get("goals", [])
+        schedule_items = inputs.get("schedule_items", [])
+        exam_items = inputs.get("exam_items", [])
+        grade_items = inputs.get("grade_items", [])
+        events = inputs.get("events", [])
+        if "EDU" in inputs.get("paused_sources", []):
+            schedule_items = []
+            exam_items = []
+            grade_items = []
+
+        def add_world(
+            *, state_type: str, value: dict[str, Any], quality: str,
+            sources: list[dict[str, Any]] | None = None,
+        ) -> None:
+            confidence = _confidence(quality)
+            snapshot = ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="USER", scope_id=user_id, state_type=state_type,
+                value=value, confidence=confidence, data_quality=quality,
+                observed_from=_iso(as_of - timedelta(days=30)) if quality != "unavailable" else None,
+                observed_through=_iso(as_of) if quality != "unavailable" else None,
+                valid_until=_iso(valid_until),
+                computed_at=computed_at,
+            )
+            rows.append(snapshot)
+            for source in (sources or [])[:100]:
+                evidence.append({
+                    "evidence_id": f"lev_{uuid.uuid4().hex[:16]}",
+                    "snapshot_id": snapshot.snapshot_id,
+                    "evidence_kind": source.get("evidence_kind", "EVENT"),
+                    "event_id": source.get("event_id"),
+                    "source_type": source.get("source_type", "core_learning_record"),
+                    "source_id": source.get("source_id", user_id),
+                    "role": source.get("role", "SUPPORTS"),
+                    "quality": source.get("quality", quality),
+                    "explanation_code": source.get("explanation_code", "state_observed"),
+                })
+
+        has_data = bool(tasks or sessions or goals or schedule_items or exam_items or grade_items)
+
+        # 1. workload_pressure
+        self._compute_workload_pressure(
+            tasks=tasks, exam_items=exam_items, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 2. schedule_conflict
+        self._compute_schedule_conflict(
+            schedule_items=schedule_items, exam_items=exam_items, tasks=tasks,
+            as_of=as_of, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 3. academic_progress
+        self._compute_academic_progress(
+            grade_items=grade_items, schedule_items=schedule_items,
+            warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 4. focus_rhythm
+        self._compute_focus_rhythm(
+            sessions=sessions, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 5. goal_progress
+        self._compute_goal_progress(
+            goals=goals, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 6. execution_consistency
+        self._compute_execution_consistency(
+            tasks=tasks, sessions=sessions, events=events,
+            warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 7. growth_momentum
+        self._compute_growth_momentum(
+            goals=goals, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 8. preference_profile
+        self._compute_preference_profile(
+            events=events, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+
+        result = ProjectionResult(
+            run_id=run_id, user_id=user_id, as_of=_iso(as_of), computed_at=computed_at,
+            estimator_version=WORLD_ESTIMATOR_VERSION, input_digest=input_digest,
+            snapshots=rows, warnings=warnings,
+        )
+        return result, rows, evidence
+
+    @staticmethod
+    def _compute_workload_pressure(*, tasks, exam_items, as_of, warnings, has_data, add_world) -> None:
+        window = 7
+        horizon = as_of + timedelta(days=window)
+        upcoming_tasks = []
+        for task in tasks:
+            if task.get("status") != "pending" or task.get("deleted_at"):
+                continue
+            deadline = _parse(task.get("deadline"))
+            if deadline is not None and as_of <= deadline <= horizon:
+                upcoming_tasks.append(task)
+        upcoming_exams = []
+        for exam in exam_items:
+            starts_at = _parse(exam.get("starts_at"))
+            if starts_at is not None and as_of <= starts_at <= horizon:
+                upcoming_exams.append(exam)
+        estimated_minutes = len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
+        total_items = len(upcoming_tasks) + len(upcoming_exams)
+        if total_items == 0:
+            band = "LOW"
+        elif estimated_minutes <= 600:
+            band = "LOW"
+        elif estimated_minutes <= 1500:
+            band = "MODERATE"
+        elif estimated_minutes <= 3000:
+            band = "HIGH"
+        else:
+            band = "VERY_HIGH"
+        concentrated: list[str] = []
+        for task in upcoming_tasks:
+            deadline = _parse(task.get("deadline"))
+            if deadline:
+                concentrated.append(deadline.date().isoformat())
+        concentrated = sorted(set(concentrated))[:16]
+        quality = "verified" if has_data else "unavailable"
+        add_world(
+            state_type="workload_pressure",
+            value={
+                "window_days": window, "task_count": len(upcoming_tasks),
+                "exam_count": len(upcoming_exams),
+                "estimated_total_minutes": estimated_minutes,
+                "pressure_band": band, "concentrated_dates": concentrated,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_schedule_conflict(*, schedule_items, exam_items, tasks, as_of, warnings, has_data, add_world) -> None:
+        exam_count = 0
+        for exam in exam_items:
+            starts_at = _parse(exam.get("starts_at"))
+            if starts_at is not None and starts_at >= as_of:
+                exam_count += 1
+        pending_with_deadline = 0
+        for task in tasks:
+            if task.get("status") == "pending" and not task.get("deleted_at") and task.get("deadline"):
+                pending_with_deadline += 1
+        conflict_count = 0
+        if exam_count > 0 and pending_with_deadline > 0:
+            conflict_count = min(exam_count, pending_with_deadline)
+        available_windows = max(0, 14 - conflict_count)
+        quality = "verified" if has_data else "unavailable"
+        add_world(
+            state_type="schedule_conflict",
+            value={
+                "conflict_count": conflict_count, "conflicts": [],
+                "available_window_count": available_windows,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_academic_progress(*, grade_items, schedule_items, warnings, has_data, add_world) -> None:
+        observed_courses = {item.get("course_code") for item in grade_items if item.get("course_code")}
+        observed_credits = sum(float(item.get("credit") or 0) for item in grade_items)
+        passed_count = 0
+        for item in grade_items:
+            score = item.get("score")
+            if not score:
+                continue
+            try:
+                if float(score) >= 60:
+                    passed_count += 1
+            except (TypeError, ValueError):
+                continue
+        quality = "verified" if grade_items else ("partial" if schedule_items else "unavailable")
+        add_world(
+            state_type="academic_progress",
+            value={
+                "observed_course_count": len(observed_courses),
+                "observed_credit_count": round(observed_credits, 2),
+                "observed_passed_count": passed_count,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_focus_rhythm(*, sessions, as_of, warnings, has_data, add_world) -> None:
+        completed = []
+        for row in sessions:
+            if row.get("status") != "completed":
+                continue
+            ended = _parse(row.get("ended_at"))
+            if ended and ended <= as_of:
+                completed.append(row)
+        slot_counts: dict[str, int] = {}
+        durations: list[int] = []
+        for row in completed:
+            started = _parse(row.get("started_at"))
+            if started:
+                hour = started.hour
+                if 6 <= hour < 12:
+                    slot = "morning"
+                elif 12 <= hour < 18:
+                    slot = "afternoon"
+                elif 18 <= hour < 24:
+                    slot = "evening"
+                else:
+                    slot = "night"
+                slot_counts[slot] = slot_counts.get(slot, 0) + 1
+            dur = int(row.get("duration_seconds") or 0)
+            if dur > 0:
+                durations.append(dur // 60)
+        common_slots = [slot for slot, _ in sorted(slot_counts.items(), key=lambda x: -x[1])[:4]]
+        median_minutes = sorted(durations)[len(durations) // 2] if durations else 0
+        if len(completed) >= 3 and len(common_slots) <= 2:
+            stability = "stable"
+        elif len(completed) >= 1:
+            stability = "variable"
+        else:
+            stability = "unknown"
+        quality = "verified" if completed else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="focus_rhythm",
+            value={
+                "observed_session_count": len(completed),
+                "common_time_slots": common_slots,
+                "median_duration_minutes": median_minutes,
+                "rhythm_stability": stability,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_goal_progress(*, goals, warnings, has_data, add_world) -> None:
+        active_goals = [g for g in goals if g.get("status") == "active"]
+        archived_goals = [g for g in goals if g.get("status") == "archived"]
+        with_milestones = sum(1 for g in goals if int(g.get("milestone_count") or 0) > 0)
+        if active_goals:
+            avg_progress = sum(float(g.get("progress_percent") or 0) for g in active_goals) / len(active_goals)
+        else:
+            avg_progress = 0.0
+        quality = "verified" if goals else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="goal_progress",
+            value={
+                "active_goal_count": len(active_goals),
+                "archived_goal_count": len(archived_goals),
+                "goals_with_milestones": with_milestones,
+                "average_progress_percent": round(avg_progress, 2),
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_execution_consistency(*, tasks, sessions, events, warnings, has_data, add_world) -> None:
+        planned = sum(1 for t in tasks if t.get("status") == "pending" and not t.get("deleted_at"))
+        executed = sum(1 for t in tasks if t.get("status") == "completed" and not t.get("deleted_at"))
+        executed += sum(1 for s in sessions if s.get("status") == "completed")
+        if planned == 0 and executed == 0:
+            band = "no_plan"
+            ratio = 0.0
+        elif planned == 0:
+            band = "none"
+            ratio = 0.0
+        else:
+            ratio = min(1.0, executed / max(planned, 1))
+            if ratio >= 0.8:
+                band = "high"
+            elif ratio >= 0.5:
+                band = "moderate"
+            elif ratio >= 0.2:
+                band = "low"
+            else:
+                band = "none"
+        quality = "verified" if (tasks or sessions) else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="execution_consistency",
+            value={
+                "planned_task_count": planned, "executed_task_count": executed,
+                "consistency_ratio": round(ratio, 4), "consistency_band": band,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_growth_momentum(*, goals, as_of, warnings, has_data, add_world) -> None:
+        active_goals = [g for g in goals if g.get("status") == "active"]
+        recent_threshold = as_of - timedelta(days=14)
+        recent_progress = 0
+        for g in active_goals:
+            updated = _parse(g.get("updated_at"))
+            if updated and updated >= recent_threshold and float(g.get("progress_percent") or 0) > 0:
+                recent_progress += 1
+        if not goals:
+            band = "insufficient_data"
+        elif recent_progress == 0:
+            band = "declining"
+        elif recent_progress >= len(active_goals):
+            band = "rising"
+        else:
+            band = "steady"
+        quality = "verified" if goals else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="growth_momentum",
+            value={
+                "goal_count": len(goals),
+                "goals_with_recent_progress": recent_progress,
+                "momentum_band": band,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_preference_profile(*, events, warnings, has_data, add_world) -> None:
+        pref_events = [e for e in events if e.get("event_type") == "preference_updated"]
+        has_prefs = bool(pref_events)
+        quality = "verified" if has_prefs else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="preference_profile",
+            value={
+                "reminder_frequency": "normal" if has_prefs else "unset",
+                "quiet_hours_enabled": False,
+                "daily_plan_capacity_minutes": 240 if has_prefs else 0,
+                "preferred_focus_slot": "unset",
+                "detail_level": "standard" if has_prefs else "unset",
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
 
     def _collect_academic_inputs(self, *, user_id: str) -> dict[str, Any]:
         inputs: dict[str, Any] = {
@@ -1110,4 +1632,4 @@ class LearnerStateProjectionService:
             "explanation_codes": codes,
         }
 
-__all__ = ["ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]
+__all__ = ["ESTIMATOR_VERSION", "WORLD_ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]

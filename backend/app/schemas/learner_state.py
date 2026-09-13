@@ -19,6 +19,14 @@ StateType = Literal[
     "exam_exposure",
     "schedule_load",
     "goal_state",
+    "workload_pressure",
+    "schedule_conflict",
+    "academic_progress",
+    "focus_rhythm",
+    "goal_progress",
+    "execution_consistency",
+    "growth_momentum",
+    "preference_profile",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
@@ -162,6 +170,122 @@ class GoalStateValue(BaseModel):
     warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
+WorkloadPressureBand = Literal["LOW", "MODERATE", "HIGH", "VERY_HIGH"]
+
+
+class WorkloadPressureValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    window_days: int = Field(ge=1, le=30)
+    task_count: int = Field(ge=0)
+    exam_count: int = Field(ge=0)
+    estimated_total_minutes: int = Field(ge=0)
+    pressure_band: WorkloadPressureBand
+    concentrated_dates: list[str] = Field(default_factory=list, max_length=16)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class ScheduleConflictItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["overlap", "gap"]
+    start: datetime
+    end: datetime
+    overlap_minutes: int = Field(ge=0)
+
+    _aware_start = field_validator("start", "end")(_aware)
+
+
+class ScheduleConflictValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conflict_count: int = Field(ge=0)
+    conflicts: list[ScheduleConflictItem] = Field(default_factory=list, max_length=16)
+    available_window_count: int = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class AcademicProgressValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_course_count: int = Field(ge=0)
+    observed_credit_count: float = Field(ge=0)
+    observed_passed_count: int = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+FocusRhythmStability = Literal["stable", "variable", "unknown"]
+
+
+class FocusRhythmValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_session_count: int = Field(ge=0)
+    common_time_slots: list[str] = Field(default_factory=list, max_length=8)
+    median_duration_minutes: int = Field(ge=0)
+    rhythm_stability: FocusRhythmStability
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class GoalProgressValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active_goal_count: int = Field(ge=0)
+    archived_goal_count: int = Field(ge=0)
+    goals_with_milestones: int = Field(ge=0)
+    average_progress_percent: float = Field(ge=0, le=100)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+ExecutionConsistencyBand = Literal["none", "low", "moderate", "high", "no_plan"]
+
+
+class ExecutionConsistencyValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    planned_task_count: int = Field(ge=0)
+    executed_task_count: int = Field(ge=0)
+    consistency_ratio: float = Field(ge=0, le=1)
+    consistency_band: ExecutionConsistencyBand
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+GrowthMomentumBand = Literal["rising", "steady", "declining", "insufficient_data"]
+
+
+class GrowthMomentumValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goal_count: int = Field(ge=0)
+    goals_with_recent_progress: int = Field(ge=0)
+    momentum_band: GrowthMomentumBand
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+PreferenceReminderFrequency = Literal["unset", "minimal", "normal", "frequent"]
+PreferenceFocusSlot = Literal["unset", "morning", "afternoon", "evening", "night"]
+PreferenceDetailLevel = Literal["unset", "brief", "standard", "detailed"]
+
+
+class PreferenceProfileValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reminder_frequency: PreferenceReminderFrequency = "unset"
+    quiet_hours_enabled: bool = False
+    daily_plan_capacity_minutes: int = Field(default=0, ge=0, le=1440)
+    preferred_focus_slot: PreferenceFocusSlot = "unset"
+    detail_level: PreferenceDetailLevel = "unset"
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
 StateValue = Annotated[
     Union[
         ObservedLearningActivityValue,
@@ -175,6 +299,14 @@ StateValue = Annotated[
         ExamExposureValue,
         ScheduleLoadValue,
         GoalStateValue,
+        WorkloadPressureValue,
+        ScheduleConflictValue,
+        AcademicProgressValue,
+        FocusRhythmValue,
+        GoalProgressValue,
+        ExecutionConsistencyValue,
+        GrowthMomentumValue,
+        PreferenceProfileValue,
     ],
     Field(union_mode="smart"),
 ]
@@ -216,6 +348,14 @@ class LearnerStateSnapshotOut(BaseModel):
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
             "goal_state": GoalStateValue,
+            "workload_pressure": WorkloadPressureValue,
+            "schedule_conflict": ScheduleConflictValue,
+            "academic_progress": AcademicProgressValue,
+            "focus_rhythm": FocusRhythmValue,
+            "goal_progress": GoalProgressValue,
+            "execution_consistency": ExecutionConsistencyValue,
+            "growth_momentum": GrowthMomentumValue,
+            "preference_profile": PreferenceProfileValue,
         }[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
@@ -337,6 +477,14 @@ class LearnerStateChangeOut(BaseModel):
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
             "goal_state": GoalStateValue,
+            "workload_pressure": WorkloadPressureValue,
+            "schedule_conflict": ScheduleConflictValue,
+            "academic_progress": AcademicProgressValue,
+            "focus_rhythm": FocusRhythmValue,
+            "goal_progress": GoalProgressValue,
+            "execution_consistency": ExecutionConsistencyValue,
+            "growth_momentum": GrowthMomentumValue,
+            "preference_profile": PreferenceProfileValue,
         }[self.state_type]
         if self.previous_value is not None and not isinstance(self.previous_value, expected):
             raise ValueError("previous_value does not match state_type")
@@ -360,13 +508,18 @@ class LearnerStateChangePage(BaseModel):
 
 __all__ = [
     "AcademicCourseLoadValue",
+    "AcademicProgressValue",
     "CourseParticipationValue",
     "CreditProgressValue",
     "DataSourceHealthValue",
     "DeadlineExposureValue",
     "ExamExposureValue",
+    "ExecutionConsistencyValue",
+    "FocusRhythmValue",
+    "GoalProgressValue",
     "GoalStateValue",
     "GradeObservationValue",
+    "GrowthMomentumValue",
     "LearnerStateEvidenceOut",
     "LearnerStateEvidencePage",
     "LearnerStateChangeOut",
@@ -376,7 +529,10 @@ __all__ = [
     "LearnerStateSnapshotOut",
     "LearnerStateSnapshotPage",
     "ObservedLearningActivityValue",
+    "PreferenceProfileValue",
+    "ScheduleConflictValue",
     "ScheduleLoadValue",
     "SnapshotDataQuality",
     "TaskWorkloadValue",
+    "WorkloadPressureValue",
 ]

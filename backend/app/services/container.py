@@ -29,6 +29,7 @@ from ..repositories.personal_hub_repository import (
 )
 from ..repositories.study_session_repository import StudySessionRepository
 from ..repositories.study_goal_repository import StudyGoalRepository
+from ..repositories.student_goal_repository import StudentGoalRepository
 from ..repositories.study_checkin_repository import StudyCheckinRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
@@ -111,6 +112,7 @@ class ServiceContainer:
     # 学习陪伴
     study_session_repository: StudySessionRepository
     study_goal_repository: StudyGoalRepository
+    student_goal_repository: StudentGoalRepository
     study_checkin_repository: StudyCheckinRepository
     chaoxing_repository: ChaoxingRepository
     notice_repository: NoticeRepository
@@ -204,6 +206,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
     study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
     study_goal_repo = StudyGoalRepository(db)
+    student_goal_repo = StudentGoalRepository(db)
     study_checkin_repo = StudyCheckinRepository(db)
     # TaskBreakdownService 只解析 PersonalTask(不再接受 Assignment ID)
     task_breakdown = TaskBreakdownService(
@@ -268,6 +271,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     learner_event_service._edu_repository = edu_repo
     learner_state_service._edu_data_repository = edu_data_repo
     learner_state_service._learner_event_repository = learner_event_repository
+    learner_state_service._student_goal_repository = student_goal_repo
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
@@ -314,6 +318,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         favorite_repository=favorite_repo,
         study_session_repository=study_session_repo,
         study_goal_repository=study_goal_repo,
+        student_goal_repository=student_goal_repo,
         study_checkin_repository=study_checkin_repo,
         chaoxing_repository=ChaoxingRepository(db),
         notice_repository=notice_repository,

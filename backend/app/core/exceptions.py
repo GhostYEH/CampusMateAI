@@ -274,6 +274,18 @@ class PersonalTaskConflict(AppException):
     message = "个人待办当前状态不允许该操作。"
 
 
+class StudentGoalNotFound(AppException):
+    code = "STUDENT_GOAL_NOT_FOUND"
+    http_status = 404
+    message = "学生目标不存在。"
+
+
+class StudentGoalConflict(AppException):
+    code = "STUDENT_GOAL_CONFLICT"
+    http_status = 409
+    message = "学生目标当前状态不允许该操作。"
+
+
 class LearningPlanExecutionFailed(AppException):
     code = "LEARNING_PLAN_EXECUTION_FAILED"
     http_status = 409
