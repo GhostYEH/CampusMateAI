@@ -312,7 +312,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         event_store=agent_event_store,
     )
     agent_provider_registry = ProviderRegistry(settings)
-    agent_model_router = ModelRouter(agent_provider_registry)
+    agent_model_router = ModelRouter(
+        agent_provider_registry, repository=agent_runtime_repository
+    )
     container = ServiceContainer(
         settings=settings,
         db=db,

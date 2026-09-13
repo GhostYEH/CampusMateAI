@@ -175,7 +175,7 @@ class NoticeWorkflowService:
         active = self._repo.get_active_workflow_by_fingerprint(user_id, fp)
         if active:
             return active
-        source = self._repo.get_source_by_code(source_code)
+        source = self._repo.get_source_by_code_for_user(source_code, user_id)
         source_id = source.source_id if source else None
         workflow = self._repo.create_workflow(
             user_id=user_id,
@@ -332,18 +332,20 @@ class NoticeWorkflowService:
 
     # ===== 查询 =====
 
-    def list_sources(self):
-        return self._repo.list_sources()
+    def list_sources(self, *, user_id: str):
+        return self._repo.list_sources_for_user(user_id)
 
     def patch_source(
         self,
         source_id: str,
         *,
+        user_id: str,
         automation_enabled: Optional[bool] = None,
         display_name: Optional[str] = None,
     ):
-        return self._repo.update_source(
+        return self._repo.update_source_preference(
             source_id,
+            user_id,
             automation_enabled=automation_enabled,
             display_name=display_name,
         )

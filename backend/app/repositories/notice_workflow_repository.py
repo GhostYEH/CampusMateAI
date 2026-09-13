@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS notification_sources (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notification_source_preferences (
+    user_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    automation_enabled INTEGER NOT NULL DEFAULT 0,
+    display_name TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, source_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(source_id) REFERENCES notification_sources(source_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS notice_workflows (
     workflow_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -146,6 +157,79 @@ class NoticeWorkflowRepository:
                 "SELECT * FROM notification_sources ORDER BY code ASC"
             ).fetchall()
         return [NotificationSourceRow.from_row(r) for r in rows]
+
+    def list_sources_for_user(self, user_id: str) -> list[NotificationSourceRow]:
+        """返回来源定义叠加当前用户偏好；偏好不存在时默认关闭。"""
+        with self._db.query() as conn:
+            rows = conn.execute(
+                "SELECT s.*, COALESCE(p.automation_enabled, 0) AS user_automation_enabled, "
+                "p.display_name AS user_display_name "
+                "FROM notification_sources s LEFT JOIN notification_source_preferences p "
+                "ON p.source_id = s.source_id AND p.user_id = ? ORDER BY s.code ASC",
+                (user_id,),
+            ).fetchall()
+        result: list[NotificationSourceRow] = []
+        for row in rows:
+            source = NotificationSourceRow.from_row(row)
+            source.automation_enabled = bool(row["user_automation_enabled"])
+            if row["user_display_name"]:
+                source.display_name = row["user_display_name"]
+            result.append(source)
+        return result
+
+    def get_source_for_user(
+        self, source_id: str, user_id: str
+    ) -> Optional[NotificationSourceRow]:
+        return next(
+            (s for s in self.list_sources_for_user(user_id) if s.source_id == source_id),
+            None,
+        )
+
+    def get_source_by_code_for_user(
+        self, code: str, user_id: str
+    ) -> Optional[NotificationSourceRow]:
+        return next(
+            (s for s in self.list_sources_for_user(user_id) if s.code == code),
+            None,
+        )
+
+    def update_source_preference(
+        self,
+        source_id: str,
+        user_id: str,
+        *,
+        automation_enabled: Optional[bool] = None,
+        display_name: Optional[str] = None,
+    ) -> Optional[NotificationSourceRow]:
+        """只更新当前用户偏好，绝不修改全局来源定义。"""
+        if self.get_source(source_id) is None:
+            return None
+        current = self.get_source_for_user(source_id, user_id)
+        enabled = bool(current and current.automation_enabled)
+        name = None
+        with self._db.query() as conn:
+            pref = conn.execute(
+                "SELECT display_name FROM notification_source_preferences "
+                "WHERE user_id = ? AND source_id = ?",
+                (user_id, source_id),
+            ).fetchone()
+            if pref:
+                name = pref["display_name"]
+        if automation_enabled is not None:
+            enabled = automation_enabled
+        if display_name is not None:
+            name = display_name
+        now = _now()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO notification_source_preferences "
+                "(user_id, source_id, automation_enabled, display_name, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, source_id) DO UPDATE SET "
+                "automation_enabled=excluded.automation_enabled, "
+                "display_name=excluded.display_name, updated_at=excluded.updated_at",
+                (user_id, source_id, int(enabled), name, now),
+            )
+        return self.get_source_for_user(source_id, user_id)
 
     def update_source(
         self,

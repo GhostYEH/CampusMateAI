@@ -149,7 +149,7 @@ def list_sources(
             automation_enabled=s.automation_enabled,
             permission_scope=s.permission_scope,
         )
-        for s in service.list_sources()
+        for s in service.list_sources(user_id=user.id)
     ]
 
 
@@ -163,6 +163,7 @@ def patch_source(
     service = _build_service(container)
     row = service.patch_source(
         source_id,
+        user_id=user.id,
         automation_enabled=body.automation_enabled,
         display_name=body.display_name,
     )

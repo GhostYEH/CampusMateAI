@@ -6,6 +6,8 @@ import pytest
 from app.core.config import Settings, get_settings
 from app.services.llm.provider_registry import ProviderRegistry
 from app.services.llm.model_router import ModelRouter
+from app.database.sqlite_db import reset_db_for_tests
+from app.repositories.agent_runtime_repository import AgentRuntimeRepository
 
 
 @pytest.fixture
@@ -128,3 +130,37 @@ async def test_router_dual_review():
     )
     assert result.status == "succeeded"
     assert result.review_provider == "xunfei"
+
+
+@pytest.mark.asyncio
+async def test_router_persists_sanitized_model_trace_for_run():
+    db = reset_db_for_tests()
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, role, created_at, updated_at) "
+            "VALUES ('trace-user', 'trace-user', 'x', 'student', 't', 't')"
+        )
+    repo = AgentRuntimeRepository(db)
+    job_id = repo.create_job(user_id="trace-user", job_kind="course_research")
+    run_id = repo.create_run(job_id=job_id, user_id="trace-user")
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg.add_fake("zhipu", route_policies=["reasoning_primary"])
+    router = ModelRouter(reg, repository=repo)
+
+    result = await router.route(
+        [{"role": "user", "content": "private prompt must not be stored"}],
+        route_policy="reasoning_primary",
+        run_id=run_id,
+    )
+    assert result.status == "succeeded"
+    with db.query() as conn:
+        row = conn.execute(
+            "SELECT provider, route_policy, status, fallback_reason "
+            "FROM agent_model_calls WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(agent_model_calls)")]
+    assert dict(row)["provider"] == "zhipu"
+    assert dict(row)["route_policy"] == "reasoning_primary"
+    assert "prompt" not in columns

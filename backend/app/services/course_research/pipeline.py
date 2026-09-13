@@ -528,6 +528,7 @@ class CourseResearchPipeline:
             ]
             result = await self._router.route(
                 messages, route_policy=policy, max_tokens=1024,
+                run_id=ctx.run_id,
             )
             if result.response is None:
                 return None

@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from ..llm.base import LLMClient, LLMError, LLMResponse
 from .provider_registry import ProviderRegistry
+
+if TYPE_CHECKING:
+    from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 
 
 @dataclass
@@ -40,8 +43,13 @@ _POLICY_ORDER: dict[str, list[str]] = {
 class ModelRouter:
     """模型路由器。"""
 
-    def __init__(self, registry: ProviderRegistry) -> None:
+    def __init__(
+        self,
+        registry: ProviderRegistry,
+        repository: Optional["AgentRuntimeRepository"] = None,
+    ) -> None:
         self._registry = registry
+        self._repository = repository
 
     async def route(
         self,
@@ -51,13 +59,17 @@ class ModelRouter:
         temperature: float = 0.2,
         max_tokens: Optional[int] = None,
         timeout: Optional[float] = None,
+        run_id: Optional[str] = None,
+        step_id: Optional[str] = None,
     ) -> RouteResult:
         """按策略路由调用。单 provider 失败重试一次后切备用。"""
         order = _POLICY_ORDER.get(route_policy, ["zhipu", "xunfei"])
         if route_policy == "dual_review":
-            return await self._dual_review(
+            result = await self._dual_review(
                 messages, order, temperature, max_tokens, timeout
             )
+            self._record_trace(result, run_id, step_id, route_policy)
+            return result
         last_error: Optional[str] = None
         for provider_name in order:
             inst = self._registry.get(provider_name)
@@ -72,13 +84,15 @@ class ModelRouter:
                     timeout=timeout,
                 )
                 latency = int((time.monotonic() - start) * 1000)
-                return RouteResult(
+                result = RouteResult(
                     response=resp,
                     provider_name=provider_name,
                     model=inst.client.name,
                     status="succeeded",
                     latency_ms=latency,
                 )
+                self._record_trace(result, run_id, step_id, route_policy)
+                return result
             except LLMError as e:
                 latency = int((time.monotonic() - start) * 1000)
                 last_error = type(e).__name__
@@ -91,7 +105,7 @@ class ModelRouter:
                         timeout=timeout,
                     )
                     latency += int((time.monotonic() - start) * 1000)
-                    return RouteResult(
+                    result = RouteResult(
                         response=resp,
                         provider_name=provider_name,
                         model=inst.client.name,
@@ -99,19 +113,44 @@ class ModelRouter:
                         latency_ms=latency,
                         fallback_reason=f"retry_after_{last_error}",
                     )
+                    self._record_trace(result, run_id, step_id, route_policy)
+                    return result
                 except LLMError as e2:
                     last_error = type(e2).__name__
                     continue
             except Exception as e:
                 last_error = type(e).__name__
                 continue
-        return RouteResult(
+        result = RouteResult(
             response=None,
             provider_name=order[0] if order else "unknown",
             model="unknown",
             status="failed",
             latency_ms=0,
             fallback_reason=last_error or "no_provider_available",
+        )
+        self._record_trace(result, run_id, step_id, route_policy)
+        return result
+
+    def _record_trace(
+        self,
+        result: RouteResult,
+        run_id: Optional[str],
+        step_id: Optional[str],
+        route_policy: str,
+    ) -> None:
+        """记录最小模型调用元数据；不接收也不持久化 messages。"""
+        if not self._repository or not run_id:
+            return
+        self._repository.record_model_call(
+            run_id=run_id,
+            step_id=step_id,
+            provider=result.provider_name,
+            route_policy=route_policy,
+            model=result.model,
+            status=result.status,
+            latency_ms=result.latency_ms,
+            fallback_reason=result.fallback_reason,
         )
 
     async def _dual_review(

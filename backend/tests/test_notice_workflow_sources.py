@@ -77,6 +77,26 @@ class TestNotificationSources:
         manual2 = next(s for s in sources2 if s["code"] == "manual_input")
         assert manual2["automation_enabled"] is True
 
+    def test_source_automation_preference_is_isolated_per_student(self):
+        _, client = _client()
+        first = _login(client, "student_demo")
+        second = _login(client, "student_demo_01")
+        sources = client.get(
+            "/api/v1/notification-sources", headers=first
+        ).json()
+        manual = next(s for s in sources if s["code"] == "manual_input")
+
+        enabled = client.patch(
+            f"/api/v1/notification-sources/{manual['source_id']}",
+            json={"automation_enabled": True}, headers=first,
+        )
+        assert enabled.status_code == 200
+        other_sources = client.get(
+            "/api/v1/notification-sources", headers=second
+        ).json()
+        other_manual = next(s for s in other_sources if s["code"] == "manual_input")
+        assert other_manual["automation_enabled"] is False
+
     def test_patch_display_name(self):
         _, client = _client()
         headers = _login(client)
