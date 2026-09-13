@@ -75,3 +75,17 @@ class AgentArtifactRow:
     size_bytes: int
     created_at: str
     deleted_at: str | None
+
+
+@dataclass(frozen=True)
+class AgentApprovalRow:
+    id: str
+    run_id: str
+    user_id: str
+    status: str
+    risk_level: str
+    action_digest: str
+    summary: str
+    expires_at: str
+    decided_at: str | None
+    created_at: str

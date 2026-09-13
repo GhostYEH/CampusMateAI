@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from ..core.exceptions import AppException
 from ..database.sqlite_db import Database
-from ..models.agent_runtime import AgentEventRow, AgentJobRow, AgentRunRow, AgentToolCallRow
+from ..models.agent_runtime import AgentApprovalRow, AgentEventRow, AgentJobRow, AgentRunRow, AgentToolCallRow
 
 
 def _now() -> str:
@@ -32,6 +32,10 @@ def _tool(row) -> AgentToolCallRow:
     data = dict(row)
     data.pop("step_id", None)
     return AgentToolCallRow(**data)
+
+
+def _approval(row) -> AgentApprovalRow:
+    return AgentApprovalRow(**dict(row))
 
 
 class AgentRuntimeRepository:
@@ -133,3 +137,32 @@ class AgentRuntimeRepository:
                 (call_id, run_id, tool_name, idempotency_key, request_hash, _now()),
             )
             return _tool(conn.execute("SELECT * FROM agent_tool_calls WHERE id=?", (call_id,)).fetchone()), False
+
+    def create_approval(self, *, run_id: str, user_id: str, risk_level: str,
+                        action_digest: str, summary: str, expires_at: str, now: str) -> AgentApprovalRow:
+        approval_id = _id("approval")
+        with self._db.transaction() as conn:
+            conn.execute(
+                """INSERT INTO agent_approvals(id,run_id,user_id,status,risk_level,action_digest,summary,expires_at,created_at)
+                   VALUES(?,?,?,'PENDING',?,?,?,?,?)""",
+                (approval_id, run_id, user_id, risk_level, action_digest, summary[:500], expires_at, now),
+            )
+            return _approval(conn.execute("SELECT * FROM agent_approvals WHERE id=?", (approval_id,)).fetchone())
+
+    def get_approval(self, *, approval_id: str, user_id: str) -> AgentApprovalRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE id=? AND user_id=?", (approval_id, user_id)
+            ).fetchone()
+        return _approval(row) if row else None
+
+    def decide_approval(self, *, approval_id: str, user_id: str, status: str, decided_at: str) -> AgentApprovalRow | None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE agent_approvals SET status=?,decided_at=? WHERE id=? AND user_id=? AND status='PENDING'",
+                (status, decided_at, approval_id, user_id),
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE id=? AND user_id=?", (approval_id, user_id)
+            ).fetchone()
+        return _approval(row) if row else None
