@@ -214,6 +214,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         else None
     )
     notice = NoticeExtractionService(llm, settings)
+    # CPM 使用检索到的正式校园资料，并结合 counselor 注入的世界模型上下文交给 LLM。
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
     course_repo = CourseRepository(db)
@@ -273,6 +274,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         model_shadow_runner=model_shadow_runner,
     )
     agent_runtime_repository = AgentRuntimeRepository(db)
+    artifact_root = Path(settings.agent_artifact_path)
+    if not artifact_root.is_absolute():
+        artifact_root = Path(__file__).resolve().parents[2] / artifact_root
+    agent_artifact_repository = AgentArtifactRepository(db, artifact_root)
     final_review_repository = FinalReviewRepository(db)
     course_research_repository = CourseResearchRepository(db)
     notice_repository = NoticeRepository(db)

@@ -261,13 +261,12 @@ async def data_management(action: str, _: UserRow = Depends(require_role("admin"
     """数据管理操作。
 
     支持的 action:
-    - delete_user_documents: 删除所有用户导入的知识库文档(保留测试环境资料)
-    - delete_all_documents: 删除所有知识库文档(包括测试环境资料)
+    - delete_user_documents: 删除所有非演示标记的受管理文档
+    - delete_all_documents: 删除所有知识库文档
 
     备注:
-    - 不再提供"恢复演示资料 / 一键重置演示数据"等生产接口;
-      测试环境资料仅在 dev/test 启动时通过 AUTO_IMPORT_DEMO 导入,
-      production 已被 config 校验拦截。
+    - 不提供"恢复演示资料 / 一键重置演示数据"等接口;
+      知识库内容必须由管理员上传或通过受控外部同步进入。
     """
     container = get_container()
     action = action.strip().lower()

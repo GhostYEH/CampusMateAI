@@ -27,14 +27,7 @@ def main() -> int:
     configure_logging(settings)
     container = build_container(settings)
 
-    # 1. 重新导入演示资料(若已存在则跳过)
-    added = container.knowledge_ingestion.import_demo_documents()
-    if added:
-        logger.info("新增演示资料 {} 份", added)
-    else:
-        logger.info("无新增演示资料(已存在或目录为空)")
-
-    # 2. 重建索引
+    # 重建管理员上传或外部同步的正式资料索引。
     chunk_count = container.knowledge_ingestion.rebuild_index()
     doc_count = container.document_repository.count_documents()
     logger.info(

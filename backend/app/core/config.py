@@ -47,10 +47,6 @@ class Settings(BaseSettings):
     chaoxing_cache_file_max_mb: int = 256
     # 用字符串表示，逗号分隔；通过 allowed_extensions_list 属性获取列表
     allowed_extensions: str = "md,txt,pdf,docx"
-    # 启动时是否自动导入内置测试环境资料(默认关闭;仅 dev/test 显式开启)
-    # production 环境下强制为 False(见 _normalize 校验)
-    auto_import_demo: bool = False
-
     @property
     def allowed_extensions_list(self) -> List[str]:
         """解析 ALLOWED_EXTENSIONS 字符串为列表(小写、不含点)。"""
@@ -306,7 +302,7 @@ class Settings(BaseSettings):
             )
         session_store = self.effective_edu_session_store
         # ===== production 强约束 =====
-        # 正式 Release 不得启用测试环境数据 seeding / 测试环境资料自动导入
+        # 正式 Release 不得启用测试环境数据 seeding
         # 不得依赖 DEMO_MODE / USE_MOCK_BACKEND 等开关返回模拟业务数据
         if self.app_env == "production":
             if self.jwt_secret == "campusmate_dev_secret_change_in_production" or len(self.jwt_secret) < 32:
@@ -335,11 +331,6 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "production 环境禁止启用 AUTO_SEED_DEMO_USERS;"
                     "验收账号应在真实数据库中以普通用户身份创建"
-                )
-            if self.auto_import_demo:
-                raise ValueError(
-                    "production 环境禁止启用 AUTO_IMPORT_DEMO;"
-                    "测试环境资料不得进入生产数据"
                 )
             if self.edu_allow_insecure_ssl:
                 raise ValueError(

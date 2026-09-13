@@ -162,7 +162,7 @@ campus_mate_ai/
 │   │   ├── services/                     # 抽取 /  ingestion / 检索 / RAG / LLM
 │   │   └── utils/                        # 文件解析 / 中文分词
 │   ├── data/
-│   │   ├── knowledge_base/demo/          # 5 份演示资料 Markdown
+│   │   ├── knowledge_base/               # 管理员上传或外部同步的校园资料
 │   │   └── app.db                        # SQLite 数据库文件(运行后自动生成)
 │   ├── scripts/rebuild_index.py          # 重建索引命令行
 │   ├── tests/                            # pytest 测试
@@ -416,7 +416,6 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 - BM25 中文检索(jieba 分词 + 元数据优先级排序)
 - RAG 问答(SSE 流式 + 来源引用 + 冲突提示 + 过期降权 + 恶意 Prompt 防御)
 - LLM 降级模式(无 API Key 时走检索摘要模式)
-- 5 份标注"演示资料"的内置文档
 - JWT 认证 + 角色权限(student / admin,历史 teacher 在运行时降级为 student)
 - 课程 / 班级 / 通知 / 任务 / 提交 全 CRUD + 状态机
 - 管理员 Web 后台(知识库管理 / 文档维护 / RAG 索引维护 / 账号管理 / 系统状态)
@@ -435,7 +434,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 - **模型训练与导出**: 已保留 PyTorch / FER2013 训练与 LiteRT 导出工程；仓库内 Android 资产使用已导出的 `expression_model.tflite`。本文不声明未独立复验的准确率、延迟或设备性能。
 - **LiteRT / 原生真实推理**: Android 已集成 CameraX、ML Kit 本机人脸检测与 LiteRT 表情分类；若设备、权限或模型加载不可用，界面会如实显示不可用状态。
 - **真实学校系统接入**: 未连接真实学校通知源 / 教务系统
-- **真实学校正式数据**: 当前知识库为"演示资料",非用户所在学校的真实现行制度
+- **真实学校正式数据**: 知识库内容需要由管理员上传或通过受控外部同步提供
 - **PostgreSQL / Redis**: 当前 SQLite 单机文件存储
 - **向量检索**: 当前 BM25 关键词检索 + 校园术语同义词扩展,未引入向量数据库 / Embedding 模型
 - **本地提醒调度**: 系统层定时推送尚未实现
@@ -464,7 +463,6 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 | `MAX_EXPRESSION_CONTRIBUTION_MB` | `3` | 单张 CNN 共建图片最大体积 |
 | `MAX_UPLOAD_MB` | `10` | 单文件最大体积 |
 | `ALLOWED_EXTENSIONS` | `md,txt,pdf,docx` | 允许上传的扩展名 |
-| `AUTO_IMPORT_DEMO` | `false` | 启动时自动导入演示资料(仅 dev/test 需显式设为 `true`) |
 | `LLM_PROVIDER` | `none` | LLM Provider(`none` / `openai_compatible`) |
 | `LLM_BASE_URL` | (空) | LLM API 端点 |
 | `LLM_API_KEY` | (空) | LLM API Key(禁止提交到 Git) |
@@ -519,7 +517,7 @@ CI 在 push / PR 到 `main` / `master` 时触发:
 
 **排查**:
 1. 检查知识库状态: `GET /api/v1/knowledge/status`
-2. 若 `document_count=0`,运行 `python scripts/rebuild_index.py` 或重启后端(自动导入演示资料)
+2. 若 `document_count=0`,请先上传或同步学校正式资料,再运行 `python scripts/rebuild_index.py`
 3. 若 `index_status=error`,查看后端日志,可能是文件解析失败
 
 ### Q3: 后端启动报错 `ModuleNotFoundError`

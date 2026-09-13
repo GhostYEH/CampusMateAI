@@ -39,6 +39,7 @@ import json
 import html
 import re
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import httpx
@@ -361,6 +362,114 @@ def _validate_recent_tasks(
     return sanitized, warnings
 
 
+def _collect_learner_state_context(
+    container: ServiceContainer,
+    user: Optional[UserRow],
+) -> Tuple[str, int, List[str]]:
+    """读取当前用户世界模型快照，作为个性化上下文交给 LLM。
+
+    世界模型只描述用户自身的观测状态，不能替代知识库中的校园政策事实。
+    读取失败时降级为空上下文，不影响普通问答。
+    """
+    if user is None:
+        return "", 0, []
+    repository = getattr(container, "learner_state_repository", None)
+    if repository is None:
+        return "", 0, ["世界模型暂不可用，已忽略世界模型上下文"]
+    try:
+        snapshots = repository.list_all_current_snapshots(
+            user_id=user.id,
+            max_items=24,
+            projection_kind="WORLD",
+            projection_scope="__user__",
+        )
+    except Exception as exc:
+        logger.warning("读取世界模型快照失败: {}", type(exc).__name__)
+        return "", 0, ["世界模型暂不可用，已忽略世界模型上下文"]
+    lines = [
+        "[学生世界模型上下文](仅用于个性化建议,不是校园政策依据):",
+    ] if snapshots else []
+    for snapshot in snapshots:
+        value = json.dumps(
+            snapshot.value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )[:800]
+        lines.append(
+            f"- {snapshot.state_type} "
+            f"(范围:{snapshot.scope_type}/{snapshot.scope_id}, "
+            f"置信度:{snapshot.confidence:.2f}, 数据质量:{snapshot.data_quality}): "
+            f"{value}"
+        )
+
+    warnings: List[str] = []
+    forecast_service = getattr(container, "forecast_service", None)
+    if forecast_service is not None:
+        try:
+            forecasts, _ = forecast_service.list_forecasts(
+                user_id=user.id,
+                as_of=datetime.now(timezone.utc),
+                horizon_days=7,
+                page=1,
+                page_size=5,
+            )
+            if forecasts:
+                lines.append(
+                    "[未来七天预测摘要](仅用于风险提示,不是因果结论或校园政策依据):"
+                )
+                for forecast in forecasts:
+                    value = getattr(forecast, "value", None)
+                    if hasattr(value, "model_dump"):
+                        value = value.model_dump(mode="json")
+                    elif hasattr(value, "__dict__"):
+                        value = vars(value)
+                    serialized = json.dumps(
+                        value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    )[:600]
+                    lines.append(
+                        f"- {getattr(forecast, 'forecast_type', 'UNKNOWN')} "
+                        f"(置信度:{float(getattr(forecast, 'confidence', 0.0)):.2f}, "
+                        f"数据质量:{getattr(forecast, 'data_quality', 'unknown')}): "
+                        f"{serialized}"
+                    )
+        except Exception as exc:
+            logger.warning("读取 CPM 预测摘要失败: {}", type(exc).__name__)
+            warnings.append("预测摘要暂不可用,已忽略预测上下文")
+
+    plan_repository = getattr(container, "learning_plan_repository", None)
+    if plan_repository is not None:
+        try:
+            plans, _ = plan_repository.list_plans(
+                user_id=user.id,
+                page=1,
+                page_size=1,
+            )
+            if plans:
+                plan = plans[0]
+                items = list(getattr(plan, "items", []) or [])
+                lines.append("[当前行动计划摘要](仅用于执行建议,不会在聊天中自动执行):")
+                lines.append(
+                    f"- 状态:{getattr(plan, 'status', 'unknown')}, "
+                    f"有效期至:{getattr(getattr(plan, 'run', None), 'valid_until', 'unknown')}, "
+                    f"行动项数:{len(items)}"
+                )
+                for item in items[:3]:
+                    lines.append(
+                        f"  - {getattr(item, 'item_type', 'UNKNOWN')} "
+                        f"({int(getattr(item, 'estimated_minutes', 0))} 分钟)"
+                    )
+        except Exception as exc:
+            logger.warning("读取 CPM 行动计划摘要失败: {}", type(exc).__name__)
+            warnings.append("行动计划摘要暂不可用,已忽略计划上下文")
+
+    return "\n".join(lines), len(snapshots), warnings
+
+
 def _build_recent_tasks_hint(
     sanitized_tasks: List[Dict[str, Any]],
     self_report: Optional[str],
@@ -434,6 +543,7 @@ def _build_context_warnings(
     teaching_warnings: List[str],
     task_warnings: List[str],
     expression_warning: Optional[str] = None,
+    learner_state_warnings: Optional[List[str]] = None,
 ) -> List[str]:
     """构造 context_warnings(对齐用户新要求)。
 
@@ -448,10 +558,12 @@ def _build_context_warnings(
     warnings: List[str] = list(teaching_warnings) + list(task_warnings)
     if expression_warning:
         warnings.append(expression_warning)
+    warnings.extend(learner_state_warnings or [])
     return warnings
 
 
 @router.post("/counselor/chat")
+@router.post("/assistant/chat")
 async def chat(
     req: ChatRequest,
     user: Optional[UserRow] = Depends(current_user_optional),
@@ -463,9 +575,16 @@ async def chat(
     )
     # 校验 recent_tasks 归属(通过 PersonalTaskRepository,删除"未验证本地待办"逻辑)
     sanitized_tasks, task_warnings = _validate_recent_tasks(container, user, req)
+    learner_state_context, learner_state_count, learner_state_warnings = (
+        _collect_learner_state_context(container, user)
+    )
 
     # 构造 context_used(新结构: count + accepted + ignored + self_report_present)
     context_used = _build_context_used(req, ctx_used, sanitized_tasks)
+    context_used["learner_state_used"] = learner_state_count > 0
+    context_used["learner_state_snapshot_count"] = learner_state_count
+    context_used["learner_forecast_used"] = "[未来七天预测摘要]" in learner_state_context
+    context_used["learning_plan_used"] = "[当前行动计划摘要]" in learner_state_context
     emotion_guidance, expression_warning = _emotion_context_builder.build(
         req.expression_signal
     )
@@ -477,6 +596,7 @@ async def chat(
         ctx_warnings,
         task_warnings,
         expression_warning,
+        learner_state_warnings,
     )
 
     # 构造 recent_tasks + self_report 提示片段；表情信号单独走安全提示
@@ -490,7 +610,9 @@ async def chat(
     context_used["web_search_requested"] = req.web_search
     context_used["web_search_used"] = bool(web_search_hint)
     extra_hints = "\n\n".join(item for item in [attachment_hint, web_search_hint] if item)
-    tasks_hint = "\n\n".join(item for item in [tasks_hint, extra_hints] if item)
+    tasks_hint = "\n\n".join(
+        item for item in [tasks_hint, learner_state_context, extra_hints] if item
+    )
 
     if req.stream:
         return StreamingResponse(
@@ -555,18 +677,17 @@ async def _stream_answer(
     - recent_tasks 已通过 PersonalTaskRepository 验证,使用数据库权威字段。
     """
     container = get_container()
-    # 把多角色上下文 + 任务上下文作为隐式 prompt 注入(不暴露给客户端)
-    message = req.message
-    if context_block or tasks_hint:
-        # 拼接到 message 前(让 RAG 检索仍基于原始问题,LLM context 包含教学+任务)
-        prefix_parts = [p for p in [context_block, tasks_hint] if p]
-        message = "\n\n".join(prefix_parts) + f"\n\n学生问题: {req.message}"
+    # 检索只使用用户原始问题；世界模型作为独立的个性化上下文交给 LLM。
+    world_model_context = "\n\n".join(
+        part for part in [context_block, tasks_hint] if part
+    )
     async for ev in container.rag.stream_answer(
-        message,
+        req.message,
         conversation_id=req.conversation_id,
         recent_tasks=[],  # 已通过 tasks_hint 注入,不再走旧路径
         context_used=context_used,
         context_warnings=context_warnings,
+        world_model_context=world_model_context,
         expression_hint=expression_hint,
     ):
         yield ev

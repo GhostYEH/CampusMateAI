@@ -162,7 +162,7 @@ class DocumentRepository:
             return int(cur.fetchone()["n"])
 
     def delete_all_user_documents(self) -> int:
-        """删除所有用户导入文档(is_demo=0),保留演示资料。返回删除数量。"""
+        """删除所有非演示标记的受管理文档。返回删除数量。"""
         with self._db.transaction() as conn:
             cur = conn.execute(
                 "DELETE FROM documents WHERE is_demo = 0"
@@ -170,7 +170,7 @@ class DocumentRepository:
             return cur.rowcount
 
     def delete_all_documents(self) -> int:
-        """删除所有文档(包括演示资料)。返回删除数量。"""
+        """删除所有知识库文档。返回删除数量。"""
         with self._db.transaction() as conn:
             cur = conn.execute("DELETE FROM documents")
             return cur.rowcount

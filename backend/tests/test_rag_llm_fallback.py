@@ -4,9 +4,8 @@ import asyncio
 from typing import AsyncIterator, List
 
 from app.core.config import Settings
-from app.database.sqlite_db import reset_db_for_tests
+from app.database.sqlite_db import Database
 from app.repositories.document_repository import DocumentRepository
-from app.services.knowledge_ingestion_service import KnowledgeIngestionService
 from app.services.llm.base import LLMResponse, LLMTimeoutError
 from app.services.rag_service import RagService
 from app.services.retrieval_service import RetrievalService
@@ -19,7 +18,7 @@ class FlakyStreamLLM:
         self,
         *,
         stream_error: bool = True,
-        chat_answer: str = "根据《校级奖学金申请办法》，需要满足申请条件。",
+        chat_answer: str = "非流式兜底回复。",
     ) -> None:
         self.stream_error = stream_error
         self.chat_answer = chat_answer
@@ -57,13 +56,17 @@ def _make_settings() -> Settings:
 
 
 def _make_rag(llm: FlakyStreamLLM) -> RagService:
-    settings = _make_settings()
-    db = reset_db_for_tests()
-    repo = DocumentRepository(db)
-    retrieval = RetrievalService(repo)
-    KnowledgeIngestionService(repo, retrieval, settings).import_demo_documents()
+    repository = DocumentRepository(Database(None))
+    retrieval = RetrievalService(repository)
     retrieval.rebuild()
-    return RagService(retrieval, llm, settings, repo)
+    return RagService(retrieval, llm, _make_settings(), repository)
+
+
+def _collect(rag: RagService, query: str) -> list:
+    async def run() -> list:
+        return [event async for event in rag.stream_answer(query)]
+
+    return asyncio.run(run())
 
 
 def test_stream_failure_falls_back_to_chat() -> None:
@@ -71,13 +74,10 @@ def test_stream_failure_falls_back_to_chat() -> None:
     llm = FlakyStreamLLM()
     rag = _make_rag(llm)
 
-    async def collect() -> list:
-        return [event async for event in rag.stream_answer("奖学金申请条件")]
-
-    events = asyncio.run(collect())
+    events = _collect(rag, "今天有什么待办")
     final = events[-1]
     assert final.mode == "llm"
-    assert final.answer == "根据《校级奖学金申请办法》，需要满足申请条件。"
+    assert final.answer == "非流式兜底回复。"
     assert llm.chat_calls == 1
 
 
@@ -86,39 +86,45 @@ def test_empty_stream_falls_back_to_chat() -> None:
     llm = FlakyStreamLLM(stream_error=False, chat_answer="非流式回复")
     rag = _make_rag(llm)
 
-    async def collect() -> list:
-        return [event async for event in rag.stream_answer("奖学金申请条件")]
-
-    events = asyncio.run(collect())
+    events = _collect(rag, "今天有什么待办")
     assert events[-1].mode == "llm"
     assert events[-1].answer == "非流式回复"
     assert llm.chat_calls == 1
 
 
-def test_fallback_fails_uses_retrieval_summary() -> None:
-    """流式与非流式都失败时应降级到检索摘要，而不是返回空答案。"""
+def test_fallback_fails_returns_retrieval_summary() -> None:
+    """流式与非流式都失败时返回明确的知识库检索摘要。"""
     llm = FlakyStreamLLM(chat_answer="")
     rag = _make_rag(llm)
 
-    async def collect() -> list:
-        return [event async for event in rag.stream_answer("奖学金申请条件")]
-
-    events = asyncio.run(collect())
+    events = _collect(rag, "今天有什么待办")
     final = events[-1]
     assert final.mode == "retrieval_summary"
-    assert final.answer
+    assert "当前知识库中没有找到" in final.answer
+    assert final.sources == []
     assert llm.chat_calls == 1
 
 
+def test_llm_unavailable_returns_retrieval_summary() -> None:
+    """LLM 未配置时返回知识库检索摘要。"""
+    repository = DocumentRepository(Database(None))
+    retrieval = RetrievalService(repository)
+    retrieval.rebuild()
+    rag = RagService(retrieval, None, _make_settings(), repository)
+
+    events = _collect(rag, "今天有什么待办")
+    final = events[-1]
+    assert final.mode == "retrieval_summary"
+    assert "当前知识库中没有找到" in final.answer
+    assert final.sources == []
+
+
 def test_greeting_goes_through_llm() -> None:
-    """纯问候语也应真实调用 LLM，而不是返回固定知识库文案。"""
+    """纯问候语也应真实调用 LLM，而不是返回固定文案。"""
     llm = FlakyStreamLLM(chat_answer="你好，我是小夏，有什么校园事务可以帮你？")
     rag = _make_rag(llm)
 
-    async def collect() -> list:
-        return [event async for event in rag.stream_answer("你好！")]
-
-    events = asyncio.run(collect())
+    events = _collect(rag, "你好！")
     final = events[-1]
     assert final.mode == "llm"
     assert final.sources == []
@@ -126,18 +132,14 @@ def test_greeting_goes_through_llm() -> None:
     assert llm.chat_calls == 1
 
 
-def test_no_sources_still_calls_llm() -> None:
-    """知识库没有命中时也必须继续调用 LLM，不能提前返回拒答。"""
-    llm = FlakyStreamLLM(chat_answer="这是 DeepSeek 对无知识库问题的回答。")
+def test_no_knowledge_still_calls_llm() -> None:
+    """知识库没有命中时仍调用 LLM，由系统提示约束其不能编造政策。"""
+    llm = FlakyStreamLLM(chat_answer="这是模型对普通问题的回答。")
     rag = _make_rag(llm)
-    rag._retrieval.search = lambda query, k=8: []  # type: ignore[method-assign]
 
-    async def collect() -> list:
-        return [event async for event in rag.stream_answer("一个知识库之外的问题")]
-
-    events = asyncio.run(collect())
+    events = _collect(rag, "一个随便的问题")
     final = events[-1]
     assert final.mode == "llm"
     assert final.sources == []
-    assert final.answer == "这是 DeepSeek 对无知识库问题的回答。"
+    assert final.answer == "这是模型对普通问题的回答。"
     assert llm.chat_calls == 1

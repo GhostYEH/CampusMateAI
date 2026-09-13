@@ -50,9 +50,8 @@ api_router.include_router(home_banners.router)
 api_router.include_router(home_banners.admin_router)
 api_router.include_router(notices.router, tags=["notices"])
 api_router.include_router(knowledge.router, tags=["knowledge"])
-# AI 校园助手:保留 /counselor 兼容旧客户端,新增 /assistant 别名
+# AI 校园助手:保留 /counselor 兼容旧客户端,并由 counselor 路由显式提供 /assistant/chat 别名
 api_router.include_router(counselor.router, tags=["counselor"])
-api_router.include_router(counselor.router, prefix="/assistant", tags=["assistant"])
 api_router.include_router(tts.router, tags=["assistant-tts"])
 api_router.include_router(contributions.router, tags=["contributions"])
 # 认证与用户管理

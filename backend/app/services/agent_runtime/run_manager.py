@@ -164,7 +164,6 @@ class RunManager:
             summary=reason or "运行已取消",
         )
         return cancelled
-
     def pause(self, run_id: str, reason: Optional[str] = None) -> dict:
         """暂停可协作中断的 Run；审批等待态不被伪装成暂停。"""
         run = self._repo.get_run(run_id)
