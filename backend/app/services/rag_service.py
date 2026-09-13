@@ -477,6 +477,7 @@ def _build_llm_messages(
     query: str,
     context: str,
     recent_tasks: List[Any],
+    world_model_context: Optional[str] = None,
     expression_hint: Optional[str] = None,
 ) -> List[dict]:
     task_hint = ""
@@ -490,9 +491,16 @@ def _build_llm_messages(
                     task_hint += f" - {t.get('title', '未知')} (截止: {t.get('deadline', '未知')})\n"
         except Exception:
             task_hint = ""
+    world_model_hint = ""
+    if world_model_context:
+        world_model_hint = (
+            "\n\n用户世界模型上下文(仅用于个性化建议,不是校园政策依据):\n"
+            f"{world_model_context}"
+        )
     user_content = (
         f"用户问题: {query}\n\n"
         f"参考资料(只有这些可作为依据，禁止编造):\n{context or '(无相关资料)'}{task_hint}\n"
+        f"{world_model_hint}\n"
         f"{expression_hint + chr(10) if expression_hint else ''}"
         f"请按规则回答。若属于校园规定问题且无资料，回复标准提示；普通问题可正常回答。"
     )
@@ -608,6 +616,7 @@ class RagService:
         recent_tasks: Optional[List[Any]] = None,
         context_used: Optional[Dict[str, Any]] = None,
         context_warnings: Optional[List[str]] = None,
+        world_model_context: Optional[str] = None,
         expression_hint: Optional[str] = None,
     ) -> ChatFinalMeta:
         """非流式回答。"""
@@ -619,6 +628,7 @@ class RagService:
                 recent_tasks=recent_tasks,
                 context_used=context_used,
                 context_warnings=context_warnings,
+                world_model_context=world_model_context,
                 expression_hint=expression_hint,
             )
         ]
@@ -633,6 +643,7 @@ class RagService:
         recent_tasks: Optional[List[Any]] = None,
         context_used: Optional[Dict[str, Any]] = None,
         context_warnings: Optional[List[str]] = None,
+        world_model_context: Optional[str] = None,
         expression_hint: Optional[str] = None,
     ) -> AsyncIterator[ChatFinalMeta]:
         """流式回答(SSE 风格)。
@@ -700,6 +711,7 @@ class RagService:
                 q,
                 context,
                 recent_tasks or [],
+                world_model_context=world_model_context,
                 expression_hint=expression_hint,
             )
             # 先发一个 sources-only 事件,让客户端先显示来源

@@ -148,7 +148,7 @@ class KnowledgeIngestionService:
         is_official: bool = False,
         is_demo: bool = False,
     ):
-        """直接以文本形式导入(用于演示资料)。"""
+        """直接以文本形式导入受管理的知识库资料。"""
         content = normalize_text(content)
         if not content.strip():
             raise FileTypeNotAllowed("内容为空")
@@ -190,43 +190,15 @@ class KnowledgeIngestionService:
     def rebuild_index(self) -> int:
         return self._retrieval.rebuild()
 
-    def import_demo_documents(self) -> int:
-        """导入内置测试环境资料(若尚未导入)。返回新增数量。
-
-        说明:
-        - 测试环境资料明确标注 is_demo=True,用于在 dev/test 环境快速验证检索/RAG 链路。
-        - 资料内容为"仿真校园制度文档",不代表任何真实学校制度。
-        - production 环境下 Settings 校验已禁止 AUTO_IMPORT_DEMO=True,
-          因此本方法在生产路径中不会被调用。
-        """
-        demo_dir = self._settings.knowledge_base_dir / "demo"
-        if not demo_dir.exists():
-            return 0
-        added = 0
-        for md_file in sorted(demo_dir.glob("*.md")):
-            try:
-                self.import_file(
-                    md_file,
-                    original_filename=md_file.name,
-                    source_type="demo",
-                    source_department="测试环境资料(仿真校园)",
-                    is_official=True,
-                    is_demo=True,
-                )
-                added += 1
-            except (DocumentAlreadyExists, FileTypeNotAllowed, FileTooLarge, FileNameUnsafe):
-                continue
-        return added
-
     def delete_all_user_documents(self) -> int:
-        """删除所有用户导入文档(is_demo=0),保留测试环境资料。"""
+        """删除所有非演示标记的受管理文档。"""
         n = self._repo.delete_all_user_documents()
         if n > 0:
             self._retrieval.mark_stale()
         return n
 
     def delete_all_documents(self) -> int:
-        """删除所有文档(包括演示资料)。"""
+        """删除知识库中的全部文档。"""
         n = self._repo.delete_all_documents()
         if n > 0:
             self._retrieval.mark_stale()

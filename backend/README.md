@@ -17,7 +17,6 @@
 | 知识库状态 | 已实现 | 文档/分块数量、索引状态、检索方式 |
 | RAG 问答 | 已实现 | SSE 流式输出 + 来源引用 + 冲突提示 + 无依据时人工兜底 |
 | LLM 降级 | 已实现 | 未配置或调用失败时返回检索摘要模式(明确标注,不伪装 LLM 结果) |
-| 测试环境资料 | 已内置 | 5 份标注 `is_demo=true` 的 Markdown,仅 dev/test 启动时导入 |
 | **JWT 认证** | **已实现** | access + refresh token,PBKDF2 密码哈希 |
 | **多角色 RBAC** | **已实现** | student / teacher / admin 三角色,后端真实执行 |
 | **课程 / 班级 / 选课** | **已实现** | 教师-课程-班级-学生协同,邀请码加入 |
@@ -94,7 +93,7 @@ backend/
 │   └── utils/                   # 文件解析 / 中文分词
 ├── data/
 │   ├── knowledge_base/
-│   │   └── demo/                # 5 份演示资料 Markdown
+│   │   └── knowledge_base/      # 管理员上传或外部同步的校园资料
 │   ├── submission_attachments/  # 学生提交附件(运行后自动生成)
 │   └── app.db                   # SQLite 数据库文件(运行后自动生成)
 ├── scripts/
@@ -214,19 +213,6 @@ python scripts/evaluate_retrieval.py --json   # JSON 输出
 - 申请表/证明材料/成绩单/开题报告/创新创业材料 等 20+ 材料关键词
 
 ## 知识库说明
-
-### 测试环境资料
-
-`data/knowledge_base/demo/` 内置 5 份 Markdown,**仅 dev/test 启动时**通过 `AUTO_IMPORT_DEMO=true` 显式导入(默认关闭,production 已被 config 校验拦截):
-
-1. 社会实践申请指南
-2. 综合测评材料说明
-3. 校级奖学金申请办法
-4. 课程补退选流程
-5. 活动报名常见问题
-
-每份资料顶部明确标注:**"测试环境资料,并非用户所在学校的真实现行制度"**,数据库中以 `is_demo=true` 区分。
-production 环境下,这些资料不会进入生产数据。
 
 ### 上传文档
 
@@ -399,7 +385,6 @@ production 已被 config 校验拦截):
 | 配置 | dev/test 默认 | production 强制 |
 |------|--------------|------------------|
 | `AUTO_SEED_DEMO_USERS` | False | **True 抛 ValidationError** |
-| `AUTO_IMPORT_DEMO` | False | **True 抛 ValidationError** |
 | `DEMO_MODE` / `USE_MOCK_BACKEND` / `MOCK_BACKEND` | (不存在) | 扫描测试 `test_no_demo_mode_or_mock_backend_flags_in_app` 保证不引入 |
 
 新增 13 个强约束测试(`tests/test_production_hardening.py`):

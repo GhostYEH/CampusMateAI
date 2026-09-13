@@ -214,6 +214,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         else None
     )
     notice = NoticeExtractionService(llm, settings)
+    # CPM 使用检索到的正式校园资料，并结合 counselor 注入的世界模型上下文交给 LLM。
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
     course_repo = CourseRepository(db)
