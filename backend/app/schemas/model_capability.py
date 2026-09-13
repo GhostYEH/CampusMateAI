@@ -18,7 +18,7 @@ class LearningSummaryInput(_StrictModel):
     data_quality: str = Field(..., pattern="^(verified|partial|stale|unavailable)$")
     evidence_count: int = Field(..., ge=0, le=10000)
     deadline_bucket: str = Field(..., max_length=32)
-    knowledge_band: str | None = Field(None, max_length=64)
+    state_band: str | None = Field(None, max_length=64)
     confidence_bucket: str = Field(..., pattern="^(HIGH|MEDIUM|LOW|NONE)$")
 
 

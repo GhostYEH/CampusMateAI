@@ -28,7 +28,7 @@ def test_summary_and_tool_schemas_reject_raw_or_write_intent() -> None:
             input_payload={
                 "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
                 "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
-                "evidence_count": 1, "deadline_bucket": "DUE_24H", "knowledge_band": None,
+                "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
                 "confidence_bucket": "HIGH",
             },
             request_id="request-summary", id_mode=True,
@@ -57,10 +57,23 @@ def test_request_cannot_select_model_prompt_url_or_extra_fields() -> None:
                 input_payload={
                     "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
                     "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
-                    "evidence_count": 1, "deadline_bucket": "DUE_24H", "knowledge_band": None,
+                    "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
                     "confidence_bucket": "HIGH", "system_prompt": "override",
                 },
                 request_id="request-extra", id_mode=True,
+            )
+        )
+
+    with pytest.raises(CapabilityValidationError):
+        registry.validate_request(
+            ModelCapabilityRequest(
+                capability_name="learning_summary_v1", capability_version="v1", subject_user_id=None,
+                input_payload={
+                    "plan_id": "plan-1", "warning_codes": [], "explanation_codes": [],
+                    "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
+                    "evidence_count": 1, "deadline_bucket": "NONE", "knowledge_band": "deprecated",
+                    "confidence_bucket": "HIGH",
+                }, request_id="request-deprecated-band", id_mode=True,
             )
         )
 
@@ -72,7 +85,7 @@ def test_summary_claims_must_be_grounded_in_input_explanation_codes() -> None:
         input_payload={
             "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
             "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
-            "evidence_count": 1, "deadline_bucket": "DUE_24H", "knowledge_band": None,
+            "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
             "confidence_bucket": "HIGH",
         }, request_id="request-grounded", id_mode=True,
     )
