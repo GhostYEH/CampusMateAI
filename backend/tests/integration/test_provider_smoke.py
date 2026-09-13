@@ -26,17 +26,36 @@ from app.services.llm.provider_registry import ProviderInstance, ProviderRegistr
 
 # ===== 环境门控 =====
 
+
+def _read_credential(name: str, env_file: Optional[str] = None) -> str:
+    """凭据读取与应用保持同一处配置(backend/.env 或进程环境)。
+
+    真实调用用 Settings 构建 Provider,若门控只认 os.environ,则按 .env.example
+    把凭据放进 backend/.env 时会被误判为未配置而静默 skip。此处复用 Settings,
+    但只读取值、不改写进程环境,避免污染同一次 pytest 会话中的其他用例。
+    """
+    try:
+        settings = Settings(_env_file=env_file) if env_file is not None else Settings()
+        value = getattr(settings, name, "")
+        if isinstance(value, str) and value:
+            return value
+    except Exception:
+        pass
+    return os.environ.get(name.upper(), "") or ""
+
+
+def _credentials_configured(prefix: str) -> bool:
+    return bool(
+        _read_credential(f"{prefix}_llm_base_url")
+        and _read_credential(f"{prefix}_llm_api_key")
+        and _read_credential(f"{prefix}_llm_model")
+    )
+
+
+# 费用授权开关只从进程环境读取:凭据可以来自 .env,但真实调用必须由人显式开启。
 _REAL_ENABLED = os.environ.get("RUN_REAL_PROVIDER_TESTS") == "1"
-_ZHIPU_CONFIGURED = bool(
-    os.environ.get("ZHIPU_LLM_BASE_URL")
-    and os.environ.get("ZHIPU_LLM_API_KEY")
-    and os.environ.get("ZHIPU_LLM_MODEL")
-)
-_XUNFEI_CONFIGURED = bool(
-    os.environ.get("XUNFEI_LLM_BASE_URL")
-    and os.environ.get("XUNFEI_LLM_API_KEY")
-    and os.environ.get("XUNFEI_LLM_MODEL")
-)
+_ZHIPU_CONFIGURED = _credentials_configured("zhipu")
+_XUNFEI_CONFIGURED = _credentials_configured("xunfei")
 
 _skip_no_zhipu = pytest.mark.skipif(
     not (_REAL_ENABLED and _ZHIPU_CONFIGURED),
@@ -351,3 +370,18 @@ def test_skip_gating_logic():
     assert isinstance(_REAL_ENABLED, bool)
     assert isinstance(_ZHIPU_CONFIGURED, bool)
     assert isinstance(_XUNFEI_CONFIGURED, bool)
+
+
+def test_credential_gate_reads_env_file_like_the_app(tmp_path):
+    """凭据门控与应用读同一处配置:.env 中的凭据不得被误判为未配置后静默 skip。"""
+    env_file = tmp_path / "provider.env"
+    env_file.write_text(
+        "ZHIPU_LLM_BASE_URL=https://example.invalid/v1\n"
+        "ZHIPU_LLM_API_KEY=placeholder-not-a-real-key\n"
+        "ZHIPU_LLM_MODEL=glm-test\n",
+        encoding="utf-8",
+    )
+    assert _read_credential("zhipu_llm_api_key", env_file=str(env_file)) == "placeholder-not-a-real-key"
+    assert _read_credential("zhipu_llm_model", env_file=str(env_file)) == "glm-test"
+    # 该 .env 未提供讯飞密钥:没有凭据时必须返回空,门控才会正确 skip。
+    assert _read_credential("xunfei_llm_api_key", env_file=str(env_file)) == ""
