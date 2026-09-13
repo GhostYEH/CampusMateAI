@@ -632,69 +632,6 @@ class LearnerEventService:
         )
         return self.record_event(user_id=user_id, event=event)
 
-    def record_code_attempt_analyzed(
-        self,
-        *,
-        user_id: str,
-        attempt_id: str,
-        course_id: Optional[str],
-        exercise_id: Optional[str],
-        correctness: bool,
-        test_pass_count: int,
-        test_total_count: int,
-        compiler_error_categories: list[str],
-        runtime_error_categories: list[str],
-        occurred_at: datetime,
-        data_quality: str = "verified",
-    ) -> Optional[LearnerEventAppendResult]:
-        if self._is_source_skipped(user_id=user_id, source="code_analysis"):
-            return None
-        test_pass_band = self._test_pass_band(test_pass_count, test_total_count)
-        revision = self._revision_hash(
-            {
-                "attempt_id": attempt_id,
-                "correctness": correctness,
-                "test_pass_band": test_pass_band,
-                "compiler_error_categories": sorted(compiler_error_categories),
-                "runtime_error_categories": sorted(runtime_error_categories),
-            }
-        )
-        event = LearnerEventCreate(
-            source="code_analysis",
-            event_type="code_attempt_analyzed",
-            occurred_at=occurred_at,
-            course_id=course_id,
-            subject_type="code_attempt",
-            subject_id=attempt_id,
-            outcome="observed_completed",
-            evidence_reference=EvidenceReference(
-                kind="row", table="practice_attempts", row_id=attempt_id
-            ),
-            data_quality=data_quality,
-            consent_scope="core_learning_record",
-            source_version=revision,
-            dedupe_key=f"code_analysis:code_attempt_analyzed:{attempt_id}:{revision}",
-            payload={
-                "exercise_id": exercise_id,
-                "correctness": correctness,
-                "test_pass_band": test_pass_band,
-                "compiler_error_categories": compiler_error_categories,
-                "runtime_error_categories": runtime_error_categories,
-                "data_quality": data_quality,
-            },
-        )
-        return self.record_event(user_id=user_id, event=event)
-
-    @staticmethod
-    def _test_pass_band(passed: int, total: int) -> str:
-        if total <= 0:
-            return "no_tests"
-        ratio = passed / total
-        if ratio >= 1.0:
-            return "all_passed"
-        if ratio >= 0.5:
-            return "partial"
-        return "none_passed"
 
     def record_chaoxing_assignment_graded(
         self,

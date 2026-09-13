@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
+
 
 import pytest
 from fastapi.testclient import TestClient
@@ -56,87 +56,6 @@ def test_generate_without_llm_is_deterministic_and_budgeted() -> None:
     assert second.json()["plan_id"] == body["plan_id"]
     assert task.id in {item.get("task_id") for item in body["items"]}
 
-
-def test_planner_uses_academic_prediction_and_counterfactual_evidence(monkeypatch) -> None:
-    client, container, headers, _ = _setup()
-    user_id = container.user_repository.get_user_by_username("phase4_student").id
-    container.personal_task_repository.create_task(
-        user_id=user_id, title="复习课程", course_id="course-planner-world-model"
-    )
-    monkeypatch.setattr(
-        container.knowledge_repository,
-        "user_can_access_course",
-        lambda **_kwargs: True,
-    )
-    academic_snapshot = SimpleNamespace(
-        snapshot_id="academic-exam", state_type="exam_exposure",
-        value={"upcoming_exam_count": 1}, confidence=0.7,
-        data_quality="partial", valid_until="2099-01-01T00:00:00+00:00",
-    )
-    monkeypatch.setattr(
-        container.learner_state_service,
-        "project_academic",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            run_id="academic-run", input_digest="academic-input",
-            snapshots=[academic_snapshot], warnings=[]
-        ),
-    )
-    knowledge_snapshot = SimpleNamespace(
-        snapshot_id="knowledge-kc", scope_id="c.pointer.basic",
-        state_type="knowledge_mastery_estimate",
-        value={"estimate": 0.6, "evidence_count": 3}, confidence=0.7,
-        data_quality="partial", valid_until="2099-01-01T00:00:00+00:00",
-    )
-    monkeypatch.setattr(
-        container.knowledge_service,
-        "project_knowledge",
-        lambda **_kwargs: SimpleNamespace(
-            run_id="knowledge-run", input_digest="knowledge-input",
-            snapshots=[knowledge_snapshot], warnings=[]
-        ),
-    )
-    prediction_snapshot = SimpleNamespace(
-        snapshot_id="prediction-kc", scope_id="c.pointer.basic",
-        state_type="performance_prediction",
-        value={"predicted_pass_probability": 0.35}, confidence=0.55,
-        data_quality="partial", valid_until="2099-01-01T00:00:00+00:00",
-    )
-    monkeypatch.setattr(
-        container.learner_state_service,
-        "project_prediction",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            run_id="prediction-run", input_digest="prediction-input",
-            snapshots=[prediction_snapshot], warnings=[]
-        ),
-    )
-    monkeypatch.setattr(
-        container.learner_state_service,
-        "simulate_counterfactual",
-        lambda *_args, **_kwargs: {
-            "deltas": [{
-                "knowledge_component_code": "c.pointer.basic",
-                "pass_probability_delta": 0.2,
-            }],
-            "warning_codes": [],
-            "explanation_codes": ["deterministic_counterfactual"],
-        },
-    )
-
-    response = client.post(
-        "/api/v1/learning-plans/generate",
-        json=_request(90, course_id="course-planner-world-model"),
-        headers=headers,
-    )
-
-    assert response.status_code == 200, response.text
-    items = response.json()["items"]
-    assert any(item["item_type"] == "ACADEMIC_PREPARATION" for item in items)
-    knowledge_item = next(item for item in items if item["knowledge_component_code"])
-    assert "prediction_low_pass_probability" in knowledge_item["explanation_codes"]
-    assert "counterfactual_practice_benefit" in knowledge_item["explanation_codes"]
-    assert {e["evidence_type"] for e in knowledge_item["evidence"]} >= {
-        "KNOWLEDGE_SNAPSHOT", "PREDICTION_SNAPSHOT",
-    }
 
 
 def test_deadline_change_and_reject_cooldown_create_safe_new_or_suppressed_plan() -> None:

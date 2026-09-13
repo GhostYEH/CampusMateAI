@@ -1,11 +1,11 @@
 """Phase 6C: 合成演示数据注入脚本。
 
 完全合成的演示数据，不含真实个人数据。
-支持 4 个场景：deadline-pressure / pointer-recovery / stale-source-replan / shadow-model-blocked。
+支持 3 个场景：deadline-pressure / stale-source-replan / shadow-model-blocked。
 
 用法：
     python -m app.demo.learner_model seed --scenario deadline-pressure
-    python -m app.demo.learner_model clear --scenario pointer-recovery
+    python -m app.demo.learner_model clear --scenario stale-source-replan
 
 要求：
 - 必须显式指定 scenario
@@ -34,7 +34,7 @@ from ..services.learner_state_service import LearnerStateProjectionService
 
 SCENARIOS = (
     "deadline-pressure",
-    "pointer-recovery",
+
     "stale-source-replan",
     "shadow-model-blocked",
 )
@@ -146,48 +146,6 @@ def _seed_deadline_pressure(conn: sqlite3.Connection, user_id: str, as_of: datet
     )
 
 
-def _seed_pointer_recovery(conn: sqlite3.Connection, user_id: str, as_of: datetime) -> None:
-    """场景二：C 语言指针误区闭环。"""
-    now = as_of.isoformat()
-    conn.execute(
-        """INSERT OR IGNORE INTO courses (id, name, code, status, created_at, updated_at)
-        VALUES (?,?,?,?,?,?)""",
-        ("demo_course_pointer", "演示-C语言指针", "DEMO-CS101", "published", now, now),
-    )
-    for i in range(2):
-        occurred = (as_of - timedelta(days=3 - i)).isoformat()
-        conn.execute(
-            """INSERT OR IGNORE INTO practice_attempts
-            (id, user_id, client_attempt_id, course_id, exercise_id,
-             occurred_at, attempt_no, result_type, score, max_score,
-             test_count, passed_test_count, compiler_outcome, error_codes_json,
-             duration_seconds, evidence_quality, evidence_origin, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                _uuid(), user_id, f"demo_ptr_attempt_{i}_{_uuid()[:8]}",
-                "demo_course_pointer", "demo_exercise_pointer",
-                occurred, i + 1, "failed", 0, 100,
-                3, 0, "runtime_error", json.dumps(["pointer_indirection"]),
-                120, "partial", "CLIENT", occurred,
-            ),
-        )
-    occurred = (as_of - timedelta(days=1)).isoformat()
-    conn.execute(
-        """INSERT OR IGNORE INTO practice_attempts
-        (id, user_id, client_attempt_id, course_id, exercise_id,
-         occurred_at, attempt_no, result_type, score, max_score,
-         test_count, passed_test_count, compiler_outcome, error_codes_json,
-         duration_seconds, evidence_quality, evidence_origin, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            _uuid(), user_id, f"demo_ptr_correct_{_uuid()[:8]}",
-            "demo_course_pointer", "demo_exercise_pointer",
-            occurred, 3, "passed", 100, 100,
-            3, 3, "success", json.dumps([]),
-            90, "partial", "CLIENT", occurred,
-        ),
-    )
-
 
 def _seed_stale_source_replan(conn: sqlite3.Connection, user_id: str, as_of: datetime) -> None:
     """场景三：数据源失效。"""
@@ -247,7 +205,7 @@ def _seed_shadow_model_blocked(conn: sqlite3.Connection, user_id: str, as_of: da
 
 SEED_DISPATCH = {
     "deadline-pressure": _seed_deadline_pressure,
-    "pointer-recovery": _seed_pointer_recovery,
+
     "stale-source-replan": _seed_stale_source_replan,
     "shadow-model-blocked": _seed_shadow_model_blocked,
 }

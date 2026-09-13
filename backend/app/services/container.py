@@ -44,7 +44,7 @@ from ..repositories.learner_event_repository import LearnerEventRepository
 from ..repositories.learner_state_repository import LearnerStateRepository
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..repositories.model_shadow_repository import ModelShadowRepository
-from ..repositories.c_knowledge_repository import KnowledgeRepository
+
 from ..repositories.learner_control_repository import LearnerControlRepository
 from ..repositories.agent_runtime_repository import AgentRuntimeRepository
 from ..repositories.agent_artifact_repository import AgentArtifactRepository
@@ -58,7 +58,7 @@ from ..repositories.qr_auth_repository import (
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
-from ..services.c_knowledge_service import KnowledgeService
+
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
@@ -125,8 +125,7 @@ class ServiceContainer:
     learner_event_service: LearnerEventService
     learner_state_repository: LearnerStateRepository
     learner_state_service: LearnerStateProjectionService
-    knowledge_repository: KnowledgeRepository
-    knowledge_service: KnowledgeService
+
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
     learning_agent_tools: LearningAgentToolRegistry
@@ -235,16 +234,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         control_repository=learner_control_repository,
         source_policy=learner_model_source_policy,
     )
-    knowledge_repository = KnowledgeRepository(db)
-    knowledge_service = KnowledgeService(
-        knowledge_repository, learner_event_repository, learner_state_repository
-    )
-    knowledge_service.seed_c_taxonomy()
     learning_plan_repository = LearningPlanRepository(db)
     learning_planner_service = LearningPlannerService(
         repository=learning_plan_repository, state_service=learner_state_service,
-        state_repository=learner_state_repository, knowledge_service=knowledge_service,
-        knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
+        state_repository=learner_state_repository,
+        task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
         source_policy=learner_model_source_policy,
     )
@@ -274,7 +268,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     learner_event_service._edu_repository = edu_repo
     learner_state_service._edu_data_repository = edu_data_repo
     learner_state_service._learner_event_repository = learner_event_repository
-    learner_state_service._knowledge_repository = knowledge_repository
+
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":
@@ -334,8 +328,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_event_service=learner_event_service,
         learner_state_repository=learner_state_repository,
         learner_state_service=learner_state_service,
-        knowledge_repository=knowledge_repository,
-        knowledge_service=knowledge_service,
+
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
         learning_agent_tools=LearningAgentToolRegistry(None),

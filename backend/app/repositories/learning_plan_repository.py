@@ -44,7 +44,7 @@ def _item(row, evidence: list[dict[str, Any]] | None = None) -> LearningPlanItem
     return LearningPlanItemRow(
         item_id=row["item_id"], plan_id=row["plan_id"], item_type=row["item_type"],
         course_id=row["course_id"], task_id=row["task_id"],
-        knowledge_component_code=row["knowledge_component_code"],
+
         estimated_minutes=int(row["estimated_minutes"]), priority_score=float(row["priority_score"]),
         priority_components=json.loads(row["priority_components_json"]),
         explanation_codes=json.loads(row["explanation_codes_json"]),
@@ -86,11 +86,11 @@ class LearningPlanRepository:
                 item_id = item["item_id"]
                 conn.execute(
                     """INSERT INTO learning_plan_items
-                       (item_id,plan_id,item_type,course_id,task_id,knowledge_component_code,estimated_minutes,
+                       (item_id,plan_id,item_type,course_id,task_id,estimated_minutes,
                         priority_score,priority_components_json,explanation_codes_json,execution_status,created_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                     (item_id, plan_id, item["item_type"], item.get("course_id"), item.get("task_id"),
-                     item.get("knowledge_component_code"), item["estimated_minutes"], item["priority_score"],
+                     item["estimated_minutes"], item["priority_score"],
                      json.dumps(item["priority_components"], sort_keys=True),
                      json.dumps(item["explanation_codes"], ensure_ascii=False), "PENDING", now),
                 )
@@ -274,7 +274,7 @@ class LearningPlanRepository:
                 if action_type == "CREATE_PERSONAL_TASK":
                     target = task_repository.create_task(
                         user_id=user_id,
-                        title=f"学习诊断：{item['knowledge_component_code'] or '课程复习'}",
+                        title=f"学习计划任务：{item['item_type']}",
                         source="learning_plan", external_id=f"{plan_id}:{item['item_id']}",
                         course_id=item["course_id"], conn=conn,
                     )

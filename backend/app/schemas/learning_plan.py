@@ -43,8 +43,7 @@ class LearningPlanEvaluationOut(BaseModel):
     planned_item_count: int
     executed_item_count: int
     completed_plan_task_count: int
-    followup_practice_count: int
-    supported_outcome_count: int
+
     evidence_coverage: float
     warning_codes: list[str]
     evaluator_version: str
@@ -61,7 +60,7 @@ class LearningPlanItemOut(BaseModel):
     item_type: str
     course_id: str | None = None
     task_id: str | None = None
-    knowledge_component_code: str | None = None
+
     estimated_minutes: int
     priority_score: float
     priority_components: dict[str, float]

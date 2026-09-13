@@ -40,7 +40,7 @@ def _out(plan: LearningPlanRow) -> LearningPlanOut:
         superseded_by_plan_id=plan.superseded_by_plan_id,
         items=[LearningPlanItemOut(
             item_id=item.item_id, item_type=item.item_type, course_id=item.course_id, task_id=item.task_id,
-            knowledge_component_code=item.knowledge_component_code, estimated_minutes=item.estimated_minutes,
+            estimated_minutes=item.estimated_minutes,
             priority_score=item.priority_score, priority_components=item.priority_components,
             explanation_codes=item.explanation_codes,
             evidence=[LearningPlanEvidenceOut(

@@ -7,9 +7,6 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
-    CounterfactualIntervention,
-    CounterfactualSimulateRequest,
-    CounterfactualSimulateResponse,
     LearnerStateChangePage,
     LearnerStateEvidenceOut,
     LearnerStateEvidencePage,
@@ -17,7 +14,6 @@ from ...schemas.learner_state import (
     LearnerStateRunPage,
     LearnerStateSnapshotOut,
     LearnerStateSnapshotPage,
-    PredictionEvaluationResult,
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import require_role
@@ -218,76 +214,6 @@ def get_academic_state(
         has_more=False,
     )
 
-
-@router.get("/predictions/{course_id}", response_model=LearnerStateSnapshotPage)
-def get_prediction_state(
-    course_id: str,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
-    user: UserRow = Depends(require_role("student")),
-    container: ServiceContainer = Depends(_container),
-) -> LearnerStateSnapshotPage:
-    """获取 PREDICTION 投影快照：基于学习证据的确定性预测。"""
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
-    container.learner_state_service.project_prediction(
-        user.id, course_id=course_id, as_of=as_of, trigger="api_prediction"
-    )
-    prediction_types = (
-        "knowledge_mastery_forecast",
-        "performance_prediction",
-        "learning_velocity",
-    )
-    items, total = container.learner_state_repository.list_snapshots(
-        user_id=user.id, page=page, page_size=page_size,
-        scope_type=None, state_type=None, course_id=None,
-        projection_kind="PREDICTION", projection_scope=course_id,
-    )
-    prediction_items = [item for item in items if item.state_type in prediction_types]
-    return LearnerStateSnapshotPage(
-        items=[_snapshot_out(item) for item in prediction_items],
-        total=len(prediction_items), page=page, page_size=page_size,
-        has_more=False,
-    )
-
-
-@router.post("/simulate", response_model=CounterfactualSimulateResponse)
-def simulate_counterfactual(
-    request: CounterfactualSimulateRequest,
-    user: UserRow = Depends(require_role("student")),
-    container: ServiceContainer = Depends(_container),
-) -> CounterfactualSimulateResponse:
-    """安全反事实模拟：假设干预后的预测变化，不修改实际状态。"""
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
-    result = container.learner_state_service.simulate_counterfactual(
-        user.id,
-        course_id=request.course_id,
-        as_of=as_of,
-        intervention=request.intervention.model_dump(),
-    )
-    return CounterfactualSimulateResponse(
-        course_id=result["course_id"],
-        intervention=CounterfactualIntervention(**result["intervention"]),
-        deltas=result["deltas"],
-        baseline_snapshot_count=result["baseline_snapshot_count"],
-        counterfactual_snapshot_count=result["counterfactual_snapshot_count"],
-        warning_codes=result["warning_codes"],
-        explanation_codes=result["explanation_codes"],
-    )
-
-
-@router.get("/predictions/{course_id}/evaluation", response_model=PredictionEvaluationResult)
-def evaluate_prediction_quality(
-    course_id: str,
-    test_ratio: float = Query(0.3, ge=0.1, le=0.5),
-    user: UserRow = Depends(require_role("student")),
-    container: ServiceContainer = Depends(_container),
-) -> PredictionEvaluationResult:
-    """时序评测：chronological split 度量预测质量，真实性门禁检查。"""
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
-    result = container.learner_state_service.evaluate_predictions(
-        user.id, course_id=course_id, as_of=as_of, test_ratio=test_ratio,
-    )
-    return PredictionEvaluationResult(**result)
 
 
 __all__ = ["router"]

@@ -36,7 +36,7 @@ class LearningPlanItemRow:
     item_type: str
     course_id: str | None
     task_id: str | None
-    knowledge_component_code: str | None
+
     estimated_minutes: int
     priority_score: float
     priority_components: dict[str, float]

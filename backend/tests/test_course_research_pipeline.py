@@ -10,7 +10,7 @@ from app.services.course_research.source_fetcher import validate_public_url
 def _setup():
     c=reset_container_for_tests(Settings(app_env="test",database_url="sqlite:///:memory:",llm_provider="none"))
     user=c.user_repository.create_user(username="research_student",password_hash=hash_password("Demo123456"),role="student",display_name="Research")
-    course=c.course_repository.create_course(name="C语言",owner_user_id=user.id,status="active")
+    course=c.course_repository.create_course(name="程序设计课程",owner_user_id=user.id,status="active")
     client=TestClient(create_app()); login=client.post("/api/v1/auth/login",json={"username":user.username,"password":"Demo123456"})
     return c,client,{"Authorization":f"Bearer {login.json()['access_token']}","Idempotency-Key":"research-1"},course.id
 

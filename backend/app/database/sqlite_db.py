@@ -1125,108 +1125,7 @@ CREATE INDEX IF NOT EXISTS idx_learner_state_evidence_event
     ON learner_state_evidence(event_id);
 """
 
-C_KNOWLEDGE_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS knowledge_components (
-    id TEXT PRIMARY KEY,
-    code TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    category TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    domain TEXT NOT NULL DEFAULT 'c_language',
-    taxonomy_version TEXT NOT NULL,
-    sort_order INTEGER NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
-    parent_code TEXT,
-    prerequisite_codes_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-    ,FOREIGN KEY(parent_code) REFERENCES knowledge_components(code) ON DELETE RESTRICT
-);
-CREATE INDEX IF NOT EXISTS idx_knowledge_components_version
-    ON knowledge_components(taxonomy_version, sort_order);
-
-CREATE TABLE IF NOT EXISTS exercise_kc_mappings (
-    id TEXT PRIMARY KEY,
-    course_id TEXT NOT NULL,
-    exercise_id TEXT NOT NULL,
-    subject_type TEXT NOT NULL DEFAULT 'exercise',
-    subject_id TEXT NOT NULL DEFAULT '',
-    knowledge_component_code TEXT NOT NULL,
-    mapping_method TEXT NOT NULL,
-    mapping_confidence REAL NOT NULL CHECK(mapping_confidence >= 0 AND mapping_confidence <= 1),
-    mapping_version TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(course_id, subject_type, subject_id, knowledge_component_code, mapping_version),
-    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY(knowledge_component_code) REFERENCES knowledge_components(code) ON DELETE RESTRICT
-);
-CREATE INDEX IF NOT EXISTS idx_exercise_kc_mappings_course
-    ON exercise_kc_mappings(course_id, exercise_id, active);
-
-CREATE TABLE IF NOT EXISTS practice_attempts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    client_attempt_id TEXT NOT NULL,
-    course_id TEXT NOT NULL,
-    exercise_id TEXT NOT NULL,
-    occurred_at TEXT NOT NULL,
-    attempt_no INTEGER NOT NULL,
-    result_type TEXT NOT NULL,
-    score REAL NOT NULL,
-    max_score REAL NOT NULL,
-    test_count INTEGER NOT NULL DEFAULT 0,
-    passed_test_count INTEGER NOT NULL DEFAULT 0,
-    compiler_outcome TEXT NOT NULL,
-    error_codes_json TEXT NOT NULL DEFAULT '[]',
-    duration_seconds INTEGER,
-    evidence_quality TEXT NOT NULL,
-    evidence_origin TEXT NOT NULL DEFAULT 'CLIENT',
-    created_at TEXT NOT NULL,
-    UNIQUE(user_id, client_attempt_id),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_practice_attempts_user_course_time
-    ON practice_attempts(user_id, course_id, occurred_at);
-
-CREATE TABLE IF NOT EXISTS misconception_hypotheses (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    course_id TEXT NOT NULL,
-    knowledge_component_code TEXT NOT NULL,
-    misconception_code TEXT NOT NULL,
-    confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
-    supporting_attempt_count INTEGER NOT NULL,
-    supporting_error_count INTEGER NOT NULL,
-    supporting_evidence_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK(status IN ('OPEN','CONFIRMED','REJECTED','EXPIRED','RESOLVED')),
-    generated_at TEXT NOT NULL,
-    valid_until TEXT NOT NULL,
-    estimator_version TEXT NOT NULL,
-    evidence_digest TEXT NOT NULL,
-    decided_at TEXT,
-    UNIQUE(user_id, course_id, knowledge_component_code, misconception_code),
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY(knowledge_component_code) REFERENCES knowledge_components(code) ON DELETE RESTRICT
-);
-CREATE INDEX IF NOT EXISTS idx_misconception_hypotheses_user_course
-    ON misconception_hypotheses(user_id, course_id, status, valid_until);
-
-CREATE TABLE IF NOT EXISTS misconception_hypothesis_history (
-    id TEXT PRIMARY KEY,
-    hypothesis_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    evidence_digest TEXT NOT NULL,
-    decision_source TEXT NOT NULL,
-    changed_at TEXT NOT NULL,
-    FOREIGN KEY(hypothesis_id) REFERENCES misconception_hypotheses(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_misconception_history_hypothesis
-    ON misconception_hypothesis_history(hypothesis_id, changed_at);
-"""
+C_KNOWLEDGE_SCHEMA_SQL = ""
 
 LEARNING_PLAN_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS learning_plan_runs (
@@ -1282,7 +1181,7 @@ CREATE TABLE IF NOT EXISTS learning_plan_items (
     item_type TEXT NOT NULL,
     course_id TEXT,
     task_id TEXT,
-    knowledge_component_code TEXT,
+
     estimated_minutes INTEGER NOT NULL CHECK(estimated_minutes > 0),
     priority_score REAL NOT NULL,
     priority_components_json TEXT NOT NULL,
@@ -1807,7 +1706,7 @@ class Database:
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
-                conn.executescript(C_KNOWLEDGE_SCHEMA_SQL)
+
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
@@ -1829,15 +1728,7 @@ class Database:
                 "projection_kind": "TEXT NOT NULL DEFAULT 'CORE'",
                 "projection_scope": "TEXT NOT NULL DEFAULT '__user__'",
             },
-            "knowledge_components": {
-                "description": "TEXT NOT NULL DEFAULT ''", "domain": "TEXT NOT NULL DEFAULT 'c_language'",
-                "active": "INTEGER NOT NULL DEFAULT 1", "parent_code": "TEXT",
-            },
-            "exercise_kc_mappings": {
-                "subject_type": "TEXT NOT NULL DEFAULT 'exercise'", "subject_id": "TEXT NOT NULL DEFAULT ''",
-            },
-            "practice_attempts": {"evidence_origin": "TEXT NOT NULL DEFAULT 'CLIENT'"},
-            "misconception_hypotheses": {"supporting_evidence_count": "INTEGER NOT NULL DEFAULT 0"},
+
             "learning_plan_runs": {
                 "core_run_id": "TEXT", "core_input_digest": "TEXT",
                 "knowledge_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
@@ -1897,10 +1788,7 @@ class Database:
             "ON learner_state_projection_runs(user_id, projection_kind, projection_scope) "
             "WHERE is_current = 1"
         )
-        if {row["name"] for row in conn.execute("PRAGMA table_info(exercise_kc_mappings)").fetchall()}:
-            conn.execute("UPDATE exercise_kc_mappings SET subject_type='exercise' WHERE subject_type IS NULL OR subject_type=''" )
-            conn.execute("UPDATE exercise_kc_mappings SET subject_id=exercise_id WHERE subject_id IS NULL OR subject_id=''" )
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_kc_subject_unique ON exercise_kc_mappings(course_id, subject_type, subject_id, knowledge_component_code, mapping_version)")
+
         # 永久退役校园活动功能，并删除已有活动与报名记录。
         conn.executescript(
             """

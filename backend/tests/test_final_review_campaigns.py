@@ -15,7 +15,7 @@ def _setup():
     for user in users:
         login=client.post("/api/v1/auth/login",json={"username":user.username,"password":"Demo123456"})
         headers.append({"Authorization":f"Bearer {login.json()['access_token']}"})
-    exam=client.post("/api/v1/student/exams",headers=headers[0],json={"course_name":"C语言","exam_date":"2026-12-20"})
+    exam=client.post("/api/v1/student/exams",headers=headers[0],json={"course_name":"程序设计课程","exam_date":"2026-12-20"})
     assert exam.status_code==201
     return client,headers,exam.json()["id"]
 

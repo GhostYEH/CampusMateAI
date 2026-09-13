@@ -33,7 +33,7 @@ from .routes import (
     academic,
     bing_daily_wallpaper,
     learner_state,
-    c_knowledge,
+
     learning_plans,
     learner_control,
     agent_runtime,
@@ -81,7 +81,7 @@ api_router.include_router(community.admin_router)
 api_router.include_router(academic.router)
 api_router.include_router(bing_daily_wallpaper.router)
 api_router.include_router(learner_state.router)
-api_router.include_router(c_knowledge.router)
+
 api_router.include_router(learning_plans.router)
 api_router.include_router(learner_control.router)
 api_router.include_router(agent_runtime.router)

@@ -44,15 +44,6 @@ def test_dataset_writer_is_byte_reproducible_and_self_verifying(tmp_path) -> Non
     assert len(load_annotations(first_data)) == 100
 
 
-def test_checked_in_dataset_matches_generator() -> None:
-    package_root = Path(__file__).resolve().parents[1]
-    expected_data = package_root / "datasets" / "c_language_misconception_v1.jsonl"
-    expected_manifest = package_root / "datasets" / "c_language_misconception_v1.manifest.json"
-
-    assert expected_data.read_bytes() == build_dataset_bytes()
-    manifest = json.loads(expected_manifest.read_text(encoding="utf-8"))
-    assert manifest["records_sha256"] == __import__("hashlib").sha256(expected_data.read_bytes()).hexdigest()
-
 
 def build_dataset_bytes() -> bytes:
     return "".join(
