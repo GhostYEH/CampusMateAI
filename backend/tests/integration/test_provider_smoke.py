@@ -1,0 +1,353 @@
+"""Provider 冒烟测试 (opt-in 真实调用 + 安全 mock 验证)。
+
+真实调用受双重门控:
+  1. RUN_REAL_PROVIDER_TESTS=1 (显式费用授权开关)
+  2. 对应 provider 凭据存在 (ZHIPU_LLM_* / XUNFEI_LLM_*)
+
+无凭据或未开启时,真实测试自动 skip;安全 mock 测试始终在无网络、无 Key 环境运行。
+本文件不输出完整 Key、Authorization header 或完整 prompt。
+"""
+from __future__ import annotations
+
+import dataclasses
+import os
+from typing import List, Optional
+
+import pytest
+
+from app.core.config import Settings, get_settings
+from app.database.sqlite_db import reset_db_for_tests
+from app.repositories.agent_runtime_repository import AgentRuntimeRepository
+from app.services.llm.base import LLMError, LLMResponse
+from app.services.llm.model_router import ModelRouter, RouteResult
+from app.services.llm.openai_compatible import StubLLMClient
+from app.services.llm.provider_registry import ProviderInstance, ProviderRegistry
+
+
+# ===== 环境门控 =====
+
+_REAL_ENABLED = os.environ.get("RUN_REAL_PROVIDER_TESTS") == "1"
+_ZHIPU_CONFIGURED = bool(
+    os.environ.get("ZHIPU_LLM_BASE_URL")
+    and os.environ.get("ZHIPU_LLM_API_KEY")
+    and os.environ.get("ZHIPU_LLM_MODEL")
+)
+_XUNFEI_CONFIGURED = bool(
+    os.environ.get("XUNFEI_LLM_BASE_URL")
+    and os.environ.get("XUNFEI_LLM_API_KEY")
+    and os.environ.get("XUNFEI_LLM_MODEL")
+)
+
+_skip_no_zhipu = pytest.mark.skipif(
+    not (_REAL_ENABLED and _ZHIPU_CONFIGURED),
+    reason="未配置 ZHIPU_LLM_* 或未开启 RUN_REAL_PROVIDER_TESTS",
+)
+_skip_no_xunfei = pytest.mark.skipif(
+    not (_REAL_ENABLED and _XUNFEI_CONFIGURED),
+    reason="未配置 XUNFEI_LLM_* 或未开启 RUN_REAL_PROVIDER_TESTS",
+)
+_skip_no_dual = pytest.mark.skipif(
+    not (_REAL_ENABLED and _ZHIPU_CONFIGURED and _XUNFEI_CONFIGURED),
+    reason="双 provider 未全部配置或未开启 RUN_REAL_PROVIDER_TESTS",
+)
+
+
+def _mask(value: Optional[str]) -> str:
+    """脱敏:只显示前 4 位 + 长度,不输出完整值。"""
+    if not value:
+        return "(未配置)"
+    if len(value) <= 8:
+        return "***"
+    return f"{value[:4]}...(长度 {len(value)})"
+
+
+# 最小请求 prompt,不包含任何敏感信息
+_MINIMAL_MESSAGES: List[dict] = [{"role": "user", "content": "ping"}]
+
+
+# ===== 真实调用:智谱单 provider =====
+
+
+@_skip_no_zhipu
+@pytest.mark.asyncio
+async def test_real_zhipu_single_provider():
+    """智谱最小结构化请求:验证响应解析、模型名、延迟、状态。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    assert reg.get("zhipu") is not None, "智谱 provider 未构建(凭据可能不完整)"
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="reasoning_primary")
+    assert result.status == "succeeded", f"状态: {result.status}, reason: {result.fallback_reason}"
+    assert result.provider_name == "zhipu"
+    assert result.response is not None
+    assert result.latency_ms >= 0
+    assert s.zhipu_llm_model in result.model
+    assert isinstance(result.response.content, str)
+
+
+@_skip_no_xunfei
+@pytest.mark.asyncio
+async def test_real_xunfei_single_provider():
+    """讯飞最小结构化请求:验证响应解析、模型名、延迟、状态。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    assert reg.get("xunfei") is not None, "讯飞 provider 未构建(凭据可能不完整)"
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="fast_structured")
+    assert result.status == "succeeded", f"状态: {result.status}, reason: {result.fallback_reason}"
+    assert result.provider_name == "xunfei"
+    assert result.response is not None
+    assert result.latency_ms >= 0
+    assert s.xunfei_llm_model in result.model
+    assert isinstance(result.response.content, str)
+
+
+@_skip_no_dual
+@pytest.mark.asyncio
+async def test_real_reasoning_primary_prefers_zhipu():
+    """reasoning_primary 策略:智谱优先。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="reasoning_primary")
+    assert result.status == "succeeded"
+    assert result.provider_name == "zhipu"
+
+
+@_skip_no_dual
+@pytest.mark.asyncio
+async def test_real_fast_structured_prefers_xunfei():
+    """fast_structured 策略:讯飞优先。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="fast_structured")
+    assert result.status == "succeeded"
+    assert result.provider_name == "xunfei"
+
+
+@_skip_no_dual
+@pytest.mark.asyncio
+async def test_real_dual_review_minimal():
+    """dual_review:智谱生成 + 讯飞 review,仅一次最小请求。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="dual_review")
+    assert result.status == "succeeded"
+    assert result.provider_name == "zhipu"
+    assert result.review_provider == "xunfei"
+
+
+# ===== 安全 mock 测试:始终运行 (无网络、无 Key) =====
+
+
+class _FailingLLMClient:
+    """总是抛 LLMError 的 client,用于故障注入。不持有任何凭据。"""
+
+    def __init__(self, name: str = "failing") -> None:
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def chat(self, messages, **kwargs) -> LLMResponse:
+        raise LLMError("LLM 网络错误: ConnectionError")
+
+    async def aclose(self) -> None:
+        pass
+
+
+class _FlakyLLMClient:
+    """第一次调用失败,重试成功。用于验证 retry_after_* fallback_reason。"""
+
+    def __init__(self) -> None:
+        self._calls = 0
+
+    @property
+    def name(self) -> str:
+        return "flaky"
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def chat(self, messages, **kwargs) -> LLMResponse:
+        self._calls += 1
+        if self._calls == 1:
+            raise LLMError("LLM 网络错误: ConnectionError")
+        return LLMResponse(content="recovered")
+
+    async def aclose(self) -> None:
+        pass
+
+
+def _build_registry_with_failing_zhipu_and_stub_xunfei() -> ProviderRegistry:
+    """构造 registry:zhipu 为 failing client,xunfei 为 stub。不接触真实凭据。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg._instances["zhipu"] = ProviderInstance(
+        name="zhipu",
+        client=_FailingLLMClient("zhipu"),
+        route_policies=["reasoning_primary", "dual_review"],
+    )
+    reg._instances["xunfei"] = ProviderInstance(
+        name="xunfei",
+        client=StubLLMClient(response_text="xunfei ok"),
+        route_policies=["fast_structured", "dual_review"],
+    )
+    return reg
+
+
+@pytest.mark.asyncio
+async def test_fallback_to_second_provider_records_provider_model_status_latency():
+    """主 provider 失败后备用 provider 成功:验证 provider/model/status/latency_ms 被记录。"""
+    reg = _build_registry_with_failing_zhipu_and_stub_xunfei()
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="reasoning_primary")
+    assert result.status == "succeeded"
+    assert result.provider_name == "xunfei"
+    assert result.model == "stub"
+    assert result.latency_ms >= 0
+    assert result.response is not None
+
+
+@pytest.mark.asyncio
+async def test_all_providers_fail_records_fallback_reason():
+    """所有 provider 失败:验证 status=failed 且 fallback_reason 有值。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg._instances["zhipu"] = ProviderInstance(
+        name="zhipu",
+        client=_FailingLLMClient("zhipu"),
+        route_policies=["reasoning_primary"],
+    )
+    reg._instances["xunfei"] = ProviderInstance(
+        name="xunfei",
+        client=_FailingLLMClient("xunfei"),
+        route_policies=["fast_structured"],
+    )
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="reasoning_primary")
+    assert result.status == "failed"
+    assert result.response is None
+    assert result.fallback_reason is not None
+
+
+@pytest.mark.asyncio
+async def test_retry_after_failure_records_fallback_reason():
+    """主 provider 第一次失败重试成功:fallback_reason=retry_after_*。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg._instances["zhipu"] = ProviderInstance(
+        name="zhipu",
+        client=_FlakyLLMClient(),
+        route_policies=["reasoning_primary"],
+    )
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="reasoning_primary")
+    assert result.status == "succeeded"
+    assert result.provider_name == "zhipu"
+    assert result.fallback_reason is not None
+    assert result.fallback_reason.startswith("retry_after_")
+
+
+@pytest.mark.asyncio
+async def test_dual_review_fallback_when_review_unavailable():
+    """dual_review:review provider 不可用时 fallback_reason 标注,生成仍成功。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg._instances["zhipu"] = ProviderInstance(
+        name="zhipu",
+        client=StubLLMClient(response_text="gen ok"),
+        route_policies=["dual_review"],
+    )
+    reg._instances["xunfei"] = ProviderInstance(
+        name="xunfei",
+        client=_FailingLLMClient("xunfei"),
+        route_policies=["dual_review"],
+    )
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="dual_review")
+    assert result.status == "succeeded"
+    assert result.provider_name == "zhipu"
+    assert result.fallback_reason is not None
+    assert "unavailable" in result.fallback_reason
+
+
+@pytest.mark.asyncio
+async def test_trace_does_not_store_prompt_or_credentials():
+    """agent_model_calls 表不含 prompt/messages/content/key 列;trace 只记录元数据。"""
+    db = reset_db_for_tests()
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, role, created_at, updated_at) "
+            "VALUES ('smoke-user', 'smoke-user', 'x', 'student', 't', 't')"
+        )
+    repo = AgentRuntimeRepository(db)
+    job_id = repo.create_job(user_id="smoke-user", job_kind="course_research")
+    run_id = repo.create_run(job_id=job_id, user_id="smoke-user")
+    get_settings.cache_clear()
+    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    reg = ProviderRegistry(s)
+    reg.add_fake("zhipu", route_policies=["reasoning_primary"])
+    router = ModelRouter(reg, repository=repo)
+
+    sensitive_prompt = "SECRET-API-KEY-12345 must not be stored"
+    result = await router.route(
+        [{"role": "user", "content": sensitive_prompt}],
+        route_policy="reasoning_primary",
+        run_id=run_id,
+    )
+    assert result.status == "succeeded"
+
+    with db.query() as conn:
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(agent_model_calls)")]
+        row = conn.execute(
+            "SELECT provider, route_policy, model, status, latency_ms, fallback_reason "
+            "FROM agent_model_calls WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    forbidden = {"prompt", "messages", "content", "api_key", "authorization", "headers"}
+    assert not (forbidden & set(columns)), f"trace 表含敏感列: {forbidden & set(columns)}"
+
+    for v in dict(row).values():
+        assert sensitive_prompt not in str(v)
+
+
+def test_route_result_fields_do_not_carry_authorization_or_prompt():
+    """RouteResult 字段不含 authorization/messages/prompt/api_key。"""
+    fields = {f.name for f in dataclasses.fields(RouteResult)}
+    forbidden = {"authorization", "messages", "prompt", "api_key", "headers"}
+    assert not (forbidden & fields), f"RouteResult 含敏感字段: {forbidden & fields}"
+
+
+def test_credentials_masking_does_not_leak_full_key():
+    """_mask 不输出完整 key。"""
+    secret = "sk-super-secret-key-1234567890abcdef"
+    masked = _mask(secret)
+    assert secret not in masked
+    assert masked.startswith("sk-s")
+    assert "..." in masked
+
+
+def test_skip_gating_logic():
+    """验证环境门控变量类型正确,文档化 skip 逻辑。"""
+    assert isinstance(_REAL_ENABLED, bool)
+    assert isinstance(_ZHIPU_CONFIGURED, bool)
+    assert isinstance(_XUNFEI_CONFIGURED, bool)
