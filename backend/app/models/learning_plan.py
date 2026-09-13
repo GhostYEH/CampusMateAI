@@ -4,6 +4,26 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+PLAN_ITEM_TYPES = (
+    "TASK_FOCUS",
+    "EXAM_PREPARATION",
+    "CAMPUS_AFFAIRS",
+    "GOAL_PROGRESS",
+    "RESEARCH_OR_COMPETITION",
+    "CAREER_PREPARATION",
+    "RECOVERY_BUFFER",
+    "REVIEW_AND_REFLECT",
+)
+TASK_CREATING_ITEM_TYPES = frozenset({
+    "TASK_FOCUS",
+    "EXAM_PREPARATION",
+    "CAMPUS_AFFAIRS",
+    "GOAL_PROGRESS",
+    "RESEARCH_OR_COMPETITION",
+    "CAREER_PREPARATION",
+})
+
+
 @dataclass(frozen=True)
 class LearningPlanRunRow:
     run_id: str
@@ -75,4 +95,5 @@ class LearningPlanActionRow:
 
 __all__ = [
     "LearningPlanRunRow", "LearningPlanItemRow", "LearningPlanRow", "LearningPlanActionRow",
+    "PLAN_ITEM_TYPES", "TASK_CREATING_ITEM_TYPES",
 ]

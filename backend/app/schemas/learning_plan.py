@@ -1,8 +1,20 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+
+PLAN_ITEM_TYPE_LITERAL = Literal[
+    "TASK_FOCUS",
+    "EXAM_PREPARATION",
+    "CAMPUS_AFFAIRS",
+    "GOAL_PROGRESS",
+    "RESEARCH_OR_COMPETITION",
+    "CAREER_PREPARATION",
+    "RECOVERY_BUFFER",
+    "REVIEW_AND_REFLECT",
+]
 
 
 class LearningPlanGenerateRequest(BaseModel):
@@ -57,7 +69,7 @@ class LearningPlanEvidenceOut(BaseModel):
 
 class LearningPlanItemOut(BaseModel):
     item_id: str
-    item_type: str
+    item_type: PLAN_ITEM_TYPE_LITERAL
     course_id: str | None = None
     task_id: str | None = None
 
@@ -98,4 +110,5 @@ __all__ = [
     "LearningPlanGenerateRequest", "LearningPlanDecisionRequest", "LearningPlanEvidenceOut",
     "LearningPlanFeedbackRequest", "LearningPlanFeedbackOut", "LearningPlanEvaluationOut",
     "LearningPlanItemOut", "LearningPlanOut", "LearningPlanPage",
+    "PLAN_ITEM_TYPE_LITERAL",
 ]

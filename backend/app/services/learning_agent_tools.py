@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..core.exceptions import Forbidden, NotFoundError
+from ..models.learning_plan import TASK_CREATING_ITEM_TYPES
 
 
 ALLOWED_TOOL_SPECS = {
@@ -85,7 +86,7 @@ class LearningAgentToolRegistry:
             plan = self.container.learning_plan_repository.get_plan(plan_id, user_id=user_id)
             if plan is None or plan.status != "ACCEPTED":
                 raise Forbidden("写工具需要已明确接受的计划")
-            item = next((item for item in plan.items if item.item_id == item_id and item.item_type == "CREATE_PERSONAL_TASK"), None)
+            item = next((item for item in plan.items if item.item_id == item_id and item.item_type in TASK_CREATING_ITEM_TYPES), None)
             if item is None:
                 raise NotFoundError()
             # The execution service uses the server-side item and ignores any

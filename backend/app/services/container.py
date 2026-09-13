@@ -248,6 +248,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
         source_policy=learner_model_source_policy,
+        student_goal_repository=student_goal_repo,
     )
 
     learner_control_service = LearnerControlService(
@@ -264,6 +265,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     course_research_repository = CourseResearchRepository(db)
     notice_repository = NoticeRepository(db)
     notice_workflow_repository = NoticeWorkflowRepository(db)
+    learning_planner_service._notice_repository = notice_repository
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
