@@ -71,4 +71,3 @@ def test_job_and_run_queries_are_available_for_task_center(runtime):
     assert repo.list_jobs("u1")
     assert repo.list_runs_for_user("u1")
     assert repo.list_runs_by_job(run["job_id"])[0]["run_id"] == run_id
-

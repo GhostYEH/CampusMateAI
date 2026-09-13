@@ -73,4 +73,3 @@ def test_memory_withdraw_is_user_scoped_and_removes_model_consent() -> None:
     assert withdrawn.status_code == 200
     assert withdrawn.json()["withdrawn"] is True
     assert withdrawn.json()["model_may_consume"] is False
-

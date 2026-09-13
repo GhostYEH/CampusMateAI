@@ -69,4 +69,3 @@ def test_plan_generation_rejects_another_users_goal() -> None:
     )
 
     assert response.status_code in {403, 404, 422}
-

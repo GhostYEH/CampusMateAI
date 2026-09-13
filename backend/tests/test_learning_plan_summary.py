@@ -35,4 +35,3 @@ def test_learning_plan_summary_exposes_stage_and_next_action() -> None:
     assert body["stage"] == "AWAITING_CONFIRMATION"
     assert body["next_action"] == "确认计划后创建个人待办"
     assert 0 <= body["completion_percent"] <= 100
-
