@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.core.config import Settings
+from app.api.routes import counselor
 from app.api.routes.counselor import _collect_learner_state_context
 from app.database.sqlite_db import Database
 from app.repositories.document_repository import DocumentRepository
@@ -115,6 +116,12 @@ def test_demo_knowledge_directory_has_no_bundled_policy_files() -> None:
     assert not list(demo_dir.glob("*.md"))
 
 
+def test_cpm_exposes_exact_assistant_chat_alias() -> None:
+    paths = {route.path for route in counselor.router.routes}
+    assert "/counselor/chat" in paths
+    assert "/assistant/chat" in paths
+
+
 def test_counselor_reads_current_learner_world_model_snapshots() -> None:
     snapshot = SimpleNamespace(
         state_type="workload_pressure",
@@ -124,10 +131,33 @@ def test_counselor_reads_current_learner_world_model_snapshots() -> None:
         confidence=0.91,
         data_quality="verified",
     )
+    snapshot_calls: list[dict] = []
+
+    def list_all_current_snapshots(**kwargs):
+        snapshot_calls.append(kwargs)
+        return [snapshot]
+
+    forecast = SimpleNamespace(
+        forecast_type="UPCOMING_WORKLOAD",
+        data_quality="verified",
+        confidence=0.8,
+        value=SimpleNamespace(pressure_band="HIGH", task_count=4),
+    )
+    plan = SimpleNamespace(
+        status="PROPOSED",
+        run=SimpleNamespace(valid_until="2099-01-01T00:00:00+00:00"),
+        items=[SimpleNamespace(item_type="REVIEW_DEADLINE", estimated_minutes=30)],
+    )
     container = SimpleNamespace(
         learner_state_repository=SimpleNamespace(
-            list_all_current_snapshots=lambda **kwargs: [snapshot]
-        )
+            list_all_current_snapshots=list_all_current_snapshots
+        ),
+        forecast_service=SimpleNamespace(
+            list_forecasts=lambda **kwargs: ([forecast], 1)
+        ),
+        learning_plan_repository=SimpleNamespace(
+            list_plans=lambda **kwargs: ([plan], 1)
+        ),
     )
 
     context, count, warnings = _collect_learner_state_context(
@@ -138,4 +168,9 @@ def test_counselor_reads_current_learner_world_model_snapshots() -> None:
     assert count == 1
     assert "workload_pressure" in context
     assert "HIGH" in context
+    assert snapshot_calls[0]["projection_kind"] == "WORLD"
+    assert "预测摘要" in context
+    assert "UPCOMING_WORKLOAD" in context
+    assert "行动计划摘要" in context
+    assert "PROPOSED" in context
     assert warnings == []

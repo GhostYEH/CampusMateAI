@@ -39,6 +39,7 @@ import json
 import html
 import re
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import httpx
@@ -379,16 +380,15 @@ def _collect_learner_state_context(
         snapshots = repository.list_all_current_snapshots(
             user_id=user.id,
             max_items=24,
+            projection_kind="WORLD",
+            projection_scope="__user__",
         )
     except Exception as exc:
         logger.warning("读取世界模型快照失败: {}", type(exc).__name__)
         return "", 0, ["世界模型暂不可用，已忽略世界模型上下文"]
-    if not snapshots:
-        return "", 0, []
-
     lines = [
         "[学生世界模型上下文](仅用于个性化建议,不是校园政策依据):",
-    ]
+    ] if snapshots else []
     for snapshot in snapshots:
         value = json.dumps(
             snapshot.value,
@@ -402,7 +402,72 @@ def _collect_learner_state_context(
             f"置信度:{snapshot.confidence:.2f}, 数据质量:{snapshot.data_quality}): "
             f"{value}"
         )
-    return "\n".join(lines), len(snapshots), []
+
+    warnings: List[str] = []
+    forecast_service = getattr(container, "forecast_service", None)
+    if forecast_service is not None:
+        try:
+            forecasts, _ = forecast_service.list_forecasts(
+                user_id=user.id,
+                as_of=datetime.now(timezone.utc),
+                horizon_days=7,
+                page=1,
+                page_size=5,
+            )
+            if forecasts:
+                lines.append(
+                    "[未来七天预测摘要](仅用于风险提示,不是因果结论或校园政策依据):"
+                )
+                for forecast in forecasts:
+                    value = getattr(forecast, "value", None)
+                    if hasattr(value, "model_dump"):
+                        value = value.model_dump(mode="json")
+                    elif hasattr(value, "__dict__"):
+                        value = vars(value)
+                    serialized = json.dumps(
+                        value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    )[:600]
+                    lines.append(
+                        f"- {getattr(forecast, 'forecast_type', 'UNKNOWN')} "
+                        f"(置信度:{float(getattr(forecast, 'confidence', 0.0)):.2f}, "
+                        f"数据质量:{getattr(forecast, 'data_quality', 'unknown')}): "
+                        f"{serialized}"
+                    )
+        except Exception as exc:
+            logger.warning("读取 CPM 预测摘要失败: {}", type(exc).__name__)
+            warnings.append("预测摘要暂不可用,已忽略预测上下文")
+
+    plan_repository = getattr(container, "learning_plan_repository", None)
+    if plan_repository is not None:
+        try:
+            plans, _ = plan_repository.list_plans(
+                user_id=user.id,
+                page=1,
+                page_size=1,
+            )
+            if plans:
+                plan = plans[0]
+                items = list(getattr(plan, "items", []) or [])
+                lines.append("[当前行动计划摘要](仅用于执行建议,不会在聊天中自动执行):")
+                lines.append(
+                    f"- 状态:{getattr(plan, 'status', 'unknown')}, "
+                    f"有效期至:{getattr(getattr(plan, 'run', None), 'valid_until', 'unknown')}, "
+                    f"行动项数:{len(items)}"
+                )
+                for item in items[:3]:
+                    lines.append(
+                        f"  - {getattr(item, 'item_type', 'UNKNOWN')} "
+                        f"({int(getattr(item, 'estimated_minutes', 0))} 分钟)"
+                    )
+        except Exception as exc:
+            logger.warning("读取 CPM 行动计划摘要失败: {}", type(exc).__name__)
+            warnings.append("行动计划摘要暂不可用,已忽略计划上下文")
+
+    return "\n".join(lines), len(snapshots), warnings
 
 
 def _build_recent_tasks_hint(
@@ -498,6 +563,7 @@ def _build_context_warnings(
 
 
 @router.post("/counselor/chat")
+@router.post("/assistant/chat")
 async def chat(
     req: ChatRequest,
     user: Optional[UserRow] = Depends(current_user_optional),
@@ -517,6 +583,8 @@ async def chat(
     context_used = _build_context_used(req, ctx_used, sanitized_tasks)
     context_used["learner_state_used"] = learner_state_count > 0
     context_used["learner_state_snapshot_count"] = learner_state_count
+    context_used["learner_forecast_used"] = "[未来七天预测摘要]" in learner_state_context
+    context_used["learning_plan_used"] = "[当前行动计划摘要]" in learner_state_context
     emotion_guidance, expression_warning = _emotion_context_builder.build(
         req.expression_signal
     )
