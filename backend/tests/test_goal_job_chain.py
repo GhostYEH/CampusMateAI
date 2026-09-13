@@ -41,3 +41,24 @@ def test_learning_goal_job_generates_plan_and_persists_run_lineage() -> None:
     events = client.get(f"/api/v1/agent-runs/{job['latest_run_id']}/events", headers=headers).json()
     assert any(event["type"] == "RUN_COMPLETED" for event in events)
 
+
+def test_invalid_learning_goal_request_does_not_create_orphan_job() -> None:
+    container = reset_container_for_tests(Settings(app_env="test", database_url="sqlite:///:memory:"))
+    user = container.user_repository.create_user(
+        username="invalid_goal_job_student", password_hash=hash_password("Demo123456"), role="student"
+    )
+    client = TestClient(create_app())
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"username": user.username, "password": "Demo123456"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = client.post(
+        "/api/v1/agent-jobs",
+        json={"job_kind": "learning_goal", "input_ref": {"available_minutes": 60}},
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    assert container.agent_runtime_repository.list_jobs(user.id) == []

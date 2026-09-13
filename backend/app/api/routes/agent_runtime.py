@@ -136,6 +136,17 @@ async def create_job(
         existing = repo.find_job_by_idempotency(user.id, effective_key)
         if existing:
             return _job_to_out(existing)
+    if body.job_kind == "learning_goal":
+        input_ref = body.input_ref
+        goal_id = input_ref.get("goal_id")
+        available_minutes = input_ref.get("available_minutes", 60)
+        if (
+            not isinstance(goal_id, str)
+            or not goal_id
+            or not isinstance(available_minutes, int)
+            or not (1 <= available_minutes <= 1440)
+        ):
+            raise ValidationFailed("learning_goal 需要 goal_id 和 1-1440 的 available_minutes")
     job_id = repo.create_job(
         user_id=user.id,
         job_kind=body.job_kind,
@@ -147,8 +158,6 @@ async def create_job(
         input_ref = body.input_ref
         goal_id = input_ref.get("goal_id")
         available_minutes = input_ref.get("available_minutes", 60)
-        if not isinstance(goal_id, str) or not goal_id or not isinstance(available_minutes, int) or not (1 <= available_minutes <= 1440):
-            raise ValidationFailed("learning_goal 需要 goal_id 和 1-1440 的 available_minutes")
         from ...services.agent_runtime.run_manager import RunManager
         manager = RunManager(repo, container.agent_event_store)
         run_id = repo.create_run(job_id=job_id, user_id=user.id, idempotency_key=effective_key)
