@@ -24,6 +24,21 @@ data class ChatRequest(
     val expression_signal: ExpressionSignalRequest? = null,
 )
 data class ChatResponse(val answer: String? = null, val message: String? = null)
+data class AgentCapabilitiesDto(val runtime_version: String = "", val domains: List<String> = emptyList(), val supports_sse_resume: Boolean = false, val supports_approvals: Boolean = false)
+data class AgentJobCreateRequest(val domain: String, val objective_summary: String, val total_steps: Int = 1)
+data class AgentProgressDto(val current: Int = 0, val total: Int = 0, val percent: Int = 0)
+data class AgentRunDto(val run_id: String, val job_id: String, val domain: String, val status: String, val phase: String, val current_role: String? = null, val progress: AgentProgressDto = AgentProgressDto(), val context_snapshot_id: String? = null, val created_at: String = "", val updated_at: String = "", val finished_at: String? = null)
+data class AgentJobDto(val job_id: String, val domain: String, val objective_summary: String, val status: String, val run: AgentRunDto)
+data class AgentEventDto(val id: String, val type: String, val run_id: String, val sequence: Int, val status: String, val phase: String, val role: String? = null, val summary: String, val progress: AgentProgressDto = AgentProgressDto(), val artifact_id: String? = null, val approval_id: String? = null, val created_at: String = "")
+data class AgentEventPageDto(val items: List<AgentEventDto> = emptyList(), val total: Int = 0, val has_more: Boolean = false)
+data class FinalReviewCampaignDto(val campaign_id: String, val exam_id: String, val status: String, val active_version: Int? = null, val daily_capacity_minutes: Int, val created_at: String = "", val updated_at: String = "")
+data class CourseResearchRequest(val question: String, val course_id: String? = null, val mode: String, val academic_policy: String, val source_policy: SourcePolicyDto = SourcePolicyDto())
+data class SourcePolicyDto(val course_material_priority: Boolean = true, val allow_web: Boolean = false, val allow_user_upload: Boolean = false)
+data class CourseResearchSourceDto(val source_id: String, val source_type: String, val safe_label: String, val verification_status: String)
+data class CourseResearchDto(val research_id: String, val course_id: String? = null, val requested_mode: String, val effective_mode: String, val academic_policy: String, val status: String, val roles: List<String> = emptyList(), val warning_codes: List<String> = emptyList(), val report_summary: String = "", val sources: List<CourseResearchSourceDto> = emptyList())
+data class ManualNoticeRequest(val content: String, val title: String? = null, val published_at: String? = null)
+data class ManualNoticeDto(val notice_id: String, val duplicate: Boolean, val source_code: String)
+data class NoticeWorkflowDto(val workflow_id: String, val notice_id: String, val status: String, val source_code: String, val source_revision: Int, val action_risk: String, val automation_enabled: Boolean = false)
 data class FocusAiAskRequest(val text: String)
 data class FocusAiAskResponse(val answer: String)
 data class FocusRealtimeVoiceSessionDto(
@@ -797,6 +812,39 @@ data class HomeBannerFeedDto(
 )
 
 interface ApiService {
+    @GET("agent-runtime/capabilities")
+    suspend fun agentCapabilities(): Response<AgentCapabilitiesDto>
+
+    @POST("agent-jobs")
+    suspend fun createAgentJob(@Header("Idempotency-Key") idempotencyKey: String, @Body request: AgentJobCreateRequest): Response<AgentJobDto>
+
+    @GET("agent-runs/{runId}")
+    suspend fun getAgentRun(@Path("runId") runId: String): Response<AgentRunDto>
+
+    @GET("agent-runs/{runId}/events")
+    suspend fun getAgentEvents(@Path("runId") runId: String, @Query("after_event_id") afterEventId: String? = null): Response<AgentEventPageDto>
+
+    @Streaming
+    @GET("agent-runs/{runId}/events/stream")
+    suspend fun streamAgentEvents(@Path("runId") runId: String, @Header("Last-Event-ID") lastEventId: String? = null): Response<ResponseBody>
+
+    @GET("final-review/campaigns")
+    suspend fun listFinalReviewCampaigns(): Response<List<FinalReviewCampaignDto>>
+
+    @POST("final-review/campaigns")
+    suspend fun createFinalReviewCampaign(@Body request: Map<String, Any>): Response<FinalReviewCampaignDto>
+
+    @POST("course-research/sessions")
+    suspend fun createCourseResearch(@Header("Idempotency-Key") idempotencyKey: String, @Body request: CourseResearchRequest): Response<CourseResearchDto>
+
+    @POST("notices/manual")
+    suspend fun createManualNotice(@Body request: ManualNoticeRequest): Response<ManualNoticeDto>
+
+    @POST("notices/{noticeId}/workflow")
+    suspend fun analyzeNoticeWorkflow(@Path("noticeId") noticeId: String): Response<NoticeWorkflowDto>
+
+    @POST("notice-workflows/{workflowId}/confirm")
+    suspend fun confirmNoticeWorkflow(@Path("workflowId") workflowId: String, @Body request: Map<String, Boolean>): Response<NoticeWorkflowDto>
     @GET("home-banners")
     suspend fun homeBanners(): Response<HomeBannerFeedDto>
 
