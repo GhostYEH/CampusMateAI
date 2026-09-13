@@ -8,6 +8,7 @@ V1 由一个 AgentExecutor 切换逻辑角色执行阶段,不创建独立进程�
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -155,6 +156,7 @@ class CourseResearchPipeline:
             course_id=course_id,
             effective=effective,
         )
+        self._load_user_uploads(ctx, user_upload_refs)
         # 转入 RUNNING
         self._safe_transition(run_id, RunStatus.RUNNING, RunPhase.CONTEXT_BUILDING)
         self._emit(
@@ -285,10 +287,32 @@ class CourseResearchPipeline:
             return
         step_id = self._begin_step(ctx, "web_researcher", 3, "检索公共 Web")
         try:
-            # 受控检索:使用 source_fetcher 校验 URL
-            # V1 不主动构造搜索查询 URL,由调用方/扩展点注入
-            # 这里仅做策略与 SSRF 校验演示
-            self._finish_step(ctx, "web_researcher", step_id, "Web 检索完成(无外部查询)")
+            # V1 对用户明确提供的公开 URL 做受控抓取。没有可验证 URL
+            # 时明确跳过，绝不把“未查询”伪装成检索成功。
+            urls = list(dict.fromkeys(re.findall(r"https?://[^\s<>\]\[\)]+", ctx.question)))[:5]
+            if not urls:
+                self._finish_step(
+                    ctx, "web_researcher", step_id, "未提供公开 URL，已跳过 Web 抓取"
+                )
+                return
+            for url in urls:
+                fetched = await self._fetcher.fetch(url, allow_web=True)
+                src = self._repo.add_source(
+                    session_id=ctx.session_id,
+                    user_id=ctx.user_id,
+                    source_type="web",
+                    title=fetched.title,
+                    url=fetched.url,
+                    snippet=fetched.snippet,
+                    accessed_at=fetched.accessed_at,
+                )
+                ctx.web_sources.append(src)
+            self._finish_step(
+                ctx,
+                "web_researcher",
+                step_id,
+                f"已受控抓取 {len(ctx.web_sources)} 个公开来源",
+            )
         except Exception:
             ctx.failed_roles.append("web_researcher")
             self._finish_step(ctx, "web_researcher", step_id, "Web 检索失败", failed=True)
@@ -469,6 +493,26 @@ class CourseResearchPipeline:
         )
 
     # ===== 辅助 =====
+
+    def _load_user_uploads(self, ctx: _StageContext, refs: list[str]) -> None:
+        """Resolve only artifacts owned by the current user into research sources."""
+        if not refs or not ctx.effective.source_policy.may_use_user_upload():
+            return
+        for ref in refs[:20]:
+            artifact = self._artifacts.get(ref, ctx.user_id)
+            if not artifact:
+                continue
+            content = self._artifacts.read_content(ref, ctx.user_id) or ""
+            source = self._repo.add_source(
+                session_id=ctx.session_id,
+                user_id=ctx.user_id,
+                source_type="user_upload",
+                title=f"用户资料 {ref}",
+                source_ref=ref,
+                snippet=content[:500],
+                accessed_at=_now(),
+            )
+            ctx.upload_sources.append(source)
 
     def _begin_step(
         self, ctx: _StageContext, role: str, sequence: int, summary: str,

@@ -12,7 +12,7 @@ import ipaddress
 import socket
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from ...core.exceptions import AgentSourcePolicyViolation
 
@@ -110,10 +110,12 @@ class ControlledSourceFetcher:
         timeout_seconds: float = 10.0,
         max_bytes: int = 1024 * 1024,  # 1 MiB
         max_redirects: int = 3,
+        transport=None,
     ) -> None:
         self._timeout = timeout_seconds
         self._max_bytes = max_bytes
         self._max_redirects = max_redirects
+        self._transport = transport
 
     def validate(self, url: str) -> str:
         """仅校验,不发起请求。"""
@@ -144,19 +146,33 @@ class ControlledSourceFetcher:
 
         async with httpx.AsyncClient(
             timeout=self._timeout,
-            follow_redirects=True,
-            max_redirects=self._max_redirects,
+            follow_redirects=False,
+            transport=self._transport,
         ) as client:
             try:
-                resp = await client.get(validated)
+                current_url = validated
+                for redirect_count in range(self._max_redirects + 1):
+                    # Validate every hop before sending it. Validating only resp.url
+                    # after automatic redirects is too late: the private request has
+                    # already happened at that point.
+                    validate_url(current_url)
+                    resp = await client.get(current_url)
+                    if resp.status_code not in (301, 302, 303, 307, 308):
+                        break
+                    location = resp.headers.get("location")
+                    if not location:
+                        break
+                    if redirect_count >= self._max_redirects:
+                        raise SSRFViolation("重定向次数过多")
+                    current_url = urljoin(current_url, location)
+                else:  # pragma: no cover - loop always exits or raises
+                    raise SSRFViolation("重定向次数过多")
             except httpx.TimeoutException as e:
                 raise SSRFViolation(f"请求超时: {e}") from e
             except (httpx.HTTPError, OSError) as e:
                 raise SSRFViolation(f"请求失败: {type(e).__name__}") from e
-            # 重定向逃逸:最终 URL 仍需校验
             final_url = str(resp.url)
-            if final_url != validated:
-                validate_url(final_url)
+            validate_url(final_url)
             # 大小限制
             content_length = int(resp.headers.get("content-length", 0))
             if content_length and content_length > self._max_bytes:

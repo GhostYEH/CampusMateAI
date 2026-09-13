@@ -128,6 +128,22 @@ class TestSSRFMatrix:
             if "解析" not in e.reason and "私网" not in e.reason:
                 pytest.skip(f"测试环境 DNS 限制: {e.reason}")
 
+    async def test_redirect_target_is_validated_before_second_request(self):
+        import httpx
+
+        requested: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            return httpx.Response(
+                302, headers={"location": "http://127.0.0.1/private"}
+            )
+
+        fetcher = ControlledSourceFetcher(transport=httpx.MockTransport(handler))
+        with pytest.raises(SSRFViolation, match="私网|本地"):
+            await fetcher.fetch("https://example.com/start")
+        assert requested == ["https://example.com/start"]
+
 
 class TestSourcePolicyEnforcement:
     async def test_web_disabled_blocks_fetcher(self):

@@ -219,6 +219,37 @@ class TestPipelineExecution:
         sources = cr_repo.list_sources(session.session_id, user_id="u1")
         assert not any(s.source_type == "web" for s in sources)
 
+    async def test_user_owned_upload_is_loaded_as_a_source(self, env):
+        cr_repo = env["cr_repo"]
+        _, source_run_id = _create_run(env)
+        artifact_id = env["artifact_manager"].create(
+            run_id=source_run_id,
+            user_id="u1",
+            artifact_type="COURSE_RESEARCH_REPORT",
+            content="线性代数课程讲义内容",
+            mime_type="text/markdown",
+        )
+        _, run_id = _create_run(env)
+        session = cr_repo.create_session(
+            run_id=run_id, user_id="u1", question="解释矩阵",
+            assistance_mode="EXPLAIN", academic_policy="ALLOWED",
+            source_policy={"course_material_priority": True, "allow_web": False,
+                           "allow_user_upload": True},
+        )
+        await env["pipeline"].execute(
+            run_id=run_id, session_id=session.session_id, user_id="u1",
+            question="解释矩阵", course_id=None,
+            requested_mode=AssistanceMode.EXPLAIN,
+            academic_candidates=[AcademicPolicy.ALLOWED],
+            source_policy=SourcePolicy(allow_web=False, allow_user_upload=True),
+            user_upload_refs=[artifact_id],
+        )
+        sources = cr_repo.list_sources(session.session_id, user_id="u1")
+        uploads = [s for s in sources if s.source_type == "user_upload"]
+        assert len(uploads) == 1
+        assert uploads[0].source_ref == artifact_id
+        assert "线性代数课程讲义" in (uploads[0].snippet or "")
+
 
 class TestPartialFailure:
     async def test_provider_failure_yields_partial(self, env):
