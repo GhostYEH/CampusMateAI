@@ -36,6 +36,8 @@ from ...schemas.agent_runtime import (
     AgentRunCancelIn,
     AgentRunControlIn,
     AgentRunOut,
+    AgentSkillsOut,
+    AgentSkillOut,
     NoticeManualIn,
 )
 from ..deps import current_user, student_only
@@ -192,6 +194,23 @@ def _run_to_out(run: dict, container: ServiceContainer) -> AgentRunOut:
         started_at=run.get("started_at"), finished_at=run.get("finished_at"),
         created_at=run["created_at"], updated_at=run["updated_at"],
         artifact_ids=[a["artifact_id"] for a in artifacts], retry_of=run.get("retry_of"),
+    )
+
+
+@router.get("/skills", response_model=AgentSkillsOut)
+async def get_skills(
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+) -> AgentSkillsOut:
+    """返回可发现的 Skill/MCP 元数据；执行仍必须经过 Runtime 治理。"""
+    return AgentSkillsOut(
+        contract_version=AGENT_CONTRACT_VERSION,
+        skills=[AgentSkillOut(
+            skill_code=skill.skill_code, version=skill.version,
+            description=skill.description, capabilities=list(skill.capabilities),
+            tools=list(skill.tools), transport=skill.transport,
+            permission_policy=skill.permission_policy,
+        ) for skill in container.agent_skill_registry.list_skills()],
     )
 
 

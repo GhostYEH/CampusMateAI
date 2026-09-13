@@ -274,6 +274,23 @@ class AgentRoleOut(_StrictModel):
     permission_policy: str = Field(..., max_length=64)
 
 
+class AgentSkillOut(_StrictModel):
+    """声明式 Skill 元数据；不暴露执行地址或凭据。"""
+
+    skill_code: str = Field(..., min_length=1, max_length=64)
+    version: str = Field(..., min_length=1, max_length=32)
+    description: str = Field(default="", max_length=256)
+    capabilities: list[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
+    transport: str = Field(..., pattern="^(internal|mcp_manifest)$")
+    permission_policy: str = Field(..., max_length=64)
+
+
+class AgentSkillsOut(_StrictModel):
+    contract_version: str = Field(default=AGENT_CONTRACT_VERSION)
+    skills: list[AgentSkillOut]
+
+
 class AgentToolOut(_StrictModel):
     """工具声明(§5.4)。"""
 
@@ -354,6 +371,8 @@ __all__ = [
     "AgentModelCallOut",
     "AgentProgressOut",
     "AgentRoleOut",
+    "AgentSkillOut",
+    "AgentSkillsOut",
     "AgentRunCancelIn",
     "AgentRunControlIn",
     "AgentRunOut",

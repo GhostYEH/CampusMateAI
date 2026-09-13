@@ -1,0 +1,40 @@
+{
+  "skills": [
+    {
+      "skill_code": "learning_goal_center",
+      "version": "1.0",
+      "description": "把学习目标转为可确认、可追踪、可重规划的任务计划",
+      "capabilities": ["goal.aggregate", "plan.generate", "plan.execute", "plan.replan", "summary.create"],
+      "tools": ["student.read", "course.read", "learner_state.read", "task.create", "plan.activate"],
+      "transport": "internal",
+      "permission_policy": "student_owned_only"
+    },
+    {
+      "skill_code": "final_review",
+      "version": "1.0",
+      "description": "期末复习计划与每日跟进",
+      "capabilities": ["plan.generate", "schedule.adapt", "evidence.collect"],
+      "tools": ["exam.read", "task.create", "plan.activate"],
+      "transport": "internal",
+      "permission_policy": "student_owned_only"
+    },
+    {
+      "skill_code": "course_research",
+      "version": "1.0",
+      "description": "基于课程资料的研究与作业辅助",
+      "capabilities": ["research.coordinate", "citation.verify", "report.synthesize"],
+      "tools": ["course.read", "knowledge.search", "research.report.create"],
+      "transport": "internal",
+      "permission_policy": "student_owned_only"
+    },
+    {
+      "skill_code": "notice_workflow",
+      "version": "1.0",
+      "description": "校园通知解释与事务办理跟踪",
+      "capabilities": ["notice.interpret", "workflow.plan", "action.track"],
+      "tools": ["notice.read", "task.propose", "reminder.schedule"],
+      "transport": "internal",
+      "permission_policy": "student_owned_only"
+    }
+  ]
+}

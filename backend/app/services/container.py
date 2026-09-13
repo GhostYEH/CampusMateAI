@@ -70,6 +70,7 @@ from ..services.agent_runtime.approval_gate import ApprovalGate
 from ..services.agent_runtime.context_manager import ContextManager
 from ..services.agent_runtime.executor import AgentExecutor
 from ..services.agent_runtime.memory_manager import MemoryManager
+from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
 from ..services.agent_runtime.tool_registry import ToolRegistry
 from ..services.llm.model_router import ModelRouter
@@ -152,6 +153,7 @@ class ServiceContainer:
     agent_context_manager: ContextManager
     agent_memory_manager: MemoryManager
     agent_registry: AgentRegistry
+    agent_skill_registry: SkillRegistry
     agent_tool_registry: ToolRegistry
     agent_risk_engine: RiskEngine
     agent_approval_gate: ApprovalGate
@@ -292,6 +294,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         budget_tokens=settings.agent_context_budget_tokens,
     )
     agent_registry_obj = AgentRegistry()
+    agent_skill_registry = SkillRegistry()
     agent_tool_registry = ToolRegistry()
     agent_risk_engine = RiskEngine()
     agent_approval_gate = ApprovalGate(agent_runtime_repository)
@@ -409,6 +412,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_context_manager=agent_context_manager,
         agent_memory_manager=agent_memory_manager,
         agent_registry=agent_registry_obj,
+        agent_skill_registry=agent_skill_registry,
         agent_tool_registry=agent_tool_registry,
         agent_risk_engine=agent_risk_engine,
         agent_approval_gate=agent_approval_gate,
