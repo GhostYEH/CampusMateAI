@@ -166,6 +166,8 @@ class LearningPlannerService:
                 continue
             allocated += item["estimated_minutes"]
             selected.append(item)
+        if not selected:
+            raise InvalidTransition("INSUFFICIENT_EVIDENCE")
         if any(w in {"stale", "partial", "data_quality_partial", "input_truncated", "course_content_truncated", "course_content_stale"} for w in warnings):
             warnings.append("data_quality_degraded")
         selected_task_bindings = {item["task_id"]: self._task_summary_digest(next(t for t in tasks if t.id == item["task_id"]))
@@ -245,7 +247,7 @@ class LearningPlannerService:
             freshness = self._freshness_penalty(task.last_synced_at, now)
             item = self._item_base(estimated=30, urgency=urgency, need=0.2, confidence=0.35,
                                    readiness=1.0, fit=min(1.0, available / 30), freshness=freshness)
-            item.update(item_type="TASK_FOCUS", course_id=task.course_id, task_id=task.id,
+            item.update(item_type="CREATE_PERSONAL_TASK", course_id=task.course_id, task_id=task.id,
                         explanation_codes=["pending_personal_task"] + (["deadline_urgent"] if urgency >= .75 else []),
                         evidence=[{"evidence_type": "PERSONAL_TASK", "reference_id": task.id,
                                    "metadata": {"relation": "SUPPORTS"}}])

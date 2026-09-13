@@ -5,6 +5,10 @@ from test_phase4_learning_plans import _request, _setup
 
 def test_feedback_is_fixed_enum_and_same_feedback_is_idempotent() -> None:
     client, container, headers, other_headers = _setup()
+    container.personal_task_repository.create_task(
+        user_id=container.user_repository.get_user_by_username("phase4_student").id,
+        title="测试任务", source="test", external_id="t1",
+    )
     generated = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers).json()
     path = f"/api/v1/learning-plans/{generated['plan_id']}/feedback"
     first = client.post(path, json={"feedback": "HELPFUL"}, headers=headers)
@@ -23,7 +27,11 @@ def test_feedback_is_fixed_enum_and_same_feedback_is_idempotent() -> None:
 
 
 def test_feedback_does_not_echo_free_text_or_internal_references() -> None:
-    client, _, headers, _ = _setup()
+    client, container, headers, _ = _setup()
+    container.personal_task_repository.create_task(
+        user_id=container.user_repository.get_user_by_username("phase4_student").id,
+        title="测试任务", source="test", external_id="t1",
+    )
     generated = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers).json()
     response = client.post(
         f"/api/v1/learning-plans/{generated['plan_id']}/feedback",

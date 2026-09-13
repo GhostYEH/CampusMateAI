@@ -162,6 +162,23 @@ class ModelShadowRunner:
 
     async def run(self, request: ModelCapabilityRequest) -> ModelCapabilityResult:
         started = time.perf_counter()
+        capability_name = getattr(request, "capability_name", None)
+        if capability_name is None:
+            return ModelCapabilityResult(
+                capability_name="unknown",
+                capability_version=getattr(request, "capability_version", "unknown"),
+                model_key="deterministic-baseline",
+                model_version="v1",
+                output_payload=None,
+                schema_valid=False,
+                policy_valid=False,
+                used_fallback=True,
+                failure_code="MODEL_CAPABILITY_NOT_ALLOWED",
+                latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
+                prompt_version="unregistered-capability",
+                inference_config_digest="",
+                inference_source="DETERMINISTIC_FALLBACK",
+            )
         try:
             payload = self.registry.validate_request(request)
         except CapabilityValidationError:

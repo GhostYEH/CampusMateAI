@@ -30,8 +30,12 @@ def test_updated_at_only_change_does_not_mark_plan_stale() -> None:
 
 def test_expired_plan_returns_stable_expired_error() -> None:
     client, container, headers, _ = _setup()
+    user_id = container.user_repository.get_user_by_username("phase4_student").id
+    container.personal_task_repository.create_task(
+        user_id=user_id, title="测试任务", source="test", external_id="t1",
+    )
     old = datetime.now(timezone.utc) - timedelta(hours=2)
-    plan = container.learning_planner_service.generate(user_id=container.user_repository.get_user_by_username("phase4_student").id, available_minutes=30, as_of=old)
+    plan = container.learning_planner_service.generate(user_id=user_id, available_minutes=30, as_of=old)
     assert client.post(f"/api/v1/learning-plans/{plan.plan_id}/decision", json={"decision": "ACCEPT"}, headers=headers).status_code == 200
     response = client.post(f"/api/v1/learning-plans/{plan.plan_id}/execute", headers=headers)
     assert response.status_code == 409
@@ -39,7 +43,11 @@ def test_expired_plan_returns_stable_expired_error() -> None:
 
 
 def test_replan_creates_a_linked_unaccepted_plan() -> None:
-    client, _, headers, _ = _setup()
+    client, container, headers, _ = _setup()
+    container.personal_task_repository.create_task(
+        user_id=container.user_repository.get_user_by_username("phase4_student").id,
+        title="测试任务", source="test", external_id="t1",
+    )
     generated = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers).json()
     response = client.post(f"/api/v1/learning-plans/{generated['plan_id']}/replan", headers=headers)
     assert response.status_code == 200, response.text

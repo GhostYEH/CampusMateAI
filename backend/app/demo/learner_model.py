@@ -88,7 +88,6 @@ def _clear_demo_user(conn: sqlite3.Connection, scenario: str) -> int:
     for table in (
         "learner_state_projection_runs",
         "learner_events",
-        "misconception_hypotheses",
         "learner_state_corrections",
         "learning_plan_decisions",
         "learning_plan_execution_actions",
@@ -98,16 +97,10 @@ def _clear_demo_user(conn: sqlite3.Connection, scenario: str) -> int:
         "learning_plan_runs",
         "model_shadow_runs",
         "learner_product_events",
-        "practice_attempts",
         "learner_data_source_controls",
         "learner_model_delete_requests",
     ):
         conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
-    conn.execute(
-        "DELETE FROM misconception_hypothesis_history WHERE hypothesis_id IN "
-        "(SELECT id FROM misconception_hypotheses WHERE user_id=?)",
-        (user_id,),
-    )
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     return 1
 
@@ -187,7 +180,7 @@ def _seed_shadow_model_blocked(conn: sqlite3.Connection, user_id: str, as_of: da
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             _uuid(), "campusmate-lm", "demo-v1",
-            "c_kc_classification_v1", "1.0",
+            "learning_summary_v1", "1.0",
             "campusmate-lm-shadow-v1", "campusmate-lm-shadow-evaluator-v1",
             "campusmate-lm-gates-v1", _uuid(),
             "BLOCKED",

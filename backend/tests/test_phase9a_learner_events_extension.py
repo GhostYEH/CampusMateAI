@@ -185,31 +185,6 @@ def test_ai_learning_feedback_recorded_event_success():
     assert events[0].event_type == "ai_learning_feedback_recorded"
 
 
-def test_code_attempt_analyzed_event_success():
-    db = _make_db()
-    _add_user(db, "user1")
-    service = _make_service(db)
-    now = _now()
-    result = service.record_code_attempt_analyzed(
-        user_id="user1",
-        attempt_id="ca_1",
-        course_id="course_c",
-        exercise_id="ex_1",
-        correctness=False,
-        test_pass_count=3,
-        test_total_count=5,
-        compiler_error_categories=["pointer_indirection", "array_boundary"],
-        runtime_error_categories=[],
-        occurred_at=now,
-    )
-    assert result is not None
-    assert result.created is True
-    events, _ = service.list_events(user_id="user1", page=1, page_size=10)
-    assert events[0].source == "code_analysis"
-    assert events[0].event_type == "code_attempt_analyzed"
-    assert events[0].payload["test_pass_band"] == "partial"
-    assert events[0].payload["correctness"] is False
-
 
 def test_chaoxing_assignment_graded_event_success():
     db = _make_db()
@@ -340,16 +315,10 @@ def test_payload_does_not_contain_sensitive_fields():
     _add_user(db, "user1")
     service = _make_service(db)
     now = _now()
-    service.record_code_attempt_analyzed(
+    service.record_self_report_submitted(
         user_id="user1",
-        attempt_id="ca_1",
-        course_id="course_c",
-        exercise_id="ex_1",
-        correctness=True,
-        test_pass_count=5,
-        test_total_count=5,
-        compiler_error_categories=[],
-        runtime_error_categories=[],
+        report_id="sr_1",
+        report_kind="reflection",
         occurred_at=now,
     )
     events, _ = service.list_events(user_id="user1", page=1, page_size=10)
@@ -403,12 +372,6 @@ def test_exam_time_bucket_correctness():
     assert LearnerEventService._exam_time_bucket("not-a-date") == "unknown"
 
 
-def test_test_pass_band_correctness():
-    assert LearnerEventService._test_pass_band(5, 5) == "all_passed"
-    assert LearnerEventService._test_pass_band(3, 5) == "partial"
-    assert LearnerEventService._test_pass_band(0, 5) == "none_passed"
-    assert LearnerEventService._test_pass_band(0, 0) == "no_tests"
-
 
 def test_paused_edu_source_skips_event():
     class MockPolicy:
@@ -430,28 +393,6 @@ def test_paused_edu_source_skips_event():
     _, total = service.list_events(user_id="user1", page=1, page_size=10)
     assert total == 0
 
-
-def test_paused_code_analysis_source_skips_event():
-    class MockPolicy:
-        def should_skip_learner_event(self, *, user_id, source):
-            return source == "code_analysis"
-    db = _make_db()
-    _add_user(db, "user1")
-    service = _make_service(db, source_policy=MockPolicy())
-    now = _now()
-    result = service.record_code_attempt_analyzed(
-        user_id="user1",
-        attempt_id="ca_1",
-        course_id="c",
-        exercise_id="e",
-        correctness=True,
-        test_pass_count=1,
-        test_total_count=1,
-        compiler_error_categories=[],
-        runtime_error_categories=[],
-        occurred_at=now,
-    )
-    assert result is None
 
 
 def test_paused_self_report_source_skips_event():
@@ -512,39 +453,6 @@ def test_edu_schedule_dedupe_conflict_on_different_semantics():
     assert r2 is not None and r2.created is False
     assert r1.event_id == r2.event_id
 
-
-def test_code_attempt_analyzed_idempotent():
-    db = _make_db()
-    _add_user(db, "user1")
-    service = _make_service(db)
-    now = _now()
-    r1 = service.record_code_attempt_analyzed(
-        user_id="user1",
-        attempt_id="ca_1",
-        course_id="c",
-        exercise_id="e",
-        correctness=False,
-        test_pass_count=2,
-        test_total_count=5,
-        compiler_error_categories=["pointer_indirection"],
-        runtime_error_categories=[],
-        occurred_at=now,
-    )
-    r2 = service.record_code_attempt_analyzed(
-        user_id="user1",
-        attempt_id="ca_1",
-        course_id="c",
-        exercise_id="e",
-        correctness=False,
-        test_pass_count=2,
-        test_total_count=5,
-        compiler_error_categories=["pointer_indirection"],
-        runtime_error_categories=[],
-        occurred_at=now,
-    )
-    assert r1 is not None and r2 is not None
-    assert r1.event_id == r2.event_id
-    assert r2.created is False
 
 
 def test_self_report_idempotent():

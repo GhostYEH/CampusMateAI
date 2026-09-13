@@ -89,7 +89,7 @@ def list_changes(
     from_run_id: str | None = Query(None, min_length=1, max_length=128),
     to_run_id: str | None = Query(None, min_length=1, max_length=128),
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|knowledge_mastery_forecast|performance_prediction|learning_velocity)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     include_unchanged: bool = Query(False),
@@ -121,7 +121,7 @@ def list_changes(
 @router.get("/snapshots", response_model=LearnerStateSnapshotPage)
 def list_snapshots(
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|knowledge_mastery_estimate|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|knowledge_mastery_forecast|performance_prediction|learning_velocity)$"),
+    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state)$"),
     course_id: str | None = Query(None, min_length=1, max_length=128),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),

@@ -94,6 +94,9 @@ def test_plan_generation_rejected_when_proactive_paused():
 
 def test_plan_generation_works_when_proactive_enabled():
     client, container, auth, uid = _setup()
+    container.personal_task_repository.create_task(
+        user_id=uid, title="测试任务", source="test", external_id="t1",
+    )
     plan = container.learning_planner_service.generate(
         user_id=uid, available_minutes=30, idempotency_key="plan1"
     )
@@ -102,16 +105,20 @@ def test_plan_generation_works_when_proactive_enabled():
 
 def _make_shadow_request(uid, req_id="req_test_001"):
     return ModelCapabilityRequest(
-        capability_name="c_kc_classification_v1",
+        capability_name="learning_summary_v1",
         capability_version="v1",
         subject_user_id=uid,
         input_payload={
-            "exercise_id": "ex_001",
-            "assignment_mapping_id": "am_001",
-            "controlled_topic_tokens": [],
-            "controlled_error_codes": [],
-            "chapter_mapping_codes": [],
-            "candidate_kc_codes": [],
+            "plan_id": "plan-1",
+            "warning_codes": [],
+            "explanation_codes": ["deadline_urgent"],
+            "item_type": "TASK_FOCUS",
+            "estimated_minutes": 30,
+            "data_quality": "verified",
+            "evidence_count": 1,
+            "deadline_bucket": "DUE_24H",
+            "knowledge_band": None,
+            "confidence_bucket": "HIGH",
         },
         request_id=req_id,
     )

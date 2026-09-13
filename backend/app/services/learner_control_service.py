@@ -183,8 +183,7 @@ class LearnerControlService:
         enabled = bool(settings and settings.campusmate_lm_enabled)
 
         capability_defs = [
-            ("c_kc_classification_v1", "1.0", "deterministic_taxonomy_match"),
-            ("c_error_classification_v1", "1.0", "error_code_whitelist_match"),
+
             ("learning_summary_v1", "1.0", "evidence_grounded_summary"),
             ("read_only_tool_routing_v1", "1.0", "read_only_allowlist"),
         ]
