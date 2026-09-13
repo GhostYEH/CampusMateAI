@@ -73,7 +73,6 @@ DEFAULT_SOURCES = (
     "PERSONAL_TASK",
     "CHAOXING",
     "EDU",
-    "PRACTICE",
     "MODEL_SHADOW",
     "PROACTIVE_SUGGESTIONS",
 )
@@ -705,7 +704,6 @@ class LearnerControlRepository:
         return {
             "event_count": counts["learner_events"],
             "snapshot_count": counts["snapshots"],
-            "knowledge_snapshot_count": counts.get("knowledge_snapshots", 0),
             "correction_count": counts["corrections"],
             "learning_plan_count": counts["learning_plans"],
             "plan_feedback_count": counts["plan_feedback"],

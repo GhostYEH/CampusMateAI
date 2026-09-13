@@ -152,12 +152,6 @@ class StudentNumberExists(AppException):
     message = "学号已被占用。"
 
 
-class PracticeAttemptConflict(AppException):
-    code = "PRACTICE_ATTEMPT_CONFLICT"
-    http_status = 409
-    message = "练习提交幂等键与已有记录冲突。"
-
-
 class TeacherNumberExists(AppException):
     code = "TEACHER_NUMBER_EXISTS"
     http_status = 409

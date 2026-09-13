@@ -4,7 +4,7 @@
 
 语义：
 - 暂停数据源只停止该来源进入"学生世界模型派生链路"。
-- 不得阻止学习会话完成、任务完成、Chaoxing 同步、教务同步、练习作答等核心业务正常保存。
+- 不得阻止学习会话完成、任务完成、Chaoxing 同步和教务同步等核心业务正常保存。
 - 事件/状态投影失败或被暂停，不得回滚核心业务。
 - 被暂停后，不再为该来源创建新的 learner event、shadow run 或主动建议输入。
 - 已有历史证据保留，状态显示 PARTIAL/STALE 和固定 warning。
@@ -30,13 +30,12 @@ class LearnerModelSourcePolicy:
     def should_skip_learner_event(self, *, user_id: str, source: str) -> bool:
         """检查是否应跳过为该来源创建新的 learner event。
 
-        核心业务事件（study session finish, task complete, practice attempt）
+        核心业务事件（study session finish, task complete）
         不受数据源控制影响，始终保存。只有派生 learner event 才检查。
         """
         source_map = {
             "chaoxing": "CHAOXING",
             "edu": "EDU",
-            "practice": "PRACTICE",
             "core_study": "CORE_STUDY",
             "personal_task": "PERSONAL_TASK",
         }
