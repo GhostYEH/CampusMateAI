@@ -104,6 +104,226 @@ CREATE INDEX IF NOT EXISTS idx_notice_workflow_actions_idem ON notice_workflow_a
 """
 
 
+_LEGACY_TABLES = (
+    "notification_sources",
+    "notification_source_controls",
+    "notification_workflows",
+    "notification_workflow_actions",
+)
+_LEGACY_SUFFIX = "__legacy"
+_MIGRATE_SUFFIX = "__migrate"
+
+# 新结构表可能先于迁移被创建(此时 notification_sources 仍是旧结构)。
+# 这类表的外键指向 notification_sources,一旦旧表被改名,SQLite 会把外键
+# 改写成指向 notification_sources__legacy,而该列并不存在,后续写入会抛
+# "foreign key mismatch"。迁移前需要把这些表备份后重建。
+# 值 = (列清单, 数据回填时的保留条件)。
+_REBUILD_ON_RENAME: dict[str, tuple[str, str]] = {
+    "notification_source_preferences": (
+        "user_id, source_id, automation_enabled, display_name, updated_at",
+        "source_id IN (SELECT source_id FROM notification_sources)",
+    ),
+}
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def _foreign_key_parents(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    """返回该表外键引用的父表名集合。"""
+    return {
+        row[2]
+        for row in conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+    }
+
+
+def _has_legacy_schema(conn: sqlite3.Connection) -> bool:
+    if not _table_exists(conn, "notification_sources"):
+        return False
+    columns = _table_columns(conn, "notification_sources")
+    return "code" in columns and "source_id" not in columns
+
+
+def _rebuild_targets(conn: sqlite3.Connection) -> list[str]:
+    """需要"备份后重建"的表:存在且外键指向即将被改名的旧表。"""
+    legacy = set(_LEGACY_TABLES)
+    targets: list[str] = []
+    for table in _REBUILD_ON_RENAME:
+        if not _table_exists(conn, table):
+            continue
+        if _foreign_key_parents(conn, table) & legacy:
+            targets.append(table)
+    return targets
+
+
+def _legacy_upgrade_script(conn: sqlite3.Connection) -> str:
+    """生成旧 schema 升级脚本。
+
+    整个脚本包裹在单个事务里,失败可整体回滚;重复执行不会产生重复数据。
+    """
+    # 上一次迁移可能已提交备份表(异常中断),这里一并纳入回填范围。
+    stashed = {
+        table
+        for table in _REBUILD_ON_RENAME
+        if _table_exists(conn, f"{table}{_MIGRATE_SUFFIX}")
+    }
+    statements: list[str] = ["BEGIN;"]
+
+    for table in _rebuild_targets(conn):
+        stash = f"{table}{_MIGRATE_SUFFIX}"
+        # 先清掉残留备份,保证 CREATE TABLE AS SELECT 不会因为同名报错。
+        statements.append(f"DROP TABLE IF EXISTS {stash};")
+        statements.append(f"CREATE TABLE {stash} AS SELECT * FROM {table};")
+        statements.append(f"DROP TABLE {table};")
+        stashed.add(table)
+
+    for table in _LEGACY_TABLES:
+        if not _table_exists(conn, table):
+            continue
+        # 旧备份属于上一次未完成的迁移,优先保留当前数据。
+        statements.append(f"DROP TABLE IF EXISTS {table}{_LEGACY_SUFFIX};")
+        statements.append(
+            f"ALTER TABLE {table} RENAME TO {table}{_LEGACY_SUFFIX};"
+        )
+
+    statements.append(_SCHEMA_SQL)
+
+    for required_tables, sql in _LEGACY_DATA_MIGRATIONS:
+        if all(_table_exists(conn, table) for table in required_tables):
+            statements.append(sql)
+
+    for table in sorted(stashed):
+        columns, keep_condition = _REBUILD_ON_RENAME[table]
+        stash = f"{table}{_MIGRATE_SUFFIX}"
+        statements.append(
+            f"INSERT OR IGNORE INTO {table} ({columns}) "
+            f"SELECT {columns} FROM {stash} WHERE {keep_condition};"
+        )
+        statements.append(f"DROP TABLE {stash};")
+
+    statements.append("COMMIT;")
+    return "\n".join(statements)
+
+
+# 数据迁移语句按来源的旧表存在与否逐条启用(部分旧库可能缺表)。
+# 全部使用 INSERT OR IGNORE,保证迁移可重复执行。
+_LEGACY_DATA_MIGRATIONS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        ("notification_sources",),
+        """
+INSERT OR IGNORE INTO notification_sources (
+    source_id, code, display_name, kind, automation_enabled,
+    permission_scope, created_at, updated_at
+)
+SELECT
+    'legacy-notification-source-' || code,
+    code,
+    label,
+    'legacy',
+    automation_enabled,
+    NULL,
+    created_at,
+    updated_at
+FROM notification_sources__legacy;
+""",
+    ),
+    (
+        ("notification_source_controls",),
+        """
+INSERT OR IGNORE INTO notification_source_preferences (
+    user_id, source_id, automation_enabled, display_name, updated_at
+)
+SELECT
+    p.user_id,
+    'legacy-notification-source-' || p.source_code,
+    p.automation_enabled,
+    NULL,
+    p.updated_at
+FROM notification_source_controls__legacy AS p;
+""",
+    ),
+    (
+        ("notification_workflows",),
+        """
+INSERT OR IGNORE INTO notice_workflows (
+    workflow_id, user_id, notice_id, source_id, status, title, deadline,
+    location, audience, materials_json, steps_json, source_evidence_json,
+    confidence, uncertainty_json, content_fingerprint, idempotency_key,
+    error_code, error_message, created_at, updated_at, completed_at, expired_at
+)
+SELECT
+    w.id,
+    w.user_id,
+    w.notice_id,
+    'legacy-notification-source-' || w.source_code,
+    w.status,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    w.checklist_json,
+    '[]',
+    w.extracted_facts_json,
+    0.0,
+    w.uncertainty_json,
+    w.content_digest,
+    NULL,
+    NULL,
+    NULL,
+    w.created_at,
+    w.updated_at,
+    CASE WHEN w.status = 'COMPLETED' THEN w.updated_at ELSE NULL END,
+    CASE WHEN w.status = 'EXPIRED' THEN w.updated_at ELSE NULL END
+FROM notification_workflows__legacy AS w;
+""",
+    ),
+    (
+        ("notification_workflow_actions", "notification_workflows"),
+        """
+INSERT OR IGNORE INTO notice_workflow_actions (
+    action_id, workflow_id, user_id, action_type, title, risk_level,
+    status, params_json, result_json, idempotency_key, external_ref,
+    expires_at, error_code, error_message, created_at, updated_at,
+    executed_at, completed_at
+)
+SELECT
+    a.id,
+    a.workflow_id,
+    w.user_id,
+    a.action_type,
+    a.action_type,
+    a.risk_level,
+    a.status,
+    NULL,
+    NULL,
+    a.idempotency_key,
+    a.task_id,
+    NULL,
+    a.error_code,
+    NULL,
+    a.created_at,
+    a.updated_at,
+    NULL,
+    NULL
+FROM notification_workflow_actions__legacy AS a
+JOIN notification_workflows__legacy AS w ON w.id = a.workflow_id;
+""",
+    ),
+)
+
+
 class NoticeWorkflowRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -111,7 +331,14 @@ class NoticeWorkflowRepository:
 
     def _ensure_schema(self) -> None:
         with self._db.transaction() as conn:
-            conn.executescript(_SCHEMA_SQL)
+            if _has_legacy_schema(conn):
+                try:
+                    conn.executescript(_legacy_upgrade_script(conn))
+                except Exception:
+                    conn.rollback()
+                    raise
+            else:
+                conn.executescript(_SCHEMA_SQL)
 
     # ===== notification_sources =====
 

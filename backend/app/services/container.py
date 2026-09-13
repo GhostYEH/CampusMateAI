@@ -75,6 +75,12 @@ from ..services.agent_runtime.risk_engine import RiskEngine
 from ..services.agent_runtime.tool_registry import ToolRegistry
 from ..services.llm.model_router import ModelRouter
 from ..services.llm.provider_registry import ProviderRegistry
+from ..services.final_review_service import FinalReviewService
+from ..services.course_research import CourseResearchPipeline
+from ..services.course_research.citation_verifier import CitationVerifier
+from ..services.course_research.source_fetcher import ControlledSourceFetcher
+from ..services.notice_workflow.interpreter import NoticeInterpreter
+from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -144,7 +150,6 @@ class ServiceContainer:
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
     learner_model_source_policy: LearnerModelSourcePolicy
-    # CampusAgentRuntime
     agent_runtime_repository: AgentRuntimeRepository
     agent_artifact_repository: AgentArtifactRepository
     agent_event_store: AgentEventStore
@@ -161,8 +166,11 @@ class ServiceContainer:
     agent_provider_registry: ProviderRegistry
     agent_model_router: ModelRouter
     final_review_repository: FinalReviewRepository
+    final_review_service: FinalReviewService
     course_research_repository: CourseResearchRepository
+    course_research_pipeline: CourseResearchPipeline
     notice_workflow_repository: NoticeWorkflowRepository
+    notice_workflow_service: NoticeWorkflowService
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -214,7 +222,6 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         else None
     )
     notice = NoticeExtractionService(llm, settings)
-    # CPM 使用检索到的正式校园资料，并结合 counselor 注入的世界模型上下文交给 LLM。
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
     course_repo = CourseRepository(db)
@@ -283,12 +290,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     notice_repository = NoticeRepository(db)
     notice_workflow_repository = NoticeWorkflowRepository(db)
     learning_planner_service._notice_repository = notice_repository
-    artifact_root = Path(settings.agent_artifact_path)
-    if not artifact_root.is_absolute():
-        artifact_root = Path(__file__).resolve().parents[2] / artifact_root
 
     # CampusAgentRuntime services
-    agent_artifact_repository = AgentArtifactRepository(db, artifact_root)
     agent_event_store = AgentEventStore(agent_runtime_repository)
     agent_run_manager = RunManager(agent_runtime_repository, agent_event_store)
     agent_artifact_manager = ArtifactManager(agent_artifact_repository)
@@ -331,13 +334,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_data_repository=edu_data_repo,
         learner_event_repository=learner_event_repository,
     )
-    learning_planner_service._forecast_service = forecast_service
 
     simulation_service = SimulationService(
         forecast_service=forecast_service,
         learner_state_service=learner_state_service,
         learner_state_repository=learner_state_repository,
-        learning_plan_repository=learning_plan_repository,
     )
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
@@ -425,8 +426,27 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
         final_review_repository=final_review_repository,
+        final_review_service=FinalReviewService(final_review_repository, personal_task_repo),
         course_research_repository=course_research_repository,
+        course_research_pipeline=CourseResearchPipeline(
+            repository=course_research_repository,
+            executor=agent_executor,
+            model_router=agent_model_router,
+            artifact_manager=agent_artifact_manager,
+            run_manager=agent_run_manager,
+            event_store=agent_event_store,
+            source_fetcher=ControlledSourceFetcher(),
+            citation_verifier=CitationVerifier(),
+            course_content_lookup=course_content_repository,
+            retrieval_service=retrieval,
+        ),
         notice_workflow_repository=notice_workflow_repository,
+        notice_workflow_service=NoticeWorkflowService(
+            repository=notice_workflow_repository,
+            interpreter=NoticeInterpreter(model_router=agent_model_router),
+            notice_repository=notice_repository,
+            personal_task_repository=personal_task_repo,
+        ),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
