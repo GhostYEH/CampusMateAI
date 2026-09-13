@@ -18,6 +18,7 @@ class AgentJobRow:
     created_at: str
     updated_at: str
     idempotency_key: Optional[str] = None
+    retry_of: Optional[str] = None
     input_ref_json: str = "{}"
 
 

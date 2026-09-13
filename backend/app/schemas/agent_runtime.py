@@ -129,7 +129,7 @@ class AgentArtifactOut(_StrictModel):
 class AgentJobCreateIn(_StrictModel):
     """创建 Job 请求。"""
 
-    job_kind: str = Field(..., pattern="^(final_review|course_research|notice_workflow)$")
+    job_kind: str = Field(..., pattern="^(learning_goal|final_review|course_research|notice_workflow)$")
     input_ref: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128)
 
@@ -161,10 +161,18 @@ class AgentRunOut(_StrictModel):
     updated_at: str = Field(..., min_length=1, max_length=64)
     error: Optional[AgentErrorEnvelope] = None
     artifact_ids: list[str] = Field(default_factory=list)
+    retry_of: Optional[str] = Field(None, max_length=64)
 
 
 class AgentRunCancelIn(_StrictModel):
     """取消 Run 请求。"""
+
+    reason: Optional[str] = Field(None, max_length=256)
+    idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128)
+
+
+class AgentRunControlIn(_StrictModel):
+    """暂停、恢复和重试的统一控制请求。"""
 
     reason: Optional[str] = Field(None, max_length=256)
     idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128)
@@ -331,6 +339,7 @@ __all__ = [
     "AgentProgressOut",
     "AgentRoleOut",
     "AgentRunCancelIn",
+    "AgentRunControlIn",
     "AgentRunOut",
     "AgentToolCallOut",
     "AgentToolOut",

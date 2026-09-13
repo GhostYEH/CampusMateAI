@@ -1455,6 +1455,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     error_message TEXT,
     request_id TEXT,
     idempotency_key TEXT,
+    retry_of TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(job_id) REFERENCES agent_jobs(job_id) ON DELETE CASCADE,
@@ -1463,6 +1464,20 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE INDEX IF NOT EXISTS idx_agent_runs_job ON agent_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_user_status ON agent_runs(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status_phase ON agent_runs(status, phase);
+
+CREATE TABLE IF NOT EXISTS agent_run_controls (
+    command_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    resulting_status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(run_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_run_controls_run ON agent_run_controls(run_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS agent_run_steps (
     step_id TEXT PRIMARY KEY,
@@ -1760,6 +1775,7 @@ class Database:
                 "total_tokens": "INTEGER",
                 "cached_tokens": "INTEGER",
             },
+            "agent_runs": {"retry_of": "TEXT"},
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():

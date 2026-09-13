@@ -32,6 +32,7 @@ from ...schemas.agent_runtime import (
     AgentJobOut,
     AgentProgressOut,
     AgentRunCancelIn,
+    AgentRunControlIn,
     AgentRunOut,
     NoticeManualIn,
 )
@@ -64,7 +65,7 @@ def _capability_out(name: str, policy: str, risk: str, approval: bool) -> AgentC
     )
 
 
-def _job_to_out(job: dict) -> AgentJobOut:
+def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOut:
     return AgentJobOut(
         job_id=job["job_id"],
         user_id=job["user_id"],
@@ -72,6 +73,7 @@ def _job_to_out(job: dict) -> AgentJobOut:
         status=job["status"],
         created_at=job["created_at"],
         updated_at=job["updated_at"],
+        latest_run_id=latest_run_id,
     )
 
 
@@ -123,6 +125,34 @@ async def create_job(
     return _job_to_out(job)
 
 
+@jobs_router.get("")
+async def list_jobs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(get_container),
+) -> list[AgentJobOut]:
+    repo = _repo(container)
+    result: list[AgentJobOut] = []
+    for job in repo.list_jobs(user.id, page=page, page_size=page_size):
+        latest = repo.get_run_by_job(job["job_id"])
+        result.append(_job_to_out(job, latest_run_id=latest["run_id"] if latest else None))
+    return result
+
+
+@jobs_router.get("/{job_id}/runs")
+async def list_job_runs(
+    job_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+) -> list[AgentRunOut]:
+    repo = _repo(container)
+    job = repo.get_job(job_id)
+    if not job or (job["user_id"] != user.id and user.role != "admin"):
+        raise AgentRunNotFound("Job 不存在")
+    return [_run_to_out(run, container) for run in repo.list_runs_by_job(job_id)]
+
+
 @jobs_router.get("/{job_id}")
 async def get_job(
     job_id: str,
@@ -135,10 +165,32 @@ async def get_job(
         raise AgentRunNotFound("Job 不存在")
     if job["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Job 不存在")
-    return _job_to_out(job)
+    latest = repo.get_run_by_job(job_id)
+    return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
 
 
 # ===== runs =====
+
+
+def _run_to_out(run: dict, container: ServiceContainer) -> AgentRunOut:
+    artifacts = _artifact_repo(container).list_artifacts_by_run(run["run_id"], run["user_id"])
+    return AgentRunOut(
+        run_id=run["run_id"], job_id=run["job_id"], user_id=run["user_id"],
+        status=run["status"], phase=run["phase"], risk_level=run.get("risk_level"),
+        started_at=run.get("started_at"), finished_at=run.get("finished_at"),
+        created_at=run["created_at"], updated_at=run["updated_at"],
+        artifact_ids=[a["artifact_id"] for a in artifacts], retry_of=run.get("retry_of"),
+    )
+
+
+@runs_router.get("")
+async def list_runs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(get_container),
+) -> list[AgentRunOut]:
+    return [_run_to_out(run, container) for run in _repo(container).list_runs_for_user(user.id, page=page, page_size=page_size)]
 
 
 @runs_router.get("/{run_id}")
@@ -153,20 +205,7 @@ async def get_run(
         raise AgentRunNotFound("Run 不存在")
     if run["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Run 不存在")
-    artifacts = _artifact_repo(container).list_artifacts_by_run(run_id, run["user_id"])
-    return AgentRunOut(
-        run_id=run["run_id"],
-        job_id=run["job_id"],
-        user_id=run["user_id"],
-        status=run["status"],
-        phase=run["phase"],
-        risk_level=run["risk_level"],
-        started_at=run["started_at"],
-        finished_at=run["finished_at"],
-        created_at=run["created_at"],
-        updated_at=run["updated_at"],
-        artifact_ids=[a["artifact_id"] for a in artifacts],
-    )
+    return _run_to_out(run, container)
 
 
 @runs_router.post("/{run_id}/cancel")
@@ -187,6 +226,75 @@ async def cancel_run(
     manager = RunManager(repo)
     result = manager.cancel(run_id, reason=body.reason)
     return await get_run(run_id, user, container)
+
+
+async def _control_run(
+    run_id: str,
+    *,
+    action: str,
+    body: AgentRunControlIn,
+    idempotency_key: Optional[str],
+    user: UserRow,
+    container: ServiceContainer,
+) -> AgentRunOut:
+    repo = _repo(container)
+    run = repo.get_run(run_id)
+    if not run:
+        raise AgentRunNotFound("Run 不存在")
+    if run["user_id"] != user.id:
+        raise AgentRuntimeError("无权控制此运行", code="AGENT_PERMISSION_DENIED", http_status=403)
+    key = body.idempotency_key or idempotency_key or f"{action}:{run_id}"
+    existing = repo.find_control(run_id, key)
+    if existing:
+        return await get_run(run_id, user, container)
+    from ...services.agent_runtime.run_manager import RunManager
+    manager = RunManager(repo, container.agent_event_store)
+    if action == "pause":
+        result = manager.pause(run_id, reason=body.reason)
+    elif action == "resume":
+        result = manager.resume(run_id)
+    else:
+        result = manager.retry(run_id, idempotency_key=key)
+    repo.record_control(
+        run_id=run_id, user_id=user.id, action=action,
+        idempotency_key=key, resulting_status=result["status"],
+    )
+    if action == "retry":
+        return _run_to_out(result, container)
+    return await get_run(run_id, user, container)
+
+
+@runs_router.post("/{run_id}/pause")
+async def pause_run(
+    run_id: str,
+    body: AgentRunControlIn,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+) -> AgentRunOut:
+    return await _control_run(run_id, action="pause", body=body, idempotency_key=idempotency_key, user=user, container=container)
+
+
+@runs_router.post("/{run_id}/resume")
+async def resume_run(
+    run_id: str,
+    body: AgentRunControlIn,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+) -> AgentRunOut:
+    return await _control_run(run_id, action="resume", body=body, idempotency_key=idempotency_key, user=user, container=container)
+
+
+@runs_router.post("/{run_id}/retry")
+async def retry_run(
+    run_id: str,
+    body: AgentRunControlIn,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+) -> AgentRunOut:
+    return await _control_run(run_id, action="retry", body=body, idempotency_key=idempotency_key, user=user, container=container)
 
 
 # ===== events =====

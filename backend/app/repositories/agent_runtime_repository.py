@@ -94,6 +94,20 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    def list_jobs(self, user_id: str, *, page: int = 1, page_size: int = 50) -> list[dict]:
+        offset = max(page - 1, 0) * page_size
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT job_id, user_id, job_kind, status, created_at, updated_at, "
+                "idempotency_key, input_ref_json FROM agent_jobs WHERE user_id = ? "
+                "ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                (user_id, page_size, offset),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self._release(conn)
+
     def update_job_input_ref(self, job_id: str, input_ref: dict) -> None:
         conn = self._conn()
         try:
@@ -114,6 +128,7 @@ class AgentRuntimeRepository:
         user_id: str,
         request_id: Optional[str] = None,
         idempotency_key: Optional[str] = None,
+        retry_of: Optional[str] = None,
     ) -> str:
         run_id = _uuid("run")
         now = _now()
@@ -121,8 +136,8 @@ class AgentRuntimeRepository:
         try:
             conn.execute(
                 "INSERT INTO agent_runs (run_id, job_id, user_id, status, phase, request_id, "
-                "idempotency_key, created_at, updated_at) VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?)",
-                (run_id, job_id, user_id, request_id, idempotency_key, now, now),
+                "idempotency_key, retry_of, created_at, updated_at) VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?)",
+                (run_id, job_id, user_id, request_id, idempotency_key, retry_of, now, now),
             )
             conn.execute(
                 "UPDATE agent_jobs SET status = 'RUNNING', updated_at = ? WHERE job_id = ?",
@@ -138,7 +153,7 @@ class AgentRuntimeRepository:
         try:
             row = conn.execute(
                 "SELECT run_id, job_id, user_id, status, phase, risk_level, started_at, "
-                "finished_at, error_code, error_message, request_id, idempotency_key, "
+                "finished_at, error_code, error_message, request_id, idempotency_key, retry_of, "
                 "created_at, updated_at FROM agent_runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
@@ -151,7 +166,7 @@ class AgentRuntimeRepository:
         try:
             row = conn.execute(
                 "SELECT run_id, job_id, user_id, status, phase, risk_level, started_at, "
-                "finished_at, error_code, error_message, request_id, idempotency_key, "
+                "finished_at, error_code, error_message, request_id, idempotency_key, retry_of, "
                 "created_at, updated_at FROM agent_runs WHERE job_id = ? "
                 "ORDER BY created_at DESC LIMIT 1",
                 (job_id,),
@@ -199,11 +214,72 @@ class AgentRuntimeRepository:
         conn = self._conn()
         try:
             rows = conn.execute(
-                "SELECT run_id, job_id, user_id, status, phase, created_at, updated_at "
+                "SELECT run_id, job_id, user_id, status, phase, retry_of, created_at, updated_at "
                 "FROM agent_runs WHERE job_id = ? ORDER BY created_at DESC",
                 (job_id,),
             ).fetchall()
             return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def list_runs_for_user(self, user_id: str, *, page: int = 1, page_size: int = 50) -> list[dict]:
+        offset = max(page - 1, 0) * page_size
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT run_id, job_id, user_id, status, phase, risk_level, started_at, "
+                "finished_at, error_code, error_message, request_id, idempotency_key, retry_of, "
+                "created_at, updated_at FROM agent_runs WHERE user_id = ? "
+                "ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                (user_id, page_size, offset),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self._release(conn)
+
+    def find_run_by_idempotency(self, user_id: str, idempotency_key: str) -> Optional[dict]:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT run_id, job_id, user_id, status, phase, risk_level, started_at, "
+                "finished_at, error_code, error_message, request_id, idempotency_key, retry_of, "
+                "created_at, updated_at FROM agent_runs WHERE user_id = ? AND idempotency_key = ?",
+                (user_id, idempotency_key),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            self._release(conn)
+
+    def find_control(self, run_id: str, idempotency_key: str) -> Optional[dict]:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at "
+                "FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+                (run_id, idempotency_key),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            self._release(conn)
+
+    def record_control(self, *, run_id: str, user_id: str, action: str,
+                       idempotency_key: str, resulting_status: str) -> dict:
+        command_id = _uuid("cmd")
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO agent_run_controls "
+                "(command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (command_id, run_id, user_id, action, idempotency_key, resulting_status, _now()),
+            )
+            row = conn.execute(
+                "SELECT command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at "
+                "FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+                (run_id, idempotency_key),
+            ).fetchone()
+            conn.commit()
+            return dict(row)
         finally:
             self._release(conn)
 

@@ -18,6 +18,7 @@ class RunStatus(str, Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    PAUSED = "PAUSED"
     SUCCEEDED = "SUCCEEDED"
     PARTIAL = "PARTIAL"
     FAILED = "FAILED"
@@ -73,6 +74,9 @@ class AgentEventType(str, Enum):
     RUN_COMPLETED = "RUN_COMPLETED"
     RUN_FAILED = "RUN_FAILED"
     RUN_CANCELLED = "RUN_CANCELLED"
+    RUN_PAUSED = "RUN_PAUSED"
+    RUN_RESUMED = "RUN_RESUMED"
+    RUN_RETRIED = "RUN_RETRIED"
 
 
 class ArtifactType(str, Enum):

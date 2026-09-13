@@ -16,9 +16,10 @@ from .event_store import AgentEventStore
 
 # 合法状态转换(§5.6)
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    "QUEUED": {"RUNNING", "CANCELLED", "FAILED"},
-    "RUNNING": {"AWAITING_APPROVAL", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
+    "QUEUED": {"RUNNING", "PAUSED", "CANCELLED", "FAILED"},
+    "RUNNING": {"AWAITING_APPROVAL", "PAUSED", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
     "AWAITING_APPROVAL": {"RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
+    "PAUSED": {"RUNNING", "CANCELLED"},
     "SUCCEEDED": set(),  # 终态
     "PARTIAL": {"CANCELLED"},  # 可取消
     "FAILED": set(),  # 终态
@@ -160,6 +161,69 @@ class RunManager:
             summary=reason or "运行已取消",
         )
         return cancelled
+
+    def pause(self, run_id: str, reason: Optional[str] = None) -> dict:
+        """暂停可协作中断的 Run；审批等待态不被伪装成暂停。"""
+        run = self._repo.get_run(run_id)
+        if not run:
+            raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
+        if run["status"] == "PAUSED":
+            return run
+        if run["status"] not in {"QUEUED", "RUNNING"}:
+            raise AgentRuntimeError(
+                f"Run 当前状态({run['status']})不可暂停",
+                code="AGENT_INVALID_STATE", http_status=409,
+            )
+        paused = self.transition(run_id, "PAUSED", phase="IDLE", error_message=reason)
+        self._events.append(
+            run_id=run_id, type="RUN_PAUSED", status="PAUSED", phase="IDLE",
+            summary=reason or "运行已暂停",
+        )
+        return paused
+
+    def resume(self, run_id: str) -> dict:
+        """仅从 PAUSED 恢复到 RUNNING。"""
+        run = self._repo.get_run(run_id)
+        if not run:
+            raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
+        if run["status"] != "PAUSED":
+            if run["status"] == "RUNNING":
+                return run
+            raise AgentRuntimeError(
+                f"Run 当前状态({run['status']})不可恢复",
+                code="AGENT_INVALID_STATE", http_status=409,
+            )
+        resumed = self.transition(run_id, "RUNNING", phase="WAITING_FOR_TOOL")
+        self._events.append(
+            run_id=run_id, type="RUN_RESUMED", status="RUNNING", phase="WAITING_FOR_TOOL",
+            summary="运行已恢复",
+        )
+        return resumed
+
+    def retry(self, run_id: str, *, idempotency_key: Optional[str] = None) -> dict:
+        """为失败/部分/取消的 Run 创建新的可追踪 Run，不重放旧 Run。"""
+        run = self._repo.get_run(run_id)
+        if not run:
+            raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
+        if run["status"] not in {"FAILED", "PARTIAL", "CANCELLED"}:
+            raise AgentRuntimeError(
+                f"Run 当前状态({run['status']})不可重试",
+                code="AGENT_INVALID_STATE", http_status=409,
+            )
+        key = idempotency_key or f"retry:{run_id}"
+        existing = self._repo.find_run_by_idempotency(run["user_id"], key)
+        if existing:
+            return existing
+        new_run_id = self._repo.create_run(
+            job_id=run["job_id"], user_id=run["user_id"],
+            request_id=run.get("request_id"), idempotency_key=key, retry_of=run_id,
+        )
+        new_run = self.transition(new_run_id, "RUNNING", phase="WAITING_FOR_MODEL")
+        self._events.append(
+            run_id=new_run_id, type="RUN_RETRIED", status="RUNNING", phase="WAITING_FOR_MODEL",
+            summary=f"已从运行 {run_id} 创建重试",
+        )
+        return new_run
 
     def recover_incomplete_runs(self) -> list[dict]:
         """终止无法安全恢复的中断执行，并保留持久审批等待态。
