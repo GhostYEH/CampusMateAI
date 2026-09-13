@@ -245,6 +245,21 @@ class AgentMemoryOut(_StrictModel):
     created_at: str = Field(..., min_length=1, max_length=64)
 
 
+class AgentMemoryCreateIn(_StrictModel):
+    """创建显式记忆。只有用户明确确认且允许消费时才会进入模型上下文。"""
+
+    kind: str = Field(
+        ...,
+        pattern="^(CONFIRMED_PREFERENCE|CONFIRMED_STUDY_GOAL|CONFIRMED_CONSTRAINT|USER_APPROVED_SUMMARY)$",
+    )
+    content_summary: str = Field(..., min_length=1, max_length=512)
+    sensitivity: str = Field(default="low", pattern="^(low|medium|high)$")
+    confirmed: bool = False
+    model_may_consume: bool = False
+    provenance: Optional[str] = Field(None, max_length=128)
+    valid_until: Optional[str] = Field(None, max_length=64)
+
+
 # ===== 工具/角色注册(§5.3、§5.4) =====
 
 
@@ -334,6 +349,7 @@ __all__ = [
     "AgentEventOut",
     "AgentJobCreateIn",
     "AgentJobOut",
+    "AgentMemoryCreateIn",
     "AgentMemoryOut",
     "AgentModelCallOut",
     "AgentProgressOut",

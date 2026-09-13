@@ -38,11 +38,13 @@ class ContextManager:
         self,
         repository: AgentRuntimeRepository,
         *,
+        memory_manager=None,
         ttl_minutes: int = 15,
         max_facts_bytes: int = 65536,
         budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> None:
         self._repo = repository
+        self._memory_manager = memory_manager
         self._ttl = timedelta(minutes=ttl_minutes)
         self._max_facts_bytes = max_facts_bytes
         self._budget_tokens = budget_tokens
@@ -58,8 +60,21 @@ class ContextManager:
     ) -> ContextSnapshot:
         """构建并持久化快照。校验大小与用户隔离。"""
         scope = scope or {"user_id": user_id}
-        facts = facts or {}
+        facts = dict(facts or {})
         source_refs = source_refs or []
+        if self._memory_manager is not None and "memories" not in facts:
+            # Only explicit, confirmed memories with active model consent enter a snapshot.
+            facts["memories"] = [
+                {
+                    "memory_id": memory["memory_id"],
+                    "kind": memory["kind"],
+                    "content_summary": memory["content_summary"],
+                    "provenance": memory.get("provenance"),
+                }
+                for memory in self._memory_manager.consumable_for_model(user_id)
+            ]
+            if facts["memories"]:
+                source_refs = [*source_refs, f"agent_memories:{user_id}"]
         # 预算裁剪:超预算时按占用从大到小压缩,报告写回 facts 以便审计。
         facts, budget_report = compact_facts(facts, budget_tokens=self._budget_tokens)
         if budget_report.get("truncated"):

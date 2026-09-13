@@ -717,16 +717,30 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def withdraw_memory(self, memory_id: str) -> None:
+    def get_memory(self, memory_id: str, user_id: str) -> Optional[dict]:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT memory_id, user_id, kind, content_summary, sensitivity, confirmed, "
+                "withdrawn, model_may_consume, provenance, valid_until, created_at, updated_at "
+                "FROM agent_memories WHERE memory_id = ? AND user_id = ?",
+                (memory_id, user_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            self._release(conn)
+
+    def withdraw_memory(self, memory_id: str, user_id: str) -> bool:
         now = _now()
         conn = self._conn()
         try:
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE agent_memories SET withdrawn = 1, model_may_consume = 0, updated_at = ? "
-                "WHERE memory_id = ?",
-                (now, memory_id),
+                "WHERE memory_id = ? AND user_id = ?",
+                (now, memory_id, user_id),
             )
             conn.commit()
+            return cur.rowcount > 0
         finally:
             self._release(conn)
 
@@ -735,7 +749,8 @@ class AgentRuntimeRepository:
         try:
             rows = conn.execute(
                 "SELECT memory_id, user_id, kind, content_summary, sensitivity, confirmed, "
-                "withdrawn, model_may_consume, created_at FROM agent_memories "
+                "withdrawn, model_may_consume, provenance, valid_until, created_at, updated_at "
+                "FROM agent_memories "
                 "WHERE user_id = ? ORDER BY created_at DESC",
                 (user_id,),
             ).fetchall()

@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from ...core.exceptions import AgentRuntimeError, AgentRunNotFound
+from ...core.exceptions import AgentRuntimeError, AgentRunNotFound, ValidationFailed
 from ...models.multi_role import UserRow
 from ...repositories.agent_artifact_repository import AgentArtifactRepository
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
@@ -30,6 +30,8 @@ from ...schemas.agent_runtime import (
     AgentEventOut,
     AgentJobCreateIn,
     AgentJobOut,
+    AgentMemoryCreateIn,
+    AgentMemoryOut,
     AgentProgressOut,
     AgentRunCancelIn,
     AgentRunControlIn,
@@ -45,6 +47,7 @@ runs_router = APIRouter(prefix="/agent-runs", tags=["agent-runtime"])
 approvals_router = APIRouter(prefix="/agent-approvals", tags=["agent-runtime"])
 artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["agent-runtime"])
 notices_manual_router = APIRouter(prefix="/notices", tags=["agent-runtime"])
+memories_router = APIRouter(prefix="/agent-memories", tags=["agent-runtime"])
 
 
 def _repo(container: ServiceContainer) -> AgentRuntimeRepository:
@@ -53,6 +56,15 @@ def _repo(container: ServiceContainer) -> AgentRuntimeRepository:
 
 def _artifact_repo(container: ServiceContainer) -> AgentArtifactRepository:
     return container.agent_artifact_repository
+
+
+def _memory_to_out(memory: dict) -> AgentMemoryOut:
+    return AgentMemoryOut(
+        memory_id=memory["memory_id"], user_id=memory["user_id"], kind=memory["kind"],
+        content_summary=memory["content_summary"], sensitivity=memory["sensitivity"],
+        confirmed=bool(memory["confirmed"]), withdrawn=bool(memory["withdrawn"]),
+        model_may_consume=bool(memory["model_may_consume"]), created_at=memory["created_at"],
+    )
 
 
 def _capability_out(name: str, policy: str, risk: str, approval: bool) -> AgentCapabilityOut:
@@ -181,6 +193,48 @@ def _run_to_out(run: dict, container: ServiceContainer) -> AgentRunOut:
         created_at=run["created_at"], updated_at=run["updated_at"],
         artifact_ids=[a["artifact_id"] for a in artifacts], retry_of=run.get("retry_of"),
     )
+
+
+# ===== explicit memory =====
+
+
+@memories_router.get("", response_model=list[AgentMemoryOut])
+async def list_memories(
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(get_container),
+) -> list[AgentMemoryOut]:
+    return [_memory_to_out(memory) for memory in container.agent_memory_manager.list_for_user(user.id)]
+
+
+@memories_router.post("", response_model=AgentMemoryOut)
+async def create_memory(
+    body: AgentMemoryCreateIn,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(get_container),
+) -> AgentMemoryOut:
+    try:
+        memory_id = container.agent_memory_manager.record(
+            user_id=user.id, kind=body.kind, content_summary=body.content_summary,
+            sensitivity=body.sensitivity, confirmed=body.confirmed,
+            model_may_consume=body.model_may_consume, provenance=body.provenance,
+            valid_until=body.valid_until,
+        )
+    except ValueError as exc:
+        raise ValidationFailed(str(exc)) from exc
+    memory = container.agent_runtime_repository.get_memory(memory_id, user.id)
+    return _memory_to_out(memory)
+
+
+@memories_router.post("/{memory_id}/withdraw", response_model=AgentMemoryOut)
+async def withdraw_memory(
+    memory_id: str,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(get_container),
+) -> AgentMemoryOut:
+    memory = container.agent_memory_manager.withdraw(user_id=user.id, memory_id=memory_id)
+    if memory is None:
+        raise AgentRunNotFound("Memory 不存在")
+    return _memory_to_out(memory)
 
 
 @runs_router.get("")
@@ -515,5 +569,6 @@ __all__ = [
     "runs_router",
     "approvals_router",
     "artifacts_router",
+    "memories_router",
     "notices_manual_router",
 ]
