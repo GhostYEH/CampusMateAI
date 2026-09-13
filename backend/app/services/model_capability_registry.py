@@ -157,6 +157,7 @@ class ModelCapabilityRegistry:
                 if payload["tool_name"] is not None:
                     resource_by_tool = {
                         "read_core_state": "learner_state",
+                        "read_knowledge_state": "course_knowledge",
                         "read_personal_tasks": "personal_task",
                         "search_course_materials": "course_content",
                     }

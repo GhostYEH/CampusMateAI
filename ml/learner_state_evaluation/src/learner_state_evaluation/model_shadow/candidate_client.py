@@ -33,9 +33,10 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 
 _OUTPUT_FIELDS = {
-    "c_kc_classification_v1": "knowledge_component_codes, confidence, reason_codes, abstained",
-    "c_error_classification_v1": "error_code, knowledge_component_codes, confidence, abstained",
-    "learning_summary_v1": "summary, claim_codes",
+    "student_state_summary_v1": "summary, claim_codes",
+    "campus_intent_routing_v1": "intent_code, confidence, abstained",
+    "notice_action_classification_v1": "action_code, confidence, abstained",
+    "goal_support_classification_v1": "support_level, confidence, abstained",
     "read_only_tool_routing_v1": "tool_name, arguments, confidence, abstained",
 }
 

@@ -25,9 +25,10 @@ from .promotion import THRESHOLD_VERSION, evaluate_promotion
 BENCHMARK_VERSION = "campusmate-lm-real-benchmark-v1"
 HELDOUT_SPLIT = "test"
 CAPABILITIES = (
-    "c_kc_classification_v1",
-    "c_error_classification_v1",
-    "learning_summary_v1",
+    "student_state_summary_v1",
+    "campus_intent_routing_v1",
+    "notice_action_classification_v1",
+    "goal_support_classification_v1",
     "read_only_tool_routing_v1",
 )
 DEFAULT_SEED = 20260911
@@ -147,18 +148,7 @@ def require_real_client(client: Any) -> Any:
 
 
 def _deterministic_output(capability: str, features: dict[str, Any]) -> dict[str, Any]:
-    if capability == "c_kc_classification_v1":
-        codes = [code for code in features.get("candidate_kc_codes", []) if isinstance(code, str)]
-        return {"knowledge_component_codes": codes, "confidence": 0.65 if codes else 0.0,
-                "reason_codes": ["CONTROLLED_CANDIDATE_MATCH"] if codes else ["INSUFFICIENT_EVIDENCE"],
-                "abstained": not codes}
-    if capability == "c_error_classification_v1":
-        errors = [code for code in features.get("candidate_error_codes", []) if isinstance(code, str)]
-        kcs = [code for code in features.get("candidate_kc_codes", []) if isinstance(code, str)]
-        return {"error_code": errors[0] if errors else None,
-                "knowledge_component_codes": kcs if errors else [],
-                "confidence": 0.6 if errors else 0.0, "abstained": not errors}
-    if capability == "learning_summary_v1":
+    if capability == "student_state_summary_v1":
         explanations = set(features.get("explanation_codes", []))
         claims = []
         if "deadline_urgent" in explanations:
@@ -171,6 +161,18 @@ def _deterministic_output(capability: str, features: dict[str, Any]) -> dict[str
             claims.append("DATA_QUALITY_PARTIAL")
         summary = "建议根据当前受控证据安排下一步学习。" if claims else "当前证据不足，建议先补充一次受控学习记录。"
         return {"summary": summary, "claim_codes": claims}
+    if capability == "campus_intent_routing_v1":
+        candidates = [code for code in features.get("candidate_intent_codes", []) if isinstance(code, str)]
+        intent = candidates[0] if candidates else None
+        return {"intent_code": intent, "confidence": 0.7 if intent else 0.0, "abstained": intent is None}
+    if capability == "notice_action_classification_v1":
+        candidates = [code for code in features.get("candidate_action_codes", []) if isinstance(code, str)]
+        action = candidates[0] if candidates else None
+        return {"action_code": action, "confidence": 0.7 if action else 0.0, "abstained": action is None}
+    if capability == "goal_support_classification_v1":
+        candidates = [code for code in features.get("candidate_support_levels", []) if isinstance(code, str)]
+        level = candidates[0] if candidates else None
+        return {"support_level": level if level else "SUPPORT_NONE", "confidence": 0.7 if level else 0.0, "abstained": level is None}
     candidates = [name for name in features.get("candidate_read_tools", []) if isinstance(name, str)]
     tool = candidates[0] if candidates else None
     arguments = features.get("parameter_schema", {}) if tool else {}
@@ -225,26 +227,27 @@ def _valid_output(capability: str, output: Any, features: dict[str, Any]) -> boo
     if confidence is not None and (not isinstance(confidence, (int, float))
                                    or isinstance(confidence, bool) or not 0 <= confidence <= 1):
         return False
-    if capability in {"c_kc_classification_v1", "c_error_classification_v1"}:
-        codes = output.get("knowledge_component_codes")
-        allowed_kcs = set(features.get("candidate_kc_codes", []))
-        if not isinstance(codes, list) or not set(codes).issubset(allowed_kcs):
-            return False
-        if capability == "c_kc_classification_v1":
-            allowed_reasons = {"CONTROLLED_CANDIDATE_MATCH", "CONTROLLED_TOPIC_MATCH",
-                               "INSUFFICIENT_EVIDENCE"}
-            return (isinstance(output.get("reason_codes"), list)
-                    and set(output["reason_codes"]).issubset(allowed_reasons)
-                    and isinstance(output.get("abstained"), bool))
-        error = output.get("error_code")
-        return ((error is None or error in set(features.get("candidate_error_codes", [])))
-                and isinstance(output.get("abstained"), bool))
-    if capability == "learning_summary_v1":
+    if capability == "student_state_summary_v1":
         allowed_claims = {"PRIORITIZE_NEAR_DEADLINE", "REVIEW_KNOWLEDGE_COMPONENT",
                           "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL"}
         return (isinstance(output.get("summary"), str) and 1 <= len(output["summary"]) <= 240
                 and isinstance(output.get("claim_codes"), list)
                 and set(output["claim_codes"]).issubset(allowed_claims))
+    if capability == "campus_intent_routing_v1":
+        intent = output.get("intent_code")
+        allowed = set(features.get("candidate_intent_codes", []))
+        return ((intent is None or intent in allowed)
+                and isinstance(output.get("abstained"), bool))
+    if capability == "notice_action_classification_v1":
+        action = output.get("action_code")
+        allowed = set(features.get("candidate_action_codes", []))
+        return ((action is None or action in allowed)
+                and isinstance(output.get("abstained"), bool))
+    if capability == "goal_support_classification_v1":
+        level = output.get("support_level")
+        allowed = set(features.get("candidate_support_levels", []))
+        return ((level is None or level in allowed)
+                and isinstance(output.get("abstained"), bool))
     tool = output.get("tool_name")
     arguments = output.get("arguments")
     allowed_tools = set(features.get("candidate_read_tools", []))
@@ -374,7 +377,7 @@ def run_real_benchmark(*, dataset_path: Path, output_dir: Path, client: Any,
             capability_name=row["capability_name"], capability_version="v1",
             structured_features=row["input"],
             prompt_template_version=f"{row['capability_name']}-prompt-v1",
-            taxonomy_version="c_taxonomy_v1", schema_version=row["input_schema_version"],
+            taxonomy_version="campus_companion_taxonomy_v1", schema_version=row["input_schema_version"],
             run_id=f"{run_id}-{seed}-{row['sample_id']}",
             generation_params={"temperature": params.get("temperature", 0.0),
                                "max_tokens": params.get("max_tokens", 512), "seed": seed})

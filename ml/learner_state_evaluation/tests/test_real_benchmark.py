@@ -71,7 +71,7 @@ def test_phase8b_preflight_is_blocked_without_runtime_and_ready_for_service(tmp_
     blocked = rb.preflight_benchmark(dataset_path=source.data_path, env={})
     assert blocked["ready"] is False
     assert blocked["block_reason_code"] == "MODEL_RUNTIME_UNAVAILABLE"
-    assert blocked["heldout_sample_count"] == 52
+    assert blocked["heldout_sample_count"] == 50
 
     ready = rb.preflight_benchmark(dataset_path=source.data_path, env={
         "CAMPUSMATE_LM_SHADOW_ENABLED": "true",
@@ -125,9 +125,10 @@ def test_phase8a_real_benchmark_harness_exists() -> None:
     assert heldout
     assert {row["split"] for row in heldout} == {"test"}
     assert {row["capability_name"] for row in heldout} == {
-        "c_kc_classification_v1",
-        "c_error_classification_v1",
-        "learning_summary_v1",
+        "student_state_summary_v1",
+        "campus_intent_routing_v1",
+        "notice_action_classification_v1",
+        "goal_support_classification_v1",
         "read_only_tool_routing_v1",
     }
 
@@ -162,11 +163,12 @@ def test_phase8a_blocked_report_never_claims_real_inference(tmp_path) -> None:
     assert report["production_enabled"] is False
     assert report["canary_enabled"] is False
     assert report["absolute_paths_omitted"] is True
-    assert report["heldout_sample_count"] == 52
+    assert report["heldout_sample_count"] == 50
     assert report["heldout_capability_counts"] == {
-        "c_kc_classification_v1": 18,
-        "c_error_classification_v1": 14,
-        "learning_summary_v1": 10,
+        "student_state_summary_v1": 10,
+        "campus_intent_routing_v1": 10,
+        "notice_action_classification_v1": 10,
+        "goal_support_classification_v1": 10,
         "read_only_tool_routing_v1": 10,
     }
     assert report["train_validation_excluded"] is True
@@ -200,9 +202,10 @@ def test_phase8a_compare_keeps_quality_safety_latency_resource_context(tmp_path)
     assert "baseline_performance" in comparison
     assert "candidate_performance" in comparison
     assert set(comparison["by_capability"]) == {
-        "c_kc_classification_v1",
-        "c_error_classification_v1",
-        "learning_summary_v1",
+        "student_state_summary_v1",
+        "campus_intent_routing_v1",
+        "notice_action_classification_v1",
+        "goal_support_classification_v1",
         "read_only_tool_routing_v1",
     }
 
@@ -223,7 +226,7 @@ def test_phase8a_configured_service_runs_without_local_weights_but_failures_stay
     )
     assert report["execution_mode"] == "OPENAI_COMPATIBLE_SERVICE"
     assert report["inference_source"] == "DETERMINISTIC_FALLBACK"
-    assert report["source_counts"] == {"REAL_MODEL": 0, "DETERMINISTIC_FALLBACK": 52}
+    assert report["source_counts"] == {"REAL_MODEL": 0, "DETERMINISTIC_FALLBACK": 50}
     assert all(item["decision"] == "BLOCKED" for item in report["promotion_decisions"].values())
 
 
@@ -252,19 +255,19 @@ def test_phase8b_real_and_partial_sources_are_reported_per_capability(tmp_path) 
         client=ControlledService(), model_version="controlled-v1",
     )
     assert complete["inference_source"] == "REAL_MODEL"
-    assert complete["real_model_sample_count"] == 52
+    assert complete["real_model_sample_count"] == 50
     assert complete["fallback_count"] == 0
     assert all(counts["REAL_MODEL"] > 0 and counts["DETERMINISTIC_FALLBACK"] == 0
                for counts in complete["source_counts_by_capability"].values())
 
     partial = rb.run_real_benchmark(
         dataset_path=source.data_path, output_dir=tmp_path / "partial",
-        client=ControlledService("c_kc_classification_v1"), model_version="controlled-v1",
+        client=ControlledService("student_state_summary_v1"), model_version="controlled-v1",
     )
     assert partial["inference_source"] == "MIXED_REAL_AND_FALLBACK"
     assert "REAL_MODEL_COVERAGE_INCOMPLETE" in partial["promotion_decisions"][
-        "c_kc_classification_v1"]["failed_gates"]
-    for capability in set(rb.CAPABILITIES) - {"c_kc_classification_v1"}:
+        "student_state_summary_v1"]["failed_gates"]
+    for capability in set(rb.CAPABILITIES) - {"student_state_summary_v1"}:
         assert "REAL_MODEL_COVERAGE_INCOMPLETE" not in partial["promotion_decisions"][capability]["failed_gates"]
 
 

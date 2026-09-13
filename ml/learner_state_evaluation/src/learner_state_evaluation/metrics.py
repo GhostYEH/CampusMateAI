@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Any
 
 
-EVALUATOR_VERSION = "learner-state-binary-v1"
+EVALUATOR_VERSION = "campus-companion-binary-v1"
 
 
 def _safe_ratio(numerator: int | float, denominator: int | float) -> float:
@@ -90,13 +90,13 @@ def evaluate_predictions(
     )
     scored = [(row["label"], prediction["score"]) for row, prediction in ordered]
     brier = sum((float(label) - score) ** 2 for label, score in scored) / len(scored)
-    codes = sorted({row["hypothesis_code"] for row, _ in ordered})
-    per_hypothesis = {
+    codes = sorted({row["scenario_code"] for row, _ in ordered})
+    per_scenario = {
         code: _classification_metrics(
             _counts(
                 (row["label"], prediction["predicted_label"])
                 for row, prediction in ordered
-                if row["hypothesis_code"] == code
+                if row["scenario_code"] == code
             )
         )
         for code in codes
@@ -116,5 +116,5 @@ def evaluate_predictions(
         "calibration_bins": calibration_bins,
         "unsupported_assertion_count": unsupported,
         "unsupported_assertion_rate": _safe_ratio(unsupported, len(asserted)),
-        "per_hypothesis": per_hypothesis,
+        "per_scenario": per_scenario,
     }

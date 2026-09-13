@@ -16,8 +16,8 @@ ANNOTATION_FIELDS = {
     "dataset_version",
     "split",
     "task_type",
-    "knowledge_component_code",
-    "hypothesis_code",
+    "topic_code",
+    "scenario_code",
     "label",
     "label_source",
     "evidence",
@@ -25,8 +25,8 @@ ANNOTATION_FIELDS = {
 }
 EVIDENCE_FIELDS = {
     "attempt_count",
-    "repeated_error_count",
-    "later_correct_count",
+    "repeated_signal_count",
+    "later_resolved_count",
     "evidence_quality",
     "user_decision",
     "supports_assertion",
@@ -51,7 +51,7 @@ MANIFEST_FIELDS = {
     "contains_personal_data",
     "random_seed",
     "sample_count",
-    "hypothesis_codes",
+    "scenario_codes",
     "records_sha256",
     "label_policy",
 }
@@ -94,17 +94,17 @@ def validate_annotation(row: Any) -> dict[str, Any]:
         "dataset_version",
         "split",
         "task_type",
-        "knowledge_component_code",
-        "hypothesis_code",
+        "topic_code",
+        "scenario_code",
         "label_source",
     ):
         _require_nonempty_string(row[field], field)
-    for field in ("sample_id", "dataset_version", "knowledge_component_code", "hypothesis_code"):
+    for field in ("sample_id", "dataset_version", "topic_code", "scenario_code"):
         _require_safe_identifier(row[field], field)
     if row["split"] != "evaluation":
         raise ContractError("split must be evaluation")
-    if row["task_type"] != "misconception_detection":
-        raise ContractError("task_type must be misconception_detection")
+    if row["task_type"] != "campus_signal_detection":
+        raise ContractError("task_type must be campus_signal_detection")
     if row["label_source"] != "synthetic_curated":
         raise ContractError("label_source must be synthetic_curated")
     if not isinstance(row["label"], bool):
@@ -114,12 +114,12 @@ def validate_annotation(row: Any) -> dict[str, Any]:
     if not isinstance(evidence, dict):
         raise ContractError("evidence must be an object")
     _require_exact_fields(evidence, EVIDENCE_FIELDS, "evidence")
-    for field in ("attempt_count", "repeated_error_count", "later_correct_count"):
+    for field in ("attempt_count", "repeated_signal_count", "later_resolved_count"):
         _require_count(evidence[field], field)
-    if evidence["repeated_error_count"] > evidence["attempt_count"]:
-        raise ContractError("repeated_error_count cannot exceed attempt_count")
-    if evidence["later_correct_count"] > evidence["attempt_count"]:
-        raise ContractError("later_correct_count cannot exceed attempt_count")
+    if evidence["repeated_signal_count"] > evidence["attempt_count"]:
+        raise ContractError("repeated_signal_count cannot exceed attempt_count")
+    if evidence["later_resolved_count"] > evidence["attempt_count"]:
+        raise ContractError("later_resolved_count cannot exceed attempt_count")
     if evidence["evidence_quality"] not in EVIDENCE_QUALITIES:
         raise ContractError("evidence_quality is invalid")
     if evidence["user_decision"] not in USER_DECISIONS:
@@ -218,6 +218,6 @@ def load_manifest(path: Path, annotations_path: Path) -> dict[str, Any]:
         raise ContractError("annotation count does not match manifest")
     if {row["dataset_version"] for row in rows} != {manifest["dataset_version"]}:
         raise ContractError("dataset version does not match manifest")
-    if sorted({row["hypothesis_code"] for row in rows}) != manifest["hypothesis_codes"]:
-        raise ContractError("hypothesis codes do not match manifest")
+    if sorted({row["scenario_code"] for row in rows}) != manifest["scenario_codes"]:
+        raise ContractError("scenario codes do not match manifest")
     return manifest

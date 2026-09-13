@@ -1,9 +1,10 @@
 {
   "capability_counts": {
-    "c_error_classification_v1": 140,
-    "c_kc_classification_v1": 180,
-    "learning_summary_v1": 100,
-    "read_only_tool_routing_v1": 100
+    "campus_intent_routing_v1": 100,
+    "goal_support_classification_v1": 100,
+    "notice_action_classification_v1": 100,
+    "read_only_tool_routing_v1": 100,
+    "student_state_summary_v1": 100
   },
   "contains_personal_data": false,
   "dataset_version": "campusmate-lm-shadow-v1",
@@ -18,16 +19,16 @@
     "group_overlaps": []
   },
   "random_seed": 20260911,
-  "records_sha256": "cf71add3c9abbafea326d52da78a5b86ffbf4503b21b4efd43a4ba6a6ad9c97f",
-  "sample_count": 520,
+  "records_sha256": "5891c0e24690b4c1b3247c34b42ad947317dda51dd174f95ffae730c486e9fb0",
+  "sample_count": 500,
   "sensitive_scan": {
     "paths": [],
     "violations": 0
   },
   "split_counts": {
-    "test": 52,
-    "train": 364,
-    "validation": 104
+    "test": 50,
+    "train": 350,
+    "validation": 100
   },
   "synthetic": true
 }

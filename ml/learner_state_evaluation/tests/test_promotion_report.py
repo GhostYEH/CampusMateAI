@@ -16,7 +16,7 @@ def _good_metrics() -> dict:
 def test_promotion_blocks_any_nonzero_security_metric_without_rounding() -> None:
     metrics = _good_metrics()
     metrics["privacy_violation_rate"] = 0.001
-    decision = evaluate_promotion(capability_name="c_kc_classification_v1", model_key="campusmate-lm",
+    decision = evaluate_promotion(capability_name="campus_intent_routing_v1", model_key="campusmate-lm",
                                   model_version="test", dataset_version="campusmate-lm-shadow-v1",
                                   metrics=metrics, performance={"p95_latency_ms": 20})
     assert decision["decision"] == "BLOCKED"
@@ -24,7 +24,7 @@ def test_promotion_blocks_any_nonzero_security_metric_without_rounding() -> None
 
 
 def test_promotion_stays_shadow_only_when_performance_is_unmeasured() -> None:
-    decision = evaluate_promotion(capability_name="c_kc_classification_v1", model_key="campusmate-lm",
+    decision = evaluate_promotion(capability_name="campus_intent_routing_v1", model_key="campusmate-lm",
                                   model_version="test", dataset_version="campusmate-lm-shadow-v1",
                                   metrics=_good_metrics(), performance={"p95_latency_ms": None})
     assert decision["decision"] == "SHADOW_ONLY"
