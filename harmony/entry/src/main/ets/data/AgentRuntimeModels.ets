@@ -8,6 +8,7 @@ export enum RunStatus {
   QUEUED = 'QUEUED',
   RUNNING = 'RUNNING',
   AWAITING_APPROVAL = 'AWAITING_APPROVAL',
+  PAUSED = 'PAUSED',
   SUCCEEDED = 'SUCCEEDED',
   PARTIAL = 'PARTIAL',
   FAILED = 'FAILED',
@@ -51,6 +52,9 @@ export enum AgentEventType {
   RUN_COMPLETED = 'RUN_COMPLETED',
   RUN_FAILED = 'RUN_FAILED',
   RUN_CANCELLED = 'RUN_CANCELLED',
+  RUN_PAUSED = 'RUN_PAUSED',
+  RUN_RESUMED = 'RUN_RESUMED',
+  RUN_RETRIED = 'RUN_RETRIED',
   UNKNOWN = 'UNKNOWN'
 }
 
@@ -127,6 +131,7 @@ export interface AgentJob {
   created_at: string;
   updated_at: string;
   latest_run_id: string | null;
+  input_ref: Record<string, Object>;
 }
 
 export interface AgentRun {
@@ -142,6 +147,38 @@ export interface AgentRun {
   updated_at: string;
   error: AgentErrorEnvelope | null;
   artifact_ids: string[];
+  retry_of: string | null;
+}
+
+// ===== AI 学习目标执行中心 =====
+
+export interface StudentGoal {
+  goal_id: string;
+  user_id: string;
+  name: string;
+  category: string;
+  status: string;
+  target_date: string | null;
+  progress_percent: number;
+  milestone_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LearningPlanSummary {
+  plan_id: string;
+  goal_id: string | null;
+  status: string;
+  stage: string;
+  headline: string;
+  completion_percent: number;
+  planned_item_count: number;
+  executed_item_count: number;
+  planned_minutes: number;
+  next_action: string;
+  recommendations: string[];
+  warning_codes: string[];
+  generated_at: string;
 }
 
 export interface AgentApproval {
@@ -436,7 +473,7 @@ export class AgentEnumParser {
   static runStatus(raw: string): RunStatus {
     const values: string[] = [
       RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.AWAITING_APPROVAL,
-      RunStatus.SUCCEEDED, RunStatus.PARTIAL, RunStatus.FAILED, RunStatus.CANCELLED
+      RunStatus.PAUSED, RunStatus.SUCCEEDED, RunStatus.PARTIAL, RunStatus.FAILED, RunStatus.CANCELLED
     ];
     return values.indexOf(raw) >= 0 ? raw as RunStatus : RunStatus.UNKNOWN;
   }
@@ -462,7 +499,8 @@ export class AgentEnumParser {
       AgentEventType.TOOL_STARTED, AgentEventType.TOOL_COMPLETED, AgentEventType.TOOL_FAILED,
       AgentEventType.APPROVAL_REQUIRED, AgentEventType.APPROVAL_RESOLVED,
       AgentEventType.ARTIFACT_CREATED, AgentEventType.RUN_PARTIAL,
-      AgentEventType.RUN_COMPLETED, AgentEventType.RUN_FAILED, AgentEventType.RUN_CANCELLED
+      AgentEventType.RUN_COMPLETED, AgentEventType.RUN_FAILED, AgentEventType.RUN_CANCELLED,
+      AgentEventType.RUN_PAUSED, AgentEventType.RUN_RESUMED, AgentEventType.RUN_RETRIED
     ];
     return values.indexOf(raw) >= 0 ? raw as AgentEventType : AgentEventType.UNKNOWN;
   }
@@ -619,7 +657,8 @@ export class AgentDtoParser {
       created_at: (raw.created_at ?? '') as string,
       updated_at: (raw.updated_at ?? '') as string,
       error: errorRaw === null ? null : AgentDtoParser.errorEnvelope(errorRaw),
-      artifact_ids: artifactIds
+      artifact_ids: artifactIds,
+      retry_of: raw.retry_of === null || raw.retry_of === undefined ? null : raw.retry_of as string
     };
   }
 
@@ -661,7 +700,43 @@ export class AgentDtoParser {
       created_at: (raw.created_at ?? '') as string,
       updated_at: (raw.updated_at ?? '') as string,
       latest_run_id: raw.latest_run_id === null || raw.latest_run_id === undefined
-        ? null : raw.latest_run_id as string
+        ? null : raw.latest_run_id as string,
+      input_ref: (raw.input_ref ?? {}) as Record<string, Object>
+    };
+  }
+
+  static studentGoal(raw: Record<string, Object>): StudentGoal {
+    return {
+      goal_id: (raw.goal_id ?? '') as string,
+      user_id: (raw.user_id ?? '') as string,
+      name: (raw.name ?? '') as string,
+      category: (raw.category ?? '') as string,
+      status: (raw.status ?? '') as string,
+      target_date: raw.target_date === null || raw.target_date === undefined ? null : raw.target_date as string,
+      progress_percent: (raw.progress_percent ?? 0) as number,
+      milestone_count: (raw.milestone_count ?? 0) as number,
+      created_at: (raw.created_at ?? '') as string,
+      updated_at: (raw.updated_at ?? '') as string
+    };
+  }
+
+  static learningPlanSummary(raw: Record<string, Object>): LearningPlanSummary {
+    const recommendationsRaw: Object = raw.recommendations ?? [];
+    const warningsRaw: Object = raw.warning_codes ?? [];
+    return {
+      plan_id: (raw.plan_id ?? '') as string,
+      goal_id: raw.goal_id === null || raw.goal_id === undefined ? null : raw.goal_id as string,
+      status: (raw.status ?? '') as string,
+      stage: (raw.stage ?? '') as string,
+      headline: (raw.headline ?? '') as string,
+      completion_percent: (raw.completion_percent ?? 0) as number,
+      planned_item_count: (raw.planned_item_count ?? 0) as number,
+      executed_item_count: (raw.executed_item_count ?? 0) as number,
+      planned_minutes: (raw.planned_minutes ?? 0) as number,
+      next_action: (raw.next_action ?? '') as string,
+      recommendations: Array.isArray(recommendationsRaw) ? recommendationsRaw as string[] : [],
+      warning_codes: Array.isArray(warningsRaw) ? warningsRaw as string[] : [],
+      generated_at: (raw.generated_at ?? '') as string
     };
   }
 

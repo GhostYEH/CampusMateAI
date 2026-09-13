@@ -34,7 +34,8 @@ export enum AppRoute {
   FINAL_REVIEW = 'final_review',
   FINAL_REVIEW_PLAN = 'final_review_plan',
   COURSE_RESEARCH = 'course_research',
-  NOTICE_WORKFLOW = 'notice_workflow'
+  NOTICE_WORKFLOW = 'notice_workflow',
+  GOAL_CENTER = 'goal_center'
 }
 
 export class AppRouteRegistry {
@@ -95,6 +96,7 @@ export class AppRouteRegistry {
       case AppRoute.FINAL_REVIEW_PLAN:
       case AppRoute.COURSE_RESEARCH:
       case AppRoute.NOTICE_WORKFLOW:
+      case AppRoute.GOAL_CENTER:
         return true;
       default:
         return false;
@@ -156,6 +158,7 @@ export class AppRouteRegistry {
       case AppRoute.FINAL_REVIEW_PLAN: return '复习计划';
       case AppRoute.COURSE_RESEARCH: return '课程研究';
       case AppRoute.NOTICE_WORKFLOW: return '通知事务';
+      case AppRoute.GOAL_CENTER: return 'AI目标执行中心';
       default: return '校园服务';
     }
   }
@@ -198,6 +201,7 @@ export class AppRouteRegistry {
       case AppRoute.FINAL_REVIEW:
       case AppRoute.COURSE_RESEARCH:
       case AppRoute.NOTICE_WORKFLOW:
+      case AppRoute.GOAL_CENTER:
         return 'profile';
       default:
         return '';

@@ -10,12 +10,33 @@ import {
   FinalReviewAdjustmentDecisionResult,
   CourseResearchRun, CourseResearchSource,
   NoticeSource, NoticeWorkflow, NoticeWorkflowAction,
-  RunStatus
+  RunStatus, StudentGoal, LearningPlanSummary
 } from '../data/AgentRuntimeModels';
 import { IdempotencyKey } from '../service/AgentEventReducer';
 
 interface JobCreateBody {
   job_kind: string;
+  input_ref: Record<string, Object>;
+}
+
+interface StudentGoalCreateBody {
+  name: string;
+  category: string;
+  target_date?: string;
+  milestone_count?: number;
+}
+
+interface RunControlBody {
+  reason?: string;
+}
+
+interface LearningPlanDecisionBody {
+  decision: string;
+}
+
+interface LearningGoalJobInput {
+  goal_id: string;
+  available_minutes: number;
 }
 
 interface SourcePolicyBody {
@@ -103,11 +124,96 @@ export class AgentRuntimeRepository {
   }
 
   async createJob(jobKind: string, idempotencyKey: string, payload?: object): Promise<AgentJob> {
-    const body: JobCreateBody = { job_kind: jobKind };
+    const body: JobCreateBody = {
+      job_kind: jobKind,
+      input_ref: payload === undefined ? {} : payload as Record<string, Object>
+    };
     const headers: Record<string, string> = { 'Idempotency-Key': idempotencyKey };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, 'agent-jobs', headers, body);
     return AgentDtoParser.job(raw);
+  }
+
+  async listJobs(): Promise<AgentJob[]> {
+    const raw: Record<string, Object>[] = await this.client.request<Record<string, Object>[]>(
+      http.RequestMethod.GET, 'agent-jobs');
+    return raw.map((item: Record<string, Object>) => AgentDtoParser.job(item));
+  }
+
+  async listLearningGoals(): Promise<StudentGoal[]> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, 'student-goals?status=active');
+    const items: Object = raw.items ?? [];
+    return Array.isArray(items)
+      ? (items as Record<string, Object>[]).map((item: Record<string, Object>) => AgentDtoParser.studentGoal(item))
+      : [];
+  }
+
+  async createLearningGoal(name: string, targetDate?: string): Promise<StudentGoal> {
+    const body: StudentGoalCreateBody = { name: name.trim(), category: 'ACADEMIC' };
+    if (targetDate !== undefined && targetDate.length > 0) body.target_date = targetDate;
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:harmony:${this.contentHash(name)}` };
+    const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, 'student-goals', headers, body);
+    return AgentDtoParser.studentGoal((raw.goal ?? raw) as Record<string, Object>);
+  }
+
+  async createLearningGoalJob(goalId: string, availableMinutes: number): Promise<AgentJob> {
+    const input: LearningGoalJobInput = { goal_id: goalId, available_minutes: availableMinutes };
+    return this.createJob(
+      'learning_goal', `learning-goal:harmony:${goalId}:${availableMinutes}`,
+      input
+    );
+  }
+
+  async pauseRun(runId: string, reason: string = ''): Promise<AgentRun> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:pause:${runId}` };
+    const body: RunControlBody = reason.length > 0 ? { reason: reason } : {};
+    const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `agent-runs/${encodeURIComponent(runId)}/pause`, headers, body);
+    return AgentDtoParser.run(raw);
+  }
+
+  async resumeRun(runId: string): Promise<AgentRun> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:resume:${runId}` };
+    const empty: EmptyBody = {};
+    const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `agent-runs/${encodeURIComponent(runId)}/resume`, headers, empty);
+    return AgentDtoParser.run(raw);
+  }
+
+  async retryRun(runId: string): Promise<AgentRun> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:retry:${runId}` };
+    const empty: EmptyBody = {};
+    const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `agent-runs/${encodeURIComponent(runId)}/retry`, headers, empty);
+    return AgentDtoParser.run(raw);
+  }
+
+  async getPlanSummary(planId: string): Promise<LearningPlanSummary> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, `learning-plans/${encodeURIComponent(planId)}/summary`);
+    return AgentDtoParser.learningPlanSummary(raw);
+  }
+
+  async decidePlan(planId: string, decision: string): Promise<void> {
+    const body: LearningPlanDecisionBody = { decision: decision.toUpperCase() };
+    await this.client.request<Record<string, Object>>(
+      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/decision`, body);
+  }
+
+  async executePlan(planId: string): Promise<void> {
+    const empty: EmptyBody = {};
+    await this.client.request<Record<string, Object>>(
+      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/execute`, empty);
+  }
+
+  async replan(planId: string): Promise<string> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:replan:${planId}:${Date.now()}` };
+    const empty: EmptyBody = {};
+    const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/replan`, headers, empty);
+    return (raw.plan_id ?? planId) as string;
   }
 
   async getJob(jobId: string): Promise<AgentJob> {

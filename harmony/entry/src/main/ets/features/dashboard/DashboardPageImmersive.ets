@@ -228,6 +228,7 @@ export struct DashboardPageImmersive {
       this.FeatureCard({ title: '期末复习', subtitle: '计划与每日跟进', route: 'final_review', color: '#7A65E8', symbol: $r('sys.symbol.doc') })
       this.FeatureCard({ title: '课程研究', subtitle: '带引用研究报告', route: 'course_research', color: '#397CEF', symbol: $r('sys.symbol.doc_text') })
       this.FeatureCard({ title: '通知事务', subtitle: '通知转为待办', route: 'notice_workflow', color: '#35B99A', symbol: $r('sys.symbol.bell') })
+      this.FeatureCard({ title: '目标执行', subtitle: '计划确认与跟进', route: 'goal_center', color: '#F08A55', symbol: $r('sys.symbol.star_fill') })
     }
     .width('100%')
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: MotionSpec.distance(this.reduceMotion, 14) })).animation({ duration: MotionSpec.fadeDuration(this.reduceMotion, MotionDuration.PAGE), delay: MotionSpec.stagger(this.reduceMotion, 3), curve: Curve.EaseOut }))

@@ -88,6 +88,7 @@ import { FinalReviewPage } from '../features/finalreview/FinalReviewPage';
 import { FinalReviewPlanPage } from '../features/finalreview/FinalReviewPlanPage';
 import { CourseResearchPage } from '../features/research/CourseResearchPage';
 import { NoticeWorkflowPage } from '../features/notifications/NoticeWorkflowPage';
+import { GoalExecutionPage } from '../features/goals/GoalExecutionPage';
 
 const API_BASE_URL: string = ApiConfig.API_BASE_URL;
 
@@ -449,6 +450,10 @@ struct Index {
 
   openNoticeWorkflow(): void {
     this.pushRoute(AppRoute.NOTICE_WORKFLOW);
+  }
+
+  openGoalCenter(): void {
+    this.pushRoute(AppRoute.GOAL_CENTER);
   }
 
   async handleSessionExpired(): Promise<void> {
@@ -1529,6 +1534,10 @@ struct Index {
         SymbolGlyph($r('sys.symbol.bell')).fontSize(18).fontColor([this.primaryColor()])
         Text('通知事务').fontSize(10).fontColor(this.textColor())
       }.layoutWeight(1).onClick(() => this.openNoticeWorkflow())
+      Column({ space: 3 }) {
+        SymbolGlyph($r('sys.symbol.star_fill')).fontSize(18).fontColor([this.primaryColor()])
+        Text('目标执行').fontSize(10).fontColor(this.textColor())
+      }.layoutWeight(1).onClick(() => this.openGoalCenter())
     }.width('100%').padding({ top: 10, bottom: 10, left: 12, right: 12 })
     .backgroundColor(this.surface()).border({ width: { top: 1 }, color: this.lineColor() })
   }
@@ -1596,6 +1605,8 @@ struct Index {
       CourseResearchPage({ courses: this.courses, darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
     } else if (route === AppRoute.NOTICE_WORKFLOW) {
       NoticeWorkflowPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, deviceNotificationCapabilityLabel: this.notificationCapability.detail, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
+    } else if (route === AppRoute.GOAL_CENTER) {
+      GoalExecutionPage({ darkMode: this.darkMode, reduceMotion: this.reduceMotion, repository: this.createAgentRuntimeRepository(), onBack: () => this.popRoute() })
     } else if (route === AppRoute.QR_SCANNER) {
       QrScannerPage({
         darkMode: this.darkMode,
