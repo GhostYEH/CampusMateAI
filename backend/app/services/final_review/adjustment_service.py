@@ -44,6 +44,7 @@ class AdjustmentAnalyzer:
         campaign_id: str,
         user_id: str,
         evidence: dict[str, Any],
+        run_id: Optional[str] = None,
     ) -> dict[str, Any]:
         """分析证据,产生 adjustment proposal。
 
@@ -65,7 +66,7 @@ class AdjustmentAnalyzer:
         plan = json.loads(plan_row.plan_json)
 
         # 尝试模型分析
-        proposal = await self._model_analyze(plan, evidence)
+        proposal = await self._model_analyze(plan, evidence, run_id=run_id)
         if not proposal:
             # 降级到规则分析
             proposal = self._rule_analyze(plan, evidence)
@@ -124,7 +125,10 @@ class AdjustmentAnalyzer:
 
         if not approved:
             self._repo.resolve_proposal(
-                proposal_id, user_id=user_id, status="rejected"
+                proposal_id,
+                user_id=user_id,
+                status="rejected",
+                approval_id=proposal_row.approval_id,
             )
             return {
                 "proposal_id": proposal_id,
@@ -173,6 +177,7 @@ class AdjustmentAnalyzer:
             proposal_id,
             user_id=user_id,
             status="approved",
+            approval_id=proposal_row.approval_id,
             target_version=new_version,
         )
 
@@ -184,7 +189,7 @@ class AdjustmentAnalyzer:
         }
 
     async def _model_analyze(
-        self, plan: dict, evidence: dict
+        self, plan: dict, evidence: dict, *, run_id: Optional[str] = None
     ) -> Optional[dict[str, Any]]:
         """尝试用模型分析。失败返回 None。"""
         try:
@@ -215,6 +220,7 @@ class AdjustmentAnalyzer:
                 route_policy="reasoning_primary",
                 temperature=0.3,
                 max_tokens=1024,
+                run_id=run_id,
             )
             if result.response and result.response.content:
                 data = json.loads(result.response.content)

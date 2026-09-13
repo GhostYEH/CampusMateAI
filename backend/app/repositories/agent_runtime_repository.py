@@ -85,11 +85,23 @@ class AgentRuntimeRepository:
         conn = self._conn()
         try:
             row = conn.execute(
-                "SELECT job_id, user_id, job_kind, status, created_at, updated_at "
+                "SELECT job_id, user_id, job_kind, status, created_at, updated_at, "
+                "idempotency_key, input_ref_json "
                 "FROM agent_jobs WHERE user_id = ? AND idempotency_key = ?",
                 (user_id, idempotency_key),
             ).fetchone()
             return dict(row) if row else None
+        finally:
+            self._release(conn)
+
+    def update_job_input_ref(self, job_id: str, input_ref: dict) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "UPDATE agent_jobs SET input_ref_json = ?, updated_at = ? WHERE job_id = ?",
+                (json.dumps(input_ref, ensure_ascii=False), _now(), job_id),
+            )
+            conn.commit()
         finally:
             self._release(conn)
 
@@ -129,6 +141,20 @@ class AgentRuntimeRepository:
                 "finished_at, error_code, error_message, request_id, idempotency_key, "
                 "created_at, updated_at FROM agent_runs WHERE run_id = ?",
                 (run_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            self._release(conn)
+
+    def get_run_by_job(self, job_id: str) -> Optional[dict]:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT run_id, job_id, user_id, status, phase, risk_level, started_at, "
+                "finished_at, error_code, error_message, request_id, idempotency_key, "
+                "created_at, updated_at FROM agent_runs WHERE job_id = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (job_id,),
             ).fetchone()
             return dict(row) if row else None
         finally:

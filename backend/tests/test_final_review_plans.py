@@ -78,6 +78,62 @@ class TestPlanGenerate:
         assert "plan" in body
         assert body["risk_level"] == "CONFIRM_REQUIRED"
         assert body["requires_approval"] is True
+        assert body["run_id"].startswith("run_")
+        assert body["approval_id"].startswith("apv_")
+
+    def test_plan_cannot_activate_until_its_approval_is_resolved(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        generated = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        ).json()
+
+        blocked = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/activate",
+            json={"version": 1}, headers=headers,
+        )
+        assert blocked.status_code == 409
+        assert blocked.json()["code"] == "AGENT_APPROVAL_REQUIRED"
+
+        approved = client.post(
+            f"/api/v1/agent-approvals/{generated['approval_id']}/decision",
+            json={"decision": "APPROVED"}, headers=headers,
+        )
+        assert approved.status_code == 200, approved.text
+        activated = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/activate",
+            json={"version": 1}, headers=headers,
+        )
+        assert activated.status_code == 200, activated.text
+
+    def test_generate_plan_reuses_same_idempotency_key_and_rejects_conflict(self):
+        _, client = _setup()
+        headers = _login(client)
+        exam_id = _create_exam(client, headers)
+        cid = _create_campaign(client, headers, [exam_id])
+        headers = {**headers, "Idempotency-Key": "plan-generate-1"}
+
+        first = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        repeated = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={}, headers=headers,
+        )
+        assert repeated.status_code == 200
+        assert repeated.json()["version"] == first.json()["version"]
+        assert repeated.json()["run_id"] == first.json()["run_id"]
+
+        conflict = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/plans/generate",
+            json={"user_edits": {"daily_capacity_minutes": 30}}, headers=headers,
+        )
+        assert conflict.status_code == 409
+        assert conflict.json()["code"] == "AGENT_IDEMPOTENCY_CONFLICT"
 
     def test_generate_plan_has_days(self):
         _, client = _setup()
@@ -166,9 +222,13 @@ class TestPlanGenerate:
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         cid = _create_campaign(client, headers, [exam_id])
-        client.post(
+        generated = client.post(
             f"/api/v1/final-review/campaigns/{cid}/plans/generate",
             json={}, headers=headers,
+        ).json()
+        client.post(
+            f"/api/v1/agent-approvals/{generated['approval_id']}/decision",
+            json={"decision": "APPROVED"}, headers=headers,
         )
         resp = client.post(
             f"/api/v1/final-review/campaigns/{cid}/activate",

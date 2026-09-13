@@ -58,9 +58,13 @@ def _create_active_campaign(client, headers, exam_ids, capacity=120):
         json={"exam_ids": exam_ids, "daily_capacity_minutes": capacity},
         headers=headers,
     ).json()["campaign_id"]
-    client.post(
+    generated = client.post(
         f"/api/v1/final-review/campaigns/{cid}/plans/generate",
         json={}, headers=headers,
+    ).json()
+    client.post(
+        f"/api/v1/agent-approvals/{generated['approval_id']}/decision",
+        json={"decision": "APPROVED"}, headers=headers,
     )
     client.post(
         f"/api/v1/final-review/campaigns/{cid}/activate",

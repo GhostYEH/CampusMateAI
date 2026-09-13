@@ -143,6 +143,7 @@ class Planner:
         *,
         facts: dict[str, Any],
         user_edits: Optional[dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> PlannerOutput:
         """生成结构化 plan。模型失败降级到确定性规则。"""
         exams = facts.get("exams", [])
@@ -158,6 +159,7 @@ class Planner:
                 route_policy="reasoning_primary",
                 temperature=0.3,
                 max_tokens=2048,
+                run_id=run_id,
             )
             if result.response and result.response.content:
                 plan = _parse_model_plan(result.response.content)
