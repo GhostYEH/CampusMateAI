@@ -574,17 +574,52 @@ async def analyze_adjustments(
     }
 
     runtime_repo = container.agent_runtime_repository
+    effective_key = body.idempotency_key or idempotency_key
+    request_ref = {
+        "campaign_id": campaign_id,
+        "request_hash": _request_hash({"campaign_id": campaign_id}),
+    }
+    if effective_key:
+        existing_job = runtime_repo.find_job_by_idempotency(user.id, effective_key)
+        if existing_job:
+            existing_ref = json.loads(existing_job.get("input_ref_json") or "{}")
+            if (
+                existing_job["job_kind"] != "final_review_adjustment"
+                or existing_ref.get("request_hash") != request_ref["request_hash"]
+            ):
+                raise AgentIdempotencyConflict()
+            existing_run = runtime_repo.get_run_by_job(existing_job["job_id"])
+            proposal_id = existing_ref.get("proposal_id")
+            proposal = repo.get_proposal(proposal_id, user_id=user.id) if proposal_id else None
+            if existing_run and proposal:
+                return AdjustmentAnalyzeOut(
+                    run_id=existing_run["run_id"],
+                    proposal_id=proposal.proposal_id,
+                    risk_level=proposal.risk_level,
+                    requires_approval=bool(proposal.approval_id),
+                    approval_id=proposal.approval_id,
+                )
+            raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+
+    checkins = repo.list_checkin_evidence(campaign_id, user_id=user.id)
+    evidence["checkins"] = checkins
+    evidence["difficulty_notes"] = [
+        item["difficulty_notes"] for item in checkins if item["difficulty_notes"]
+    ]
+    evidence["insufficient_time"] = evidence["insufficient_time"] or any(
+        item["insufficient_time"] for item in checkins
+    )
     job_id = runtime_repo.create_job(
         user_id=user.id,
         job_kind="final_review_adjustment",
-        input_ref={"campaign_id": campaign_id},
-        idempotency_key=body.idempotency_key or idempotency_key,
+        input_ref=request_ref,
+        idempotency_key=effective_key,
     )
     run_id = runtime_repo.create_run(
         job_id=job_id,
         user_id=user.id,
         request_id=getattr(request.state, "request_id", None),
-        idempotency_key=body.idempotency_key or idempotency_key,
+        idempotency_key=effective_key,
     )
     container.agent_run_manager.transition(
         run_id, "RUNNING", phase="WAITING_FOR_MODEL"
@@ -623,7 +658,7 @@ async def analyze_adjustments(
         runtime_repo.update_job_input_ref(
             job_id,
             {
-                "campaign_id": campaign_id,
+                **request_ref,
                 "proposal_id": result["proposal_id"],
                 "approval_id": approval_id,
             },
@@ -637,7 +672,7 @@ async def analyze_adjustments(
     else:
         runtime_repo.update_job_input_ref(
             job_id,
-            {"campaign_id": campaign_id, "proposal_id": result["proposal_id"]},
+            {**request_ref, "proposal_id": result["proposal_id"]},
         )
         container.agent_run_manager.transition(run_id, "SUCCEEDED", phase="IDLE")
 

@@ -322,6 +322,12 @@ async def resolve_approval(
         approval_id, decision=body.decision, reason=body.reason, user_id=user.id
     )
     apv = repo.get_approval(approval_id)
+    if body.decision == "REJECTED":
+        run = repo.get_run(apv.run_id)
+        if run and run["status"] == "AWAITING_APPROVAL":
+            container.agent_run_manager.cancel(
+                apv.run_id, reason=body.reason or "用户拒绝审批"
+            )
     return AgentApprovalOut(
         approval_id=apv.approval_id,
         run_id=apv.run_id,

@@ -161,6 +161,16 @@ class AgendaService:
         # insufficient_time / difficulty_notes 作为 evidence 存在 proposal 分析中
         if insufficient_time or difficulty_notes:
             evidence_count += 1
+        campaign = self._repo.get_campaign(campaign_id, user_id=user_id)
+        self._repo.upsert_checkin_evidence(
+            campaign_id=campaign_id,
+            plan_version=campaign.active_version if campaign else None,
+            user_id=user_id,
+            report_date=report_date,
+            completed_item_ids=completed_item_ids,
+            insufficient_time=insufficient_time,
+            difficulty_notes=difficulty_notes,
+        )
         return evidence_count
 
     def _find_day(self, plan: dict, target_date: str) -> Optional[dict]:

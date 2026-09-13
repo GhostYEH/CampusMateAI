@@ -80,6 +80,24 @@ CREATE TABLE IF NOT EXISTS final_review_daily_items (
 CREATE INDEX IF NOT EXISTS idx_final_review_daily_items_agenda ON final_review_daily_items(agenda_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_final_review_daily_items_task ON final_review_daily_items(personal_task_id);
 
+CREATE TABLE IF NOT EXISTS final_review_checkin_evidence (
+    checkin_id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    plan_version INTEGER,
+    user_id TEXT NOT NULL,
+    report_date TEXT NOT NULL,
+    completed_item_ids_json TEXT NOT NULL DEFAULT '[]',
+    insufficient_time INTEGER NOT NULL DEFAULT 0,
+    difficulty_notes TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(campaign_id) REFERENCES final_review_campaigns(campaign_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(campaign_id, user_id, report_date)
+);
+CREATE INDEX IF NOT EXISTS idx_final_review_checkin_evidence_campaign_date
+    ON final_review_checkin_evidence(campaign_id, user_id, report_date DESC);
+
 CREATE TABLE IF NOT EXISTS final_review_adjustment_proposals (
     proposal_id TEXT PRIMARY KEY,
     campaign_id TEXT NOT NULL,

@@ -1,4 +1,4 @@
-"""Agent runtime recovery 测试 —— RECOVERY_CHECKING 状态机。"""
+"""Agent runtime recovery 测试 —— 中断执行安全收口。"""
 from __future__ import annotations
 
 import pytest
@@ -93,7 +93,7 @@ class TestRunManagerTransitions:
 
 
 class TestRunManagerRecovery:
-    def test_recover_marks_incomplete_runs(self, run_manager):
+    def test_recover_fails_interrupted_runs_without_unsafe_replay(self, run_manager):
         repo = run_manager._repo
         run_id1 = _create_run(repo)
         run_manager.transition(run_id1, "RUNNING", phase="CONTEXT_BUILDING")
@@ -102,7 +102,9 @@ class TestRunManagerRecovery:
         recovered = run_manager.recover_incomplete_runs()
         assert len(recovered) == 2
         for run in recovered:
-            assert run["phase"] == "RECOVERY_CHECKING"
+            assert run["status"] == "FAILED"
+            assert run["phase"] == "IDLE"
+            assert run["error_code"] == "AGENT_RECOVERY_UNSUPPORTED"
 
     def test_recover_skips_terminal_runs(self, run_manager):
         repo = run_manager._repo
