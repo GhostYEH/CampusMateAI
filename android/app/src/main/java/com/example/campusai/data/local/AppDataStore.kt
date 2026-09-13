@@ -33,7 +33,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     private val KEY_MOCK_MODE = booleanPreferencesKey("campus_mock_mode")
     private val KEY_REDUCE_MOTION = booleanPreferencesKey("campus_reduce_motion")
     private val KEY_DARK_MODE = booleanPreferencesKey("campus_dark_mode")
-    private val KEY_DASHBOARD_STYLE = stringPreferencesKey("campus_dashboard_style")
     private val KEY_REMINDERS = booleanPreferencesKey("campus_reminders")
     private val KEY_LEARNING_ASSISTANCE = booleanPreferencesKey("campus_learning_assistance")
     private val KEY_NOTIFICATION_WECHAT = booleanPreferencesKey("campus_notification_wechat")
@@ -97,9 +96,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     }
 
     val darkMode: Flow<Boolean> = context.dataStore.data.map { it[KEY_DARK_MODE] ?: false }
-    val dashboardStyle: Flow<DashboardStyle> = context.dataStore.data.map {
-        DashboardStyle.fromStoredValue(it[KEY_DASHBOARD_STYLE])
-    }
     val remindersEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_REMINDERS] ?: true }
     val learningAssistanceEnabled: Flow<Boolean> = context.dataStore.data.map {
         it[KEY_LEARNING_ASSISTANCE] ?: false
@@ -213,10 +209,6 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
 
     suspend fun setDarkMode(enabled: Boolean) {
         context.dataStore.edit { it[KEY_DARK_MODE] = enabled }
-    }
-
-    suspend fun setDashboardStyle(style: DashboardStyle) {
-        context.dataStore.edit { it[KEY_DASHBOARD_STYLE] = style.storedValue }
     }
 
     suspend fun setRemindersEnabled(enabled: Boolean) {

@@ -30,7 +30,6 @@ import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
 import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
-import com.example.campusai.data.local.DashboardStyle
 import com.example.campusai.data.hitokoto.HitokotoRepository
 import com.example.campusai.data.wallpaper.BingDailyWallpaperRepository
 import kotlinx.coroutines.*
@@ -99,9 +98,6 @@ class AppRepository(
 
     private val _darkMode = MutableStateFlow(false)
     val darkMode: StateFlow<Boolean> = _darkMode.asStateFlow()
-
-    private val _dashboardStyle = MutableStateFlow(DashboardStyle.CLASSIC)
-    val dashboardStyle: StateFlow<DashboardStyle> = _dashboardStyle.asStateFlow()
 
     private val _remindersEnabled = MutableStateFlow(true)
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
@@ -235,7 +231,6 @@ class AppRepository(
         scope.launch { loadCachedHomeBanners() }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
-        scope.launch { dataStore.dashboardStyle.collect { _dashboardStyle.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
         scope.launch {
@@ -915,11 +910,6 @@ class AppRepository(
     suspend fun setDarkMode(enabled: Boolean) {
         _darkMode.value = enabled
         dataStore.setDarkMode(enabled)
-    }
-
-    suspend fun setDashboardStyle(style: DashboardStyle) {
-        _dashboardStyle.value = style
-        dataStore.setDashboardStyle(style)
     }
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
