@@ -54,6 +54,7 @@ interface RequestOptions {
   authenticated?: boolean
   retryAfterRefresh?: boolean
   responseType?: 'text' | 'arraybuffer'
+  headers?: Record<string, string>
 }
 
 interface ApiPage<T> {
@@ -106,6 +107,37 @@ interface ApiNotice {
   source?: string
   time?: string
   unread?: boolean
+}
+
+interface AgentRun {
+  run_id: string
+  job_id: string
+  domain: string
+  status: string
+  phase: string
+  current_role?: string
+  progress?: { current: number; total: number; percent: number }
+}
+
+interface CourseResearchResult {
+  research_id: string
+  effective_mode: string
+  academic_policy: string
+  status: string
+  roles: string[]
+  warning_codes: string[]
+  report_summary: string
+  sources: Array<{ source_id: string; source_type: string; safe_label: string; verification_status: string }>
+}
+
+interface NoticeWorkflow {
+  workflow_id: string
+  notice_id: string
+  status: string
+  source_code: string
+  source_revision: number
+  action_risk: 'AUTO_SAFE' | 'CONFIRM_REQUIRED' | 'MANUAL_ONLY' | 'UNKNOWN'
+  automation_enabled: boolean
 }
 
 interface ApiExtractTask {
@@ -394,6 +426,26 @@ class CampusRepository {
 
   async getStudentExamsAsync(): Promise<StudentExam[]> {
     return this.request<StudentExam[]>('/student/exams', 'GET')
+  }
+
+  async getAgentCapabilitiesAsync(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>('/agent-runtime/capabilities', 'GET')
+  }
+
+  async getAgentRunAsync(runId: string): Promise<AgentRun> {
+    return this.request<AgentRun>(`/agent-runs/${encodeURIComponent(runId)}`, 'GET')
+  }
+
+  async createCourseResearchAsync(payload: { question: string; course_id?: string | null; mode: string; academic_policy: string; source_policy: { course_material_priority: boolean; allow_web: boolean; allow_user_upload: boolean } }, idempotencyKey: string): Promise<CourseResearchResult> {
+    return this.request<CourseResearchResult>('/course-research/sessions', 'POST', payload, { headers: { 'Idempotency-Key': idempotencyKey } })
+  }
+
+  async createManualNoticeAsync(content: string, title?: string): Promise<{ notice_id: string; duplicate: boolean; source_code: string }> {
+    return this.request<{ notice_id: string; duplicate: boolean; source_code: string }>('/notices/manual', 'POST', { content, title })
+  }
+
+  async analyzeNoticeWorkflowAsync(noticeId: string): Promise<NoticeWorkflow> {
+    return this.request<NoticeWorkflow>(`/notices/${encodeURIComponent(noticeId)}/workflow`, 'POST')
   }
 
   async saveStudentExam(exam: Omit<StudentExam, 'id'>, id?: string): Promise<StudentExam> {
@@ -777,7 +829,7 @@ class CampusRepository {
         method: method as WechatMiniprogram.RequestOption['method'],
         data,
         responseType: options.responseType,
-        header: authenticated && token ? { Authorization: `Bearer ${token}` } : {},
+        header: { ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) },
         timeout: 15000,
         success: (response) => {
           if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -795,6 +847,7 @@ class CampusRepository {
                 authenticated,
                 retryAfterRefresh: false,
                 responseType: options.responseType,
+                headers: options.headers,
               })
                 .then(resolve)
                 .catch(reject)
