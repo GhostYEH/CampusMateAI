@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     xunfei_llm_api_key: str = ""
     xunfei_llm_model: str = "lite"
     agent_artifact_path: str = "./data/agent_artifacts"
+    # 单次上下文快照的 token 预算:超出后按占用从大到小确定性裁剪并记录报告。
+    agent_context_budget_tokens: int = 6000
 
     # ===== CampusMate-LM shadow candidate (disabled by default) =====
     campusmate_lm_enabled: bool = False

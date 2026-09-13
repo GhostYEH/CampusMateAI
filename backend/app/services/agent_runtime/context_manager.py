@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
+from .context_budget import DEFAULT_BUDGET_TOKENS, compact_facts
 
 
 @dataclass
@@ -27,6 +28,7 @@ class ContextSnapshot:
     generated_at: str = ""
     valid_until: str = ""
     expired: bool = False
+    budget_report: dict = field(default_factory=dict)
 
 
 class ContextManager:
@@ -38,10 +40,12 @@ class ContextManager:
         *,
         ttl_minutes: int = 15,
         max_facts_bytes: int = 65536,
+        budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> None:
         self._repo = repository
         self._ttl = timedelta(minutes=ttl_minutes)
         self._max_facts_bytes = max_facts_bytes
+        self._budget_tokens = budget_tokens
 
     def build(
         self,
@@ -56,6 +60,10 @@ class ContextManager:
         scope = scope or {"user_id": user_id}
         facts = facts or {}
         source_refs = source_refs or []
+        # 预算裁剪:超预算时按占用从大到小压缩,报告写回 facts 以便审计。
+        facts, budget_report = compact_facts(facts, budget_tokens=self._budget_tokens)
+        if budget_report.get("truncated"):
+            facts = {**facts, "_context_budget": budget_report}
         # 大小限制
         facts_json = json.dumps(facts, ensure_ascii=False, sort_keys=True)
         if len(facts_json.encode("utf-8")) > self._max_facts_bytes:
@@ -89,6 +97,7 @@ class ContextManager:
             source_digest=source_digest,
             generated_at=now.isoformat(),
             valid_until=valid_until,
+            budget_report=budget_report,
         )
 
     def load(self, snapshot_id: str, user_id: str) -> Optional[ContextSnapshot]:

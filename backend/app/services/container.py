@@ -281,7 +281,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_event_store = AgentEventStore(agent_runtime_repository)
     agent_run_manager = RunManager(agent_runtime_repository, agent_event_store)
     agent_artifact_manager = ArtifactManager(agent_artifact_repository)
-    agent_context_manager = ContextManager(agent_runtime_repository)
+    agent_context_manager = ContextManager(
+        agent_runtime_repository,
+        budget_tokens=settings.agent_context_budget_tokens,
+    )
     agent_memory_manager = MemoryManager(agent_runtime_repository)
     agent_registry_obj = AgentRegistry()
     agent_tool_registry = ToolRegistry()

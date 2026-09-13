@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ...core.exceptions import AgentRuntimeError
@@ -58,6 +58,38 @@ class RunManager:
     def assert_active(self, run_id: str) -> dict:
         """模型/工具边界处的取消检查点:已取消或终态则抛异常。"""
         return ensure_run_active(self._repo, run_id)
+
+    def sweep_stale_runs(self, *, older_than_minutes: int = 120) -> int:
+        """兜底清理长期停留在非终态的 run(进程崩溃/网络中断后不会永久挂着)。
+
+        进程崩溃后不会有人再来推进这些 run,由调用方(启动时或定时任务)扫描。
+        这里只置终态并留错误原因,不做任何业务回滚。
+        """
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=older_than_minutes)
+        ).isoformat()
+        swept = 0
+        for run in self._repo.list_stale_runs(older_than_iso=cutoff):
+            try:
+                self.transition(
+                    run["run_id"],
+                    "FAILED",
+                    phase="IDLE",
+                    error_code="AGENT_INVALID_STATE",
+                    error_message=f"run 超过 {older_than_minutes} 分钟未推进,已由兜底清理置为失败",
+                )
+            except AgentRuntimeError:
+                # 并发下已被其它路径收尾:跳过即可,不视为错误。
+                continue
+            self._events.append(
+                run_id=run["run_id"],
+                type="RUN_FAILED",
+                status="FAILED",
+                phase="IDLE",
+                summary="运行超时未推进,已由兜底清理终止",
+            )
+            swept += 1
+        return swept
 
     def transition(
         self,

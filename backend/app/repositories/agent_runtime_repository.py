@@ -220,6 +220,20 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    def list_stale_runs(self, *, older_than_iso: str) -> list[dict]:
+        """列出超过阈值仍未结束的 run(用于僵尸 run 兜底清理)。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT run_id, job_id, user_id, status, phase, created_at, updated_at "
+                "FROM agent_runs WHERE status IN ('QUEUED', 'RUNNING', 'AWAITING_APPROVAL') "
+                "AND updated_at < ? ORDER BY updated_at ASC",
+                (older_than_iso,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
     # ===== Step =====
 
     def create_step(

@@ -68,7 +68,17 @@ def test_assert_expired_raises(ctx_manager):
         ctx_manager.assert_not_expired(snap)
 
 
-def test_facts_size_limit(ctx_manager):
-    big_facts = {"data": "x" * 100000}
+def test_oversized_facts_are_compacted_before_persisting(ctx_manager):
+    """超预算上下文先按预算确定性裁剪,而不是直接失败。"""
+    big_facts = {"data": "x" * 100000, "daily_capacity_minutes": 120}
+    snap = ctx_manager.build(user_id="u1", facts=big_facts)
+    assert snap.budget_report["truncated"] is True
+    assert snap.facts["daily_capacity_minutes"] == 120
+    assert snap.budget_report["estimated_tokens"] <= 6000
+
+
+def test_facts_size_limit_still_guards_uncompactable_input(ctx_manager):
+    """标量字段不是可裁剪对象:极端输入仍由硬上限兜底。"""
+    pathological = {f"k{index}": index for index in range(70000)}
     with pytest.raises(ValueError):
-        ctx_manager.build(user_id="u1", facts=big_facts)
+        ctx_manager.build(user_id="u1", facts=pathological)
