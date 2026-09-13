@@ -34,7 +34,6 @@ if str(_BACKEND_ROOT) not in sys.path:
 from app.core.config import get_settings  # noqa: E402
 from app.database.sqlite_db import init_db  # noqa: E402
 from app.repositories.document_repository import DocumentRepository  # noqa: E402
-from app.services.knowledge_ingestion_service import KnowledgeIngestionService  # noqa: E402
 from app.services.retrieval_service import RetrievalService  # noqa: E402
 
 
@@ -303,14 +302,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     db = init_db(settings)
     repo = DocumentRepository(db)
     retrieval = RetrievalService(repo)
-    ingestion = KnowledgeIngestionService(repo, retrieval, settings)
-    # 确保演示资料已导入
-    added = ingestion.import_demo_documents()
-    if added > 0:
-        print(f"[INFO] 已导入 {added} 份演示资料用于评测。")
     retrieval.rebuild()
     if retrieval.chunk_count == 0:
-        print("ERROR: 知识库为空,无法进行评测。请先导入演示资料。", file=sys.stderr)
+        print("ERROR: 知识库为空,无法进行评测。请先上传或同步正式资料。", file=sys.stderr)
         return 3
 
     cases = load_fixtures(args.fixtures)
