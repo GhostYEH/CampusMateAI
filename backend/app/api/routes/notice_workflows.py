@@ -216,6 +216,8 @@ async def create_workflow(
     container.agent_run_manager.transition(
         run_id, "RUNNING", phase="WAITING_FOR_MODEL"
     )
+    # 取消检查点:进入通知解析前确认 run 仍可推进。
+    container.agent_run_manager.assert_active(run_id)
     wf = await service.create_workflow_for_notice_async(
         user_id=user.id,
         notice_id=notice_id,

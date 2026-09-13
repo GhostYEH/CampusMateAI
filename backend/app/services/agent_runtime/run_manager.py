@@ -10,6 +10,7 @@ from typing import Optional
 
 from ...core.exceptions import AgentRuntimeError
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
+from .cancellation import ensure_run_active
 from .event_store import AgentEventStore
 
 
@@ -53,6 +54,10 @@ class RunManager:
     @staticmethod
     def is_terminal(status: str) -> bool:
         return status in _TERMINAL_STATES
+
+    def assert_active(self, run_id: str) -> dict:
+        """模型/工具边界处的取消检查点:已取消或终态则抛异常。"""
+        return ensure_run_active(self._repo, run_id)
 
     def transition(
         self,

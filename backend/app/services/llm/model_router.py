@@ -42,6 +42,45 @@ _POLICY_ORDER: dict[str, list[str]] = {
 }
 
 
+def extract_token_usage(response: Optional[LLMResponse]) -> dict:
+    """从 provider 原始响应中提取 token 用量。
+
+    只读取 usage 字段,不保留 prompt 或消息内容。OpenAI 兼容接口里
+    DeepSeek 用 prompt_cache_hit_tokens,OpenAI 用 prompt_tokens_details.cached_tokens,
+    两种写法都兼容;缺失的字段返回 None,由仓储存 NULL 而不是 0(0 与"未知"不同)。
+    """
+    if response is None:
+        return {}
+    raw = getattr(response, "raw", None)
+    usage = raw.get("usage") if isinstance(raw, dict) else None
+    if not isinstance(usage, dict):
+        return {}
+
+    def _first_int(*keys: str) -> Optional[int]:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, int):
+                return value
+        return None
+
+    prompt = _first_int("prompt_tokens", "input_tokens")
+    completion = _first_int("completion_tokens", "output_tokens")
+    total = _first_int("total_tokens")
+    if total is None and (prompt is not None or completion is not None):
+        total = (prompt or 0) + (completion or 0)
+    details = usage.get("prompt_tokens_details")
+    cached = _first_int("cached_tokens", "prompt_cache_hit_tokens")
+    if cached is None and isinstance(details, dict):
+        cached_value = details.get("cached_tokens")
+        cached = cached_value if isinstance(cached_value, int) else None
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
+        "cached_tokens": cached,
+    }
+
+
 class ModelRouter:
     """模型路由器。"""
 
@@ -176,6 +215,7 @@ class ModelRouter:
             status=result.status,
             latency_ms=result.latency_ms,
             fallback_reason=result.fallback_reason,
+            **extract_token_usage(result.response),
         )
 
     async def _dual_review(

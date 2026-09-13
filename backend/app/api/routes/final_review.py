@@ -291,6 +291,8 @@ async def generate_plan(
     )
 
     # 生成计划
+    # 取消检查点:进入计划生成前确认 run 仍可推进。
+    container.agent_run_manager.assert_active(run_id)
     planner = Planner(model_router=container.agent_model_router)
     result = await planner.generate(
         facts=facts, user_edits=body.user_edits, run_id=run_id
@@ -590,6 +592,8 @@ async def analyze_adjustments(
 
     from ...services.final_review.adjustment_service import AdjustmentAnalyzer
 
+    # 取消检查点:进入模型分析前确认 run 仍可推进,避免取消后继续消耗额度。
+    container.agent_run_manager.assert_active(run_id)
     analyzer = AdjustmentAnalyzer(
         final_review_repo=repo,
         model_router=container.agent_model_router,

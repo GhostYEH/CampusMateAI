@@ -1625,6 +1625,10 @@ CREATE TABLE IF NOT EXISTS agent_model_calls (
     status TEXT NOT NULL DEFAULT 'running',
     latency_ms INTEGER,
     fallback_reason TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    total_tokens INTEGER,
+    cached_tokens INTEGER,
     started_at TEXT NOT NULL,
     finished_at TEXT,
     FOREIGN KEY(run_id) REFERENCES agent_runs(run_id) ON DELETE CASCADE
@@ -1861,6 +1865,13 @@ class Database:
                 "stale_reason": "TEXT", "replan_key": "TEXT",
             },
             "learning_plan_execution_actions": {"target_task_digest": "TEXT"},
+            # 用量记账:老库补列,避免只有延迟没有 token 成本。
+            "agent_model_calls": {
+                "prompt_tokens": "INTEGER",
+                "completion_tokens": "INTEGER",
+                "total_tokens": "INTEGER",
+                "cached_tokens": "INTEGER",
+            },
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():

@@ -9,6 +9,7 @@ from typing import Optional
 
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from .agent_registry import AgentRegistry
+from .cancellation import ensure_run_active, is_run_cancelled
 from .event_store import AgentEventStore
 from .tool_registry import ToolRegistry
 
@@ -95,8 +96,11 @@ class AgentExecutor:
 
     def is_cancelled(self, run_id: str) -> bool:
         """在逻辑角色边界检查持久化取消状态。"""
-        run = self._repo.get_run(run_id)
-        return bool(run and run["status"] == "CANCELLED")
+        return is_run_cancelled(self._repo, run_id)
+
+    def assert_not_cancelled(self, run_id: str) -> dict:
+        """取消检查点:已取消或终态时抛异常,用于模型/工具执行前。"""
+        return ensure_run_active(self._repo, run_id)
 
 
 __all__ = ["AgentExecutor"]

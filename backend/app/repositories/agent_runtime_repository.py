@@ -382,15 +382,25 @@ class AgentRuntimeRepository:
         latency_ms: int,
         step_id: Optional[str] = None,
         fallback_reason: Optional[str] = None,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+        total_tokens: Optional[int] = None,
+        cached_tokens: Optional[int] = None,
     ) -> str:
+        """记录一次模型调用。
+
+        只保存元数据与 token 用量,绝不保存 prompt、消息或隐藏推理。
+        """
         call_id = _uuid("mcall")
         now = _now()
         conn = self._conn()
         try:
             conn.execute(
                 "INSERT INTO agent_model_calls (call_id, run_id, step_id, provider, "
-                "route_policy, model, status, latency_ms, fallback_reason, started_at, finished_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "route_policy, model, status, latency_ms, fallback_reason, "
+                "prompt_tokens, completion_tokens, total_tokens, cached_tokens, "
+                "started_at, finished_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     call_id,
                     run_id,
@@ -401,12 +411,41 @@ class AgentRuntimeRepository:
                     status,
                     latency_ms,
                     fallback_reason,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    cached_tokens,
                     now,
                     now,
                 ),
             )
             conn.commit()
             return call_id
+        finally:
+            self._release(conn)
+
+    def model_usage(self, run_id: str) -> dict:
+        """汇总某个 run 的 token 用量与调用次数(用于成本展示与论文指标)。"""
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS calls, "
+                "COALESCE(SUM(total_tokens), 0) AS total_tokens, "
+                "COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, "
+                "COALESCE(SUM(completion_tokens), 0) AS completion_tokens, "
+                "COALESCE(SUM(cached_tokens), 0) AS cached_tokens, "
+                "COALESCE(SUM(latency_ms), 0) AS latency_ms "
+                "FROM agent_model_calls WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            return dict(row) if row is not None else {
+                "calls": 0,
+                "total_tokens": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "cached_tokens": 0,
+                "latency_ms": 0,
+            }
         finally:
             self._release(conn)
 
