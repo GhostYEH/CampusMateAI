@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
+import { agentApi } from "../data/agentApi.js";
 import { submissionPayload } from "../data/contracts.js";
 import { shouldFinalizeSubmission, submissionActionLabel, submissionStatusLabel } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
@@ -11,8 +12,28 @@ const errorText = (error, fallback = "操作失败，请稍后重试") => error?
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "未设置截止时间");
 const formatSize = (value) => { const size = Number(value || 0); return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : size >= 1024 ? `${Math.round(size / 1024)} KB` : `${size} B`; };
 
+const RUN_STEP_LABEL = { PENDING: "待执行", RUNNING: "执行中", DONE: "已完成", FAILED: "失败", SKIPPED: "已跳过" };
+const RUN_OPEN_STATUS = new Set(["QUEUED", "RUNNING", "AWAITING_APPROVAL"]);
+
+function FinalReviewRunDetail({ campaignId }) {
+  const navigate = useNavigate();
+  const [campaign, setCampaign] = useState(null); const [run, setRun] = useState(null); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(""); const [notice, setNotice] = useState(""); const [error, setError] = useState("");
+  async function load() { setLoading(true); setError(""); try { const [campaignRow, runRow] = await Promise.all([agentApi.getCampaign(campaignId), agentApi.campaignRun(campaignId).catch(() => null)]); setCampaign(campaignRow); setRun(runRow); } catch (err) { setError(errorText(err, "复习运行加载失败")); } finally { setLoading(false); } }
+  useEffect(() => { load(); }, [campaignId]);
+  async function decide(decision) { if (!run?.approval_id) return; setBusy(decision); try { await agentApi.decideApproval(run.approval_id, decision); setNotice(decision === "APPROVED" ? "已批准，计划已激活并写入今日待办" : "已拒绝，本次运行不会激活计划"); await load(); } catch (err) { setNotice(errorText(err)); } finally { setBusy(""); } }
+  async function resume() { if (!run?.run_id) return; setBusy("resume"); try { await agentApi.resumeRun(run.run_id); setNotice("运行已继续"); await load(); } catch (err) { setNotice(errorText(err)); } finally { setBusy(""); } }
+  const steps = run?.steps || [];
+  return <PageFrame eyebrow="Tasks / Final Review Run" title="期末复习运行" description={`活动 ${campaignId}`} actions={<BackLink to="/tasks">返回任务列表</BackLink>}><AsyncState loading={loading} error={error} onRetry={load}><div className="grid grid-2 reveal"><Panel><SectionHeading title="运行状态" detail={run?.run_id ? `运行 ${run.run_id}` : "该活动还没有运行记录"} /><div className="agent-badges"><span>{run?.status || "未开始"}</span><span>{run?.phase || "IDLE"}</span><span>进度 {run?.progress_current ?? 0}/{run?.progress_total ?? 0}</span></div>{run?.approval_summary && <div className="page-notice notice-info">{run.approval_summary} · {run.approval_status}</div>}{campaign?.active_version ? <p className="muted-copy">当前激活版本 v{campaign.active_version}</p> : <p className="muted-copy">激活前不会创建任何今日待办。</p>}<div className="form-footer">{run?.approval_status === "PENDING" && <><Button disabled={busy} onClick={() => decide("APPROVED")}>{busy === "APPROVED" ? "批准中…" : "批准并激活"}</Button><Button variant="secondary" disabled={busy} onClick={() => decide("REJECTED")}>拒绝</Button></>}{run?.run_id && RUN_OPEN_STATUS.has(run.status) && <Button variant="secondary" disabled={busy} onClick={resume}>{busy === "resume" ? "继续中…" : "继续运行"}</Button>}<Button variant="quiet" onClick={() => navigate("/final-review")}>打开复习指挥台</Button></div>{notice && <div className="page-notice notice-info" role="status">{notice}</div>}</Panel><Panel><SectionHeading title="执行时间线" detail="每一步都由 Runtime 持久化，重启后可从最后完成步骤继续" />{steps.length ? <div className="agent-list">{steps.map((step) => <div key={step.step_id}><strong>{step.sequence}. {step.summary}</strong><small>{RUN_STEP_LABEL[step.status] || step.status} · {step.finished_at || step.started_at || "尚未开始"}</small></div>)}</div> : <div className="inline-empty">该复习活动还没有运行记录。</div>}</Panel></div></AsyncState></PageFrame>;
+}
+
 export default function TaskDetailPage() {
-  const { kind, id } = useParams(); const navigate = useNavigate(); const assignment = kind === "assignment"; const [data, setData] = useState(null); const [submission, setSubmission] = useState(null); const [form, setForm] = useState({}); const [answer, setAnswer] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const { kind, id } = useParams();
+  if (kind === "final-review") return <FinalReviewRunDetail campaignId={id} />;
+  return <TaskDetailContent kind={kind} id={id} />;
+}
+
+function TaskDetailContent({ kind, id }) {
+  const navigate = useNavigate(); const assignment = kind === "assignment"; const [data, setData] = useState(null); const [submission, setSubmission] = useState(null); const [form, setForm] = useState({}); const [answer, setAnswer] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const assignmentClosed = assignment && (data?.status === "closed" || data?.is_closed === true);
   const assignmentGraded = assignment && (submission?.status === "graded" || submission?.score != null);
   const submissionLocked = assignmentClosed || assignmentGraded;

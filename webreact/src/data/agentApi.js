@@ -5,9 +5,15 @@ const requestId = () => globalThis.crypto?.randomUUID?.() || `agent-${Date.now()
 
 export const agentApi = {
   listCampaigns: async () => data(await client.get("/final-review/campaigns")),
+  getCampaign: async (id) => data(await client.get(`/final-review/campaigns/${id}`)),
   createCampaign: async (payload) => data(await client.post("/final-review/campaigns", payload)),
-  generatePlan: async (id) => data(await client.post(`/final-review/campaigns/${id}/plans/generate`)),
+  // 带幂等键时生成走 Runtime：生成后停在激活审批，不会直接产生待办
+  generatePlan: async (id, key = requestId()) => data(await client.post(`/final-review/campaigns/${id}/plans/generate`, {}, { headers: { "Idempotency-Key": key } })),
   activatePlan: async (id) => data(await client.post(`/final-review/campaigns/${id}/activate`)),
+  campaignRun: async (id) => data(await client.get(`/final-review/campaigns/${id}/run`)),
+  runSteps: async (runId) => data(await client.get(`/agent-runs/${encodeURIComponent(runId)}/steps`)),
+  resumeRun: async (runId) => data(await client.post(`/agent-runs/${encodeURIComponent(runId)}/resume`)),
+  decideApproval: async (approvalId, decision) => data(await client.post(`/agent-approvals/${encodeURIComponent(approvalId)}/decision`, { decision })),
   todayAgenda: async (id) => data(await client.get(`/final-review/campaigns/${id}/agendas/today`)),
   completeDailyItem: async (id) => data(await client.post(`/final-review/daily-items/${id}/complete`)),
   createResearch: async (payload, key = requestId()) => data(await client.post("/course-research/sessions", payload, { headers: { "Idempotency-Key": key } })),
