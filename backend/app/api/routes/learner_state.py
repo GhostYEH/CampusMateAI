@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
+    CounterfactualIntervention,
     CounterfactualSimulateRequest,
     CounterfactualSimulateResponse,
     LearnerStateChangePage,
@@ -265,9 +266,7 @@ def simulate_counterfactual(
     )
     return CounterfactualSimulateResponse(
         course_id=result["course_id"],
-        intervention=CounterfactualSimulateRequest.__fields__["intervention"].type_(
-            **result["intervention"],
-        ),
+        intervention=CounterfactualIntervention(**result["intervention"]),
         deltas=result["deltas"],
         baseline_snapshot_count=result["baseline_snapshot_count"],
         counterfactual_snapshot_count=result["counterfactual_snapshot_count"],

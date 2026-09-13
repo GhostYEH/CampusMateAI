@@ -109,6 +109,41 @@ def test_prediction_api_reads_its_course_family_and_exposes_evidence():
     assert all("source_id" not in item for item in evidence_body["items"])
 
 
+def test_counterfactual_api_returns_typed_response_without_mutating_projection():
+    container, client, headers, user = _setup()
+    course_id = _seed_prediction_evidence(container, user.id)
+    before = client.get(
+        f"/api/v1/learner-state/predictions/{course_id}", headers=headers
+    ).json()
+
+    response = client.post(
+        "/api/v1/learner-state/simulate",
+        headers=headers,
+        json={
+            "course_id": course_id,
+            "intervention": {
+                "intervention_type": "additional_practice",
+                "knowledge_component_code": "c.pointer.basics",
+                "additional_practice_count": 5,
+                "expected_score": 80,
+                "misconception_code": None,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["course_id"] == course_id
+    assert body["intervention"]["intervention_type"] == "additional_practice"
+    assert body["deltas"]
+    after = client.get(
+        f"/api/v1/learner-state/predictions/{course_id}", headers=headers
+    ).json()
+    assert [item["snapshot_id"] for item in after["items"]] == [
+        item["snapshot_id"] for item in before["items"]
+    ]
+
+
 def test_paused_practice_source_removes_practice_from_prediction_inputs():
     container, client, headers, user = _setup()
     course_id = _seed_prediction_evidence(container, user.id)
@@ -130,4 +165,3 @@ def test_paused_practice_source_removes_practice_from_prediction_inputs():
     )
     assert after_pause.status_code == 200
     assert after_pause.json()["total"] == 0
-
