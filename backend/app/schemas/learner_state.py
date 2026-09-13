@@ -327,6 +327,7 @@ class LearnerStateSnapshotOut(BaseModel):
     observed_through: datetime | None = None
     valid_until: datetime | None = None
     computed_at: datetime
+    estimator_version: str = ""
     projection_kind: Literal["CORE", "ACADEMIC", "WORLD"] = "CORE"
     projection_scope: str = "__user__"
     input_digest: str = ""
