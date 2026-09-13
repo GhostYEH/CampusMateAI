@@ -1687,6 +1687,32 @@ CREATE TABLE IF NOT EXISTS final_review_adjustment_proposals (
 );
 """
 
+COURSE_RESEARCH_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS course_research_sessions (
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL,course_id TEXT,question_digest TEXT NOT NULL,
+ requested_mode TEXT NOT NULL,effective_mode TEXT NOT NULL,academic_policy TEXT NOT NULL,
+ source_policy_json TEXT NOT NULL,status TEXT NOT NULL,roles_json TEXT NOT NULL,
+ warning_codes_json TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,UNIQUE(user_id,idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS course_research_sources (
+ id TEXT PRIMARY KEY,research_id TEXT NOT NULL,source_type TEXT NOT NULL,safe_label TEXT NOT NULL,
+ content_ref TEXT,content_digest TEXT NOT NULL,verification_status TEXT NOT NULL,created_at TEXT NOT NULL,
+ FOREIGN KEY(research_id) REFERENCES course_research_sessions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS course_research_steps (
+ id TEXT PRIMARY KEY,research_id TEXT NOT NULL,sequence INTEGER NOT NULL,role TEXT NOT NULL,
+ status TEXT NOT NULL,public_summary TEXT NOT NULL,created_at TEXT NOT NULL,
+ UNIQUE(research_id,sequence),
+ FOREIGN KEY(research_id) REFERENCES course_research_sessions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS course_research_reports (
+ id TEXT PRIMARY KEY,research_id TEXT NOT NULL,summary TEXT NOT NULL,citation_ids_json TEXT NOT NULL,
+ artifact_id TEXT,created_at TEXT NOT NULL,FOREIGN KEY(research_id) REFERENCES course_research_sessions(id) ON DELETE CASCADE
+);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1755,6 +1781,7 @@ class Database:
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
                 conn.executescript(FINAL_REVIEW_SCHEMA_SQL)
+                conn.executescript(COURSE_RESEARCH_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

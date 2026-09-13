@@ -49,6 +49,7 @@ from ..repositories.learner_control_repository import LearnerControlRepository
 from ..repositories.agent_runtime_repository import AgentRuntimeRepository
 from ..repositories.agent_artifact_repository import AgentArtifactRepository
 from ..repositories.final_review_repository import FinalReviewRepository
+from ..repositories.course_research_repository import CourseResearchRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
@@ -62,6 +63,7 @@ from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
 from ..services.agent_runtime.approval_gate import ApprovalGate
 from ..services.final_review_service import FinalReviewService
+from ..services.course_research import CourseResearchPipeline
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -137,6 +139,8 @@ class ServiceContainer:
     agent_artifact_manager: ArtifactManager
     final_review_repository: FinalReviewRepository
     final_review_service: FinalReviewService
+    course_research_repository: CourseResearchRepository
+    course_research_pipeline: CourseResearchPipeline
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -252,6 +256,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_runtime_repository = AgentRuntimeRepository(db)
     agent_artifact_repository = AgentArtifactRepository(db)
     final_review_repository = FinalReviewRepository(db)
+    course_research_repository = CourseResearchRepository(db)
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
@@ -339,6 +344,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_artifact_manager=ArtifactManager(agent_artifact_repository, artifact_root),
         final_review_repository=final_review_repository,
         final_review_service=FinalReviewService(final_review_repository, personal_task_repo),
+        course_research_repository=course_research_repository,
+        course_research_pipeline=CourseResearchPipeline(course_research_repository, db),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
