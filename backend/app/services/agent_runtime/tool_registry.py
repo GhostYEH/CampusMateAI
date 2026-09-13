@@ -10,6 +10,7 @@ from typing import Optional
 
 from ...core.exceptions import AgentToolRejected
 from ...schemas.agent_contract_enums import RiskLevel
+from .hard_deny import check_hard_deny
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,8 @@ class ToolRegistry:
         args: dict,
     ) -> ToolSpec:
         """校验工具调用前置条件。返回 ToolSpec。"""
+        # 硬拒绝优先于角色授权与风险分级:不可被审批、automation 或配置覆盖。
+        check_hard_deny(tool_code, args)
         spec = self.get(tool_code)
         if not spec:
             raise AgentToolRejected(

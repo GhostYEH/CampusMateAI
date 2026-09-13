@@ -69,6 +69,16 @@ _skip_no_dual = pytest.mark.skipif(
     not (_REAL_ENABLED and _ZHIPU_CONFIGURED and _XUNFEI_CONFIGURED),
     reason="双 provider 未全部配置或未开启 RUN_REAL_PROVIDER_TESTS",
 )
+# 仓库现有 LLM_* 配置(primary):实际部署形态,智谱/讯飞可以完全不配。
+_LLM_CONFIGURED = bool(
+    _read_credential("llm_base_url")
+    and _read_credential("llm_api_key")
+    and _read_credential("llm_model")
+)
+_skip_no_llm = pytest.mark.skipif(
+    not (_REAL_ENABLED and _LLM_CONFIGURED),
+    reason="未配置 LLM_* 或未开启 RUN_REAL_PROVIDER_TESTS",
+)
 
 
 def _mask(value: Optional[str]) -> str:
@@ -120,6 +130,24 @@ async def test_real_xunfei_single_provider():
     assert result.response is not None
     assert result.latency_ms >= 0
     assert s.xunfei_llm_model in result.model
+    assert isinstance(result.response.content, str)
+
+
+@_skip_no_llm
+@pytest.mark.asyncio
+async def test_real_primary_provider_reuses_existing_llm_config():
+    """实际部署形态:只配了 LLM_* 时,Agent 也必须真实调用模型而不是静默降级。"""
+    get_settings.cache_clear()
+    s = Settings(app_env="development")
+    reg = ProviderRegistry(s)
+    assert reg.get("primary") is not None, "primary provider 未构建(LLM_* 凭据可能不完整)"
+    router = ModelRouter(reg)
+    result = await router.route(_MINIMAL_MESSAGES, route_policy="fast_structured")
+    assert result.status == "succeeded", f"状态: {result.status}, reason: {result.fallback_reason}"
+    assert result.provider_name == "primary"
+    assert result.response is not None
+    assert result.latency_ms >= 0
+    assert s.llm_model in result.model
     assert isinstance(result.response.content, str)
 
 
@@ -246,7 +274,9 @@ async def test_fallback_to_second_provider_records_provider_model_status_latency
 async def test_all_providers_fail_records_fallback_reason():
     """所有 provider 失败:验证 status=failed 且 fallback_reason 有值。"""
     get_settings.cache_clear()
-    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    # llm_provider="none" 表示该部署没有任何通用 OpenAI 兼容凭据(CI 形态),
+    # 否则 primary 会成为可用的兜底 provider,用例前提不成立。
+    s = Settings(app_env="development", agent_allow_mock_providers=True, llm_provider="none")
     reg = ProviderRegistry(s)
     reg._instances["zhipu"] = ProviderInstance(
         name="zhipu",

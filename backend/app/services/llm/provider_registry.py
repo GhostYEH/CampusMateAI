@@ -76,6 +76,25 @@ class ProviderRegistry:
                 )
             except Exception:
                 pass
+        # 仓库现有 OpenAI 兼容配置(LLM_*)。智谱/讯飞是设计里的策略目标,
+        # 但实际部署通常只配了 LLM_(例如 DeepSeek/MiMo)。注册为 primary,
+        # 保证它们未配置时 Agent 仍能真实调用模型,而不是静默降级到规则/RAG。
+        if s.llm_available:
+            try:
+                client = OpenAICompatibleClient(
+                    base_url=s.llm_base_url,
+                    api_key=s.llm_api_key,
+                    model=s.llm_model,
+                    timeout=float(s.llm_timeout_seconds),
+                    tls_max_version=s.llm_tls_max_version or None,
+                )
+                self._instances["primary"] = ProviderInstance(
+                    name="primary",
+                    client=client,
+                    route_policies=["reasoning_primary", "fast_structured", "dual_review"],
+                )
+            except Exception:
+                pass
 
     def add_fake(self, name: str = "fake", *, route_policies: Optional[list[str]] = None) -> None:
         """添加 fake provider(仅测试/CI 使用)。production 由 config 禁止。"""

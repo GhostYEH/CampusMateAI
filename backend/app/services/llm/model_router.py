@@ -1,10 +1,11 @@
 """模型路由策略(§6)。
 
-- reasoning_primary: Zhipu -> Xunfei -> controlled rules/RAG
-- fast_structured: Xunfei -> Zhipu -> deterministic extraction
-- dual_review: Zhipu generation + Xunfei review
+- reasoning_primary: Zhipu -> Xunfei -> primary(仓库现有 LLM_*)-> 受控规则/RAG
+- fast_structured: Xunfei -> Zhipu -> primary -> 规则抽取
+- dual_review: Zhipu 生成 + Xunfei 复核;只有一个 provider 时降级为单模型并标记
 
-provider 失败可降级并记录 fallback_reason。每次调用最多重试一次后切到备用 provider。
+provider 失败按 provider_errors 的分类决定动作:只有可重试的失败才重试一次,
+鉴权/欠费/模型不存在直接切备用并把该 provider 标记为不可用。
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from typing import List, Optional, TYPE_CHECKING
 
 from ..llm.base import LLMClient, LLMError, LLMResponse
+from .provider_errors import classify_provider_error, is_terminal_failure
 from .provider_registry import ProviderRegistry
 
 if TYPE_CHECKING:
@@ -32,11 +34,11 @@ class RouteResult:
     review_provider: Optional[str] = None  # dual_review 第二个 provider
 
 
-# 路由策略 -> provider 优先级顺序
+# 路由策略 -> provider 优先级顺序。primary 复用仓库现有 LLM_* 配置,排在最后兜底。
 _POLICY_ORDER: dict[str, list[str]] = {
-    "reasoning_primary": ["zhipu", "xunfei"],
-    "fast_structured": ["xunfei", "zhipu"],
-    "dual_review": ["zhipu", "xunfei"],
+    "reasoning_primary": ["zhipu", "xunfei", "primary"],
+    "fast_structured": ["xunfei", "zhipu", "primary"],
+    "dual_review": ["zhipu", "xunfei", "primary"],
 }
 
 
@@ -63,14 +65,33 @@ class ModelRouter:
         step_id: Optional[str] = None,
     ) -> RouteResult:
         """按策略路由调用。单 provider 失败重试一次后切备用。"""
-        order = _POLICY_ORDER.get(route_policy, ["zhipu", "xunfei"])
+        order = _POLICY_ORDER.get(route_policy, ["zhipu", "xunfei", "primary"])
+        degraded_dual = False
         if route_policy == "dual_review":
-            result = await self._dual_review(
-                messages, order, temperature, max_tokens, timeout
-            )
-            self._record_trace(result, run_id, step_id, route_policy)
-            return result
+            available = [
+                name
+                for name in order
+                if (candidate := self._registry.get(name)) is not None
+                and candidate.available
+                and candidate.client.available
+            ]
+            if len(available) >= 2:
+                result = await self._dual_review(
+                    messages, order, temperature, max_tokens, timeout
+                )
+                self._record_trace(result, run_id, step_id, route_policy)
+                return result
+            # 只有一个 provider 时降级为单模型,并明确标记未做真实双模型复核。
+            degraded_dual = True
         last_error: Optional[str] = None
+
+        def _finish(res: RouteResult) -> RouteResult:
+            "统一收尾:补 dual_review 降级标记并落 trace。"
+            if degraded_dual and res.status == "succeeded":
+                res.status = "fallback"
+                res.fallback_reason = "dual_review_degraded_single_provider"
+            self._record_trace(res, run_id, step_id, route_policy)
+            return res
         for provider_name in order:
             inst = self._registry.get(provider_name)
             if not inst or not inst.available or not inst.client.available:
@@ -91,12 +112,18 @@ class ModelRouter:
                     status="succeeded",
                     latency_ms=latency,
                 )
-                self._record_trace(result, run_id, step_id, route_policy)
-                return result
+                return _finish(result)
             except LLMError as e:
+                failure = classify_provider_error(e)
+                last_error = failure.reason
                 latency = int((time.monotonic() - start) * 1000)
-                last_error = type(e).__name__
-                # 尝试同一 provider 重试一次
+                if is_terminal_failure(failure):
+                    # 鉴权/欠费/模型不存在:重试与换 key 都无意义,直接标记该 provider 不可用。
+                    inst.available = False
+                    continue
+                if not failure.retryable:
+                    continue
+                # 可重试失败:同一 provider 再试一次
                 try:
                     resp = await inst.client.chat(
                         messages,
@@ -113,13 +140,12 @@ class ModelRouter:
                         latency_ms=latency,
                         fallback_reason=f"retry_after_{last_error}",
                     )
-                    self._record_trace(result, run_id, step_id, route_policy)
-                    return result
+                    return _finish(result)
                 except LLMError as e2:
-                    last_error = type(e2).__name__
+                    last_error = classify_provider_error(e2).reason
                     continue
             except Exception as e:
-                last_error = type(e).__name__
+                last_error = classify_provider_error(e).reason
                 continue
         result = RouteResult(
             response=None,
@@ -129,8 +155,7 @@ class ModelRouter:
             latency_ms=0,
             fallback_reason=last_error or "no_provider_available",
         )
-        self._record_trace(result, run_id, step_id, route_policy)
-        return result
+        return _finish(result)
 
     def _record_trace(
         self,
