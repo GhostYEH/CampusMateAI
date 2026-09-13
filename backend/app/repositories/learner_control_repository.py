@@ -706,7 +706,6 @@ class LearnerControlRepository:
             "event_count": counts["learner_events"],
             "snapshot_count": counts["snapshots"],
             "knowledge_snapshot_count": counts.get("knowledge_snapshots", 0),
-            "misconception_count": counts.get("misconceptions", 0),
             "correction_count": counts["corrections"],
             "learning_plan_count": counts["learning_plans"],
             "plan_feedback_count": counts["plan_feedback"],

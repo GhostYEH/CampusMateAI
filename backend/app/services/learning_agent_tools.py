@@ -57,7 +57,7 @@ class LearningAgentToolRegistry:
                 user_id=user_id, course_id=course_id,
                 as_of=datetime.now(timezone.utc), trigger="agent_read"
             )
-            return [{"knowledge_component_code": s.scope_id, "value": s.value, "confidence": s.confidence, "data_quality": s.data_quality} for s in result.snapshots]
+            return [{"knowledge_code": s.scope_id, "value": s.value, "confidence": s.confidence, "data_quality": s.data_quality} for s in result.snapshots]
         if name == "read_personal_tasks":
             rows, _ = self.container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)
             return [{"task_id": row.id, "course_id": row.course_id, "deadline": row.deadline, "status": row.status} for row in rows]
@@ -79,7 +79,7 @@ class LearningAgentToolRegistry:
         if spec.capability == "PROPOSE":
             if name == "propose_learning_plan":
                 return self.container.learning_planner_service.generate(user_id=user_id, **{k: args[k] for k in ("available_minutes", "course_id", "window_start", "window_end") if k in args})
-            return {"proposal": name, "course_id": args.get("course_id"), "knowledge_component_code": args.get("knowledge_component_code")}
+            return {"proposal": name, "course_id": args.get("course_id"), "knowledge_code": args.get("knowledge_code")}
         if name == "create_personal_task":
             plan_id = str(args.get("plan_id", ""))
             item_id = str(args.get("item_id", ""))

@@ -147,7 +147,6 @@ class DeleteCountSummary(BaseModel):
     evidence: int = 0
     learner_events: int = 0
     knowledge_snapshots: int = 0
-    misconceptions: int = 0
     corrections: int = 0
     learning_plans: int = 0
     plan_items: int = 0
@@ -178,7 +177,6 @@ class DataSummaryOut(BaseModel):
     event_count: int
     snapshot_count: int
     knowledge_snapshot_count: int
-    misconception_count: int
     correction_count: int
     learning_plan_count: int
     plan_feedback_count: int

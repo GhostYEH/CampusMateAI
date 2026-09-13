@@ -16,7 +16,6 @@ WritableSource = Literal[
     "edu",
     "self_report",
     "ai_learning_feedback",
-    "code_analysis",
     "campus",
     "personal_growth",
 ]
@@ -34,7 +33,6 @@ WritableEventType = Literal[
     "edu_exam_discovered",
     "self_report_submitted",
     "ai_learning_feedback_recorded",
-    "code_attempt_analyzed",
     "assignment_graded",
     "discussion_participated",
     "exam_discovered",
@@ -85,7 +83,6 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
     },
     "self_report": {"self_report_submitted"},
     "ai_learning_feedback": {"ai_learning_feedback_recorded"},
-    "code_analysis": {"code_attempt_analyzed"},
     "campus": {
         "campus_schedule_synced",
         "exam_updated",
@@ -118,7 +115,6 @@ EVENT_OUTCOMES: dict[str, str] = {
     "edu_exam_discovered": "discovered",
     "self_report_submitted": "completed",
     "ai_learning_feedback_recorded": "observed_completed",
-    "code_attempt_analyzed": "observed_completed",
     "assignment_graded": "observed_completed",
     "discussion_participated": "observed_completed",
     "exam_discovered": "discovered",

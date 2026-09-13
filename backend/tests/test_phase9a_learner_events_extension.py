@@ -37,13 +37,11 @@ def test_new_sources_and_event_types_are_writable():
     assert "edu" in SOURCE_EVENT_TYPES
     assert "self_report" in SOURCE_EVENT_TYPES
     assert "ai_learning_feedback" in SOURCE_EVENT_TYPES
-    assert "code_analysis" in SOURCE_EVENT_TYPES
     assert "edu_schedule_synced" in SOURCE_EVENT_TYPES["edu"]
     assert "edu_grade_observed" in SOURCE_EVENT_TYPES["edu"]
     assert "edu_exam_discovered" in SOURCE_EVENT_TYPES["edu"]
     assert "self_report_submitted" in SOURCE_EVENT_TYPES["self_report"]
     assert "ai_learning_feedback_recorded" in SOURCE_EVENT_TYPES["ai_learning_feedback"]
-    assert "code_attempt_analyzed" in SOURCE_EVENT_TYPES["code_analysis"]
     assert "assignment_graded" in SOURCE_EVENT_TYPES["chaoxing"]
     assert "discussion_participated" in SOURCE_EVENT_TYPES["chaoxing"]
     assert "exam_discovered" in SOURCE_EVENT_TYPES["chaoxing"]

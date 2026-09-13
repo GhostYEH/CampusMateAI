@@ -29,7 +29,7 @@ def test_summary_fields():
     data = resp.json()
     expected = {
         "event_count", "snapshot_count", "knowledge_snapshot_count",
-        "misconception_count", "correction_count", "learning_plan_count",
+        "correction_count", "learning_plan_count",
         "plan_feedback_count", "plan_evaluation_count", "shadow_run_count",
         "enabled_sources", "paused_sources", "oldest_recorded_at",
         "newest_recorded_at", "estimator_versions", "planner_versions",

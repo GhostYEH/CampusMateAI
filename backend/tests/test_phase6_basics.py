@@ -71,7 +71,7 @@ def test_data_summary():
     data = resp.json()
     for field in (
         "event_count", "snapshot_count", "knowledge_snapshot_count",
-        "misconception_count", "correction_count", "learning_plan_count",
+        "correction_count", "learning_plan_count",
         "plan_feedback_count", "plan_evaluation_count", "shadow_run_count",
         "enabled_sources", "paused_sources",
         "estimator_versions", "planner_versions", "evaluator_versions",
