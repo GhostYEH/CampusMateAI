@@ -61,6 +61,7 @@ from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
 
 from ..services.forecast_service import ForecastService
+from ..services.simulation_service import SimulationService
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
@@ -129,6 +130,7 @@ class ServiceContainer:
     learner_state_repository: LearnerStateRepository
     learner_state_service: LearnerStateProjectionService
     forecast_service: ForecastService
+    simulation_service: SimulationService
 
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
@@ -284,6 +286,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_event_repository=learner_event_repository,
     )
 
+    simulation_service = SimulationService(
+        forecast_service=forecast_service,
+        learner_state_service=learner_state_service,
+        learner_state_repository=learner_state_repository,
+    )
+
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":
@@ -345,6 +353,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_repository=learner_state_repository,
         learner_state_service=learner_state_service,
         forecast_service=forecast_service,
+        simulation_service=simulation_service,
 
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
