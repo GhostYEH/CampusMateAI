@@ -95,11 +95,25 @@ export struct GoalExecutionPage {
     this.error = '';
     try {
       await this.repository.decidePlan(this.planId, decision);
-      if (decision === 'ACCEPT') await this.repository.executePlan(this.planId);
       this.summary = await this.repository.getPlanSummary(this.planId);
       await this.reload();
     } catch (_) {
       this.error = decision === 'ACCEPT' ? '创建待办失败，请重试' : '计划决策失败，请重试';
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async executePlan(): Promise<void> {
+    if (this.repository === null || this.planId.length === 0 || this.loading) return;
+    this.loading = true;
+    this.error = '';
+    try {
+      await this.repository.executePlan(this.planId);
+      this.summary = await this.repository.getPlanSummary(this.planId);
+      await this.reload();
+    } catch (_) {
+      this.error = '创建个人待办失败，请重试';
     } finally {
       this.loading = false;
     }
@@ -234,8 +248,15 @@ export struct GoalExecutionPage {
           this.SummaryCard()
           if (this.planId.length > 0) {
             Row({ space: 8 }) {
-              Button('确认并创建待办').layoutWeight(1).height(38).onClick(() => this.decidePlan('ACCEPT'))
-              Button('重新规划').layoutWeight(1).height(38).onClick(() => this.replan())
+              if (this.summary !== null && this.summary.stage === 'AWAITING_CONFIRMATION') {
+                Button('确认计划').layoutWeight(1).height(38).onClick(() => this.decidePlan('ACCEPT'))
+              }
+              if (this.summary !== null && this.summary.stage === 'READY_TO_EXECUTE') {
+                Button('创建个人待办').layoutWeight(1).height(38).onClick(() => this.executePlan())
+              }
+              if (this.summary !== null && ['IN_PROGRESS', 'STALE', 'EXPIRED'].indexOf(this.summary.stage) >= 0) {
+                Button('重新规划').layoutWeight(1).height(38).onClick(() => this.replan())
+              }
             }.width('100%')
           }
           Text('执行记录').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Medium)
