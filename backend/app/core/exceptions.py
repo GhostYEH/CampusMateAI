@@ -479,8 +479,9 @@ def _build_error_body(
     code: str,
     message: str,
     details: Optional[Any] = None,
+    request_id: str | None = None,
 ) -> dict:
-    body = {"code": code, "message": message, "details": details}
+    body = {"code": code, "message": message, "details": details, "request_id": request_id or "req_unknown"}
     return body
 
 
@@ -488,14 +489,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器，输出统一结构。"""
 
     @app.exception_handler(AppException)
-    async def _app_exception_handler(_: Request, exc: AppException):
+    async def _app_exception_handler(request: Request, exc: AppException):
         return JSONResponse(
             status_code=exc.http_status,
-            content=_build_error_body(exc.code, exc.message, exc.details),
+            content=_build_error_body(exc.code, exc.message, exc.details, getattr(request.state, "request_id", None)),
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_handler(_: Request, exc: RequestValidationError):
+    async def _validation_handler(request: Request, exc: RequestValidationError):
         # Pydantic 自定义校验器的 ctx 可能携带 ValueError 实例；先做
         # JSON 安全转换，保证所有校验失败都稳定返回 422。
         # Validation errors must never echo untrusted request values (extra fields
@@ -515,11 +516,12 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "VALIDATION_FAILED",
                 "请求参数校验失败",
                 details=details if isinstance(details, list) else None,
+                request_id=getattr(request.state, "request_id", None),
             ),
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_exception_handler(_: Request, exc: StarletteHTTPException):
+    async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
         # 把 404 / 405 等也包装成统一结构
         code_map = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 500: "INTERNAL_ERROR"}
         return JSONResponse(
@@ -527,17 +529,19 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_build_error_body(
                 code_map.get(exc.status_code, "HTTP_ERROR"),
                 str(exc.detail) if exc.detail else "请求错误",
+                request_id=getattr(request.state, "request_id", None),
             ),
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(_: Request, exc: Exception):
+    async def _unhandled_exception_handler(request: Request, exc: Exception):
         # 不向客户端暴露内部堆栈，仅返回通用错误
         return JSONResponse(
             status_code=500,
             content=_build_error_body(
                 "INTERNAL_ERROR",
                 "服务器内部错误，请稍后重试。",
+                request_id=getattr(request.state, "request_id", None),
             ),
         )
 

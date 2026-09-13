@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from enum import Enum
+
+
+class AgentRunStatus(str, Enum):
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    SUCCEEDED = "SUCCEEDED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class AgentRunPhase(str, Enum):
+    CONTEXT_BUILDING = "CONTEXT_BUILDING"
+    WAITING_FOR_MODEL = "WAITING_FOR_MODEL"
+    VALIDATING_OUTPUT = "VALIDATING_OUTPUT"
+    WAITING_FOR_TOOL = "WAITING_FOR_TOOL"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
+    PERSISTING_RESULT = "PERSISTING_RESULT"
+    RECOVERY_CHECKING = "RECOVERY_CHECKING"
+    IDLE = "IDLE"
+
+
+class AgentRiskLevel(str, Enum):
+    AUTO_SAFE = "AUTO_SAFE"
+    CONFIRM_REQUIRED = "CONFIRM_REQUIRED"
+    MANUAL_ONLY = "MANUAL_ONLY"
+
+
+class AgentApprovalStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    EXPIRED = "EXPIRED"
+
+
+class AgentArtifactType(str, Enum):
+    FINAL_REVIEW_PLAN = "FINAL_REVIEW_PLAN"
+    DAILY_AGENDA = "DAILY_AGENDA"
+    NOTICE_CHECKLIST = "NOTICE_CHECKLIST"
+    COURSE_RESEARCH_REPORT = "COURSE_RESEARCH_REPORT"
+    CITATION_BUNDLE = "CITATION_BUNDLE"
+
+
+class AcademicPolicy(str, Enum):
+    STANDARD = "STANDARD"
+    EXAM_RESTRICTED = "EXAM_RESTRICTED"
+    AI_PROHIBITED = "AI_PROHIBITED"
+    UNKNOWN = "UNKNOWN"
+
+
+class ResearchMode(str, Enum):
+    HINT = "HINT"
+    EXPLAIN = "EXPLAIN"
+    REVIEW = "REVIEW"
+    FULL_SOLUTION = "FULL_SOLUTION"
+
+
+class NoticeWorkflowStatus(str, Enum):
+    CREATED = "CREATED"
+    ANALYZING = "ANALYZING"
+    WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    EXPIRED = "EXPIRED"
+    FAILED = "FAILED"
+
+
+__all__ = [name for name in globals() if name.startswith("Agent") or name in {
+    "AcademicPolicy", "ResearchMode", "NoticeWorkflowStatus"
+}]

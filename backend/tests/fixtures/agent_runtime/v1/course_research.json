@@ -1,0 +1,28 @@
+{
+  "research_id": "research_demo",
+  "course_id": "course_demo",
+  "mode": "EXPLAIN",
+  "academic_policy": "STANDARD",
+  "source_policy": {
+    "course_material_priority": true,
+    "allow_web": false,
+    "allow_user_upload": false
+  },
+  "run": {
+    "run_id": "run_course_research",
+    "job_id": "job_course_research",
+    "domain": "course_research",
+    "status": "RUNNING",
+    "phase": "CONTEXT_BUILDING",
+    "current_role": null,
+    "progress": {
+      "current": 0,
+      "total": 4,
+      "percent": 0
+    },
+    "context_snapshot_id": null,
+    "created_at": "2026-09-12T10:00:00Z",
+    "updated_at": "2026-09-12T10:00:00Z",
+    "finished_at": null
+  }
+}
