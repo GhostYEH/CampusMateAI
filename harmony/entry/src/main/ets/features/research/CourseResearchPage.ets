@@ -27,6 +27,7 @@ export struct CourseResearchPage {
   @State runView: AgentRunView | null = null;
   @State sources: CourseResearchSource[] = [];
   @State artifacts: AgentArtifact[] = [];
+  @State artifactContent: string = '';
   @State loading: boolean = false;
   @State error: string = '';
   @State active: boolean = true;
@@ -85,6 +86,16 @@ export struct CourseResearchPage {
       hash = (hash * 31 + s.charCodeAt(i)) & 0x7fffffff;
     }
     return hash.toString(36);
+  }
+
+  async openArtifact(artifactId: string): Promise<void> {
+    if (this.repository === null) return;
+    this.error = '';
+    try {
+      this.artifactContent = await this.repository.readArtifactContent(artifactId);
+    } catch (_) {
+      this.error = '报告正文读取失败，请重试';
+    }
   }
 
   async startResearch(): Promise<void> {
@@ -193,7 +204,7 @@ export struct CourseResearchPage {
             view: this.runView,
             darkMode: this.darkMode,
             reduceMotion: this.reduceMotion,
-            onOpenArtifact: (artifactId: string) => { if (this.repository !== null) this.repository.downloadArtifact(artifactId); },
+            onOpenArtifact: (artifactId: string) => { this.openArtifact(artifactId); },
             onCancel: () => { if (this.repository !== null && this.run !== null) this.repository.cancelResearchRun(this.run.run_id); }
           })
 
@@ -217,8 +228,17 @@ export struct CourseResearchPage {
                 Text(`报告 v${artifact.version}`).fontColor(this.palette().primary).fontSize(13).layoutWeight(1)
               }.width('100%').padding(10)
               .backgroundColor(this.palette().glass.surface).border({ width: 1, color: this.palette().glass.border }).borderRadius(12)
-              .onClick(() => { if (this.repository !== null) this.repository.downloadArtifact(artifact.artifact_id); })
+              .onClick(() => { this.openArtifact(artifact.artifact_id); })
             }, (artifact: AgentArtifact) => artifact.artifact_id)
+          }
+
+          if (this.artifactContent.length > 0) {
+            Column({ space: 8 }) {
+              Text('报告正文').fontColor(this.palette().text).fontSize(14).fontWeight(FontWeight.Medium)
+              Text(this.artifactContent).fontColor(this.palette().text).fontSize(12).lineHeight(20)
+            }.width('100%').padding(12)
+            .backgroundColor(this.palette().glass.surface)
+            .border({ width: 1, color: this.palette().glass.border }).borderRadius(12)
           }
         }.width('100%').padding({ left: 16, right: 16, bottom: 24 })
       }.layoutWeight(1).width('100%').align(Alignment.Top).scrollBar(BarState.Off)

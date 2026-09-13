@@ -170,12 +170,13 @@ export default function agentRuntimeModelsTest(): void {
         artifact_id: 'art_fr_plan_v1', run_id: 'run_fr_001', user_id: 'user_demo_001',
         artifact_type: 'FINAL_REVIEW_PLAN', version: 1, mime_type: 'application/json',
         size_bytes: 4096, content_hash: 'sha256:final_review_v1_hash',
-        download_url: '/api/v1/agent-artifacts/art_fr_plan_v1',
+        download_url: '/api/v1/agent-artifacts/art_fr_plan_v1/content',
         created_at: '2026-09-12T10:20:00+08:00'
       };
       const art = AgentDtoParser.artifact(artRaw as Object as Record<string, Object>);
       expect(art.artifact_type).assertEqual(ArtifactType.FINAL_REVIEW_PLAN);
       expect(art.version).assertEqual(1);
+      expect(art.download_url.endsWith('/content')).assertEqual(true);
     });
 
     it('parses course_research fixture with policy fields', 0, () => {

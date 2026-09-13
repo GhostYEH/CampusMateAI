@@ -96,9 +96,6 @@ def run():
             page.goto(f"{BASE}/agent/final-review", wait_until="networkidle")
             page.locator(".final-review-workspace").wait_for(timeout=15000)
 
-            # 等待考试列表加载(动态 import getExams)
-            page.wait_for_timeout(2000)
-
             # 选择考试并创建活动
             exam_checkbox = page.get_by_role("checkbox", name=f"选择考试 {EXAM_COURSE}")
             exam_checkbox.wait_for(timeout=10000)
@@ -116,14 +113,8 @@ def run():
 
             # 同意审批(会自动激活计划)
             approval_btn.click()
-            # 等待审批按钮消失或今日日程出现
-            page.wait_for_timeout(1000)
 
-            # 验证今日日程加载(可能为空列表,但区域应存在)
-            # 激活后 agenda 会通过 refreshCampaignDetail 加载
-            page.wait_for_timeout(2000)
-
-            # 通过 API 获取今日议程并提交签到
+            # 通过 API 只定位本次 campaign；签到必须经由 Web UI 完成。
             campaigns = _api_get(page, "/final-review/campaigns?page_size=10")
             _check(campaigns["status"] == 200, "获取 campaign 列表成功", failures)
             campaign_id = None
@@ -134,24 +125,14 @@ def run():
             _check(campaign_id is not None, "找到刚创建的 campaign", failures)
 
             if campaign_id:
-                agenda = _api_get(page, f"/final-review/campaigns/{campaign_id}/agendas/today")
-                _check(agenda["status"] == 200, f"获取今日议程成功(status={agenda['status']})", failures)
-                if agenda["status"] == 200:
-                    agenda_body = agenda["body"]
-                    _check(agenda_body["campaign_id"] == campaign_id, "议程 campaign_id 匹配", failures)
-                    item_ids = [it["item_id"] for it in agenda_body.get("items", [])]
-                    checkin = _api_post(
-                        page,
-                        f"/final-review/campaigns/{campaign_id}/daily-checkins",
-                        {
-                            "report_date": agenda_body["agenda_date"],
-                            "completed_item_ids": item_ids,
-                            "insufficient_time": False,
-                        },
-                    )
-                    _check(checkin["status"] == 200, f"提交每日签到成功(status={checkin['status']})", failures)
-                    if checkin["status"] == 200:
-                        _check(checkin["body"]["recorded"] is True, "签到 recorded=True", failures)
+                checkin_form = page.locator(".daily-checkin-form")
+                checkin_form.wait_for(timeout=15000)
+                completed_boxes = checkin_form.get_by_role("checkbox", name="标记已完成")
+                for index in range(completed_boxes.count()):
+                    completed_boxes.nth(index).check()
+                checkin_form.get_by_role("button", name="提交今日签到").click()
+                page.get_by_text("今日签到已记录", exact=True).wait_for(timeout=15000)
+                _check(True, "通过 Web UI 提交每日签到", failures)
 
             # 刷新页面验证最新状态
             page.reload(wait_until="networkidle")

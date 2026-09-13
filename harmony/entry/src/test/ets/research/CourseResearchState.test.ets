@@ -107,7 +107,7 @@ export default function courseResearchStateTest(): void {
         artifact_id: 'art_cr_report', run_id: 'run_cr', user_id: 'user_demo_001',
         artifact_type: 'COURSE_RESEARCH_REPORT', version: 1, mime_type: 'text/markdown',
         size_bytes: 8192, content_hash: 'sha256:course_research_hash',
-        download_url: '/api/v1/agent-artifacts/art_cr_report', created_at: ''
+        download_url: '/api/v1/agent-artifacts/art_cr_report/content', created_at: ''
       };
       const art: AgentArtifact = AgentDtoParser.artifact(raw as Object as Record<string, Object>);
       expect(art.artifact_type).assertEqual(ArtifactType.COURSE_RESEARCH_REPORT);

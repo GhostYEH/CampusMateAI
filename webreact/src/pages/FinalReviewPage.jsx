@@ -31,6 +31,8 @@ export default function FinalReviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkinStatus, setCheckinStatus] = useState("");
   const [error, setError] = useState(null);
   const [activeRunId, setActiveRunId] = useState(null);
   const [approval, setApproval] = useState(null);
@@ -190,6 +192,22 @@ export default function FinalReviewPage() {
     URL.revokeObjectURL(url);
   }, []);
 
+  const handleCheckin = useCallback(async (body, idempotencyKey) => {
+    if (!campaign) return;
+    setCheckingIn(true);
+    setCheckinStatus("");
+    setError(null);
+    try {
+      await api.createDailyCheckin(campaign.campaign_id, body, idempotencyKey);
+      setCheckinStatus("今日签到已记录");
+      await refreshCampaignDetail(campaign.campaign_id);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setCheckingIn(false);
+    }
+  }, [campaign, refreshCampaignDetail]);
+
   return (
     <PageFrame eyebrow="Agent 工作台" title="期末复习" description="创建版本化复习计划，按日跟进并安全调整。">
       <AgentErrorBoundary>
@@ -211,8 +229,11 @@ export default function FinalReviewPage() {
                   todayAgenda={todayAgenda}
                   onGenerate={handleGenerate}
                   onActivate={handleActivate}
+                  onCheckin={handleCheckin}
                   generating={generating}
                   activating={activating}
+                  checkingIn={checkingIn}
+                  checkinStatus={checkinStatus}
                   error={error}
                 />
               )}

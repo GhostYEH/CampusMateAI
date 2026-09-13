@@ -41,6 +41,8 @@ SCRIPTS = {
 
 DEMO_USERNAME = "student_demo"
 DEMO_PASSWORD = "Demo123456"
+E2E_DB_PATH = BACKEND / "data" / "e2e_agent_test.db"
+E2E_ARTIFACT_PATH = BACKEND / "data" / "e2e_agent_artifacts"
 
 
 def find_free_port(start):
@@ -121,17 +123,24 @@ def stop_process_tree(proc):
         proc.wait(timeout=5)
 
 
+def cleanup_e2e_data():
+    """只清理本脚本专用的数据文件，不触碰开发或真实用户数据。"""
+    if E2E_DB_PATH.exists():
+        E2E_DB_PATH.unlink()
+    if E2E_ARTIFACT_PATH.exists():
+        shutil.rmtree(E2E_ARTIFACT_PATH)
+
+
 def start_backend(port):
     """以 test + fake provider 模式启动后端。"""
-    db_path = BACKEND / "data" / "e2e_agent_test.db"
-    if db_path.exists():
-        db_path.unlink()
+    cleanup_e2e_data()
     (BACKEND / "data").mkdir(parents=True, exist_ok=True)
 
     env = {
         **os.environ,
         "APP_ENV": "test",
         "DATABASE_URL": f"sqlite:///./data/e2e_agent_test.db",
+        "AGENT_ARTIFACT_PATH": "./data/e2e_agent_artifacts",
         "AUTO_SEED_DEMO_USERS": "true",
         "AUTO_IMPORT_DEMO": "false",
         "LLM_PROVIDER": "none",
@@ -244,6 +253,7 @@ def main():
             else:
                 print(f"错误: 端口 {port} 仍被占用", file=sys.stderr)
                 exit_code = 1
+        cleanup_e2e_data()
     if exit_code == 0:
         print("ALL AGENT GOLDEN PATH CHECKS PASSED")
     return exit_code

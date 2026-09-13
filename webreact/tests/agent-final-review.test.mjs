@@ -56,4 +56,18 @@ describe("final-review full flow", () => {
     await api.completeFinalReviewItem("i1", "k-complete");
     assert.equal(mock.requests[1].url, "/final-review/daily-items/i1/complete");
   });
+
+  it("每日签到发送完成项和时间不足反馈", async () => {
+    mock.onPost("/final-review/campaigns/c1/daily-checkins", { recorded: true, evidence_count: 2 });
+    await api.createDailyCheckin("c1", {
+      report_date: "2026-09-13",
+      completed_item_ids: ["i1"],
+      insufficient_time: true,
+      difficulty_notes: "事务较多",
+    }, "k-checkin");
+    const request = mock.lastRequest();
+    assert.equal(request.headers["Idempotency-Key"], "k-checkin");
+    assert.deepEqual(request.data.completed_item_ids, ["i1"]);
+    assert.equal(request.data.insufficient_time, true);
+  });
 });

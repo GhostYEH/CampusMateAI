@@ -14,6 +14,9 @@ from ...schemas.agent_contract_enums import RiskLevel
 from ..llm.model_router import ModelRouter
 
 
+MAX_PLANNING_HORIZON_DAYS = 365
+
+
 class PlannerOutput:
     """Planner 结构化输出。"""
 
@@ -54,7 +57,8 @@ def _deterministic_plan(
     except (ValueError, KeyError):
         earliest = today + timedelta(days=14)
 
-    days_available = max((earliest - today).days, 1)
+    requested_days = max((earliest - today).days, 1)
+    days_available = min(requested_days, MAX_PLANNING_HORIZON_DAYS)
     intensity_factor = {"low": 0.6, "medium": 1.0, "high": 1.3}.get(intensity, 1.0)
     daily_minutes = int(daily_capacity_minutes * intensity_factor)
 
@@ -87,6 +91,8 @@ def _deterministic_plan(
         "days": days,
         "total_minutes": sum(d["minutes"] for d in days),
         "strategy": "deterministic_even_split",
+        "planning_horizon_days": days_available,
+        "planning_horizon_truncated": requested_days > days_available,
         "target_exams": [e.get("id", "") for e in sorted_exams],
     }
 

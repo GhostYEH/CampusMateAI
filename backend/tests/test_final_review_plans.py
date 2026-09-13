@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.final_review import router as final_review_router
 from app.core.config import Settings
 from app.main import create_app
+from app.services.final_review.planner import _deterministic_plan
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
@@ -62,6 +63,18 @@ def _create_campaign(client, headers, exam_ids, capacity=120):
 
 
 class TestPlanGenerate:
+    def test_deterministic_plan_caps_far_future_exam_horizon(self):
+        plan = _deterministic_plan(
+            exams=[{"id": "exam-future", "course_name": "高等数学", "exam_date": "2099-12-30"}],
+            daily_capacity_minutes=120,
+            intensity="medium",
+            rest_days=[],
+        )
+
+        assert len(plan["days"]) <= 365
+        assert plan["planning_horizon_days"] == 365
+        assert plan["planning_horizon_truncated"] is True
+
     def test_generate_first_plan(self):
         _, client = _setup()
         headers = _login(client)

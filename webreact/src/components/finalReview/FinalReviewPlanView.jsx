@@ -13,15 +13,28 @@ export default function FinalReviewPlanView({
   todayAgenda = null,
   onGenerate,
   onActivate,
+  onCheckin,
   onResolveProposal,
   generating = false,
   activating = false,
+  checkingIn = false,
+  checkinStatus = "",
   error = null,
 }) {
   const [genKey, setGenKey] = useState(() => createIdempotencyKey("fr_generate"));
   const [actKey, setActKey] = useState(() => createIdempotencyKey("fr_activate"));
+  const [checkinKey] = useState(() => createIdempotencyKey("fr_checkin"));
+  const [completedItemIds, setCompletedItemIds] = useState([]);
+  const [insufficientTime, setInsufficientTime] = useState(false);
+  const [difficultyNotes, setDifficultyNotes] = useState("");
   const versions = itemsOf(planVersions);
   const agendaItems = itemsOf(todayAgenda?.items || todayAgenda);
+
+  function toggleCompleted(itemId) {
+    setCompletedItemIds((current) => current.includes(itemId)
+      ? current.filter((id) => id !== itemId)
+      : [...current, itemId]);
+  }
 
   return (
     <section className="final-review-plan" aria-labelledby="fr-plan-title">
@@ -78,11 +91,53 @@ export default function FinalReviewPlanView({
             {agendaItems.map((item) => (
               <li key={item.item_id || item.id} className={`agenda-item priority-${item.priority || "normal"}`}>
                 <span className="agenda-title">{item.title || item.task_title || "未命名"}</span>
-                {item.estimated_minutes && <small>约 {item.estimated_minutes} 分钟</small>}
+                {item.scheduled_minutes && <small>约 {item.scheduled_minutes} 分钟</small>}
                 {item.course_name && <span className="agenda-course">{item.course_name}</span>}
+                <label>
+                  <input
+                    type="checkbox"
+                    aria-label="标记已完成"
+                    checked={completedItemIds.includes(item.item_id)}
+                    onChange={() => toggleCompleted(item.item_id)}
+                  />
+                  已完成
+                </label>
               </li>
             ))}
           </ul>
+          <form
+            className="daily-checkin-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onCheckin?.({
+                report_date: todayAgenda.agenda_date,
+                completed_item_ids: completedItemIds,
+                insufficient_time: insufficientTime,
+                ...(difficultyNotes.trim() ? { difficulty_notes: difficultyNotes.trim() } : {}),
+              }, checkinKey);
+            }}
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={insufficientTime}
+                onChange={(event) => setInsufficientTime(event.target.checked)}
+              />
+              今日时间不足
+            </label>
+            <label className="form-field">
+              <span>复盘备注（可选）</span>
+              <textarea
+                value={difficultyNotes}
+                maxLength={500}
+                onChange={(event) => setDifficultyNotes(event.target.value)}
+              />
+            </label>
+            <button className="button button-primary" type="submit" disabled={checkingIn}>
+              {checkingIn ? "正在提交…" : "提交今日签到"}
+            </button>
+            {checkinStatus && <p role="status">{checkinStatus}</p>}
+          </form>
         </div>
       )}
     </section>

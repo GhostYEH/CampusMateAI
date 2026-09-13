@@ -1,4 +1,5 @@
 import { http } from '@kit.NetworkKit';
+import { util } from '@kit.ArkTS';
 import { ApiClient, SseEvent } from '../data/ApiClient';
 import {
   AgentJob, AgentRun, AgentEvent, AgentApproval, AgentArtifact,
@@ -175,8 +176,10 @@ export class AgentRuntimeRepository {
     return AgentDtoParser.artifact(raw);
   }
 
-  async downloadArtifact(artifactId: string): Promise<ArrayBuffer> {
-    return this.client.requestBinary(`agent-artifacts/${encodeURIComponent(artifactId)}`);
+  async readArtifactContent(artifactId: string): Promise<string> {
+    const content: ArrayBuffer = await this.client.requestBinary(
+      `agent-artifacts/${encodeURIComponent(artifactId)}/content`);
+    return new util.TextDecoder().decode(new Uint8Array(content));
   }
 
   // ===== 期末复习 =====
