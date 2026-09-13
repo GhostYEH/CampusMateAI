@@ -18,6 +18,7 @@ data class DashboardUtilityActionSpec(
 fun dashboardFeatureCards(): List<DashboardFeatureCardSpec> = listOf(
     DashboardFeatureCardSpec("校园社区", "交流分享 · 连接同好", "community", "#FFA43A"),
     DashboardFeatureCardSpec("专注自习", "沉浸专注 · 效率提升", "focus", "#5B68F2"),
+    DashboardFeatureCardSpec("目标执行", "目标计划 · 每日跟进", "agent_goal_center", "#EF8A4C"),
 )
 
 fun dashboardUtilityActions(): List<DashboardUtilityActionSpec> = listOf(

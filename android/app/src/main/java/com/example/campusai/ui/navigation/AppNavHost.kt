@@ -62,6 +62,7 @@ import com.example.campusai.ui.screens.tasks.TaskCalendarScreen
 import com.example.campusai.ui.screens.agent.FinalReviewScreen
 import com.example.campusai.ui.screens.agent.CourseResearchScreen
 import com.example.campusai.ui.screens.agent.NoticeWorkflowScreen
+import com.example.campusai.ui.screens.agent.GoalExecutionScreen
 import com.example.campusai.ui.screens.v3.AcademicScreen
 import com.example.campusai.ui.screens.community.CommunityScreen
 import com.example.campusai.ui.screens.community.CommunityDetailScreen
@@ -654,6 +655,12 @@ fun AppNavHost(
         }
         composable("agent_notice_workflow") {
             NoticeWorkflowScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable("agent_goal_center") {
+            GoalExecutionScreen(
+                repository = modules.agentRuntime,
                 onBack = { navController.popBackStack() },
             )
         }

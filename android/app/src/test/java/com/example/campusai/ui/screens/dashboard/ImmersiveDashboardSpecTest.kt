@@ -11,10 +11,11 @@ class ImmersiveDashboardSpecTest {
     fun fixedFeatureCardsPrioritizeCommunityAndFocus() {
         val cards = dashboardFeatureCards()
 
-        assertEquals(listOf("community", "focus"), cards.map { it.route })
+        assertEquals(listOf("community", "focus", "agent_goal_center"), cards.map { it.route })
         assertEquals("校园社区", cards[0].title)
         assertEquals("#FFA43A", cards[0].accentHex)
         assertEquals("#5B68F2", cards[1].accentHex)
+        assertEquals("#EF8A4C", cards[2].accentHex)
     }
 
     @Test

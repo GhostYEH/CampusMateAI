@@ -16,8 +16,8 @@ internal inline fun <reified T : Enum<T>> safeEnum(raw: String?, known: Array<T>
 
 // ── Runtime 枚举 ──
 
-enum class AgentJobKind { final_review, course_research, notice_workflow, UNKNOWN }
-enum class AgentRunStatus { QUEUED, RUNNING, AWAITING_APPROVAL, SUCCEEDED, PARTIAL, FAILED, CANCELLED, UNKNOWN }
+enum class AgentJobKind { learning_goal, final_review, course_research, notice_workflow, UNKNOWN }
+enum class AgentRunStatus { QUEUED, RUNNING, AWAITING_APPROVAL, PAUSED, SUCCEEDED, PARTIAL, FAILED, CANCELLED, UNKNOWN }
 enum class AgentRunPhase {
     CONTEXT_BUILDING, WAITING_FOR_MODEL, VALIDATING_OUTPUT,
     WAITING_FOR_TOOL, WAITING_FOR_APPROVAL, PERSISTING_RESULT,
@@ -28,7 +28,7 @@ enum class AgentEventType {
     RUN_QUEUED, RUN_STARTED, CONTEXT_READY, MODEL_STARTED, MODEL_COMPLETED,
     MODEL_FALLBACK, TOOL_STARTED, TOOL_COMPLETED, TOOL_FAILED,
     APPROVAL_REQUIRED, APPROVAL_RESOLVED, ARTIFACT_CREATED,
-    RUN_PARTIAL, RUN_COMPLETED, RUN_FAILED, RUN_CANCELLED, UNKNOWN,
+    RUN_PARTIAL, RUN_COMPLETED, RUN_FAILED, RUN_CANCELLED, RUN_PAUSED, RUN_RESUMED, RUN_RETRIED, UNKNOWN,
 }
 enum class AgentApprovalStatus { PENDING, APPROVED, REJECTED, EXPIRED, UNKNOWN }
 enum class AgentArtifactType {
@@ -53,6 +53,7 @@ data class AgentJobDto(
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "latest_run_id") val latestRunId: String? = null,
+    @Json(name = "input_ref") val inputRef: Map<String, Any?> = emptyMap(),
 ) {
     fun kind(): AgentJobKind = safeEnum(jobKind, AgentJobKind.entries.toTypedArray(), AgentJobKind.UNKNOWN)
     fun runStatus(): AgentRunStatus = safeEnum(status, AgentRunStatus.entries.toTypedArray(), AgentRunStatus.UNKNOWN)
@@ -77,6 +78,7 @@ data class AgentRunDto(
     @Json(name = "updated_at") val updatedAt: String = "",
     val error: String? = null,
     @Json(name = "artifact_ids") val artifactIds: List<String> = emptyList(),
+    @Json(name = "retry_of") val retryOf: String? = null,
 ) {
     fun runStatus(): AgentRunStatus = safeEnum(status, AgentRunStatus.entries.toTypedArray(), AgentRunStatus.UNKNOWN)
     fun runPhase(): AgentRunPhase = safeEnum(phase, AgentRunPhase.entries.toTypedArray(), AgentRunPhase.UNKNOWN)
@@ -156,6 +158,49 @@ data class AgentCapabilityDto(
     @Json(name = "route_policy") val routePolicy: String = "",
     @Json(name = "risk_level") val riskLevel: String = "",
     @Json(name = "requires_approval") val requiresApproval: Boolean = false,
+)
+
+data class StudentGoalDto(
+    @Json(name = "goal_id") val goalId: String = "",
+    val name: String = "",
+    val category: String = "academic",
+    val status: String = "active",
+    @Json(name = "target_date") val targetDate: String? = null,
+    @Json(name = "progress_percent") val progressPercent: Double = 0.0,
+    @Json(name = "milestone_count") val milestoneCount: Int = 0,
+)
+
+data class StudentGoalPageDto(
+    val items: List<StudentGoalDto> = emptyList(),
+    val total: Int = 0,
+)
+
+data class StudentGoalCreateRequest(
+    val name: String,
+    val category: String = "academic",
+    @Json(name = "target_date") val targetDate: String? = null,
+    @Json(name = "idempotency_key") val idempotencyKey: String? = null,
+)
+
+data class StudentGoalCreateResultDto(
+    val goal: StudentGoalDto = StudentGoalDto(),
+    val created: Boolean = false,
+)
+
+data class LearningPlanSummaryDto(
+    @Json(name = "plan_id") val planId: String = "",
+    @Json(name = "goal_id") val goalId: String? = null,
+    val status: String = "",
+    val stage: String = "UNKNOWN",
+    val headline: String = "",
+    @Json(name = "completion_percent") val completionPercent: Int = 0,
+    @Json(name = "planned_item_count") val plannedItemCount: Int = 0,
+    @Json(name = "executed_item_count") val executedItemCount: Int = 0,
+    @Json(name = "planned_minutes") val plannedMinutes: Int = 0,
+    @Json(name = "next_action") val nextAction: String = "",
+    val recommendations: List<String> = emptyList(),
+    @Json(name = "warning_codes") val warningCodes: List<String> = emptyList(),
+    @Json(name = "generated_at") val generatedAt: String = "",
 )
 
 // ── Final Review DTO ──

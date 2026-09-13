@@ -7,6 +7,10 @@ import com.example.campusai.data.remote.agent.AgentCapabilitiesDto
 import com.example.campusai.data.remote.agent.AgentEventDto
 import com.example.campusai.data.remote.agent.AgentJobDto
 import com.example.campusai.data.remote.agent.AgentRunDto
+import com.example.campusai.data.remote.agent.StudentGoalCreateRequest
+import com.example.campusai.data.remote.agent.StudentGoalCreateResultDto
+import com.example.campusai.data.remote.agent.StudentGoalPageDto
+import com.example.campusai.data.remote.agent.LearningPlanSummaryDto
 import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
 import com.example.campusai.data.remote.agent.CourseResearchArtifactBundleDto
 import com.example.campusai.data.remote.agent.CourseResearchRunCreateRequest
@@ -1208,11 +1212,35 @@ interface ApiService {
     @GET("agent-jobs/{jobId}")
     suspend fun agentGetJob(@Path("jobId") jobId: String): Response<AgentJobDto>
 
+    @GET("agent-jobs")
+    suspend fun agentListJobs(): Response<List<AgentJobDto>>
+
     @GET("agent-runs/{runId}")
     suspend fun agentGetRun(@Path("runId") runId: String): Response<AgentRunDto>
 
     @POST("agent-runs/{runId}/cancel")
     suspend fun agentCancelRun(
+        @Path("runId") runId: String,
+        @Body request: Map<String, String>,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentRunDto>
+
+    @POST("agent-runs/{runId}/pause")
+    suspend fun agentPauseRun(
+        @Path("runId") runId: String,
+        @Body request: Map<String, String>,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentRunDto>
+
+    @POST("agent-runs/{runId}/resume")
+    suspend fun agentResumeRun(
+        @Path("runId") runId: String,
+        @Body request: Map<String, String>,
+        @Header("Idempotency-Key") idempotencyKey: String,
+    ): Response<AgentRunDto>
+
+    @POST("agent-runs/{runId}/retry")
+    suspend fun agentRetryRun(
         @Path("runId") runId: String,
         @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
@@ -1230,6 +1258,24 @@ interface ApiService {
 
     @GET("agent-artifacts/{artifactId}")
     suspend fun agentGetArtifact(@Path("artifactId") artifactId: String): Response<AgentArtifactDto>
+
+    @GET("student-goals")
+    suspend fun listStudentGoals(): Response<StudentGoalPageDto>
+
+    @POST("student-goals")
+    suspend fun createStudentGoal(@Body request: StudentGoalCreateRequest): Response<StudentGoalCreateResultDto>
+
+    @GET("learning-plans/{planId}/summary")
+    suspend fun getLearningPlanSummary(@Path("planId") planId: String): Response<LearningPlanSummaryDto>
+
+    @POST("learning-plans/{planId}/decision")
+    suspend fun decideLearningPlan(@Path("planId") planId: String, @Body request: Map<String, String>): Response<Map<String, Any?>>
+
+    @POST("learning-plans/{planId}/execute")
+    suspend fun executeLearningPlan(@Path("planId") planId: String): Response<Map<String, Any?>>
+
+    @POST("learning-plans/{planId}/replan")
+    suspend fun replanLearningPlan(@Path("planId") planId: String, @Header("Idempotency-Key") idempotencyKey: String): Response<Map<String, Any?>>
 
     // ===== Final Review =====
     @POST("final-review/campaigns")
