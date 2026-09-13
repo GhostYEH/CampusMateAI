@@ -1524,6 +1524,117 @@ CREATE INDEX IF NOT EXISTS idx_learner_product_events_user
 """
 
 
+AGENT_RUNTIME_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS agent_jobs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    objective_summary TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_user ON agent_jobs(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    status TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    current_role TEXT,
+    progress_current INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 0,
+    context_snapshot_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY(job_id) REFERENCES agent_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_run_steps (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+    role TEXT NOT NULL, status TEXT NOT NULL, safe_summary TEXT NOT NULL,
+    started_at TEXT, finished_at TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    UNIQUE(run_id, sequence)
+);
+
+CREATE TABLE IF NOT EXISTS agent_context_snapshots (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    scope_json TEXT NOT NULL, facts_json TEXT NOT NULL, source_refs_json TEXT NOT NULL,
+    source_digest TEXT NOT NULL, generated_at TEXT NOT NULL, valid_until TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_tool_calls (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, step_id TEXT, tool_name TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL, status TEXT NOT NULL,
+    started_at TEXT NOT NULL, finished_at TEXT, result_digest TEXT, error_code TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(step_id) REFERENCES agent_run_steps(id) ON DELETE SET NULL,
+    UNIQUE(run_id, tool_name, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS agent_model_calls (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, step_id TEXT, provider TEXT NOT NULL,
+    route_policy TEXT NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL,
+    latency_ms INTEGER, fallback_reason TEXT, started_at TEXT NOT NULL, finished_at TEXT,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(step_id) REFERENCES agent_run_steps(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_events (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+    type TEXT NOT NULL, status TEXT NOT NULL, phase TEXT NOT NULL, role TEXT,
+    summary TEXT NOT NULL, progress_current INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 0, artifact_id TEXT, approval_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    UNIQUE(run_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_run ON agent_events(run_id, sequence);
+
+CREATE TABLE IF NOT EXISTS agent_memories (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, memory_type TEXT NOT NULL,
+    summary TEXT NOT NULL, provenance_json TEXT NOT NULL, confirmed INTEGER NOT NULL DEFAULT 0,
+    confidence REAL NOT NULL, sensitivity TEXT NOT NULL, valid_until TEXT,
+    withdrawn_at TEXT, model_consumable INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_approvals (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    status TEXT NOT NULL, risk_level TEXT NOT NULL, action_digest TEXT NOT NULL,
+    summary TEXT NOT NULL, expires_at TEXT NOT NULL, decided_at TEXT, created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_citations (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, artifact_id TEXT,
+    source_type TEXT NOT NULL, source_ref TEXT NOT NULL, claim_digest TEXT NOT NULL,
+    verification_status TEXT NOT NULL, safe_label TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS agent_artifacts (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, run_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL, content_ref TEXT NOT NULL, content_hash TEXT NOT NULL,
+    version INTEGER NOT NULL, mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+    created_at TEXT NOT NULL, deleted_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    UNIQUE(run_id, artifact_type, version)
+);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1589,6 +1700,7 @@ class Database:
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
+                conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
