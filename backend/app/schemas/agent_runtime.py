@@ -144,6 +144,7 @@ class AgentJobOut(_StrictModel):
     created_at: str = Field(..., min_length=1, max_length=64)
     updated_at: str = Field(..., min_length=1, max_length=64)
     latest_run_id: Optional[str] = Field(None, max_length=64)
+    input_ref: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentRunOut(_StrictModel):

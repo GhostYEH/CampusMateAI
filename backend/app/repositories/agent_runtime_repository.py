@@ -222,6 +222,17 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    def update_job_status(self, job_id: str, status: str) -> None:
+        conn = self._conn()
+        try:
+            conn.execute(
+                "UPDATE agent_jobs SET status = ?, updated_at = ? WHERE job_id = ?",
+                (status, _now(), job_id),
+            )
+            conn.commit()
+        finally:
+            self._release(conn)
+
     def list_runs_for_user(self, user_id: str, *, page: int = 1, page_size: int = 50) -> list[dict]:
         offset = max(page - 1, 0) * page_size
         conn = self._conn()

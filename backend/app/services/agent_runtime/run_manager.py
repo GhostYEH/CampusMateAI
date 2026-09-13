@@ -130,6 +130,9 @@ class RunManager:
         if to_status in _TERMINAL_STATES:
             update_kwargs["finished_at"] = now
         self._repo.update_run(run_id, **update_kwargs)
+        # Job status mirrors the latest run so task-center queries have one
+        # authoritative lifecycle value without inspecting every run.
+        self._repo.update_job_status(run["job_id"], to_status)
         return self._repo.get_run(run_id)
 
     def cancel(self, run_id: str, reason: Optional[str] = None) -> dict:

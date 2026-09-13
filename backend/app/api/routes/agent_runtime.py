@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from ...core.exceptions import AgentRuntimeError, AgentRunNotFound, ValidationFailed
+from ...core.exceptions import AgentRuntimeError, AgentRunNotFound, AppException, ValidationFailed
 from ...models.multi_role import UserRow
 from ...repositories.agent_artifact_repository import AgentArtifactRepository
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
@@ -80,6 +80,12 @@ def _capability_out(name: str, policy: str, risk: str, approval: bool) -> AgentC
 
 
 def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOut:
+    input_ref = job.get("input_ref", job.get("input_ref_json", {}))
+    if isinstance(input_ref, str):
+        try:
+            input_ref = json.loads(input_ref)
+        except (TypeError, ValueError):
+            input_ref = {}
     return AgentJobOut(
         job_id=job["job_id"],
         user_id=job["user_id"],
@@ -88,6 +94,7 @@ def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOu
         created_at=job["created_at"],
         updated_at=job["updated_at"],
         latest_run_id=latest_run_id,
+        input_ref=input_ref if isinstance(input_ref, dict) else {},
     )
 
 
@@ -136,7 +143,48 @@ async def create_job(
         idempotency_key=effective_key,
     )
     job = repo.get_job(job_id)
-    return _job_to_out(job)
+    if body.job_kind == "learning_goal":
+        input_ref = body.input_ref
+        goal_id = input_ref.get("goal_id")
+        available_minutes = input_ref.get("available_minutes", 60)
+        if not isinstance(goal_id, str) or not goal_id or not isinstance(available_minutes, int) or not (1 <= available_minutes <= 1440):
+            raise ValidationFailed("learning_goal 需要 goal_id 和 1-1440 的 available_minutes")
+        from ...services.agent_runtime.run_manager import RunManager
+        manager = RunManager(repo, container.agent_event_store)
+        run_id = repo.create_run(job_id=job_id, user_id=user.id, idempotency_key=effective_key)
+        manager.transition(run_id, "RUNNING", phase="CONTEXT_BUILDING")
+        container.agent_event_store.append(
+            run_id=run_id, type="RUN_STARTED", status="RUNNING", phase="CONTEXT_BUILDING",
+            role="planner", summary="正在汇总课程、截止时间、学习状态与个人任务",
+        )
+        try:
+            plan = container.learning_planner_service.generate(
+                user_id=user.id, goal_id=goal_id, available_minutes=available_minutes,
+                course_id=input_ref.get("course_id"), window_start=input_ref.get("window_start"),
+                window_end=input_ref.get("window_end"), idempotency_key=effective_key,
+            )
+            completed_ref = {**input_ref, "plan_id": plan.plan_id}
+            repo.update_job_input_ref(job_id, completed_ref)
+            manager.transition(run_id, "SUCCEEDED", phase="PERSISTING_RESULT")
+            container.agent_event_store.append(
+                run_id=run_id, type="RUN_COMPLETED", status="SUCCEEDED", phase="PERSISTING_RESULT",
+                role="planner", summary="计划草案已生成，等待学生确认",
+            )
+        except Exception as exc:
+            try:
+                manager.transition(run_id, "FAILED", phase="IDLE", error_code=getattr(exc, "code", "AGENT_INVALID_STATE"), error_message=str(exc)[:256])
+                container.agent_event_store.append(
+                    run_id=run_id, type="RUN_FAILED", status="FAILED", phase="IDLE",
+                    role="planner", summary="计划生成失败，请检查目标与可用数据",
+                )
+            except Exception:
+                pass
+            if isinstance(exc, AppException):
+                raise
+            raise AgentRuntimeError("学习目标计划生成失败", code="AGENT_INVALID_STATE", http_status=409) from exc
+        job = repo.get_job(job_id)
+    latest = repo.get_run_by_job(job["job_id"]) if job else None
+    return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
 
 
 @jobs_router.get("")
