@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from ..core.config import Settings
@@ -380,7 +382,233 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
                     teacher_comment="思路清晰,大部分正确。第 3 题注意符号问题。",
                 )
 
+    # === Agent runtime demo 数据(§14 隔离 demo) ===
+    agent_stats = _seed_agent_demo_data(container, student_demo)
+    stats.update(agent_stats)
+
     logger.info("演示数据 seed 完成: %s", stats)
+    return stats
+
+
+# ===== Agent runtime demo 数据(§14) =====
+# 确定性 demo 数据:三领域场景,全部绑定 demo user,不使用真实学生数据。
+# 固定 ID 前缀保证幂等;reset_agent_demo.py 只删除这些 demo-owned 记录。
+
+AGENT_DEMO_EXAM_IDS = [
+    "demo_exam_math_final",
+    "demo_exam_cs_final",
+    "demo_exam_eng_final",
+]
+AGENT_DEMO_CAMPAIGN_ID = "demo_fr_campaign_001"
+AGENT_DEMO_JOB_ID = "demo_agent_job_001"
+AGENT_DEMO_RUN_ID = "demo_agent_run_001"
+
+
+def _seed_agent_demo_data(container: ServiceContainer, demo_user: UserRow) -> dict:
+    """seed agent runtime demo 数据(三领域场景)。
+
+    全部绑定 demo_user,确定性 ID,幂等。不使用真实学生数据。
+    """
+    stats = {
+        "agent_exams_added": 0,
+        "agent_notices_added": 0,
+        "agent_campaign_added": 0,
+        "agent_job_added": 0,
+        "agent_run_added": 0,
+        "agent_model_calls_added": 0,
+        "agent_research_session_added": 0,
+        "agent_research_sources_added": 0,
+    }
+    db = container.db
+    now = datetime.now(timezone.utc).isoformat()
+    uid = demo_user.id
+
+    conn = db._connect()
+    try:
+        # student_exams 表(与 student_tools 路由一致)
+        conn.executescript(
+            "CREATE TABLE IF NOT EXISTS student_exams ("
+            "id TEXT PRIMARY KEY, user_id TEXT NOT NULL, course_name TEXT NOT NULL, "
+            "exam_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, "
+            "seat_number TEXT, exam_type TEXT, reminder_enabled INTEGER NOT NULL DEFAULT 1, "
+            "notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+            "CREATE INDEX IF NOT EXISTS idx_student_exams_user_date "
+            "ON student_exams(user_id, exam_date);"
+        )
+        # final_review 表
+        from ..repositories.final_review_migration import (
+            apply_final_review_migration,
+        )
+        apply_final_review_migration(conn)
+        # notice_workflow 表
+        from ..repositories.notice_workflow_repository import _SCHEMA_SQL as _NWF_SQL
+        conn.executescript(_NWF_SQL)
+        # course_research 表
+        from ..repositories.course_research_repository import (
+            _SCHEMA_SQL as _CRS_SQL,
+        )
+        conn.executescript(_CRS_SQL)
+
+        # --- 三个考试(字符串 exam_id) ---
+        exam_defs = [
+            ("demo_exam_math_final", "高等数学(演示)", "2026-12-30"),
+            ("demo_exam_cs_final", "程序设计基础(演示)", "2027-01-06"),
+            ("demo_exam_eng_final", "大学英语(演示)", "2027-01-10"),
+        ]
+        for exam_id, course_name, exam_date in exam_defs:
+            exists = conn.execute(
+                "SELECT 1 FROM student_exams WHERE id = ?", (exam_id,)
+            ).fetchone()
+            if exists:
+                continue
+            conn.execute(
+                "INSERT INTO student_exams (id,user_id,course_name,exam_date,"
+                "reminder_enabled,created_at,updated_at) VALUES (?,?,?,?,1,?,?)",
+                (exam_id, uid, course_name, exam_date, now, now),
+            )
+            stats["agent_exams_added"] += 1
+
+        # --- Chaoxing-like 通知 ---
+        chaoxing_exists = conn.execute(
+            "SELECT 1 FROM notices WHERE user_id = ? AND source = 'chaoxing' "
+            "AND external_id = 'demo_chaoxing_001'",
+            (uid,),
+        ).fetchone()
+        if not chaoxing_exists:
+            conn.execute(
+                "INSERT INTO notices (id,user_id,source,external_id,title,content,"
+                "published_at,created_at,updated_at) VALUES (?,?,'chaoxing',"
+                "'demo_chaoxing_001',?,?,?,?,?)",
+                (
+                    "demo_notice_chaoxing_001",
+                    uid,
+                    "【超星学习通】高等数学作业截止提醒(演示)",
+                    "请于 12 月 25 日前完成第五章习题提交,逾期不计分。",
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            stats["agent_notices_added"] += 1
+
+        # --- final-review campaign(草稿,未激活) ---
+        campaign_exists = conn.execute(
+            "SELECT 1 FROM final_review_campaigns WHERE campaign_id = ?",
+            (AGENT_DEMO_CAMPAIGN_ID,),
+        ).fetchone()
+        if not campaign_exists:
+            conn.execute(
+                "INSERT INTO final_review_campaigns (campaign_id,user_id,"
+                "exam_ids_json,daily_capacity_minutes,status,idempotency_key,"
+                "created_at,updated_at) VALUES (?,?,?,120,'draft',"
+                "'demo_fr_campaign_idem',?,?)",
+                (
+                    AGENT_DEMO_CAMPAIGN_ID,
+                    uid,
+                    json.dumps(AGENT_DEMO_EXAM_IDS),
+                    now,
+                    now,
+                ),
+            )
+            stats["agent_campaign_added"] += 1
+
+        # --- agent_job + agent_run(QUEUED,演示运行) ---
+        job_exists = conn.execute(
+            "SELECT 1 FROM agent_jobs WHERE job_id = ?", (AGENT_DEMO_JOB_ID,)
+        ).fetchone()
+        if not job_exists:
+            conn.execute(
+                "INSERT INTO agent_jobs (job_id,user_id,job_kind,status,"
+                "idempotency_key,input_ref_json,created_at,updated_at) "
+                "VALUES (?,?,'final_review','QUEUED','demo_job_idem','{}',?,?)",
+                (AGENT_DEMO_JOB_ID, uid, now, now),
+            )
+            stats["agent_job_added"] += 1
+
+        run_exists = conn.execute(
+            "SELECT 1 FROM agent_runs WHERE run_id = ?", (AGENT_DEMO_RUN_ID,)
+        ).fetchone()
+        if not run_exists:
+            conn.execute(
+                "INSERT INTO agent_runs (run_id,job_id,user_id,status,phase,"
+                "created_at,updated_at) VALUES (?,?,?,'QUEUED','IDLE',?,?)",
+                (AGENT_DEMO_RUN_ID, AGENT_DEMO_JOB_ID, uid, now, now),
+            )
+            stats["agent_run_added"] += 1
+
+        # --- fake-provider outcome(agent_model_calls) ---
+        model_call_exists = conn.execute(
+            "SELECT 1 FROM agent_model_calls WHERE call_id = 'demo_mc_001'"
+        ).fetchone()
+        if not model_call_exists:
+            conn.execute(
+                "INSERT INTO agent_model_calls (call_id,run_id,provider,"
+                "route_policy,model,status,latency_ms,started_at,finished_at) "
+                "VALUES ('demo_mc_001',?,'fake','reasoning_primary','fake-model',"
+                "'completed',120,?,?)",
+                (AGENT_DEMO_RUN_ID, now, now),
+            )
+            stats["agent_model_calls_added"] += 1
+
+        # --- course_research session + sources(含一个受控冲突) ---
+        crs_exists = conn.execute(
+            "SELECT 1 FROM course_research_sessions WHERE session_id = "
+            "'demo_crs_001'"
+        ).fetchone()
+        if not crs_exists:
+            conn.execute(
+                "INSERT INTO course_research_sessions (session_id,run_id,job_id,"
+                "user_id,question,assistance_mode,academic_policy,"
+                "source_policy_json,status,created_at,updated_at) "
+                "VALUES ('demo_crs_001',?,?,?,'解释极限的定义(演示)','EXPLAIN',"
+                "'ALLOWED','{\"course_material_priority\":true,\"allow_web\":true,"
+                "\"allow_user_upload\":false}','QUEUED',?,?)",
+                (AGENT_DEMO_RUN_ID, AGENT_DEMO_JOB_ID, uid, now, now),
+            )
+            stats["agent_research_session_added"] += 1
+
+        # 两个课程来源(含受控冲突:同一论断不同结论)
+        for src_id, title, supports, note in [
+            (
+                "demo_crs_src_001",
+                "课本定义(演示)",
+                1,
+                "与课本一致",
+            ),
+            (
+                "demo_crs_src_002",
+                "课件补充(演示)",
+                0,
+                "课件使用了不同表述,与课本存在冲突",
+            ),
+        ]:
+            src_exists = conn.execute(
+                "SELECT 1 FROM course_research_sources WHERE source_id = ?",
+                (src_id,),
+            ).fetchone()
+            if src_exists:
+                continue
+            conn.execute(
+                "INSERT INTO course_research_sources (source_id,session_id,"
+                "user_id,source_type,title,accessed_at,is_verified,"
+                "verification_note,supports_claim,created_at) "
+                "VALUES (?,'demo_crs_001',?,'course',?,?,1,?,?,?)",
+                (
+                    src_id,
+                    uid,
+                    title,
+                    now,
+                    note,
+                    supports,
+                    now,
+                ),
+            )
+            stats["agent_research_sources_added"] += 1
+
+        conn.commit()
+    finally:
+        db._release(conn)
+
     return stats
 
 
