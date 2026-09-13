@@ -2,52 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-
-def _id(value: str) -> str:
-    if not value or len(value) > 128 or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-" for char in value):
-        raise ValueError("identifier is invalid")
-    return value
-
-
-class KCClassificationInput(_StrictModel):
-    exercise_id: str = Field(..., max_length=128)
-    assignment_mapping_id: str = Field(..., max_length=128)
-    controlled_topic_tokens: list[str] = Field(default_factory=list, max_length=20)
-    controlled_error_codes: list[str] = Field(default_factory=list, max_length=20)
-    chapter_mapping_codes: list[str] = Field(default_factory=list, max_length=20)
-    candidate_kc_codes: list[str] = Field(default_factory=list, max_length=20)
-
-    _validate_ids = field_validator("exercise_id", "assignment_mapping_id", mode="after")(_id)
-
-
-class KCClassificationOutput(_StrictModel):
-    knowledge_component_codes: list[str] = Field(default_factory=list, max_length=3)
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    reason_codes: list[str] = Field(default_factory=list, max_length=3)
-    abstained: bool
-
-
-class ErrorClassificationInput(_StrictModel):
-    diagnostic_family: str = Field(..., max_length=64)
-    compiler_category: str = Field(..., max_length=64)
-    runtime_category: str = Field(..., max_length=64)
-    test_outcome_category: str = Field(..., max_length=64)
-    candidate_error_codes: list[str] = Field(default_factory=list, max_length=20)
-    candidate_kc_codes: list[str] = Field(default_factory=list, max_length=20)
-    repeated_observation_count: int = Field(..., ge=0, le=10000)
-
-
-class ErrorClassificationOutput(_StrictModel):
-    error_code: str | None = Field(None, max_length=128)
-    knowledge_component_codes: list[str] = Field(default_factory=list, max_length=3)
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    abstained: bool
 
 
 class LearningSummaryInput(_StrictModel):
@@ -84,6 +43,5 @@ class ReadOnlyToolRoutingOutput(_StrictModel):
 
 
 __all__ = [
-    "KCClassificationInput", "KCClassificationOutput", "ErrorClassificationInput", "ErrorClassificationOutput",
     "LearningSummaryInput", "LearningSummaryOutput", "ReadOnlyToolRoutingInput", "ReadOnlyToolRoutingOutput",
 ]
