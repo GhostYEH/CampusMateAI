@@ -4,8 +4,8 @@ import { CounselorVisualSpec } from '../../../main/ets/features/counselor/Counse
 export default function counselorVisualSpecTest(): void {
   describe('CounselorVisualSpec', () => {
     it('matches the target hero geometry and top-centered avatar crop', 0, () => {
-      expect(CounselorVisualSpec.HERO_HEIGHT).assertEqual(240);
-      expect(CounselorVisualSpec.AVATAR_VIEWPORT).assertEqual(148);
+      expect(CounselorVisualSpec.HERO_HEIGHT).assertEqual(280);
+      expect(CounselorVisualSpec.AVATAR_VIEWPORT).assertEqual(156);
       expect(CounselorVisualSpec.AVATAR_IMAGE_WIDTH).assertEqual(249);
       expect(CounselorVisualSpec.AVATAR_IMAGE_HEIGHT).assertEqual(311);
       expect(CounselorVisualSpec.AVATAR_IMAGE_X).assertEqual(-50.5);

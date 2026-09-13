@@ -62,14 +62,19 @@ export default function agentEventReducerTest(): void {
       expect(view.lastSequence).assertEqual(10);
     });
 
-    it('sorts events by sequence in ascending order', 0, () => {
+    it('keeps events in ascending sequence order and drops stale out-of-order events', 0, () => {
       let view: AgentRunView = AgentEventReducer.initial('run_x');
-      view = AgentEventReducer.append(view, makeEvent('e30', 30, AgentEventType.RUN_COMPLETED, RunStatus.SUCCEEDED, '完成'));
       view = AgentEventReducer.append(view, makeEvent('e10', 10, AgentEventType.RUN_STARTED, RunStatus.RUNNING, '开始'));
       view = AgentEventReducer.append(view, makeEvent('e20', 20, AgentEventType.TOOL_COMPLETED, RunStatus.RUNNING, '工具'));
+      view = AgentEventReducer.append(view, makeEvent('e30', 30, AgentEventType.RUN_COMPLETED, RunStatus.SUCCEEDED, '完成'));
+      expect(view.events.length).assertEqual(3);
       expect(view.events[0].sequence).assertEqual(10);
       expect(view.events[1].sequence).assertEqual(20);
       expect(view.events[2].sequence).assertEqual(30);
+      // 迟到的旧序号事件按幂等契约被丢弃，事件列表保持升序。
+      view = AgentEventReducer.append(view, makeEvent('e15_late', 15, AgentEventType.MODEL_COMPLETED, RunStatus.RUNNING, '迟到'));
+      expect(view.events.length).assertEqual(3);
+      expect(view.lastSequence).assertEqual(30);
     });
 
     it('tracks last event id for SSE resume', 0, () => {
