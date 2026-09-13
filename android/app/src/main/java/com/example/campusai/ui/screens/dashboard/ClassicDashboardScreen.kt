@@ -275,6 +275,10 @@ private fun QuickActions(
         QuickAction("考试安排", "exams", Icons.Default.EventNote, Color(0xFF5B68F2)),
         QuickAction("校园社区", "community", Icons.Default.Groups, Color(0xFF35B99A)),
         QuickAction("专注自习", "focus", Icons.Default.Timer, WarmOrange),
+        // Agent 工作台入口:路由已在 AppNavHost 注册(agent_final_review 等)
+        QuickAction("期末复习", "agent_final_review", Icons.Default.AutoStories, Color(0xFF7A65E8)),
+        QuickAction("课程研究", "agent_course_research", Icons.Default.FindInPage, Color(0xFF397CEF)),
+        QuickAction("通知事务", "agent_notice_workflow", Icons.Default.Notifications, Color(0xFF35B99A)),
     )
     Row(
         modifier = Modifier

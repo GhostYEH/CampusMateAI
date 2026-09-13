@@ -404,7 +404,7 @@ export function mountLiquidMetal(stage, {
   }
 
   if (!gl) {
-    stage.classList.add("sylva-liquid-fallback");
+    stage?.classList.add("sylva-liquid-fallback");
     return () => {};
   }
 
@@ -421,7 +421,7 @@ export function mountLiquidMetal(stage, {
     compositeProgram = createProgram(gl, FRAG_COMP);
   } catch (error) {
     console.error(error);
-    stage.classList.add("sylva-liquid-fallback");
+    stage?.classList.add("sylva-liquid-fallback");
     releaseWebGLContext(gl);
     return () => {};
   }
@@ -571,9 +571,9 @@ export function mountLiquidMetal(stage, {
   const syncInteraction = () => {
     hoverTarget = getEngaged() || interaction.over || interaction.press || interaction.focus ? 1 : 0;
     pressTarget = interaction.press ? 1 : 0;
-    stage.classList.toggle("hot", hoverTarget > 0.5);
-    stage.classList.toggle("press", interaction.press);
-    stage.classList.toggle("active", getActive());
+    stage?.classList.toggle("hot", hoverTarget > 0.5);
+    stage?.classList.toggle("press", interaction.press);
+    stage?.classList.toggle("active", getActive());
   };
 
   const drawFrame = (now) => {
@@ -594,9 +594,9 @@ export function mountLiquidMetal(stage, {
     const desiredHoverTarget = currentEngaged || interaction.over || interaction.press || interaction.focus ? 1 : 0;
     if (desiredHoverTarget !== hoverTarget) {
       hoverTarget = desiredHoverTarget;
-      stage.classList.toggle("hot", hoverTarget > 0.5);
+      stage?.classList.toggle("hot", hoverTarget > 0.5);
     }
-    stage.classList.toggle("active", currentActive);
+    stage?.classList.toggle("active", currentActive);
 
     const hoverEase = hoverTarget > hover
       ? 1 - Math.pow(0.0012, delta)
@@ -925,7 +925,7 @@ export function mountLiquidMetal(stage, {
     if (!stage) return;
     unbindControlEvents(control);
     resizeObserver.disconnect();
-    stage.classList.remove("hot", "press", "active");
+    stage?.classList.remove("hot", "press", "active");
     if (animationFrame !== null) {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = null;

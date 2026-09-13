@@ -46,6 +46,22 @@ export default function SylvaCampusOverview({ state, onNavigate, onOpenDue }) {
               <Icon name={command?.secondaryAction?.icon || "PhSparkle"} size={16} />
               {command?.secondaryAction?.label || "整理本周计划"}
             </LiquidMetalButton>
+            {/* Agent 工作台入口:与首屏按钮同排,避免被上升的第二层遮挡。 */}
+            {[
+              { label: "期末复习", path: "/agent/final-review", icon: "PhBookOpen" },
+              { label: "课程研究", path: "/agent/course-research", icon: "PhMagnifyingGlass" },
+              { label: "通知事务", path: "/agent/notice-workflow", icon: "PhBell" },
+            ].map((entry) => (
+              <button
+                type="button"
+                key={entry.path}
+                className="sylva-agent-entry"
+                onClick={() => onNavigate?.(entry.path)}
+              >
+                <Icon name={entry.icon} size={15} weight="bold" />
+                {entry.label}
+              </button>
+            ))}
           </div>
           <div className="sylva-scene-stats" aria-label="今日学习指标">
             {sceneStats.map((stat) => (

@@ -14,6 +14,10 @@ const linkGroups = [
     links: [["我的课程", "/courses"], ["办事大厅", "/services"], ["考试安排", "/exams"], ["通知整理", "/notifications"]],
   },
   {
+    title: "Agent 工作台",
+    links: [["期末复习", "/agent/final-review"], ["课程研究", "/agent/course-research"], ["通知事务", "/agent/notice-workflow"]],
+  },
+  {
     title: "帮助与社区",
     links: [["校园社区", "/community"], ["AI 校园助手", "/counselor"], ["学习陪伴", "/study"], ["个人中心", "/profile"]],
   },

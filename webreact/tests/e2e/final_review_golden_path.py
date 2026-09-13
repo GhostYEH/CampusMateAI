@@ -92,8 +92,24 @@ def run():
             _login(page, failures)
             exam_id = _create_exam(page, failures)
 
-            # 导航到期末复习工作台
-            page.goto(f"{BASE}/agent/final-review", wait_until="networkidle")
+            # 从首页入口进入(不直接拼 URL),让入口本身也进入回归范围。
+            # 首页 WebGL/GSAP 占满 rAF,Playwright 注入的等待与合成输入都会卡住,
+            # 因此用页面内 JS 轮询入口并点击,同时验证入口确实存在。
+            page.goto(f"{BASE}/home", wait_until="domcontentloaded")
+            clicked = page.evaluate(
+                """async () => {
+                  const deadline = Date.now() + 15000;
+                  while (Date.now() < deadline) {
+                    const target = Array.from(document.querySelectorAll("button.sylva-agent-entry"))
+                      .find((node) => (node.textContent || "").trim() === "期末复习");
+                    if (target) { target.click(); return true; }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                  }
+                  return false;
+                }"""
+            )
+            _check(clicked is True, "首页存在「期末复习」入口", failures)
+            page.wait_for_url("**/agent/final-review", timeout=15000)
             page.locator(".final-review-workspace").wait_for(timeout=15000)
 
             # 选择考试并创建活动

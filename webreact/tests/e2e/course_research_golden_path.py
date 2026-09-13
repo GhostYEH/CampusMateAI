@@ -96,8 +96,22 @@ def run():
         try:
             token = _login(page, failures)
 
-            # 导航到课程研究工作台
-            page.goto(f"{BASE}/agent/course-research", wait_until="networkidle")
+            # 从首页入口进入(不直接拼 URL);首页 WebGL 重页面,headless 下用页面内 JS 点击。
+            page.goto(f"{BASE}/home", wait_until="domcontentloaded")
+            clicked = page.evaluate(
+                """async () => {
+                  const deadline = Date.now() + 15000;
+                  while (Date.now() < deadline) {
+                    const target = Array.from(document.querySelectorAll("button.sylva-agent-entry"))
+                      .find((node) => (node.textContent || "").trim() === "课程研究");
+                    if (target) { target.click(); return true; }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                  }
+                  return false;
+                }"""
+            )
+            _check(clicked is True, "首页存在「课程研究」入口", failures)
+            page.wait_for_url("**/agent/course-research", timeout=15000)
             page.locator(".course-research-workspace").wait_for(timeout=15000)
 
             # 提交问题

@@ -1214,3 +1214,29 @@
       linear-gradient(180deg, rgba(8, 14, 22, .62) 0%, rgba(8, 14, 22, .34) 22%, rgba(6, 10, 18, .42) 60%, rgba(4, 8, 16, .74) 100%);
   }
 }
+
+/* Agent 工作台首屏入口 */
+
+.sylva-agent-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background .2s ease, transform .2s ease;
+}
+
+.sylva-agent-entry:hover { background: rgba(255, 255, 255, .2); }
+.sylva-agent-entry:active { transform: scale(.97); }
+.sylva-agent-entry:focus-visible { outline: 2px solid #9a7ae4; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sylva-agent-entry { transition: none; }
+}
