@@ -511,6 +511,7 @@ class LearningPlannerService:
             return existing
         result = self.generate(
             user_id=user_id, available_minutes=old.run.available_minutes, course_id=old.run.course_scope,
+            goal_id=old.run.goal_id,
             window_start=old.run.window_start, window_end=old.run.window_end, idempotency_key=key,
             force_new=True, supersedes_plan_id=plan_id, replan_key=key, ignore_rejection=True,
         )
@@ -568,6 +569,50 @@ class LearningPlannerService:
         return {"plan_id": plan_id, **metrics, "baseline_as_of": baseline_value,
                 "evaluated_as_of": evaluated_value, "warning_codes": sorted(set(warnings)),
                 "evaluator_version": version}
+
+    def summarize(self, *, user_id: str, plan_id: str) -> dict[str, Any]:
+        """Return a deterministic, client-safe stage summary for the goal center."""
+        plan = self.repository.get_plan(plan_id, user_id=user_id)
+        if plan is None:
+            raise NotFoundError()
+        planned = len(plan.items)
+        executed = sum(1 for item in plan.items if item.execution_status == "SUCCEEDED")
+        planned_minutes = sum(max(0, item.estimated_minutes) for item in plan.items)
+        completion = round((executed / planned) * 100) if planned else 0
+        stages = {
+            "PROPOSED": ("AWAITING_CONFIRMATION", "计划草案已生成，等待学生确认", "确认计划后创建个人待办"),
+            "ACCEPTED": ("READY_TO_EXECUTE", "计划已确认，可以创建个人待办", "创建个人待办并开始执行"),
+            "EXECUTED": ("IN_PROGRESS", "计划任务已创建，正在跟踪执行", "完成今日任务后提交学习反馈"),
+            "PARTIALLY_EXECUTED": ("IN_PROGRESS", "部分任务已完成，可继续执行或重新规划", "完成剩余任务或发起重新规划"),
+            "UNDONE": ("ROLLED_BACK", "计划任务已撤销，可重新生成", "根据最新状态重新生成计划"),
+            "REJECTED": ("REJECTED", "计划被拒绝，暂未创建任务", "调整目标或重新生成计划"),
+            "EXPIRED": ("EXPIRED", "计划已过期，依据可能发生变化", "重新生成计划"),
+            "STALE": ("STALE", "计划依据已变化，需要重新规划", "重新规划"),
+            "SUPERSEDED": ("SUPERSEDED", "计划已被新版本替代", "查看最新计划"),
+        }
+        stage, headline, next_action = stages.get(
+            plan.status, ("UNKNOWN", "计划状态待确认", "查看计划详情")
+        )
+        recommendations: list[str] = []
+        if plan.status in {"EXECUTED", "PARTIALLY_EXECUTED"} and completion < 100:
+            recommendations.append("记录今日完成情况，系统会根据反馈调整下一版计划")
+        if plan.run.warning_codes:
+            recommendations.append("部分数据质量受限，确认关键截止时间后再执行")
+        return {
+            "plan_id": plan.plan_id,
+            "goal_id": plan.run.goal_id,
+            "status": plan.status,
+            "stage": stage,
+            "headline": headline,
+            "completion_percent": completion,
+            "planned_item_count": planned,
+            "executed_item_count": executed,
+            "planned_minutes": planned_minutes,
+            "next_action": next_action,
+            "recommendations": recommendations,
+            "warning_codes": sorted(set(plan.run.warning_codes)),
+            "generated_at": _iso(datetime.now(timezone.utc)),
+        }
 
 
 __all__ = ["LearningPlannerService", "PLANNER_VERSION", "WEIGHTS", "PLAN_ITEM_TYPES", "TASK_CREATING_ITEM_TYPES"]

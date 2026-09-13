@@ -11,6 +11,7 @@ from ...models.multi_role import UserRow
 from ...schemas.learning_plan import (
     LearningPlanDecisionRequest,
     LearningPlanEvaluationOut,
+    LearningPlanSummaryOut,
     LearningPlanEvidenceOut,
     LearningPlanFeedbackOut,
     LearningPlanFeedbackRequest,
@@ -167,6 +168,15 @@ def evaluate_learning_plan(
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanEvaluationOut:
     return LearningPlanEvaluationOut(**container.learning_planner_service.evaluate(user_id=user.id, plan_id=plan_id))
+
+
+@router.get("/{plan_id}/summary", response_model=LearningPlanSummaryOut)
+def summarize_learning_plan(
+    plan_id: str,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> LearningPlanSummaryOut:
+    return LearningPlanSummaryOut(**container.learning_planner_service.summarize(user_id=user.id, plan_id=plan_id))
 
 
 __all__ = ["router"]

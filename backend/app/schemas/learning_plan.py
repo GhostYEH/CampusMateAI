@@ -64,6 +64,24 @@ class LearningPlanEvaluationOut(BaseModel):
     evaluator_version: str
 
 
+class LearningPlanSummaryOut(BaseModel):
+    """面向三端的阶段总结；内容是可解释的观测，不宣称因果效果。"""
+
+    plan_id: str
+    goal_id: str | None = None
+    status: str
+    stage: str
+    headline: str
+    completion_percent: int = Field(..., ge=0, le=100)
+    planned_item_count: int = Field(..., ge=0)
+    executed_item_count: int = Field(..., ge=0)
+    planned_minutes: int = Field(..., ge=0)
+    next_action: str
+    recommendations: list[str] = Field(default_factory=list)
+    warning_codes: list[str] = Field(default_factory=list)
+    generated_at: str
+
+
 class LearningPlanEvidenceOut(BaseModel):
     evidence_type: str
     relation: str
@@ -115,6 +133,7 @@ class LearningPlanPage(BaseModel):
 __all__ = [
     "LearningPlanGenerateRequest", "LearningPlanDecisionRequest", "LearningPlanEvidenceOut",
     "LearningPlanFeedbackRequest", "LearningPlanFeedbackOut", "LearningPlanEvaluationOut",
+    "LearningPlanSummaryOut",
     "LearningPlanItemOut", "LearningPlanOut", "LearningPlanPage",
     "PLAN_ITEM_TYPE_LITERAL",
 ]
