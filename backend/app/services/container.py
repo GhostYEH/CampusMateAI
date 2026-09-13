@@ -322,11 +322,13 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_data_repository=edu_data_repo,
         learner_event_repository=learner_event_repository,
     )
+    learning_planner_service._forecast_service = forecast_service
 
     simulation_service = SimulationService(
         forecast_service=forecast_service,
         learner_state_service=learner_state_service,
         learner_state_repository=learner_state_repository,
+        learning_plan_repository=learning_plan_repository,
     )
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
