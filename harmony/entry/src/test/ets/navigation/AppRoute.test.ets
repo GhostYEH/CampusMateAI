@@ -71,6 +71,8 @@ export default function appRouteTest(): void {
       expect(AppRouteRegistry.parent(AppRoute.NOTIFICATION_DETAIL)).assertEqual(AppRoute.NOTIFICATIONS);
       expect(AppRouteRegistry.parent(AppRoute.EDU_SCHEDULE_DETAIL)).assertEqual(AppRoute.EDU_SCHEDULE);
       expect(AppRouteRegistry.parent(AppRoute.FOCUS_PLAN)).assertEqual(AppRoute.FOCUS);
+      expect(AppRouteRegistry.parent(AppRoute.FOCUS_SESSION)).assertEqual(AppRoute.FOCUS);
+      expect(AppRouteRegistry.parent(AppRoute.FOCUS_SUMMARY)).assertEqual(AppRoute.FOCUS);
       expect(AppRouteRegistry.parent(AppRoute.FINAL_REVIEW_PLAN)).assertEqual(AppRoute.FINAL_REVIEW);
       expect(AppRouteRegistry.parent(AppRoute.FINAL_REVIEW)).assertEqual('profile');
       expect(AppRouteRegistry.parent(AppRoute.COURSE_RESEARCH)).assertEqual('profile');

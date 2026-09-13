@@ -189,6 +189,10 @@ export class AppRouteRegistry {
         return AppRoute.EDU_SCHEDULE;
       case AppRoute.EXPRESSION_CONTRIBUTION:
         return 'profile';
+      case AppRoute.FOCUS_PLAN:
+      case AppRoute.FOCUS_SESSION:
+      case AppRoute.FOCUS_SUMMARY:
+        return AppRoute.FOCUS;
       case AppRoute.FINAL_REVIEW_PLAN:
         return AppRoute.FINAL_REVIEW;
       case AppRoute.FINAL_REVIEW:
