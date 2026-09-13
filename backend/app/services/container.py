@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from ..core.config import Settings, get_settings
@@ -45,6 +46,8 @@ from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..repositories.model_shadow_repository import ModelShadowRepository
 from ..repositories.c_knowledge_repository import KnowledgeRepository
 from ..repositories.learner_control_repository import LearnerControlRepository
+from ..repositories.agent_runtime_repository import AgentRuntimeRepository
+from ..repositories.agent_artifact_repository import AgentArtifactRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
@@ -55,6 +58,8 @@ from ..services.learner_state_service import LearnerStateProjectionService
 from ..services.c_knowledge_service import KnowledgeService
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
+from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
+from ..services.agent_runtime.approval_gate import ApprovalGate
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -122,6 +127,12 @@ class ServiceContainer:
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
     learner_model_source_policy: LearnerModelSourcePolicy
+    agent_runtime_repository: AgentRuntimeRepository
+    agent_artifact_repository: AgentArtifactRepository
+    agent_event_store: AgentEventStore
+    agent_run_manager: RunManager
+    agent_approval_gate: ApprovalGate
+    agent_artifact_manager: ArtifactManager
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -234,6 +245,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
     )
+    agent_runtime_repository = AgentRuntimeRepository(db)
+    agent_artifact_repository = AgentArtifactRepository(db)
+    artifact_root = Path(settings.agent_artifact_path)
+    if not artifact_root.is_absolute():
+        artifact_root = Path(__file__).resolve().parents[2] / artifact_root
 
     # EduConnector
     edu_repo = EduRepository(db)
@@ -310,6 +326,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,
         learner_model_source_policy=learner_model_source_policy,
+        agent_runtime_repository=agent_runtime_repository,
+        agent_artifact_repository=agent_artifact_repository,
+        agent_event_store=AgentEventStore(agent_runtime_repository),
+        agent_run_manager=RunManager(agent_runtime_repository),
+        agent_approval_gate=ApprovalGate(agent_runtime_repository),
+        agent_artifact_manager=ArtifactManager(agent_artifact_repository, artifact_root),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,

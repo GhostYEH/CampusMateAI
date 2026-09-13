@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     xunfei_llm_base_url: str = "https://spark-api-open.xf-yun.com/v1"
     xunfei_llm_api_key: str = ""
     xunfei_llm_model: str = "lite"
+    agent_artifact_path: str = "./data/agent_artifacts"
 
     # ===== CampusMate-LM shadow candidate (disabled by default) =====
     campusmate_lm_enabled: bool = False

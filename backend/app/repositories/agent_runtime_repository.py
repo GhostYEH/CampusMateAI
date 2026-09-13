@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+import json
 from uuid import uuid4
 
 from ..core.exceptions import AppException
@@ -51,6 +53,46 @@ class AgentRuntimeRepository:
             )
             return _job(conn.execute("SELECT * FROM agent_jobs WHERE id=?", (job_id,)).fetchone())
 
+    def create_job_idempotent(self, *, user_id: str, domain: str, objective_summary: str,
+                              total_steps: int, idempotency_key: str) -> tuple[AgentJobRow, AgentRunRow, bool]:
+        request_hash = hashlib.sha256(json.dumps(
+            {"domain": domain, "objective_summary": objective_summary, "total_steps": total_steps},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
+        now = _now()
+        with self._db.transaction() as conn:
+            existing = conn.execute(
+                "SELECT request_hash,job_id FROM agent_job_requests WHERE user_id=? AND idempotency_key=?",
+                (user_id, idempotency_key),
+            ).fetchone()
+            if existing:
+                if existing["request_hash"] != request_hash:
+                    raise AppException(code="AGENT_IDEMPOTENCY_CONFLICT", http_status=409, message="幂等键已用于不同请求")
+                job = _job(conn.execute("SELECT * FROM agent_jobs WHERE id=?", (existing["job_id"],)).fetchone())
+                run = _run(conn.execute(
+                    "SELECT * FROM agent_runs WHERE job_id=? ORDER BY created_at DESC,id DESC LIMIT 1", (job.id,)
+                ).fetchone())
+                return job, run, True
+            job_id, run_id = _id("job"), _id("run")
+            conn.execute(
+                "INSERT INTO agent_jobs(id,user_id,domain,objective_summary,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                (job_id, user_id, domain, objective_summary[:500], "ACTIVE", now, now),
+            )
+            conn.execute(
+                """INSERT INTO agent_runs(id,job_id,user_id,domain,status,phase,progress_current,progress_total,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (run_id, job_id, user_id, domain, "QUEUED", "IDLE", 0, total_steps, now, now),
+            )
+            conn.execute(
+                "INSERT INTO agent_job_requests(user_id,idempotency_key,request_hash,job_id,created_at) VALUES(?,?,?,?,?)",
+                (user_id, idempotency_key, request_hash, job_id, now),
+            )
+            return (
+                _job(conn.execute("SELECT * FROM agent_jobs WHERE id=?", (job_id,)).fetchone()),
+                _run(conn.execute("SELECT * FROM agent_runs WHERE id=?", (run_id,)).fetchone()),
+                False,
+            )
+
     def create_run(self, *, job_id: str, user_id: str, domain: str, total_steps: int) -> AgentRunRow:
         run_id, now = _id("run"), _now()
         with self._db.transaction() as conn:
@@ -60,6 +102,21 @@ class AgentRuntimeRepository:
                 (run_id, job_id, user_id, domain, "QUEUED", "IDLE", 0, total_steps, now, now),
             )
             return _run(conn.execute("SELECT * FROM agent_runs WHERE id=?", (run_id,)).fetchone())
+
+    def get_job(self, *, job_id: str, user_id: str) -> AgentJobRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_jobs WHERE id=? AND user_id=?", (job_id, user_id)
+            ).fetchone()
+        return _job(row) if row else None
+
+    def latest_run_for_job(self, *, job_id: str, user_id: str) -> AgentRunRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_runs WHERE job_id=? AND user_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
+                (job_id, user_id),
+            ).fetchone()
+        return _run(row) if row else None
 
     def get_run(self, *, run_id: str, user_id: str | None = None) -> AgentRunRow | None:
         sql, params = "SELECT * FROM agent_runs WHERE id=?", [run_id]

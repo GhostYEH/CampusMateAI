@@ -1537,6 +1537,14 @@ CREATE TABLE IF NOT EXISTS agent_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_jobs_user ON agent_jobs(user_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS agent_job_requests (
+    user_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL,
+    job_id TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, idempotency_key),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(job_id) REFERENCES agent_jobs(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS agent_runs (
     id TEXT PRIMARY KEY,
     job_id TEXT NOT NULL,
