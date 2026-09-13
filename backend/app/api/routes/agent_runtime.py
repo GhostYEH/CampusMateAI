@@ -13,6 +13,7 @@ from ...models.multi_role import UserRow
 from ...schemas.agent_runtime import (
     AgentApprovalDecision, AgentApprovalOut, AgentArtifactOut, AgentEventOut,
     AgentEventPage, AgentJobCreate, AgentJobOut, AgentProgressOut, AgentRunOut,
+    AgentRunStepOut, AgentRunStepPage,
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import require_role
@@ -114,6 +115,30 @@ def cancel_run(run_id: str, user: UserRow = Depends(require_role("student")),
     return _run_out(updated)
 
 
+@router.get("/agent-runs/{run_id}/steps", response_model=AgentRunStepPage)
+def get_steps(run_id: str, user: UserRow = Depends(require_role("student")),
+              container: ServiceContainer = Depends(_container)) -> AgentRunStepPage:
+    steps = container.final_review_runtime_workflow.steps(user_id=user.id, run_id=run_id)
+    return AgentRunStepPage(
+        run_id=run_id,
+        items=[AgentRunStepOut(step_id=step.id, run_id=step.run_id, sequence=step.sequence, role=step.role,
+                               status=step.status, summary=step.safe_summary, started_at=step.started_at,
+                               finished_at=step.finished_at) for step in steps],
+        total=len(steps),
+    )
+
+
+@router.post("/agent-runs/{run_id}/resume", response_model=AgentRunOut)
+def resume_run(run_id: str, user: UserRow = Depends(require_role("student")),
+               container: ServiceContainer = Depends(_container)) -> AgentRunOut:
+    """第一个真实执行器入口：目前只支持期末复习工作流，不做通用队列。"""
+    run = _owned_run(container, run_id, user.id)
+    if run.domain != "final_review":
+        raise AppException(code="AGENT_INVALID_STATE", http_status=409, message="暂不支持恢复该领域的运行")
+    view = container.final_review_runtime_workflow.resume(user_id=user.id, run_id=run.id)
+    return _run_out(view["run"])
+
+
 @router.get("/agent-runs/{run_id}/events", response_model=AgentEventPage)
 def get_events(run_id: str, after_event_id: str | None = None, limit: int = Query(200, ge=1, le=500),
                user: UserRow = Depends(require_role("student")),
@@ -152,10 +177,12 @@ async def stream_events(request: Request, run_id: str,
 def decide_approval(approval_id: str, payload: AgentApprovalDecision,
                     user: UserRow = Depends(require_role("student")),
                     container: ServiceContainer = Depends(_container)) -> AgentApprovalOut:
-    row = container.agent_approval_gate.decide(
+    # 审批决策统一走工作流：属于 Runtime 运行时会继续推进，否则行为与 ApprovalGate 一致。
+    view = container.final_review_runtime_workflow.decide(
         approval_id=approval_id, user_id=user.id, decision=payload.decision,
         now=datetime.now(timezone.utc).replace(microsecond=0),
     )
+    row = view["approval"]
     return AgentApprovalOut(
         approval_id=row.id, run_id=row.run_id, status=row.status, risk_level=row.risk_level,
         summary=row.summary, expires_at=row.expires_at, created_at=row.created_at,

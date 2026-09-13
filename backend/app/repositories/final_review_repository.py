@@ -38,12 +38,13 @@ class FinalReviewRepository:
         with self._db.query() as conn: rows = conn.execute("SELECT * FROM final_review_campaigns WHERE user_id=? ORDER BY updated_at DESC", (user_id,)).fetchall()
         return [dict(row) for row in rows]
 
-    def create_version(self, campaign_id: str, content: dict, reason: str, parent_id: str | None = None) -> dict:
+    def create_version(self, campaign_id: str, content: dict, reason: str, parent_id: str | None = None,
+                       created_by_run: str | None = None) -> dict:
         encoded = _json(content); digest = hashlib.sha256(encoded.encode()).hexdigest(); now = _now()
         with self._db.transaction() as conn:
             version = conn.execute("SELECT COALESCE(MAX(version),0)+1 FROM final_review_plan_versions WHERE campaign_id=?", (campaign_id,)).fetchone()[0]
             vid = _id("reviewplan")
-            conn.execute("INSERT INTO final_review_plan_versions VALUES(?,?,?,?,?,?,?,?,?)", (vid,campaign_id,version,parent_id,encoded,digest,reason,None,now))
+            conn.execute("INSERT INTO final_review_plan_versions VALUES(?,?,?,?,?,?,?,?,?)", (vid,campaign_id,version,parent_id,encoded,digest,reason,created_by_run,now))
             return self._version(dict(conn.execute("SELECT * FROM final_review_plan_versions WHERE id=?", (vid,)).fetchone()))
 
     def _version(self, row: dict) -> dict:
@@ -72,6 +73,15 @@ class FinalReviewRepository:
         with self._db.transaction() as conn:
             conn.execute("INSERT INTO final_review_checkins VALUES(?,?,?,?,?,?,?)",(cid,campaign_id,user_id,data["completion_percent"],data["actual_minutes"],data.get("difficulty_code"),_now()))
             return dict(conn.execute("SELECT * FROM final_review_checkins WHERE id=?",(cid,)).fetchone())
+
+    def linked_item_count(self,campaign_id:str,version:int,date:str)->int:
+        """已落到个人待办的今日条目数；用于恢复时回读，而不是盲信上一次写入。"""
+        with self._db.query() as conn:
+            row=conn.execute("""SELECT COUNT(*) FROM final_review_daily_items i
+                JOIN final_review_daily_agendas a ON a.id=i.agenda_id
+                WHERE a.campaign_id=? AND a.plan_version=? AND a.agenda_date=? AND i.external_task_id IS NOT NULL""",
+                (campaign_id,version,date)).fetchone()
+        return int(row[0]) if row else 0
 
     def link_daily_item_task(self,item_id:str,task_id:str)->None:
         with self._db.transaction() as conn:

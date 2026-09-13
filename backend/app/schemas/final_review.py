@@ -20,6 +20,12 @@ class CampaignOut(Strict):
     daily_capacity_minutes: int
     created_at: str
     updated_at: str
+    # 运行关联（可选）：仅有 Runtime 运行存在时才有值，旧客户端可忽略。
+    job_id: str | None = None
+    run_id: str | None = None
+    run_status: str | None = None
+    run_phase: str | None = None
+    pending_approval_id: str | None = None
 
 
 class PlanVersionOut(Strict):
@@ -31,6 +37,35 @@ class PlanVersionOut(Strict):
     content_hash: str
     change_reason: str
     created_at: str
+    job_id: str | None = None
+    run_id: str | None = None
+    approval_id: str | None = None
+
+
+class RuntimeStepOut(Strict):
+    step_id: str
+    sequence: int
+    role: str
+    status: str
+    summary: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class CampaignRunOut(Strict):
+    campaign_id: str
+    job_id: str | None = None
+    run_id: str | None = None
+    status: str | None = None
+    phase: str | None = None
+    progress_current: int = 0
+    progress_total: int = 0
+    approval_id: str | None = None
+    approval_status: str | None = None
+    approval_summary: str | None = None
+    approval_expires_at: str | None = None
+    approval_decided_at: str | None = None
+    steps: list[RuntimeStepOut] = []
 
 
 class DailyItemOut(Strict):

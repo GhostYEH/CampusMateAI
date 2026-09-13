@@ -17,7 +17,7 @@ class AgentRegistry:
     @classmethod
     def default(cls) -> "AgentRegistry":
         return cls([
-            AgentRole("planner", frozenset({"student.read", "course.read", "exam.read", "learner_state.read", "plan.propose", "task.create"}), "reasoning_primary"),
+            AgentRole("planner", frozenset({"student.read", "course.read", "exam.read", "learner_state.read", "plan.propose", "task.create", "artifact.create"}), "reasoning_primary"),
             AgentRole("analyzer", frozenset({"student.read", "learner_state.read", "plan.propose"}), "reasoning_primary"),
             AgentRole("notice_interpreter", frozenset({"student.read", "task.propose"}), "fast_structured"),
             AgentRole("workflow_planner", frozenset({"task.propose", "task.create", "reminder.schedule", "external_submission.prepare"}), "reasoning_primary"),

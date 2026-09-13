@@ -48,6 +48,19 @@ async def lifespan(app: FastAPI):
                 logger.info("多角色验收账号已就绪: {}", stats)
         except Exception as e:
             logger.warning("多角色验收账号 seeding 失败: {}", str(e)[:200])
+    # Agent Runtime 启动恢复分类：可证明可恢复的旧运行保持原状，等执行器真正被调度后再进入恢复中；
+    # 无法证明可恢复的旧运行直接标记 FAILED，不留「看似在恢复」的假状态。
+    try:
+        classification = container.agent_run_manager.classify_incomplete_runs(
+            container.final_review_runtime_workflow.can_resume
+        )
+        if classification["pending"] or classification["failed"]:
+            logger.info(
+                "Agent 运行恢复分类完成: 待接管 {}, 已终止 {}",
+                len(classification["pending"]), len(classification["failed"]),
+            )
+    except Exception as e:
+        logger.warning("Agent 运行恢复分类失败: {}", str(e)[:200])
     # 启动时灌入学校名单(universities.json)，幂等 upsert，不覆盖已补充的教务网址
     try:
         seed_path = Path(__file__).resolve().parent.parent / "data" / "universities.json"

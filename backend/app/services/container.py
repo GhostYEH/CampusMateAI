@@ -65,8 +65,13 @@ from ..services.simulation_service import SimulationService
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
 from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
+from ..services.agent_runtime.agent_registry import AgentRegistry
 from ..services.agent_runtime.approval_gate import ApprovalGate
+from ..services.agent_runtime.executor import AgentExecutor
+from ..services.agent_runtime.risk_engine import RiskEngine
+from ..services.agent_runtime.tool_registry import ToolRegistry
 from ..services.final_review_service import FinalReviewService
+from ..services.final_review_runtime_workflow import FinalReviewRuntimeWorkflow
 from ..services.course_research import CourseResearchPipeline
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
@@ -146,6 +151,7 @@ class ServiceContainer:
     agent_artifact_manager: ArtifactManager
     final_review_repository: FinalReviewRepository
     final_review_service: FinalReviewService
+    final_review_runtime_workflow: FinalReviewRuntimeWorkflow
     course_research_repository: CourseResearchRepository
     course_research_pipeline: CourseResearchPipeline
     notice_workflow_repository: NoticeWorkflowRepository
@@ -269,6 +275,21 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
+    final_review_service = FinalReviewService(final_review_repository, personal_task_repo)
+    agent_event_store = AgentEventStore(agent_runtime_repository)
+    agent_run_manager = RunManager(agent_runtime_repository)
+    agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_artifact_manager = ArtifactManager(agent_artifact_repository, artifact_root)
+    # Runtime 的第一个真实业务调用方：期末复习计划由 FinalReviewRuntimeWorkflow 驱动
+    final_review_runtime_workflow = FinalReviewRuntimeWorkflow(
+        repository=agent_runtime_repository,
+        artifact_repository=agent_artifact_repository,
+        executor=AgentExecutor(agent_runtime_repository, ToolRegistry(AgentRegistry.default()), RiskEngine()),
+        events=agent_event_store,
+        approvals=agent_approval_gate,
+        artifacts=agent_artifact_manager,
+        service=final_review_service,
+    )
 
     # EduConnector
     edu_repo = EduRepository(db)
@@ -365,12 +386,13 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_model_source_policy=learner_model_source_policy,
         agent_runtime_repository=agent_runtime_repository,
         agent_artifact_repository=agent_artifact_repository,
-        agent_event_store=AgentEventStore(agent_runtime_repository),
-        agent_run_manager=RunManager(agent_runtime_repository),
-        agent_approval_gate=ApprovalGate(agent_runtime_repository),
-        agent_artifact_manager=ArtifactManager(agent_artifact_repository, artifact_root),
+        agent_event_store=agent_event_store,
+        agent_run_manager=agent_run_manager,
+        agent_approval_gate=agent_approval_gate,
+        agent_artifact_manager=agent_artifact_manager,
         final_review_repository=final_review_repository,
-        final_review_service=FinalReviewService(final_review_repository, personal_task_repo),
+        final_review_service=final_review_service,
+        final_review_runtime_workflow=final_review_runtime_workflow,
         course_research_repository=course_research_repository,
         course_research_pipeline=CourseResearchPipeline(course_research_repository, db),
         notice_workflow_repository=notice_workflow_repository,

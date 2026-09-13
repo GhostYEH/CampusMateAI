@@ -32,6 +32,18 @@ class AgentRunRow:
 
 
 @dataclass(frozen=True)
+class AgentRunStepRow:
+    id: str
+    run_id: str
+    sequence: int
+    role: str
+    status: str
+    safe_summary: str
+    started_at: str | None
+    finished_at: str | None
+
+
+@dataclass(frozen=True)
 class AgentEventRow:
     id: str
     run_id: str

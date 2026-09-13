@@ -34,3 +34,12 @@ class AgentArtifactRepository:
                 (artifact_id, user_id),
             ).fetchone()
         return _artifact(row) if row else None
+
+    def find(self, *, run_id: str, artifact_type: str, version: int) -> AgentArtifactRow | None:
+        """按 UNIQUE(run_id, artifact_type, version) 回读，用于恢复时不重复建 Artifact。"""
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_artifacts WHERE run_id=? AND artifact_type=? AND version=? AND deleted_at IS NULL",
+                (run_id, artifact_type, version),
+            ).fetchone()
+        return _artifact(row) if row else None

@@ -62,6 +62,23 @@ class AgentRunOut(StrictContract):
     finished_at: str | None = None
 
 
+class AgentRunStepOut(StrictContract):
+    step_id: str
+    run_id: str
+    sequence: int = Field(ge=1)
+    role: str
+    status: str
+    summary: str = Field(min_length=1, max_length=500)
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class AgentRunStepPage(StrictContract):
+    run_id: str
+    items: list[AgentRunStepOut]
+    total: int = Field(ge=0)
+
+
 class AgentJobCreate(StrictContract):
     domain: str = Field(min_length=1, max_length=64)
     objective_summary: str = Field(min_length=1, max_length=500)
@@ -141,6 +158,6 @@ class NoticeWorkflowContract(StrictContract):
 __all__ = [
     "AgentApprovalDecision", "AgentApprovalOut", "AgentArtifactOut", "AgentErrorEnvelope",
     "AgentEventOut", "AgentEventPage", "AgentJobCreate", "AgentJobOut", "AgentProgressOut",
-    "AgentRunOut", "CourseResearchContract", "FinalReviewContract",
-    "NoticeWorkflowContract", "SourcePolicy",
+    "AgentRunOut", "AgentRunStepOut", "AgentRunStepPage", "CourseResearchContract",
+    "FinalReviewContract", "NoticeWorkflowContract", "SourcePolicy",
 ]

@@ -26,3 +26,9 @@ class AgentExecutor:
         return self._repository.begin_tool_call(
             run_id=run_id, tool_name=tool_name, idempotency_key=idempotency_key, request_hash=digest
         )
+
+    def finish_tool_call(self, *, call_id: str, status: str, result_digest: str | None = None,
+                         error_code: str | None = None):
+        return self._repository.finish_tool_call(
+            call_id=call_id, status=status, result_digest=result_digest, error_code=error_code
+        )

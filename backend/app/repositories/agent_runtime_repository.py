@@ -7,7 +7,14 @@ from uuid import uuid4
 
 from ..core.exceptions import AppException
 from ..database.sqlite_db import Database
-from ..models.agent_runtime import AgentApprovalRow, AgentEventRow, AgentJobRow, AgentRunRow, AgentToolCallRow
+from ..models.agent_runtime import (
+    AgentApprovalRow,
+    AgentEventRow,
+    AgentJobRow,
+    AgentRunRow,
+    AgentRunStepRow,
+    AgentToolCallRow,
+)
 
 
 def _now() -> str:
@@ -38,6 +45,10 @@ def _tool(row) -> AgentToolCallRow:
 
 def _approval(row) -> AgentApprovalRow:
     return AgentApprovalRow(**dict(row))
+
+
+def _step(row) -> AgentRunStepRow:
+    return AgentRunStepRow(**dict(row))
 
 
 class AgentRuntimeRepository:
@@ -146,6 +157,153 @@ class AgentRuntimeRepository:
                 "SELECT * FROM agent_runs WHERE status IN ('QUEUED','RUNNING','AWAITING_APPROVAL') ORDER BY created_at,id"
             ).fetchall()
         return [_run(row) for row in rows]
+
+    def set_progress(self, *, run_id: str, current: int) -> None:
+        """单调推进进度，避免恢复重放时进度倒退。"""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE agent_runs SET progress_current=?,updated_at=? WHERE id=? AND progress_current<?",
+                (current, _now(), run_id, current),
+            )
+
+    # ===== 运行步骤（线性状态机）=====
+
+    def ensure_step(self, *, run_id: str, sequence: int, role: str, safe_summary: str) -> AgentRunStepRow:
+        with self._db.transaction() as conn:
+            conn.execute(
+                """INSERT OR IGNORE INTO agent_run_steps(id,run_id,sequence,role,status,safe_summary)
+                   VALUES(?,?,?,?,'PENDING',?)""",
+                (_id("step"), run_id, sequence, role, safe_summary[:500]),
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_run_steps WHERE run_id=? AND sequence=?", (run_id, sequence)
+            ).fetchone()
+        return _step(row)
+
+    def start_step(self, *, run_id: str, sequence: int) -> AgentRunStepRow:
+        with self._db.transaction() as conn:
+            conn.execute(
+                """UPDATE agent_run_steps SET status='RUNNING',started_at=COALESCE(started_at,?),finished_at=NULL
+                   WHERE run_id=? AND sequence=?""",
+                (_now(), run_id, sequence),
+            )
+            row = conn.execute(
+                "SELECT * FROM agent_run_steps WHERE run_id=? AND sequence=?", (run_id, sequence)
+            ).fetchone()
+        if row is None:
+            raise AppException(code="AGENT_RUN_NOT_FOUND", http_status=404, message="运行步骤不存在")
+        return _step(row)
+
+    def finish_step(self, *, run_id: str, sequence: int, status: str,
+                    safe_summary: str | None = None) -> AgentRunStepRow:
+        with self._db.transaction() as conn:
+            if safe_summary is None:
+                conn.execute(
+                    "UPDATE agent_run_steps SET status=?,finished_at=? WHERE run_id=? AND sequence=?",
+                    (status, _now(), run_id, sequence),
+                )
+            else:
+                conn.execute(
+                    "UPDATE agent_run_steps SET status=?,safe_summary=?,finished_at=? WHERE run_id=? AND sequence=?",
+                    (status, safe_summary[:500], _now(), run_id, sequence),
+                )
+            row = conn.execute(
+                "SELECT * FROM agent_run_steps WHERE run_id=? AND sequence=?", (run_id, sequence)
+            ).fetchone()
+        if row is None:
+            raise AppException(code="AGENT_RUN_NOT_FOUND", http_status=404, message="运行步骤不存在")
+        return _step(row)
+
+    def list_steps(self, *, run_id: str) -> list[AgentRunStepRow]:
+        with self._db.query() as conn:
+            rows = conn.execute(
+                "SELECT * FROM agent_run_steps WHERE run_id=? ORDER BY sequence", (run_id,)
+            ).fetchall()
+        return [_step(row) for row in rows]
+
+    # ===== 工具调用收尾 =====
+
+    def finish_tool_call(self, *, call_id: str, status: str, result_digest: str | None = None,
+                         error_code: str | None = None) -> AgentToolCallRow:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE agent_tool_calls SET status=?,finished_at=?,result_digest=?,error_code=? WHERE id=?",
+                (status, _now(), result_digest, error_code, call_id),
+            )
+            row = conn.execute("SELECT * FROM agent_tool_calls WHERE id=?", (call_id,)).fetchone()
+        if row is None:
+            raise AppException(code="AGENT_RUN_NOT_FOUND", http_status=404, message="工具调用不存在")
+        return _tool(row)
+
+    # ===== 审批查询 =====
+
+    def latest_approval_for_run(self, *, run_id: str) -> AgentApprovalRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE run_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return _approval(row) if row else None
+
+    def pending_approval_for_run(self, *, run_id: str) -> AgentApprovalRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_approvals WHERE run_id=? AND status='PENDING' ORDER BY created_at DESC,id DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return _approval(row) if row else None
+
+    # ===== 上下文快照（Run ↔ 领域对象绑定）=====
+
+    def create_context_snapshot(self, *, run_id: str, user_id: str, scope: dict, facts: dict,
+                                source_refs: list[str], source_digest: str, valid_until: str) -> str:
+        snapshot_id, now = _id("ctx"), _now()
+        with self._db.transaction() as conn:
+            conn.execute(
+                """INSERT INTO agent_context_snapshots(id,run_id,user_id,scope_json,facts_json,source_refs_json,source_digest,generated_at,valid_until)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (snapshot_id, run_id, user_id,
+                 json.dumps(scope, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                 json.dumps(facts, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                 json.dumps(source_refs, ensure_ascii=False), source_digest, now, valid_until),
+            )
+            conn.execute(
+                "UPDATE agent_runs SET context_snapshot_id=?,updated_at=? WHERE id=?",
+                (snapshot_id, now, run_id),
+            )
+        return snapshot_id
+
+    def get_context_snapshot(self, *, snapshot_id: str, user_id: str) -> dict | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM agent_context_snapshots WHERE id=? AND user_id=?", (snapshot_id, user_id)
+            ).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["scope"] = json.loads(data.pop("scope_json"))
+        data["facts"] = json.loads(data.pop("facts_json"))
+        data["source_refs"] = json.loads(data.pop("source_refs_json"))
+        return data
+
+    def find_run_for_scope(self, *, user_id: str, domain: str, key: str, value: str) -> AgentRunRow | None:
+        """按上下文快照的 scope 精确反查最近的运行；扫描条数有上限，且只在 Python 侧比对。"""
+        with self._db.query() as conn:
+            rows = conn.execute(
+                """SELECT r.*, s.scope_json AS scope_json FROM agent_runs r
+                   JOIN agent_context_snapshots s ON s.id=r.context_snapshot_id
+                   WHERE r.user_id=? AND r.domain=? ORDER BY r.created_at DESC,r.id DESC LIMIT 50""",
+                (user_id, domain),
+            ).fetchall()
+        for row in rows:
+            data = dict(row)
+            try:
+                scope = json.loads(data.pop("scope_json"))
+            except (TypeError, ValueError):
+                continue
+            if isinstance(scope, dict) and scope.get(key) == value:
+                return _run(data)
+        return None
 
     def append_event(self, *, run_id: str, event_type: str, summary: str, artifact_id: str | None = None, approval_id: str | None = None) -> AgentEventRow:
         with self._db.transaction() as conn:
