@@ -1,9 +1,9 @@
 /**
- * 我的学习状态页面 — Phase 6B
+ * 我的状态页面 — 校园陪伴世界模型
  *
- * 展示学生世界模型的完整闭环：
- * 学习事实 → 状态快照 → 知识点估计 → 误区假设 → 可解释计划 →
- * 用户确认 → 原子执行 → 学习反馈 → 后续效果观察 → 状态更新 → 再规划
+ * 展示学生校园生活的完整闭环：
+ * 今日状态 → 未来压力与冲突 → 课程与校园事务 → 目标与里程碑 →
+ * 专注节律 → 成长趋势 → 行动计划 → 证据与判断 → 数据与隐私 → 模型透明度
  *
  * 中性产品语言，避免心理画像/能力判定等负面表述。
  */
@@ -31,14 +31,6 @@ const CHANGE_LABEL = {
   UNCHANGED: "未变",
 };
 
-const HYPOTHESIS_STATUS_LABEL = {
-  OPEN: "待验证",
-  CONFIRMED: "已确认",
-  REJECTED: "已否定",
-  RESOLVED: "已解决",
-  EXPIRED: "已过期",
-};
-
 const PLAN_STATUS_LABEL = {
   PROPOSED: "待确认",
   ACCEPTED: "已接受",
@@ -62,11 +54,57 @@ const FEEDBACK_OPTIONS = [
 const DELETE_SCOPES = [
   { value: "STATE_ONLY", label: "仅状态投影", desc: "删除投影 run、snapshot 和 evidence" },
   { value: "EVENTS_AND_STATE", label: "事件与状态", desc: "删除 Learner Event 及其派生状态" },
-  { value: "KNOWLEDGE_ONLY", label: "仅知识投影", desc: "删除知识投影和误区假设" },
-  { value: "PLANS_ONLY", label: "仅学习计划", desc: "删除计划、计划项、反馈和评估" },
+  { value: "PLANS_ONLY", label: "仅行动计划", desc: "删除计划、计划项、反馈和评估" },
   { value: "MODEL_SHADOW_ONLY", label: "仅模型影子", desc: "删除在线影子记录" },
   { value: "ALL_LEARNER_MODEL_DATA", label: "全部学生模型数据", desc: "删除上述所有派生数据" },
 ];
+
+const FORECAST_TYPE_LABEL = {
+  DEADLINE_COMPLETION_RISK: "截止完成风险",
+  UPCOMING_WORKLOAD: "未来负载",
+  SCHEDULE_CONFLICT_RISK: "日程冲突风险",
+  GOAL_PROGRESS_OUTLOOK: "目标进展展望",
+  ROUTINE_CONTINUITY: "专注节律连续性",
+};
+
+const RISK_BAND_LABEL = {
+  LOW: "较低",
+  MODERATE: "中等",
+  HIGH: "较高",
+  VERY_HIGH: "很高",
+};
+
+const PRESSURE_BAND_LABEL = {
+  LOW: "较轻",
+  MODERATE: "中等",
+  HIGH: "较重",
+  VERY_HIGH: "很重",
+};
+
+const OUTLOOK_BAND_LABEL = {
+  rising: "上升",
+  steady: "平稳",
+  declining: "下降",
+  insufficient_data: "证据不足",
+};
+
+const CONTINUITY_BAND_LABEL = {
+  stable: "稳定",
+  variable: "波动",
+  unknown: "未知",
+};
+
+const GOAL_CATEGORY_LABEL = {
+  academic: "学业",
+  research: "科研",
+  competition: "竞赛",
+  certificate: "证书",
+  job_search: "求职",
+  internship: "实习",
+  campus_affair: "校园事务",
+  health_habit: "健康习惯",
+  personal_growth: "个人成长",
+};
 
 function useAsync(fn, deps) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
@@ -113,17 +151,17 @@ function ConfidenceBadge({ confidence }) {
   return <span className="ls-confidence">{CONFIDENCE_LABEL(confidence)}</span>;
 }
 
-// ===== A. 当前状态总览 =====
-function StateOverview({ snapshots, onViewEvidence }) {
+// ===== 1. 今日状态总览 =====
+function StateOverview({ snapshots, onViewEvidence, onMarkInaccurate }) {
   const cards = useMemo(() => {
     if (!snapshots?.items) return [];
     return snapshots.items.filter((s) => s.scope_type === "USER").slice(0, 5);
   }, [snapshots]);
 
-  if (cards.length === 0) return <EmptyState text="暂时没有足够的学习状态数据" />;
+  if (cards.length === 0) return <EmptyState text="暂时没有足够的状态数据" />;
 
   return (
-    <section className="ls-section ls-overview" aria-label="当前状态总览">
+    <section className="ls-section ls-overview" aria-label="今日状态总览">
       <div className="ls-card-grid">
         {cards.map((snap) => (
           <article key={snap.snapshot_id} className="ls-state-card">
@@ -151,7 +189,6 @@ const STATE_TYPE_LABEL = {
   deadline_exposure: "截止压力",
   course_participation: "课程参与",
   data_source_health: "数据源健康度",
-  knowledge_mastery_estimate: "知识点估计",
 };
 
 function formatStateValue(snap) {
@@ -188,7 +225,7 @@ function formatTime(iso) {
   } catch { return "未知"; }
 }
 
-// ===== B. 状态变化时间线 =====
+// ===== 2. 状态变化时间线 =====
 function StateTimeline({ changes }) {
   if (!changes?.items?.length) return <EmptyState text="暂时没有状态变化记录" />;
   return (
@@ -209,37 +246,43 @@ function StateTimeline({ changes }) {
   );
 }
 
-// ===== C. C 语言知识地图 =====
-function KnowledgeMap({ knowledge, taxonomy, onViewEvidence }) {
-  const groups = useMemo(() => {
-    if (!knowledge?.items) return {};
-    const byCategory = {};
-    for (const item of knowledge.items) {
-      const cat = item.category || "other";
-      if (!byCategory[cat]) byCategory[cat] = [];
-      byCategory[cat].push(item);
-    }
-    return byCategory;
-  }, [knowledge]);
+// ===== 3. 未来 7 天压力与冲突 =====
+function ForecastSection({ forecasts, onViewEvidence }) {
+  const items = forecasts?.items || [];
+  if (items.length === 0) return <EmptyState text="暂时没有未来预测数据" />;
 
-  const cats = Object.keys(groups);
-  if (cats.length === 0) return <EmptyState text="暂时没有知识点数据" />;
+  const grouped = useMemo(() => {
+    const byType = {};
+    for (const f of items) {
+      const t = f.forecast_type;
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(f);
+    }
+    return byType;
+  }, [items]);
 
   return (
-    <section className="ls-section ls-knowledge" aria-label="C 语言知识地图">
-      {cats.map((cat) => (
-        <div key={cat} className="ls-knowledge__group">
-          <h3 className="ls-knowledge__category">{CATEGORY_LABEL[cat] || cat}</h3>
-          <div className="ls-knowledge__cards">
-            {groups[cat].map((kc) => (
-              <article key={kc.kc_code} className={`ls-kc-card ls-kc-card--${(kc.band || "INSUFFICIENT_EVIDENCE").toLowerCase()}`}>
-                <h4 className="ls-kc-card__name">{kc.kc_name || kc.kc_code}</h4>
-                <div className="ls-kc-card__meta">
-                  <QualityBadge quality={kc.data_quality} />
-                  <span className="ls-kc-card__evidence">{kc.evidence_count || 0} 条证据</span>
+    <section className="ls-section ls-forecasts" aria-label="未来压力与冲突">
+      {Object.entries(grouped).map(([type, list]) => (
+        <div key={type} className="ls-forecast__group">
+          <h3 className="ls-forecast__type">{FORECAST_TYPE_LABEL[type] || type}</h3>
+          <div className="ls-forecast__cards">
+            {list.map((f) => (
+              <article key={f.forecast_id} className="ls-forecast-card">
+                <p className="ls-forecast-card__horizon">
+                  {formatTime(f.horizon_start)} 至 {formatTime(f.horizon_end)}
+                </p>
+                <p className="ls-forecast-card__value">{formatForecastValue(f)}</p>
+                <div className="ls-forecast-card__meta">
+                  <QualityBadge quality={f.data_quality} />
+                  <ConfidenceBadge confidence={f.confidence} />
                 </div>
-                <p className="ls-kc-card__band">{BAND_LABEL[kc.band] || "证据不足"}</p>
-                {kc.valid_until && <p className="ls-kc-card__valid">有效期至 {formatTime(kc.valid_until)}</p>}
+                {f.explanation_codes?.length > 0 && (
+                  <p className="ls-forecast-card__reasons">{f.explanation_codes.join("、")}</p>
+                )}
+                {f.limitations?.length > 0 && (
+                  <p className="ls-forecast-card__limits">局限：{f.limitations.join("、")}</p>
+                )}
               </article>
             ))}
           </div>
@@ -249,20 +292,53 @@ function KnowledgeMap({ knowledge, taxonomy, onViewEvidence }) {
   );
 }
 
-const CATEGORY_LABEL = {
-  foundations: "基础", types: "类型", expressions: "表达式", control: "控制流",
-  functions: "函数", arrays: "数组", pointers: "指针", memory: "内存",
-  composite: "复合类型", io: "输入输出", practice: "实践",
-};
+function formatForecastValue(f) {
+  const v = f.value;
+  if (!v) return "—";
+  if (f.forecast_type === "DEADLINE_COMPLETION_RISK") {
+    return `待办 ${v.pending_task_count || 0} · 逾期 ${v.overdue_task_count || 0} · 风险 ${RISK_BAND_LABEL[v.risk_band] || v.risk_band || "—"}`;
+  }
+  if (f.forecast_type === "UPCOMING_WORKLOAD") {
+    return `任务 ${v.task_count || 0} · 考试 ${v.exam_count || 0} · 压力 ${PRESSURE_BAND_LABEL[v.pressure_band] || v.pressure_band || "—"}`;
+  }
+  if (f.forecast_type === "SCHEDULE_CONFLICT_RISK") {
+    return `冲突 ${v.conflict_count || 0} · 可用窗口 ${v.available_window_count || 0} · 风险 ${RISK_BAND_LABEL[v.risk_band] || v.risk_band || "—"}`;
+  }
+  if (f.forecast_type === "GOAL_PROGRESS_OUTLOOK") {
+    return `活跃目标 ${v.active_goal_count || 0} · 平均进度 ${Math.round(v.average_progress_percent || 0)}% · 趋势 ${OUTLOOK_BAND_LABEL[v.outlook_band] || v.outlook_band || "—"}`;
+  }
+  if (f.forecast_type === "ROUTINE_CONTINUITY") {
+    return `学习次数 ${v.observed_session_count || 0} · 中位间隔 ${v.median_interval_hours || 0}h · 节律 ${CONTINUITY_BAND_LABEL[v.continuity_band] || v.continuity_band || "—"}`;
+  }
+  return "—";
+}
 
-const BAND_LABEL = {
-  INSUFFICIENT_EVIDENCE: "证据不足",
-  EMERGING: "初步了解",
-  DEVELOPING: "发展中",
-  PROFICIENT: "较为熟练",
-};
+// ===== 4. 我的目标与里程碑 =====
+function GoalsSection({ goals, onArchive, busy }) {
+  const items = goals?.items || [];
+  if (items.length === 0) return <EmptyState text="暂时没有目标数据" />;
+  return (
+    <section className="ls-section ls-goals" aria-label="我的目标与里程碑">
+      <div className="ls-goal-grid">
+        {items.map((g) => (
+          <article key={g.goal_id} className="ls-goal-card">
+            <h3 className="ls-goal-card__name">{g.name || g.goal_id}</h3>
+            <p className="ls-goal-card__category">{GOAL_CATEGORY_LABEL[g.category] || g.category}</p>
+            <p className="ls-goal-card__progress">进度 {Math.round(g.progress_percent || 0)}%</p>
+            <p className="ls-goal-card__milestones">里程碑 {g.milestone_count || 0}</p>
+            {g.target_date && <p className="ls-goal-card__target">目标日期 {g.target_date}</p>}
+            <p className="ls-goal-card__status">{g.status === "active" ? "进行中" : "已归档"}</p>
+            {g.status === "active" && (
+              <button className="ls-btn ls-btn--sm" onClick={() => onArchive(g.goal_id)} disabled={busy}>归档</button>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-// ===== D. 证据抽屉 =====
+// ===== 5. 证据抽屉 =====
 function EvidenceDrawer({ snapshot, onClose, onCorrection }) {
   const [page, setPage] = useState(1);
   const [correctionType, setCorrectionType] = useState(null);
@@ -352,50 +428,14 @@ const EVIDENCE_KIND_LABEL = {
   SYNC_STATUS: "同步状态",
 };
 
-// ===== E. 学习困难假设 =====
-function MisconceptionHypotheses({ hypotheses, onDecide, busy }) {
-  if (!hypotheses?.items?.length) return <EmptyState text="暂时没有学习困难假设" />;
-  return (
-    <section className="ls-section ls-hypotheses" aria-label="学习困难假设">
-      <p className="ls-hypotheses__disclaimer">这是一条待验证的学习假设，不是对能力或心理状态的定论。</p>
-      {hypotheses.items.map((h) => (
-        <article key={h.hypothesis_id} className="ls-hypothesis-card">
-          <h3 className="ls-hypothesis-card__title">{MISCONCEPTION_LABEL[h.misconception_code] || h.misconception_code}</h3>
-          <p className="ls-hypothesis-card__status">{HYPOTHESIS_STATUS_LABEL[h.status] || h.status}</p>
-          <div className="ls-hypothesis-card__meta">
-            <ConfidenceBadge confidence={h.confidence} />
-            <span>{h.supporting_evidence_count || 0} 条支持证据</span>
-          </div>
-          {h.status === "OPEN" && (
-            <div className="ls-hypothesis-card__actions">
-              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "CONFIRM")} disabled={busy}>确认这个问题</button>
-              <button className="ls-btn" onClick={() => onDecide(h.hypothesis_id, "REJECT")} disabled={busy}>这不符合我的情况</button>
-              <button className="ls-btn ls-btn--ghost" disabled>稍后再判断</button>
-            </div>
-          )}
-        </article>
-      ))}
-    </section>
-  );
-}
-
-const MISCONCEPTION_LABEL = {
-  pointer_value_address_confusion: "指针值与地址混淆",
-  array_boundary_confusion: "数组边界混淆",
-  dynamic_memory_lifecycle_error: "动态内存生命周期错误",
-  function_parameter_mismatch: "函数参数不匹配",
-  loop_termination_error: "循环终止条件错误",
-  repeated_pointer_indirection_error: "重复指针解引用错误",
-};
-
-// ===== F. 学习计划中心 =====
+// ===== 6. 行动计划中心 =====
 function LearningPlanCenter({ plans, onAction, busy }) {
   const current = plans?.items?.find((p) => p.status === "PROPOSED" || p.status === "ACCEPTED" || p.status === "EXECUTED");
-  if (!current) return <EmptyState text="暂时没有学习计划" />;
+  if (!current) return <EmptyState text="暂时没有行动计划" />;
   return (
-    <section className="ls-section ls-plan" aria-label="学习计划中心">
+    <section className="ls-section ls-plan" aria-label="行动计划中心">
       <div className="ls-plan__header">
-        <h3>当前学习计划</h3>
+        <h3>当前行动计划</h3>
         <span className={`ls-plan__status ls-plan__status--${(current.status || "").toLowerCase()}`}>{PLAN_STATUS_LABEL[current.status] || current.status}</span>
       </div>
       {current.warning_codes?.length > 0 && (
@@ -418,7 +458,7 @@ function LearningPlanCenter({ plans, onAction, busy }) {
           </>
         )}
         {current.status === "ACCEPTED" && (
-          <button className="ls-btn ls-btn--primary" onClick={() => onAction("execute", current.plan_id)} disabled={busy}>创建个人学习任务</button>
+          <button className="ls-btn ls-btn--primary" onClick={() => onAction("execute", current.plan_id)} disabled={busy}>创建个人任务</button>
         )}
         {current.status === "EXECUTED" && (
           <>
@@ -436,8 +476,9 @@ function LearningPlanCenter({ plans, onAction, busy }) {
 
 const ITEM_TYPE_LABEL = {
   TASK_FOCUS: "专注任务",
-  KNOWLEDGE_REVIEW: "知识复习",
   CREATE_PERSONAL_TASK: "创建学习任务",
+  SCHEDULE_REVIEW: "日程回顾",
+  DEADLINE_REMINDER: "截止提醒",
 };
 
 const WARNING_LABEL = {
@@ -447,7 +488,7 @@ const WARNING_LABEL = {
   PLAN_STALE: "依据已变化，请重新规划",
 };
 
-// ===== G. 计划效果观察 =====
+// ===== 7. 计划效果观察 =====
 function PlanEvaluation({ evaluation }) {
   if (!evaluation) return null;
   return (
@@ -481,7 +522,7 @@ function PlanEvaluationSection({ plans }) {
   return <PlanEvaluation evaluation={evaluation.data} />;
 }
 
-// ===== H. 数据与隐私控制 =====
+// ===== 8. 数据与隐私控制 =====
 function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corrections, onRevokeCorrection, busy }) {
   const [deleteScope, setDeleteScope] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -503,8 +544,6 @@ function DataPrivacyControl({ controls, summary, onToggleSource, onDelete, corre
         <div className="ls-summary-grid">
           <div className="ls-summary-item"><span>事件</span><strong>{summary.event_count || 0}</strong></div>
           <div className="ls-summary-item"><span>快照</span><strong>{summary.snapshot_count || 0}</strong></div>
-          <div className="ls-summary-item"><span>知识</span><strong>{summary.knowledge_snapshot_count || 0}</strong></div>
-          <div className="ls-summary-item"><span>误区</span><strong>{summary.misconception_count || 0}</strong></div>
           <div className="ls-summary-item"><span>计划</span><strong>{summary.learning_plan_count || 0}</strong></div>
           <div className="ls-summary-item"><span>影子</span><strong>{summary.shadow_run_count || 0}</strong></div>
         </div>
@@ -550,7 +589,7 @@ const SOURCE_LABEL = {
 };
 const SOURCE_STATUS_LABEL = { ENABLED: "已启用", PAUSED: "已暂停", DISCONNECTED: "已断开", DELETE_REQUESTED: "删除请求中" };
 
-// ===== I. 模型透明度 =====
+// ===== 9. 模型透明度 =====
 function ModelTransparency({ transparency }) {
   if (!transparency?.capabilities) return <EmptyState text="暂时没有模型透明度数据" />;
   return (
@@ -573,10 +612,10 @@ function ModelTransparency({ transparency }) {
 }
 
 const CAPABILITY_LABEL = {
-  c_kc_classification_v1: "C 知识点分类",
-  c_error_classification_v1: "C 错误分类",
   learning_summary_v1: "学习摘要",
   read_only_tool_routing_v1: "只读工具路由",
+  forecast_baseline_v1: "基线预测",
+  simulation_baseline_v1: "方案模拟",
 };
 const PROMOTION_LABEL = {
   SHADOW_ONLY: "仅影子评测", BLOCKED: "已阻断", ELIGIBLE_FOR_CANARY: "可进入金丝雀", REVOKED: "已撤销",
@@ -591,9 +630,8 @@ export default function LearningStatePage() {
 
   const snapshots = useAsync(() => api.getLearnerStateSnapshots({ pageSize: 50 }), [refreshKey]);
   const changes = useAsync(() => api.getLearnerStateChanges({ pageSize: 20 }), [refreshKey]);
-  const knowledge = useAsync(() => api.getKnowledgeState(""), [refreshKey]);
-  const taxonomy = useAsync(() => api.getTaxonomy(), [refreshKey]);
-  const hypotheses = useAsync(() => api.getMisconceptionHypotheses(""), [refreshKey]);
+  const forecasts = useAsync(() => api.getForecasts({ horizonDays: 7, pageSize: 30 }), [refreshKey]);
+  const goals = useAsync(() => api.getStudentGoals({ status: "active" }), [refreshKey]);
   const plans = useAsync(() => api.getLearningPlans(1, 10), [refreshKey]);
   const controls = useAsync(() => api.getDataControls(), [refreshKey]);
   const summary = useAsync(() => api.getDataSummary(), [refreshKey]);
@@ -607,11 +645,11 @@ export default function LearningStatePage() {
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  const handleDecideHypothesis = useCallback(async (hid, decision) => {
+  const handleArchiveGoal = useCallback(async (goalId) => {
     setBusy(true);
     try {
-      await api.decideHypothesis(hid, decision);
-      showToast(decision === "CONFIRM" ? "已确认假设" : "已否定假设");
+      await api.archiveStudentGoal(goalId);
+      showToast("已归档目标");
       refresh();
     } catch (e) { showToast(e.message); }
     finally { setBusy(false); }
@@ -669,10 +707,10 @@ export default function LearningStatePage() {
     <div className="learning-state-page" aria-busy={snapshots.loading || busy}>
       <header className="ls-header">
         <div className="ls-header__title-row">
-          <h1 className="ls-title">我的学习状态</h1>
-          <Link className="ls-prediction-link" to="/prediction">查看预测与反事实模拟</Link>
+          <h1 className="ls-title">我的状态</h1>
+          <Link className="ls-prediction-link" to="/prediction">查看趋势与方案比较</Link>
         </div>
-        <p className="ls-subtitle">根据你授权的学习记录生成，可查看依据并随时纠正</p>
+        <p className="ls-subtitle">根据你授权的学习与校园记录生成，可查看依据并随时纠正</p>
         {snapshots.data?.items?.[0] && (
           <p className="ls-update-time">
             <QualityBadge quality={snapshots.data.items[0].data_quality} />
@@ -689,11 +727,11 @@ export default function LearningStatePage() {
         <div className="ls-layout__main">
           <StateOverview snapshots={snapshots.data} onViewEvidence={setEvidenceSnapshot} onMarkInaccurate={handleMarkInaccurate} />
           <StateTimeline changes={changes.data} />
-          <KnowledgeMap knowledge={knowledge.data} taxonomy={taxonomy.data} onViewEvidence={setEvidenceSnapshot} />
+          <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />
         </div>
         <div className="ls-layout__side">
           <LearningPlanCenter plans={plans.data} onAction={handlePlanAction} busy={busy} />
-          <MisconceptionHypotheses hypotheses={hypotheses.data} onDecide={handleDecideHypothesis} busy={busy} />
+          <GoalsSection goals={goals.data} onArchive={handleArchiveGoal} busy={busy} />
         </div>
       </div>
 

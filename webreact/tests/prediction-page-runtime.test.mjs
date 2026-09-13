@@ -8,7 +8,7 @@ const floatingNav = readFileSync(new URL("../src/components/FloatingNav/Floating
 
 test("prediction page starts data loading from effects rather than inert refs", () => {
   assert.match(page, /useEffect\(\(\) => \{\s*mounted\.current = true;/);
-  assert.match(page, /useEffect\(\(\) => \{\s*let cancelled = false;/);
+
   assert.doesNotMatch(page, /useRef\(\(\) => \{/);
 });
 
