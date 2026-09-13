@@ -68,7 +68,7 @@ describe("final-review endpoints", () => {
 
   it("activateFinalReviewCampaign POST activate", async () => {
     mock.onPost("/final-review/campaigns/c1/activate", { status: "ACTIVE" });
-    await api.activateFinalReviewCampaign("c1", "idem-act");
+    await api.activateFinalReviewCampaign("c1", 1, "idem-act");
     assert.equal(mock.lastRequest().url, "/final-review/campaigns/c1/activate");
   });
 

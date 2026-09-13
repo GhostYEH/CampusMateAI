@@ -117,8 +117,8 @@ export async function getFinalReviewPlanVersion(campaignId, version) {
   return _get(`/final-review/campaigns/${campaignId}/plan-versions/${version}`);
 }
 
-export async function activateFinalReviewCampaign(campaignId, idempotencyKey) {
-  return _post(`/final-review/campaigns/${campaignId}/activate`, {}, idempotencyKey);
+export async function activateFinalReviewCampaign(campaignId, version, idempotencyKey) {
+  return _post(`/final-review/campaigns/${campaignId}/activate`, { version }, idempotencyKey);
 }
 
 export async function getTodayAgenda(campaignId) {

@@ -159,7 +159,7 @@ data class FinalReviewCampaignDto(
     @Json(name = "exam_ids") val examIds: List<String> = emptyList(),
     @Json(name = "daily_capacity_minutes") val dailyCapacityMinutes: Int = 120,
     val status: String = "",
-    @Json(name = "current_plan_version") val currentPlanVersion: Int? = null,
+    @Json(name = "active_version") val currentPlanVersion: Int? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
 )
@@ -174,6 +174,21 @@ data class FinalReviewPlanVersionDto(
     @Json(name = "total_items") val totalItems: Int = 0,
 )
 
+data class FinalReviewPlanGenerateDto(
+    @Json(name = "run_id") val runId: String = "",
+    val version: Int = 0,
+    @Json(name = "risk_level") val riskLevel: String = "",
+    @Json(name = "requires_approval") val requiresApproval: Boolean = false,
+    @Json(name = "approval_id") val approvalId: String? = null,
+)
+
+data class FinalReviewActivateRequest(val version: Int)
+
+data class FinalReviewCompleteItemRequest(
+    val difficulty: String? = null,
+    val feedback: String? = null,
+)
+
 data class FinalReviewDailyItemDto(
     @Json(name = "item_id") val itemId: String = "",
     val date: String = "",
@@ -186,7 +201,7 @@ data class FinalReviewDailyItemDto(
 )
 
 data class FinalReviewDailyAgendaDto(
-    val date: String = "",
+    @Json(name = "agenda_date") val date: String = "",
     val items: List<FinalReviewDailyItemDto> = emptyList(),
     @Json(name = "total_minutes") val totalMinutes: Int = 0,
 )
@@ -223,7 +238,7 @@ data class FinalReviewCampaignCreateRequest(
     @Json(name = "daily_capacity_minutes") val dailyCapacityMinutes: Int = 120,
     @Json(name = "preferred_periods") val preferredPeriods: List<String> = emptyList(),
     @Json(name = "rest_days") val restDays: List<String> = emptyList(),
-    val intensity: String = "normal",
+    val intensity: String = "medium",
 )
 
 // ── Course Research DTO ──
@@ -278,7 +293,7 @@ data class CourseResearchCitationDto(
 
 data class CourseResearchRunCreateRequest(
     val question: String,
-    val mode: String = "EXPLAIN",
+    @Json(name = "assistance_mode") val mode: String = "EXPLAIN",
     @Json(name = "academic_policy") val academicPolicy: String = "LIMITED",
     @Json(name = "source_policy") val sourcePolicy: SourcePolicyDto = SourcePolicyDto(),
     @Json(name = "course_id") val courseId: String? = null,
@@ -292,14 +307,14 @@ enum class NoticeActionStatus { PROPOSED, APPROVED, REJECTED, EXECUTING, DONE, F
 data class NotificationSourceDto(
     @Json(name = "source_id") val sourceId: String = "",
     val code: String = "",
-    val name: String = "",
-    val enabled: Boolean = false,
+    @Json(name = "display_name") val name: String = "",
+    @Json(name = "automation_enabled") val enabled: Boolean = false,
     @Json(name = "permission_scope") val permissionScope: String? = null,
 )
 
 data class NotificationSourcePatchRequest(
-    val enabled: Boolean? = null,
-    @Json(name = "permission_scope") val permissionScope: String? = null,
+    @Json(name = "automation_enabled") val enabled: Boolean? = null,
+    @Json(name = "display_name") val displayName: String? = null,
 )
 
 data class NoticeWorkflowActionDto(
@@ -331,9 +346,9 @@ data class NoticeWorkflowDto(
 }
 
 data class NoticeManualCreateRequest(
+    val title: String,
     val content: String,
     @Json(name = "source_name") val sourceName: String = "manual_input",
-    @Json(name = "published_at") val publishedAt: String? = null,
 )
 
 data class NoticeManualResponseDto(
@@ -344,10 +359,15 @@ data class NoticeManualResponseDto(
 )
 
 data class NoticeWorkflowCreateRequest(
-    @Json(name = "notice_id") val noticeId: String,
+    @Json(name = "idempotency_key") val idempotencyKey: String? = null,
 )
 
 data class ApprovalDecisionRequest(
     val decision: String,
-    @Json(name = "decision_reason") val decisionReason: String? = null,
+    @Json(name = "reason") val decisionReason: String? = null,
+)
+
+data class CourseResearchArtifactBundleDto(
+    @Json(name = "run_id") val runId: String = "",
+    val artifacts: List<AgentArtifactDto> = emptyList(),
 )

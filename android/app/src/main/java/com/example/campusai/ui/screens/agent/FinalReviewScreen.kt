@@ -9,8 +9,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.remote.agent.AgentRiskLevel
 import com.example.campusai.data.remote.agent.FinalReviewCampaignCreateRequest
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassCard as Card
+import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
+import com.example.campusai.ui.components.GlassTextButton as TextButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -18,7 +23,7 @@ fun FinalReviewScreen(
     viewModel: FinalReviewViewModel = viewModel(),
     onBack: () -> Unit,
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadCampaigns() }
 
     Scaffold(topBar = { AgentTopBar("期末复习", onBack) }) { padding ->
@@ -53,7 +58,17 @@ fun FinalReviewScreen(
                             if (state.generating) Text("生成中…") else {
                                 Button(onClick = { viewModel.generatePlan(campaign.campaignId) }) { Text("生成计划") }
                                 Spacer(Modifier.height(8.dp))
-                                Button(onClick = { viewModel.activatePlan(campaign.campaignId) }) { Text("激活计划") }
+                                Button(
+                                    onClick = {
+                                        if (state.pendingApprovalId != null) {
+                                            viewModel.approveAndActivatePlan(campaign.campaignId)
+                                        } else {
+                                            viewModel.activatePlan(campaign.campaignId)
+                                        }
+                                    },
+                                ) {
+                                    Text(if (state.pendingApprovalId != null) "批准并激活" else "激活计划")
+                                }
                             }
                         }
                     }

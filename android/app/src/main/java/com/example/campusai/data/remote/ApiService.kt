@@ -9,16 +9,20 @@ import com.example.campusai.data.remote.agent.AgentJobDto
 import com.example.campusai.data.remote.agent.AgentRunDto
 import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
 import com.example.campusai.data.remote.agent.CourseResearchCitationDto
+import com.example.campusai.data.remote.agent.CourseResearchArtifactBundleDto
 import com.example.campusai.data.remote.agent.CourseResearchRoleProgressDto
 import com.example.campusai.data.remote.agent.CourseResearchRunCreateRequest
 import com.example.campusai.data.remote.agent.CourseResearchRunDto
 import com.example.campusai.data.remote.agent.FinalReviewAdjustmentProposalDto
+import com.example.campusai.data.remote.agent.FinalReviewActivateRequest
 import com.example.campusai.data.remote.agent.FinalReviewCampaignCreateRequest
 import com.example.campusai.data.remote.agent.FinalReviewCampaignDto
 import com.example.campusai.data.remote.agent.FinalReviewDailyAgendaDto
 import com.example.campusai.data.remote.agent.FinalReviewDailyCheckinRequest
+import com.example.campusai.data.remote.agent.FinalReviewCompleteItemRequest
 import com.example.campusai.data.remote.agent.FinalReviewEvidenceRequest
 import com.example.campusai.data.remote.agent.FinalReviewPlanVersionDto
+import com.example.campusai.data.remote.agent.FinalReviewPlanGenerateDto
 import com.example.campusai.data.remote.agent.NoticeManualCreateRequest
 import com.example.campusai.data.remote.agent.NoticeManualResponseDto
 import com.example.campusai.data.remote.agent.NoticeWorkflowActionDto
@@ -1230,7 +1234,7 @@ interface ApiService {
     ): Response<FinalReviewCampaignDto>
 
     @GET("final-review/campaigns")
-    suspend fun agentListFinalReviewCampaigns(): Response<PagedResponse<FinalReviewCampaignDto>>
+    suspend fun agentListFinalReviewCampaigns(): Response<List<FinalReviewCampaignDto>>
 
     @GET("final-review/campaigns/{campaignId}")
     suspend fun agentGetFinalReviewCampaign(@Path("campaignId") campaignId: String): Response<FinalReviewCampaignDto>
@@ -1238,11 +1242,12 @@ interface ApiService {
     @POST("final-review/campaigns/{campaignId}/plans/generate")
     suspend fun agentGenerateFinalReviewPlan(
         @Path("campaignId") campaignId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): Response<Unit>
+    ): Response<FinalReviewPlanGenerateDto>
 
     @GET("final-review/campaigns/{campaignId}/plan-versions")
-    suspend fun agentListFinalReviewPlanVersions(@Path("campaignId") campaignId: String): Response<PagedResponse<FinalReviewPlanVersionDto>>
+    suspend fun agentListFinalReviewPlanVersions(@Path("campaignId") campaignId: String): Response<List<FinalReviewPlanVersionDto>>
 
     @GET("final-review/campaigns/{campaignId}/plan-versions/{version}")
     suspend fun agentGetFinalReviewPlanVersion(
@@ -1253,6 +1258,7 @@ interface ApiService {
     @POST("final-review/campaigns/{campaignId}/activate")
     suspend fun agentActivateFinalReviewPlan(
         @Path("campaignId") campaignId: String,
+        @Body request: FinalReviewActivateRequest,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<Unit>
 
@@ -1262,7 +1268,7 @@ interface ApiService {
     @POST("final-review/daily-items/{itemId}/complete")
     suspend fun agentCompleteFinalReviewDailyItem(
         @Path("itemId") itemId: String,
-        @Body request: FinalReviewEvidenceRequest,
+        @Body request: FinalReviewCompleteItemRequest,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<Unit>
 
@@ -1276,11 +1282,12 @@ interface ApiService {
     @POST("final-review/campaigns/{campaignId}/adjustments/analyze")
     suspend fun agentAnalyzeFinalReviewAdjustments(
         @Path("campaignId") campaignId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<Unit>
 
     @GET("final-review/campaigns/{campaignId}/adjustment-proposals")
-    suspend fun agentListFinalReviewAdjustmentProposals(@Path("campaignId") campaignId: String): Response<PagedResponse<FinalReviewAdjustmentProposalDto>>
+    suspend fun agentListFinalReviewAdjustmentProposals(@Path("campaignId") campaignId: String): Response<List<FinalReviewAdjustmentProposalDto>>
 
     @POST("final-review/adjustment-proposals/{proposalId}/decision")
     suspend fun agentDecideFinalReviewAdjustment(
@@ -1297,7 +1304,7 @@ interface ApiService {
     ): Response<CourseResearchRunDto>
 
     @GET("course-research/runs")
-    suspend fun agentListCourseResearchRuns(): Response<PagedResponse<CourseResearchRunDto>>
+    suspend fun agentListCourseResearchRuns(): Response<List<CourseResearchRunDto>>
 
     @GET("course-research/runs/{runId}")
     suspend fun agentGetCourseResearchRun(@Path("runId") runId: String): Response<CourseResearchRunDto>
@@ -1305,11 +1312,12 @@ interface ApiService {
     @POST("course-research/runs/{runId}/cancel")
     suspend fun agentCancelCourseResearchRun(
         @Path("runId") runId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<Unit>
 
     @GET("course-research/runs/{runId}/artifacts")
-    suspend fun agentListCourseResearchArtifacts(@Path("runId") runId: String): Response<PagedResponse<AgentArtifactDto>>
+    suspend fun agentListCourseResearchArtifacts(@Path("runId") runId: String): Response<CourseResearchArtifactBundleDto>
 
     @GET("course-research/runs/{runId}/role-progress")
     suspend fun agentListCourseResearchRoleProgress(@Path("runId") runId: String): Response<PagedResponse<CourseResearchRoleProgressDto>>
@@ -1319,7 +1327,7 @@ interface ApiService {
 
     // ===== Notice Workflow =====
     @GET("notification-sources")
-    suspend fun agentListNotificationSources(): Response<PagedResponse<NotificationSourceDto>>
+    suspend fun agentListNotificationSources(): Response<List<NotificationSourceDto>>
 
     @PATCH("notification-sources/{sourceId}")
     suspend fun agentPatchNotificationSource(
@@ -1346,6 +1354,7 @@ interface ApiService {
     @POST("notice-workflows/{workflowId}/reanalyze")
     suspend fun agentReanalyzeNoticeWorkflow(
         @Path("workflowId") workflowId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<NoticeWorkflowDto>
 
@@ -1359,6 +1368,7 @@ interface ApiService {
     @POST("notice-workflow-actions/{actionId}/execute")
     suspend fun agentExecuteNoticeWorkflowAction(
         @Path("actionId") actionId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<NoticeWorkflowActionDto>
 }

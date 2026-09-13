@@ -34,6 +34,7 @@ export default function FinalReviewPage() {
   const [error, setError] = useState(null);
   const [activeRunId, setActiveRunId] = useState(null);
   const [approval, setApproval] = useState(null);
+  const [pendingPlanVersion, setPendingPlanVersion] = useState(null);
   const [resolveKey, setResolveKey] = useState(() => createIdempotencyKey("fr_resolve"));
 
   const run = useAgentRun({ runId: activeRunId });
@@ -97,6 +98,15 @@ export default function FinalReviewPage() {
     try {
       const result = await api.generateFinalReviewPlan(campaignId, body, body.idempotency_key);
       setActiveRunId(result.run_id);
+      setPendingPlanVersion(result.version);
+      if (result.approval_id) {
+        setApproval({
+          approval_id: result.approval_id,
+          status: "PENDING",
+          risk_level: result.risk_level,
+          action_summary: "确认后激活此复习计划",
+        });
+      }
     } catch (err) {
       setError(err);
     } finally {
@@ -104,11 +114,11 @@ export default function FinalReviewPage() {
     }
   }, []);
 
-  const handleActivate = useCallback(async (campaignId, idempotencyKey) => {
+  const handleActivate = useCallback(async (campaignId, version, idempotencyKey) => {
     setActivating(true);
     setError(null);
     try {
-      await api.activateFinalReviewCampaign(campaignId, idempotencyKey);
+      await api.activateFinalReviewCampaign(campaignId, version, idempotencyKey);
       await refreshCampaignDetail(campaignId);
     } catch (err) {
       setError(err);
@@ -143,11 +153,18 @@ export default function FinalReviewPage() {
     try {
       await api.resolveAgentApproval(approval.approval_id, "APPROVED", "用户确认激活", idempotencyKey || resolveKey);
       setApproval((prev) => ({ ...prev, status: "APPROVED" }));
+      if (campaign && pendingPlanVersion) {
+        await api.activateFinalReviewCampaign(
+          campaign.campaign_id,
+          pendingPlanVersion,
+          createIdempotencyKey("fr_activate_after_approval"),
+        );
+      }
       if (campaign) await refreshCampaignDetail(campaign.campaign_id);
     } catch (err) {
       setError(err);
     }
-  }, [approval, resolveKey, campaign, refreshCampaignDetail]);
+  }, [approval, resolveKey, campaign, pendingPlanVersion, refreshCampaignDetail]);
 
   const handleReject = useCallback(async (idempotencyKey) => {
     if (!approval) return;

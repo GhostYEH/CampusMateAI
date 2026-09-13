@@ -30,7 +30,7 @@ class NoticeWorkflowRepository(
     suspend fun listSources(): Result<List<NotificationSourceDto>> = runCatching {
         val response = api.agentListNotificationSources()
         check(response.isSuccessful) { "加载通知来源失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
+        response.body() ?: emptyList()
     }
 
     suspend fun patchSource(sourceId: String, request: NotificationSourcePatchRequest): Result<NotificationSourceDto> = runCatching {
@@ -47,14 +47,22 @@ class NoticeWorkflowRepository(
         val userId = userIdProvider()
         val manualKey = AgentIdempotency.stableKey(userId, "nw_manual_notice", content, sourceName)
         val manualResponse = api.agentCreateManualNotice(
-            NoticeManualCreateRequest(content = content, sourceName = sourceName, publishedAt = publishedAt),
+            NoticeManualCreateRequest(
+                title = content.lineSequence().firstOrNull()?.take(128).orEmpty().ifBlank { "校园通知" },
+                content = content,
+                sourceName = sourceName,
+            ),
             manualKey,
         )
         check(manualResponse.isSuccessful) { "创建通知失败(${manualResponse.code()})" }
         val noticeId = manualResponse.body()?.noticeId?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("未获得通知 ID")
         val workflowKey = AgentIdempotency.stableKey(userId, "nw_create_workflow", noticeId)
-        val workflowResponse = api.agentCreateNoticeWorkflow(noticeId, NoticeWorkflowCreateRequest(noticeId), workflowKey)
+        val workflowResponse = api.agentCreateNoticeWorkflow(
+            noticeId,
+            NoticeWorkflowCreateRequest(),
+            workflowKey,
+        )
         check(workflowResponse.isSuccessful) { "创建工作流失败(${workflowResponse.code()})" }
         workflowResponse.body() ?: throw IllegalStateException("工作流响应为空")
     }
@@ -67,7 +75,7 @@ class NoticeWorkflowRepository(
 
     suspend fun reanalyze(workflowId: String): Result<NoticeWorkflowDto> = runCatching {
         val key = AgentIdempotency.stableKey(userIdProvider(), "nw_reanalyze", workflowId)
-        val response = api.agentReanalyzeNoticeWorkflow(workflowId, key)
+        val response = api.agentReanalyzeNoticeWorkflow(workflowId, emptyMap(), key)
         check(response.isSuccessful) { "重新分析失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("工作流响应为空")
     }
@@ -81,7 +89,7 @@ class NoticeWorkflowRepository(
 
     suspend fun executeAction(actionId: String): Result<NoticeWorkflowActionDto> = runCatching {
         val key = AgentIdempotency.stableKey(userIdProvider(), "nw_execute", actionId)
-        val response = api.agentExecuteNoticeWorkflowAction(actionId, key)
+        val response = api.agentExecuteNoticeWorkflowAction(actionId, emptyMap(), key)
         check(response.isSuccessful) { "执行动作失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("动作响应为空")
     }

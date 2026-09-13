@@ -25,12 +25,13 @@ describe("final-review full flow", () => {
 
     await api.createFinalReviewCampaign({ exam_ids: ["e1"] }, "k-campaign");
     await api.generateFinalReviewPlan("c1", { daily_capacity_minutes: 120 }, "k-gen");
-    await api.activateFinalReviewCampaign("c1", "k-act");
+    await api.activateFinalReviewCampaign("c1", 1, "k-act");
 
     const [c, g, a] = mock.requests;
     assert.equal(c.headers["Idempotency-Key"], "k-campaign");
     assert.equal(g.headers["Idempotency-Key"], "k-gen");
     assert.equal(a.headers["Idempotency-Key"], "k-act");
+    assert.deepEqual(a.data, { version: 1 });
   });
 
   it("计划版本端点独立于旧 /learning-plans", async () => {

@@ -36,7 +36,7 @@ class CourseResearchRepository(
     suspend fun listRuns(): Result<List<CourseResearchRunDto>> = runCatching {
         val response = api.agentListCourseResearchRuns()
         check(response.isSuccessful) { "加载研究记录失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
+        response.body() ?: emptyList()
     }
 
     suspend fun getRun(runId: String): Result<CourseResearchRunDto> = runCatching {
@@ -47,14 +47,14 @@ class CourseResearchRepository(
 
     suspend fun cancelRun(runId: String): Result<Unit> = runCatching {
         val key = AgentIdempotency.stableKey(userIdProvider(), "cr_cancel", runId)
-        val response = api.agentCancelCourseResearchRun(runId, key)
+        val response = api.agentCancelCourseResearchRun(runId, emptyMap(), key)
         check(response.isSuccessful) { "取消研究失败(${response.code()})" }
     }
 
     suspend fun listArtifacts(runId: String): Result<List<AgentArtifactDto>> = runCatching {
         val response = api.agentListCourseResearchArtifacts(runId)
         check(response.isSuccessful) { "加载研究产物失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
+        response.body()?.artifacts ?: emptyList()
     }
 
     suspend fun listRoleProgress(runId: String): Result<List<CourseResearchRoleProgressDto>> = runCatching {

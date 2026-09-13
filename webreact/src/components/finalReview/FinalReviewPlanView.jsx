@@ -60,7 +60,11 @@ export default function FinalReviewPlanView({
             className="button button-secondary"
             type="button"
             disabled={activating}
-            onClick={() => onActivate?.(campaign.campaign_id, actKey)}
+            onClick={() => onActivate?.(
+              campaign.campaign_id,
+              versions[versions.length - 1]?.version,
+              actKey,
+            )}
           >
             {activating ? "正在激活…" : "激活当前计划"}
           </button>

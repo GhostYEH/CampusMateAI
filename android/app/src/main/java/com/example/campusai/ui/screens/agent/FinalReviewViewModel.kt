@@ -27,6 +27,8 @@ data class FinalReviewUiState(
     val events: List<AgentEventDto> = emptyList(),
     val error: String? = null,
     val generating: Boolean = false,
+    val pendingApprovalId: String? = null,
+    val pendingPlanVersion: Int? = null,
 )
 
 class FinalReviewViewModel(
@@ -70,12 +72,41 @@ class FinalReviewViewModel(
     fun generatePlan(campaignId: String) = viewModelScope.launch {
         _state.update { it.copy(generating = true, error = null) }
         repository.generatePlan(campaignId)
-            .onSuccess { _state.update { it.copy(generating = false) } }
+            .onSuccess { generated ->
+                _state.update {
+                    it.copy(
+                        generating = false,
+                        pendingApprovalId = generated.approvalId,
+                        pendingPlanVersion = generated.version,
+                    )
+                }
+            }
             .onFailure { e -> _state.update { it.copy(generating = false, error = e.message) } }
     }
 
     fun activatePlan(campaignId: String) = viewModelScope.launch {
-        repository.activatePlan(campaignId)
+        val version = _state.value.pendingPlanVersion
+            ?: _state.value.planVersions.maxOfOrNull { it.version }
+            ?: return@launch
+        repository.activatePlan(campaignId, version)
+            .onFailure { e -> _state.update { it.copy(error = e.message) } }
+        openCampaign(campaignId)
+    }
+
+    fun approveAndActivatePlan(campaignId: String) = viewModelScope.launch {
+        val approvalId = _state.value.pendingApprovalId ?: return@launch
+        val version = _state.value.pendingPlanVersion ?: return@launch
+        repository.approvePlan(approvalId)
+            .onFailure { e ->
+                _state.update { it.copy(error = e.message) }
+                return@launch
+            }
+        repository.activatePlan(campaignId, version)
+            .onSuccess {
+                _state.update {
+                    it.copy(pendingApprovalId = null, pendingPlanVersion = null)
+                }
+            }
             .onFailure { e -> _state.update { it.copy(error = e.message) } }
         openCampaign(campaignId)
     }

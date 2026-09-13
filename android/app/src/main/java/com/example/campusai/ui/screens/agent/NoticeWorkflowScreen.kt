@@ -8,6 +8,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.campusai.ui.components.GlassButton as Button
+import com.example.campusai.ui.components.GlassCard as Card
+import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
 import com.example.campusai.data.remote.agent.AgentRiskLevel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -16,7 +20,7 @@ fun NoticeWorkflowScreen(
     viewModel: NoticeWorkflowViewModel = viewModel(),
     onBack: () -> Unit,
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadSources() }
 
     Scaffold(topBar = { AgentTopBar("通知事务", onBack) }) { padding ->
