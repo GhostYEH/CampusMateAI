@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.services.container import reset_container_for_tests
+from app.services.agent_runtime.run_manager import RunManager
 
 
 def test_learning_goal_job_generates_plan_and_persists_run_lineage() -> None:
@@ -62,3 +63,40 @@ def test_invalid_learning_goal_request_does_not_create_orphan_job() -> None:
 
     assert response.status_code == 422, response.text
     assert container.agent_runtime_repository.list_jobs(user.id) == []
+
+
+def test_learning_goal_retry_replans_and_updates_job_reference() -> None:
+    container = reset_container_for_tests(Settings(app_env="test", database_url="sqlite:///:memory:"))
+    user = container.user_repository.create_user(
+        username="goal_retry_student", password_hash=hash_password("Demo123456"), role="student"
+    )
+    goal = container.student_goal_repository.create_goal(
+        user_id=user.id, name="完成高数期末复习", category="ACADEMIC",
+        target_date=(datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat(),
+        idempotency_key="goal-retry-1",
+    )[0]
+    repo = container.agent_runtime_repository
+    job_id = repo.create_job(
+        user_id=user.id, job_kind="learning_goal",
+        input_ref={"goal_id": goal.goal_id, "available_minutes": 45},
+        idempotency_key="job-retry-1",
+    )
+    run_id = repo.create_run(job_id=job_id, user_id=user.id, idempotency_key="run-retry-1")
+    manager = RunManager(repo, container.agent_event_store)
+    manager.transition(run_id, "RUNNING", phase="CONTEXT_BUILDING")
+    manager.transition(run_id, "FAILED", phase="IDLE", error_code="AGENT_PROVIDER_UNAVAILABLE")
+
+    client = TestClient(create_app())
+    login = client.post("/api/v1/auth/login", json={"username": user.username, "password": "Demo123456"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = client.post(
+        f"/api/v1/agent-runs/{run_id}/retry",
+        json={"idempotency_key": "retry-control-1"}, headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    retried = response.json()
+    assert retried["status"] == "SUCCEEDED"
+    assert retried["retry_of"] == run_id
+    job = client.get(f"/api/v1/agent-jobs/{job_id}", headers=headers).json()
+    assert job["latest_run_id"] == retried["run_id"]
+    assert job["input_ref"]["plan_id"]

@@ -98,6 +98,87 @@ def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOu
     )
 
 
+def _job_input_ref(job: dict) -> dict:
+    """Decode the server-owned job input reference without exposing raw payloads."""
+    value = job.get("input_ref", job.get("input_ref_json", {}))
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            value = {}
+    return value if isinstance(value, dict) else {}
+
+
+def _execute_learning_goal_run(
+    *,
+    run_id: str,
+    job: dict,
+    user: UserRow,
+    container: ServiceContainer,
+    idempotency_key: Optional[str],
+) -> dict:
+    """Execute one learning-goal run, including plan persistence.
+
+    Keeping this path shared by initial creation and retry is important: a retry
+    must actually re-plan, rather than merely creating a RUNNING placeholder.
+    """
+    input_ref = _job_input_ref(job)
+    goal_id = input_ref.get("goal_id")
+    available_minutes = input_ref.get("available_minutes", 60)
+    from ...services.agent_runtime.run_manager import RunManager
+
+    manager = RunManager(_repo(container), container.agent_event_store)
+    current = _repo(container).get_run(run_id)
+    if current is None:
+        raise AgentRunNotFound("Run 不存在")
+    if current["status"] == "QUEUED":
+        manager.transition(run_id, "RUNNING", phase="CONTEXT_BUILDING")
+        container.agent_event_store.append(
+            run_id=run_id, type="RUN_STARTED", status="RUNNING", phase="CONTEXT_BUILDING",
+            role="planner", summary="正在汇总课程、截止时间、学习状态与个人任务",
+        )
+    else:
+        manager.transition(run_id, current["status"], phase="CONTEXT_BUILDING")
+        container.agent_event_store.append(
+            run_id=run_id, type="CONTEXT_READY", status="RUNNING", phase="CONTEXT_BUILDING",
+            role="planner", summary="已重新汇总最新学习状态，开始生成计划",
+        )
+    try:
+        plan = container.learning_planner_service.generate(
+            user_id=user.id, goal_id=goal_id, available_minutes=available_minutes,
+            course_id=input_ref.get("course_id"), window_start=input_ref.get("window_start"),
+            window_end=input_ref.get("window_end"),
+            idempotency_key=idempotency_key,
+            force_new=True,
+            supersedes_plan_id=input_ref.get("plan_id"),
+            replan_key=idempotency_key,
+        )
+        completed_ref = {**input_ref, "plan_id": plan.plan_id}
+        _repo(container).update_job_input_ref(job["job_id"], completed_ref)
+        manager.transition(run_id, "SUCCEEDED", phase="PERSISTING_RESULT")
+        container.agent_event_store.append(
+            run_id=run_id, type="RUN_COMPLETED", status="SUCCEEDED", phase="PERSISTING_RESULT",
+            role="planner", summary="计划草案已生成，等待学生确认",
+        )
+    except Exception as exc:
+        try:
+            manager.transition(
+                run_id, "FAILED", phase="IDLE",
+                error_code=getattr(exc, "code", "AGENT_INVALID_STATE"),
+                error_message=str(exc)[:256],
+            )
+            container.agent_event_store.append(
+                run_id=run_id, type="RUN_FAILED", status="FAILED", phase="IDLE",
+                role="planner", summary="计划生成失败，请检查目标与可用数据",
+            )
+        except Exception:
+            pass
+        if isinstance(exc, AppException):
+            raise
+        raise AgentRuntimeError("学习目标计划生成失败", code="AGENT_INVALID_STATE", http_status=409) from exc
+    return _repo(container).get_run(run_id)
+
+
 # ===== capabilities =====
 
 
@@ -135,7 +216,8 @@ async def create_job(
     if effective_key:
         existing = repo.find_job_by_idempotency(user.id, effective_key)
         if existing:
-            return _job_to_out(existing)
+            latest = repo.get_run_by_job(existing["job_id"])
+            return _job_to_out(existing, latest_run_id=latest["run_id"] if latest else None)
     if body.job_kind == "learning_goal":
         input_ref = body.input_ref
         goal_id = input_ref.get("goal_id")
@@ -155,42 +237,11 @@ async def create_job(
     )
     job = repo.get_job(job_id)
     if body.job_kind == "learning_goal":
-        input_ref = body.input_ref
-        goal_id = input_ref.get("goal_id")
-        available_minutes = input_ref.get("available_minutes", 60)
-        from ...services.agent_runtime.run_manager import RunManager
-        manager = RunManager(repo, container.agent_event_store)
         run_id = repo.create_run(job_id=job_id, user_id=user.id, idempotency_key=effective_key)
-        manager.transition(run_id, "RUNNING", phase="CONTEXT_BUILDING")
-        container.agent_event_store.append(
-            run_id=run_id, type="RUN_STARTED", status="RUNNING", phase="CONTEXT_BUILDING",
-            role="planner", summary="正在汇总课程、截止时间、学习状态与个人任务",
+        _execute_learning_goal_run(
+            run_id=run_id, job=job, user=user, container=container,
+            idempotency_key=effective_key,
         )
-        try:
-            plan = container.learning_planner_service.generate(
-                user_id=user.id, goal_id=goal_id, available_minutes=available_minutes,
-                course_id=input_ref.get("course_id"), window_start=input_ref.get("window_start"),
-                window_end=input_ref.get("window_end"), idempotency_key=effective_key,
-            )
-            completed_ref = {**input_ref, "plan_id": plan.plan_id}
-            repo.update_job_input_ref(job_id, completed_ref)
-            manager.transition(run_id, "SUCCEEDED", phase="PERSISTING_RESULT")
-            container.agent_event_store.append(
-                run_id=run_id, type="RUN_COMPLETED", status="SUCCEEDED", phase="PERSISTING_RESULT",
-                role="planner", summary="计划草案已生成，等待学生确认",
-            )
-        except Exception as exc:
-            try:
-                manager.transition(run_id, "FAILED", phase="IDLE", error_code=getattr(exc, "code", "AGENT_INVALID_STATE"), error_message=str(exc)[:256])
-                container.agent_event_store.append(
-                    run_id=run_id, type="RUN_FAILED", status="FAILED", phase="IDLE",
-                    role="planner", summary="计划生成失败，请检查目标与可用数据",
-                )
-            except Exception:
-                pass
-            if isinstance(exc, AppException):
-                raise
-            raise AgentRuntimeError("学习目标计划生成失败", code="AGENT_INVALID_STATE", http_status=409) from exc
         job = repo.get_job(job_id)
     latest = repo.get_run_by_job(job["job_id"]) if job else None
     return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
@@ -385,12 +436,32 @@ async def _control_run(
         result = manager.resume(run_id)
     else:
         result = manager.retry(run_id, idempotency_key=key)
+    if action == "retry":
+        job = repo.get_job(result["job_id"])
+        if job and job["job_kind"] == "learning_goal":
+            retry_key = f"{key}:plan"
+            try:
+                result = _execute_learning_goal_run(
+                    run_id=result["run_id"], job=job, user=user, container=container,
+                    idempotency_key=retry_key,
+                )
+            except Exception:
+                failed = repo.get_run(result["run_id"])
+                if failed:
+                    repo.record_control(
+                        run_id=run_id, user_id=user.id, action=action,
+                        idempotency_key=key, resulting_status=failed["status"],
+                    )
+                raise
+        repo.record_control(
+            run_id=run_id, user_id=user.id, action=action,
+            idempotency_key=key, resulting_status=result["status"],
+        )
+        return _run_to_out(result, container)
     repo.record_control(
         run_id=run_id, user_id=user.id, action=action,
         idempotency_key=key, resulting_status=result["status"],
     )
-    if action == "retry":
-        return _run_to_out(result, container)
     return await get_run(run_id, user, container)
 
 
