@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 
 from ...models.multi_role import UserRow
 from ...repositories.notice_workflow_repository import NoticeWorkflowRepository
@@ -41,7 +41,7 @@ def _build_service(container: ServiceContainer) -> NoticeWorkflowService:
     repo = NoticeWorkflowRepository(container.db)
     return NoticeWorkflowService(
         repository=repo,
-        interpreter=NoticeInterpreter(provider=None),
+        interpreter=NoticeInterpreter(model_router=container.agent_model_router),
         notice_repository=container.notice_repository,
         personal_task_repository=container.personal_task_repository,
     )
@@ -183,20 +183,49 @@ def patch_source(
 
 
 @router.post("/notices/{notice_id}/workflow", response_model=WorkflowOut)
-def create_workflow(
+async def create_workflow(
     notice_id: str,
     body: WorkflowCreateIn,
+    request: Request,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> WorkflowOut:
     service = _build_service(container)
     effective_key = body.idempotency_key or idempotency_key
-    wf = service.create_workflow_for_notice(
+    runtime_repo = container.agent_runtime_repository
+    if effective_key:
+        existing = NoticeWorkflowRepository(container.db).find_workflow_by_idempotency(
+            user.id, effective_key
+        )
+        if existing:
+            actions = service.list_actions(existing.workflow_id, user_id=user.id)
+            return _workflow_out(existing, actions)
+    job_id = runtime_repo.create_job(
+        user_id=user.id,
+        job_kind="notice_workflow",
+        input_ref={"notice_id": notice_id},
+        idempotency_key=effective_key,
+    )
+    run_id = runtime_repo.create_run(
+        job_id=job_id,
+        user_id=user.id,
+        request_id=getattr(request.state, "request_id", None),
+        idempotency_key=effective_key,
+    )
+    container.agent_run_manager.transition(
+        run_id, "RUNNING", phase="WAITING_FOR_MODEL"
+    )
+    wf = await service.create_workflow_for_notice_async(
         user_id=user.id,
         notice_id=notice_id,
         idempotency_key=effective_key,
+        run_id=run_id,
     )
+    runtime_repo.update_job_input_ref(
+        job_id, {"notice_id": notice_id, "workflow_id": wf.workflow_id}
+    )
+    container.agent_run_manager.transition(run_id, "SUCCEEDED", phase="IDLE")
     actions = service.list_actions(wf.workflow_id, user_id=user.id)
     return _workflow_out(wf, actions)
 

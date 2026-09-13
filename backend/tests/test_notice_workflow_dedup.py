@@ -92,6 +92,24 @@ class TestWorkflowDedup:
         assert wf["status"] in ("WAITING_CONFIRMATION", "PROCESSING", "COMPLETED")
         assert wf["confidence"] >= 0.0
 
+    def test_workflow_routes_model_and_persists_sanitized_trace(self):
+        container, client = _client()
+        container.agent_provider_registry.add_fake(
+            "xunfei", route_policies=["fast_structured"]
+        )
+        headers = _login(client)
+        self._make_workflow(client, headers, "请于10月15日前提交申请表")
+        conn = container.db._connect()
+        try:
+            row = conn.execute(
+                "SELECT provider, route_policy FROM agent_model_calls "
+                "WHERE route_policy = 'fast_structured' ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            container.db._release(conn)
+        assert row is not None
+        assert row["provider"] == "xunfei"
+
     def test_same_notice_workflow_dedup(self):
         _, client = _client()
         headers = _login(client)

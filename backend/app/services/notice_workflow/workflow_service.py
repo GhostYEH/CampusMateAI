@@ -189,6 +189,48 @@ class NoticeWorkflowService:
         self._analyze_and_plan(workflow.workflow_id, user_id, content, source_code)
         return self._repo.get_workflow(workflow.workflow_id)  # type: ignore[return-value]
 
+    async def create_workflow_for_notice_async(
+        self,
+        *,
+        user_id: str,
+        notice_id: str,
+        source_code: str = "manual_input",
+        idempotency_key: Optional[str] = None,
+        run_id: Optional[str] = None,
+    ) -> NoticeWorkflowRow:
+        """Async production path that can call configured model providers."""
+        if idempotency_key:
+            existing = self._repo.find_workflow_by_idempotency(user_id, idempotency_key)
+            if existing:
+                return existing
+        notice_row = next(
+            (n for n in self._notice_repo.list_notices(user_id) if n.id == notice_id),
+            None,
+        )
+        if notice_row is None:
+            raise WorkflowNotFound("通知不存在或无权访问")
+        content = notice_row.content or notice_row.title or ""
+        fp = content_fingerprint(content, user_id=user_id)
+        active = self._repo.get_active_workflow_by_fingerprint(user_id, fp)
+        if active:
+            return active
+        source = self._repo.get_source_by_code_for_user(source_code, user_id)
+        workflow = self._repo.create_workflow(
+            user_id=user_id,
+            notice_id=notice_id,
+            content_fingerprint=fp,
+            source_id=source.source_id if source else None,
+            idempotency_key=idempotency_key,
+        )
+        self._repo.update_workflow_status(workflow.workflow_id, "ANALYZING")
+        interp = await self._interp.interpret_async(
+            content, source_code, run_id=run_id
+        )
+        self._persist_interpretation_and_plan(
+            workflow.workflow_id, user_id, content, source_code, interp
+        )
+        return self._repo.get_workflow(workflow.workflow_id)  # type: ignore[return-value]
+
     def _analyze_and_plan(
         self,
         workflow_id: str,
@@ -197,6 +239,18 @@ class NoticeWorkflowService:
         source_code: str,
     ) -> None:
         interp = self._interp.interpret(content, source_code)
+        self._persist_interpretation_and_plan(
+            workflow_id, user_id, content, source_code, interp
+        )
+
+    def _persist_interpretation_and_plan(
+        self,
+        workflow_id: str,
+        user_id: str,
+        content: str,
+        source_code: str,
+        interp: Interpretation,
+    ) -> None:
         self._repo.update_workflow_interpretation(
             workflow_id,
             title=interp.title,
@@ -312,7 +366,7 @@ class NoticeWorkflowService:
             a for a in actions if a.risk_level == "AUTO_SAFE"
         ]
         # 自动化是否开启(按来源)
-        source = self._repo.get_source_by_code(source_code)
+        source = self._repo.get_source_by_code_for_user(source_code, user_id)
         automation_on = bool(source and source.automation_enabled)
         if has_confirm:
             self._repo.update_workflow_status(workflow_id, "WAITING_CONFIRMATION")

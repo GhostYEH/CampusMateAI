@@ -10,10 +10,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Protocol
+
+from ..llm.model_router import ModelRouter
 
 
 # ===== 模型 provider 抽象 =====
@@ -217,8 +220,62 @@ def content_fingerprint(content: str, *, user_id: str) -> str:
 class NoticeInterpreter:
     """通知解释器。优先模型(fast_structured),降级规则。"""
 
-    def __init__(self, provider: Optional[NoticeModelProvider] = None) -> None:
+    def __init__(
+        self,
+        provider: Optional[NoticeModelProvider] = None,
+        *,
+        model_router: Optional[ModelRouter] = None,
+    ) -> None:
         self._provider = provider
+        self._model_router = model_router
+
+    async def interpret_async(
+        self,
+        content: str,
+        source_code: str,
+        *,
+        run_id: Optional[str] = None,
+        published_at: Optional[datetime] = None,
+    ) -> Interpretation:
+        """Use the governed model router, with deterministic extraction fallback."""
+        if not content or not content.strip():
+            return Interpretation(uncertainty=["content_empty"], extractor_mode="rules")
+        if self._model_router is not None:
+            prompt = [
+                {
+                    "role": "system",
+                    "content": (
+                        "从校园通知提取 JSON：title, deadline, location, audience, "
+                        "materials, steps, confidence, uncertainty。无法确认的字段置空并写入 "
+                        "uncertainty，不得猜测。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {"source": source_code, "notice": content}, ensure_ascii=False
+                    ),
+                },
+            ]
+            try:
+                routed = await self._model_router.route(
+                    prompt,
+                    route_policy="fast_structured",
+                    temperature=0.1,
+                    max_tokens=1024,
+                    run_id=run_id,
+                )
+                if routed.response and routed.response.content:
+                    data = json.loads(routed.response.content)
+                    if isinstance(data, dict):
+                        parsed = self._from_model(data, "fast_structured")
+                        if parsed is not None:
+                            return parsed
+            except Exception:
+                pass
+        return self.interpret(
+            content, source_code, published_at=published_at
+        )
 
     def interpret(
         self,
@@ -279,12 +336,12 @@ class NoticeInterpreter:
         if not materials and "materials_missing" not in uncertainty:
             uncertainty = uncertainty + ["materials_missing"]
         return Interpretation(
-            title=str(title)[:256] if title else None,
+            title=_redact(str(title))[:256] if title else None,
             deadline=str(deadline) if deadline else None,
-            location=str(location)[:256] if location else None,
-            audience=str(audience)[:256] if audience else None,
-            materials=[str(m) for m in materials],
-            steps=[str(s) for s in steps],
+            location=_redact(str(location))[:256] if location else None,
+            audience=_redact(str(audience))[:256] if audience else None,
+            materials=[_redact(str(m)) for m in materials],
+            steps=[_redact(str(s)) for s in steps],
             source_evidence=[f"model:{mode}"],
             confidence=confidence,
             uncertainty=[str(u) for u in uncertainty],
