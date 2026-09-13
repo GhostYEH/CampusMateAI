@@ -198,14 +198,16 @@ export class AgentRuntimeRepository {
 
   async decidePlan(planId: string, decision: string): Promise<void> {
     const body: LearningPlanDecisionBody = { decision: decision.toUpperCase() };
-    await this.client.request<Record<string, Object>>(
-      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/decision`, body);
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:decision:${planId}:${decision.toUpperCase()}` };
+    await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/decision`, headers, body);
   }
 
   async executePlan(planId: string): Promise<void> {
     const empty: EmptyBody = {};
-    await this.client.request<Record<string, Object>>(
-      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/execute`, empty);
+    const headers: Record<string, string> = { 'Idempotency-Key': `goal:execute:${planId}` };
+    await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/execute`, headers, empty);
   }
 
   async replan(planId: string): Promise<string> {
