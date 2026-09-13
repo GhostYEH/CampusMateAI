@@ -355,6 +355,7 @@ function GoalsSection({ goals, onArchive, onCreate, onProgress, onUpdate, busy }
   const [draft, setDraft] = useState({ name: "", category: "academic", target_date: "", milestone_count: 0 });
   const [progress, setProgress] = useState({});
   const [milestones, setMilestones] = useState({});
+  const [names, setNames] = useState({});
   return (
     <section className="ls-section ls-goals" aria-label="我的目标与里程碑">
       <form className="ls-goal-create" onSubmit={async (event) => { event.preventDefault(); const created = await onCreate({ ...draft, milestone_count: Number(draft.milestone_count), idempotency_key: `goal-${Date.now()}` }); if (created) setDraft({ name: "", category: "academic", target_date: "", milestone_count: 0 }); }}>
@@ -377,6 +378,8 @@ function GoalsSection({ goals, onArchive, onCreate, onProgress, onUpdate, busy }
               <button className="ls-btn ls-btn--sm" onClick={() => onProgress(g.goal_id, Number(progress[g.goal_id] ?? g.progress_percent))} disabled={busy}>记录</button>
               <label>里程碑 <input type="number" min="0" max="100" value={milestones[g.goal_id] ?? g.milestone_count} onChange={(e) => setMilestones({ ...milestones, [g.goal_id]: e.target.value })} /></label>
               <button className="ls-btn ls-btn--sm" onClick={() => onUpdate(g.goal_id, { milestone_count: Number(milestones[g.goal_id] ?? g.milestone_count) })} disabled={busy}>保存</button>
+              <label>名称 <input value={names[g.goal_id] ?? g.name} onChange={(e) => setNames({ ...names, [g.goal_id]: e.target.value })} /></label>
+              <button className="ls-btn ls-btn--sm" onClick={() => onUpdate(g.goal_id, { name: names[g.goal_id] ?? g.name })} disabled={busy}>改名</button>
             </div>}
             {g.status === "active" && (
               <button className="ls-btn ls-btn--sm" onClick={() => onArchive(g.goal_id)} disabled={busy}>归档</button>
