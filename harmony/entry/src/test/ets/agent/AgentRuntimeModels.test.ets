@@ -7,10 +7,134 @@ import {
   AdjustmentProposalStatus, PlanVersionStatus
 } from '../../../main/ets/data/AgentRuntimeModels';
 
+interface MockProgress {
+  current: number;
+  total: number;
+  percent: number;
+}
+
+interface MockEventRaw {
+  id: string;
+  type: string;
+  run_id: string;
+  sequence: number;
+  status: string;
+  phase: string;
+  role: string;
+  summary: string;
+  progress: MockProgress;
+  artifact_id: string | null;
+  approval_id: string | null;
+  created_at: string;
+}
+
+interface MockRunRaw {
+  run_id: string;
+  job_id: string;
+  user_id: string;
+  status: string;
+  phase: string;
+  risk_level: string;
+  started_at: string;
+  finished_at: string;
+  created_at: string;
+  updated_at: string;
+  error: string | null;
+  artifact_ids: string[];
+}
+
+interface MockArtifactRaw {
+  artifact_id: string;
+  run_id: string;
+  user_id: string;
+  artifact_type: string;
+  version: number;
+  mime_type: string;
+  size_bytes: number;
+  content_hash: string;
+  download_url: string;
+  created_at: string;
+}
+
+interface MockSourcePolicy {
+  course_material_priority: boolean;
+  allow_web: boolean;
+  allow_user_upload: boolean;
+}
+
+interface MockCourseResearchRaw {
+  run_id: string;
+  user_id: string;
+  question: string;
+  course_id: string;
+  assistance_mode: string;
+  academic_policy: string;
+  source_policy: MockSourcePolicy;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  artifact_ids: string[];
+}
+
+interface MockActionRaw {
+  action_id: string;
+  workflow_id: string;
+  title: string;
+  action_type: string;
+  risk_level: string;
+  status: string;
+  external_ref: string;
+}
+
+interface MockNoticeWorkflowRaw {
+  workflow_id: string;
+  user_id: string;
+  source_id: string;
+  notice_id: string;
+  status: string;
+  confidence: number;
+  uncertainty: string[];
+  materials: string[];
+  steps: string[];
+  source_evidence: string[];
+  actions: MockActionRaw[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface MockErrorDetails {
+  run_id: string;
+  approval_id: string;
+}
+
+interface MockErrorEnvelopeRaw {
+  code: string;
+  message: string;
+  request_id: string;
+  details: MockErrorDetails;
+}
+
+interface MockUnknownErrorRaw {
+  code: string;
+  message: string;
+  request_id: string;
+}
+
+interface MockApprovalRaw {
+  approval_id: string;
+  run_id: string;
+  status: string;
+  risk_level: string;
+  action_summary: string;
+  expires_at: string;
+  resolved_at: string | null;
+  decision_reason: string | null;
+}
+
 export default function agentRuntimeModelsTest(): void {
   describe('AgentRuntimeModels', () => {
     it('parses runtime fixture event with known enums', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockEventRaw = {
         id: 'evt_10018', type: 'TOOL_COMPLETED', run_id: 'run_01H8XKQD2',
         sequence: 18, status: 'RUNNING', phase: 'WAITING_FOR_TOOL',
         role: 'planner', summary: '已完成课程信息查询',
@@ -18,43 +142,44 @@ export default function agentRuntimeModelsTest(): void {
         artifact_id: null, approval_id: null,
         created_at: '2026-09-12T10:05:00+08:00'
       };
-      const event = AgentDtoParser.event(raw);
+      const event = AgentDtoParser.event(raw as Object as Record<string, Object>);
       expect(event.id).assertEqual('evt_10018');
       expect(event.type).assertEqual(AgentEventType.TOOL_COMPLETED);
       expect(event.status).assertEqual(RunStatus.RUNNING);
       expect(event.phase).assertEqual(RunPhase.WAITING_FOR_TOOL);
-      expect(event.progress.current).assertEqual(3);
-      expect(event.progress.percent).assertEqual(42);
+      const progress = event.progress;
+      expect(progress !== null ? progress.current : 0).assertEqual(3);
+      expect(progress !== null ? progress.percent : 0).assertEqual(42);
     });
 
     it('parses final_review fixture run and artifact', 0, () => {
-      const runRaw: Record<string, Object> = {
+      const runRaw: MockRunRaw = {
         run_id: 'run_fr_001', job_id: 'job_fr_001', user_id: 'user_demo_001',
         status: 'SUCCEEDED', phase: 'IDLE', risk_level: 'CONFIRM_REQUIRED',
         started_at: '2026-09-12T10:00:01+08:00', finished_at: '2026-09-12T10:20:00+08:00',
         created_at: '2026-09-12T10:00:00+08:00', updated_at: '2026-09-12T10:20:00+08:00',
         error: null, artifact_ids: ['art_fr+fr_plan_v1']
       };
-      const run = AgentDtoParser.run(runRaw);
+      const run = AgentDtoParser.run(runRaw as Object as Record<string, Object>);
       expect(run.run_id).assertEqual('run_fr_001');
       expect(run.status).assertEqual(RunStatus.SUCCEEDED);
       expect(run.risk_level).assertEqual(RiskLevel.CONFIRM_REQUIRED);
       expect(run.artifact_ids.length).assertEqual(1);
 
-      const artRaw: Record<string, Object> = {
+      const artRaw: MockArtifactRaw = {
         artifact_id: 'art_fr_plan_v1', run_id: 'run_fr_001', user_id: 'user_demo_001',
         artifact_type: 'FINAL_REVIEW_PLAN', version: 1, mime_type: 'application/json',
         size_bytes: 4096, content_hash: 'sha256:final_review_v1_hash',
         download_url: '/api/v1/agent-artifacts/art_fr_plan_v1',
         created_at: '2026-09-12T10:20:00+08:00'
       };
-      const art = AgentDtoParser.artifact(artRaw);
+      const art = AgentDtoParser.artifact(artRaw as Object as Record<string, Object>);
       expect(art.artifact_type).assertEqual(ArtifactType.FINAL_REVIEW_PLAN);
       expect(art.version).assertEqual(1);
     });
 
     it('parses course_research fixture with policy fields', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockCourseResearchRaw = {
         run_id: 'run_cr_001', user_id: 'user_demo_001',
         question: '解释快速排序', course_id: 'course_x',
         assistance_mode: 'EXPLAIN', academic_policy: 'LIMITED',
@@ -62,7 +187,7 @@ export default function agentRuntimeModelsTest(): void {
         status: 'PARTIAL', created_at: '2026-09-12T11:00:00+08:00',
         updated_at: '2026-09-12T11:15:00+08:00', artifact_ids: ['art_cr_report']
       };
-      const run = AgentDtoParser.courseResearchRun(raw);
+      const run = AgentDtoParser.courseResearchRun(raw as Object as Record<string, Object>);
       expect(run.assistance_mode).assertEqual(AssistanceMode.EXPLAIN);
       expect(run.academic_policy).assertEqual(AcademicPolicy.LIMITED);
       expect(run.source_policy.allow_web).assertEqual(true);
@@ -70,17 +195,18 @@ export default function agentRuntimeModelsTest(): void {
     });
 
     it('parses notice_workflow fixture with uncertainty and actions', 0, () => {
-      const raw: Record<string, Object> = {
+      const actions: MockActionRaw[] = [{
+        action_id: 'act_001', workflow_id: 'wf_001', title: '提交作业',
+        action_type: 'external_submit', risk_level: 'MANUAL_ONLY', status: 'PROPOSED', external_ref: 'portal'
+      }];
+      const raw: MockNoticeWorkflowRaw = {
         workflow_id: 'wf_001', user_id: 'user_demo_001', source_id: 'src_manual',
         notice_id: 'notice_1', status: 'WAITING_CONFIRMATION', confidence: 0.6,
         uncertainty: ['deadline'], materials: ['实验报告.pdf'], steps: [], source_evidence: [],
-        actions: [{
-          action_id: 'act_001', workflow_id: 'wf_001', title: '提交作业',
-          action_type: 'external_submit', risk_level: 'MANUAL_ONLY', status: 'PROPOSED', external_ref: 'portal'
-        }],
+        actions: actions,
         created_at: '2026-09-12T12:00:00+08:00', updated_at: '2026-09-12T12:05:00+08:00'
       };
-      const wf = AgentDtoParser.noticeWorkflow(raw);
+      const wf = AgentDtoParser.noticeWorkflow(raw as Object as Record<string, Object>);
       expect(wf.status).assertEqual(NoticeWorkflowStatus.WAITING_CONFIRMATION);
       expect(wf.uncertainty.missing_fields[0]).assertEqual('deadline');
       expect(wf.actions[0].risk_level).assertEqual(RiskLevel.MANUAL_ONLY);
@@ -105,33 +231,34 @@ export default function agentRuntimeModelsTest(): void {
     });
 
     it('parses error envelope with stable code', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockErrorEnvelopeRaw = {
         code: 'AGENT_APPROVAL_REQUIRED', message: '需要用户确认后继续',
         request_id: 'req_01H8XKQD0',
         details: { run_id: 'run_01H8XKQD2', approval_id: 'apv_01H8XKQD4' }
       };
-      const env = AgentDtoParser.errorEnvelope(raw);
+      const env = AgentDtoParser.errorEnvelope(raw as Object as Record<string, Object>);
       expect(env.code).assertEqual(AgentErrorCode.AGENT_APPROVAL_REQUIRED);
       expect(env.request_id).assertEqual('req_01H8XKQD0');
-      expect(env.details.run_id).assertEqual('run_01H8XKQD2');
+      const details = env.details;
+      expect(details !== undefined ? details.run_id : '').assertEqual('run_01H8XKQD2');
     });
 
     it('parses error envelope with unknown code safely', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockUnknownErrorRaw = {
         code: 'AGENT_UNIVERSE_COLLAPSE', message: '未知错误',
         request_id: 'req_x'
       };
-      const env = AgentDtoParser.errorEnvelope(raw);
+      const env = AgentDtoParser.errorEnvelope(raw as Object as Record<string, Object>);
       expect(env.code).assertEqual(AgentErrorCode.UNKNOWN);
     });
 
     it('parses approval with nullable resolved fields', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockApprovalRaw = {
         approval_id: 'apv_nw_001', run_id: 'run_nw_001', status: 'PENDING',
         risk_level: 'MANUAL_ONLY', action_summary: '在教务系统手动提交作业',
         expires_at: '2026-09-12T12:35:00+08:00', resolved_at: null, decision_reason: null
       };
-      const approval = AgentDtoParser.approval(raw);
+      const approval = AgentDtoParser.approval(raw as Object as Record<string, Object>);
       expect(approval.status).assertEqual(ApprovalStatus.PENDING);
       expect(approval.risk_level).assertEqual(RiskLevel.MANUAL_ONLY);
       expect(approval.resolved_at).assertEqual(null);

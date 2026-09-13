@@ -2,7 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { ApiClient, SseEvent } from '../data/ApiClient';
 import {
   AgentJob, AgentRun, AgentEvent, AgentApproval, AgentArtifact,
-  AgentErrorEnvelope, AgentDtoParser,
+  AgentErrorEnvelope, AgentDtoParser, AgentEnumParser,
   FinalReviewCampaign, FinalReviewPlanVersion, FinalReviewDailyAgenda,
   FinalReviewDailyItem, FinalReviewAdjustmentProposal, FinalReviewCheckIn,
   FinalReviewPlanGenerateResult, FinalReviewActivateResult, FinalReviewAdjustmentAnalyzeResult,
@@ -12,6 +12,16 @@ import {
   RunStatus
 } from '../data/AgentRuntimeModels';
 import { IdempotencyKey } from '../service/AgentEventReducer';
+
+interface JobCreateBody {
+  job_kind: string;
+}
+
+interface SourcePolicyBody {
+  course_material_priority: boolean;
+  allow_web: boolean;
+  allow_user_upload: boolean;
+}
 
 interface CampaignCreateRequest {
   exam_ids: string[];
@@ -43,7 +53,7 @@ interface ResearchRunRequest {
   question: string;
   assistance_mode: string;
   academic_policy: string;
-  source_policy: Record<string, boolean>;
+  source_policy: SourcePolicyBody;
   user_upload_refs: string[];
 }
 
@@ -62,6 +72,19 @@ interface ApprovalDecisionRequest {
   reason?: string;
 }
 
+interface EmptyBody {}
+
+interface NoticeSourcePatchBody {
+  automation_enabled: boolean;
+}
+
+interface ManualNoticeBody {
+  title: string;
+  content: string;
+  source_name: string;
+}
+
+
 // Agent Runtime 仓库：客户端只发起请求与展示，不做领域决策。
 // 写操作携带稳定 Idempotency-Key，页面重建不重复提交。
 export class AgentRuntimeRepository {
@@ -79,15 +102,10 @@ export class AgentRuntimeRepository {
   }
 
   async createJob(jobKind: string, idempotencyKey: string, payload?: object): Promise<AgentJob> {
-    const body: Record<string, Object> = { job_kind: jobKind };
-    if (payload !== undefined) {
-      const keys: string[] = Object.keys(payload);
-      for (let i: number = 0; i < keys.length; i++) {
-        body[keys[i]] = (payload as Record<string, Object>)[keys[i]];
-      }
-    }
+    const body: JobCreateBody = { job_kind: jobKind };
+    const headers: Record<string, string> = { 'Idempotency-Key': idempotencyKey };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
-      http.RequestMethod.POST, 'agent-jobs', { 'Idempotency-Key': idempotencyKey }, body);
+      http.RequestMethod.POST, 'agent-jobs', headers, body);
     return AgentDtoParser.job(raw);
   }
 
@@ -110,9 +128,11 @@ export class AgentRuntimeRepository {
   }
 
   async cancelRun(runId: string, idempotencyKey: string): Promise<AgentRun> {
+    const headers: Record<string, string> = { 'Idempotency-Key': idempotencyKey };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `agent-runs/${encodeURIComponent(runId)}/cancel`,
-      { 'Idempotency-Key': idempotencyKey }, {});
+      headers, body);
     return AgentDtoParser.run(raw);
   }
 
@@ -142,9 +162,10 @@ export class AgentRuntimeRepository {
     idempotencyKey: string
   ): Promise<AgentApproval> {
     const body: ApprovalDecisionRequest = { decision: decision.toUpperCase(), reason: reason };
+    const headers: Record<string, string> = { 'Idempotency-Key': idempotencyKey };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `agent-approvals/${encodeURIComponent(approvalId)}/decision`,
-      { 'Idempotency-Key': idempotencyKey }, body);
+      headers, body);
     return AgentDtoParser.approval(raw);
   }
 
@@ -171,9 +192,10 @@ export class AgentRuntimeRepository {
     dailyCapacityMinutes: number
   ): Promise<FinalReviewCampaign> {
     const body: CampaignCreateRequest = { exam_ids: examIds, daily_capacity_minutes: dailyCapacityMinutes };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forCampaignCreate(examIds) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, 'final-review/campaigns',
-      { 'Idempotency-Key': IdempotencyKey.forCampaignCreate(examIds) }, body);
+      headers, body);
     return AgentDtoParser.finalReviewCampaign(raw);
   }
 
@@ -185,14 +207,15 @@ export class AgentRuntimeRepository {
 
   async generatePlan(campaignId: string, userEdits?: Record<string, Object>): Promise<FinalReviewPlanGenerateResult> {
     const body: PlanGenerateRequest = { user_edits: userEdits };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forPlanGenerate(campaignId) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/campaigns/${encodeURIComponent(campaignId)}/plans/generate`,
-      { 'Idempotency-Key': IdempotencyKey.forPlanGenerate(campaignId) }, body);
+      headers, body);
     return {
       run_id: (raw.run_id ?? '') as string,
       version: (raw.version ?? 0) as number,
       plan: (raw.plan ?? {}) as Record<string, Object>,
-      risk_level: AgentDtoParser.finalReviewPlanVersion({ risk_level: raw.risk_level }).risk_level,
+      risk_level: AgentEnumParser.riskLevel((raw.risk_level ?? '') as string),
       requires_approval: (raw.requires_approval ?? false) as boolean,
       approval_id: raw.approval_id === null || raw.approval_id === undefined ? null : raw.approval_id as string
     };
@@ -212,9 +235,10 @@ export class AgentRuntimeRepository {
 
   async activateCampaign(campaignId: string, version: number): Promise<FinalReviewActivateResult> {
     const body: ActivateRequest = { version: version };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forCampaignActivate(campaignId, version) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/campaigns/${encodeURIComponent(campaignId)}/activate`,
-      { 'Idempotency-Key': IdempotencyKey.forCampaignActivate(campaignId, version) }, body);
+      headers, body);
     return {
       campaign_id: (raw.campaign_id ?? '') as string,
       active_version: (raw.active_version ?? 0) as number,
@@ -238,9 +262,11 @@ export class AgentRuntimeRepository {
   }
 
   async completeDailyItem(itemId: string): Promise<FinalReviewDailyItem> {
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forDailyItemComplete(itemId) };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/daily-items/${encodeURIComponent(itemId)}/complete`,
-      { 'Idempotency-Key': IdempotencyKey.forDailyItemComplete(itemId) }, {});
+      headers, body);
     return AgentDtoParser.finalReviewDailyItem(raw);
   }
 
@@ -257,9 +283,10 @@ export class AgentRuntimeRepository {
       insufficient_time: difficulty === '紧张',
       difficulty_notes: feedback
     };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forDailyCheckIn(campaignId, date) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/campaigns/${encodeURIComponent(campaignId)}/daily-checkins`,
-      { 'Idempotency-Key': IdempotencyKey.forDailyCheckIn(campaignId, date) }, body);
+      headers, body);
     return {
       recorded: (raw.recorded ?? false) as boolean,
       evidence_count: (raw.evidence_count ?? 0) as number
@@ -267,13 +294,15 @@ export class AgentRuntimeRepository {
   }
 
   async analyzeAdjustment(campaignId: string): Promise<FinalReviewAdjustmentAnalyzeResult> {
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forAdjustmentAnalyze(campaignId) };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/campaigns/${encodeURIComponent(campaignId)}/adjustments/analyze`,
-      { 'Idempotency-Key': IdempotencyKey.forAdjustmentAnalyze(campaignId) }, {});
+      headers, body);
     return {
       run_id: (raw.run_id ?? '') as string,
       proposal_id: (raw.proposal_id ?? '') as string,
-      risk_level: AgentDtoParser.finalReviewAdjustmentProposal({ risk_level: raw.risk_level }).risk_level,
+      risk_level: AgentEnumParser.riskLevel((raw.risk_level ?? '') as string),
       requires_approval: (raw.requires_approval ?? false) as boolean,
       approval_id: raw.approval_id === null || raw.approval_id === undefined ? null : raw.approval_id as string
     };
@@ -291,12 +320,13 @@ export class AgentRuntimeRepository {
     reason: string
   ): Promise<FinalReviewAdjustmentDecisionResult> {
     const body: AdjustmentDecisionRequest = { decision: decision.toUpperCase(), reason: reason };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forAdjustmentDecision(proposalId, decision) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `final-review/adjustment-proposals/${encodeURIComponent(proposalId)}/decision`,
-      { 'Idempotency-Key': IdempotencyKey.forAdjustmentDecision(proposalId, decision) }, body);
+      headers, body);
     return {
       proposal_id: (raw.proposal_id ?? '') as string,
-      status: AgentDtoParser.finalReviewAdjustmentProposal({ status: raw.status }).status,
+      status: AgentEnumParser.adjustmentProposalStatus((raw.status ?? '') as string),
       new_version: raw.new_version === null || raw.new_version === undefined ? null : raw.new_version as number,
       active_version: raw.active_version === null || raw.active_version === undefined ? null : raw.active_version as number
     };
@@ -316,21 +346,23 @@ export class AgentRuntimeRepository {
     assistanceMode: string,
     questionHash: string
   ): Promise<CourseResearchRun> {
+    const sourcePolicy: SourcePolicyBody = {
+      course_material_priority: true,
+      allow_web: true,
+      allow_user_upload: true
+    };
     const body: ResearchRunRequest = {
       course_id: courseId,
       question: question,
       assistance_mode: assistanceMode,
       academic_policy: 'UNKNOWN',
-      source_policy: {
-        course_material_priority: true,
-        allow_web: true,
-        allow_user_upload: true
-      },
+      source_policy: sourcePolicy,
       user_upload_refs: []
     };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forResearchRun(courseId, questionHash) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, 'course-research/runs',
-      { 'Idempotency-Key': IdempotencyKey.forResearchRun(courseId, questionHash) }, body);
+      headers, body);
     return AgentDtoParser.courseResearchRun(raw);
   }
 
@@ -341,9 +373,11 @@ export class AgentRuntimeRepository {
   }
 
   async cancelResearchRun(runId: string): Promise<CourseResearchRun> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `cr:cancel:${runId}` };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `course-research/runs/${encodeURIComponent(runId)}/cancel`,
-      { 'Idempotency-Key': `cr:cancel:${runId}` }, {});
+      headers, body);
     return AgentDtoParser.courseResearchRun(raw);
   }
 
@@ -368,26 +402,31 @@ export class AgentRuntimeRepository {
   }
 
   async updateNoticeSource(sourceId: string, enabled: boolean): Promise<NoticeSource> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `nw:source:${sourceId}:${enabled}` };
+    const body: NoticeSourcePatchBody = { automation_enabled: enabled };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       'PATCH' as http.RequestMethod, `notification-sources/${encodeURIComponent(sourceId)}`,
-      { 'Idempotency-Key': `nw:source:${sourceId}:${enabled}` }, { automation_enabled: enabled });
+      headers, body);
     return AgentDtoParser.noticeSource(raw);
   }
 
   async createManualNotice(content: string): Promise<string> {
     const firstLine: string = content.split('\n')[0].trim();
     const title: string = firstLine.length > 0 ? firstLine.substring(0, 256) : '手动通知';
+    const headers: Record<string, string> = { 'Idempotency-Key': `nw:manual:${this.contentHash(content)}` };
+    const body: ManualNoticeBody = { title: title, content: content, source_name: 'manual_input' };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, 'notices/manual',
-      { 'Idempotency-Key': `nw:manual:${this.contentHash(content)}` },
-      { title: title, content: content, source_name: 'manual_input' });
+      headers, body);
     return (raw.notice_id ?? raw.id ?? '') as string;
   }
 
   async createNoticeWorkflow(noticeId: string, _content: string, _sourceCode: string): Promise<NoticeWorkflow> {
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forNoticeWorkflow(noticeId) };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `notices/${encodeURIComponent(noticeId)}/workflow`,
-      { 'Idempotency-Key': IdempotencyKey.forNoticeWorkflow(noticeId) }, {});
+      headers, body);
     return AgentDtoParser.noticeWorkflow(raw);
   }
 
@@ -398,24 +437,29 @@ export class AgentRuntimeRepository {
   }
 
   async reanalyzeNoticeWorkflow(workflowId: string): Promise<NoticeWorkflow> {
+    const headers: Record<string, string> = { 'Idempotency-Key': `nw:reanalyze:${workflowId}` };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `notice-workflows/${encodeURIComponent(workflowId)}/reanalyze`,
-      { 'Idempotency-Key': `nw:reanalyze:${workflowId}` }, {});
+      headers, body);
     return AgentDtoParser.noticeWorkflow(raw);
   }
 
   async resolveNoticeAction(actionId: string, decision: string): Promise<NoticeWorkflowAction> {
     const body: ActionDecisionRequest = { decision: decision.toUpperCase() };
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forNoticeActionDecision(actionId, decision) };
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `notice-workflow-actions/${encodeURIComponent(actionId)}/decision`,
-      { 'Idempotency-Key': IdempotencyKey.forNoticeActionDecision(actionId, decision) }, body);
+      headers, body);
     return AgentDtoParser.noticeWorkflowAction(raw);
   }
 
   async executeNoticeAction(actionId: string): Promise<NoticeWorkflowAction> {
+    const headers: Record<string, string> = { 'Idempotency-Key': IdempotencyKey.forNoticeActionExecute(actionId) };
+    const body: EmptyBody = {};
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `notice-workflow-actions/${encodeURIComponent(actionId)}/execute`,
-      { 'Idempotency-Key': IdempotencyKey.forNoticeActionExecute(actionId) }, {});
+      headers, body);
     return AgentDtoParser.noticeWorkflowAction(raw);
   }
 

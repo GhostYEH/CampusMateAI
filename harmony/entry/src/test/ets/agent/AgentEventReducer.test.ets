@@ -6,6 +6,26 @@ import {
   AgentEvent, AgentEventType, RunStatus, RunPhase, AgentApproval, ApprovalStatus, RiskLevel
 } from '../../../main/ets/data/AgentRuntimeModels';
 
+interface MockResumeEvent {
+  id: string;
+  sequence: number;
+}
+
+interface MockRawEvent {
+  id: string;
+  type: string;
+  run_id: string;
+  sequence: number;
+  status: string;
+  phase: string;
+  role: string | null;
+  summary: string;
+  progress: Object | null;
+  artifact_id: string | null;
+  approval_id: string | null;
+  created_at: string;
+}
+
 function makeEvent(id: string, sequence: number, type: AgentEventType,
   status: RunStatus, summary: string): AgentEvent {
   return {
@@ -60,10 +80,11 @@ export default function agentEventReducerTest(): void {
     });
 
     it('resumes from Last-Event-ID by dropping already delivered events', 0, () => {
+      const e1: MockResumeEvent = { id: 'evt_1', sequence: 1 };
+      const e2: MockResumeEvent = { id: 'evt_2', sequence: 2 };
+      const e3: MockResumeEvent = { id: 'evt_3', sequence: 3 };
       const events: Record<string, Object>[] = [
-        { id: 'evt_1', sequence: 1 },
-        { id: 'evt_2', sequence: 2 },
-        { id: 'evt_3', sequence: 3 }
+        e1 as Object as Record<string, Object>, e2 as Object as Record<string, Object>, e3 as Object as Record<string, Object>
       ];
       const remaining: Record<string, Object>[] = AgentEventReducer.resumeFromLastEventId(events, 'evt_1');
       expect(remaining.length).assertEqual(2);
@@ -71,8 +92,10 @@ export default function agentEventReducerTest(): void {
     });
 
     it('returns all events when Last-Event-ID is empty or not found', 0, () => {
+      const e1: MockResumeEvent = { id: 'evt_1', sequence: 1 };
+      const e2: MockResumeEvent = { id: 'evt_2', sequence: 2 };
       const events: Record<string, Object>[] = [
-        { id: 'evt_1', sequence: 1 }, { id: 'evt_2', sequence: 2 }
+        e1 as Object as Record<string, Object>, e2 as Object as Record<string, Object>
       ];
       expect(AgentEventReducer.resumeFromLastEventId(events, '').length).assertEqual(2);
       expect(AgentEventReducer.resumeFromLastEventId(events, 'evt_missing').length).assertEqual(2);
@@ -142,12 +165,12 @@ export default function agentEventReducerTest(): void {
 
     it('parses raw event with unknown enum without crashing', 0, () => {
       let view: AgentRunView = AgentEventReducer.initial('run_x');
-      const raw: Record<string, Object> = {
+      const raw: MockRawEvent = {
         id: 'e_weird', type: 'ALIEN_SIGNAL', run_id: 'run_x', sequence: 1,
         status: 'FROZEN', phase: 'COOKING', role: null, summary: '未知事件',
         progress: null, artifact_id: null, approval_id: null, created_at: '2026-09-12T10:00:00+08:00'
       };
-      view = AgentEventReducer.appendRaw(view, raw);
+      view = AgentEventReducer.appendRaw(view, raw as Object as Record<string, Object>);
       expect(view.events.length).assertEqual(1);
       expect(view.events[0].type).assertEqual(AgentEventType.UNKNOWN);
       expect(view.events[0].status).assertEqual(RunStatus.UNKNOWN);

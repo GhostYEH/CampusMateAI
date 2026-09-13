@@ -6,6 +6,50 @@ import {
   AcademicPolicy, AssistanceMode, AgentArtifact, ArtifactType
 } from '../../../main/ets/data/AgentRuntimeModels';
 
+interface MockSourcePolicy {
+  course_material_priority: boolean;
+  allow_web: boolean;
+  allow_user_upload: boolean;
+}
+
+interface MockCourseResearchRaw {
+  run_id: string;
+  user_id: string;
+  question: string;
+  course_id: string;
+  assistance_mode: string;
+  academic_policy: string;
+  source_policy: MockSourcePolicy;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  artifact_ids: string[];
+}
+
+interface MockCourseSourceRaw {
+  source_id: string;
+  source_type: string;
+  title: string;
+  url: string;
+  accessed_at: string;
+  is_verified: boolean;
+  supports_claim: boolean | null;
+  is_fabricated: boolean;
+}
+
+interface MockArtifactRaw {
+  artifact_id: string;
+  run_id: string;
+  user_id: string;
+  artifact_type: string;
+  version: number;
+  mime_type: string;
+  size_bytes: number;
+  content_hash: string;
+  download_url: string;
+  created_at: string;
+}
+
 function evt(id: string, seq: number, type: AgentEventType, status: RunStatus,
   phase: RunPhase, role: string, summary: string, artifactId: string | null): AgentEvent {
   return {
@@ -31,39 +75,41 @@ export default function courseResearchStateTest(): void {
     });
 
     it('parses source policy and academic policy from fixture shape', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockCourseResearchRaw = {
         run_id: 'run_cr', user_id: 'user_demo_001', question: '解释快速排序',
         course_id: 'course_x', assistance_mode: 'EXPLAIN', academic_policy: 'LIMITED',
         source_policy: { course_material_priority: true, allow_web: true, allow_user_upload: true },
         status: 'PARTIAL', created_at: '', updated_at: '', artifact_ids: ['art_cr_report']
       };
-      const run: CourseResearchRun = AgentDtoParser.courseResearchRun(raw);
+      const run: CourseResearchRun = AgentDtoParser.courseResearchRun(raw as Object as Record<string, Object>);
       expect(run.academic_policy).assertEqual(AcademicPolicy.LIMITED);
       expect(run.assistance_mode).assertEqual(AssistanceMode.EXPLAIN);
       expect(run.source_policy.course_material_priority).assertEqual(true);
     });
 
     it('parses citation verification states including PARTIAL', 0, () => {
-      const verified: CourseResearchSource = AgentDtoParser.courseResearchSource({
+      const verifiedRaw: MockCourseSourceRaw = {
         source_id: 's1', source_type: 'course_material', title: '课程讲义', url: 'u1',
         accessed_at: '', is_verified: true, supports_claim: true, is_fabricated: false
-      });
-      const partial: CourseResearchSource = AgentDtoParser.courseResearchSource({
+      };
+      const verified: CourseResearchSource = AgentDtoParser.courseResearchSource(verifiedRaw as Object as Record<string, Object>);
+      const partialRaw: MockCourseSourceRaw = {
         source_id: 's2', source_type: 'web', title: '网络资料', url: 'u2',
         accessed_at: '', is_verified: false, supports_claim: null, is_fabricated: false
-      });
+      };
+      const partial: CourseResearchSource = AgentDtoParser.courseResearchSource(partialRaw as Object as Record<string, Object>);
       expect(verified.verification).assertEqual(CitationVerification.VERIFIED);
       expect(partial.verification).assertEqual(CitationVerification.PARTIAL);
     });
 
     it('parses research report artifact with markdown mime type', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockArtifactRaw = {
         artifact_id: 'art_cr_report', run_id: 'run_cr', user_id: 'user_demo_001',
         artifact_type: 'COURSE_RESEARCH_REPORT', version: 1, mime_type: 'text/markdown',
         size_bytes: 8192, content_hash: 'sha256:course_research_hash',
         download_url: '/api/v1/agent-artifacts/art_cr_report', created_at: ''
       };
-      const art: AgentArtifact = AgentDtoParser.artifact(raw);
+      const art: AgentArtifact = AgentDtoParser.artifact(raw as Object as Record<string, Object>);
       expect(art.artifact_type).assertEqual(ArtifactType.COURSE_RESEARCH_REPORT);
       expect(art.mime_type).assertEqual('text/markdown');
     });

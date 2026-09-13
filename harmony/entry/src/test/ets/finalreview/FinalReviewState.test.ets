@@ -5,6 +5,47 @@ import {
   AgentDtoParser, FinalReviewCampaign, FinalReviewPlanVersion
 } from '../../../main/ets/data/AgentRuntimeModels';
 
+interface MockCampaignRaw {
+  campaign_id: string;
+  user_id: string;
+  exam_ids: string[];
+  daily_capacity_minutes: number;
+  preferred_periods: string[];
+  rest_days: string[];
+  intensity: string;
+  status: string;
+  active_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MockPlanItem {
+  topic: string;
+}
+
+interface MockPlanDay {
+  date: string;
+  items: MockPlanItem[];
+}
+
+interface MockPlanContent {
+  days: MockPlanDay[];
+}
+
+interface MockEmptyPlan {}
+
+interface MockPlanVersionRaw {
+  campaign_id: string;
+  version: number;
+  plan: MockPlanContent | MockEmptyPlan;
+  model_provider: string;
+  route_policy: string;
+  risk_level: string;
+  approval_id: string;
+  supersedes_version: number | null;
+  created_at: string;
+}
+
 function evt(id: string, seq: number, type: AgentEventType, status: RunStatus,
   phase: RunPhase, summary: string, approvalId: string | null, artifactId: string | null): AgentEvent {
   return {
@@ -53,42 +94,46 @@ export default function finalReviewStateTest(): void {
     });
 
     it('parses campaign and immutable plan version from fixture shape', 0, () => {
-      const campaignRaw: Record<string, Object> = {
+      const campaignRaw: MockCampaignRaw = {
         campaign_id: 'camp_fr', user_id: 'user_demo_001',
         exam_ids: ['exam_1', 'exam_2'], daily_capacity_minutes: 120,
         preferred_periods: [], rest_days: [], intensity: 'medium', status: 'active', active_version: 1,
         created_at: '2026-09-12T10:00:00+08:00', updated_at: '2026-09-12T10:20:00+08:00'
       };
-      const campaign: FinalReviewCampaign = AgentDtoParser.finalReviewCampaign(campaignRaw);
+      const campaign: FinalReviewCampaign = AgentDtoParser.finalReviewCampaign(campaignRaw as Object as Record<string, Object>);
       expect(campaign.exam_ids.length).assertEqual(2);
       expect(campaign.daily_capacity_minutes).assertEqual(120);
 
-      const versionRaw: Record<string, Object> = {
+      const planItem: MockPlanItem = { topic: '排序算法' };
+      const planDay: MockPlanDay = { date: '2026-09-13', items: [planItem] };
+      const planContent: MockPlanContent = { days: [planDay] };
+      const versionRaw: MockPlanVersionRaw = {
         campaign_id: 'camp_fr', version: 1,
-        plan: { days: [{ date: '2026-09-13', items: [{ topic: '排序算法' }] }] },
+        plan: planContent,
         model_provider: 'zhipu', route_policy: 'reasoning_primary',
         risk_level: 'CONFIRM_REQUIRED', approval_id: 'apv_fr', supersedes_version: null,
         created_at: '2026-09-12T10:15:00+08:00'
       };
-      const version: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(versionRaw);
+      const version: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(versionRaw as Object as Record<string, Object>);
       expect(version.risk_level).assertEqual(RiskLevel.CONFIRM_REQUIRED);
       expect(version.model_provider).assertEqual('zhipu');
       expect(version.approval_id).assertEqual('apv_fr');
     });
 
     it('keeps v1 readable after v2 is activated (immutable versions)', 0, () => {
-      const v1Raw: Record<string, Object> = {
-        campaign_id: 'camp_fr', version: 1, plan: {}, model_provider: 'zhipu',
+      const emptyPlan: MockEmptyPlan = {};
+      const v1Raw: MockPlanVersionRaw = {
+        campaign_id: 'camp_fr', version: 1, plan: emptyPlan, model_provider: 'zhipu',
         route_policy: 'reasoning_primary', risk_level: 'CONFIRM_REQUIRED', approval_id: 'a1',
         supersedes_version: null, created_at: '2026-09-12T10:15:00+08:00'
       };
-      const v2Raw: Record<string, Object> = {
-        campaign_id: 'camp_fr', version: 2, plan: {}, model_provider: 'zhipu',
+      const v2Raw: MockPlanVersionRaw = {
+        campaign_id: 'camp_fr', version: 2, plan: emptyPlan, model_provider: 'zhipu',
         route_policy: 'reasoning_primary', risk_level: 'CONFIRM_REQUIRED', approval_id: 'a2',
         supersedes_version: 1, created_at: '2026-09-13T10:00:00+08:00'
       };
-      const v1: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v1Raw);
-      const v2: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v2Raw);
+      const v1: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v1Raw as Object as Record<string, Object>);
+      const v2: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v2Raw as Object as Record<string, Object>);
       expect(v1.version).assertEqual(1);
       expect(v2.version).assertEqual(2);
       expect(v2.supersedes_version).assertEqual(1);

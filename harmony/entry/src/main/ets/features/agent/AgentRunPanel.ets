@@ -78,7 +78,7 @@ export struct AgentRunPanel {
   build() {
     if (this.view === null) {
       Column({ space: 10 }) {
-        SymbolGlyph($r('sys.symbol.sparkles')).fontSize(34).fontColor([this.palette().muted])
+        SymbolGlyph($r('sys.symbol.doc')).fontSize(34).fontColor([this.palette().muted])
         Text('暂无运行').fontColor(this.palette().muted).fontSize(13)
       }.width('100%').padding(30)
     } else {
@@ -122,7 +122,12 @@ export struct AgentRunPanel {
           Row({ space: 6 }) {
             SymbolGlyph($r('sys.symbol.doc')).fontSize(16).fontColor([this.palette().primary])
             Text('查看产物').fontColor(this.palette().primary).fontSize(13)
-          }.onClick(() => this.onOpenArtifact(this.view.artifactId))
+          }.onClick(() => {
+            const view: AgentRunView | null = this.view;
+            if (view !== null && view.artifactId !== null) {
+              this.onOpenArtifact(view.artifactId);
+            }
+          })
         }
 
         if (this.view.events.length > 0) {

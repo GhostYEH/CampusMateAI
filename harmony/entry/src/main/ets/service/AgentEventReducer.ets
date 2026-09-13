@@ -52,12 +52,21 @@ export class AgentEventReducer {
     if (alreadySeen) return view;
     const events: AgentEvent[] = [...view.events, event].sort(
       (a: AgentEvent, b: AgentEvent) => a.sequence - b.sequence);
-    return AgentEventReducer.applyEvent({
-      ...view,
-      events: events,
+    const advanced: AgentRunView = {
+      runId: view.runId,
+      status: view.status,
+      phase: view.phase,
+      lastSummary: view.lastSummary,
+      progress: view.progress,
+      pendingApprovalId: view.pendingApprovalId,
+      artifactId: view.artifactId,
       lastEventId: event.id,
-      lastSequence: event.sequence
-    }, event);
+      lastSequence: event.sequence,
+      events: events,
+      partial: view.partial,
+      failed: view.failed
+    };
+    return AgentEventReducer.applyEvent(advanced, event);
   }
 
   // 批量从原始 JSON 安全归约，未知 enum 回退 UNKNOWN 不崩溃。
@@ -115,12 +124,12 @@ export class AgentEventReducer {
   static applyApproval(view: AgentRunView, approval: AgentApproval): AgentRunView {
     if (approval.run_id !== view.runId) return view;
     if (approval.status === ApprovalStatus.EXPIRED || approval.status === ApprovalStatus.UNKNOWN) {
-      return { ...view, pendingApprovalId: approval.approval_id };
+      return AgentEventReducer.withApproval(view, approval.approval_id);
     }
     if (approval.status === ApprovalStatus.APPROVED || approval.status === ApprovalStatus.REJECTED) {
-      return { ...view, pendingApprovalId: null };
+      return AgentEventReducer.withApproval(view, null);
     }
-    return { ...view, pendingApprovalId: approval.approval_id };
+    return AgentEventReducer.withApproval(view, approval.approval_id);
   }
 
   // 高风险（MANUAL_ONLY）动作不允许客户端自动标记完成。
@@ -150,15 +159,35 @@ export class AgentEventReducer {
     }
 
     return {
-      ...view,
+      runId: view.runId,
       status: status,
       phase: phase,
       lastSummary: event.summary.length > 0 ? event.summary : view.lastSummary,
       progress: event.progress ?? view.progress,
       pendingApprovalId: pendingApprovalId,
       artifactId: artifactId,
+      lastEventId: view.lastEventId,
+      lastSequence: view.lastSequence,
+      events: view.events,
       partial: partial,
       failed: failed
+    };
+  }
+
+  private static withApproval(view: AgentRunView, pendingApprovalId: string | null): AgentRunView {
+    return {
+      runId: view.runId,
+      status: view.status,
+      phase: view.phase,
+      lastSummary: view.lastSummary,
+      progress: view.progress,
+      pendingApprovalId: pendingApprovalId,
+      artifactId: view.artifactId,
+      lastEventId: view.lastEventId,
+      lastSequence: view.lastSequence,
+      events: view.events,
+      partial: view.partial,
+      failed: view.failed
     };
   }
 }

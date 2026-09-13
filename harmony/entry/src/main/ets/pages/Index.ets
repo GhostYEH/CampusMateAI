@@ -1518,7 +1518,7 @@ struct Index {
   @Builder AgentEntryBar() {
     Row({ space: 10 }) {
       Column({ space: 3 }) {
-        SymbolGlyph($r('sys.symbol.book_closed')).fontSize(18).fontColor([this.primaryColor()])
+        SymbolGlyph($r('sys.symbol.book')).fontSize(18).fontColor([this.primaryColor()])
         Text('期末复习').fontSize(10).fontColor(this.textColor())
       }.layoutWeight(1).onClick(() => this.openFinalReview())
       Column({ space: 3 }) {
@@ -1526,7 +1526,7 @@ struct Index {
         Text('课程研究').fontSize(10).fontColor(this.textColor())
       }.layoutWeight(1).onClick(() => this.openCourseResearch())
       Column({ space: 3 }) {
-        SymbolGlyph($r('sys.symbol.bell_badge')).fontSize(18).fontColor([this.primaryColor()])
+        SymbolGlyph($r('sys.symbol.bell')).fontSize(18).fontColor([this.primaryColor()])
         Text('通知事务').fontSize(10).fontColor(this.textColor())
       }.layoutWeight(1).onClick(() => this.openNoticeWorkflow())
     }.width('100%').padding({ top: 10, bottom: 10, left: 12, right: 12 })

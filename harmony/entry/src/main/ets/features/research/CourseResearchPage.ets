@@ -118,10 +118,12 @@ export struct CourseResearchPage {
       } catch (_) { /* 忽略无法解析的事件 */ }
     }).then(async () => {
       if (!this.active) return;
+      const repo: AgentRuntimeRepository | null = this.repository;
+      if (repo === null) return;
       try {
-        this.artifacts = await this.repository.listResearchArtifacts(runId);
-        this.sources = await this.repository.listResearchSources(runId);
-        this.run = await this.repository.getResearchRun(runId);
+        this.artifacts = await repo.listResearchArtifacts(runId);
+        this.sources = await repo.listResearchSources(runId);
+        this.run = await repo.getResearchRun(runId);
       } catch (_) { /* 结果加载失败保留已有状态 */ }
     }).catch(() => {
       if (this.active) this.error = '事件流中断，可刷新重试';
