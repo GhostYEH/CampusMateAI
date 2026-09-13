@@ -350,11 +350,19 @@ function formatForecastValue(f) {
 }
 
 // ===== 4. 我的目标与里程碑 =====
-function GoalsSection({ goals, onArchive, busy }) {
+function GoalsSection({ goals, onArchive, onCreate, onProgress, onUpdate, busy }) {
   const items = goals?.items || [];
-  if (items.length === 0) return <EmptyState text="暂时没有目标数据" />;
+  const [draft, setDraft] = useState({ name: "", category: "academic", target_date: "", milestone_count: 0 });
+  const [progress, setProgress] = useState({});
+  const [milestones, setMilestones] = useState({});
   return (
     <section className="ls-section ls-goals" aria-label="我的目标与里程碑">
+      <form className="ls-goal-create" onSubmit={async (event) => { event.preventDefault(); const created = await onCreate({ ...draft, milestone_count: Number(draft.milestone_count), idempotency_key: `goal-${Date.now()}` }); if (created) setDraft({ name: "", category: "academic", target_date: "", milestone_count: 0 }); }}>
+        <input aria-label="目标名称" required value={draft.name} placeholder="新建目标" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+        <select aria-label="目标分类" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{Object.entries(GOAL_CATEGORY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <button className="ls-btn ls-btn--sm" disabled={busy}>新建</button>
+      </form>
+      {items.length === 0 ? <EmptyState text="暂时没有目标数据" /> : (
       <div className="ls-goal-grid">
         {items.map((g) => (
           <article key={g.goal_id} className="ls-goal-card">
@@ -364,12 +372,19 @@ function GoalsSection({ goals, onArchive, busy }) {
             <p className="ls-goal-card__milestones">里程碑 {g.milestone_count || 0}</p>
             {g.target_date && <p className="ls-goal-card__target">目标日期 {g.target_date}</p>}
             <p className="ls-goal-card__status">{g.status === "active" ? "进行中" : "已归档"}</p>
+            {g.status === "active" && <div className="ls-goal-card__actions">
+              <label>进度 <input type="number" min="0" max="100" value={progress[g.goal_id] ?? g.progress_percent} onChange={(e) => setProgress({ ...progress, [g.goal_id]: e.target.value })} /></label>
+              <button className="ls-btn ls-btn--sm" onClick={() => onProgress(g.goal_id, Number(progress[g.goal_id] ?? g.progress_percent))} disabled={busy}>记录</button>
+              <label>里程碑 <input type="number" min="0" max="100" value={milestones[g.goal_id] ?? g.milestone_count} onChange={(e) => setMilestones({ ...milestones, [g.goal_id]: e.target.value })} /></label>
+              <button className="ls-btn ls-btn--sm" onClick={() => onUpdate(g.goal_id, { milestone_count: Number(milestones[g.goal_id] ?? g.milestone_count) })} disabled={busy}>保存</button>
+            </div>}
             {g.status === "active" && (
               <button className="ls-btn ls-btn--sm" onClick={() => onArchive(g.goal_id)} disabled={busy}>归档</button>
             )}
           </article>
         ))}
       </div>
+      )}
     </section>
   );
 }
@@ -692,6 +707,24 @@ export default function LearningStatePage() {
     finally { setBusy(false); }
   }, [showToast, refresh]);
 
+  const handleCreateGoal = useCallback(async (body) => {
+    setBusy(true);
+    try { await api.createStudentGoal(body); showToast("目标已创建"); refresh(); return true; }
+    catch (e) { showToast(e.message); return false; } finally { setBusy(false); }
+  }, [showToast, refresh]);
+
+  const handleGoalProgress = useCallback(async (goalId, progress) => {
+    setBusy(true);
+    try { await api.recordGoalProgress(goalId, { progress_percent: progress, idempotency_key: `goal-progress-${goalId}-${progress}` }); showToast("进度已记录"); refresh(); }
+    catch (e) { showToast(e.message); } finally { setBusy(false); }
+  }, [showToast, refresh]);
+
+  const handleGoalUpdate = useCallback(async (goalId, body) => {
+    setBusy(true);
+    try { await api.updateStudentGoal(goalId, body); showToast("目标已更新"); refresh(); }
+    catch (e) { showToast(e.message); } finally { setBusy(false); }
+  }, [showToast, refresh]);
+
   const handlePlanAction = useCallback(async (action, planId) => {
     setBusy(true);
     try {
@@ -769,7 +802,7 @@ export default function LearningStatePage() {
         </div>
         <div className="ls-layout__side">
           <LearningPlanCenter plans={plans.data} onAction={handlePlanAction} busy={busy} />
-          <GoalsSection goals={goals.data} onArchive={handleArchiveGoal} busy={busy} />
+          <GoalsSection goals={goals.data} onArchive={handleArchiveGoal} onCreate={handleCreateGoal} onProgress={handleGoalProgress} onUpdate={handleGoalUpdate} busy={busy} />
         </div>
       </div>
 
