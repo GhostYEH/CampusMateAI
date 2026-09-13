@@ -94,7 +94,7 @@ class AgentArtifactRepository:
                     size_bytes,
                     content_hash,
                     str(path),
-                    f"/api/v1/agent-artifacts/{artifact_id}",
+                    f"/agent-artifacts/{artifact_id}/content",
                     now,
                 ),
             )

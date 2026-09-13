@@ -63,6 +63,13 @@ export function useAgentRun({ runId, enabled = true }) {
     refresh();
   }, [runId, refresh]);
 
+  // run 到达终态后,若 artifact_ids 缺失,重新 GET 获取完整产物列表
+  useEffect(() => {
+    if (run && isTerminalRunStatus(run.status) && runId && (!run.artifact_ids || run.artifact_ids.length === 0)) {
+      api.getAgentRun(runId).then((data) => { setRun(data); }).catch(() => {});
+    }
+  }, [run?.status, run?.artifact_ids, runId]);
+
   const cancel = useCallback(async (idempotencyKey) => {
     if (!runId) return;
     try {

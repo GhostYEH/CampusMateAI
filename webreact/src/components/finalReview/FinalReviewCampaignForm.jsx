@@ -10,7 +10,7 @@ export default function FinalReviewCampaignForm({ exams = [], onSubmit, submitti
   const [selectedExams, setSelectedExams] = useState([]);
   const [dailyMinutes, setDailyMinutes] = useState(120);
   const [restDays, setRestDays] = useState([]);
-  const [intensity, setIntensity] = useState("balanced");
+  const [intensity, setIntensity] = useState("medium");
   const [key, setKey] = useState(() => createIdempotencyKey("fr_campaign"));
 
   function toggleExam(id) {
@@ -92,9 +92,9 @@ export default function FinalReviewCampaignForm({ exams = [], onSubmit, submitti
       <label className="form-field">
         <span>强度偏好</span>
         <select value={intensity} onChange={(e) => setIntensity(e.target.value)}>
-          <option value="balanced">均衡</option>
-          <option value="intensive">集中冲刺</option>
-          <option value="gentle">循序渐进</option>
+          <option value="medium">均衡</option>
+          <option value="high">集中冲刺</option>
+          <option value="low">循序渐进</option>
         </select>
       </label>
 
