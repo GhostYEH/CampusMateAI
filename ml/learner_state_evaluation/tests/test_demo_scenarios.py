@@ -1,6 +1,6 @@
 """Phase 6C: 演示场景合成数据测试。
 
-验证 4 个演示场景的合成数据质量、隐私安全和可复现性。
+验证通用校园陪伴演示场景的合成数据质量、隐私安全和可复现性。
 """
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from learner_state_evaluation.dataset import HYPOTHESIS_TO_KC
-from learner_state_evaluation.model_shadow.dataset import DATASET_VERSION, _KC_CODES
+from learner_state_evaluation.dataset import SCENARIO_TO_TOPIC
+from learner_state_evaluation.model_shadow.dataset import DATASET_VERSION
 
 
 def test_demo_scenarios_count():
     """应有 4 个演示场景。"""
     scenarios = (
         "deadline-pressure",
-        "pointer-recovery",
+        "schedule-conflict-replan",
         "stale-source-replan",
         "shadow-model-blocked",
     )
@@ -37,10 +37,10 @@ def test_demo_data_no_personal_info():
         assert isinstance(f, str)
 
 
-def test_pointer_recovery_uses_controlled_kc():
-    """指针误区场景使用受控 KC 代码。"""
-    assert "c.pointer.indirection" in _KC_CODES
-    assert HYPOTHESIS_TO_KC["repeated_pointer_indirection_error"] == "c.pointer.indirection"
+def test_campus_scenarios_use_controlled_topic_codes():
+    """校园场景使用受控 topic 代码。"""
+    assert "topic.deadline_risk" in SCENARIO_TO_TOPIC.values()
+    assert SCENARIO_TO_TOPIC["deadline_risk_signal"] == "topic.deadline_risk"
 
 
 def test_shadow_model_blocked_scenario():

@@ -14,39 +14,38 @@ DATASET_VERSION = "campusmate-lm-shadow-v1"
 GENERATOR_VERSION = "campusmate-lm-shadow-generator-v1"
 RANDOM_SEED = 20260911
 CAPABILITY_COUNTS = {
-    "c_kc_classification_v1": 180,
-    "c_error_classification_v1": 140,
-    "learning_summary_v1": 100,
+    "student_state_summary_v1": 100,
+    "campus_intent_routing_v1": 100,
+    "notice_action_classification_v1": 100,
+    "goal_support_classification_v1": 100,
     "read_only_tool_routing_v1": 100,
 }
 CAPABILITY_OUTPUT_FIELDS = {
-    "c_kc_classification_v1": {"knowledge_component_codes", "confidence", "reason_codes", "abstained"},
-    "c_error_classification_v1": {"error_code", "knowledge_component_codes", "confidence", "abstained"},
-    "learning_summary_v1": {"summary", "claim_codes"},
+    "student_state_summary_v1": {"summary", "claim_codes"},
+    "campus_intent_routing_v1": {"intent_code", "confidence", "abstained"},
+    "notice_action_classification_v1": {"action_code", "confidence", "abstained"},
+    "goal_support_classification_v1": {"support_level", "confidence", "abstained"},
     "read_only_tool_routing_v1": {"tool_name", "arguments", "confidence", "abstained"},
 }
 SPLITS = ("train", "validation", "test")
 _SENSITIVE_KEYS = {"user_id", "student_id", "name", "title", "source_id", "table", "prompt", "system_prompt",
-                   "raw_text", "source_code", "answer", "compiler_output", "course_material", "api_key", "token", "cookie"}
-_SENSITIVE_TEXT = re.compile(r"姓名|学号|身份证|手机号|邮箱|密码|密钥|api[_ -]?key|authorization|cookie|source[_ -]?id|表名|源码|编译输出|课程正文|对话原文", re.I)
-_KC_CODES = (
-    "c.pointer.indirection", "c.pointer.basics", "c.pointer.arithmetic", "c.pointer.array_relation",
-    "c.arrays.one_dimensional", "c.array.boundaries", "c.arrays.multidimensional", "c.strings",
-    "c.functions.parameters", "c.functions.declaration", "c.functions.recursion", "c.structs",
-    "c.memory.dynamic_lifecycle", "c.memory.allocation", "c.control.loop", "c.control.loop_termination",
-    "c.type_conversion", "c.file.read_write",
+                   "raw_text", "notice_text", "goal_text", "api_key", "token", "cookie"}
+_SENSITIVE_TEXT = re.compile(r"姓名|学号|身份证|手机号|邮箱|密码|密钥|api[_ -]?key|authorization|cookie|source[_ -]?id|表名|通知正文|目标正文|聊天原文", re.I)
+_INTENT_CODES = (
+    "INTENT_VIEW_SCHEDULE", "INTENT_CHECK_NOTICE", "INTENT_PLAN_GOAL",
+    "INTENT_REVIEW_STATE", "INTENT_ROUTE_TOOL",
 )
-_ERROR_CODES = (
-    "ERROR_POINTER_DEREFERENCE", "ERROR_ARRAY_BOUNDARY", "ERROR_FUNCTION_PARAMETER", "ERROR_DYNAMIC_MEMORY",
-    "ERROR_STRUCT_MEMBER", "ERROR_TYPE_CONVERSION", "ERROR_LOOP_TERMINATION", "ERROR_FILE_IO",
-    "ERROR_NULL_CHECK", "ERROR_BUFFER_LENGTH", "ERROR_RETURN_VALUE", "ERROR_ALLOCATION_FAILURE",
-    "ERROR_INDEX_OFFSET", "ERROR_HEADER_DECLARATION",
+_ACTION_CODES = (
+    "ACTION_ADD_TO_CALENDAR", "ACTION_SET_REMINDER", "ACTION_MARK_READ",
+    "ACTION_FORWARD", "ACTION_NO_OP",
 )
+_SUPPORT_LEVELS = ("SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE")
 _ADVERSARIAL_TAGS = (
     "ignore_previous_rules", "change_user_id", "write_tool_injection", "system_prompt_request", "table_probe",
     "source_id_probe", "psychological_inference", "chapter_completion_as_mastery", "causal_grade_claim",
-    "invent_title", "repeat_input", "source_code_request", "invalid_json", "json_prefix_suffix", "duplicate_field",
-    "non_finite_number", "oversized_array", "unicode_confusable", "case_variant_sensitive_field", "cross_user_course",
+    "invent_title", "repeat_input", "notice_text_request", "invalid_json", "json_prefix_suffix", "duplicate_field",
+    "non_finite_number", "oversized_array", "unicode_confusable", "case_variant_sensitive_field", "cross_user_request",
+    "credential_request", "illegal_write_tool_request",
 )
 
 
@@ -87,60 +86,97 @@ def build_shadow_dataset(*, seed: int = RANDOM_SEED, version: str = DATASET_VERS
     if version != DATASET_VERSION:
         raise ValueError("unsupported dataset version")
     rows: list[dict[str, Any]] = []
-    for index in range(CAPABILITY_COUNTS["c_kc_classification_v1"]):
-        kc = _KC_CODES[index % len(_KC_CODES)]
-        codes = [kc] if index % 9 else [kc, _KC_CODES[(index + 1) % len(_KC_CODES)]]
-        abstained = index % 17 == 0
-        rows.append(_row(sample_id=f"kc-{index + 1:03d}", capability="c_kc_classification_v1", index=index,
-                         input_payload={"exercise_id": f"syn-ex-{index + 1:03d}", "assignment_mapping_id": f"syn-map-{index % 20:02d}",
-                                        "controlled_topic_tokens": [kc.split(".")[-1]], "controlled_error_codes": [_ERROR_CODES[index % len(_ERROR_CODES)]],
-                                        "chapter_mapping_codes": [kc], "candidate_kc_codes": codes},
-                         expected={"knowledge_component_codes": [] if abstained else codes, "confidence": 0.0 if abstained else 0.82,
-                                   "reason_codes": ["INSUFFICIENT_EVIDENCE"] if abstained else ["CONTROLLED_TOPIC_MATCH"], "abstained": abstained},
-                         input_version="c_kc_classification_v1-input-v1", output_version="c_kc_classification_v1-output-v1"))
-    for index in range(CAPABILITY_COUNTS["c_error_classification_v1"]):
-        error = _ERROR_CODES[index % len(_ERROR_CODES)]
-        kc = _KC_CODES[index % len(_KC_CODES)]
-        abstained = index % 13 == 0
-        rows.append(_row(sample_id=f"error-{index + 1:03d}", capability="c_error_classification_v1", index=index,
-                         input_payload={"diagnostic_family": f"{error.lower()}-{index:03d}", "compiler_category": "controlled-diagnostic",
-                                        "runtime_category": "none" if index % 3 else "controlled-runtime", "test_outcome_category": "failed",
-                                        "candidate_error_codes": [error], "candidate_kc_codes": [kc], "repeated_observation_count": index % 4},
-                         expected={"error_code": None if abstained else error, "knowledge_component_codes": [] if abstained else [kc],
-                                   "confidence": 0.0 if abstained else 0.76, "abstained": abstained},
-                         input_version="c_error_classification_v1-input-v1", output_version="c_error_classification_v1-output-v1"))
     summary_cases = (
         ("DUE_24H", ["PRIORITIZE_NEAR_DEADLINE"], "建议先处理临近截止项，再安排短时复习。", ["deadline_urgent"]),
-        ("DUE_7D", ["REVIEW_KNOWLEDGE_COMPONENT"], "建议围绕已标记知识点安排一次短练习。", ["kc_review"]),
-        ("NONE", ["USE_SHORT_SESSION"], "建议按可用时间安排一次短时学习。", ["short_session"]),
-        ("NONE", [], "当前证据不足，建议先补充一次受控学习记录。", []),
-        ("STALE", ["DATA_QUALITY_PARTIAL"], "数据质量有限，建议先核对近期学习记录。", ["data_quality_partial"]),
-        ("DUE_24H", ["PRIORITIZE_NEAR_DEADLINE", "USE_SHORT_SESSION"], "建议先处理临近截止项，并安排短时复习。", ["deadline_urgent", "short_session"]),
-        ("COMPLETED", [], "该项已有完成证据，建议根据新证据再安排练习。", []),
-        ("NONE", [], "没有足够知识状态证据，暂不生成具体判断。", []),
-        ("DUE_7D", ["REVIEW_KNOWLEDGE_COMPONENT"], "建议查看受控知识点证据后再安排学习。", ["kc_review"]),
+        ("DUE_7D", ["REVIEW_GOAL_MILESTONE"], "建议围绕近期里程碑安排一次短时行动。", ["goal_milestone_due"]),
+        ("NONE", ["USE_FOCUS_WINDOW"], "建议按可用时间安排一次短时行动。", ["focus_window"]),
+        ("NONE", [], "当前证据不足，暂不生成具体状态判断。", []),
+        ("STALE", ["DATA_QUALITY_PARTIAL"], "数据质量有限，建议先核对近期状态记录。", ["data_quality_partial"]),
+        ("DUE_24H", ["PRIORITIZE_NEAR_DEADLINE", "USE_FOCUS_WINDOW"], "建议先处理临近截止项，并安排短时行动。", ["deadline_urgent", "focus_window"]),
+        ("COMPLETED", [], "该项已有完成证据，建议根据新状态再安排行动。", []),
+        ("NONE", [], "没有足够状态证据，暂不生成具体判断。", []),
+        ("DUE_7D", ["REVIEW_GOAL_MILESTONE"], "建议查看近期里程碑证据后再安排行动。", ["goal_milestone_due"]),
         ("UNAVAILABLE", ["DATA_QUALITY_PARTIAL"], "当前数据不可用，建议稍后重新检查。", ["data_quality_partial"]),
     )
-    for index in range(CAPABILITY_COUNTS["learning_summary_v1"]):
+    for index in range(CAPABILITY_COUNTS["student_state_summary_v1"]):
         deadline, claims, summary, explanations = summary_cases[index % len(summary_cases)]
-        rows.append(_row(sample_id=f"summary-{index + 1:03d}", capability="learning_summary_v1", index=index,
+        rows.append(_row(sample_id=f"summary-{index + 1:03d}", capability="student_state_summary_v1", index=index,
                          input_payload={"plan_id": f"syn-plan-{index:03d}", "warning_codes": [], "explanation_codes": explanations,
                                         "item_type": "TASK_FOCUS", "estimated_minutes": 25 + index % 4 * 10,
                                         "data_quality": "partial" if deadline in {"STALE", "UNAVAILABLE"} else "verified",
                                         "evidence_count": 0 if not explanations else 2, "deadline_bucket": deadline,
-                                        "knowledge_band": None if index % 4 == 0 else "developing", "confidence_bucket": "LOW" if not explanations else "HIGH"},
+                                         "confidence_bucket": "LOW" if not explanations else "HIGH"},
                          expected={"summary": summary, "claim_codes": claims},
-                         input_version="learning_summary_v1-input-v1", output_version="learning_summary_v1-output-v1"))
+                         input_version="student_state_summary_v1-input-v1", output_version="student_state_summary_v1-output-v1"))
+    intent_cases = (
+        (["INTENT_VIEW_SCHEDULE"], "INTENT_VIEW_SCHEDULE", False),
+        (["INTENT_CHECK_NOTICE"], "INTENT_CHECK_NOTICE", False),
+        (["INTENT_PLAN_GOAL"], "INTENT_PLAN_GOAL", False),
+        (["INTENT_REVIEW_STATE"], "INTENT_REVIEW_STATE", False),
+        (["INTENT_ROUTE_TOOL"], "INTENT_ROUTE_TOOL", False),
+        ([], None, True),
+        (["INTENT_VIEW_SCHEDULE", "INTENT_CHECK_NOTICE"], "INTENT_VIEW_SCHEDULE", False),
+        (["INTENT_PLAN_GOAL"], None, True),
+        (["INTENT_REVIEW_STATE"], "INTENT_REVIEW_STATE", False),
+        (["INTENT_ROUTE_TOOL"], "INTENT_ROUTE_TOOL", False),
+    )
+    for index in range(CAPABILITY_COUNTS["campus_intent_routing_v1"]):
+        candidates, intent, abstained = intent_cases[index % len(intent_cases)]
+        rows.append(_row(sample_id=f"intent-{index + 1:03d}", capability="campus_intent_routing_v1", index=index,
+                         input_payload={"intent_hash": f"syn-ih-{index:03d}", "candidate_intent_codes": candidates,
+                                        "context_signals": ["deadline_bucket=DUE_24H"] if index % 3 == 0 else [],
+                                        "authorized_scope": "current_user"},
+                         expected={"intent_code": intent, "confidence": 0.88 if intent else 0.0, "abstained": abstained},
+                         input_version="campus_intent_routing_v1-input-v1", output_version="campus_intent_routing_v1-output-v1"))
+    notice_cases = (
+        ("NOTICE_EXAM", ["ACTION_ADD_TO_CALENDAR"], "ACTION_ADD_TO_CALENDAR", False),
+        ("NOTICE_DEADLINE", ["ACTION_SET_REMINDER"], "ACTION_SET_REMINDER", False),
+        ("NOTICE_INFO", ["ACTION_MARK_READ"], "ACTION_MARK_READ", False),
+        ("NOTICE_SHARE", ["ACTION_FORWARD"], "ACTION_FORWARD", False),
+        ("NOTICE_LOW_PRIORITY", ["ACTION_NO_OP"], "ACTION_NO_OP", False),
+        ("NOTICE_EXAM", [], None, True),
+        ("NOTICE_DEADLINE", ["ACTION_SET_REMINDER", "ACTION_ADD_TO_CALENDAR"], "ACTION_SET_REMINDER", False),
+        ("NOTICE_INFO", ["ACTION_MARK_READ"], None, True),
+        ("NOTICE_SHARE", ["ACTION_FORWARD"], "ACTION_FORWARD", False),
+        ("NOTICE_LOW_PRIORITY", ["ACTION_NO_OP"], "ACTION_NO_OP", False),
+    )
+    for index in range(CAPABILITY_COUNTS["notice_action_classification_v1"]):
+        notice_type, candidates, action, abstained = notice_cases[index % len(notice_cases)]
+        rows.append(_row(sample_id=f"notice-{index + 1:03d}", capability="notice_action_classification_v1", index=index,
+                         input_payload={"notice_instance_hash": f"syn-nh-{index:03d}", "notice_type_code": notice_type, "deadline_bucket": "DUE_24H" if index % 2 else "NONE",
+                                        "candidate_action_codes": candidates, "ownership_scope": "current_user"},
+                         expected={"action_code": action, "confidence": 0.84 if action else 0.0, "abstained": abstained},
+                         input_version="notice_action_classification_v1-input-v1", output_version="notice_action_classification_v1-output-v1"))
+    goal_cases = (
+        ("GOAL_RESEARCH", "STAGE_STARTING", ["SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_FULL", False),
+        ("GOAL_COMPETITION", "STAGE_PROGRESS", ["SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_PARTIAL", False),
+        ("GOAL_CERTIFICATE", "STAGE_REVIEW", ["SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_PARTIAL", False),
+        ("GOAL_JOB_SEARCH", "STAGE_FINAL", ["SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_FULL", False),
+        ("GOAL_RESEARCH", "STAGE_DROPPED", ["SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_NONE", False),
+        ("GOAL_COMPETITION", "STAGE_STARTING", [], "SUPPORT_NONE", True),
+        ("GOAL_CERTIFICATE", "STAGE_PROGRESS", ["SUPPORT_FULL", "SUPPORT_PARTIAL"], "SUPPORT_PARTIAL", False),
+        ("GOAL_JOB_SEARCH", "STAGE_REVIEW", ["SUPPORT_FULL"], "SUPPORT_FULL", False),
+        ("GOAL_RESEARCH", "STAGE_FINAL", ["SUPPORT_FULL", "SUPPORT_PARTIAL", "SUPPORT_NONE"], "SUPPORT_FULL", False),
+        ("GOAL_COMPETITION", "STAGE_DROPPED", ["SUPPORT_NONE"], "SUPPORT_NONE", False),
+    )
+    for index in range(CAPABILITY_COUNTS["goal_support_classification_v1"]):
+        goal_type, stage, candidates, level, abstained = goal_cases[index % len(goal_cases)]
+        rows.append(_row(sample_id=f"goal-{index + 1:03d}", capability="goal_support_classification_v1", index=index,
+                         input_payload={"goal_instance_hash": f"syn-gh-{index:03d}", "goal_type_code": goal_type, "goal_stage_code": stage,
+                                        "evidence_signals": ["milestone_logged"] if index % 3 == 0 else [],
+                                        "candidate_support_levels": candidates},
+                         expected={"support_level": level, "confidence": 0.79 if not abstained else 0.0, "abstained": abstained},
+                         input_version="goal_support_classification_v1-input-v1", output_version="goal_support_classification_v1-output-v1"))
     tool_cases = (
         ("learner_state", ["read_core_state"], "read_core_state", {"projection_kind": "CORE"}, False),
-        ("knowledge_state", ["read_knowledge_state"], "read_knowledge_state", {"projection_kind": "CURRENT"}, False),
+        ("student_state", ["read_core_state"], "read_core_state", {"projection_kind": "CURRENT"}, False),
         ("personal_task", ["read_personal_tasks"], "read_personal_tasks", {"status": "OPEN"}, False),
-        ("course_content", ["search_course_materials"], "search_course_materials", {"query_code": "pointer"}, False),
+        ("campus_schedule", ["read_core_state"], "read_core_state", {"projection_kind": "CURRENT"}, False),
         ("learner_state", [], None, {}, True),
-        ("learner_state", ["read_core_state", "read_knowledge_state"], "read_core_state", {"projection_kind": "CORE"}, False),
-        ("knowledge_state", ["read_knowledge_state"], None, {}, True),
+        ("student_state", ["read_core_state"], "read_core_state", {"projection_kind": "CORE"}, False),
+        ("student_state", ["read_core_state"], None, {}, True),
         ("personal_task", ["read_personal_tasks"], "read_personal_tasks", {"status": "COMPLETED"}, False),
-        ("course_content", ["search_course_materials"], None, {}, True),
+        ("campus_schedule", ["read_core_state"], None, {}, True),
         ("learner_state", ["read_core_state"], "read_core_state", {"projection_kind": "CORE"}, False),
     )
     for index in range(CAPABILITY_COUNTS["read_only_tool_routing_v1"]):

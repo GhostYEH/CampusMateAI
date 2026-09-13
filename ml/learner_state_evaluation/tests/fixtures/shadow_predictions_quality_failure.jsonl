@@ -1,1 +1,1 @@
-{"capability_name":"c_kc_classification_v1","output":{"abstained":true,"confidence":0.0,"knowledge_component_codes":[],"reason_codes":["INSUFFICIENT_EVIDENCE"]},"sample_id":"kc-001"}
+{"sample_id":"summary-001","capability_name":"student_state_summary_v1","output":{"summary":"当前证据不足，暂不生成具体状态判断。","claim_codes":[]},"confidence":0.0,"latency_ms":2,"input_tokens":32,"output_tokens":24,"peak_memory_mb":64,"device_type":"cpu","estimated_cost_per_1000_requests":0.0,"model_version":"deterministic-baseline-v1"}

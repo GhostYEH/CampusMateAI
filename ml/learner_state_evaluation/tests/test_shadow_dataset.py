@@ -15,11 +15,12 @@ def test_shadow_dataset_has_required_capability_counts_and_safe_splits() -> None
     counts = {}
     for row in rows:
         counts[row["capability_name"]] = counts.get(row["capability_name"], 0) + 1
-    assert len(rows) >= 500
+    assert len(rows) == 500
     assert counts == {
-        "c_kc_classification_v1": 180,
-        "c_error_classification_v1": 140,
-        "learning_summary_v1": 100,
+        "student_state_summary_v1": 100,
+        "campus_intent_routing_v1": 100,
+        "notice_action_classification_v1": 100,
+        "goal_support_classification_v1": 100,
         "read_only_tool_routing_v1": 100,
     }
     assert {row["split"] for row in rows} == {"train", "validation", "test"}
@@ -37,6 +38,6 @@ def test_shadow_dataset_writer_is_byte_reproducible(tmp_path) -> None:
     assert first.data_path.read_bytes() == second.data_path.read_bytes()
     assert first.manifest_path.read_bytes() == second.manifest_path.read_bytes()
     manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["sample_count"] == 520
+    assert manifest["sample_count"] == 500
     assert manifest["contains_personal_data"] is False
     assert manifest["sensitive_scan"]["violations"] == 0

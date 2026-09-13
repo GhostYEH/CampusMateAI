@@ -15,17 +15,17 @@ from learner_state_evaluation.contract import (
 def valid_annotation(sample_id: str = "syn-001") -> dict:
     return {
         "sample_id": sample_id,
-        "dataset_version": "c-misconception-synthetic-v1",
+        "dataset_version": "campus-companion-synthetic-v1",
         "split": "evaluation",
-        "task_type": "misconception_detection",
-        "knowledge_component_code": "c.pointer.indirection",
-        "hypothesis_code": "repeated_pointer_indirection_error",
+        "task_type": "campus_signal_detection",
+        "topic_code": "topic.deadline_risk",
+        "scenario_code": "deadline_risk_signal",
         "label": True,
         "label_source": "synthetic_curated",
         "evidence": {
             "attempt_count": 3,
-            "repeated_error_count": 2,
-            "later_correct_count": 0,
+            "repeated_signal_count": 2,
+            "later_resolved_count": 0,
             "evidence_quality": "HIGH",
             "user_decision": "UNREVIEWED",
             "supports_assertion": True,
@@ -38,7 +38,7 @@ def test_annotation_contract_accepts_only_structured_synthetic_evidence() -> Non
     assert validate_annotation(valid_annotation())["sample_id"] == "syn-001"
 
 
-@pytest.mark.parametrize("forbidden", ["student_name", "raw_code", "answer", "compiler_output"])
+@pytest.mark.parametrize("forbidden", ["student_name", "raw_text", "answer", "notice_text"])
 def test_annotation_contract_rejects_free_text_or_identity_fields(forbidden: str) -> None:
     row = valid_annotation()
     row[forbidden] = "sensitive content"
@@ -51,16 +51,16 @@ def test_annotation_contract_rejects_free_text_or_identity_fields(forbidden: str
 
 @pytest.mark.parametrize(
     "field",
-    ["sample_id", "dataset_version", "knowledge_component_code", "hypothesis_code"],
+    ["sample_id", "dataset_version", "topic_code", "scenario_code"],
 )
 def test_annotation_contract_rejects_free_text_in_identifier_fields(field: str) -> None:
     row = valid_annotation()
-    row[field] = "student says pointer is hard"
+    row[field] = "student says deadline is urgent"
 
     with pytest.raises(ContractError, match="safe identifier") as error:
         validate_annotation(row)
 
-    assert "pointer is hard" not in str(error.value)
+    assert "deadline is urgent" not in str(error.value)
 
 
 def test_loader_rejects_duplicate_sample_ids(tmp_path) -> None:

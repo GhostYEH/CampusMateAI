@@ -7,18 +7,18 @@ from pathlib import Path
 from typing import Any
 
 
-DATASET_VERSION = "c-misconception-synthetic-v1"
-ANNOTATION_POLICY_VERSION = "misconception-label-policy-v1"
+DATASET_VERSION = "campus-companion-synthetic-v1"
+ANNOTATION_POLICY_VERSION = "campus-companion-label-policy-v1"
 RANDOM_SEED = 20260911
-HYPOTHESIS_TO_KC = {
-    "array_boundary_confusion": "c.array.boundaries",
-    "dynamic_memory_lifecycle_error": "c.memory.dynamic_lifecycle",
-    "function_parameter_mismatch": "c.function.parameters",
-    "loop_termination_error": "c.control.loop_termination",
-    "repeated_pointer_indirection_error": "c.pointer.indirection",
+SCENARIO_TO_TOPIC = {
+    "deadline_risk_signal": "topic.deadline_risk",
+    "schedule_conflict_signal": "topic.schedule_conflict",
+    "goal_progress_signal": "topic.goal_progress",
+    "focus_plan_signal": "topic.focus_plan",
+    "data_source_stale_signal": "topic.data_source_stale",
 }
 
-# Each tuple is label, attempts, repeated errors, later correct results, quality, decision.
+# Each tuple is label, attempts, repeated signals, later resolved signals, quality, decision.
 # These intentionally cover strong, weak, contradicted, and user-reviewed evidence.
 CASE_TEMPLATES = (
     (True, 3, 3, 0, "HIGH", "UNREVIEWED"),
@@ -46,26 +46,26 @@ CASE_TEMPLATES = (
 
 def build_dataset() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for hypothesis_code, knowledge_component_code in sorted(HYPOTHESIS_TO_KC.items()):
-        for label, attempts, repeated, later_correct, quality, decision in CASE_TEMPLATES:
+    for scenario_code, topic_code in sorted(SCENARIO_TO_TOPIC.items()):
+        for label, attempts, repeated, later_resolved, quality, decision in CASE_TEMPLATES:
             rows.append(
                 {
                     "sample_id": "pending",
                     "dataset_version": DATASET_VERSION,
                     "split": "evaluation",
-                    "task_type": "misconception_detection",
-                    "knowledge_component_code": knowledge_component_code,
-                    "hypothesis_code": hypothesis_code,
+                    "task_type": "campus_signal_detection",
+                    "topic_code": topic_code,
+                    "scenario_code": scenario_code,
                     "label": label,
                     "label_source": "synthetic_curated",
                     "evidence": {
                         "attempt_count": attempts,
-                        "repeated_error_count": repeated,
-                        "later_correct_count": later_correct,
+                        "repeated_signal_count": repeated,
+                        "later_resolved_count": later_resolved,
                         "evidence_quality": quality,
                         "user_decision": decision,
                         "supports_assertion": (
-                            (repeated >= 2 and repeated > later_correct and decision != "REJECTED")
+                            (repeated >= 2 and repeated > later_resolved and decision != "REJECTED")
                             or decision == "CONFIRMED"
                         ),
                     },
@@ -94,17 +94,17 @@ def write_dataset(output_dir: Path) -> tuple[Path, Path]:
     manifest = {
         "dataset_version": DATASET_VERSION,
         "annotation_policy_version": ANNOTATION_POLICY_VERSION,
-        "task_type": "misconception_detection",
+        "task_type": "campus_signal_detection",
         "label_source": "synthetic_curated",
         "decision_eligible": False,
         "synthetic": True,
         "contains_personal_data": False,
         "random_seed": RANDOM_SEED,
         "sample_count": len(rows),
-        "hypothesis_codes": sorted(HYPOTHESIS_TO_KC),
+        "scenario_codes": sorted(SCENARIO_TO_TOPIC),
         "records_sha256": hashlib.sha256(data).hexdigest(),
         "label_policy": {
-            "positive": "Curated synthetic case represents a supported, still-active hypothesis.",
+            "positive": "Curated synthetic case represents a supported, still-active campus signal.",
             "negative": "Curated synthetic case is isolated, contradicted, rejected, or resolved.",
             "review_required_for_real_data": True,
         },

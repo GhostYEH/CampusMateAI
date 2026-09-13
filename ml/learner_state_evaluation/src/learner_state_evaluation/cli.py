@@ -78,7 +78,7 @@ def evaluate_files(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate learner-state misconception predictions")
+    parser = argparse.ArgumentParser(description="Evaluate campus companion signal predictions")
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate = subparsers.add_parser("validate-dataset")
     evaluate = subparsers.add_parser("evaluate")

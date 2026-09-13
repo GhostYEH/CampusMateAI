@@ -24,13 +24,13 @@ from learner_state_evaluation.model_shadow.candidate_client import (
 )
 
 
-def _make_request(capability="c_kc_classification_v1"):
+def _make_request(capability="student_state_summary_v1"):
     return CandidateRequest(
         capability_name=capability,
         capability_version="1.0",
-        structured_features={"kc_code": "c.pointer.indirection", "score": 0.3},
+        structured_features={"explanation_codes": ["deadline_urgent"], "evidence_count": 2},
         prompt_template_version="v1",
-        taxonomy_version="c_taxonomy_v1",
+        taxonomy_version="campus_companion_taxonomy_v1",
         schema_version="v1",
         run_id="test_run_001",
         generation_params={"temperature": 0.25, "max_tokens": 96, "seed": 7},
@@ -44,10 +44,10 @@ class TestDeterministicFixtureClient:
         assert client.provenance == "FIXTURE"
 
     def test_returns_fixture_prediction(self):
-        fixtures = {"c_kc_classification_v1": {"label": "pointer_indirection", "confidence": 0.9}}
+        fixtures = {"student_state_summary_v1": {"summary": "建议先处理临近截止项。", "claim_codes": ["PRIORITIZE_NEAR_DEADLINE"]}}
         client = DeterministicFixtureClient(fixture_predictions=fixtures)
         resp = client.predict(_make_request())
-        assert resp.prediction == {"label": "pointer_indirection", "confidence": 0.9}
+        assert resp.prediction == {"summary": "建议先处理临近截止项。", "claim_codes": ["PRIORITIZE_NEAR_DEADLINE"]}
         assert resp.used_fallback is False
         assert resp.error_code is None
 
@@ -161,8 +161,7 @@ class TestOpenAICompatibleClientSecurity:
 
             def read(self):
                 return json.dumps({"choices": [{"message": {"content": json.dumps({
-                    "knowledge_component_codes": [], "confidence": 0.0,
-                    "reason_codes": ["INSUFFICIENT_EVIDENCE"], "abstained": True,
+                    "summary": "当前证据不足，建议先补充一次受控学习记录。", "claim_codes": [],
                 })}}]}).encode("utf-8")
 
         def _urlopen(request, timeout):
@@ -181,8 +180,8 @@ class TestOpenAICompatibleClientSecurity:
         assert captured["payload"]["max_tokens"] == 96
         assert captured["payload"]["seed"] == 7
         system_prompt = captured["payload"]["messages"][0]["content"]
-        assert "c_kc_classification_v1" in system_prompt
-        assert "knowledge_component_codes" in system_prompt
+        assert "student_state_summary_v1" in system_prompt
+        assert "summary" in system_prompt
         serialized = json.dumps(captured["payload"], sort_keys=True)
         assert "expected_output" not in serialized
         assert "gold" not in serialized

@@ -89,7 +89,7 @@ def test_model_shadow_remains_shadow_only():
 
 def test_evaluator_versions_stable():
     """评测版本应稳定。"""
-    assert EVALUATOR_VERSION == "learner-state-binary-v1"
+    assert EVALUATOR_VERSION == "campus-companion-binary-v1"
     assert PLANNING_DATASET_VERSION == "learning-plan-synthetic-v1"
 
 

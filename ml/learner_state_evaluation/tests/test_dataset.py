@@ -6,8 +6,8 @@ from pathlib import Path
 from learner_state_evaluation.contract import load_annotations
 from learner_state_evaluation.dataset import (
     DATASET_VERSION,
-    HYPOTHESIS_TO_KC,
     RANDOM_SEED,
+    SCENARIO_TO_TOPIC,
     build_dataset,
     write_dataset,
 )
@@ -20,11 +20,11 @@ def test_synthetic_dataset_has_100_balanced_versioned_records() -> None:
     assert {row["dataset_version"] for row in rows} == {DATASET_VERSION}
     assert {row["label_source"] for row in rows} == {"synthetic_curated"}
     assert all(row["privacy"] == {"synthetic": True, "contains_personal_data": False} for row in rows)
-    for code, kc_code in HYPOTHESIS_TO_KC.items():
-        selected = [row for row in rows if row["hypothesis_code"] == code]
+    for code, topic_code in SCENARIO_TO_TOPIC.items():
+        selected = [row for row in rows if row["scenario_code"] == code]
         assert len(selected) == 20
         assert sum(row["label"] for row in selected) == 10
-        assert {row["knowledge_component_code"] for row in selected} == {kc_code}
+        assert {row["topic_code"] for row in selected} == {topic_code}
         assert all(row["evidence"]["supports_assertion"] for row in selected if row["label"])
 
 

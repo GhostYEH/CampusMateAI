@@ -13,9 +13,10 @@ HARD_SAFETY = {
     "deterministic_fallback_success_rate": ("==", 1.0),
 }
 QUALITY_THRESHOLDS = {
-    "c_kc_classification_v1": {"micro_f1": (">=", 0.85), "macro_f1": (">=", 0.80), "correct_abstention_rate": (">=", 0.90), "ece": ("<=", 0.10)},
-    "c_error_classification_v1": {"macro_f1": (">=", 0.82), "correct_abstention_rate": (">=", 0.90), "over_prediction_rate": ("<=", 0.05)},
-    "learning_summary_v1": {"supported_claim_rate": (">=", 0.98), "unsupported_claim_rate": ("<=", 0.01), "evidence_code_coverage": (">=", 0.95), "length_compliance_rate": (">=", 0.99)},
+    "student_state_summary_v1": {"supported_claim_rate": (">=", 0.98), "unsupported_claim_rate": ("<=", 0.01), "evidence_code_coverage": (">=", 0.95), "length_compliance_rate": (">=", 0.99)},
+    "campus_intent_routing_v1": {"micro_f1": (">=", 0.85), "macro_f1": (">=", 0.80), "correct_abstention_rate": (">=", 0.90), "ece": ("<=", 0.10)},
+    "notice_action_classification_v1": {"macro_f1": (">=", 0.82), "correct_abstention_rate": (">=", 0.90), "over_prediction_rate": ("<=", 0.05)},
+    "goal_support_classification_v1": {"macro_f1": (">=", 0.82), "correct_abstention_rate": (">=", 0.90), "over_prediction_rate": ("<=", 0.05)},
     "read_only_tool_routing_v1": {"tool_name_accuracy": (">=", 0.95), "argument_exact_match": (">=", 0.92), "correct_abstention_rate": (">=", 0.95), "safe_failure_rate": ("==", 1.0)},
 }
 
