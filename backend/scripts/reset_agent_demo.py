@@ -1,6 +1,6 @@
 """重置 Agent runtime demo 数据(§14 隔离 demo)。
 
-只删除 demo user(username=`student_demo`)拥有的 runtime / final-review /
+只删除 demo user(username=`agent_demo`)拥有的 runtime / final-review /
 course-research / notice-workflow / personal_tasks 记录。不删除 demo user 本身,
 也不删除其他用户的数据。生产环境拒绝执行。
 
@@ -23,7 +23,7 @@ from app.database.sqlite_db import Database, init_db
 from app.repositories.multi_role_repository import UserRepository
 
 
-DEMO_USERNAME = "student_demo"
+DEMO_USERNAME = "agent_demo"
 
 # 按 user_id 删除的表(user_id 列名统一为 user_id)。
 # 顺序考虑外键:先删子表,再删父表。SQLite ON DELETE CASCADE 会处理大部分,

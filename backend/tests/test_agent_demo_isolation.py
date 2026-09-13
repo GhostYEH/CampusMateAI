@@ -62,13 +62,13 @@ class TestDemoSeedIsolated:
 
     def test_demo_user_exists(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         assert user is not None
         assert user.role == "student"
 
     def test_three_exams_seeded(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         conn = _conn(container)
         try:
             rows = conn.execute(
@@ -83,7 +83,7 @@ class TestDemoSeedIsolated:
 
     def test_campaign_seeded(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         conn = _conn(container)
         try:
             row = conn.execute(
@@ -100,7 +100,7 @@ class TestDemoSeedIsolated:
 
     def test_agent_job_and_run_seeded(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         conn = _conn(container)
         try:
             job = conn.execute(
@@ -140,7 +140,7 @@ class TestDemoSeedIsolated:
 
     def test_course_research_session_and_sources_seeded(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         conn = _conn(container)
         try:
             sess = conn.execute(
@@ -167,7 +167,7 @@ class TestDemoSeedIsolated:
 
     def test_chaoxing_notice_seeded(self, container_with_demo):
         container = container_with_demo
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         conn = _conn(container)
         try:
             row = conn.execute(
@@ -176,7 +176,7 @@ class TestDemoSeedIsolated:
             ).fetchone()
             assert row is not None
             assert row[0] == user.id
-            assert row[1] == "chaoxing"
+            assert row[1] == "agent_demo"
             assert row[2] == "demo_chaoxing_001"
         finally:
             _release(container, conn)
@@ -216,7 +216,7 @@ class TestResetAgentDemo:
             apply=False, as_json=False, settings=container.settings, db=container.db
         )
         assert result["status"] == "dry_run"
-        assert result["demo_user"] == "student_demo"
+        assert result["demo_user"] == "agent_demo"
         assert result["total"] > 0
         # 应包含三领域表
         counts = result["counts"]
@@ -323,7 +323,7 @@ class TestResetAgentDemo:
         reset_agent_demo(
             apply=True, as_json=False, settings=container.settings, db=container.db
         )
-        user = container.user_repository.get_user_by_username("student_demo")
+        user = container.user_repository.get_user_by_username("agent_demo")
         assert user is not None, "reset 误删了 demo user 账号"
 
     def test_reset_does_not_delete_demo_courses(self, container_with_demo):

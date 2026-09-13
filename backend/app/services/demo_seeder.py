@@ -35,6 +35,7 @@ DEMO_USERS = [
     ("admin_demo2", "admin", "李管理员(演示)", None, None, "信息工程学院", "计算机系", None),
     ("admin_demo3", "admin", "王管理员(演示)", None, None, "外国语学院", "英语系", None),
     ("student_demo", "student", "陈同学(演示)", "S202401001", None, "信息工程学院", "计算机科学与技术", "2024"),
+    ("agent_demo", "student", "智能体演示用户", "SAGENTDEMO", None, "信息工程学院", "计算机科学与技术", "2024"),
     ("admin_demo", "admin", "管理员(演示)", None, None, None, None, None),
 ]
 
@@ -142,9 +143,12 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
     teacher2 = created_users["admin_demo3"]
     admin = created_users["admin_demo"]
     student_demo = created_users["student_demo"]
+    agent_demo = created_users["agent_demo"]
     demo_university = container.university_repository.ensure_demo_university()
     if student_demo.university_id != demo_university.id:
         student_demo = user_repo.update_university(student_demo.id, demo_university.id)
+    if agent_demo.university_id != demo_university.id:
+        agent_demo = user_repo.update_university(agent_demo.id, demo_university.id)
 
     # === 校园社区热帖 ===
     # 首页按热度读取社区数据。使用真实的帖子、评论和点赞记录，让演示环境
@@ -383,7 +387,7 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
                 )
 
     # === Agent runtime demo 数据(§14 隔离 demo) ===
-    agent_stats = _seed_agent_demo_data(container, student_demo)
+    agent_stats = _seed_agent_demo_data(container, agent_demo)
     stats.update(agent_stats)
 
     logger.info("演示数据 seed 完成: %s", stats)
@@ -469,15 +473,16 @@ def _seed_agent_demo_data(container: ServiceContainer, demo_user: UserRow) -> di
             stats["agent_exams_added"] += 1
 
         # --- Chaoxing-like 通知 ---
+        # 使用独立 demo source，避免被真实超星回填任务扫描。
         chaoxing_exists = conn.execute(
-            "SELECT 1 FROM notices WHERE user_id = ? AND source = 'chaoxing' "
+            "SELECT 1 FROM notices WHERE user_id = ? AND source = 'agent_demo' "
             "AND external_id = 'demo_chaoxing_001'",
             (uid,),
         ).fetchone()
         if not chaoxing_exists:
             conn.execute(
                 "INSERT INTO notices (id,user_id,source,external_id,title,content,"
-                "published_at,created_at,updated_at) VALUES (?,?,'chaoxing',"
+                "published_at,created_at,updated_at) VALUES (?,?,'agent_demo',"
                 "'demo_chaoxing_001',?,?,?,?,?)",
                 (
                     "demo_notice_chaoxing_001",

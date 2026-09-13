@@ -98,8 +98,8 @@ def test_tts_reports_unconfigured_service_without_exposing_provider_details() ->
     )
 
     assert response.status_code == 503
-    assert response.json() == {
-        "code": "HTTP_ERROR",
-        "message": "语音服务未配置",
-        "details": None,
-    }
+    body = response.json()
+    assert body["code"] == "HTTP_ERROR"
+    assert body["message"] == "语音服务未配置"
+    assert body["details"] is None
+    assert body["request_id"]
