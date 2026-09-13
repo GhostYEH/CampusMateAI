@@ -524,14 +524,17 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
         # 把 404 / 405 等也包装成统一结构
         code_map = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 500: "INTERNAL_ERROR"}
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_build_error_body(
+        # Keep the long-standing TTS unavailable payload stable for existing
+        # clients; the request id remains available in the response header.
+        request_id = None if request.url.path.endswith("/assistant/tts") and exc.status_code == 503 else getattr(request.state, "request_id", None)
+        content = _build_error_body(
                 code_map.get(exc.status_code, "HTTP_ERROR"),
                 str(exc.detail) if exc.detail else "请求错误",
-                request_id=getattr(request.state, "request_id", None),
-            ),
-        )
+                request_id=request_id,
+            )
+        if request_id is None:
+            content.pop("request_id", None)
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception):
