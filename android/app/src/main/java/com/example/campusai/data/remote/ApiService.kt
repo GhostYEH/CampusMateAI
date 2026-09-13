@@ -8,9 +8,7 @@ import com.example.campusai.data.remote.agent.AgentEventDto
 import com.example.campusai.data.remote.agent.AgentJobDto
 import com.example.campusai.data.remote.agent.AgentRunDto
 import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
-import com.example.campusai.data.remote.agent.CourseResearchCitationDto
 import com.example.campusai.data.remote.agent.CourseResearchArtifactBundleDto
-import com.example.campusai.data.remote.agent.CourseResearchRoleProgressDto
 import com.example.campusai.data.remote.agent.CourseResearchRunCreateRequest
 import com.example.campusai.data.remote.agent.CourseResearchRunDto
 import com.example.campusai.data.remote.agent.FinalReviewAdjustmentProposalDto
@@ -1210,11 +1208,12 @@ interface ApiService {
     @POST("agent-runs/{runId}/cancel")
     suspend fun agentCancelRun(
         @Path("runId") runId: String,
+        @Body request: Map<String, String>,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): Response<AgentRunDto>
 
     @GET("agent-runs/{runId}/events")
-    suspend fun agentListRunEvents(@Path("runId") runId: String): Response<PagedResponse<AgentEventDto>>
+    suspend fun agentListRunEvents(@Path("runId") runId: String): Response<List<AgentEventDto>>
 
     @POST("agent-approvals/{approvalId}/decision")
     suspend fun agentDecideApproval(
@@ -1318,12 +1317,6 @@ interface ApiService {
 
     @GET("course-research/runs/{runId}/artifacts")
     suspend fun agentListCourseResearchArtifacts(@Path("runId") runId: String): Response<CourseResearchArtifactBundleDto>
-
-    @GET("course-research/runs/{runId}/role-progress")
-    suspend fun agentListCourseResearchRoleProgress(@Path("runId") runId: String): Response<PagedResponse<CourseResearchRoleProgressDto>>
-
-    @GET("course-research/runs/{runId}/citations")
-    suspend fun agentListCourseResearchCitations(@Path("runId") runId: String): Response<PagedResponse<CourseResearchCitationDto>>
 
     // ===== Notice Workflow =====
     @GET("notification-sources")

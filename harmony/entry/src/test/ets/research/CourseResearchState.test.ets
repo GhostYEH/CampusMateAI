@@ -45,12 +45,12 @@ export default function courseResearchStateTest(): void {
 
     it('parses citation verification states including PARTIAL', 0, () => {
       const verified: CourseResearchSource = AgentDtoParser.courseResearchSource({
-        source_id: 's1', run_id: 'run_cr', title: '课程讲义', url: 'u1',
-        verification: 'VERIFIED', is_course_material: true, retrieved_at: ''
+        source_id: 's1', source_type: 'course_material', title: '课程讲义', url: 'u1',
+        accessed_at: '', is_verified: true, supports_claim: true, is_fabricated: false
       });
       const partial: CourseResearchSource = AgentDtoParser.courseResearchSource({
-        source_id: 's2', run_id: 'run_cr', title: '网络资料', url: 'u2',
-        verification: 'PARTIAL', is_course_material: false, retrieved_at: ''
+        source_id: 's2', source_type: 'web', title: '网络资料', url: 'u2',
+        accessed_at: '', is_verified: false, supports_claim: null, is_fabricated: false
       });
       expect(verified.verification).assertEqual(CitationVerification.VERIFIED);
       expect(partial.verification).assertEqual(CitationVerification.PARTIAL);

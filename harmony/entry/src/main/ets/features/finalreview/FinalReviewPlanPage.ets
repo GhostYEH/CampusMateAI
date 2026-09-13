@@ -25,6 +25,7 @@ export struct FinalReviewPlanPage {
   @State proposals: FinalReviewAdjustmentProposal[] = [];
   @State runView: AgentRunView | null = null;
   @State activeRunId: string = '';
+  @State pendingPlanVersion: number = 0;
   @State pendingApproval: AgentApproval | null = null;
   @State approvalSubmitting: boolean = false;
   @State loading: boolean = false;
@@ -35,6 +36,7 @@ export struct FinalReviewPlanPage {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   async aboutToAppear(): Promise<void> {
+    this.active = true;
     await this.refreshAll();
   }
 
@@ -47,13 +49,15 @@ export struct FinalReviewPlanPage {
     this.loading = true;
     this.error = '';
     try {
-      const versionsPromise: Promise<FinalReviewPlanVersion[]> = this.repository.listPlanVersions(this.campaignId);
-      const agendaPromise: Promise<FinalReviewDailyAgenda> = this.repository.getTodayAgenda(this.campaignId);
-      const proposalsPromise: Promise<FinalReviewAdjustmentProposal[]> =
-        this.repository.listAdjustmentProposals(this.campaignId);
-      this.planVersions = await versionsPromise;
-      this.todayAgenda = await agendaPromise;
-      this.proposals = await proposalsPromise;
+      this.planVersions = await this.repository.listPlanVersions(this.campaignId);
+      this.proposals = await this.repository.listAdjustmentProposals(this.campaignId);
+      try {
+        this.todayAgenda = await this.repository.getTodayAgenda(this.campaignId);
+      } catch (_) {
+        // 草稿 campaign 尚未激活时服务端会返回 AGENT_INVALID_STATE，
+        // 这不应阻止用户生成首个计划版本。
+        this.todayAgenda = null;
+      }
     } catch (_) {
       this.error = '加载计划失败，请重试';
     } finally {
@@ -67,7 +71,9 @@ export struct FinalReviewPlanPage {
     try {
       const run = await this.repository.generatePlan(this.campaignId);
       this.activeRunId = run.run_id;
+      this.pendingPlanVersion = run.version;
       this.runView = AgentEventReducer.initial(run.run_id);
+      if (run.approval_id !== null) await this.loadApproval(run.approval_id);
       this.subscribeRun(run.run_id);
     } catch (_) {
       this.error = '生成计划失败，请重试';
@@ -133,7 +139,7 @@ export struct FinalReviewPlanPage {
         .filter((item: FinalReviewDailyItem) => item.completed)
         .map((item: FinalReviewDailyItem) => item.item_id);
       await this.repository.dailyCheckIn(
-        this.campaignId, this.todayAgenda.date, completedIds,
+        this.campaignId, this.todayAgenda.agenda_date, completedIds,
         this.checkInDifficulty, this.checkInFeedback);
       this.checkInFeedback = '';
       this.error = '';
@@ -163,6 +169,10 @@ export struct FinalReviewPlanPage {
         this.pendingApproval.approval_id, decision, '用户确认',
         IdempotencyKey.forApprovalDecision(this.pendingApproval.approval_id, decision));
       this.runView = AgentEventReducer.applyApproval(this.runView ?? AgentEventReducer.initial(this.activeRunId), approval);
+      if (decision.toUpperCase() === 'APPROVED' && this.pendingPlanVersion > 0) {
+        await this.repository.activateCampaign(this.campaignId, this.pendingPlanVersion);
+        this.pendingPlanVersion = 0;
+      }
       this.pendingApproval = null;
       await this.refreshAll();
     } catch (_) {
@@ -212,11 +222,11 @@ export struct FinalReviewPlanPage {
               Column({ space: 4 }) {
                 Row() {
                   Text(`v${version.version}`).fontColor(this.palette().primary).fontSize(14).fontWeight(FontWeight.Bold)
-                  Text(version.status).fontColor(this.palette().muted).fontSize(11).margin({ left: 8 })
+                  Text(version.risk_level).fontColor(this.palette().muted).fontSize(11).margin({ left: 8 })
                   Blank()
-                  Text(`${version.daily_items.length} 项`).fontColor(this.palette().muted).fontSize(11)
+                  Text(version.model_provider).fontColor(this.palette().muted).fontSize(11)
                 }.width('100%')
-                Text(version.summary).fontColor(this.palette().text).fontSize(12).lineHeight(18)
+                Text(`路由策略：${version.route_policy}`).fontColor(this.palette().text).fontSize(12).lineHeight(18)
               }.width('100%').padding(12)
               .backgroundColor(this.palette().glass.surface).border({ width: 1, color: this.palette().glass.border }).borderRadius(14)
             }, (version: FinalReviewPlanVersion) => `${version.version}`)
@@ -232,8 +242,8 @@ export struct FinalReviewPlanPage {
                   Checkbox().select(item.completed)
                     .onChange((value: boolean) => { if (value && !item.completed) this.completeItem(item.item_id); })
                   Column({ space: 2 }) {
-                    Text(item.course_name).fontColor(this.palette().text).fontSize(13).maxLines(1)
-                    Text(`${item.topic} · ${item.planned_minutes} 分钟`).fontColor(this.palette().muted).fontSize(11)
+                    Text(item.course_name ?? '通用复习').fontColor(this.palette().text).fontSize(13).maxLines(1)
+                    Text(`${item.title} · ${item.scheduled_minutes} 分钟`).fontColor(this.palette().muted).fontSize(11)
                   }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                 }.width('100%').padding(10)
                 .backgroundColor(this.palette().glass.surface).border({ width: 1, color: this.palette().glass.border }).borderRadius(12)

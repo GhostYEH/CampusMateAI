@@ -346,7 +346,9 @@ async def get_artifact(
     meta = repo.get_artifact(artifact_id, user.id)
     if not meta:
         raise AgentRunNotFound("Artifact 不存在")
-    return AgentArtifactOut(**meta)
+    return AgentArtifactOut(**{
+        name: meta.get(name) for name in AgentArtifactOut.model_fields
+    })
 
 
 # ===== notices manual =====

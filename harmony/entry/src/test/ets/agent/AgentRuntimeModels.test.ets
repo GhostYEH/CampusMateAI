@@ -72,11 +72,11 @@ export default function agentRuntimeModelsTest(): void {
     it('parses notice_workflow fixture with uncertainty and actions', 0, () => {
       const raw: Record<string, Object> = {
         workflow_id: 'wf_001', user_id: 'user_demo_001', source_id: 'src_manual',
-        status: 'WAITING_CONFIRMATION',
-        uncertainty: { missing_fields: ['deadline'], confidence: 'MEDIUM', notes: '截止时间不明确' },
+        notice_id: 'notice_1', status: 'WAITING_CONFIRMATION', confidence: 0.6,
+        uncertainty: ['deadline'], materials: ['实验报告.pdf'], steps: [], source_evidence: [],
         actions: [{
           action_id: 'act_001', workflow_id: 'wf_001', title: '提交作业',
-          risk_level: 'MANUAL_ONLY', status: 'PROPOSED', materials: ['实验报告.pdf'], is_external: true
+          action_type: 'external_submit', risk_level: 'MANUAL_ONLY', status: 'PROPOSED', external_ref: 'portal'
         }],
         created_at: '2026-09-12T12:00:00+08:00', updated_at: '2026-09-12T12:05:00+08:00'
       };
@@ -85,7 +85,6 @@ export default function agentRuntimeModelsTest(): void {
       expect(wf.uncertainty.missing_fields[0]).assertEqual('deadline');
       expect(wf.actions[0].risk_level).assertEqual(RiskLevel.MANUAL_ONLY);
       expect(wf.actions[0].is_external).assertEqual(true);
-      expect(wf.actions[0].materials[0]).assertEqual('实验报告.pdf');
     });
 
     it('falls back to UNKNOWN for unrecognized enum values', 0, () => {

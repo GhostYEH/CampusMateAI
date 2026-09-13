@@ -190,7 +190,10 @@ export interface FinalReviewCampaign {
   user_id: string;
   exam_ids: string[];
   daily_capacity_minutes: number;
-  status: RunStatus;
+  preferred_periods: string[];
+  rest_days: string[];
+  intensity: string;
+  status: string;
   active_version: number | null;
   created_at: string;
   updated_at: string;
@@ -199,26 +202,48 @@ export interface FinalReviewCampaign {
 export interface FinalReviewPlanVersion {
   campaign_id: string;
   version: number;
-  status: PlanVersionStatus;
+  plan: Record<string, Object>;
+  model_provider: string;
+  route_policy: string;
+  risk_level: RiskLevel;
+  approval_id: string | null;
+  supersedes_version: number | null;
   created_at: string;
-  summary: string;
-  daily_items: FinalReviewDailyItem[];
+}
+
+export interface FinalReviewPlanGenerateResult {
+  run_id: string;
+  version: number;
+  plan: Record<string, Object>;
+  risk_level: RiskLevel;
+  requires_approval: boolean;
+  approval_id: string | null;
+}
+
+export interface FinalReviewActivateResult {
+  campaign_id: string;
+  active_version: number;
+  activated: boolean;
 }
 
 export interface FinalReviewDailyItem {
   item_id: string;
-  campaign_id: string;
-  version: number;
-  date: string;
-  course_name: string;
-  topic: string;
-  planned_minutes: number;
+  title: string;
+  course_name: string | null;
+  scheduled_minutes: number;
+  sort_order: number;
+  status: string;
+  personal_task_id: string | null;
+  difficulty: string | null;
   completed: boolean;
 }
 
 export interface FinalReviewDailyAgenda {
+  agenda_id: string;
   campaign_id: string;
-  date: string;
+  plan_version: number;
+  agenda_date: string;
+  total_minutes: number;
   items: FinalReviewDailyItem[];
 }
 
@@ -226,19 +251,35 @@ export interface FinalReviewAdjustmentProposal {
   proposal_id: string;
   campaign_id: string;
   status: AdjustmentProposalStatus;
+  source_version: number;
+  proposal: Record<string, Object>;
   risk_level: RiskLevel;
+  approval_id: string | null;
+  target_version: number | null;
+  reason: string | null;
   summary: string;
   rationale: string;
   created_at: string;
-  resolved_at: string | null;
 }
 
 export interface FinalReviewCheckIn {
-  campaign_id: string;
-  date: string;
-  completed_item_ids: string[];
-  difficulty: string;
-  feedback: string;
+  recorded: boolean;
+  evidence_count: number;
+}
+
+export interface FinalReviewAdjustmentAnalyzeResult {
+  run_id: string;
+  proposal_id: string;
+  risk_level: RiskLevel;
+  requires_approval: boolean;
+  approval_id: string | null;
+}
+
+export interface FinalReviewAdjustmentDecisionResult {
+  proposal_id: string;
+  status: AdjustmentProposalStatus;
+  new_version: number | null;
+  active_version: number | null;
 }
 
 // ===== 课程研究领域 =====
@@ -274,23 +315,35 @@ export interface CourseSourcePolicy {
 
 export interface CourseResearchRun {
   run_id: string;
+  session_id: string;
   user_id: string;
   question: string;
-  course_id: string;
+  course_id: string | null;
   assistance_mode: AssistanceMode;
   academic_policy: AcademicPolicy;
+  effective_assistance_mode: AssistanceMode;
   source_policy: CourseSourcePolicy;
   status: RunStatus;
   created_at: string;
   updated_at: string;
+  finished_at: string | null;
+  error_code: string | null;
   artifact_ids: string[];
+  fallback_used: boolean;
 }
 
 export interface CourseResearchSource {
   source_id: string;
-  run_id: string;
+  source_type: string;
   title: string;
-  url: string;
+  url: string | null;
+  snippet: string | null;
+  source_ref: string | null;
+  accessed_at: string;
+  is_verified: boolean;
+  verification_note: string | null;
+  supports_claim: boolean | null;
+  is_fabricated: boolean;
   verification: CitationVerification;
   is_course_material: boolean;
   retrieved_at: string;
@@ -330,8 +383,9 @@ export interface NoticeSource {
   source_id: string;
   code: string;
   display_name: string;
-  permission_scope: string;
-  enabled: boolean;
+  permission_scope: string | null;
+  kind: string;
+  automation_enabled: boolean;
 }
 
 export interface NoticeUncertainty {
@@ -343,18 +397,33 @@ export interface NoticeUncertainty {
 export interface NoticeWorkflowAction {
   action_id: string;
   workflow_id: string;
+  action_type: string;
   title: string;
   risk_level: RiskLevel;
   status: NoticeActionStatus;
   materials: string[];
   is_external: boolean;
+  external_ref: string | null;
+  expires_at: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface NoticeWorkflow {
   workflow_id: string;
   user_id: string;
   source_id: string;
+  notice_id: string;
   status: NoticeWorkflowStatus;
+  title: string | null;
+  deadline: string | null;
+  location: string | null;
+  audience: string | null;
+  materials: string[];
+  source_evidence: string[];
+  confidence: number;
   uncertainty: NoticeUncertainty;
   actions: NoticeWorkflowAction[];
   created_at: string;
@@ -449,11 +518,13 @@ export class AgentEnumParser {
   }
 
   static adjustmentProposalStatus(raw: string): AdjustmentProposalStatus {
+    if (raw.toUpperCase() === 'PENDING') return AdjustmentProposalStatus.PROPOSED;
     const values: string[] = [
       AdjustmentProposalStatus.PROPOSED, AdjustmentProposalStatus.APPROVED,
       AdjustmentProposalStatus.REJECTED, AdjustmentProposalStatus.EXPIRED
     ];
-    return values.indexOf(raw) >= 0 ? raw as AdjustmentProposalStatus : AdjustmentProposalStatus.UNKNOWN;
+    const normalized: string = raw.toUpperCase();
+    return values.indexOf(normalized) >= 0 ? normalized as AdjustmentProposalStatus : AdjustmentProposalStatus.UNKNOWN;
   }
 
   static noticeWorkflowStatus(raw: string): NoticeWorkflowStatus {
@@ -597,12 +668,17 @@ export class AgentDtoParser {
   static finalReviewCampaign(raw: Record<string, Object>): FinalReviewCampaign {
     const examIdsRaw: Object = raw.exam_ids ?? [];
     const examIds: string[] = Array.isArray(examIdsRaw) ? examIdsRaw as string[] : [];
+    const periodsRaw: Object = raw.preferred_periods ?? [];
+    const restDaysRaw: Object = raw.rest_days ?? [];
     return {
       campaign_id: (raw.campaign_id ?? '') as string,
       user_id: (raw.user_id ?? '') as string,
       exam_ids: examIds,
       daily_capacity_minutes: (raw.daily_capacity_minutes ?? 0) as number,
-      status: AgentEnumParser.runStatus((raw.status ?? '') as string),
+      preferred_periods: Array.isArray(periodsRaw) ? periodsRaw as string[] : [],
+      rest_days: Array.isArray(restDaysRaw) ? restDaysRaw as string[] : [],
+      intensity: (raw.intensity ?? 'medium') as string,
+      status: (raw.status ?? '') as string,
       active_version: raw.active_version === null || raw.active_version === undefined
         ? null : raw.active_version as number,
       created_at: (raw.created_at ?? '') as string,
@@ -611,41 +687,51 @@ export class AgentDtoParser {
   }
 
   static finalReviewDailyItem(raw: Record<string, Object>): FinalReviewDailyItem {
+    const status: string = (raw.status ?? '') as string;
     return {
       item_id: (raw.item_id ?? '') as string,
-      campaign_id: (raw.campaign_id ?? '') as string,
-      version: (raw.version ?? 0) as number,
-      date: (raw.date ?? '') as string,
-      course_name: (raw.course_name ?? '') as string,
-      topic: (raw.topic ?? '') as string,
-      planned_minutes: (raw.planned_minutes ?? 0) as number,
-      completed: (raw.completed ?? false) as boolean
+      title: (raw.title ?? '') as string,
+      course_name: raw.course_name === null || raw.course_name === undefined ? null : raw.course_name as string,
+      scheduled_minutes: (raw.scheduled_minutes ?? 0) as number,
+      sort_order: (raw.sort_order ?? 0) as number,
+      status: status,
+      personal_task_id: raw.personal_task_id === null || raw.personal_task_id === undefined
+        ? null : raw.personal_task_id as string,
+      difficulty: raw.difficulty === null || raw.difficulty === undefined ? null : raw.difficulty as string,
+      completed: status.toLowerCase() === 'completed'
     };
   }
 
   static finalReviewPlanVersion(raw: Record<string, Object>): FinalReviewPlanVersion {
-    const itemsRaw: Object = raw.daily_items ?? [];
-    const itemsArr: Record<string, Object>[] = Array.isArray(itemsRaw) ? itemsRaw as Record<string, Object>[] : [];
     return {
       campaign_id: (raw.campaign_id ?? '') as string,
       version: (raw.version ?? 0) as number,
-      status: AgentEnumParser.planVersionStatus((raw.status ?? '') as string),
-      created_at: (raw.created_at ?? '') as string,
-      summary: (raw.summary ?? '') as string,
-      daily_items: itemsArr.map((item: Record<string, Object>) => AgentDtoParser.finalReviewDailyItem(item))
+      plan: (raw.plan ?? {}) as Record<string, Object>,
+      model_provider: (raw.model_provider ?? '') as string,
+      route_policy: (raw.route_policy ?? '') as string,
+      risk_level: AgentEnumParser.riskLevel((raw.risk_level ?? '') as string),
+      approval_id: raw.approval_id === null || raw.approval_id === undefined ? null : raw.approval_id as string,
+      supersedes_version: raw.supersedes_version === null || raw.supersedes_version === undefined
+        ? null : raw.supersedes_version as number,
+      created_at: (raw.created_at ?? '') as string
     };
   }
 
   static finalReviewAdjustmentProposal(raw: Record<string, Object>): FinalReviewAdjustmentProposal {
+    const proposal: Record<string, Object> = (raw.proposal ?? {}) as Record<string, Object>;
     return {
       proposal_id: (raw.proposal_id ?? '') as string,
       campaign_id: (raw.campaign_id ?? '') as string,
       status: AgentEnumParser.adjustmentProposalStatus((raw.status ?? '') as string),
+      source_version: (raw.source_version ?? 0) as number,
+      proposal: proposal,
       risk_level: AgentEnumParser.riskLevel((raw.risk_level ?? '') as string),
-      summary: (raw.summary ?? '') as string,
-      rationale: (raw.rationale ?? '') as string,
-      created_at: (raw.created_at ?? '') as string,
-      resolved_at: raw.resolved_at === null || raw.resolved_at === undefined ? null : raw.resolved_at as string
+      approval_id: raw.approval_id === null || raw.approval_id === undefined ? null : raw.approval_id as string,
+      target_version: raw.target_version === null || raw.target_version === undefined ? null : raw.target_version as number,
+      reason: raw.reason === null || raw.reason === undefined ? null : raw.reason as string,
+      summary: (proposal.summary ?? '学习计划调整建议') as string,
+      rationale: (proposal.rationale ?? proposal.reason ?? '') as string,
+      created_at: (raw.created_at ?? '') as string
     };
   }
 
@@ -662,29 +748,50 @@ export class AgentDtoParser {
     const artifactIds: string[] = Array.isArray(artifactIdsRaw) ? artifactIdsRaw as string[] : [];
     return {
       run_id: (raw.run_id ?? '') as string,
+      session_id: (raw.session_id ?? '') as string,
       user_id: (raw.user_id ?? '') as string,
       question: (raw.question ?? '') as string,
-      course_id: (raw.course_id ?? '') as string,
+      course_id: raw.course_id === null || raw.course_id === undefined ? null : raw.course_id as string,
       assistance_mode: AgentEnumParser.assistanceMode((raw.assistance_mode ?? '') as string),
       academic_policy: AgentEnumParser.academicPolicy((raw.academic_policy ?? '') as string),
+      effective_assistance_mode: AgentEnumParser.assistanceMode(
+        (raw.effective_assistance_mode ?? raw.assistance_mode ?? '') as string),
       source_policy: AgentDtoParser.courseSourcePolicy(
         (raw.source_policy ?? {}) as Record<string, Object>),
       status: AgentEnumParser.runStatus((raw.status ?? '') as string),
       created_at: (raw.created_at ?? '') as string,
       updated_at: (raw.updated_at ?? '') as string,
-      artifact_ids: artifactIds
+      finished_at: raw.finished_at === null || raw.finished_at === undefined ? null : raw.finished_at as string,
+      error_code: raw.error_code === null || raw.error_code === undefined ? null : raw.error_code as string,
+      artifact_ids: artifactIds,
+      fallback_used: (raw.fallback_used ?? false) as boolean
     };
   }
 
   static courseResearchSource(raw: Record<string, Object>): CourseResearchSource {
+    const sourceType: string = (raw.source_type ?? '') as string;
+    const verified: boolean = (raw.is_verified ?? false) as boolean;
+    const supports: boolean | null = raw.supports_claim === null || raw.supports_claim === undefined
+      ? null : raw.supports_claim as boolean;
+    let verification: CitationVerification = CitationVerification.PARTIAL;
+    if (verified) verification = CitationVerification.VERIFIED;
+    if (supports === false || (raw.is_fabricated ?? false) as boolean) verification = CitationVerification.FAILED;
     return {
       source_id: (raw.source_id ?? '') as string,
-      run_id: (raw.run_id ?? '') as string,
+      source_type: sourceType,
       title: (raw.title ?? '') as string,
-      url: (raw.url ?? '') as string,
-      verification: AgentEnumParser.citationVerification((raw.verification ?? '') as string),
-      is_course_material: (raw.is_course_material ?? false) as boolean,
-      retrieved_at: (raw.retrieved_at ?? '') as string
+      url: raw.url === null || raw.url === undefined ? null : raw.url as string,
+      snippet: raw.snippet === null || raw.snippet === undefined ? null : raw.snippet as string,
+      source_ref: raw.source_ref === null || raw.source_ref === undefined ? null : raw.source_ref as string,
+      accessed_at: (raw.accessed_at ?? '') as string,
+      is_verified: verified,
+      verification_note: raw.verification_note === null || raw.verification_note === undefined
+        ? null : raw.verification_note as string,
+      supports_claim: supports,
+      is_fabricated: (raw.is_fabricated ?? false) as boolean,
+      verification: verification,
+      is_course_material: sourceType === 'course_material',
+      retrieved_at: (raw.accessed_at ?? '') as string
     };
   }
 
@@ -693,8 +800,10 @@ export class AgentDtoParser {
       source_id: (raw.source_id ?? '') as string,
       code: (raw.code ?? '') as string,
       display_name: (raw.display_name ?? '') as string,
-      permission_scope: (raw.permission_scope ?? '') as string,
-      enabled: (raw.enabled ?? false) as boolean
+      permission_scope: raw.permission_scope === null || raw.permission_scope === undefined
+        ? null : raw.permission_scope as string,
+      kind: (raw.kind ?? '') as string,
+      automation_enabled: (raw.automation_enabled ?? false) as boolean
     };
   }
 
@@ -714,24 +823,44 @@ export class AgentDtoParser {
     return {
       action_id: (raw.action_id ?? '') as string,
       workflow_id: (raw.workflow_id ?? '') as string,
+      action_type: (raw.action_type ?? '') as string,
       title: (raw.title ?? '') as string,
       risk_level: AgentEnumParser.riskLevel((raw.risk_level ?? '') as string),
       status: AgentEnumParser.noticeActionStatus((raw.status ?? '') as string),
       materials: materials,
-      is_external: (raw.is_external ?? false) as boolean
+      is_external: (raw.is_external ?? (raw.external_ref !== null && raw.external_ref !== undefined)) as boolean,
+      external_ref: raw.external_ref === null || raw.external_ref === undefined ? null : raw.external_ref as string,
+      expires_at: raw.expires_at === null || raw.expires_at === undefined ? null : raw.expires_at as string,
+      error_code: raw.error_code === null || raw.error_code === undefined ? null : raw.error_code as string,
+      error_message: raw.error_message === null || raw.error_message === undefined ? null : raw.error_message as string,
+      created_at: (raw.created_at ?? '') as string,
+      updated_at: (raw.updated_at ?? '') as string
     };
   }
 
   static noticeWorkflow(raw: Record<string, Object>): NoticeWorkflow {
     const actionsRaw: Object = raw.actions ?? [];
     const actionsArr: Record<string, Object>[] = Array.isArray(actionsRaw) ? actionsRaw as Record<string, Object>[] : [];
+    const materialsRaw: Object = raw.materials ?? [];
+    const evidenceRaw: Object = raw.source_evidence ?? [];
     return {
       workflow_id: (raw.workflow_id ?? '') as string,
       user_id: (raw.user_id ?? '') as string,
       source_id: (raw.source_id ?? '') as string,
+      notice_id: (raw.notice_id ?? '') as string,
       status: AgentEnumParser.noticeWorkflowStatus((raw.status ?? '') as string),
-      uncertainty: AgentDtoParser.noticeUncertainty(
-        (raw.uncertainty ?? {}) as Record<string, Object>),
+      title: raw.title === null || raw.title === undefined ? null : raw.title as string,
+      deadline: raw.deadline === null || raw.deadline === undefined ? null : raw.deadline as string,
+      location: raw.location === null || raw.location === undefined ? null : raw.location as string,
+      audience: raw.audience === null || raw.audience === undefined ? null : raw.audience as string,
+      materials: Array.isArray(materialsRaw) ? materialsRaw as string[] : [],
+      source_evidence: Array.isArray(evidenceRaw) ? evidenceRaw as string[] : [],
+      confidence: (raw.confidence ?? 0) as number,
+      uncertainty: {
+        missing_fields: Array.isArray(raw.uncertainty) ? raw.uncertainty as string[] : [],
+        confidence: `${raw.confidence ?? 0}`,
+        notes: Array.isArray(raw.uncertainty) ? (raw.uncertainty as string[]).join('、') : ''
+      },
       actions: actionsArr.map((action: Record<string, Object>) => AgentDtoParser.noticeWorkflowAction(action)),
       created_at: (raw.created_at ?? '') as string,
       updated_at: (raw.updated_at ?? '') as string

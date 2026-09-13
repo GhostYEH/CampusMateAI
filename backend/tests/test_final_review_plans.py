@@ -80,6 +80,17 @@ class TestPlanGenerate:
         assert body["requires_approval"] is True
         assert body["run_id"].startswith("run_")
         assert body["approval_id"].startswith("apv_")
+        run = client.get(
+            f"/api/v1/agent-runs/{body['run_id']}", headers=headers
+        )
+        assert run.status_code == 200, run.text
+        assert len(run.json()["artifact_ids"]) == 1
+        artifact = client.get(
+            f"/api/v1/agent-artifacts/{run.json()['artifact_ids'][0]}",
+            headers=headers,
+        )
+        assert artifact.status_code == 200, artifact.text
+        assert artifact.json()["artifact_type"] == "FINAL_REVIEW_PLAN"
 
     def test_plan_cannot_activate_until_its_approval_is_resolved(self):
         _, client = _setup()

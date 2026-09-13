@@ -2,7 +2,7 @@ import { describe, expect, it } from '@ohos/hypium';
 import { AgentEventReducer, IdempotencyKey, AgentRunView } from '../../../main/ets/service/AgentEventReducer';
 import {
   AgentEvent, AgentEventType, RunStatus, RunPhase, RiskLevel, AgentApproval, ApprovalStatus,
-  AgentDtoParser, FinalReviewCampaign, FinalReviewPlanVersion, PlanVersionStatus
+  AgentDtoParser, FinalReviewCampaign, FinalReviewPlanVersion
 } from '../../../main/ets/data/AgentRuntimeModels';
 
 function evt(id: string, seq: number, type: AgentEventType, status: RunStatus,
@@ -56,7 +56,7 @@ export default function finalReviewStateTest(): void {
       const campaignRaw: Record<string, Object> = {
         campaign_id: 'camp_fr', user_id: 'user_demo_001',
         exam_ids: ['exam_1', 'exam_2'], daily_capacity_minutes: 120,
-        status: 'SUCCEEDED', active_version: 1,
+        preferred_periods: [], rest_days: [], intensity: 'medium', status: 'active', active_version: 1,
         created_at: '2026-09-12T10:00:00+08:00', updated_at: '2026-09-12T10:20:00+08:00'
       };
       const campaign: FinalReviewCampaign = AgentDtoParser.finalReviewCampaign(campaignRaw);
@@ -64,34 +64,34 @@ export default function finalReviewStateTest(): void {
       expect(campaign.daily_capacity_minutes).assertEqual(120);
 
       const versionRaw: Record<string, Object> = {
-        campaign_id: 'camp_fr', version: 1, status: 'ACTIVE',
-        created_at: '2026-09-12T10:15:00+08:00', summary: '期末复习计划 v1',
-        daily_items: [{
-          item_id: 'item_1', campaign_id: 'camp_fr', version: 1, date: '2026-09-13',
-          course_name: '数据结构', topic: '排序算法', planned_minutes: 60, completed: false
-        }]
+        campaign_id: 'camp_fr', version: 1,
+        plan: { days: [{ date: '2026-09-13', items: [{ topic: '排序算法' }] }] },
+        model_provider: 'zhipu', route_policy: 'reasoning_primary',
+        risk_level: 'CONFIRM_REQUIRED', approval_id: 'apv_fr', supersedes_version: null,
+        created_at: '2026-09-12T10:15:00+08:00'
       };
       const version: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(versionRaw);
-      expect(version.status).assertEqual(PlanVersionStatus.ACTIVE);
-      expect(version.daily_items.length).assertEqual(1);
-      expect(version.daily_items[0].topic).assertEqual('排序算法');
+      expect(version.risk_level).assertEqual(RiskLevel.CONFIRM_REQUIRED);
+      expect(version.model_provider).assertEqual('zhipu');
+      expect(version.approval_id).assertEqual('apv_fr');
     });
 
     it('keeps v1 readable after v2 is activated (immutable versions)', 0, () => {
       const v1Raw: Record<string, Object> = {
-        campaign_id: 'camp_fr', version: 1, status: 'SUPERSEDED',
-        created_at: '2026-09-12T10:15:00+08:00', summary: 'v1', daily_items: []
+        campaign_id: 'camp_fr', version: 1, plan: {}, model_provider: 'zhipu',
+        route_policy: 'reasoning_primary', risk_level: 'CONFIRM_REQUIRED', approval_id: 'a1',
+        supersedes_version: null, created_at: '2026-09-12T10:15:00+08:00'
       };
       const v2Raw: Record<string, Object> = {
-        campaign_id: 'camp_fr', version: 2, status: 'ACTIVE',
-        created_at: '2026-09-13T10:00:00+08:00', summary: 'v2', daily_items: []
+        campaign_id: 'camp_fr', version: 2, plan: {}, model_provider: 'zhipu',
+        route_policy: 'reasoning_primary', risk_level: 'CONFIRM_REQUIRED', approval_id: 'a2',
+        supersedes_version: 1, created_at: '2026-09-13T10:00:00+08:00'
       };
       const v1: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v1Raw);
       const v2: FinalReviewPlanVersion = AgentDtoParser.finalReviewPlanVersion(v2Raw);
-      expect(v1.status).assertEqual(PlanVersionStatus.SUPERSEDED);
-      expect(v2.status).assertEqual(PlanVersionStatus.ACTIVE);
       expect(v1.version).assertEqual(1);
       expect(v2.version).assertEqual(2);
+      expect(v2.supersedes_version).assertEqual(1);
     });
   });
 }

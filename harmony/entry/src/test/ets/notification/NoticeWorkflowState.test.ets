@@ -30,7 +30,7 @@ export default function noticeWorkflowStateTest(): void {
     it('does not auto-execute MANUAL_ONLY actions (conservative gate)', 0, () => {
       const manualAction: NoticeWorkflowAction = AgentDtoParser.noticeWorkflowAction({
         action_id: 'act_manual', workflow_id: 'wf_1', title: '在教务系统手动提交作业',
-        risk_level: 'MANUAL_ONLY', status: 'PROPOSED', materials: ['实验报告.pdf'], is_external: true
+        action_type: 'external_submit', risk_level: 'MANUAL_ONLY', status: 'PROPOSED', external_ref: 'portal'
       });
       expect(AgentEventReducer.isManualOnly(manualAction.risk_level)).assertEqual(true);
       expect(manualAction.is_external).assertEqual(true);
@@ -39,7 +39,7 @@ export default function noticeWorkflowStateTest(): void {
     it('allows AUTO_SAFE actions to proceed without approval', 0, () => {
       const autoAction: NoticeWorkflowAction = AgentDtoParser.noticeWorkflowAction({
         action_id: 'act_auto', workflow_id: 'wf_1', title: '创建个人待办',
-        risk_level: 'AUTO_SAFE', status: 'DONE', materials: [], is_external: false
+        action_type: 'task.create', risk_level: 'AUTO_SAFE', status: 'DONE', external_ref: null
       });
       expect(AgentEventReducer.isManualOnly(autoAction.risk_level)).assertEqual(false);
       expect(autoAction.status).assertEqual(NoticeActionStatus.DONE);
@@ -48,14 +48,14 @@ export default function noticeWorkflowStateTest(): void {
     it('parses workflow uncertainty from fixture shape', 0, () => {
       const raw: Record<string, Object> = {
         workflow_id: 'wf_1', user_id: 'user_demo_001', source_id: 'src_manual',
-        status: 'WAITING_CONFIRMATION',
-        uncertainty: { missing_fields: ['deadline', 'location'], confidence: 'MEDIUM', notes: '截止时间与地点不明确' },
+        notice_id: 'notice_1', status: 'WAITING_CONFIRMATION', confidence: 0.5,
+        uncertainty: ['deadline', 'location'], materials: [], steps: [], source_evidence: [],
         actions: [], created_at: '', updated_at: ''
       };
       const wf: NoticeWorkflow = AgentDtoParser.noticeWorkflow(raw);
       expect(wf.status).assertEqual(NoticeWorkflowStatus.WAITING_CONFIRMATION);
       expect(wf.uncertainty.missing_fields.length).assertEqual(2);
-      expect(wf.uncertainty.confidence).assertEqual('MEDIUM');
+      expect(wf.uncertainty.confidence).assertEqual('0.5');
     });
 
     it('keeps approval pending when EXPIRED (no silent auto-approve)', 0, () => {

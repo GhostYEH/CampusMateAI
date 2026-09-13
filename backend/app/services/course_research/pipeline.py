@@ -168,14 +168,35 @@ class CourseResearchPipeline:
         if effective.academic_policy == AcademicPolicy.AI_PROHIBITED:
             return await self._finish_with_policy_block(ctx, effective)
 
-        # 顺序执行各角色
-        await self._run_coordinator(ctx)
-        await self._run_course_researcher(ctx)
-        await self._run_web_researcher(ctx)
-        await self._run_citation_verifier(ctx)
-        await self._run_tutor(ctx)
-        await self._run_critic(ctx)
-        await self._run_synthesizer(ctx)
+        # 顺序执行逻辑角色；每个边界都重读持久化取消状态。
+        stages = (
+            self._run_coordinator,
+            self._run_course_researcher,
+            self._run_web_researcher,
+            self._run_citation_verifier,
+            self._run_tutor,
+            self._run_critic,
+            self._run_synthesizer,
+        )
+        for stage in stages:
+            await stage(ctx)
+            if self._executor.is_cancelled(run_id):
+                self._repo.update_session(
+                    session_id, status=RunStatus.CANCELLED.value, finished_at=_now()
+                )
+                return CourseResearchResult(
+                    run_id=run_id,
+                    session_id=session_id,
+                    status=RunStatus.CANCELLED,
+                    artifact_ids=[],
+                    verified_source_count=len(ctx.verified_sources),
+                    unverified_source_count=len(ctx.unverified_sources),
+                    fallback_used=ctx.fallback_used,
+                    failed_roles=ctx.failed_roles,
+                    effective_mode=effective.effective_mode,
+                    academic_policy=effective.academic_policy,
+                    degraded=effective.degraded,
+                )
 
         # 根据失败情况决定终态
         if ctx.failed_roles:

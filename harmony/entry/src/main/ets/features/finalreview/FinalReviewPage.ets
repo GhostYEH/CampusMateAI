@@ -1,5 +1,5 @@
 import { AgentRuntimeRepository } from '../../repository/AgentRuntimeRepository';
-import { FinalReviewCampaign, RunStatus } from '../../data/AgentRuntimeModels';
+import { FinalReviewCampaign } from '../../data/AgentRuntimeModels';
 import { ExamItem } from '../../data/Models';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
@@ -68,11 +68,12 @@ export struct FinalReviewPage {
     }
   }
 
-  statusLabel(status: RunStatus): string {
-    switch (status) {
-      case RunStatus.SUCCEEDED: return '已就绪';
-      case RunStatus.RUNNING: return '生成中';
-      case RunStatus.FAILED: return '失败';
+  statusLabel(status: string): string {
+    switch (status.toLowerCase()) {
+      case 'active': return '已激活';
+      case 'draft': return '待生成';
+      case 'completed': return '已完成';
+      case 'cancelled': return '已取消';
       default: return '进行中';
     }
   }

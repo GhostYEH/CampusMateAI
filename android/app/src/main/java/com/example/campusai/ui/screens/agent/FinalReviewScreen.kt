@@ -77,7 +77,9 @@ fun FinalReviewScreen(
                 items(state.planVersions) { version ->
                     ListItem(
                         headlineContent = { Text("v${version.version}") },
-                        supportingContent = { Text("${version.summary} • ${version.status}") },
+                        supportingContent = {
+                            Text("${version.modelProvider.ifBlank { "待生成" }} • ${version.riskLevel.ifBlank { "风险未知" }}")
+                        },
                     )
                 }
                 state.todayAgenda?.let { agenda ->

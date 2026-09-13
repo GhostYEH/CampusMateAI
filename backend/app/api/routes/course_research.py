@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 
 from ...core.exceptions import AgentRuntimeError, AgentRunNotFound
 from ...models.multi_role import UserRow
@@ -38,7 +38,7 @@ from ...services.agent_runtime.executor import AgentExecutor
 from ...services.agent_runtime.run_manager import RunManager
 from ...services.course_research.citation_verifier import CitationVerifier
 from ...services.course_research.pipeline import CourseResearchPipeline
-from ...services.course_research.policy import SourcePolicy
+from ...services.course_research.policy import SourcePolicy, build_effective_policy
 from ...services.course_research.source_fetcher import ControlledSourceFetcher
 from ...services.llm.model_router import ModelRouter
 from ..deps import ServiceContainer, current_user, get_container, student_only
@@ -70,6 +70,51 @@ def _build_pipeline(container: ServiceContainer) -> CourseResearchPipeline:
     )
 
 
+async def _execute_pipeline_background(
+    *,
+    container: ServiceContainer,
+    pipeline: CourseResearchPipeline,
+    run_id: str,
+    session_id: str,
+    user_id: str,
+    body: CourseResearchRunCreateIn,
+    source_policy: SourcePolicy,
+) -> None:
+    """在响应返回后执行角色流水线，使 SSE 和取消窗口真正可用。"""
+    try:
+        await pipeline.execute(
+            run_id=run_id,
+            session_id=session_id,
+            user_id=user_id,
+            question=body.question,
+            course_id=body.course_id,
+            requested_mode=body.assistance_mode,
+            academic_candidates=[body.academic_policy, AcademicPolicy.UNKNOWN],
+            source_policy=source_policy,
+            user_upload_refs=body.user_upload_refs,
+        )
+    except Exception:
+        _repo(container).update_session(
+            session_id,
+            status=RunStatus.FAILED.value,
+            error_code="AGENT_PIPELINE_FAILED",
+        )
+        try:
+            container.agent_run_manager.transition(
+                run_id, RunStatus.FAILED.value, phase="IDLE"
+            )
+            container.agent_event_store.append(
+                run_id=run_id,
+                type="RUN_FAILED",
+                status=RunStatus.FAILED.value,
+                phase="IDLE",
+                role="coordinator",
+                summary="课程研究执行失败",
+            )
+        except Exception:
+            pass
+
+
 def _session_to_out(
     session, *, artifact_ids: list[str], fallback_used: bool = False,
     effective_mode=None, academic_policy=None,
@@ -85,7 +130,7 @@ def _session_to_out(
         question=session.question,
         assistance_mode=AssistanceMode(session.assistance_mode),
         academic_policy=AcademicPolicy(session.academic_policy),
-        effective_mode=effective_mode or AssistanceMode(session.assistance_mode),
+        effective_assistance_mode=effective_mode or AssistanceMode(session.assistance_mode),
         source_policy=SourcePolicyOut(**sp),
         status=RunStatus(session.status),
         created_at=session.created_at,
@@ -101,6 +146,7 @@ def _session_to_out(
 async def create_run(
     body: CourseResearchRunCreateIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
@@ -151,27 +197,29 @@ async def create_run(
         job_id=job_id,
         idempotency_key=effective_key,
     )
-    # 执行 pipeline
+    # 响应后执行 pipeline，客户端可在运行期间订阅 SSE。
     pipeline = _build_pipeline(container)
-    academic_candidates = [body.academic_policy, AcademicPolicy.UNKNOWN]
-    result = await pipeline.execute(
+    effective = build_effective_policy(
+        requested_mode=body.assistance_mode,
+        academic_candidates=[body.academic_policy, AcademicPolicy.UNKNOWN],
+        source_policy=source_policy,
+    )
+    background_tasks.add_task(
+        _execute_pipeline_background,
+        container=container,
+        pipeline=pipeline,
         run_id=run_id,
         session_id=session.session_id,
         user_id=user.id,
-        question=body.question,
-        course_id=body.course_id,
-        requested_mode=body.assistance_mode,
-        academic_candidates=academic_candidates,
+        body=body,
         source_policy=source_policy,
-        user_upload_refs=body.user_upload_refs,
     )
-    artifacts = container.agent_artifact_manager.list_by_run(run_id, user.id)
     return _session_to_out(
         session,
-        artifact_ids=[a["artifact_id"] for a in artifacts],
-        fallback_used=result.fallback_used,
-        effective_mode=result.effective_mode,
-        academic_policy=result.academic_policy,
+        artifact_ids=[],
+        fallback_used=False,
+        effective_mode=effective.effective_mode,
+        academic_policy=effective.academic_policy,
     )
 
 
@@ -235,6 +283,14 @@ async def cancel_run(
     manager.cancel(run_id, reason=body.reason)
     repo.update_session(
         session.session_id, status=RunStatus.CANCELLED.value, finished_at=None,
+    )
+    container.agent_event_store.append(
+        run_id=run_id,
+        type="RUN_CANCELLED",
+        status=RunStatus.CANCELLED.value,
+        phase="IDLE",
+        role="coordinator",
+        summary="用户已取消课程研究",
     )
     return await get_run(run_id, user, container)
 

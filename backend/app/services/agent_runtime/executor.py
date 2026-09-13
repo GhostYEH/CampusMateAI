@@ -93,5 +93,10 @@ class AgentExecutor:
             tool_code=tool_code, role_tools=role_spec.tools, args=args
         )
 
+    def is_cancelled(self, run_id: str) -> bool:
+        """在逻辑角色边界检查持久化取消状态。"""
+        run = self._repo.get_run(run_id)
+        return bool(run and run["status"] == "CANCELLED")
+
 
 __all__ = ["AgentExecutor"]

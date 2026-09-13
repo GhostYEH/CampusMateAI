@@ -33,6 +33,7 @@ export struct CourseResearchPage {
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   async aboutToAppear(): Promise<void> {
+    this.active = true;
     if (this.courses.length > 0) this.selectedCourseId = this.courses[0].id;
   }
 
@@ -119,6 +120,7 @@ export struct CourseResearchPage {
       if (!this.active) return;
       try {
         this.artifacts = await this.repository.listResearchArtifacts(runId);
+        this.sources = await this.repository.listResearchSources(runId);
         this.run = await this.repository.getResearchRun(runId);
       } catch (_) { /* 结果加载失败保留已有状态 */ }
     }).catch(() => {

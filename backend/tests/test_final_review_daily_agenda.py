@@ -58,14 +58,23 @@ def _create_active_campaign(client, headers, exam_ids, capacity=120):
         json={"exam_ids": exam_ids, "daily_capacity_minutes": capacity},
         headers=headers,
     ).json()["campaign_id"]
-    client.post(
+    generated = client.post(
         f"/api/v1/final-review/campaigns/{cid}/plans/generate",
         json={}, headers=headers,
     )
-    client.post(
+    assert generated.status_code == 200, generated.text
+    approval_id = generated.json()["approval_id"]
+    approved = client.post(
+        f"/api/v1/agent-approvals/{approval_id}/decision",
+        json={"decision": "APPROVED", "reason": "daily agenda test"},
+        headers=headers,
+    )
+    assert approved.status_code == 200, approved.text
+    activated = client.post(
         f"/api/v1/final-review/campaigns/{cid}/activate",
         json={"version": 1}, headers=headers,
     )
+    assert activated.status_code == 200, activated.text
     return cid
 
 

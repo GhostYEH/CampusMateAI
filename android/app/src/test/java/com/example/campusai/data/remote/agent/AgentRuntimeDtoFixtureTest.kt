@@ -3,6 +3,7 @@ package com.example.campusai.data.remote.agent
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +14,17 @@ import org.junit.Test
  */
 class AgentRuntimeDtoFixtureTest {
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
+
+    @Test
+    fun `final review create request omits legacy course ids`() {
+        val request = FinalReviewCampaignCreateRequest(
+            courseIds = listOf("legacy-course"),
+            examIds = listOf("exam-1"),
+        )
+        val json = moshi.adapter(FinalReviewCampaignCreateRequest::class.java).toJson(request)
+        assertFalse(json.contains("course_ids"))
+        assertTrue(json.contains("exam_ids"))
+    }
 
     @Test
     fun `runtime fixture job parses with string ids`() {
@@ -92,7 +104,7 @@ class AgentRuntimeDtoFixtureTest {
     fun `course research fixture parses partial status and policies`() {
         val json = """
         {"run_id":"run_cr_001","job_id":"job_cr_001","question":"解释概念",
-         "mode":"EXPLAIN","academic_policy":"LIMITED",
+         "assistance_mode":"EXPLAIN","effective_assistance_mode":"EXPLAIN","academic_policy":"LIMITED",
          "source_policy":{"course_material_priority":true,"allow_web":true,"allow_user_upload":true},
          "status":"PARTIAL","phase":"IDLE","risk_level":"AUTO_SAFE",
          "created_at":"","updated_at":"","artifact_ids":["art_cr_report"]}
@@ -109,7 +121,7 @@ class AgentRuntimeDtoFixtureTest {
     fun `notice workflow fixture parses awaiting approval`() {
         val json = """
         {"workflow_id":"wf_001","notice_id":"notice_001","status":"WAITING_CONFIRMATION",
-         "summary":"需确认","actions":[],"created_at":"","updated_at":""}
+         "title":"需确认","actions":[],"created_at":"","updated_at":""}
         """.trimIndent()
         val workflow = moshi.adapter(NoticeWorkflowDto::class.java).fromJson(json)!!
         assertEquals(NoticeWorkflowStatus.WAITING_CONFIRMATION, workflow.workflowStatus())

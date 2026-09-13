@@ -316,6 +316,29 @@ async def generate_plan(
         risk_level=risk_level,
         approval_id=approval_id,
     )
+    artifact_id = container.agent_artifact_manager.create(
+        run_id=run_id,
+        user_id=user.id,
+        artifact_type="FINAL_REVIEW_PLAN",
+        content={
+            "campaign_id": campaign_id,
+            "version": version,
+            "plan": result.plan,
+            "risk_level": risk_level,
+            "approval_id": approval_id,
+        },
+        mime_type="application/json",
+        version=version,
+    )
+    container.agent_event_store.append(
+        run_id=run_id,
+        type="ARTIFACT_CREATED",
+        status="RUNNING",
+        phase="PERSISTING_RESULT",
+        role="planner",
+        summary="复习计划制品已生成",
+        artifact_id=artifact_id,
+    )
     runtime_repo.update_job_input_ref(
         job_id,
         {**request_ref, "version": version, "approval_id": approval_id},

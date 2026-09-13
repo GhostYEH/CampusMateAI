@@ -48,8 +48,8 @@ class AgentIdempotencyTest {
 
     @Test
     fun `payload key differs for different payload content`() {
-        val r1 = FinalReviewCampaignCreateRequest(courseIds = listOf("c1"), examIds = emptyList())
-        val r2 = FinalReviewCampaignCreateRequest(courseIds = listOf("c2"), examIds = emptyList())
+        val r1 = FinalReviewCampaignCreateRequest(examIds = listOf("e1"))
+        val r2 = FinalReviewCampaignCreateRequest(examIds = listOf("e2"))
         val k1 = AgentIdempotency.payloadKey("user_1", "op", r1)
         val k2 = AgentIdempotency.payloadKey("user_1", "op", r2)
         assertNotEquals(k1, k2)

@@ -31,7 +31,7 @@ class AgentRuntimeRepository(
 
     suspend fun createJob(jobKind: String, payload: Map<String, Any?> = emptyMap()): Result<AgentJobDto> = runCatching {
         val key = AgentIdempotency.payloadKey(userIdProvider(), "create_job", jobKind to payload)
-        val response = api.agentCreateJob(mapOf("job_kind" to jobKind, "payload" to payload), key)
+        val response = api.agentCreateJob(mapOf("job_kind" to jobKind, "input_ref" to payload), key)
         check(response.isSuccessful) { "创建任务失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("任务响应为空")
     }
@@ -50,7 +50,7 @@ class AgentRuntimeRepository(
 
     suspend fun cancelRun(runId: String): Result<AgentRunDto> = runCatching {
         val key = AgentIdempotency.stableKey(userIdProvider(), "cancel_run", runId)
-        val response = api.agentCancelRun(runId, key)
+        val response = api.agentCancelRun(runId, emptyMap(), key)
         check(response.isSuccessful) { "取消运行失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("运行响应为空")
     }
@@ -58,7 +58,7 @@ class AgentRuntimeRepository(
     suspend fun listEvents(runId: String): Result<List<AgentEventDto>> = runCatching {
         val response = api.agentListRunEvents(runId)
         check(response.isSuccessful) { "加载事件失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
+        response.body() ?: emptyList()
     }
 
     fun streamRunEvents(runId: String, lastEventId: String? = null): Flow<AgentSseClient.SseEvent> {
@@ -67,7 +67,7 @@ class AgentRuntimeRepository(
 
     suspend fun decideApproval(approvalId: String, decision: String, reason: String? = null): Result<AgentApprovalDto> = runCatching {
         val key = AgentIdempotency.stableKey(userIdProvider(), "decide_approval", approvalId, decision)
-        val response = api.agentDecideApproval(approvalId, ApprovalDecisionRequest(decision, reason), key)
+        val response = api.agentDecideApproval(approvalId, ApprovalDecisionRequest(decision.uppercase(), reason), key)
         check(response.isSuccessful) { "审批失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("审批响应为空")
     }

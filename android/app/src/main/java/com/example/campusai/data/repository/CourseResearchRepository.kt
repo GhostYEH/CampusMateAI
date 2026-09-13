@@ -57,16 +57,13 @@ class CourseResearchRepository(
         response.body()?.artifacts ?: emptyList()
     }
 
-    suspend fun listRoleProgress(runId: String): Result<List<CourseResearchRoleProgressDto>> = runCatching {
-        val response = api.agentListCourseResearchRoleProgress(runId)
-        check(response.isSuccessful) { "加载角色进度失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
-    }
+    suspend fun listRoleProgress(@Suppress("UNUSED_PARAMETER") runId: String): Result<List<CourseResearchRoleProgressDto>> =
+        Result.success(emptyList())
 
     suspend fun listCitations(runId: String): Result<List<CourseResearchCitationDto>> = runCatching {
-        val response = api.agentListCourseResearchCitations(runId)
+        val response = api.agentListCourseResearchArtifacts(runId)
         check(response.isSuccessful) { "加载引用失败(${response.code()})" }
-        response.body()?.items ?: emptyList()
+        response.body()?.sources ?: emptyList()
     }
 
     fun streamRunEvents(runId: String, lastEventId: String? = null): Flow<AgentSseClient.SseEvent> {

@@ -146,8 +146,16 @@ data class AgentErrorEnvelope(
 }
 
 data class AgentCapabilitiesDto(
-    val capabilities: List<String> = emptyList(),
+    @Json(name = "contract_version") val version: String = "",
+    val capabilities: List<AgentCapabilityDto> = emptyList(),
+)
+
+data class AgentCapabilityDto(
+    val name: String = "",
     val version: String = "",
+    @Json(name = "route_policy") val routePolicy: String = "",
+    @Json(name = "risk_level") val riskLevel: String = "",
+    @Json(name = "requires_approval") val requiresApproval: Boolean = false,
 )
 
 // ── Final Review DTO ──
@@ -172,6 +180,11 @@ data class FinalReviewPlanVersionDto(
     @Json(name = "activated_at") val activatedAt: String? = null,
     val summary: String = "",
     @Json(name = "total_items") val totalItems: Int = 0,
+    @Json(name = "model_provider") val modelProvider: String = "",
+    @Json(name = "route_policy") val routePolicy: String = "",
+    @Json(name = "risk_level") val riskLevel: String = "",
+    @Json(name = "approval_id") val approvalId: String? = null,
+    @Json(name = "supersedes_version") val supersedesVersion: Int? = null,
 )
 
 data class FinalReviewPlanGenerateDto(
@@ -194,7 +207,7 @@ data class FinalReviewDailyItemDto(
     val date: String = "",
     val title: String = "",
     val description: String = "",
-    @Json(name = "estimated_minutes") val estimatedMinutes: Int = 0,
+    @Json(name = "scheduled_minutes") val estimatedMinutes: Int = 0,
     val status: String = "",
     @Json(name = "course_name") val courseName: String? = null,
     @Json(name = "plan_version") val planVersion: Int = 1,
@@ -219,10 +232,10 @@ data class FinalReviewAdjustmentProposalDto(
 }
 
 data class FinalReviewDailyCheckinRequest(
-    val date: String,
+    @Json(name = "report_date") val date: String,
     @Json(name = "completed_item_ids") val completedItemIds: List<String> = emptyList(),
-    @Json(name = "self_report") val selfReport: String? = null,
-    @Json(name = "difficulty") val difficulty: String? = null,
+    @Json(name = "insufficient_time") val insufficientTime: Boolean = false,
+    @Json(name = "difficulty_notes") val difficultyNotes: String? = null,
 )
 
 data class FinalReviewEvidenceRequest(
@@ -233,7 +246,7 @@ data class FinalReviewEvidenceRequest(
 )
 
 data class FinalReviewCampaignCreateRequest(
-    @Json(name = "course_ids") val courseIds: List<String>,
+    @Transient val courseIds: List<String> = emptyList(),
     @Json(name = "exam_ids") val examIds: List<String>,
     @Json(name = "daily_capacity_minutes") val dailyCapacityMinutes: Int = 120,
     @Json(name = "preferred_periods") val preferredPeriods: List<String> = emptyList(),
@@ -257,7 +270,8 @@ data class CourseResearchRunDto(
     @Json(name = "run_id") val runId: String = "",
     @Json(name = "job_id") val jobId: String = "",
     val question: String = "",
-    val mode: String = "",
+    @Json(name = "assistance_mode") val mode: String = "",
+    @Json(name = "effective_assistance_mode") val effectiveMode: String = "",
     @Json(name = "academic_policy") val academicPolicy: String = "",
     @Json(name = "source_policy") val sourcePolicy: SourcePolicyDto? = null,
     val status: String = "",
@@ -281,14 +295,21 @@ data class CourseResearchRoleProgressDto(
 )
 
 data class CourseResearchCitationDto(
-    @Json(name = "citation_id") val citationId: String = "",
-    val source: String = "",
+    @Json(name = "source_id") val citationId: String = "",
+    @Json(name = "title") val source: String = "",
     val url: String? = null,
     val status: String = "",
-    @Json(name = "verified_at") val verifiedAt: String? = null,
-    val note: String? = null,
+    @Json(name = "accessed_at") val verifiedAt: String? = null,
+    @Json(name = "verification_note") val note: String? = null,
+    @Json(name = "is_verified") val isVerified: Boolean = false,
+    @Json(name = "supports_claim") val supportsClaim: Boolean? = null,
+    @Json(name = "is_fabricated") val isFabricated: Boolean = false,
 ) {
-    fun citationStatus(): CitationStatus = safeEnum(status, CitationStatus.entries.toTypedArray(), CitationStatus.UNKNOWN)
+    fun citationStatus(): CitationStatus {
+        if (status.isNotBlank()) return safeEnum(status, CitationStatus.entries.toTypedArray(), CitationStatus.UNKNOWN)
+        if (isFabricated || supportsClaim == false) return CitationStatus.CONFLICT
+        return if (isVerified) CitationStatus.VERIFIED else CitationStatus.UNVERIFIED
+    }
 }
 
 data class CourseResearchRunCreateRequest(
@@ -323,10 +344,10 @@ data class NoticeWorkflowActionDto(
     @Json(name = "action_type") val actionType: String = "",
     @Json(name = "risk_level") val riskLevel: String = "",
     val status: String = "",
-    val summary: String = "",
+    @Json(name = "title") val summary: String = "",
     val confidence: Double = 0.0,
     val evidence: String = "",
-    @Json(name = "external_url") val externalUrl: String? = null,
+    @Json(name = "external_ref") val externalUrl: String? = null,
     @Json(name = "created_at") val createdAt: String = "",
 ) {
     fun risk(): AgentRiskLevel = safeEnum(riskLevel, AgentRiskLevel.entries.toTypedArray(), AgentRiskLevel.UNKNOWN)
@@ -337,7 +358,7 @@ data class NoticeWorkflowDto(
     @Json(name = "workflow_id") val workflowId: String = "",
     @Json(name = "notice_id") val noticeId: String = "",
     val status: String = "",
-    val summary: String = "",
+    @Json(name = "title") val summary: String = "",
     val actions: List<NoticeWorkflowActionDto> = emptyList(),
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
@@ -370,4 +391,5 @@ data class ApprovalDecisionRequest(
 data class CourseResearchArtifactBundleDto(
     @Json(name = "run_id") val runId: String = "",
     val artifacts: List<AgentArtifactDto> = emptyList(),
+    val sources: List<CourseResearchCitationDto> = emptyList(),
 )
