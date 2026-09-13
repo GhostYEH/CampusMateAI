@@ -153,17 +153,17 @@ def test_candidate_model_not_configured():
 def test_write_capability_rejected():
     """写能力永远不走 canary。"""
     client, container, auth, uid = _setup()
-    _insert_promotion_decision(container, "c_kc_classification_v1", "ELIGIBLE_FOR_CANARY")
-    result = container.learner_control_service.canary_gate(capability_name="c_kc_classification_v1", user_id=uid)
+    _insert_promotion_decision(container, "write_capability_test_v1", "ELIGIBLE_FOR_CANARY")
+    result = container.learner_control_service.canary_gate(capability_name="write_capability_test_v1", user_id=uid)
     assert result["allowed"] is False
     assert result["reason"] == "capability_is_not_read_only"
 
 
 def test_error_classification_rejected():
-    """c_error_classification_v1 不走 canary（非只读）。"""
+    """非只读能力不走 canary。"""
     client, container, auth, uid = _setup()
-    _insert_promotion_decision(container, "c_error_classification_v1", "ELIGIBLE_FOR_CANARY")
-    result = container.learner_control_service.canary_gate(capability_name="c_error_classification_v1", user_id=uid)
+    _insert_promotion_decision(container, "another_write_capability_v1", "ELIGIBLE_FOR_CANARY")
+    result = container.learner_control_service.canary_gate(capability_name="another_write_capability_v1", user_id=uid)
     assert result["allowed"] is False
 
 
@@ -265,7 +265,7 @@ def test_circuit_breaker_closed_after_success():
 def test_api_endpoint_write_capability():
     """API 端点验证写能力被拒绝。"""
     client, container, auth, uid = _setup()
-    resp = client.get("/api/v1/learner-state/canary-gate/c_kc_classification_v1", headers=auth)
+    resp = client.get("/api/v1/learner-state/canary-gate/write_capability_test_v1", headers=auth)
     assert resp.status_code == 200
     assert resp.json()["allowed"] is False
 

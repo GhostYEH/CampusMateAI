@@ -11,27 +11,18 @@ from pydantic import BaseModel, ValidationError
 
 from ..models.model_capability import ModelCapabilityRequest
 from ..schemas.model_capability import (
-    ErrorClassificationInput, ErrorClassificationOutput, KCClassificationInput, KCClassificationOutput,
     LearningSummaryInput, LearningSummaryOutput, ReadOnlyToolRoutingInput, ReadOnlyToolRoutingOutput,
 )
-from .c_language_taxonomy import C_LANGUAGE_KNOWLEDGE_COMPONENTS
 
 CAPABILITY_NAMES = (
-    "c_kc_classification_v1", "c_error_classification_v1", "learning_summary_v1", "read_only_tool_routing_v1",
+    "learning_summary_v1", "read_only_tool_routing_v1",
 )
 READ_ONLY_TOOLS = ("read_core_state", "read_knowledge_state", "read_personal_tasks", "search_course_materials")
-KC_CODES = {code for code, _, _ in C_LANGUAGE_KNOWLEDGE_COMPONENTS}
-ERROR_CODES = {
-    "ERROR_POINTER_DEREFERENCE", "ERROR_ARRAY_BOUNDARY", "ERROR_FUNCTION_PARAMETER",
-    "ERROR_DYNAMIC_MEMORY", "ERROR_STRUCT_MEMBER", "ERROR_FILE_IO", "ERROR_TYPE_CONVERSION",
-}
-REASON_CODES = ERROR_CODES | {"CONTROLLED_TOPIC_MATCH", "CHAPTER_MAPPING_MATCH", "INSUFFICIENT_EVIDENCE"}
 SUMMARY_CLAIMS = {
-    "PRIORITIZE_NEAR_DEADLINE", "REVIEW_KNOWLEDGE_COMPONENT", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL",
+    "PRIORITIZE_NEAR_DEADLINE", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL",
 }
 SUMMARY_CLAIM_EVIDENCE = {
     "PRIORITIZE_NEAR_DEADLINE": {"deadline_urgent", "PRIORITIZE_NEAR_DEADLINE"},
-    "REVIEW_KNOWLEDGE_COMPONENT": {"kc_review", "REVIEW_KNOWLEDGE_COMPONENT"},
     "USE_SHORT_SESSION": {"short_session", "USE_SHORT_SESSION"},
     "DATA_QUALITY_PARTIAL": {"data_quality_partial", "DATA_QUALITY_PARTIAL"},
 }
@@ -88,10 +79,6 @@ def _spec(name: str, input_model, output_model, fields: tuple[str, ...], strateg
 class ModelCapabilityRegistry:
     def __init__(self) -> None:
         self._specs = {
-            "c_kc_classification_v1": _spec("c_kc_classification_v1", KCClassificationInput, KCClassificationOutput,
-                                             ("knowledge_component_codes", "confidence", "reason_codes", "abstained"), "kc"),
-            "c_error_classification_v1": _spec("c_error_classification_v1", ErrorClassificationInput, ErrorClassificationOutput,
-                                                ("error_code", "knowledge_component_codes", "confidence", "abstained"), "error"),
             "learning_summary_v1": _spec("learning_summary_v1", LearningSummaryInput, LearningSummaryOutput,
                                           ("summary", "claim_codes"), "summary"),
             "read_only_tool_routing_v1": _spec("read_only_tool_routing_v1", ReadOnlyToolRoutingInput, ReadOnlyToolRoutingOutput,
@@ -124,15 +111,7 @@ class ModelCapabilityRegistry:
         payload = value.model_dump(mode="json")
         if len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False)) > spec.maximum_input_size:
             raise CapabilityValidationError("capability input is too large")
-        if spec.capability_name == "c_kc_classification_v1":
-            if not set(payload["candidate_kc_codes"]).issubset(KC_CODES) or not set(payload["chapter_mapping_codes"]).issubset(KC_CODES):
-                raise CapabilityValidationError("taxonomy code is not allowlisted")
-            if not set(payload["controlled_error_codes"]).issubset(ERROR_CODES):
-                raise CapabilityValidationError("error code is not allowlisted")
-        elif spec.capability_name == "c_error_classification_v1":
-            if not set(payload["candidate_kc_codes"]).issubset(KC_CODES) or not set(payload["candidate_error_codes"]).issubset(ERROR_CODES):
-                raise CapabilityValidationError("classification code is not allowlisted")
-        elif spec.capability_name == "read_only_tool_routing_v1":
+        if spec.capability_name == "read_only_tool_routing_v1":
             if not set(payload["candidate_read_tools"]).issubset(READ_ONLY_TOOLS) or payload["resource_ownership"] != "current_user":
                 raise CapabilityValidationError("tool is not read-only or resource is not owned")
         return payload
@@ -147,15 +126,7 @@ class ModelCapabilityRegistry:
             raise CapabilityValidationError("model output schema is invalid") from exc
         if len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False)) > spec.maximum_output_size:
             raise CapabilityValidationError("model output is too large")
-        if name == "c_kc_classification_v1":
-            if not set(payload["knowledge_component_codes"]).issubset(KC_CODES) or not set(payload["reason_codes"]).issubset(REASON_CODES):
-                raise CapabilityValidationError("model output violates taxonomy policy")
-        elif name == "c_error_classification_v1":
-            if payload["error_code"] is not None and payload["error_code"] not in ERROR_CODES:
-                raise CapabilityValidationError("model output violates error policy")
-            if not set(payload["knowledge_component_codes"]).issubset(KC_CODES):
-                raise CapabilityValidationError("model output violates taxonomy policy")
-        elif name == "learning_summary_v1":
+        if name == "learning_summary_v1":
             if not set(payload["claim_codes"]).issubset(SUMMARY_CLAIMS) or FORBIDDEN_SUMMARY.search(payload["summary"]):
                 raise CapabilityValidationError("model output violates summary policy")
             if input_payload is not None and any(
@@ -186,7 +157,6 @@ class ModelCapabilityRegistry:
                 if payload["tool_name"] is not None:
                     resource_by_tool = {
                         "read_core_state": "learner_state",
-                        "read_knowledge_state": "knowledge_state",
                         "read_personal_tasks": "personal_task",
                         "search_course_materials": "course_content",
                     }
@@ -195,16 +165,8 @@ class ModelCapabilityRegistry:
         return payload
 
     def fallback(self, request: ModelCapabilityRequest, payload: dict[str, Any], failure_code: str | None) -> dict[str, Any]:
-        if request.capability_name == "c_kc_classification_v1":
-            codes = payload["candidate_kc_codes"][:1]
-            return {"knowledge_component_codes": codes, "confidence": .5 if codes else 0.0,
-                    "reason_codes": ["CHAPTER_MAPPING_MATCH"] if codes else ["INSUFFICIENT_EVIDENCE"], "abstained": not bool(codes)}
-        if request.capability_name == "c_error_classification_v1":
-            code = payload["candidate_error_codes"][0] if len(payload["candidate_error_codes"]) == 1 else None
-            return {"error_code": code, "knowledge_component_codes": payload["candidate_kc_codes"][:1],
-                    "confidence": .4 if code else 0.0, "abstained": code is None}
         if request.capability_name == "learning_summary_v1":
-            claims = [code for code in payload["explanation_codes"] if code in {"PRIORITIZE_NEAR_DEADLINE", "REVIEW_KNOWLEDGE_COMPONENT", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL"}]
+            claims = [code for code in payload["explanation_codes"] if code in {"PRIORITIZE_NEAR_DEADLINE", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL"}]
             summary = "建议按已提供的优先级安排短时学习。" if claims else "当前证据不足，建议先补充一次受控学习记录。"
             return {"summary": summary, "claim_codes": claims[:3]}
         return {"tool_name": None, "arguments": {}, "confidence": 0.0, "abstained": True}

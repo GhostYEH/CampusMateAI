@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -102,6 +103,14 @@ def create_app() -> FastAPI:
         description="大学生校园事务智能陪伴助手 — 后端 API",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def attach_request_id(request, call_next):
+        request_id = f"req_{uuid4().hex}"
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     # CORS
     origins = settings.cors_origins_list

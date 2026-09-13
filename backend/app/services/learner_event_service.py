@@ -585,7 +585,7 @@ class LearnerEventService:
             subject_id=report_id,
             outcome="completed",
             evidence_reference=EvidenceReference(
-                kind="row", table="learner_self_reports", row_id=report_id
+                kind="row", table="study_sessions", row_id=report_id
             ),
             data_quality=data_quality,
             consent_scope="core_learning_record",
@@ -619,7 +619,7 @@ class LearnerEventService:
             subject_id=feedback_id,
             outcome="observed_completed",
             evidence_reference=EvidenceReference(
-                kind="row", table="ai_learning_feedback", row_id=feedback_id
+                kind="row", table="learning_plan_feedback", row_id=feedback_id
             ),
             data_quality=data_quality,
             consent_scope="core_learning_record",
@@ -632,69 +632,6 @@ class LearnerEventService:
         )
         return self.record_event(user_id=user_id, event=event)
 
-    def record_code_attempt_analyzed(
-        self,
-        *,
-        user_id: str,
-        attempt_id: str,
-        course_id: Optional[str],
-        exercise_id: Optional[str],
-        correctness: bool,
-        test_pass_count: int,
-        test_total_count: int,
-        compiler_error_categories: list[str],
-        runtime_error_categories: list[str],
-        occurred_at: datetime,
-        data_quality: str = "verified",
-    ) -> Optional[LearnerEventAppendResult]:
-        if self._is_source_skipped(user_id=user_id, source="code_analysis"):
-            return None
-        test_pass_band = self._test_pass_band(test_pass_count, test_total_count)
-        revision = self._revision_hash(
-            {
-                "attempt_id": attempt_id,
-                "correctness": correctness,
-                "test_pass_band": test_pass_band,
-                "compiler_error_categories": sorted(compiler_error_categories),
-                "runtime_error_categories": sorted(runtime_error_categories),
-            }
-        )
-        event = LearnerEventCreate(
-            source="code_analysis",
-            event_type="code_attempt_analyzed",
-            occurred_at=occurred_at,
-            course_id=course_id,
-            subject_type="code_attempt",
-            subject_id=attempt_id,
-            outcome="observed_completed",
-            evidence_reference=EvidenceReference(
-                kind="row", table="practice_attempts", row_id=attempt_id
-            ),
-            data_quality=data_quality,
-            consent_scope="core_learning_record",
-            source_version=revision,
-            dedupe_key=f"code_analysis:code_attempt_analyzed:{attempt_id}:{revision}",
-            payload={
-                "exercise_id": exercise_id,
-                "correctness": correctness,
-                "test_pass_band": test_pass_band,
-                "compiler_error_categories": compiler_error_categories,
-                "runtime_error_categories": runtime_error_categories,
-                "data_quality": data_quality,
-            },
-        )
-        return self.record_event(user_id=user_id, event=event)
-
-    @staticmethod
-    def _test_pass_band(passed: int, total: int) -> str:
-        if total <= 0:
-            return "no_tests"
-        ratio = passed / total
-        if ratio >= 1.0:
-            return "all_passed"
-        if ratio >= 0.5:
-            return "partial"
-        return "none_passed"
 
     def record_chaoxing_assignment_graded(
         self,
@@ -795,6 +732,380 @@ class LearnerEventService:
                 "exam_time_bucket": exam_time_bucket,
                 "data_quality": "partial",
             },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_campus_schedule_synced(
+        self,
+        *,
+        user_id: str,
+        item_count: int,
+        occurred_at: datetime,
+        sync_batch_id: str,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"sync_batch_id": sync_batch_id, "item_count": item_count})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="campus_schedule_synced",
+            occurred_at=occurred_at,
+            subject_type="campus_schedule",
+            subject_id=sync_batch_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="campus_schedule_items", row_id=sync_batch_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:campus_schedule_synced:{sync_batch_id}:{revision}",
+            payload={"source_kind": "campus", "item_count": item_count, "data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_exam_updated(
+        self,
+        *,
+        user_id: str,
+        exam_id: str,
+        exam_time_bucket: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"exam_id": exam_id, "exam_time_bucket": exam_time_bucket})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="exam_updated",
+            occurred_at=occurred_at,
+            subject_type="exam",
+            subject_id=exam_id,
+            outcome="updated",
+            evidence_reference=EvidenceReference(kind="row", table="exams", row_id=exam_id),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:exam_updated:{exam_id}:{revision}",
+            payload={"exam_time_bucket": exam_time_bucket, "data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_academic_progress_synced(
+        self,
+        *,
+        user_id: str,
+        binding_id: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"binding_id": binding_id})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="academic_progress_synced",
+            occurred_at=occurred_at,
+            subject_type="academic_progress",
+            subject_id=binding_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="academic_progress", row_id=binding_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:academic_progress_synced:{binding_id}:{revision}",
+            payload={"data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_campus_notice_synced(
+        self,
+        *,
+        user_id: str,
+        notice_id: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"notice_id": notice_id})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="campus_notice_synced",
+            occurred_at=occurred_at,
+            subject_type="campus_notice",
+            subject_id=notice_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="campus_notices", row_id=notice_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:campus_notice_synced:{notice_id}:{revision}",
+            payload={"source_kind": "campus", "data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_campus_task_created(
+        self,
+        *,
+        user_id: str,
+        task_id: str,
+        has_deadline: bool,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"task_id": task_id, "has_deadline": has_deadline})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="campus_task_created",
+            occurred_at=occurred_at,
+            subject_type="campus_task",
+            subject_id=task_id,
+            outcome="discovered",
+            evidence_reference=EvidenceReference(
+                kind="row", table="campus_tasks", row_id=task_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:campus_task_created:{task_id}:{revision}",
+            payload={"has_deadline": has_deadline, "data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_campus_task_completed(
+        self,
+        *,
+        user_id: str,
+        task_id: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"task_id": task_id})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="campus_task_completed",
+            occurred_at=occurred_at,
+            subject_type="campus_task",
+            subject_id=task_id,
+            outcome="completed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="campus_tasks", row_id=task_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:campus_task_completed:{task_id}:{revision}",
+            payload={"data_quality": data_quality},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_personal_goal_created(
+        self,
+        *,
+        user_id: str,
+        goal_id: str,
+        category: str,
+        has_target_date: bool,
+        milestone_count: int,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="personal_growth"):
+            return None
+        revision = self._revision_hash(
+            {"goal_id": goal_id, "category": category, "milestone_count": milestone_count}
+        )
+        event = LearnerEventCreate(
+            source="personal_growth",
+            event_type="personal_goal_created",
+            occurred_at=occurred_at,
+            subject_type="student_goal",
+            subject_id=goal_id,
+            outcome="discovered",
+            evidence_reference=EvidenceReference(
+                kind="row", table="student_goals", row_id=goal_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"personal_growth:personal_goal_created:{goal_id}:{revision}",
+            payload={
+                "category": category,
+                "has_target_date": has_target_date,
+                "milestone_count": milestone_count,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_personal_goal_updated(
+        self,
+        *,
+        user_id: str,
+        goal_id: str,
+        category: str,
+        has_target_date: bool,
+        milestone_count: int,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="personal_growth"):
+            return None
+        revision = self._revision_hash(
+            {"goal_id": goal_id, "category": category, "milestone_count": milestone_count}
+        )
+        event = LearnerEventCreate(
+            source="personal_growth",
+            event_type="personal_goal_updated",
+            occurred_at=occurred_at,
+            subject_type="student_goal",
+            subject_id=goal_id,
+            outcome="updated",
+            evidence_reference=EvidenceReference(
+                kind="row", table="student_goals", row_id=goal_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"personal_growth:personal_goal_updated:{goal_id}:{revision}",
+            payload={
+                "category": category,
+                "has_target_date": has_target_date,
+                "milestone_count": milestone_count,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_goal_progress_reported(
+        self,
+        *,
+        user_id: str,
+        goal_id: str,
+        progress_percent: float,
+        has_milestone: bool,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="personal_growth"):
+            return None
+        revision = self._revision_hash(
+            {"goal_id": goal_id, "progress_percent": progress_percent, "has_milestone": has_milestone}
+        )
+        event = LearnerEventCreate(
+            source="personal_growth",
+            event_type="goal_progress_reported",
+            occurred_at=occurred_at,
+            subject_type="student_goal",
+            subject_id=goal_id,
+            outcome="reported",
+            evidence_reference=EvidenceReference(
+                kind="row", table="student_goal_progress", row_id=goal_id
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"personal_growth:goal_progress_reported:{goal_id}:{revision}",
+            payload={
+                "progress_percent": progress_percent,
+                "has_milestone": has_milestone,
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_preference_updated(
+        self,
+        *,
+        user_id: str,
+        preference_kind: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"preference_kind": preference_kind})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="preference_updated",
+            occurred_at=occurred_at,
+            subject_type="preference",
+            subject_id=preference_kind,
+            outcome="updated",
+            evidence_reference=EvidenceReference(
+                kind="row", table="preferences", row_id=preference_kind
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:preference_updated:{preference_kind}:{revision}",
+            payload={"preference_kind": preference_kind},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_data_source_paused(
+        self,
+        *,
+        user_id: str,
+        source_name: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"source_name": source_name})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="data_source_paused",
+            occurred_at=occurred_at,
+            subject_type="data_source",
+            subject_id=source_name,
+            outcome="paused",
+            evidence_reference=EvidenceReference(
+                kind="row", table="data_source_controls", row_id=source_name
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:data_source_paused:{source_name}:{revision}",
+            payload={"source_name": source_name},
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_data_source_resumed(
+        self,
+        *,
+        user_id: str,
+        source_name: str,
+        occurred_at: datetime,
+        data_quality: str = "verified",
+    ) -> Optional[LearnerEventAppendResult]:
+        if self._is_source_skipped(user_id=user_id, source="campus"):
+            return None
+        revision = self._revision_hash({"source_name": source_name})
+        event = LearnerEventCreate(
+            source="campus",
+            event_type="data_source_resumed",
+            occurred_at=occurred_at,
+            subject_type="data_source",
+            subject_id=source_name,
+            outcome="resumed",
+            evidence_reference=EvidenceReference(
+                kind="row", table="data_source_controls", row_id=source_name
+            ),
+            data_quality=data_quality,
+            consent_scope="core_learning_record",
+            source_version=revision,
+            dedupe_key=f"campus:data_source_resumed:{source_name}:{revision}",
+            payload={"source_name": source_name},
         )
         return self.record_event(user_id=user_id, event=event)
 

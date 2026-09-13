@@ -117,7 +117,7 @@ def test_model_transparency():
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "capabilities" in data
-    assert len(data["capabilities"]) == 4
+    assert len(data["capabilities"]) == 2
     for cap in data["capabilities"]:
         assert cap["campusmate_lm_status"] in (
             "SHADOW_ONLY", "BLOCKED", "ELIGIBLE_FOR_CANARY", "REVOKED"

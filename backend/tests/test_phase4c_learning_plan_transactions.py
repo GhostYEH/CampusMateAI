@@ -9,6 +9,12 @@ def _accepted_plan():
     client, container, headers, _ = _setup()
     user_id = container.user_repository.get_user_by_username("phase4_student").id
     course = container.course_repository.create_course(name="Atomic C", owner_user_id=user_id)
+    container.personal_task_repository.create_task(
+        user_id=user_id, title="测试任务", source="test", external_id="t1", course_id=course.id,
+    )
+    container.personal_task_repository.create_task(
+        user_id=user_id, title="测试任务2", source="test", external_id="t2", course_id=course.id,
+    )
     result = client.post("/api/v1/learning-plans/generate", json=_request(60, course_id=course.id), headers=headers)
     assert result.status_code == 200, result.text
     plan = result.json()

@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     # 设为 "1.2" 则将 SSLContext.maximum_version 限制为 TLSv1.2,
     # 仍验证证书与主机名。仅作为兼容开关,不关闭校验。
     llm_tls_max_version: str = ""
+    zhipu_llm_base_url: str = ""
+    zhipu_llm_api_key: str = ""
+    zhipu_llm_model: str = ""
+    xunfei_llm_base_url: str = "https://spark-api-open.xf-yun.com/v1"
+    xunfei_llm_api_key: str = ""
+    xunfei_llm_model: str = "lite"
+    agent_artifact_path: str = "./data/agent_artifacts"
 
     # ===== CampusMate-LM shadow candidate (disabled by default) =====
     campusmate_lm_enabled: bool = False

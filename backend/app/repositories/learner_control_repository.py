@@ -342,13 +342,6 @@ class LearnerControlRepository:
             counts["learner_events"] = conn.execute(
                 "SELECT COUNT(*) AS c FROM learner_events WHERE user_id=?", (user_id,)
             ).fetchone()["c"]
-            counts["knowledge_snapshots"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')",
-                (user_id,),
-            ).fetchone()["c"]
-            counts["misconceptions"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM misconception_hypotheses WHERE user_id=?", (user_id,)
-            ).fetchone()["c"]
             counts["corrections"] = conn.execute(
                 "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?", (user_id,)
             ).fetchone()["c"]
@@ -367,9 +360,6 @@ class LearnerControlRepository:
             ).fetchone()["c"]
             counts["shadow_runs"] = conn.execute(
                 "SELECT COUNT(*) AS c FROM model_shadow_runs WHERE user_id=?", (user_id,)
-            ).fetchone()["c"]
-            counts["practice_attempts"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM practice_attempts WHERE user_id=?", (user_id,)
             ).fetchone()["c"]
             return counts
 
@@ -401,7 +391,7 @@ class LearnerControlRepository:
             snapshot_ids = [
                 r["snapshot_id"]
                 for r in conn.execute(
-                    "SELECT snapshot_id FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')",
+                    "SELECT snapshot_id FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
                     (user_id,),
                 ).fetchall()
             ]
@@ -409,15 +399,10 @@ class LearnerControlRepository:
                 placeholders = ",".join("?" * len(snapshot_ids))
                 conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
             conn.execute(
-                "DELETE FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')",
+                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
                 (user_id,),
             )
-            conn.execute(
-                "DELETE FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE'",
-                (user_id,),
-            )
-            conn.execute("DELETE FROM misconception_hypotheses WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM misconception_hypothesis_history WHERE hypothesis_id IN (SELECT hypothesis_id FROM misconception_hypotheses WHERE user_id=?)", (user_id,))
+            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
 
     def delete_plans_only(self, *, user_id: str) -> None:
         with self._db.transaction() as conn:
@@ -448,7 +433,7 @@ class LearnerControlRepository:
         self.delete_model_shadow_only(user_id=user_id)
         with self._db.transaction() as conn:
             conn.execute("DELETE FROM learner_state_corrections WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM practice_attempts WHERE user_id=?", (user_id,))
+
 
     def record_delete_request(
         self,
@@ -542,13 +527,6 @@ class LearnerControlRepository:
         counts["learner_events"] = conn.execute(
             "SELECT COUNT(*) AS c FROM learner_events WHERE user_id=?", (user_id,)
         ).fetchone()["c"]
-        counts["knowledge_snapshots"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')",
-            (user_id,),
-        ).fetchone()["c"]
-        counts["misconceptions"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM misconception_hypotheses WHERE user_id=?", (user_id,)
-        ).fetchone()["c"]
         counts["corrections"] = conn.execute(
             "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?", (user_id,)
         ).fetchone()["c"]
@@ -567,9 +545,6 @@ class LearnerControlRepository:
         ).fetchone()["c"]
         counts["shadow_runs"] = conn.execute(
             "SELECT COUNT(*) AS c FROM model_shadow_runs WHERE user_id=?", (user_id,)
-        ).fetchone()["c"]
-        counts["practice_attempts"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM practice_attempts WHERE user_id=?", (user_id,)
         ).fetchone()["c"]
         return counts
 
@@ -607,17 +582,15 @@ class LearnerControlRepository:
             snapshot_ids = [
                 r["snapshot_id"]
                 for r in conn.execute(
-                    "SELECT snapshot_id FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')",
+                    "SELECT snapshot_id FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
                     (user_id,),
                 ).fetchall()
             ]
             if snapshot_ids:
                 placeholders = ",".join("?" * len(snapshot_ids))
                 conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute("DELETE FROM learner_state_snapshots WHERE state_type='knowledge_mastery_estimate' AND run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE')", (user_id,))
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=? AND projection_kind='KNOWLEDGE'", (user_id,))
-            conn.execute("DELETE FROM misconception_hypothesis_history WHERE hypothesis_id IN (SELECT id FROM misconception_hypotheses WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM misconception_hypotheses WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
+            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
         elif scope == "PLANS_ONLY":
             plan_ids = [
                 r["plan_id"]
@@ -651,8 +624,7 @@ class LearnerControlRepository:
             conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learner_events WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM misconception_hypothesis_history WHERE hypothesis_id IN (SELECT id FROM misconception_hypotheses WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM misconception_hypotheses WHERE user_id=?", (user_id,))
+
             plan_ids = [
                 r["plan_id"]
                 for r in conn.execute("SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)).fetchall()
@@ -671,7 +643,7 @@ class LearnerControlRepository:
             conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM model_shadow_runs WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learner_state_corrections WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM practice_attempts WHERE user_id=?", (user_id,))
+
 
     def list_delete_requests(self, *, user_id: str, limit: int = 10) -> list[DeleteRequestRow]:
         with self._db.transaction() as conn:
@@ -733,8 +705,8 @@ class LearnerControlRepository:
         return {
             "event_count": counts["learner_events"],
             "snapshot_count": counts["snapshots"],
-            "knowledge_snapshot_count": counts["knowledge_snapshots"],
-            "misconception_count": counts["misconceptions"],
+            "knowledge_snapshot_count": counts.get("knowledge_snapshots", 0),
+            "misconception_count": counts.get("misconceptions", 0),
             "correction_count": counts["corrections"],
             "learning_plan_count": counts["learning_plans"],
             "plan_feedback_count": counts["plan_feedback"],

@@ -89,8 +89,8 @@ def write_dataset(output_dir: Path) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = build_dataset()
     data = _dataset_bytes(rows)
-    data_path = output_dir / "c_language_misconception_v1.jsonl"
-    manifest_path = output_dir / "c_language_misconception_v1.manifest.json"
+    data_path = output_dir / "learner_state_evaluation_v1.jsonl"
+    manifest_path = output_dir / "learner_state_evaluation_v1.manifest.json"
     manifest = {
         "dataset_version": DATASET_VERSION,
         "annotation_policy_version": ANNOTATION_POLICY_VERSION,

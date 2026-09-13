@@ -6,6 +6,7 @@ import LiquidMetalNav from "./LiquidMetalNav.jsx";
 import { navItems } from "./navItems.js";
 
 const STUDY_ROUTE_PREFIXES = Object.freeze(["study", "island", "plans", "docs", "statistics"]);
+const WORLD_MODEL_ROUTE_PREFIXES = Object.freeze(["learning-state", "prediction"]);
 
 const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0, unreadCount = 0, reduceMotion = false, onIntent }) {
   const dockRef = useRef(null);
@@ -25,7 +26,9 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
   }, [isHomeScene]);
 
   const isActive = (key) => {
-    const prefixes = key === "study" ? STUDY_ROUTE_PREFIXES : [key];
+    const prefixes = key === "study"
+      ? STUDY_ROUTE_PREFIXES
+      : key === "learning-state" ? WORLD_MODEL_ROUTE_PREFIXES : [key];
     return prefixes.some((prefix) => location.pathname === `/${prefix}` || location.pathname.startsWith(`/${prefix}/`));
   };
   const countFor = (key) => key === "tasks" ? pendingCount : key === "notifications" ? unreadCount : 0;

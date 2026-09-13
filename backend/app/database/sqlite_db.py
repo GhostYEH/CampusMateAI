@@ -1721,6 +1721,45 @@ CREATE INDEX IF NOT EXISTS idx_agent_artifacts_user ON agent_artifacts(user_id, 
 """
 
 
+STUDENT_GOAL_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS student_goals (
+    goal_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived')),
+    target_date TEXT,
+    archived_at TEXT,
+    progress_percent REAL NOT NULL DEFAULT 0.0 CHECK(progress_percent >= 0 AND progress_percent <= 100),
+    milestone_count INTEGER NOT NULL DEFAULT 0 CHECK(milestone_count >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    idempotency_key TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_student_goals_user_status
+    ON student_goals(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_student_goals_user_category
+    ON student_goals(user_id, category);
+CREATE TABLE IF NOT EXISTS student_goal_progress (
+    progress_id TEXT PRIMARY KEY,
+    goal_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    progress_percent REAL NOT NULL CHECK(progress_percent >= 0 AND progress_percent <= 100),
+    milestone_reached TEXT,
+    occurred_at TEXT NOT NULL,
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(goal_id, idempotency_key),
+    FOREIGN KEY(goal_id) REFERENCES student_goals(goal_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_student_goal_progress_goal
+    ON student_goal_progress(goal_id, occurred_at DESC);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1787,6 +1826,7 @@ class Database:
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
+                conn.executescript(STUDENT_GOAL_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

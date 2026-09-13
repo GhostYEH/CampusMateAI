@@ -5,26 +5,28 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .c_knowledge import KnowledgeMasteryValue
-
 SnapshotDataQuality = Literal["verified", "partial", "stale", "unavailable"]
-ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"]
+ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "SEMESTER"]
 StateType = Literal[
     "observed_learning_activity",
     "task_workload",
     "deadline_exposure",
     "course_participation",
     "data_source_health",
-    "knowledge_mastery_estimate",
     "academic_course_load",
     "grade_observation",
     "credit_progress",
     "exam_exposure",
     "schedule_load",
     "goal_state",
-    "knowledge_mastery_forecast",
-    "performance_prediction",
-    "learning_velocity",
+    "workload_pressure",
+    "schedule_conflict",
+    "academic_progress",
+    "focus_rhythm",
+    "goal_progress",
+    "execution_consistency",
+    "growth_momentum",
+    "preference_profile",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
 
@@ -168,48 +170,120 @@ class GoalStateValue(BaseModel):
     warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
-ForecastTrend = Literal["improving", "steady", "declining", "insufficient_evidence"]
+WorkloadPressureBand = Literal["LOW", "MODERATE", "HIGH", "VERY_HIGH"]
 
 
-class KnowledgeMasteryForecastValue(BaseModel):
+class WorkloadPressureValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    knowledge_component_code: str = Field(min_length=1, max_length=128)
-    current_estimate: float = Field(ge=0, le=1)
-    forecast_7d: float = Field(ge=0, le=1)
-    forecast_30d: float = Field(ge=0, le=1)
-    velocity: float
-    trend: ForecastTrend
-    evidence_count: int = Field(ge=0)
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+    window_days: int = Field(ge=1, le=30)
+    task_count: int = Field(ge=0)
+    exam_count: int = Field(ge=0)
+    estimated_total_minutes: int = Field(ge=0)
+    pressure_band: WorkloadPressureBand
+    concentrated_dates: list[str] = Field(default_factory=list, max_length=16)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
-PredictedScoreBand = Literal["likely_fail", "likely_partial", "likely_pass", "insufficient_evidence"]
-
-
-class PerformancePredictionValue(BaseModel):
+class ScheduleConflictItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    knowledge_component_code: str = Field(min_length=1, max_length=128)
-    predicted_pass_probability: float = Field(ge=0, le=1)
-    predicted_score_band: PredictedScoreBand
-    evidence_count: int = Field(ge=0)
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+    kind: Literal["overlap", "gap"]
+    start: datetime
+    end: datetime
+    overlap_minutes: int = Field(ge=0)
+
+    _aware_start = field_validator("start", "end")(_aware)
 
 
-VelocityTrend = Literal["accelerating", "steady", "decelerating", "insufficient_evidence"]
-
-
-class LearningVelocityValue(BaseModel):
+class ScheduleConflictValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    knowledge_component_code: str = Field(min_length=1, max_length=128)
-    velocity_7d: float
-    velocity_30d: float
-    trend: VelocityTrend
-    consistency: float = Field(ge=0, le=1)
-    evidence_count: int = Field(ge=0)
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
+    conflict_count: int = Field(ge=0)
+    conflicts: list[ScheduleConflictItem] = Field(default_factory=list, max_length=16)
+    available_window_count: int = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class AcademicProgressValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_course_count: int = Field(ge=0)
+    observed_credit_count: float = Field(ge=0)
+    observed_passed_count: int = Field(ge=0)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+FocusRhythmStability = Literal["stable", "variable", "unknown"]
+
+
+class FocusRhythmValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observed_session_count: int = Field(ge=0)
+    common_time_slots: list[str] = Field(default_factory=list, max_length=8)
+    median_duration_minutes: int = Field(ge=0)
+    rhythm_stability: FocusRhythmStability
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class GoalProgressValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active_goal_count: int = Field(ge=0)
+    archived_goal_count: int = Field(ge=0)
+    goals_with_milestones: int = Field(ge=0)
+    average_progress_percent: float = Field(ge=0, le=100)
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+ExecutionConsistencyBand = Literal["none", "low", "moderate", "high", "no_plan"]
+
+
+class ExecutionConsistencyValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    planned_task_count: int = Field(ge=0)
+    executed_task_count: int = Field(ge=0)
+    consistency_ratio: float = Field(ge=0, le=1)
+    consistency_band: ExecutionConsistencyBand
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+GrowthMomentumBand = Literal["rising", "steady", "declining", "insufficient_data"]
+
+
+class GrowthMomentumValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goal_count: int = Field(ge=0)
+    goals_with_recent_progress: int = Field(ge=0)
+    momentum_band: GrowthMomentumBand
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+PreferenceReminderFrequency = Literal["unset", "minimal", "normal", "frequent"]
+PreferenceFocusSlot = Literal["unset", "morning", "afternoon", "evening", "night"]
+PreferenceDetailLevel = Literal["unset", "brief", "standard", "detailed"]
+
+
+class PreferenceProfileValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reminder_frequency: PreferenceReminderFrequency = "unset"
+    quiet_hours_enabled: bool = False
+    daily_plan_capacity_minutes: int = Field(default=0, ge=0, le=1440)
+    preferred_focus_slot: PreferenceFocusSlot = "unset"
+    detail_level: PreferenceDetailLevel = "unset"
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
 StateValue = Annotated[
@@ -219,16 +293,20 @@ StateValue = Annotated[
         DeadlineExposureValue,
         CourseParticipationValue,
         DataSourceHealthValue,
-        KnowledgeMasteryValue,
         AcademicCourseLoadValue,
         GradeObservationValue,
         CreditProgressValue,
         ExamExposureValue,
         ScheduleLoadValue,
         GoalStateValue,
-        KnowledgeMasteryForecastValue,
-        PerformancePredictionValue,
-        LearningVelocityValue,
+        WorkloadPressureValue,
+        ScheduleConflictValue,
+        AcademicProgressValue,
+        FocusRhythmValue,
+        GoalProgressValue,
+        ExecutionConsistencyValue,
+        GrowthMomentumValue,
+        PreferenceProfileValue,
     ],
     Field(union_mode="smart"),
 ]
@@ -264,16 +342,20 @@ class LearnerStateSnapshotOut(BaseModel):
             "deadline_exposure": DeadlineExposureValue,
             "course_participation": CourseParticipationValue,
             "data_source_health": DataSourceHealthValue,
-            "knowledge_mastery_estimate": KnowledgeMasteryValue,
             "academic_course_load": AcademicCourseLoadValue,
             "grade_observation": GradeObservationValue,
             "credit_progress": CreditProgressValue,
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
             "goal_state": GoalStateValue,
-            "knowledge_mastery_forecast": KnowledgeMasteryForecastValue,
-            "performance_prediction": PerformancePredictionValue,
-            "learning_velocity": LearningVelocityValue,
+            "workload_pressure": WorkloadPressureValue,
+            "schedule_conflict": ScheduleConflictValue,
+            "academic_progress": AcademicProgressValue,
+            "focus_rhythm": FocusRhythmValue,
+            "goal_progress": GoalProgressValue,
+            "execution_consistency": ExecutionConsistencyValue,
+            "growth_momentum": GrowthMomentumValue,
+            "preference_profile": PreferenceProfileValue,
         }[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
@@ -301,9 +383,9 @@ class LearnerStateEvidenceOut(BaseModel):
 
     evidence_kind: Literal["EVENT", "SOURCE_ROW", "SYNC_STATUS"]
     source_category: Literal[
-        "study_session", "personal_task", "practice_attempt", "course_content", "course_sync",
+        "study_session", "personal_task", "course_content", "course_sync",
         "core_learning_record", "chaoxing", "edu_schedule", "edu_grade", "edu_exam",
-        "self_report", "ai_learning_feedback", "code_analysis", "unknown"
+        "self_report", "ai_learning_feedback", "unknown"
     ]
     event_id: str | None = None
     event_type: str | None = None
@@ -314,7 +396,7 @@ class LearnerStateEvidenceOut(BaseModel):
         "completed_study_session", "current_pending_task", "observed_platform_completion",
         "chapter_sync_complete", "chapter_data_stale", "source_disconnected",
         "event_projection_gap", "input_truncated", "historical_submission_not_current",
-        "orphan_assignment_submitted", "platform_event_observed", "state_observed", "practice_result",
+        "orphan_assignment_submitted", "platform_event_observed", "state_observed",
         "edu_schedule_observed", "edu_grade_observed", "edu_exam_observed",
         "academic_data_unavailable", "goal_student_initiated", "goal_system_suggested",
     ]
@@ -343,7 +425,7 @@ class LearnerStateRunOut(BaseModel):
     is_current: bool
     warning_codes: list[str] = Field(default_factory=list, max_length=32)
     snapshot_count: int = Field(ge=0)
-    projection_kind: Literal["CORE", "KNOWLEDGE", "ACADEMIC", "PREDICTION"] = "CORE"
+    projection_kind: Literal["CORE", "ACADEMIC"] = "CORE"
     projection_scope: str = "__user__"
 
     _aware_times = field_validator("as_of", "computed_at")(_aware)
@@ -395,6 +477,14 @@ class LearnerStateChangeOut(BaseModel):
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
             "goal_state": GoalStateValue,
+            "workload_pressure": WorkloadPressureValue,
+            "schedule_conflict": ScheduleConflictValue,
+            "academic_progress": AcademicProgressValue,
+            "focus_rhythm": FocusRhythmValue,
+            "goal_progress": GoalProgressValue,
+            "execution_consistency": ExecutionConsistencyValue,
+            "growth_momentum": GrowthMomentumValue,
+            "preference_profile": PreferenceProfileValue,
         }[self.state_type]
         if self.previous_value is not None and not isinstance(self.previous_value, expected):
             raise ValueError("previous_value does not match state_type")
@@ -416,80 +506,20 @@ class LearnerStateChangePage(BaseModel):
     has_more: bool
 
 
-InterventionType = Literal["additional_practice", "remediation", "review_session"]
-
-
-class CounterfactualIntervention(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    intervention_type: InterventionType
-    knowledge_component_code: str = Field(min_length=1, max_length=128)
-    additional_practice_count: int = Field(default=0, ge=0, le=100)
-    expected_score: float = Field(default=0.0, ge=0, le=100)
-    misconception_code: str | None = Field(default=None, max_length=128)
-
-
-class CounterfactualDelta(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    knowledge_component_code: str = Field(min_length=1, max_length=128)
-    baseline_forecast_7d: float = Field(ge=0, le=1)
-    counterfactual_forecast_7d: float = Field(ge=0, le=1)
-    baseline_pass_probability: float = Field(ge=0, le=1)
-    counterfactual_pass_probability: float = Field(ge=0, le=1)
-    mastery_delta: float
-    pass_probability_delta: float
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
-
-
-class CounterfactualSimulateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    course_id: str = Field(min_length=1, max_length=128)
-    intervention: CounterfactualIntervention
-
-
-class CounterfactualSimulateResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    course_id: str
-    intervention: CounterfactualIntervention
-    deltas: list[CounterfactualDelta]
-    baseline_snapshot_count: int = Field(ge=0)
-    counterfactual_snapshot_count: int = Field(ge=0)
-    warning_codes: list[str] = Field(default_factory=list, max_length=16)
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
-
-
-class PredictionEvaluationResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    course_id: str
-    total_attempts: int = Field(ge=0)
-    training_count: int = Field(ge=0)
-    test_count: int = Field(ge=0)
-    cutoff_at: datetime
-    accuracy: float = Field(ge=0, le=1)
-    pr_auc: float = Field(ge=0, le=1)
-    log_loss: float = Field(ge=0)
-    brier_score: float = Field(ge=0, le=1)
-    calibration_error: float = Field(ge=0, le=1)
-    truthfulness_gate_passed: bool
-    gate_failure_reasons: list[str] = Field(default_factory=list, max_length=16)
-    explanation_codes: list[str] = Field(default_factory=list, max_length=16)
-
-    _aware_cutoff = field_validator("cutoff_at")(_aware)
-
-
 __all__ = [
     "AcademicCourseLoadValue",
+    "AcademicProgressValue",
     "CourseParticipationValue",
     "CreditProgressValue",
     "DataSourceHealthValue",
     "DeadlineExposureValue",
     "ExamExposureValue",
+    "ExecutionConsistencyValue",
+    "FocusRhythmValue",
+    "GoalProgressValue",
     "GoalStateValue",
     "GradeObservationValue",
+    "GrowthMomentumValue",
     "LearnerStateEvidenceOut",
     "LearnerStateEvidencePage",
     "LearnerStateChangeOut",
@@ -499,12 +529,10 @@ __all__ = [
     "LearnerStateSnapshotOut",
     "LearnerStateSnapshotPage",
     "ObservedLearningActivityValue",
+    "PreferenceProfileValue",
+    "ScheduleConflictValue",
     "ScheduleLoadValue",
     "SnapshotDataQuality",
     "TaskWorkloadValue",
-    "CounterfactualSimulateRequest",
-    "CounterfactualSimulateResponse",
-    "CounterfactualIntervention",
-    "CounterfactualDelta",
-    "PredictionEvaluationResult",
+    "WorkloadPressureValue",
 ]

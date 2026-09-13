@@ -14,6 +14,8 @@ const routePreloaders = Object.freeze({
     if (sub === "notice-workflow") return import("../pages/NoticeWorkflowPage.jsx");
     return null;
   },
+  "final-review": () => import("../pages/FinalReviewPage.jsx"),
+  "course-research": () => import("../pages/CourseResearchPage.jsx"),
 });
 
 export function preloadRoute(path) {

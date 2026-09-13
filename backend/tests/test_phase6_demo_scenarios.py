@@ -33,8 +33,8 @@ def test_seed_idempotent():
 def test_clear_removes_demo_data():
     s = _settings()
     reset_container_for_tests(s)
-    demo.seed("pointer-recovery", settings=s)
-    result = demo.clear("pointer-recovery", settings=s)
+    demo.seed("shadow-model-blocked", settings=s)
+    result = demo.clear("shadow-model-blocked", settings=s)
     assert result["removed_users"] == 1
 
 
@@ -51,9 +51,9 @@ def test_clear_does_not_affect_other_scenarios():
     s = _settings()
     reset_container_for_tests(s)
     demo.seed("deadline-pressure", settings=s)
-    demo.seed("pointer-recovery", settings=s)
+    demo.seed("shadow-model-blocked", settings=s)
     demo.clear("deadline-pressure", settings=s)
-    r2 = demo.clear("pointer-recovery", settings=s)
+    r2 = demo.clear("shadow-model-blocked", settings=s)
     assert r2["removed_users"] == 1
 
 

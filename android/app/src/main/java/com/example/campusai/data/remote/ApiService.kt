@@ -824,6 +824,12 @@ data class HomeBannerFeedDto(
 )
 
 interface ApiService {
+
+    @POST("notices/{noticeId}/workflow")
+    suspend fun analyzeNoticeWorkflow(@Path("noticeId") noticeId: String): Response<NoticeWorkflowDto>
+
+    @POST("notice-workflows/{workflowId}/confirm")
+    suspend fun confirmNoticeWorkflow(@Path("workflowId") workflowId: String, @Body request: Map<String, Boolean>): Response<NoticeWorkflowDto>
     @GET("home-banners")
     suspend fun homeBanners(): Response<HomeBannerFeedDto>
 

@@ -41,7 +41,12 @@ StateType = Literal[
     "deadline_exposure",
     "course_participation",
     "data_source_health",
-    "knowledge_mastery_estimate",
+    "academic_course_load",
+    "grade_observation",
+    "credit_progress",
+    "exam_exposure",
+    "schedule_load",
+    "goal_state",
 ]
 CorrectionStatus = Literal["ACTIVE", "REVOKED"]
 
@@ -149,7 +154,7 @@ class DeleteCountSummary(BaseModel):
     plan_feedback: int = 0
     plan_evaluations: int = 0
     shadow_runs: int = 0
-    practice_attempts: int = 0
+
 
 
 class DeleteRequestOut(BaseModel):

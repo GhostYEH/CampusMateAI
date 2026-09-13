@@ -48,10 +48,10 @@ def test_disabled_candidate_returns_deterministic_fallback_without_calling_model
 
 def test_timeout_and_invalid_output_are_safe_fallbacks() -> None:
     registry = ModelCapabilityRegistry()
-    request = _request("c_kc_classification_v1", {
-        "exercise_id": "exercise-1", "assignment_mapping_id": "mapping-1",
-        "controlled_topic_tokens": ["pointer"], "controlled_error_codes": [],
-        "chapter_mapping_codes": ["c.pointer.indirection"], "candidate_kc_codes": ["c.pointer.indirection"],
+    request = _request("learning_summary_v1", {
+        "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
+        "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
+        "evidence_count": 1, "deadline_bucket": "DUE_24H", "knowledge_band": None, "confidence_bucket": "HIGH",
     })
     timeout_runner = ModelShadowRunner(registry=registry, candidate_llm=FakeLLM("{}", delay=0.05),
                                        enabled=True, sample_rate=1.0, timeout_ms=1)
@@ -81,10 +81,10 @@ def test_circuit_breaker_opens_after_repeated_failures_and_recovers_after_cooldo
     candidate = FakeLLM("not-json")
     runner = ModelShadowRunner(registry=ModelCapabilityRegistry(), candidate_llm=candidate, enabled=True,
                                sample_rate=1.0, circuit_breaker_threshold=2, circuit_breaker_cooldown_seconds=0.01)
-    request = _request("c_kc_classification_v1", {
-        "exercise_id": "exercise-1", "assignment_mapping_id": "mapping-1",
-        "controlled_topic_tokens": ["pointer"], "controlled_error_codes": [],
-        "chapter_mapping_codes": ["c.pointer.indirection"], "candidate_kc_codes": ["c.pointer.indirection"],
+    request = _request("learning_summary_v1", {
+        "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
+        "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
+        "evidence_count": 1, "deadline_bucket": "DUE_24H", "knowledge_band": None, "confidence_bucket": "HIGH",
     })
     asyncio.run(runner.run(request)); asyncio.run(runner.run(request))
     opened = asyncio.run(runner.run(request))

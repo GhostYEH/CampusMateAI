@@ -64,11 +64,15 @@ def test_finish_route_projects_completed_session_without_changing_response():
     assert finished.status_code == 200
     assert set(finished.json()) == set(created.json())
     rows, total = _events(container, finished.json()["user_id"])
-    assert total == 1
-    assert rows[0].event_type == "study_session_finished"
-    assert rows[0].occurred_at == finished.json()["ended_at"]
-    assert rows[0].duration_seconds == finished.json()["duration_seconds"]
-    safe_event = str(rows[0].to_safe_dict())
+    assert total == 2
+    assert {row.event_type for row in rows} == {
+        "study_session_finished",
+        "self_report_submitted",
+    }
+    finished_event = next(row for row in rows if row.event_type == "study_session_finished")
+    assert finished_event.occurred_at == finished.json()["ended_at"]
+    assert finished_event.duration_seconds == finished.json()["duration_seconds"]
+    safe_event = str([row.to_safe_dict() for row in rows])
     assert "private report" not in safe_event
     assert "behavior_summary" not in safe_event
     assert "calm" not in safe_event
@@ -129,7 +133,9 @@ def test_session_event_failure_does_not_rollback_completion():
 
     assert finished.status_code == 200
     assert finished.json()["status"] == "completed"
-    assert _events(container, created.json()["user_id"])[1] == 0
+    rows, total = _events(container, created.json()["user_id"])
+    assert total == 1
+    assert rows[0].event_type == "self_report_submitted"
 
 
 def test_complete_route_projects_task_and_repeat_is_idempotent():

@@ -17,6 +17,8 @@ WritableSource = Literal[
     "self_report",
     "ai_learning_feedback",
     "code_analysis",
+    "campus",
+    "personal_growth",
 ]
 WritableEventType = Literal[
     "study_session_finished",
@@ -36,8 +38,29 @@ WritableEventType = Literal[
     "assignment_graded",
     "discussion_participated",
     "exam_discovered",
+    "campus_schedule_synced",
+    "exam_updated",
+    "academic_progress_synced",
+    "campus_notice_synced",
+    "campus_task_created",
+    "campus_task_completed",
+    "personal_goal_created",
+    "personal_goal_updated",
+    "goal_progress_reported",
+    "preference_updated",
+    "data_source_paused",
+    "data_source_resumed",
 ]
-EventOutcome = Literal["completed", "synced", "discovered", "observed_completed"]
+EventOutcome = Literal[
+    "completed",
+    "synced",
+    "discovered",
+    "observed_completed",
+    "updated",
+    "paused",
+    "resumed",
+    "reported",
+]
 DataQuality = Literal["verified", "partial"]
 ConsentScope = Literal["core_learning_record", "connected_learning_platform"]
 
@@ -63,6 +86,22 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
     "self_report": {"self_report_submitted"},
     "ai_learning_feedback": {"ai_learning_feedback_recorded"},
     "code_analysis": {"code_attempt_analyzed"},
+    "campus": {
+        "campus_schedule_synced",
+        "exam_updated",
+        "academic_progress_synced",
+        "campus_notice_synced",
+        "campus_task_created",
+        "campus_task_completed",
+        "preference_updated",
+        "data_source_paused",
+        "data_source_resumed",
+    },
+    "personal_growth": {
+        "personal_goal_created",
+        "personal_goal_updated",
+        "goal_progress_reported",
+    },
 }
 
 EVENT_OUTCOMES: dict[str, str] = {
@@ -83,6 +122,18 @@ EVENT_OUTCOMES: dict[str, str] = {
     "assignment_graded": "observed_completed",
     "discussion_participated": "observed_completed",
     "exam_discovered": "discovered",
+    "campus_schedule_synced": "synced",
+    "exam_updated": "updated",
+    "academic_progress_synced": "synced",
+    "campus_notice_synced": "synced",
+    "campus_task_created": "discovered",
+    "campus_task_completed": "completed",
+    "personal_goal_created": "discovered",
+    "personal_goal_updated": "updated",
+    "goal_progress_reported": "reported",
+    "preference_updated": "updated",
+    "data_source_paused": "paused",
+    "data_source_resumed": "resumed",
 }
 
 SENSITIVE_KEYS = frozenset(

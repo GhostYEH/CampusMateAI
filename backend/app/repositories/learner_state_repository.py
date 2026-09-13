@@ -131,7 +131,7 @@ class LearnerStateRepository:
         """Persist run, snapshots, evidence and current switch in one transaction."""
         projection_kind = run.get("projection_kind", "CORE")
         projection_scope = run.get("projection_scope", "__user__")
-        if projection_kind not in {"CORE", "KNOWLEDGE", "ACADEMIC", "PREDICTION"}:
+        if projection_kind not in {"CORE", "KNOWLEDGE", "ACADEMIC", "PREDICTION", "WORLD"}:
             raise ValueError("unsupported projection kind")
         if projection_kind == "CORE" and projection_scope != "__user__":
             raise ValueError("CORE projection must use the user scope")
@@ -141,6 +141,8 @@ class LearnerStateRepository:
             raise ValueError("ACADEMIC projection must use the user scope")
         if projection_kind == "PREDICTION" and not projection_scope:
             raise ValueError("PREDICTION projection requires a course scope")
+        if projection_kind == "WORLD" and projection_scope != "__user__":
+            raise ValueError("WORLD projection must use the user scope")
         with self._db.transaction() as conn:
             conn.execute(
                 """INSERT INTO learner_state_projection_runs
@@ -488,6 +490,7 @@ class LearnerStateRepository:
             "study_sessions": "study_session",
             "study": "study_session",
             "personal_task": "personal_task",
+
             "course_content_items": "course_content",
             "course_sync_sections": "course_sync",
             "core_learning_record": "core_learning_record",

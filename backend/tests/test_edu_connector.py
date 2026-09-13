@@ -613,6 +613,51 @@ def test_sync_grade_and_exam_with_mock() -> None:
     assert items["items_count"] >= 1
     assert items["items"][0]["course_name"]
 
+    container = get_container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    events, total = container.learner_event_repository.list_for_user(
+        user_id=user_id, source="edu", page=1, page_size=100
+    )
+    assert total >= 2
+    assert {event.event_type for event in events} >= {
+        "edu_grade_observed",
+        "edu_exam_discovered",
+    }
+    for event in events:
+        assert "course_name" not in (event.payload or {})
+        assert "location" not in (event.payload or {})
+
+
+def test_successful_schedule_sync_projects_idempotent_event() -> None:
+    client = _client()
+    headers = _headers(client)
+    _select_demo_university(client, headers)
+    client.post(
+        "/api/v1/edu/bind",
+        headers=headers,
+        json={"username": "S202401001", "password": "demo"},
+    )
+
+    first = client.post("/api/v1/edu/sync/schedule", headers=headers)
+    second = client.post("/api/v1/edu/sync/schedule", headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["persisted"] is True, first.json()
+    assert first.json()["sync_batch_id"], first.json()
+    container = get_container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    events, total = container.learner_event_repository.list_for_user(
+        user_id=user_id,
+        source="edu",
+        event_type="edu_schedule_synced",
+        page=1,
+        page_size=100,
+    )
+    assert total == 2
+    assert len({event.subject_id for event in events}) == 2
+    assert events[0].payload["scheduled_item_count"] >= 1
+
 
 def test_exam_semesters_are_read_from_persisted_data() -> None:
     client = _client()

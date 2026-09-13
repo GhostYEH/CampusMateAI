@@ -6,7 +6,8 @@
  *
  * 中性产品语言，避免心理画像/能力判定等负面表述。
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
 import { client } from "../data/api.js";
 
@@ -48,7 +49,11 @@ function useAsync(fn, deps) {
       .then((data) => mounted.current && setState({ loading: false, data, error: null }))
       .catch((error) => mounted.current && setState({ loading: false, data: null, error }));
   }, deps);
-  useRef(() => () => { mounted.current = false; });
+  useEffect(() => {
+    mounted.current = true;
+    run();
+    return () => { mounted.current = false; };
+  }, [run]);
   return { ...state, reload: run };
 }
 
@@ -96,13 +101,16 @@ export default function PredictionPage() {
   const [simLoading, setSimLoading] = useState(false);
   const [simError, setSimError] = useState(null);
 
-  useRef(() => {
+  useEffect(() => {
+    let cancelled = false;
     client.get("/courses").then((r) => r.data).then((data) => {
+      if (cancelled) return;
       const items = data?.items || data || [];
       setCourses(Array.isArray(items) ? items : []);
       setCoursesLoading(false);
-    }).catch(() => setCoursesLoading(false));
-  });
+    }).catch(() => { if (!cancelled) setCoursesLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   const effectiveCourseId = courseId || (courses[0]?.id || "");
 
@@ -146,8 +154,13 @@ export default function PredictionPage() {
   return (
     <div className="pred-page">
       <header className="pred-page__header">
-        <h1>学习预测</h1>
-        <p className="pred-page__subtitle">基于练习历史的确定性预测，诚实表达不确定性</p>
+        <div className="pred-page__title-row">
+          <div>
+            <h1>学习预测</h1>
+            <p className="pred-page__subtitle">基于练习历史的确定性预测，诚实表达不确定性</p>
+          </div>
+          <Link className="pred-back-link" to="/learning-state">返回学习状态</Link>
+        </div>
       </header>
 
       {coursesLoading ? (
@@ -334,6 +347,10 @@ export default function PredictionPage() {
                     <span className="pred-metric__value">{pct(evaluation.data.accuracy)}</span>
                   </div>
                   <div className="pred-metric">
+                    <span className="pred-metric__label">ROC-AUC</span>
+                    <span className="pred-metric__value">{evaluation.data.roc_auc?.toFixed(3) ?? "不可测"}</span>
+                  </div>
+                  <div className="pred-metric">
                     <span className="pred-metric__label">PR-AUC</span>
                     <span className="pred-metric__value">{evaluation.data.pr_auc.toFixed(3)}</span>
                   </div>
@@ -346,6 +363,11 @@ export default function PredictionPage() {
                     <span className="pred-metric__value">{evaluation.data.brier_score.toFixed(3)}</span>
                   </div>
                 </div>
+                <p className="pred-eval__provenance">
+                  评测来源：{evaluation.data.evaluation_provenance || "未标注"} ·
+                  分组重叠 {evaluation.data.exercise_group_overlap_count ?? 0} ·
+                  不作为模型晋级证据
+                </p>
                 <div className={`pred-eval__gate ${evaluation.data.truthfulness_gate_passed ? "pass" : "fail"}`}>
                   {evaluation.data.truthfulness_gate_passed ? "真实性门禁通过" : "真实性门禁未通过"}
                   {evaluation.data.gate_failure_reasons.length > 0 && (

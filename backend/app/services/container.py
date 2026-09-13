@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from ..core.config import Settings, get_settings
@@ -28,6 +29,7 @@ from ..repositories.personal_hub_repository import (
 )
 from ..repositories.study_session_repository import StudySessionRepository
 from ..repositories.study_goal_repository import StudyGoalRepository
+from ..repositories.student_goal_repository import StudentGoalRepository
 from ..repositories.study_checkin_repository import StudyCheckinRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
@@ -43,32 +45,34 @@ from ..repositories.learner_event_repository import LearnerEventRepository
 from ..repositories.learner_state_repository import LearnerStateRepository
 from ..repositories.learning_plan_repository import LearningPlanRepository
 from ..repositories.model_shadow_repository import ModelShadowRepository
-from ..repositories.c_knowledge_repository import KnowledgeRepository
+
 from ..repositories.learner_control_repository import LearnerControlRepository
+from ..repositories.agent_runtime_repository import AgentRuntimeRepository
+from ..repositories.agent_artifact_repository import AgentArtifactRepository
+from ..repositories.final_review_repository import FinalReviewRepository
+from ..repositories.course_research_repository import CourseResearchRepository
+from ..repositories.notice_workflow_repository import NoticeWorkflowRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
 )
-from ..repositories.agent_runtime_repository import AgentRuntimeRepository
-from ..repositories.agent_artifact_repository import AgentArtifactRepository
-from ..services.agent_runtime.event_store import AgentEventStore
-from ..services.agent_runtime.run_manager import RunManager
-from ..services.agent_runtime.artifact_manager import ArtifactManager
-from ..services.agent_runtime.context_manager import ContextManager
-from ..services.agent_runtime.memory_manager import MemoryManager
-from ..services.agent_runtime.agent_registry import AgentRegistry
-from ..services.agent_runtime.tool_registry import ToolRegistry
-from ..services.agent_runtime.risk_engine import RiskEngine
-from ..services.agent_runtime.approval_gate import ApprovalGate
-from ..services.agent_runtime.executor import AgentExecutor
-from ..services.llm.provider_registry import ProviderRegistry
-from ..services.llm.model_router import ModelRouter
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from ..services.learner_state_service import LearnerStateProjectionService
-from ..services.c_knowledge_service import KnowledgeService
+
+from ..services.forecast_service import ForecastService
 from ..services.learner_control_service import LearnerControlService
 from ..services.learner_model_source_policy import LearnerModelSourcePolicy
+from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManager
+from ..services.agent_runtime.agent_registry import AgentRegistry
+from ..services.agent_runtime.approval_gate import ApprovalGate
+from ..services.agent_runtime.context_manager import ContextManager
+from ..services.agent_runtime.executor import AgentExecutor
+from ..services.agent_runtime.memory_manager import MemoryManager
+from ..services.agent_runtime.risk_engine import RiskEngine
+from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.llm.model_router import ModelRouter
+from ..services.llm.provider_registry import ProviderRegistry
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -114,6 +118,7 @@ class ServiceContainer:
     # 学习陪伴
     study_session_repository: StudySessionRepository
     study_goal_repository: StudyGoalRepository
+    student_goal_repository: StudentGoalRepository
     study_checkin_repository: StudyCheckinRepository
     chaoxing_repository: ChaoxingRepository
     notice_repository: NoticeRepository
@@ -128,20 +133,14 @@ class ServiceContainer:
     learner_event_service: LearnerEventService
     learner_state_repository: LearnerStateRepository
     learner_state_service: LearnerStateProjectionService
-    knowledge_repository: KnowledgeRepository
-    knowledge_service: KnowledgeService
+    forecast_service: ForecastService
+
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
     learning_agent_tools: LearningAgentToolRegistry
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
     learner_model_source_policy: LearnerModelSourcePolicy
-    # QR 扫码登录与可信设备
-    qr_login_session_repository: QrLoginSessionRepository
-    trusted_device_repository: TrustedDeviceRepository
-    # EduConnector
-    edu_repository: EduRepository
-    edu_connector: EduConnectorService
     # CampusAgentRuntime
     agent_runtime_repository: AgentRuntimeRepository
     agent_artifact_repository: AgentArtifactRepository
@@ -157,6 +156,15 @@ class ServiceContainer:
     agent_executor: AgentExecutor
     agent_provider_registry: ProviderRegistry
     agent_model_router: ModelRouter
+    final_review_repository: FinalReviewRepository
+    course_research_repository: CourseResearchRepository
+    notice_workflow_repository: NoticeWorkflowRepository
+    # QR 扫码登录与可信设备
+    qr_login_session_repository: QrLoginSessionRepository
+    trusted_device_repository: TrustedDeviceRepository
+    # EduConnector
+    edu_repository: EduRepository
+    edu_connector: EduConnectorService
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def ensure_index(self) -> int:
@@ -211,6 +219,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
     study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
     study_goal_repo = StudyGoalRepository(db)
+    student_goal_repo = StudentGoalRepository(db)
     study_checkin_repo = StudyCheckinRepository(db)
     # TaskBreakdownService 只解析 PersonalTask(不再接受 Assignment ID)
     task_breakdown = TaskBreakdownService(
@@ -241,16 +250,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         control_repository=learner_control_repository,
         source_policy=learner_model_source_policy,
     )
-    knowledge_repository = KnowledgeRepository(db)
-    knowledge_service = KnowledgeService(
-        knowledge_repository, learner_event_repository, learner_state_repository
-    )
-    knowledge_service.seed_c_taxonomy()
     learning_plan_repository = LearningPlanRepository(db)
     learning_planner_service = LearningPlannerService(
         repository=learning_plan_repository, state_service=learner_state_service,
-        state_repository=learner_state_repository, knowledge_service=knowledge_service,
-        knowledge_repository=knowledge_repository, task_repository=personal_task_repo,
+        state_repository=learner_state_repository,
+        task_repository=personal_task_repo,
         content_repository=course_content_repository, llm=llm,
         source_policy=learner_model_source_policy,
     )
@@ -263,6 +267,36 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
     )
+    agent_runtime_repository = AgentRuntimeRepository(db)
+    final_review_repository = FinalReviewRepository(db)
+    course_research_repository = CourseResearchRepository(db)
+    notice_repository = NoticeRepository(db)
+    notice_workflow_repository = NoticeWorkflowRepository(db)
+    artifact_root = Path(settings.agent_artifact_path)
+    if not artifact_root.is_absolute():
+        artifact_root = Path(__file__).resolve().parents[2] / artifact_root
+
+    # CampusAgentRuntime services
+    agent_artifact_repository = AgentArtifactRepository(db, artifact_root)
+    agent_event_store = AgentEventStore(agent_runtime_repository)
+    agent_run_manager = RunManager(agent_runtime_repository, agent_event_store)
+    agent_artifact_manager = ArtifactManager(agent_artifact_repository)
+    agent_context_manager = ContextManager(agent_runtime_repository)
+    agent_memory_manager = MemoryManager(agent_runtime_repository)
+    agent_registry_obj = AgentRegistry()
+    agent_tool_registry = ToolRegistry()
+    agent_risk_engine = RiskEngine()
+    agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_executor = AgentExecutor(
+        agent_runtime_repository,
+        registry=agent_registry_obj,
+        tools=agent_tool_registry,
+        event_store=agent_event_store,
+    )
+    agent_provider_registry = ProviderRegistry(settings)
+    agent_model_router = ModelRouter(
+        agent_provider_registry, repository=agent_runtime_repository
+    )
 
     # EduConnector
     edu_repo = EduRepository(db)
@@ -271,7 +305,17 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     learner_event_service._edu_repository = edu_repo
     learner_state_service._edu_data_repository = edu_data_repo
     learner_state_service._learner_event_repository = learner_event_repository
-    learner_state_service._knowledge_repository = knowledge_repository
+    learner_state_service._student_goal_repository = student_goal_repo
+
+    forecast_service = ForecastService(
+        learner_state_service=learner_state_service,
+        personal_task_repository=personal_task_repo,
+        study_session_repository=study_session_repo,
+        student_goal_repository=student_goal_repo,
+        edu_data_repository=edu_data_repo,
+        learner_event_repository=learner_event_repository,
+    )
+
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":
@@ -292,28 +336,6 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         session_manager=session_manager,
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
-    )
-    # CampusAgentRuntime services
-    agent_runtime_repository = AgentRuntimeRepository(db)
-    agent_artifact_repository = AgentArtifactRepository(db, settings.agent_artifact_dir)
-    agent_event_store = AgentEventStore(agent_runtime_repository)
-    agent_run_manager = RunManager(agent_runtime_repository, agent_event_store)
-    agent_artifact_manager = ArtifactManager(agent_artifact_repository)
-    agent_context_manager = ContextManager(agent_runtime_repository)
-    agent_memory_manager = MemoryManager(agent_runtime_repository)
-    agent_registry_obj = AgentRegistry()
-    agent_tool_registry = ToolRegistry()
-    agent_risk_engine = RiskEngine()
-    agent_approval_gate = ApprovalGate(agent_runtime_repository)
-    agent_executor = AgentExecutor(
-        agent_runtime_repository,
-        registry=agent_registry_obj,
-        tools=agent_tool_registry,
-        event_store=agent_event_store,
-    )
-    agent_provider_registry = ProviderRegistry(settings)
-    agent_model_router = ModelRouter(
-        agent_provider_registry, repository=agent_runtime_repository
     )
     container = ServiceContainer(
         settings=settings,
@@ -339,9 +361,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         favorite_repository=favorite_repo,
         study_session_repository=study_session_repo,
         study_goal_repository=study_goal_repo,
+        student_goal_repository=student_goal_repo,
         study_checkin_repository=study_checkin_repo,
         chaoxing_repository=ChaoxingRepository(db),
-        notice_repository=NoticeRepository(db),
+        notice_repository=notice_repository,
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),
         home_banner_repository=home_banner_repository,
@@ -353,18 +376,14 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_event_service=learner_event_service,
         learner_state_repository=learner_state_repository,
         learner_state_service=learner_state_service,
-        knowledge_repository=knowledge_repository,
-        knowledge_service=knowledge_service,
+        forecast_service=forecast_service,
+
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,
         learner_model_source_policy=learner_model_source_policy,
-        qr_login_session_repository=QrLoginSessionRepository(db),
-        trusted_device_repository=TrustedDeviceRepository(db),
-        edu_repository=edu_repo,
-        edu_connector=edu_connector,
         agent_runtime_repository=agent_runtime_repository,
         agent_artifact_repository=agent_artifact_repository,
         agent_event_store=agent_event_store,
@@ -379,6 +398,13 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_executor=agent_executor,
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
+        final_review_repository=final_review_repository,
+        course_research_repository=course_research_repository,
+        notice_workflow_repository=notice_workflow_repository,
+        qr_login_session_repository=QrLoginSessionRepository(db),
+        trusted_device_repository=TrustedDeviceRepository(db),
+        edu_repository=edu_repo,
+        edu_connector=edu_connector,
     )
     container.learning_agent_tools.container = container
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)

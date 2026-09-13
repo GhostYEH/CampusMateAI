@@ -25,6 +25,7 @@ from .routes import (
     study,
     submissions,
     student_tools,
+    student_goals,
     tts,
     chaoxing,
     course_content,
@@ -33,7 +34,8 @@ from .routes import (
     academic,
     bing_daily_wallpaper,
     learner_state,
-    c_knowledge,
+    forecasts,
+
     learning_plans,
     learner_control,
     agent_runtime,
@@ -69,6 +71,8 @@ api_router.include_router(focus_ai.router, tags=["focus-ai"])
 api_router.include_router(focus_realtime_voice.router, tags=["focus-realtime-voice"])
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
+# 学生通用目标(个人成长/学业/科研/竞赛/证书/求职等)
+api_router.include_router(student_goals.router)
 # 个人中心(我的文件 / 收藏夹)
 api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
@@ -80,7 +84,8 @@ api_router.include_router(community.admin_router)
 api_router.include_router(academic.router)
 api_router.include_router(bing_daily_wallpaper.router)
 api_router.include_router(learner_state.router)
-api_router.include_router(c_knowledge.router)
+api_router.include_router(forecasts.router)
+
 api_router.include_router(learning_plans.router)
 api_router.include_router(learner_control.router)
 # CampusMate EduConnector — 高校教务系统统一连接层

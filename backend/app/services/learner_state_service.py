@@ -13,15 +13,11 @@ from ..repositories.learner_state_repository import LearnerStateRepository
 
 ESTIMATOR_VERSION = "deterministic-observed-v1"
 ACADEMIC_ESTIMATOR_VERSION = "academic-observed-v1"
-PREDICTION_ESTIMATOR_VERSION = "prediction-linear-v1"
+WORLD_ESTIMATOR_VERSION = "world-baseline-v1"
 _SHORT_TTL = timedelta(minutes=5)
 _CHAOXING_TTL = timedelta(hours=24)
 _ACADEMIC_TTL = timedelta(hours=1)
-_PREDICTION_TTL = timedelta(minutes=30)
-_FORECAST_DECAY_7D = 0.85
-_FORECAST_DECAY_30D = 0.70
-_VELOCITY_THRESHOLD = 0.01
-_MIN_PREDICTION_EVIDENCE = 2
+_WORLD_TTL = timedelta(hours=1)
 
 
 def _iso(value: datetime) -> str:
@@ -86,14 +82,14 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
-    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None, knowledge_repository=None) -> None:
+    def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None, student_goal_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
         self._control_repository = control_repository
         self._source_policy = source_policy
         self._edu_data_repository = edu_data_repository
         self._learner_event_repository = learner_event_repository
-        self._knowledge_repository = knowledge_repository
+        self._student_goal_repository = student_goal_repository
 
     def project_user(
         self, user_id: str, *, as_of: datetime, trigger: str = "read"
@@ -229,36 +225,38 @@ class LearnerStateProjectionService:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
-    def project_prediction(
-        self, user_id: str, *, course_id: str, as_of: datetime, trigger: str = "read"
+    def project_world(
+        self, user_id: str, *, as_of: datetime, trigger: str = "read"
     ) -> ProjectionResult:
-        """PREDICTION 投影：基于学习证据确定性预测未来表现。
+        """WORLD 投影：通用大学生世界状态(校园生活/事务/个人成长)。
 
-        使用线性外推从历史练习趋势预测掌握度变化，不使用 ML 模型。
-        预测结果诚实表达不确定性，证据不足时降级为 insufficient_evidence。
+        确定性、版本化、可重复的基线估计器。不评价用户人格或意志力。
+        数据不足时返回 UNAVAILABLE。
         """
         as_of = _require_utc(as_of)
         current = None
         try:
             current = self.repository.get_current_run(
-                user_id=user_id, projection_kind="PREDICTION", projection_scope=course_id
+                user_id=user_id, projection_kind="WORLD", projection_scope="__user__"
             )
-            inputs = self._collect_prediction_inputs(user_id=user_id, course_id=course_id)
+            inputs = self._collect_world_inputs(user_id=user_id, as_of=as_of)
+            if self._source_policy is not None:
+                inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
             input_digest = _digest(inputs)
             current_as_of = _parse(current.as_of) if current else None
             if (
                 current
-                and current.estimator_version == PREDICTION_ESTIMATOR_VERSION
+                and current.estimator_version == WORLD_ESTIMATOR_VERSION
                 and current.input_digest == input_digest
                 and current_as_of is not None
                 and as_of >= current_as_of
-                and self._prediction_snapshots_valid(user_id, course_id, as_of)
+                and self._world_snapshots_valid(current.user_id, as_of)
             ):
                 existing = self._result_from_current(current, as_of=as_of)
                 if existing is not None:
                     return existing
-            result, snapshot_rows, evidence = self._compute_prediction(
-                user_id=user_id, course_id=course_id, inputs=inputs, as_of=as_of,
+            result, snapshot_rows, evidence = self._compute_world(
+                user_id=user_id, inputs=inputs, as_of=as_of,
                 input_digest=input_digest, trigger=trigger,
             )
             if current is None or current_as_of is None or as_of >= current_as_of:
@@ -268,11 +266,11 @@ class LearnerStateProjectionService:
                         "user_id": user_id,
                         "as_of": result.as_of,
                         "computed_at": result.computed_at,
-                        "estimator_version": PREDICTION_ESTIMATOR_VERSION,
+                        "estimator_version": WORLD_ESTIMATOR_VERSION,
                         "input_digest": input_digest,
                         "trigger": trigger,
-                        "projection_kind": "PREDICTION",
-                        "projection_scope": course_id,
+                        "projection_kind": "WORLD",
+                        "projection_scope": "__user__",
                         "warnings": result.warnings,
                     },
                     snapshots=[self._to_dict(row) for row in snapshot_rows],
@@ -281,265 +279,96 @@ class LearnerStateProjectionService:
             return result
         except Exception as exc:
             logger.warning(
-                "prediction_projection_failed user_id={} course_id={} trigger={} exception_type={}",
-                user_id, course_id, trigger, type(exc).__name__,
+                "world_projection_failed user_id={} trigger={} exception_type={}",
+                user_id, trigger, type(exc).__name__,
             )
             if current is not None:
                 return self._stale_result(current, as_of=as_of)
-            return self._unavailable_prediction_result(user_id=user_id, as_of=as_of)
+            return self._unavailable_world_result(user_id=user_id, as_of=as_of)
 
-    def _collect_prediction_inputs(self, *, user_id: str, course_id: str) -> dict[str, Any]:
-        inputs: dict[str, Any] = {"knowledge_snapshots": [], "practice_attempts": [], "mappings": []}
+    def _collect_world_inputs(self, *, user_id: str, as_of: datetime) -> dict[str, Any]:
+        inputs: dict[str, Any] = {
+            "sessions": [],
+            "tasks": [],
+            "goals": [],
+            "goal_progress": [],
+            "schedule_items": [],
+            "exam_items": [],
+            "grade_items": [],
+            "events": [],
+        }
+        if self._student_goal_repository is not None:
+            try:
+                goals, _ = self._student_goal_repository.list_goals(
+                    user_id=user_id, page=1, page_size=200
+                )
+                inputs["goals"] = [
+                    {
+                        "goal_id": g.goal_id, "category": g.category, "status": g.status,
+                        "target_date": g.target_date, "progress_percent": g.progress_percent,
+                        "milestone_count": g.milestone_count, "updated_at": g.updated_at,
+                    }
+                    for g in goals
+                ]
+            except Exception:
+                pass
+        if self._edu_data_repository is not None:
+            try:
+                inputs["schedule_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "credit": i.credit}
+                    for i in self._edu_data_repository.list_schedule_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["exam_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "starts_at": i.starts_at}
+                    for i in self._edu_data_repository.list_exam_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+                inputs["grade_items"] = [
+                    {"id": i.id, "course_code": i.course_code, "credit": i.credit, "score": i.score}
+                    for i in self._edu_data_repository.list_grade_items(
+                        user_id=user_id, include_stale=False
+                    )
+                ]
+            except Exception:
+                pass
+        if self._learner_event_repository is not None:
+            try:
+                events, _ = self._learner_event_repository.list_for_user(
+                    user_id=user_id, page=1, page_size=200
+                )
+                inputs["events"] = [
+                    {"event_id": e.event_id, "event_type": e.event_type,
+                     "occurred_at": e.occurred_at, "source": e.source}
+                    for e in events
+                ]
+            except Exception:
+                pass
         try:
-            snapshots = self.repository.list_all_current_snapshots(
-                user_id=user_id, projection_kind="KNOWLEDGE", projection_scope=course_id
-            )
-            inputs["knowledge_snapshots"] = [
-                {"scope_id": s.scope_id, "state_type": s.state_type, "value": s.value,
-                 "confidence": s.confidence, "data_quality": s.data_quality,
-                 "computed_at": s.computed_at}
-                for s in snapshots
-            ]
+            with self.repository._db.query() as conn:
+                task_rows = conn.execute(
+                    """SELECT id,status,deadline,created_at,completed_at,deleted_at
+                       FROM personal_tasks WHERE user_id=?
+                       ORDER BY created_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+                inputs["tasks"] = [dict(row) for row in task_rows]
+                session_rows = conn.execute(
+                    """SELECT id,started_at,ended_at,duration_seconds,status
+                       FROM study_sessions WHERE user_id=?
+                       ORDER BY started_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+                inputs["sessions"] = [dict(row) for row in session_rows]
         except Exception:
             pass
-        if self._knowledge_repository is not None:
-            try:
-                attempts = self._knowledge_repository.list_attempts(
-                    user_id=user_id, course_id=course_id, limit=5000
-                )
-                inputs["practice_attempts"] = [
-                    {"attempt_id": a.attempt_id, "exercise_id": a.exercise_id,
-                     "occurred_at": a.occurred_at, "result_type": a.result_type,
-                     "score": a.score, "max_score": a.max_score,
-                     "error_codes": list(a.error_codes)}
-                    for a in attempts
-                ]
-            except Exception:
-                pass
-            try:
-                mappings = self._knowledge_repository.list_mappings(course_id=course_id)
-                inputs["mappings"] = [
-                    {"exercise_id": m.exercise_id, "knowledge_component_code": m.knowledge_component_code}
-                    for m in mappings
-                ]
-            except Exception:
-                pass
         return inputs
 
-    def _compute_prediction(
-        self, *, user_id: str, course_id: str, inputs: dict[str, Any], as_of: datetime,
-        input_digest: str, trigger: str,
-    ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
-        computed_at = _iso(as_of)
-        run_id = f"lrun_{uuid.uuid4().hex[:16]}"
-        valid_until = _iso(as_of + _PREDICTION_TTL)
-        snapshots: list[ComputedSnapshot] = []
-        evidence: list[dict[str, Any]] = []
-        warnings: list[str] = []
-
-        knowledge_snapshots = inputs.get("knowledge_snapshots", [])
-        practice_attempts = inputs.get("practice_attempts", [])
-        mappings = inputs.get("mappings", [])
-
-        kc_estimates: dict[str, dict] = {}
-        for snap in knowledge_snapshots:
-            if snap["state_type"] == "knowledge_mastery_estimate":
-                kc_estimates[snap["scope_id"]] = snap
-
-        exercise_to_kc = {m["exercise_id"]: m["knowledge_component_code"] for m in mappings}
-        kc_attempts: dict[str, list[dict]] = {}
-        for attempt in practice_attempts:
-            kc_code = exercise_to_kc.get(attempt["exercise_id"])
-            if kc_code:
-                kc_attempts.setdefault(kc_code, []).append(attempt)
-
-        all_kc_codes = set(kc_estimates.keys()) | set(kc_attempts.keys())
-        for kc_code in sorted(all_kc_codes):
-            est_data = kc_estimates.get(kc_code, {})
-            est_value = est_data.get("value", {}) if est_data else {}
-            current_estimate = est_value.get("estimate", 0.0)
-            evidence_count = est_value.get("evidence_count", 0)
-            attempts = kc_attempts.get(kc_code, [])
-
-            vel = self._compute_velocity(attempts, as_of)
-            velocity = vel["velocity"]
-            velocity_7d = vel["velocity_7d"]
-            velocity_30d = vel["velocity_30d"]
-            vel_trend = vel["trend"]
-            consistency = vel["consistency"]
-
-            forecast_7d = max(0.0, min(1.0, current_estimate + velocity * 7 * _FORECAST_DECAY_7D))
-            forecast_30d = max(0.0, min(1.0, current_estimate + velocity * 30 * _FORECAST_DECAY_30D))
-
-            if evidence_count < _MIN_PREDICTION_EVIDENCE:
-                forecast_trend = "insufficient_evidence"
-            elif velocity > _VELOCITY_THRESHOLD:
-                forecast_trend = "improving"
-            elif velocity < -_VELOCITY_THRESHOLD:
-                forecast_trend = "declining"
-            else:
-                forecast_trend = "steady"
-
-            if evidence_count < _MIN_PREDICTION_EVIDENCE:
-                predicted_pass_prob = current_estimate
-                predicted_band = "insufficient_evidence"
-            else:
-                predicted_pass_prob = current_estimate
-                if forecast_trend == "improving":
-                    predicted_pass_prob = min(1.0, current_estimate + abs(velocity) * 7)
-                elif forecast_trend == "declining":
-                    predicted_pass_prob = max(0.0, current_estimate - abs(velocity) * 7)
-                if predicted_pass_prob < 0.45:
-                    predicted_band = "likely_fail"
-                elif predicted_pass_prob < 0.7:
-                    predicted_band = "likely_partial"
-                else:
-                    predicted_band = "likely_pass"
-
-            if evidence_count >= _MIN_PREDICTION_EVIDENCE and len(attempts) >= _MIN_PREDICTION_EVIDENCE:
-                data_quality = "partial"
-                confidence = min(0.6, evidence_count / (evidence_count + 3.0))
-            elif evidence_count > 0 or len(attempts) > 0:
-                data_quality = "partial"
-                confidence = min(0.3, (evidence_count + len(attempts)) / 10.0)
-            else:
-                data_quality = "unavailable"
-                confidence = 0.0
-
-            observed_from = est_data.get("computed_at") if est_data else None
-
-            snapshots.append(ComputedSnapshot(
-                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
-                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
-                state_type="knowledge_mastery_forecast",
-                value={
-                    "knowledge_component_code": kc_code,
-                    "current_estimate": round(current_estimate, 6),
-                    "forecast_7d": round(forecast_7d, 6),
-                    "forecast_30d": round(forecast_30d, 6),
-                    "velocity": round(velocity, 6),
-                    "trend": forecast_trend,
-                    "evidence_count": evidence_count,
-                    "explanation_codes": ["linear_extrapolation"] if evidence_count >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
-                },
-                confidence=confidence, data_quality=data_quality,
-                observed_from=observed_from, observed_through=computed_at,
-                valid_until=valid_until, computed_at=computed_at,
-            ))
-            snapshots.append(ComputedSnapshot(
-                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
-                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
-                state_type="performance_prediction",
-                value={
-                    "knowledge_component_code": kc_code,
-                    "predicted_pass_probability": round(predicted_pass_prob, 6),
-                    "predicted_score_band": predicted_band,
-                    "evidence_count": evidence_count,
-                    "explanation_codes": ["mastery_based_estimate"] if evidence_count >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
-                },
-                confidence=confidence, data_quality=data_quality,
-                observed_from=observed_from, observed_through=computed_at,
-                valid_until=valid_until, computed_at=computed_at,
-            ))
-            snapshots.append(ComputedSnapshot(
-                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
-                scope_type="KNOWLEDGE_COMPONENT", scope_id=kc_code,
-                state_type="learning_velocity",
-                value={
-                    "knowledge_component_code": kc_code,
-                    "velocity_7d": round(velocity_7d, 6),
-                    "velocity_30d": round(velocity_30d, 6),
-                    "trend": vel_trend,
-                    "consistency": round(consistency, 6),
-                    "evidence_count": len(attempts),
-                    "explanation_codes": ["attempt_rate_analysis"] if len(attempts) >= _MIN_PREDICTION_EVIDENCE else ["insufficient_evidence"],
-                },
-                confidence=confidence, data_quality=data_quality,
-                observed_from=observed_from, observed_through=computed_at,
-                valid_until=valid_until, computed_at=computed_at,
-            ))
-
-        if not snapshots:
-            warnings.append("no_prediction_evidence")
-
-        result = ProjectionResult(
-            run_id=run_id, user_id=user_id, as_of=computed_at, computed_at=computed_at,
-            estimator_version=PREDICTION_ESTIMATOR_VERSION, input_digest=input_digest,
-            snapshots=snapshots, warnings=warnings,
-        )
-        return result, snapshots, evidence
-
-    @staticmethod
-    def _compute_velocity(attempts: list[dict], as_of: datetime) -> dict[str, Any]:
-        if len(attempts) < _MIN_PREDICTION_EVIDENCE:
-            return {"velocity": 0.0, "velocity_7d": 0.0, "velocity_30d": 0.0,
-                    "trend": "insufficient_evidence", "consistency": 0.0}
-
-        sorted_attempts = sorted(attempts, key=lambda a: a["occurred_at"])
-        ratios: list[tuple[datetime, float]] = []
-        for a in sorted_attempts:
-            max_score = a.get("max_score", 0)
-            if max_score and max_score > 0:
-                ratio = max(0.0, min(1.0, a["score"] / max_score))
-            else:
-                ratio = 1.0 if a.get("result_type") == "passed" else 0.0
-            occurred = _parse(a["occurred_at"])
-            if occurred is not None:
-                ratios.append((occurred, ratio))
-
-        if len(ratios) < _MIN_PREDICTION_EVIDENCE:
-            return {"velocity": 0.0, "velocity_7d": 0.0, "velocity_30d": 0.0,
-                    "trend": "insufficient_evidence", "consistency": 0.0}
-
-        first_time = ratios[0][0]
-        last_time = ratios[-1][0]
-        time_span_days = max(1.0, (last_time - first_time).total_seconds() / 86400)
-        velocity = (ratios[-1][1] - ratios[0][1]) / time_span_days
-
-        cutoff_7d = as_of - timedelta(days=7)
-        recent_7d = [(t, r) for t, r in ratios if t >= cutoff_7d]
-        older_7d = [(t, r) for t, r in ratios if t < cutoff_7d]
-        if recent_7d and older_7d:
-            recent_span = max(1.0, (recent_7d[-1][0] - recent_7d[0][0]).total_seconds() / 86400)
-            velocity_7d = (recent_7d[-1][1] - recent_7d[0][1]) / recent_span
-        else:
-            velocity_7d = velocity
-
-        cutoff_30d = as_of - timedelta(days=30)
-        recent_30d = [(t, r) for t, r in ratios if t >= cutoff_30d]
-        older_30d = [(t, r) for t, r in ratios if t < cutoff_30d]
-        if recent_30d and older_30d:
-            span_30d = max(1.0, (recent_30d[-1][0] - older_30d[0][0]).total_seconds() / 86400)
-            velocity_30d = (recent_30d[-1][1] - older_30d[0][1]) / span_30d
-        else:
-            velocity_30d = velocity
-
-        if len(ratios) < 3:
-            trend = "insufficient_evidence"
-        elif velocity_7d > velocity_30d + _VELOCITY_THRESHOLD:
-            trend = "accelerating"
-        elif velocity_7d < velocity_30d - _VELOCITY_THRESHOLD:
-            trend = "decelerating"
-        else:
-            trend = "steady"
-
-        if len(ratios) >= 3:
-            diffs = [ratios[i + 1][1] - ratios[i][1] for i in range(len(ratios) - 1)]
-            if diffs:
-                mean_diff = sum(diffs) / len(diffs)
-                variance = sum((d - mean_diff) ** 2 for d in diffs) / len(diffs)
-                consistency = max(0.0, 1.0 - variance * 4)
-            else:
-                consistency = 0.0
-        else:
-            consistency = 0.0
-
-        return {"velocity": velocity, "velocity_7d": velocity_7d,
-                "velocity_30d": velocity_30d, "trend": trend, "consistency": consistency}
-
-    def _prediction_snapshots_valid(self, user_id: str, course_id: str, as_of: datetime) -> bool:
+    def _world_snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
         rows = self.repository.list_all_current_snapshots(
-            user_id=user_id, projection_kind="PREDICTION", projection_scope=course_id
+            user_id=user_id, projection_kind="WORLD", projection_scope="__user__"
         )
         return bool(rows) and all(
             (valid_until := _parse(row.valid_until)) is not None and as_of < valid_until
@@ -547,12 +376,372 @@ class LearnerStateProjectionService:
         )
 
     @staticmethod
-    def _unavailable_prediction_result(*, user_id: str, as_of: datetime) -> ProjectionResult:
+    def _unavailable_world_result(*, user_id: str, as_of: datetime) -> ProjectionResult:
         computed = _iso(as_of)
-        return ProjectionResult(
-            run_id="", user_id=user_id, as_of=computed, computed_at=computed,
-            estimator_version=PREDICTION_ESTIMATOR_VERSION, input_digest="",
-            snapshots=[], warnings=["projection_failed"],
+        snapshots = [ComputedSnapshot(
+            snapshot_id="unavailable_world", run_id="", scope_type="USER",
+            scope_id=user_id, state_type="workload_pressure",
+            value={"window_days": 7, "task_count": 0, "exam_count": 0,
+                   "estimated_total_minutes": 0, "pressure_band": "LOW",
+                   "concentrated_dates": [], "data_completeness": "unavailable",
+                   "warning_codes": ["projection_failed"]},
+            confidence=0.0, data_quality="unavailable", observed_from=None,
+            observed_through=None, valid_until=None, computed_at=computed,
+        )]
+        return ProjectionResult(run_id="", user_id=user_id, as_of=computed, computed_at=computed,
+                                estimator_version=WORLD_ESTIMATOR_VERSION, input_digest="",
+                                snapshots=snapshots, warnings=["projection_failed"])
+
+    def _compute_world(
+        self, *, user_id: str, inputs: dict[str, Any], as_of: datetime,
+        input_digest: str, trigger: str,
+    ) -> tuple[ProjectionResult, list[ComputedSnapshot], list[dict[str, Any]]]:
+        computed_at = _iso(as_of)
+        run_id = f"lrun_{uuid.uuid4().hex[:16]}"
+        rows: list[ComputedSnapshot] = []
+        evidence: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        valid_until = as_of + _WORLD_TTL
+
+        if self._source_policy is not None:
+            policy_warning = self._source_policy.get_projection_warning(user_id=user_id)
+            if policy_warning is not None:
+                warnings.append(policy_warning)
+
+        tasks = inputs.get("tasks", [])
+        sessions = inputs.get("sessions", [])
+        goals = inputs.get("goals", [])
+        schedule_items = inputs.get("schedule_items", [])
+        exam_items = inputs.get("exam_items", [])
+        grade_items = inputs.get("grade_items", [])
+        events = inputs.get("events", [])
+        if "EDU" in inputs.get("paused_sources", []):
+            schedule_items = []
+            exam_items = []
+            grade_items = []
+
+        def add_world(
+            *, state_type: str, value: dict[str, Any], quality: str,
+            sources: list[dict[str, Any]] | None = None,
+        ) -> None:
+            confidence = _confidence(quality)
+            snapshot = ComputedSnapshot(
+                snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
+                scope_type="USER", scope_id=user_id, state_type=state_type,
+                value=value, confidence=confidence, data_quality=quality,
+                observed_from=_iso(as_of - timedelta(days=30)) if quality != "unavailable" else None,
+                observed_through=_iso(as_of) if quality != "unavailable" else None,
+                valid_until=_iso(valid_until),
+                computed_at=computed_at,
+            )
+            rows.append(snapshot)
+            for source in (sources or [])[:100]:
+                evidence.append({
+                    "evidence_id": f"lev_{uuid.uuid4().hex[:16]}",
+                    "snapshot_id": snapshot.snapshot_id,
+                    "evidence_kind": source.get("evidence_kind", "EVENT"),
+                    "event_id": source.get("event_id"),
+                    "source_type": source.get("source_type", "core_learning_record"),
+                    "source_id": source.get("source_id", user_id),
+                    "role": source.get("role", "SUPPORTS"),
+                    "quality": source.get("quality", quality),
+                    "explanation_code": source.get("explanation_code", "state_observed"),
+                })
+
+        has_data = bool(tasks or sessions or goals or schedule_items or exam_items or grade_items)
+
+        # 1. workload_pressure
+        self._compute_workload_pressure(
+            tasks=tasks, exam_items=exam_items, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 2. schedule_conflict
+        self._compute_schedule_conflict(
+            schedule_items=schedule_items, exam_items=exam_items, tasks=tasks,
+            as_of=as_of, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 3. academic_progress
+        self._compute_academic_progress(
+            grade_items=grade_items, schedule_items=schedule_items,
+            warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 4. focus_rhythm
+        self._compute_focus_rhythm(
+            sessions=sessions, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 5. goal_progress
+        self._compute_goal_progress(
+            goals=goals, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 6. execution_consistency
+        self._compute_execution_consistency(
+            tasks=tasks, sessions=sessions, events=events,
+            warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+        # 7. growth_momentum
+        self._compute_growth_momentum(
+            goals=goals, as_of=as_of, warnings=warnings,
+            has_data=has_data, add_world=add_world,
+        )
+        # 8. preference_profile
+        self._compute_preference_profile(
+            events=events, warnings=warnings, has_data=has_data, add_world=add_world,
+        )
+
+        result = ProjectionResult(
+            run_id=run_id, user_id=user_id, as_of=_iso(as_of), computed_at=computed_at,
+            estimator_version=WORLD_ESTIMATOR_VERSION, input_digest=input_digest,
+            snapshots=rows, warnings=warnings,
+        )
+        return result, rows, evidence
+
+    @staticmethod
+    def _compute_workload_pressure(*, tasks, exam_items, as_of, warnings, has_data, add_world) -> None:
+        window = 7
+        horizon = as_of + timedelta(days=window)
+        upcoming_tasks = []
+        for task in tasks:
+            if task.get("status") != "pending" or task.get("deleted_at"):
+                continue
+            deadline = _parse(task.get("deadline"))
+            if deadline is not None and as_of <= deadline <= horizon:
+                upcoming_tasks.append(task)
+        upcoming_exams = []
+        for exam in exam_items:
+            starts_at = _parse(exam.get("starts_at"))
+            if starts_at is not None and as_of <= starts_at <= horizon:
+                upcoming_exams.append(exam)
+        estimated_minutes = len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
+        total_items = len(upcoming_tasks) + len(upcoming_exams)
+        if total_items == 0:
+            band = "LOW"
+        elif estimated_minutes <= 600:
+            band = "LOW"
+        elif estimated_minutes <= 1500:
+            band = "MODERATE"
+        elif estimated_minutes <= 3000:
+            band = "HIGH"
+        else:
+            band = "VERY_HIGH"
+        concentrated: list[str] = []
+        for task in upcoming_tasks:
+            deadline = _parse(task.get("deadline"))
+            if deadline:
+                concentrated.append(deadline.date().isoformat())
+        concentrated = sorted(set(concentrated))[:16]
+        quality = "verified" if has_data else "unavailable"
+        add_world(
+            state_type="workload_pressure",
+            value={
+                "window_days": window, "task_count": len(upcoming_tasks),
+                "exam_count": len(upcoming_exams),
+                "estimated_total_minutes": estimated_minutes,
+                "pressure_band": band, "concentrated_dates": concentrated,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_schedule_conflict(*, schedule_items, exam_items, tasks, as_of, warnings, has_data, add_world) -> None:
+        exam_count = 0
+        for exam in exam_items:
+            starts_at = _parse(exam.get("starts_at"))
+            if starts_at is not None and starts_at >= as_of:
+                exam_count += 1
+        pending_with_deadline = 0
+        for task in tasks:
+            if task.get("status") == "pending" and not task.get("deleted_at") and task.get("deadline"):
+                pending_with_deadline += 1
+        conflict_count = 0
+        if exam_count > 0 and pending_with_deadline > 0:
+            conflict_count = min(exam_count, pending_with_deadline)
+        available_windows = max(0, 14 - conflict_count)
+        quality = "verified" if has_data else "unavailable"
+        add_world(
+            state_type="schedule_conflict",
+            value={
+                "conflict_count": conflict_count, "conflicts": [],
+                "available_window_count": available_windows,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_academic_progress(*, grade_items, schedule_items, warnings, has_data, add_world) -> None:
+        observed_courses = {item.get("course_code") for item in grade_items if item.get("course_code")}
+        observed_credits = sum(float(item.get("credit") or 0) for item in grade_items)
+        passed_count = 0
+        for item in grade_items:
+            score = item.get("score")
+            if not score:
+                continue
+            try:
+                if float(score) >= 60:
+                    passed_count += 1
+            except (TypeError, ValueError):
+                continue
+        quality = "verified" if grade_items else ("partial" if schedule_items else "unavailable")
+        add_world(
+            state_type="academic_progress",
+            value={
+                "observed_course_count": len(observed_courses),
+                "observed_credit_count": round(observed_credits, 2),
+                "observed_passed_count": passed_count,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_focus_rhythm(*, sessions, as_of, warnings, has_data, add_world) -> None:
+        completed = []
+        for row in sessions:
+            if row.get("status") != "completed":
+                continue
+            ended = _parse(row.get("ended_at"))
+            if ended and ended <= as_of:
+                completed.append(row)
+        slot_counts: dict[str, int] = {}
+        durations: list[int] = []
+        for row in completed:
+            started = _parse(row.get("started_at"))
+            if started:
+                hour = started.hour
+                if 6 <= hour < 12:
+                    slot = "morning"
+                elif 12 <= hour < 18:
+                    slot = "afternoon"
+                elif 18 <= hour < 24:
+                    slot = "evening"
+                else:
+                    slot = "night"
+                slot_counts[slot] = slot_counts.get(slot, 0) + 1
+            dur = int(row.get("duration_seconds") or 0)
+            if dur > 0:
+                durations.append(dur // 60)
+        common_slots = [slot for slot, _ in sorted(slot_counts.items(), key=lambda x: -x[1])[:4]]
+        median_minutes = sorted(durations)[len(durations) // 2] if durations else 0
+        if len(completed) >= 3 and len(common_slots) <= 2:
+            stability = "stable"
+        elif len(completed) >= 1:
+            stability = "variable"
+        else:
+            stability = "unknown"
+        quality = "verified" if completed else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="focus_rhythm",
+            value={
+                "observed_session_count": len(completed),
+                "common_time_slots": common_slots,
+                "median_duration_minutes": median_minutes,
+                "rhythm_stability": stability,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_goal_progress(*, goals, warnings, has_data, add_world) -> None:
+        active_goals = [g for g in goals if g.get("status") == "active"]
+        archived_goals = [g for g in goals if g.get("status") == "archived"]
+        with_milestones = sum(1 for g in goals if int(g.get("milestone_count") or 0) > 0)
+        if active_goals:
+            avg_progress = sum(float(g.get("progress_percent") or 0) for g in active_goals) / len(active_goals)
+        else:
+            avg_progress = 0.0
+        quality = "verified" if goals else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="goal_progress",
+            value={
+                "active_goal_count": len(active_goals),
+                "archived_goal_count": len(archived_goals),
+                "goals_with_milestones": with_milestones,
+                "average_progress_percent": round(avg_progress, 2),
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_execution_consistency(*, tasks, sessions, events, warnings, has_data, add_world) -> None:
+        planned = sum(1 for t in tasks if t.get("status") == "pending" and not t.get("deleted_at"))
+        executed = sum(1 for t in tasks if t.get("status") == "completed" and not t.get("deleted_at"))
+        executed += sum(1 for s in sessions if s.get("status") == "completed")
+        if planned == 0 and executed == 0:
+            band = "no_plan"
+            ratio = 0.0
+        elif planned == 0:
+            band = "none"
+            ratio = 0.0
+        else:
+            ratio = min(1.0, executed / max(planned, 1))
+            if ratio >= 0.8:
+                band = "high"
+            elif ratio >= 0.5:
+                band = "moderate"
+            elif ratio >= 0.2:
+                band = "low"
+            else:
+                band = "none"
+        quality = "verified" if (tasks or sessions) else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="execution_consistency",
+            value={
+                "planned_task_count": planned, "executed_task_count": executed,
+                "consistency_ratio": round(ratio, 4), "consistency_band": band,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_growth_momentum(*, goals, as_of, warnings, has_data, add_world) -> None:
+        active_goals = [g for g in goals if g.get("status") == "active"]
+        recent_threshold = as_of - timedelta(days=14)
+        recent_progress = 0
+        for g in active_goals:
+            updated = _parse(g.get("updated_at"))
+            if updated and updated >= recent_threshold and float(g.get("progress_percent") or 0) > 0:
+                recent_progress += 1
+        if not goals:
+            band = "insufficient_data"
+        elif recent_progress == 0:
+            band = "declining"
+        elif recent_progress >= len(active_goals):
+            band = "rising"
+        else:
+            band = "steady"
+        quality = "verified" if goals else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="growth_momentum",
+            value={
+                "goal_count": len(goals),
+                "goals_with_recent_progress": recent_progress,
+                "momentum_band": band,
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
+        )
+
+    @staticmethod
+    def _compute_preference_profile(*, events, warnings, has_data, add_world) -> None:
+        pref_events = [e for e in events if e.get("event_type") == "preference_updated"]
+        has_prefs = bool(pref_events)
+        quality = "verified" if has_prefs else ("partial" if has_data else "unavailable")
+        add_world(
+            state_type="preference_profile",
+            value={
+                "reminder_frequency": "normal" if has_prefs else "unset",
+                "quiet_hours_enabled": False,
+                "daily_plan_capacity_minutes": 240 if has_prefs else 0,
+                "preferred_focus_slot": "unset",
+                "detail_level": "standard" if has_prefs else "unset",
+                "data_completeness": quality, "warning_codes": list(warnings),
+            },
+            quality=quality,
         )
 
     def _collect_academic_inputs(self, *, user_id: str) -> dict[str, Any]:
@@ -629,6 +818,11 @@ class LearnerStateProjectionService:
         grade_items = inputs.get("grade_items", [])
         exam_items = inputs.get("exam_items", [])
         edu_events = inputs.get("edu_events", [])
+        if "EDU" in inputs.get("paused_sources", []):
+            schedule_items = []
+            grade_items = []
+            exam_items = []
+            edu_events = []
 
         has_data = bool(schedule_items or grade_items or exam_items)
         base_quality = "verified" if has_data else "unavailable"
@@ -1438,292 +1632,4 @@ class LearnerStateProjectionService:
             "explanation_codes": codes,
         }
 
-    def simulate_counterfactual(
-        self, user_id: str, *, course_id: str, as_of: datetime,
-        intervention: dict[str, Any],
-    ) -> dict[str, Any]:
-        """安全反事实模拟：假设干预后的预测变化，不修改实际状态。
-
-        确定性、隐私安全、不持久化、不做心理诊断。
-        """
-        as_of = _require_utc(as_of)
-        inputs = self._collect_prediction_inputs(user_id=user_id, course_id=course_id)
-        baseline_result, _, _ = self._compute_prediction(
-            user_id=user_id, course_id=course_id, inputs=inputs, as_of=as_of,
-            input_digest=_digest(inputs), trigger="counterfactual_baseline",
-        )
-
-        modified_inputs = self._apply_counterfactual_intervention(inputs, intervention, as_of)
-        cf_result, _, _ = self._compute_prediction(
-            user_id=user_id, course_id=course_id, inputs=modified_inputs, as_of=as_of,
-            input_digest=_digest(modified_inputs), trigger="counterfactual_simulated",
-        )
-
-        target_kc = intervention.get("knowledge_component_code", "")
-        deltas: list[dict[str, Any]] = []
-
-        baseline_by_kc: dict[str, dict[str, ComputedSnapshot]] = {}
-        for snap in baseline_result.snapshots:
-            baseline_by_kc.setdefault(snap.scope_id, {})[snap.state_type] = snap
-
-        cf_by_kc: dict[str, dict[str, ComputedSnapshot]] = {}
-        for snap in cf_result.snapshots:
-            cf_by_kc.setdefault(snap.scope_id, {})[snap.state_type] = snap
-
-        relevant_kcs = {target_kc} if target_kc else set(baseline_by_kc.keys()) | set(cf_by_kc.keys())
-        for kc_code in sorted(relevant_kcs):
-            base = baseline_by_kc.get(kc_code, {})
-            cf = cf_by_kc.get(kc_code, {})
-            base_fore = base.get("knowledge_mastery_forecast")
-            cf_fore = cf.get("knowledge_mastery_forecast")
-            base_perf = base.get("performance_prediction")
-            cf_perf = cf.get("performance_prediction")
-            if not base_fore or not cf_fore or not base_perf or not cf_perf:
-                continue
-            base_f7 = base_fore.value.get("forecast_7d", 0.0)
-            cf_f7 = cf_fore.value.get("forecast_7d", 0.0)
-            base_pp = base_perf.value.get("predicted_pass_probability", 0.0)
-            cf_pp = cf_perf.value.get("predicted_pass_probability", 0.0)
-            deltas.append({
-                "knowledge_component_code": kc_code,
-                "baseline_forecast_7d": round(base_f7, 6),
-                "counterfactual_forecast_7d": round(cf_f7, 6),
-                "baseline_pass_probability": round(base_pp, 6),
-                "counterfactual_pass_probability": round(cf_pp, 6),
-                "mastery_delta": round(cf_f7 - base_f7, 6),
-                "pass_probability_delta": round(cf_pp - base_pp, 6),
-                "explanation_codes": ["counterfactual_simulation"],
-            })
-
-        warnings: list[str] = []
-        if not deltas:
-            warnings.append("no_simulated_change")
-        return {
-            "course_id": course_id,
-            "intervention": intervention,
-            "deltas": deltas,
-            "baseline_snapshot_count": len(baseline_result.snapshots),
-            "counterfactual_snapshot_count": len(cf_result.snapshots),
-            "warning_codes": warnings,
-            "explanation_codes": ["deterministic_counterfactual"],
-        }
-
-    def evaluate_predictions(
-        self, user_id: str, *, course_id: str, as_of: datetime,
-        test_ratio: float = 0.3,
-    ) -> dict[str, Any]:
-        """时序评测：在历史数据上做 chronological split，度量预测质量。
-
-        用 cutoff 之前的数据生成预测，与 cutoff 之后的实际结果比较。
-        真实性门禁检查预测是否优于随机猜测。
-        """
-        as_of = _require_utc(as_of)
-        if not 0.1 <= test_ratio <= 0.5:
-            raise ValueError("test_ratio must be between 0.1 and 0.5")
-
-        attempts: list[dict[str, Any]] = []
-        if self._knowledge_repository is not None:
-            try:
-                raw = self._knowledge_repository.list_attempts(
-                    user_id=user_id, course_id=course_id, limit=5000,
-                )
-                for a in raw:
-                    occurred = _parse(a.occurred_at)
-                    if occurred is None:
-                        continue
-                    max_score = a.max_score if a.max_score > 0 else 100.0
-                    ratio = max(0.0, min(1.0, a.score / max_score))
-                    attempts.append({
-                        "occurred_at": occurred,
-                        "passed": 1 if a.result_type == "passed" else 0,
-                        "ratio": ratio,
-                        "exercise_id": a.exercise_id,
-                    })
-            except Exception:
-                pass
-
-        attempts.sort(key=lambda a: a["occurred_at"])
-        total = len(attempts)
-        test_count = int(total * test_ratio)
-        training_count = total - test_count
-
-        gate_reasons: list[str] = []
-        if test_count < 3:
-            gate_reasons.append("insufficient_test_data")
-        if training_count < 3:
-            gate_reasons.append("insufficient_training_data")
-        if total < 6:
-            gate_reasons.append("insufficient_total_data")
-
-        if total < 2 or test_count < 1 or training_count < 1:
-            return {
-                "course_id": course_id,
-                "total_attempts": total,
-                "training_count": training_count,
-                "test_count": test_count,
-                "cutoff_at": _iso(as_of),
-                "accuracy": 0.0,
-                "pr_auc": 0.0,
-                "log_loss": 0.6931,
-                "brier_score": 0.25,
-                "calibration_error": 1.0,
-                "truthfulness_gate_passed": False,
-                "gate_failure_reasons": gate_reasons or ["insufficient_data"],
-                "explanation_codes": ["insufficient_data"],
-            }
-
-        cutoff_time = attempts[training_count - 1]["occurred_at"]
-        training_attempts = attempts[:training_count]
-        test_attempts = attempts[training_count:]
-
-        training_avg = sum(a["ratio"] for a in training_attempts) / len(training_attempts)
-        if len(training_attempts) >= 2:
-            t_span = max(1.0, (training_attempts[-1]["occurred_at"] - training_attempts[0]["occurred_at"]).total_seconds() / 86400)
-            velocity = (training_attempts[-1]["ratio"] - training_attempts[0]["ratio"]) / t_span
-        else:
-            velocity = 0.0
-
-        predictions: list[tuple[float, int]] = []
-        for ta in test_attempts:
-            days_ahead = (ta["occurred_at"] - cutoff_time).total_seconds() / 86400
-            pred = max(0.0, min(1.0, training_avg + velocity * days_ahead * _FORECAST_DECAY_7D))
-            predictions.append((pred, ta["passed"]))
-
-        correct = sum(1 for p, y in predictions if (p >= 0.5) == (y == 1))
-        accuracy = correct / len(predictions) if predictions else 0.0
-
-        pr_auc = self._compute_pr_auc(predictions)
-        log_loss = self._compute_log_loss(predictions)
-        brier = sum((p - y) ** 2 for p, y in predictions) / len(predictions) if predictions else 0.25
-
-        bins = [0.0, 0.25, 0.5, 0.75, 1.0]
-        calibration_error = self._compute_calibration_error(predictions, bins)
-
-        if log_loss >= 0.6931:
-            gate_reasons.append("no_better_than_random")
-        if all(p >= 0.5 for p, _ in predictions) or all(p < 0.5 for p, _ in predictions):
-            if len(predictions) > 3:
-                gate_reasons.append("systematically_biased")
-        if abs(calibration_error) > 0.3:
-            gate_reasons.append("poorly_calibrated")
-
-        gate_passed = len(gate_reasons) == 0
-        return {
-            "course_id": course_id,
-            "total_attempts": total,
-            "training_count": training_count,
-            "test_count": test_count,
-            "cutoff_at": _iso(cutoff_time),
-            "accuracy": round(accuracy, 6),
-            "pr_auc": round(pr_auc, 6),
-            "log_loss": round(log_loss, 6),
-            "brier_score": round(brier, 6),
-            "calibration_error": round(calibration_error, 6),
-            "truthfulness_gate_passed": gate_passed,
-            "gate_failure_reasons": gate_reasons,
-            "explanation_codes": ["chronological_split_evaluation"],
-        }
-
-    @staticmethod
-    def _compute_pr_auc(predictions: list[tuple[float, int]]) -> float:
-        if not predictions:
-            return 0.0
-        positives = sum(1 for _, y in predictions if y == 1)
-        if positives == 0 or positives == len(predictions):
-            return 0.0
-        sorted_pred = sorted(predictions, key=lambda x: -x[0])
-        tp = fp = 0
-        prev_recall = 0.0
-        auc = 0.0
-        for p, y in sorted_pred:
-            if y == 1:
-                tp += 1
-            else:
-                fp += 1
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-            recall = tp / positives
-            auc += precision * (recall - prev_recall)
-            prev_recall = recall
-        return auc
-
-    @staticmethod
-    def _compute_log_loss(predictions: list[tuple[float, int]]) -> float:
-        if not predictions:
-            return 0.6931
-        import math
-        eps = 1e-15
-        total = 0.0
-        for p, y in predictions:
-            p = max(eps, min(1.0 - eps, p))
-            total += -(y * math.log(p) + (1 - y) * math.log(1.0 - p))
-        return total / len(predictions)
-
-    @staticmethod
-    def _compute_calibration_error(predictions: list[tuple[float, int]], bins: list[float]) -> float:
-        if not predictions:
-            return 1.0
-        errors = []
-        for i in range(len(bins) - 1):
-            lo, hi = bins[i], bins[i + 1]
-            in_bin = [(p, y) for p, y in predictions if lo <= p < hi]
-            if not in_bin:
-                continue
-            avg_pred = sum(p for p, _ in in_bin) / len(in_bin)
-            avg_actual = sum(y for _, y in in_bin) / len(in_bin)
-            errors.append(abs(avg_pred - avg_actual))
-        return sum(errors) / len(errors) if errors else 1.0
-
-    @staticmethod
-    def _apply_counterfactual_intervention(
-        inputs: dict[str, Any], intervention: dict[str, Any], as_of: datetime,
-    ) -> dict[str, Any]:
-        modified = json.loads(json.dumps(inputs, default=str))
-        itype = intervention.get("intervention_type", "")
-        target_kc = intervention.get("knowledge_component_code", "")
-        count = intervention.get("additional_practice_count", 0)
-        expected_score = intervention.get("expected_score", 0.0)
-
-        if itype == "additional_practice" and count > 0:
-            mappings = modified.get("mappings", [])
-            exercise_id = "simulated_ex"
-            mappings.append({"exercise_id": exercise_id, "knowledge_component_code": target_kc})
-            attempts = modified.get("practice_attempts", [])
-            for i in range(count):
-                attempts.append({
-                    "attempt_id": f"sim_att_{i}",
-                    "exercise_id": exercise_id,
-                    "occurred_at": _iso(as_of - timedelta(minutes=count - i)),
-                    "result_type": "passed" if expected_score >= 60 else "failed",
-                    "score": expected_score,
-                    "max_score": 100.0,
-                    "error_codes": [],
-                })
-            modified["practice_attempts"] = attempts
-            modified["mappings"] = mappings
-
-        elif itype == "remediation":
-            knowledge_snapshots = modified.get("knowledge_snapshots", [])
-            for snap in knowledge_snapshots:
-                if snap.get("scope_id") == target_kc:
-                    value = dict(snap.get("value", {}))
-                    current_est = value.get("estimate", 0.0)
-                    value["estimate"] = min(1.0, current_est + 0.15)
-                    value["evidence_count"] = value.get("evidence_count", 0) + 3
-                    snap["value"] = value
-            modified["knowledge_snapshots"] = knowledge_snapshots
-
-        elif itype == "review_session":
-            knowledge_snapshots = modified.get("knowledge_snapshots", [])
-            for snap in knowledge_snapshots:
-                if snap.get("scope_id") == target_kc:
-                    value = dict(snap.get("value", {}))
-                    current_est = value.get("estimate", 0.0)
-                    value["estimate"] = min(1.0, current_est + 0.08)
-                    value["evidence_count"] = value.get("evidence_count", 0) + 1
-                    snap["value"] = value
-            modified["knowledge_snapshots"] = knowledge_snapshots
-
-        return modified
-
-
-__all__ = ["ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]
+__all__ = ["ESTIMATOR_VERSION", "WORLD_ESTIMATOR_VERSION", "ComputedSnapshot", "LearnerStateProjectionService", "ProjectionResult"]

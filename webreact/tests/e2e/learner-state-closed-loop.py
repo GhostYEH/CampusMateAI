@@ -45,8 +45,8 @@ BASE_URL = f"http://127.0.0.1:{VITE_PORT}"
 API_BASE = f"{BACKEND_URL}/api/v1"
 
 VIEWPORTS = [
-    {"width": 1440, "height": 900, "name": "desktop"},
-    {"width": 390, "height": 844, "name": "mobile"},
+    {"width": 1440, "height": 900, "name": "desktop", "username": "student_demo"},
+    {"width": 390, "height": 844, "name": "mobile", "username": "student_demo_01"},
 ]
 
 _processes: list[subprocess.Popen] = []
@@ -99,9 +99,12 @@ def _start_backend() -> None:
 
 def _start_vite() -> None:
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    env = os.environ.copy()
+    env["VITE_API_BASE_URL"] = API_BASE
     proc = subprocess.Popen(
         [npm_cmd, "run", "dev", "--", "--port", str(VITE_PORT), "--host", "127.0.0.1"],
         cwd=str(WEBREACT_DIR),
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         shell=False,
@@ -129,15 +132,11 @@ atexit.register(_cleanup)
 
 
 def _api_login(page, username: str, password: str) -> str:
-    """Login via API and return access token. Also sets localStorage."""
+    """Login via API and return an access token for direct seed requests."""
     resp = page.request.post(f"{API_BASE}/auth/login", data={"username": username, "password": password})
-    assert resp.status() == 200, f"login failed: {resp.status()} {resp.text()}"
+    assert resp.status == 200, f"login failed: {resp.status} {resp.text()}"
     body = resp.json()
     token = body["access_token"]
-    page.evaluate(
-        """([t, r]) => { localStorage.setItem('campus_access_token', t); localStorage.setItem('campus_refresh_token', r); }""",
-        [token, body["refresh_token"]],
-    )
     return token
 
 
@@ -147,7 +146,7 @@ def _api_post(page, path: str, token: str, data: dict | None = None) -> dict:
         data=data or {},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status() < 400, f"POST {path} failed: {resp.status()} {resp.text()}"
+    assert resp.status < 400, f"POST {path} failed: {resp.status} {resp.text()}"
     return resp.json() if resp.text() else {}
 
 
@@ -156,7 +155,7 @@ def _api_get(page, path: str, token: str) -> dict:
         f"{API_BASE}{path}",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status() < 400, f"GET {path} failed: {resp.status()} {resp.text()}"
+    assert resp.status < 400, f"GET {path} failed: {resp.status} {resp.text()}"
     return resp.json()
 
 
@@ -168,17 +167,29 @@ def _seed_learner_data(page, token: str) -> None:
             data={"goal": f"复习数据结构第{i+1}章", "duration_minutes": 30 + i * 10},
             headers={"Authorization": f"Bearer {token}"},
         )
-        if create_resp.status() >= 400:
-            continue
+        assert create_resp.status < 400, f"seed session failed: {create_resp.status} {create_resp.text()}"
         session = create_resp.json()
         session_id = session.get("session_id") or session.get("id")
-        if not session_id:
-            continue
-        page.request.post(
+        assert session_id, f"seed session missing id: {session}"
+        finish_resp = page.request.post(
             f"{API_BASE}/study/sessions/{session_id}/finish",
             data={"self_report": "完成了一些练习题", "duration_minutes": 30 + i * 10},
             headers={"Authorization": f"Bearer {token}"},
         )
+        assert finish_resp.status < 400, f"finish session failed: {finish_resp.status} {finish_resp.text()}"
+
+
+def _assert_evidence(body: dict, label: str, require_items: bool) -> None:
+    for field in ("items", "total", "page", "page_size", "has_more"):
+        assert field in body, f"{label} evidence missing {field}: {body}"
+    assert isinstance(body["items"], list), f"{label} evidence items must be a list"
+    if require_items:
+        assert body["items"], f"{label} evidence items empty"
+    for item in body["items"]:
+        for field in ("evidence_kind", "source_category", "role", "explanation_code"):
+            assert item.get(field), f"{label} evidence missing safe field {field}: {item}"
+        for forbidden in ("source_id", "table_name", "payload", "prompt", "source_text", "answer"):
+            assert forbidden not in item, f"{label} evidence leaks {forbidden}: {item}"
 
 
 def _check_no_overflow(page, viewport_name: str) -> None:
@@ -195,10 +206,15 @@ def run_closed_loop(page, viewport, token: str) -> None:
     # 1. 登录
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.wait_for_selector("input[autoComplete='username']", timeout=10000)
-    page.fill("input[autoComplete='username']", "student_demo")
+    page.fill("input[autoComplete='username']", viewport["username"])
     page.fill("input[autoComplete='current-password']", "Demo123456")
     page.click("button.login-submit")
-    page.wait_for_url(f"{BASE_URL}/home", timeout=10000)
+    try:
+        page.wait_for_url(f"{BASE_URL}/home", timeout=10000)
+    except Exception as exc:
+        alert = page.locator("[role='alert']")
+        detail = alert.inner_text() if alert.count() else "no login error rendered"
+        raise AssertionError(f"UI login did not navigate: {detail}") from exc
 
     # 2. 打开学习状态页面
     page.goto(f"{BASE_URL}/learning-state", wait_until="networkidle")
@@ -219,35 +235,49 @@ def run_closed_loop(page, viewport, token: str) -> None:
 
     # 6. 查看 CORE evidence — 点击第一个"查看依据"按钮
     view_evidence_btns = page.query_selector_all(".ls-state-card .ls-link-btn")
-    if view_evidence_btns:
-        view_evidence_btns[0].click()
-        page.wait_for_selector(".ls-drawer", timeout=5000)
-        evidence_items = page.query_selector_all(".ls-evidence-item")
-        # 证据可能为空（seed 数据可能不足以生成 evidence），但抽屉应打开
-        drawer = page.query_selector(".ls-drawer")
-        assert drawer is not None, "evidence drawer did not open"
+    assert view_evidence_btns, "no CORE evidence button"
+    core_page = _api_get(page, "/learner-state/snapshots?scope_type=USER&page=1&page_size=50", token)
+    assert core_page.get("items"), f"no CORE snapshots: {core_page}"
+    core_snapshot_id = core_page["items"][0].get("snapshot_id")
+    assert core_snapshot_id, f"CORE snapshot missing id: {core_page['items'][0]}"
+    core_evidence = _api_get(
+        page, f"/learner-state/snapshots/{core_snapshot_id}/evidence?page=1&page_size=20", token
+    )
+    _assert_evidence(core_evidence, "CORE", True)
+    view_evidence_btns[0].click()
+    page.wait_for_selector(".ls-drawer", timeout=5000)
+    assert page.query_selector(".ls-drawer") is not None, "evidence drawer did not open"
 
-        # 7. 提交纠正（如果抽屉内有纠正选项）
-        correction_opts = page.query_selector_all(".ls-correction-options .ls-btn")
-        if correction_opts:
-            correction_opts[0].click()
-            submit_btn = page.query_selector(".ls-drawer__correction .ls-btn--primary")
-            if submit_btn and submit_btn.is_enabled():
-                submit_btn.click()
-                page.wait_for_timeout(1000)
-                # 8. 撤销纠正
-                page.reload(wait_until="networkidle")
-                page.wait_for_selector(".learning-state-page", timeout=10000)
-                revoke_btns = page.query_selector_all(".ls-correction-row .ls-btn")
-                if revoke_btns:
-                    revoke_btns[0].click()
-                    page.wait_for_timeout(1000)
+    courses = _api_get(page, "/courses?page=1&page_size=20", token)
+    course_items = courses.get("items", courses) if isinstance(courses, dict) else courses
+    assert course_items, f"no courses for KNOWLEDGE evidence: {courses}"
+    course_id = course_items[0].get("id") or course_items[0].get("course_id")
+    assert course_id, f"course missing id: {course_items[0]}"
+    knowledge = _api_get(page, f"/learner-state/knowledge?course_id={course_id}", token)
+    assert isinstance(knowledge, list) and knowledge, f"no knowledge snapshots: {knowledge}"
+    knowledge_snapshot_id = knowledge[0].get("snapshot_id")
+    assert knowledge_snapshot_id, f"knowledge snapshot missing id: {knowledge[0]}"
+    knowledge_evidence = _api_get(
+        page, f"/learner-state/snapshots/{knowledge_snapshot_id}/evidence?page=1&page_size=20", token
+    )
+    _assert_evidence(knowledge_evidence, "KNOWLEDGE", False)
 
-        # 关闭抽屉
-        close_btn = page.query_selector(".ls-drawer__close")
-        if close_btn:
-            close_btn.click()
-            page.wait_for_timeout(500)
+    # 7. 提交纠正
+    correction_opts = page.query_selector_all(".ls-correction-options .ls-btn")
+    assert correction_opts, "no correction options in evidence drawer"
+    correction_opts[0].click()
+    submit_btn = page.query_selector(".ls-drawer__correction .ls-btn--primary")
+    assert submit_btn is not None and submit_btn.is_enabled(), "correction submit unavailable"
+    submit_btn.click()
+    page.wait_for_timeout(1000)
+
+    # 8. 撤销纠正
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".learning-state-page", timeout=10000)
+    revoke_btns = page.query_selector_all(".ls-correction-row .ls-btn")
+    assert revoke_btns, "no correction record to revoke"
+    revoke_btns[0].click()
+    page.wait_for_timeout(1000)
 
     # 9. 暂停 PRACTICE 数据源
     page.reload(wait_until="networkidle")
@@ -259,71 +289,62 @@ def run_closed_loop(page, viewport, token: str) -> None:
         if name_el and "练习" in name_el.inner_text():
             practice_row = row
             break
-    if practice_row:
-        pause_btn = practice_row.query_selector(".ls-btn:has-text('暂停')")
-        if pause_btn:
-            pause_btn.click()
-            page.wait_for_timeout(1000)
-            _check_no_overflow(page, vp_name)
+    assert practice_row is not None, "PRACTICE source row not found"
+    pause_btn = practice_row.query_selector(".ls-btn:has-text('暂停')")
+    assert pause_btn is not None, "PRACTICE pause button not found"
+    pause_btn.click()
+    page.wait_for_timeout(1000)
+    _check_no_overflow(page, vp_name)
 
-            # 10. 恢复 PRACTICE
-            resume_btn = practice_row.query_selector(".ls-btn:has-text('恢复')")
-            if resume_btn:
-                resume_btn.click()
-                page.wait_for_timeout(1000)
+    # 10. 恢复 PRACTICE
+    resume_btn = practice_row.query_selector(".ls-btn:has-text('恢复')")
+    assert resume_btn is not None, "PRACTICE resume button not found"
+    resume_btn.click()
+    page.wait_for_timeout(1000)
 
     # 11. 生成计划 via API
-    plan = None
-    try:
-        plan = _api_post(page, "/learning-plans/generate", token, {"available_minutes": 60})
-    except AssertionError:
-        pass
+    plan = _api_post(page, "/learning-plans/generate", token, {"available_minutes": 60})
+    assert plan.get("plan_id") or plan.get("id"), f"plan generate missing id: {plan}"
 
     # 12. 刷新页面查看计划
-    if plan:
-        plan_id = plan.get("plan_id") or plan.get("id")
-        page.reload(wait_until="networkidle")
-        page.wait_for_selector(".learning-state-page", timeout=10000)
-        _check_no_overflow(page, vp_name)
+    plan_id = plan.get("plan_id") or plan.get("id")
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".learning-state-page", timeout=10000)
+    _check_no_overflow(page, vp_name)
 
-        # 13. 接受计划
-        accept_btn = page.query_selector(".ls-plan .ls-btn--primary:has-text('接受计划')")
-        if accept_btn:
-            accept_btn.click()
-            page.wait_for_timeout(1000)
+    # 13. 接受计划
+    accept_btn = page.query_selector(".ls-plan .ls-btn--primary:has-text('接受计划')")
+    assert accept_btn is not None, "accept plan button not found"
+    accept_btn.click()
+    page.wait_for_timeout(1000)
 
-            # 14. 执行计划
-            page.reload(wait_until="networkidle")
-            page.wait_for_selector(".learning-state-page", timeout=10000)
-            execute_btn = page.query_selector(".ls-plan .ls-btn--primary:has-text('创建个人学习任务')")
-            if execute_btn:
-                execute_btn.click()
-                page.wait_for_timeout(1000)
+    # 14. 执行计划
+    page.reload(wait_until="networkidle")
+    page.wait_for_selector(".learning-state-page", timeout=10000)
+    execute_btn = page.query_selector(".ls-plan .ls-btn--primary:has-text('创建个人学习任务')")
+    assert execute_btn is not None, "execute plan button not found"
+    execute_btn.click()
+    page.wait_for_timeout(1000)
 
-        # 15. 查看 evaluation via API
-        if plan_id:
-            try:
-                _api_get(page, f"/learning-plans/{plan_id}/evaluation", token)
-            except AssertionError:
-                pass
+    # 15. 查看 evaluation via API
+    evaluation = _api_get(page, f"/learning-plans/{plan_id}/evaluation", token)
+    assert evaluation is not None, "evaluation response missing"
 
-            # 16. 提交 feedback via API
-            try:
-                _api_post(page, f"/learning-plans/{plan_id}/feedback", token, {"feedback_type": "HELPFUL"})
-            except AssertionError:
-                pass
+    # 16. 提交 feedback via API
+    feedback = _api_post(page, f"/learning-plans/{plan_id}/feedback", token, {"feedback": "HELPFUL"})
+    assert feedback is not None, "feedback response missing"
 
     # 17. 删除 MODEL_SHADOW_ONLY
     page.reload(wait_until="networkidle")
     page.wait_for_selector(".learning-state-page", timeout=10000)
     model_shadow_radio = page.query_selector("input[name='delete-scope'][value='MODEL_SHADOW_ONLY']")
-    if model_shadow_radio:
-        model_shadow_radio.click()
-        page.wait_for_timeout(500)
-        confirm_btn = page.query_selector(".ls-delete-confirm .ls-btn--danger")
-        if confirm_btn:
-            confirm_btn.click()
-            page.wait_for_timeout(1000)
+    assert model_shadow_radio is not None, "MODEL_SHADOW_ONLY delete option not found"
+    model_shadow_radio.click()
+    page.wait_for_timeout(500)
+    confirm_btn = page.query_selector(".ls-delete-confirm .ls-btn--danger")
+    assert confirm_btn is not None, "delete confirm button not found"
+    confirm_btn.click()
+    page.wait_for_timeout(1000)
 
     # 18. 验证账号及其他状态仍存在
     page.reload(wait_until="networkidle")
@@ -331,12 +352,28 @@ def run_closed_loop(page, viewport, token: str) -> None:
     assert page.query_selector(".ls-title") is not None, "page broken after deletion"
 
     # 19. 验证数据摘要仍可用
-    try:
-        _api_get(page, "/learner-state/data-summary", token)
-    except AssertionError:
-        pass
+    summary = _api_get(page, "/learner-state/data-summary", token)
+    assert summary is not None, "data summary missing after deletion"
 
-    # 20. 最终无横向溢出
+    # 20. 预测世界模型页面、在线预测与反事实模拟必须真实可用
+    page.goto(f"{BASE_URL}/prediction", wait_until="networkidle")
+    page.wait_for_selector(".pred-page", timeout=15000)
+    page.wait_for_selector(".pred-course-select select", timeout=15000)
+    assert page.query_selector(".pred-error") is None, "prediction page rendered an API error"
+    section_titles = [item.inner_text() for item in page.query_selector_all(".pred-section__title")]
+    for expected in ("掌握度预测", "表现预测", "学习速度", "反事实模拟", "预测评测"):
+        assert expected in section_titles, f"prediction section missing: {expected}"
+    simulate_btn = page.query_selector(".pred-btn--primary:has-text('运行模拟')")
+    assert simulate_btn is not None and simulate_btn.is_enabled(), "counterfactual simulation unavailable"
+    simulate_btn.click()
+    page.wait_for_function(
+        "document.querySelector('.pred-sim-result') || document.querySelector('.pred-error')",
+        timeout=30000,
+    )
+    error_bar = page.query_selector(".pred-error")
+    assert error_bar is None, f"counterfactual simulation failed: {error_bar.inner_text() if error_bar else ''}"
+
+    # 21. 最终无横向溢出
     _check_no_overflow(page, vp_name)
 
 
@@ -361,7 +398,7 @@ def main():
             page_errors: list[str] = []
             page.on("pageerror", lambda e: page_errors.append(str(e)))
             try:
-                token = _api_login(page, "student_demo", "Demo123456")
+                token = _api_login(page, vp["username"], "Demo123456")
                 run_closed_loop(page, vp, token)
                 if page_errors:
                     raise AssertionError(f"page errors: {page_errors}")

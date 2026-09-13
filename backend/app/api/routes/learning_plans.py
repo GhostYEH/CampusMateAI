@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Header, Query
 
 from ...core.exceptions import InvalidTransition, ValidationFailed
+from ...core.logging import logger
 from ...models.learning_plan import LearningPlanRow
 from ...models.multi_role import UserRow
 from ...schemas.learning_plan import (
@@ -39,7 +40,7 @@ def _out(plan: LearningPlanRow) -> LearningPlanOut:
         superseded_by_plan_id=plan.superseded_by_plan_id,
         items=[LearningPlanItemOut(
             item_id=item.item_id, item_type=item.item_type, course_id=item.course_id, task_id=item.task_id,
-            knowledge_component_code=item.knowledge_component_code, estimated_minutes=item.estimated_minutes,
+            estimated_minutes=item.estimated_minutes,
             priority_score=item.priority_score, priority_components=item.priority_components,
             explanation_codes=item.explanation_codes,
             evidence=[LearningPlanEvidenceOut(
@@ -135,7 +136,27 @@ def feedback_learning_plan(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanFeedbackOut:
-    container.learning_planner_service.record_feedback(user_id=user.id, plan_id=plan_id, feedback=req.feedback)
+    feedback_id = container.learning_planner_service.record_feedback(
+        user_id=user.id, plan_id=plan_id, feedback=req.feedback
+    )
+    plan = container.learning_plan_repository.get_plan(plan_id, user_id=user.id)
+    try:
+        container.learner_event_service.record_ai_learning_feedback_recorded(
+            user_id=user.id,
+            feedback_id=feedback_id,
+            feedback_kind=req.feedback,
+            course_id=plan.run.course_scope if plan is not None else None,
+            occurred_at=datetime.now(timezone.utc),
+        )
+    except Exception as exc:
+        logger.warning(
+            "learner_event_append_failed action={} user_id={} subject_type={} subject_id={} exception_type={}",
+            "ai_learning_feedback_recorded",
+            user.id,
+            "learning_plan_feedback",
+            feedback_id,
+            type(exc).__name__,
+        )
     return LearningPlanFeedbackOut(plan_id=plan_id, feedback=req.feedback)
 
 
