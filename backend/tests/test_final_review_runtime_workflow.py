@@ -37,13 +37,13 @@ def _setup():
 
 
 def _titles(client, headers):
-    payload = client.get("/api/v1/tasks", headers=headers).json()
+    payload = client.get("/api/v1/tasks", headers=headers[0]).json()
     items = payload.get("items", payload)
     return [item["title"] for item in items]
 
 
 def _versions(client, headers, campaign_id):
-    return client.get(f"/api/v1/final-review/campaigns/{campaign_id}/plan-versions", headers=headers).json()
+    return client.get(f"/api/v1/final-review/campaigns/{campaign_id}/plan-versions", headers=headers[0]).json()
 
 
 def test_runtime_pauses_at_approval_before_any_task_is_written():

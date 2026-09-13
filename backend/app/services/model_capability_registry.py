@@ -17,7 +17,7 @@ from ..schemas.model_capability import (
 CAPABILITY_NAMES = (
     "learning_summary_v1", "read_only_tool_routing_v1",
 )
-READ_ONLY_TOOLS = ("read_core_state", "read_personal_tasks", "search_course_materials")
+READ_ONLY_TOOLS = ("read_core_state", "read_knowledge_state", "read_personal_tasks", "search_course_materials")
 SUMMARY_CLAIMS = {
     "PRIORITIZE_NEAR_DEADLINE", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL",
 }
@@ -157,6 +157,7 @@ class ModelCapabilityRegistry:
                 if payload["tool_name"] is not None:
                     resource_by_tool = {
                         "read_core_state": "learner_state",
+                        "read_knowledge_state": "course_knowledge",
                         "read_personal_tasks": "personal_task",
                         "search_course_materials": "course_content",
                     }

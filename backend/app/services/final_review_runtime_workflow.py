@@ -82,7 +82,7 @@ class FinalReviewRuntimeWorkflow:
         if reused:
             self._events.append(run_id=run.id, event_type="RUN_REUSED", summary="重复请求命中同一运行")
             if run.status in FINISHED_STATUSES:
-                return self.view(user_id, run)
+                return self.view(user_id=user_id, run=run)
         else:
             self._events.append(run_id=run.id, event_type="RUN_QUEUED", summary="期末复习运行已排队")
         return self._advance(user_id=user_id, run=run, campaign_id=campaign_id)
@@ -94,11 +94,11 @@ class FinalReviewRuntimeWorkflow:
         if run.domain != DOMAIN:
             raise AppException(code="AGENT_INVALID_STATE", http_status=409, message="该运行不属于期末复习工作流")
         if run.status in FINISHED_STATUSES:
-            return self.view(user_id, run)
+            return self.view(user_id=user_id, run=run)
         campaign = self._campaign_for_run(user_id, run)
         if campaign is None:
             self._fail(user_id, run, "无法证明该运行可恢复，已终止")
-            return self.view(user_id, self._repo.get_run(run_id=run.id, user_id=user_id))
+            return self.view(user_id=user_id, run=self._repo.get_run(run_id=run.id, user_id=user_id))
         # 只有在执行器真正被调度时才把运行标记为恢复中。
         self._repo.update_run(run_id=run.id, status=run.status, phase="RECOVERY_CHECKING", current_role=ROLE)
         self._events.append(run_id=run.id, event_type="RUN_RECOVERY_STARTED", summary="执行器已接管，从最后完成步骤继续")
@@ -123,7 +123,7 @@ class FinalReviewRuntimeWorkflow:
             if step is not None and step.status not in {"DONE", "SKIPPED"}:
                 self._repo.finish_step(run_id=run.id, sequence=sequence, status="SKIPPED", safe_summary="审批未通过")
         self._repo.update_run(run_id=run.id, status="CANCELLED", phase="IDLE", current_role=ROLE)
-        return self.view(user_id, self._repo.get_run(run_id=run.id, user_id=user_id))
+        return self.view(user_id=user_id, run=self._repo.get_run(run_id=run.id, user_id=user_id))
 
     def can_resume(self, run: AgentRunRow) -> bool:
         """启动恢复判定：只有能反查到仍存在的领域对象，才认为旧运行可恢复。"""
@@ -156,18 +156,18 @@ class FinalReviewRuntimeWorkflow:
             tool, phase, _label = _STEP_BY_SEQUENCE[step.sequence]
             if step.sequence == APPROVAL_STEP:
                 paused = self._ensure_approval(user_id=user_id, run=run, campaign_id=campaign_id, step=step)
-                return self.view(user_id, paused)
+                return self.view(user_id=user_id, run=paused)
             self._repo.update_run(run_id=run.id, status="RUNNING", phase=phase, current_role=ROLE)
             if step.sequence == ACTIVATION_STEP:
                 paused = self._activation_gate(user_id=user_id, run=run)
                 if paused is not None:
-                    return self.view(user_id, paused)
+                    return self.view(user_id=user_id, run=paused)
             failure = self._execute(user_id=user_id, run=run, campaign_id=campaign_id,
                                     step=step, tool=tool)
             if failure is not None:
-                return self.view(user_id, failure)
+                return self.view(user_id=user_id, run=failure)
             run = self._repo.get_run(run_id=run.id, user_id=user_id)
-        return self.view(user_id, self._repo.get_run(run_id=run.id, user_id=user_id))
+        return self.view(user_id=user_id, run=self._repo.get_run(run_id=run.id, user_id=user_id))
 
     def _next_step(self, run_id: str) -> AgentRunStepRow | None:
         for step in self._repo.list_steps(run_id=run_id):
@@ -372,7 +372,7 @@ class FinalReviewRuntimeWorkflow:
     def _succeed(self, user_id: str, run: AgentRunRow) -> dict:
         updated = self._repo.update_run(run_id=run.id, status="SUCCEEDED", phase="IDLE", current_role=ROLE)
         self._events.append(run_id=run.id, event_type="RUN_SUCCEEDED", summary="期末复习计划已就绪")
-        return self.view(user_id, updated)
+        return self.view(user_id=user_id, run=updated)
 
     def _fail(self, user_id: str, run: AgentRunRow, message: str) -> AgentRunRow:
         updated = self._repo.update_run(run_id=run.id, status="FAILED", phase="IDLE", current_role=ROLE)
