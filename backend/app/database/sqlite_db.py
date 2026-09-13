@@ -1643,6 +1643,51 @@ CREATE TABLE IF NOT EXISTS agent_artifacts (
 """
 
 
+FINAL_REVIEW_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS final_review_campaigns (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, exam_id TEXT NOT NULL,
+    status TEXT NOT NULL, active_version INTEGER, daily_capacity_minutes INTEGER NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, exam_id)
+);
+CREATE TABLE IF NOT EXISTS final_review_plan_versions (
+    id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, version INTEGER NOT NULL,
+    parent_version_id TEXT, content_json TEXT NOT NULL, content_hash TEXT NOT NULL,
+    change_reason TEXT NOT NULL, created_by_run TEXT, created_at TEXT NOT NULL,
+    FOREIGN KEY(campaign_id) REFERENCES final_review_campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY(parent_version_id) REFERENCES final_review_plan_versions(id),
+    UNIQUE(campaign_id, version)
+);
+CREATE TABLE IF NOT EXISTS final_review_daily_agendas (
+    id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, plan_version INTEGER NOT NULL,
+    agenda_date TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY(campaign_id) REFERENCES final_review_campaigns(id) ON DELETE CASCADE,
+    UNIQUE(campaign_id, plan_version, agenda_date)
+);
+CREATE TABLE IF NOT EXISTS final_review_daily_items (
+    id TEXT PRIMARY KEY, agenda_id TEXT NOT NULL, title TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL, status TEXT NOT NULL, external_task_id TEXT,
+    created_at TEXT NOT NULL, completed_at TEXT,
+    FOREIGN KEY(agenda_id) REFERENCES final_review_daily_agendas(id) ON DELETE CASCADE,
+    UNIQUE(agenda_id, title)
+);
+CREATE TABLE IF NOT EXISTS final_review_checkins (
+    id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    completion_percent INTEGER NOT NULL, actual_minutes INTEGER NOT NULL,
+    difficulty_code TEXT, created_at TEXT NOT NULL,
+    FOREIGN KEY(campaign_id) REFERENCES final_review_campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS final_review_adjustment_proposals (
+    id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, base_version INTEGER NOT NULL,
+    status TEXT NOT NULL, reason_code TEXT NOT NULL, content_json TEXT NOT NULL,
+    created_at TEXT NOT NULL, decided_at TEXT,
+    FOREIGN KEY(campaign_id) REFERENCES final_review_campaigns(id) ON DELETE CASCADE
+);
+"""
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -1709,6 +1754,7 @@ class Database:
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
+                conn.executescript(FINAL_REVIEW_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:
