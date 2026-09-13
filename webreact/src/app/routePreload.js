@@ -7,6 +7,8 @@ const routePreloaders = Object.freeze({
   notifications: () => import("../pages/NoticeCenterPage.jsx"),
   study: () => import("../pages/StudyPage.jsx"),
   profile: () => import("../pages/ProfilePage.jsx"),
+  "final-review": () => import("../pages/FinalReviewPage.jsx"),
+  "course-research": () => import("../pages/CourseResearchPage.jsx"),
 });
 
 export function preloadRoute(path) {
