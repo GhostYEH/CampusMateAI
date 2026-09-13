@@ -21,7 +21,7 @@ export function createAgentEventStream(runId, { token, lastEventId, onEvent, onE
   const headers = { Accept: "text/event-stream" };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (lastEventId) headers["Last-Event-ID"] = lastEventId;
-  return fetch(`${BASE_URL}/agent/runs/${encodeURIComponent(runId)}/events`, { headers, signal })
+  return fetch(`${BASE_URL}/agent-runs/${encodeURIComponent(runId)}/events/stream`, { headers, signal })
     .then(async (response) => {
       if (!response.ok || !response.body) throw new Error("智能体事件流连接失败");
       const reader = response.body.getReader();
