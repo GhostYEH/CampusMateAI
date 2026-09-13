@@ -17,6 +17,7 @@ from ...repositories.agent_artifact_repository import AgentArtifactRepository
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from ...schemas.agent_contract_enums import (
     AGENT_CONTRACT_VERSION,
+    AgentErrorCode,
     ApprovalStatus,
     RiskLevel,
 )
@@ -296,12 +297,21 @@ async def get_job(
 
 def _run_to_out(run: dict, container: ServiceContainer) -> AgentRunOut:
     artifacts = _artifact_repo(container).list_artifacts_by_run(run["run_id"], run["user_id"])
+    error = None
+    if run.get("error_code"):
+        allowed_codes = {item.value for item in AgentErrorCode}
+        code = run["error_code"] if run["error_code"] in allowed_codes else AgentErrorCode.AGENT_INVALID_STATE.value
+        error = AgentErrorEnvelope(
+            code=code,
+            message=(run.get("error_message") or "运行未能完成")[:256],
+            request_id=run.get("request_id") or f"run:{run['run_id']}",
+        )
     return AgentRunOut(
         run_id=run["run_id"], job_id=run["job_id"], user_id=run["user_id"],
         status=run["status"], phase=run["phase"], risk_level=run.get("risk_level"),
         started_at=run.get("started_at"), finished_at=run.get("finished_at"),
         created_at=run["created_at"], updated_at=run["updated_at"],
-        artifact_ids=[a["artifact_id"] for a in artifacts], retry_of=run.get("retry_of"),
+        error=error, artifact_ids=[a["artifact_id"] for a in artifacts], retry_of=run.get("retry_of"),
     )
 
 

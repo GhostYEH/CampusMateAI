@@ -89,6 +89,8 @@ def test_learning_goal_retry_replans_and_updates_job_reference() -> None:
     client = TestClient(create_app())
     login = client.post("/api/v1/auth/login", json={"username": user.username, "password": "Demo123456"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    failed_response = client.get(f"/api/v1/agent-runs/{run_id}", headers=headers)
+    assert failed_response.json()["error"]["code"] == "AGENT_PROVIDER_UNAVAILABLE"
     response = client.post(
         f"/api/v1/agent-runs/{run_id}/retry",
         json={"idempotency_key": "retry-control-1"}, headers=headers,
