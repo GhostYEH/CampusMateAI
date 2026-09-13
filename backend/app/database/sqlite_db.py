@@ -1713,6 +1713,38 @@ CREATE TABLE IF NOT EXISTS course_research_reports (
 );
 """
 
+NOTICE_WORKFLOW_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS notification_sources (
+ code TEXT PRIMARY KEY,label TEXT NOT NULL,automation_enabled INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_source_controls (
+ user_id TEXT NOT NULL,source_code TEXT NOT NULL,automation_enabled INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,source_code),
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+ FOREIGN KEY(source_code) REFERENCES notification_sources(code)
+);
+CREATE TABLE IF NOT EXISTS notification_workflows (
+ id TEXT PRIMARY KEY,user_id TEXT NOT NULL,notice_id TEXT NOT NULL,status TEXT NOT NULL,
+ source_code TEXT NOT NULL,source_revision INTEGER NOT NULL DEFAULT 1,content_digest TEXT NOT NULL,
+ extracted_facts_json TEXT NOT NULL,uncertainty_json TEXT NOT NULL,checklist_json TEXT NOT NULL,
+ action_risk TEXT NOT NULL,difference_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+ UNIQUE(user_id,notice_id),
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+ FOREIGN KEY(notice_id) REFERENCES notices(id) ON DELETE CASCADE,
+ FOREIGN KEY(source_code) REFERENCES notification_sources(code)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_workflows_user ON notification_workflows(user_id,updated_at);
+CREATE TABLE IF NOT EXISTS notification_workflow_actions (
+ id TEXT PRIMARY KEY,workflow_id TEXT NOT NULL,action_type TEXT NOT NULL,risk_level TEXT NOT NULL,
+ status TEXT NOT NULL,idempotency_key TEXT NOT NULL,task_id TEXT,error_code TEXT,
+ created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+ UNIQUE(workflow_id,idempotency_key),
+ FOREIGN KEY(workflow_id) REFERENCES notification_workflows(id) ON DELETE CASCADE,
+ FOREIGN KEY(task_id) REFERENCES personal_tasks(id) ON DELETE SET NULL
+);
+"""
+
 
 class Database:
     """线程安全的 SQLite 包装。
@@ -1782,6 +1814,7 @@ class Database:
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
                 conn.executescript(FINAL_REVIEW_SCHEMA_SQL)
                 conn.executescript(COURSE_RESEARCH_SCHEMA_SQL)
+                conn.executescript(NOTICE_WORKFLOW_SCHEMA_SQL)
                 self._migrate(conn)
                 conn.commit()
             finally:

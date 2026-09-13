@@ -32,9 +32,22 @@ from ...services.notice_extraction_service import (
     SemanticDecision,
     compute_notice_hash,
 )
-from ..deps import current_user
+from ..deps import current_user, require_role
+from ...schemas.notice_workflow import ManualNoticeCreate, ManualNoticeOut
 
 router = APIRouter()
+
+
+@router.post("/notices/manual", response_model=ManualNoticeOut)
+def create_manual_notice(
+    payload: ManualNoticeCreate,
+    user: UserRow = Depends(require_role("student")),
+    container: ServiceContainer = Depends(lambda: get_container()),
+) -> ManualNoticeOut:
+    notice, duplicate = container.notice_workflow_service.create_manual(
+        user.id, payload.content, payload.title, payload.published_at
+    )
+    return ManualNoticeOut(notice_id=notice.id, duplicate=duplicate, source_code="manual_input")
 
 
 _RELATIVE_TIME_RE = re.compile(r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天])")

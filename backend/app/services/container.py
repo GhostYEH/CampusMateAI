@@ -50,6 +50,7 @@ from ..repositories.agent_runtime_repository import AgentRuntimeRepository
 from ..repositories.agent_artifact_repository import AgentArtifactRepository
 from ..repositories.final_review_repository import FinalReviewRepository
 from ..repositories.course_research_repository import CourseResearchRepository
+from ..repositories.notice_workflow_repository import NoticeWorkflowRepository
 from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
@@ -64,6 +65,7 @@ from ..services.agent_runtime import AgentEventStore, ArtifactManager, RunManage
 from ..services.agent_runtime.approval_gate import ApprovalGate
 from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
+from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
@@ -141,6 +143,8 @@ class ServiceContainer:
     final_review_service: FinalReviewService
     course_research_repository: CourseResearchRepository
     course_research_pipeline: CourseResearchPipeline
+    notice_workflow_repository: NoticeWorkflowRepository
+    notice_workflow_service: NoticeWorkflowService
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
@@ -257,6 +261,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_artifact_repository = AgentArtifactRepository(db)
     final_review_repository = FinalReviewRepository(db)
     course_research_repository = CourseResearchRepository(db)
+    notice_repository = NoticeRepository(db)
+    notice_workflow_repository = NoticeWorkflowRepository(db)
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
@@ -316,7 +322,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         study_goal_repository=study_goal_repo,
         study_checkin_repository=study_checkin_repo,
         chaoxing_repository=ChaoxingRepository(db),
-        notice_repository=NoticeRepository(db),
+        notice_repository=notice_repository,
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),
         home_banner_repository=home_banner_repository,
@@ -346,6 +352,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         final_review_service=FinalReviewService(final_review_repository, personal_task_repo),
         course_research_repository=course_research_repository,
         course_research_pipeline=CourseResearchPipeline(course_research_repository, db),
+        notice_workflow_repository=notice_workflow_repository,
+        notice_workflow_service=NoticeWorkflowService(db, notice_repository, notice_workflow_repository, personal_task_repo),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
         edu_repository=edu_repo,
