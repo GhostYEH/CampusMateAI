@@ -167,14 +167,13 @@ describe("getPlanEvaluation", () => {
 // ===== 数据源控制 =====
 
 describe("getDataControls", () => {
-  it("GET /learner-state/data-controls 返回 7 个数据源", async () => {
+  it("GET /learner-state/data-controls 返回当前 6 个通用数据源", async () => {
     const controls = {
       items: [
         { source_key: "CORE_STUDY", status: "ENABLED", can_pause: true, can_resume: false },
         { source_key: "PERSONAL_TASK", status: "ENABLED", can_pause: true, can_resume: false },
         { source_key: "CHAOXING", status: "PAUSED", can_pause: false, can_resume: true },
         { source_key: "EDU", status: "ENABLED", can_pause: true, can_resume: false },
-        { source_key: "PRACTICE", status: "ENABLED", can_pause: true, can_resume: false },
         { source_key: "MODEL_SHADOW", status: "ENABLED", can_pause: true, can_resume: false },
         { source_key: "PROACTIVE_SUGGESTIONS", status: "ENABLED", can_pause: true, can_resume: false },
       ],
@@ -182,26 +181,26 @@ describe("getDataControls", () => {
     mock.onGet("/learner-state/data-controls", controls);
     const result = await api.getDataControls();
     assert.equal(mock.lastRequest().url, "/learner-state/data-controls");
-    assert.equal(result.items.length, 7);
+    assert.equal(result.items.length, 6);
     const keys = result.items.map((s) => s.source_key);
     assert.ok(keys.includes("MODEL_SHADOW"));
-    assert.ok(keys.includes("PRACTICE"));
+    assert.ok(!keys.includes("PRACTICE"));
   });
 });
 
 describe("updateDataControl", () => {
   it("PUT /data-controls/:key 传递 status 和 idempotency_key", async () => {
-    mock.onPut("/learner-state/data-controls/PRACTICE", { source_key: "PRACTICE", status: "PAUSED" });
-    await api.updateDataControl("PRACTICE", "PAUSED", "toggle-123");
+    mock.onPut("/learner-state/data-controls/CHAOXING", { source_key: "CHAOXING", status: "PAUSED" });
+    await api.updateDataControl("CHAOXING", "PAUSED", "toggle-123");
     const req = mock.lastRequest();
-    assert.equal(req.url, "/learner-state/data-controls/PRACTICE");
+    assert.equal(req.url, "/learner-state/data-controls/CHAOXING");
     assert.equal(req.data.status, "PAUSED");
     assert.equal(req.data.idempotency_key, "toggle-123");
   });
 
   it("恢复数据源时 status=ENABLED", async () => {
-    mock.onPut("/learner-state/data-controls/PRACTICE", { source_key: "PRACTICE", status: "ENABLED" });
-    await api.updateDataControl("PRACTICE", "ENABLED", "toggle-456");
+    mock.onPut("/learner-state/data-controls/CHAOXING", { source_key: "CHAOXING", status: "ENABLED" });
+    await api.updateDataControl("CHAOXING", "ENABLED", "toggle-456");
     assert.equal(mock.lastRequest().data.status, "ENABLED");
   });
 });
@@ -302,14 +301,14 @@ describe("计划操作后数据刷新", () => {
 });
 
 describe("数据源切换后刷新", () => {
-  it("暂停 PRACTICE 后再次获取 controls 发出新请求", async () => {
-    mock.onPut("/learner-state/data-controls/PRACTICE", { status: "PAUSED" });
+  it("暂停 CHAOXING 后再次获取 controls 发出新请求", async () => {
+    mock.onPut("/learner-state/data-controls/CHAOXING", { status: "PAUSED" });
     mock.onGet("/learner-state/data-controls", { items: [] });
 
     await api.getDataControls();
     assert.equal(mock.findRequests("get", "data-controls").length, 1);
 
-    await api.updateDataControl("PRACTICE", "PAUSED", "k1");
+    await api.updateDataControl("CHAOXING", "PAUSED", "k1");
 
     await api.getDataControls();
     assert.equal(mock.findRequests("get", "data-controls").length, 2);

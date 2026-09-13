@@ -168,12 +168,12 @@ describe("数据源控制错误码", () => {
   });
 
   it("冲突状态返回 409 LEARNER_SOURCE_CONTROL_CONFLICT", async () => {
-    mock.onError("put", "/learner-state/data-controls/PRACTICE", 409, {
+    mock.onError("put", "/learner-state/data-controls/CHAOXING", 409, {
       code: "LEARNER_SOURCE_CONTROL_CONFLICT",
       message: "数据源状态冲突",
     });
     await assert.rejects(
-      () => api.updateDataControl("PRACTICE", "PAUSED", "key"),
+      () => api.updateDataControl("CHAOXING", "PAUSED", "key"),
       (err) => err.code === "LEARNER_SOURCE_CONTROL_CONFLICT",
     );
   });
