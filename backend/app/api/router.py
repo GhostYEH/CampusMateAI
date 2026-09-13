@@ -42,6 +42,7 @@ from .routes import (
     agent_runtime,
     final_review,
     course_research,
+    notice_workflows,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -89,8 +90,6 @@ api_router.include_router(simulations.router)
 
 api_router.include_router(learning_plans.router)
 api_router.include_router(learner_control.router)
-# CampusMate EduConnector — 高校教务系统统一连接层
-api_router.include_router(edu.router)
 # CampusAgentRuntime — Agent 运行时 API(§9.1)
 api_router.include_router(agent_runtime.router)
 api_router.include_router(agent_runtime.jobs_router)
@@ -100,8 +99,10 @@ api_router.include_router(agent_runtime.artifacts_router)
 # notices/manual 端点由 notices.py 提供(canonical:返回 notice_id 供 workflow 创建)。
 # agent_runtime.notices_manual_router 是早期占位,已被取代,不再注册。
 # CampusAgentRuntime 领域路由(§9.3 期末复习 / §9.5 课程研究)
-# notice_workflows(§9.4) 已通过 notices.py 末尾 include 注册,不在此重复
 api_router.include_router(final_review.router)
 api_router.include_router(course_research.router)
+api_router.include_router(notice_workflows.router)
+# CampusMate EduConnector — 高校教务系统统一连接层
+api_router.include_router(edu.router)
 
 __all__ = ["api_router"]
