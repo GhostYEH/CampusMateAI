@@ -29,6 +29,7 @@ def _run(row) -> LearningPlanRunRow:
         input_digest=row["input_digest"], as_of=row["as_of"], valid_until=row["valid_until"],
         available_minutes=int(row["available_minutes"]), allocated_minutes=int(row["allocated_minutes"]),
         course_scope=row["course_scope"], window_start=row["window_start"], window_end=row["window_end"],
+        goal_id=row["goal_id"] if "goal_id" in row.keys() else None,
         warning_codes=json.loads(row["warning_codes_json"] or "[]"),
         idempotency_key=row["idempotency_key"], created_at=row["created_at"],
         core_run_id=row["core_run_id"] if "core_run_id" in row.keys() else None,
@@ -64,12 +65,12 @@ class LearningPlanRepository:
             conn.execute(
                 """INSERT INTO learning_plan_runs
                    (run_id,user_id,planner_version,input_digest,as_of,valid_until,available_minutes,
-                    allocated_minutes,course_scope,window_start,window_end,warning_codes_json,idempotency_key,
+                    allocated_minutes,course_scope,goal_id,window_start,window_end,warning_codes_json,idempotency_key,
                     core_run_id,core_input_digest,knowledge_bindings_json,task_binding_digest,task_bindings_json,input_truncated,core_quality,created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (run["run_id"], user_id, run["planner_version"], run["input_digest"], run["as_of"],
                  run["valid_until"], run["available_minutes"], run["allocated_minutes"],
-                 run.get("course_scope"), run.get("window_start"), run.get("window_end"),
+                 run.get("course_scope"), run.get("goal_id"), run.get("window_start"), run.get("window_end"),
                  json.dumps(run.get("warning_codes", []), ensure_ascii=False), run.get("idempotency_key"),
                  run.get("core_run_id"), run.get("core_input_digest"),
                  json.dumps(run.get("knowledge_bindings", {}), sort_keys=True), run.get("task_binding_digest"),

@@ -8,6 +8,7 @@ from typing import Optional
 class StudentGoalRow:
     goal_id: str
     user_id: str
+    name: str
     category: str
     status: str
     target_date: Optional[str]
@@ -23,6 +24,7 @@ class StudentGoalRow:
         return cls(
             goal_id=row["goal_id"],
             user_id=row["user_id"],
+            name=row["name"],
             category=row["category"],
             status=row["status"],
             target_date=row["target_date"],

@@ -31,7 +31,7 @@ def _container() -> ServiceContainer:
 
 def _out(plan: LearningPlanRow) -> LearningPlanOut:
     return LearningPlanOut(
-        plan_id=plan.plan_id, planner_version=plan.run.planner_version, input_digest=plan.run.input_digest,
+        plan_id=plan.plan_id, goal_id=plan.run.goal_id, planner_version=plan.run.planner_version, input_digest=plan.run.input_digest,
         status=plan.status, as_of=plan.run.as_of, valid_until=plan.run.valid_until,
         available_minutes=plan.run.available_minutes, allocated_minutes=plan.run.allocated_minutes,
         warning_codes=plan.run.warning_codes, created_at=plan.created_at,
@@ -60,7 +60,7 @@ async def generate_learning_plan(
 ) -> LearningPlanOut:
     try:
         plan = container.learning_planner_service.generate(
-            user_id=user.id, available_minutes=req.available_minutes, course_id=req.course_id,
+            user_id=user.id, available_minutes=req.available_minutes, course_id=req.course_id, goal_id=req.goal_id,
             window_start=req.window_start, window_end=req.window_end,
             idempotency_key=idempotency_header or req.idempotency_key,
         )

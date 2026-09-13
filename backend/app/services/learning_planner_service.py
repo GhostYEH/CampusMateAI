@@ -75,6 +75,7 @@ class LearningPlannerService:
         self._forecast_service = forecast_service
 
     def generate(self, *, user_id: str, available_minutes: int, course_id: str | None = None,
+                 goal_id: str | None = None,
                  window_start: str | None = None, window_end: str | None = None,
                  idempotency_key: str | None = None, as_of: datetime | None = None,
                  force_new: bool = False, supersedes_plan_id: str | None = None,
@@ -141,6 +142,13 @@ class LearningPlannerService:
             )
             if goal_total > MAX_GOALS:
                 warnings.append("goals_truncated")
+            if goal_id:
+                selected_goal = self._student_goal_repository.get_goal(user_id=user_id, goal_id=goal_id)
+                if selected_goal is None or selected_goal.status != "active":
+                    raise ValueError("goal 不存在、已归档或无权访问")
+                goals = [selected_goal]
+        elif goal_id:
+            raise ValueError("当前运行时未配置目标仓储")
         notices: list[Any] = []
         if self._notice_repository is not None:
             all_notices = self._notice_repository.list_notices(user_id)
@@ -182,7 +190,7 @@ class LearningPlannerService:
              "data_quality": forecast.data_quality, "explanation_codes": forecast.explanation_codes}
             for forecast in forecasts
         ]
-        safe_goals = [{"goal_id": g.goal_id, "category": g.category, "status": g.status,
+        safe_goals = [{"goal_id": g.goal_id, "name": g.name, "category": g.category, "status": g.status,
                        "target_date": g.target_date, "progress_percent": g.progress_percent,
                        "milestone_count": g.milestone_count}
                       for g in goals]
@@ -196,7 +204,7 @@ class LearningPlannerService:
                                 "world": safe_world, "forecasts": safe_forecasts,
                                 "goals": safe_goals, "notices": safe_notices,
                                 "available_minutes": available_minutes,
-                                "course_id": course_id, "window_start": window_start, "window_end": window_end,
+                                "course_id": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
                                 "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS})
         if idempotency_key:
             existing = self.repository.find_by_idempotency_key(user_id=user_id, idempotency_key=idempotency_key)
@@ -249,7 +257,7 @@ class LearningPlannerService:
         run = {"run_id": run_id,
                "planner_version": PLANNER_VERSION, "input_digest": input_digest, "as_of": _iso(now),
                "valid_until": _iso(valid_until), "available_minutes": available_minutes, "allocated_minutes": allocated,
-               "course_scope": course_id, "window_start": window_start, "window_end": window_end,
+               "course_scope": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
                "warning_codes": sorted(set(warnings)), "idempotency_key": idempotency_key,
                "core_run_id": core.run_id, "core_input_digest": core.input_digest,
                "knowledge_bindings": {

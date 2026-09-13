@@ -1136,6 +1136,7 @@ CREATE TABLE IF NOT EXISTS learning_plan_runs (
     available_minutes INTEGER NOT NULL CHECK(available_minutes > 0),
     allocated_minutes INTEGER NOT NULL DEFAULT 0 CHECK(allocated_minutes >= 0),
     course_scope TEXT,
+    goal_id TEXT,
     window_start TEXT,
     window_end TEXT,
     warning_codes_json TEXT NOT NULL DEFAULT '[]',
@@ -1155,6 +1156,8 @@ CREATE INDEX IF NOT EXISTS idx_learning_plan_runs_user_created
     ON learning_plan_runs(user_id, created_at DESC, run_id DESC);
 CREATE INDEX IF NOT EXISTS idx_learning_plan_runs_digest
     ON learning_plan_runs(user_id, planner_version, input_digest, valid_until);
+CREATE INDEX IF NOT EXISTS idx_learning_plan_runs_goal
+    ON learning_plan_runs(user_id, goal_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS learning_plans (
     plan_id TEXT PRIMARY KEY,
@@ -1739,6 +1742,7 @@ class Database:
                 "projection_scope": "TEXT NOT NULL DEFAULT '__user__'",
             },
             "learning_plan_runs": {
+                "goal_id": "TEXT",
                 "core_run_id": "TEXT", "core_input_digest": "TEXT",
                 "knowledge_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
                 "task_binding_digest": "TEXT", "task_bindings_json": "TEXT NOT NULL DEFAULT '{}'",

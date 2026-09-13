@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 PLAN_ITEM_TYPE_LITERAL = Literal[
@@ -18,7 +18,10 @@ PLAN_ITEM_TYPE_LITERAL = Literal[
 
 
 class LearningPlanGenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     available_minutes: int = Field(..., ge=1, le=1440)
+    goal_id: str | None = Field(None, min_length=1, max_length=128)
     course_id: str | None = Field(None, min_length=1, max_length=128)
     window_start: str | None = Field(None, max_length=64)
     window_end: str | None = Field(None, max_length=64)
@@ -82,7 +85,10 @@ class LearningPlanItemOut(BaseModel):
 
 
 class LearningPlanOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     plan_id: str
+    goal_id: str | None = None
     planner_version: str
     input_digest: str
     status: str

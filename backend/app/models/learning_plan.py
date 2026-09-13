@@ -37,6 +37,7 @@ class LearningPlanRunRow:
     course_scope: str | None
     window_start: str | None
     window_end: str | None
+    goal_id: str | None = None
     warning_codes: list[str] = field(default_factory=list)
     idempotency_key: str | None = None
     created_at: str = ""
