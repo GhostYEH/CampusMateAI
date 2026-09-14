@@ -29,7 +29,7 @@ def install_fixtures(page):
 def run():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page = browser.new_page(viewport={"width": int(os.environ.get("WEB_VIEWPORT_WIDTH", "1440")), "height": 900})
         page.set_default_timeout(10_000)
         install_fixtures(page)
 
@@ -60,7 +60,20 @@ def run():
         page.mouse.move(home_box["x"] + home_box["width"] / 2, home_box["y"] + home_box["height"] / 2)
         page.get_by_role("button", name="首页", exact=True).focus()
         page.wait_for_timeout(200)
-        expanded_width = page.locator(".floating-nav").evaluate("nav => nav.getBoundingClientRect().width")
+        expanded = page.locator(".floating-nav").evaluate(
+            """nav => {
+              const navRect = nav.getBoundingClientRect();
+              const stages = [...nav.querySelectorAll('.sylva-liquid-stage--nav')]
+                .map(stage => stage.getBoundingClientRect());
+              return {
+                width: navRect.width,
+                clientWidth: nav.clientWidth,
+                scrollWidth: nav.scrollWidth,
+                firstStageInset: stages[0].left - navRect.left,
+                lastStageInset: navRect.right - stages.at(-1).right,
+              };
+            }"""
+        )
         expanded_effect = page.locator(".floating-nav").evaluate(
             """nav => {
               const stage = nav.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav');
@@ -96,8 +109,12 @@ def run():
             failures.append(f"收起态内容溢出：{collapsed}")
         if collapsed["leftInset"] < -1 or collapsed["rightInset"] < -1:
             failures.append(f"收起态入口超出容器：{collapsed}")
-        if expanded_width < collapsed["clientWidth"] + 200:
-            failures.append(f"导航未正常展开：{expanded_width}")
+        if expanded["width"] < collapsed["clientWidth"] + 200:
+            failures.append(f"导航未正常展开：{expanded}")
+        if expanded["scrollWidth"] > expanded["clientWidth"] + 1:
+            failures.append(f"展开态内容溢出：{expanded}")
+        if expanded["firstStageInset"] < -1 or expanded["lastStageInset"] < -1:
+            failures.append(f"展开态入口超出容器：{expanded}")
         if not expanded_effect:
             failures.append("展开态选中项缺少液态画布")
         elif abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:

@@ -127,7 +127,7 @@ html {
   }
 
   .floating-nav:hover {
-    width: min(var(--floating-nav-expanded-width), calc(100vw - 580px));
+    width: min(var(--floating-nav-expanded-width), calc(100vw - 540px));
   }
 
   .floating-nav:hover .floating-nav-list {
