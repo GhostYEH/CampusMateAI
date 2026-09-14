@@ -1718,6 +1718,16 @@ class Database:
             return
         conn.close()
 
+    @staticmethod
+    def _prepare_legacy_learning_plan_runs(conn: sqlite3.Connection) -> None:
+        """补齐建索引前必须存在的旧学习计划列。"""
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(learning_plan_runs)")
+        }
+        if columns and "goal_id" not in columns:
+            conn.execute("ALTER TABLE learning_plan_runs ADD COLUMN goal_id TEXT")
+
     def _init_schema(self) -> None:
         with self._lock:
             conn = self._connect()
@@ -1739,6 +1749,7 @@ class Database:
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
+                self._prepare_legacy_learning_plan_runs(conn)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
