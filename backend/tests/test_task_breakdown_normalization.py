@@ -441,6 +441,46 @@ class TestTaskBreakdownRoute:
         assert "学工办" not in body["goal"]
         assert "9 月 30 日" not in body["goal"]
 
+    def test_generation_context_carries_all_task_fields(self) -> None:
+        """任务说明、材料、提交方式、截止、通知原文都必须进入生成上下文。"""
+        service = _build_service(StubLLMClient(response_text="[]"))
+        ctx = service._build_generation_context(  # noqa: SLF001
+            {
+                "title": "完成助学金申请材料",
+                "description": "按学院通知准备全部证明材料",
+                "deadline": "2026-09-30T23:59:00+08:00",
+                "materials": ["成绩单", "家庭情况调查表"],
+                "submission_method": "交到学工办",
+                "source_text": "通知原文: 请于 9 月 30 日前提交",
+            }
+        )
+
+        assert "按学院通知准备全部证明材料" in ctx
+        assert "成绩单" in ctx and "家庭情况调查表" in ctx
+        assert "交到学工办" in ctx
+        assert "2026-09-30" in ctx
+        assert "通知原文" in ctx
+
+    def test_policy_context_in_task_triggers_retrieval_path(self) -> None:
+        """任务标题不政策但说明涉及政策时,仍然要走政策检索路径。"""
+        container, client = _route_client()
+        headers = _login(client)
+        user = container.user_repository.get_user_by_username("student_demo")
+        task = container.personal_task_repository.create_task(
+            user_id=user.id,
+            title="完成学院布置的事项",  # 标题本身不含政策词
+            description="需要办理助学金相关手续并提交证明材料",
+        )
+
+        resp = client.post(
+            "/api/v1/study/task-breakdown",
+            json={"task_id": task.id},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        # 知识库在测试环境不可用或未命中,但必须出现受控的政策提示
+        assert any("政策" in w for w in resp.json()["warnings"])
+
     def test_task_id_of_another_user_is_rejected_to_goal_fallback(self) -> None:
         """跨用户 task_id 不得泄露任务内容,只能回落到 goal。"""
         container, client = _route_client()

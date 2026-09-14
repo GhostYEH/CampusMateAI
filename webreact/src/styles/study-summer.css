@@ -181,6 +181,15 @@
 .study-plan-delete:hover { color: #ffaaa0; background: rgba(255,138,128,.12); }
 .study-plan-delete:focus-visible { opacity: 1; transform: none; outline: 2px solid rgba(255,170,160,.55); outline-offset: 1px; }
 @media (hover: none), (pointer: coarse) { .study-plan-delete { opacity: .72; transform: none; } }
+.study-plan-ai { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; flex: 0 0 auto; border: 1px solid rgba(215,239,131,.24); border-radius: 8px; color: var(--summer-primary); background: rgba(215,239,131,.08); font-size: 12px; white-space: nowrap; opacity: 0; transform: translateX(2px); transition: opacity .18s ease, background .18s ease, transform .18s ease; }
+.study-plan-row:hover .study-plan-ai, .study-plan-row:focus-within .study-plan-ai { opacity: 1; transform: none; }
+.study-plan-ai:hover { background: rgba(215,239,131,.16); }
+.study-plan-ai:focus-visible { opacity: 1; transform: none; outline: 2px solid rgba(215,239,131,.6); outline-offset: 1px; }
+@media (hover: none), (pointer: coarse) { .study-plan-ai { opacity: .82; transform: none; } }
+.study-ai-planner__context { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid rgba(215,239,131,.22); border-radius: 10px; background: rgba(215,239,131,.06); font-size: 12px; }
+.study-ai-planner__context strong { color: var(--summer-primary); font-weight: 500; }
+.study-ai-planner__context button { border: 0; background: transparent; color: rgba(255,255,255,.55); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+.study-ai-planner__context button:hover { color: rgba(255,255,255,.8); }
 .study-doc-icon, .study-record-list article > span { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(215,239,131,.16); border-radius: 8px; color: var(--summer-primary); background: rgba(215,239,131,.08); }
 .study-reading-grid, .study-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .study-course-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 10px; border-top: 1px solid rgba(255,255,255,.07); color: rgba(255,255,255,.72); background: transparent; font-size: 12px; text-align: left; }

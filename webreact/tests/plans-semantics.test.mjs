@@ -20,11 +20,23 @@ test("plans page surfaces the contract gap instead of pretending a plan model ex
 });
 
 test("AI planner reuses the existing task-breakdown endpoint with preview/edit/delete/confirm", () => {
-  assert.match(subpages, /api\.breakdownStudyTask\(\{ goal: goal\.trim\(\) \}\)/);
+  // payload 由纯函数构造,页面不再内联拼对象
+  assert.match(subpages, /api\.breakdownStudyTask\(\s*buildBreakdownPayload\(/);
   assert.match(subpages, /updateStep\(index, patch\)/);
   assert.match(subpages, /removeStep\(index\)/);
   assert.match(subpages, /confirmSaveSteps/);
   assert.match(subpages, /api\.createTask/);
   assert.match(subpages, /mode === [""]rule_fallback[""]/);
   assert.match(subpages, /userErrorMessage\(err, "目标拆解失败，请重试"\)/);
+});
+
+test("plans page offers a per-task AI breakdown entry that carries the task id", () => {
+  assert.match(subpages, /study-plan-ai/);
+  assert.match(subpages, /startTaskBreakdown\(task\)/);
+  assert.match(subpages, /setSelectedTask\(\{ id: task\.id, title: task\.title \|\| "未命名任务" \}\)/);
+  assert.match(subpages, /buildBreakdownPayload\(\{ taskId: selectedTask\?\.id, goal: trimmedGoal \}\)/);
+  // 任务上下文可退出,回到自由目标
+  assert.match(subpages, /clearTaskContext/);
+  assert.match(subpages, /切换为自由目标/);
+  assert.match(subpages, /正在拆解：/);
 });
