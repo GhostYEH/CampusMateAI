@@ -34,10 +34,10 @@ export interface StudySessionCreate { mode: FocusMode; experience_mode?: FocusEx
 export interface StudySessionFinish { self_report?: string; self_report_tags?: string[]; behavior_summary?: StudyBehaviorSummary; }
 export interface StudyDailyGoal { target_minutes: number; updated_at: string; }
 export interface TaskBreakdownRequest { task_id?: string; goal?: string; }
-export interface TaskBreakdownStep { step_number: number; title: string; description: string; estimated_minutes: number; dependencies: number[]; completion_criteria: string; is_policy_step: boolean; knowledge_source?: string; }
+export interface TaskBreakdownStep { step_number: number; title: string; description: string; estimated_minutes: number; dependencies: number[]; completion_criteria: string; is_policy_step: boolean; knowledge_source?: string; knowledge_document_id?: string; knowledge_status?: string; }
 export interface TaskBreakdownResponse { mode: string; steps: TaskBreakdownStep[]; goal: string; related_task_id?: string; related_task_title?: string; warnings: string[]; }
 export type FocusPlanStepStatus = 'PENDING' | 'COMPLETED';
-export interface FocusPlanStep { stepNumber: number; title: string; description: string; estimatedMinutes: number; completionCriteria: string; dependencies: number[]; isPolicyStep: boolean; knowledgeSource?: string; status: FocusPlanStepStatus; }
+export interface FocusPlanStep { stepNumber: number; title: string; description: string; estimatedMinutes: number; completionCriteria: string; dependencies: number[]; isPolicyStep: boolean; knowledgeSource?: string; knowledgeDocumentId?: string; knowledgeStatus?: string; status: FocusPlanStepStatus; }
 export interface FocusPlan { taskId: string; taskTitle: string; goal: string; steps: FocusPlanStep[]; updatedAtEpochMillis: number; }
 export interface PersonalFileItem { id: string; name: string; category?: string; size_label?: string; updated_at?: string; source?: string; is_favorite?: boolean; }
 export interface PersonalFileCreate { name: string; category: string; source: string; size_label: string; }

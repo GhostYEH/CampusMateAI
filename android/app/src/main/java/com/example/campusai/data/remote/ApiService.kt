@@ -757,6 +757,8 @@ data class TaskBreakdownStepDto(
     val completion_criteria: String = "完成这一步的产出已确认",
     val is_policy_step: Boolean = false,
     val knowledge_source: String? = null,
+    val knowledge_document_id: String? = null,
+    val knowledge_status: String? = null,
 )
 data class TaskBreakdownResponseDto(
     val mode: String,
