@@ -480,6 +480,46 @@ CREATE INDEX IF NOT EXISTS idx_chaoxing_exams_course
     ON chaoxing_exams(user_id, course_id);
 """
 
+# 课程知识图谱 —— 学习通课程图谱页发布的"知识点体系 + 掌握率"。
+# 这是外部数据源观测(课程/学校发布的知识点 + 平台统计)，不是平台自造推断，
+# 因此与已删除的 C 语言学习系统 knowledge_components 无关，命名也刻意避开旧术语。
+CHAOXING_KNOWLEDGE_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS chaoxing_knowledge_graphs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_course_id TEXT,
+    knowledge_point_count INTEGER NOT NULL DEFAULT 0,
+    own_mastery_rate REAL,
+    class_mastery_rate REAL,
+    own_completion_rate REAL,
+    class_completion_rate REAL,
+    first_seen_at TEXT NOT NULL,
+    synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_knowledge_graphs_user
+    ON chaoxing_knowledge_graphs(user_id);
+
+CREATE TABLE IF NOT EXISTS chaoxing_knowledge_points (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    level INTEGER,
+    tags TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_knowledge_points_user
+    ON chaoxing_knowledge_points(user_id, course_id);
+"""
+
 NOTICES_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS notices (
     id TEXT PRIMARY KEY,
@@ -1800,6 +1840,7 @@ class Database:
                 conn.executescript(HOME_BANNER_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
                 conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
+                conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
@@ -2047,6 +2088,12 @@ class Database:
         )
         if cur.fetchone() is None:
             conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
+
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_knowledge_points'"
+        )
+        if cur.fetchone() is None:
+            conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")

@@ -444,6 +444,54 @@ class ChaoxingParser:
             return None
         return ChaoxingParser.to_iso(match.group(1))
 
+    # 课程图谱页(stat2-ans.chaoxing.com/study-knowledge/index)的课程级统计节点。
+    # 注意 "knowldegeCount" 是平台自身的拼写错误，必须照抄。
+    _GRAPH_NUMBER_IDS = {
+        "knowledge_point_count": "knowldegeCount",
+        "own_mastery_rate": "ownGraspWeightRate",
+        "class_mastery_rate": "graspWeightRate",
+        "own_completion_rate": "ownCompleteWeightRate",
+        "class_completion_rate": "completeWeightRate",
+    }
+    # 标签下拉里混着"一级~七级"(层级)和"父子关系/前后置关系"(关系类型)，
+    # 它们不是知识点分类，需要剔除。
+    _GRAPH_TAG_NOISE = ("级", "关系")
+
+    @classmethod
+    def parse_knowledge_graph(cls, html) -> dict:
+        """解析课程图谱页: 课程级统计 + 知识点清单 + 分类标签。
+
+        解析不到时返回空 dict / 空列表，由调用方降级，绝不抛异常。
+        """
+        if not html:
+            return {}
+        text = str(html)
+        result: dict = {}
+        for key, element_id in cls._GRAPH_NUMBER_IDS.items():
+            match = re.search(rf'id="{element_id}"[^>]*>\s*([\d.]+)', text)
+            if match:
+                value = ChaoxingParser._to_float(match.group(1))
+                if value is not None:
+                    result[key] = value
+        points: list[dict] = []
+        seen: set[str] = set()
+        for match in re.finditer(r'id="firstLevel-(\d+)"[^>]*>([^<]+)</li>', text):
+            external_id = match.group(1)
+            name = match.group(2).strip()
+            if not name or external_id in seen:
+                continue
+            seen.add(external_id)
+            points.append({"external_id": external_id, "name": name})
+        result["knowledge_points"] = points
+        raw_tags = set(re.findall(
+            r'<label for="cb_\d+">\s*<div class="ellips">([^<]+)</div>', text
+        ))
+        result["tags"] = sorted(
+            tag for tag in raw_tags
+            if not any(noise in tag for noise in cls._GRAPH_TAG_NOISE)
+        )
+        return result
+
     @staticmethod
     def parse_exam_at(metadata: dict) -> str | None:
         """从章节卡片 metadata 中解析考试时间(优先开始时间，其次结束时间)。"""
@@ -792,6 +840,36 @@ class ChaoxingClient:
             return {"status": "complete", "items": items, "error": None}
         except ChaoxingFetchError as error:
             return {"status": "failed", "items": [], "error": str(error)}
+
+    async def get_course_knowledge_graph(self, context: dict) -> dict:
+        """抓课程图谱页，返回课程级统计 + 知识点清单。
+
+        新版泛雅(fanya V3)的"课程图谱"发布课程/学校的知识点体系与掌握率，
+        比作业分数细一个量级。页面是服务端渲染，课程级统计与知识点清单
+        直接内联在 HTML 里；知识点**逐个**的掌握率需要另外请求，此处不取。
+        """
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        if not course_id or not clazz_id:
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "missing_course_context"}
+        url = (
+            "https://stat2-ans.chaoxing.com/study-knowledge/index"
+            f"?courseId={course_id}&clazzId={clazz_id}"
+        )
+        html = await self._get_text(url)
+        if not html:
+            return {"status": "failed", "items": [], "graph": {}, "error": "network_error"}
+        parsed = ChaoxingParser.parse_knowledge_graph(html)
+        if not parsed.get("knowledge_points") and not parsed.get("knowledge_point_count"):
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "structure_changed"}
+        return {
+            "status": "complete",
+            "graph": parsed,
+            "items": parsed.get("knowledge_points", []),
+            "error": None,
+        }
 
     async def get_course_notices(self, context: dict) -> dict:
         """Return only notices carrying matching course and class identifiers."""

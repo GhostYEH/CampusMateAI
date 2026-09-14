@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from datetime import datetime, timezone
 
@@ -15,10 +16,13 @@ class ChaoxingCourseContentSyncService:
         "discussions": {"discussion"},
         "assignments": {"assignment"},
         "notices": {"notice"},
+        # 知识图谱不写 course_content_items(它是课程级事实，落在
+        # chaoxing_knowledge_graphs / chaoxing_knowledge_points)，故 kinds 为空集。
+        "knowledge_graph": set(),
     }
 
     FAST_SECTIONS = {"chapters", "assignments", "notices"}
-    DEEP_SECTIONS = {"materials", "exams", "discussions"}
+    DEEP_SECTIONS = {"materials", "exams", "discussions", "knowledge_graph"}
 
     def __init__(self, container) -> None:
         self.container = container
@@ -143,6 +147,41 @@ class ChaoxingCourseContentSyncService:
                 ),
             )
 
+    def _persist_knowledge_graph(self, *, user_id: str, course_id: str,
+                                 course_external_id: str, graph: dict,
+                                 points: list[dict]) -> None:
+        """把课程知识图谱落库并投射 knowledge_graph_synced(仅首次/变化时)。
+
+        知识点体系与掌握率是外部数据源观测，供 ACADEMIC
+        knowledge_mastery_observation 消费。
+        """
+        repository = getattr(self.container, "chaoxing_repository", None)
+        if repository is None or not hasattr(repository, "upsert_knowledge_graph"):
+            return
+        row = repository.upsert_knowledge_graph(
+            user_id=user_id, course_id=course_id,
+            external_course_id=course_external_id or None,
+            graph=graph, points=points,
+        )
+        if not (row.get("changed") or row.get("new_point_count")):
+            return
+        event_service = getattr(self.container, "learner_event_service", None)
+        if event_service is None or not hasattr(event_service, "project_safely"):
+            return
+        event_service.project_safely(
+            action="knowledge_graph_synced",
+            subject_type="knowledge_graph",
+            subject_id=row["graph_id"],
+            callback=lambda: event_service.record_chaoxing_knowledge_graph_synced(
+                user_id=user_id,
+                graph_id=row["graph_id"],
+                course_id=course_id,
+                knowledge_point_count=int(row.get("knowledge_point_count") or 0),
+                own_mastery_rate=row.get("own_mastery_rate"),
+                observed_at=datetime.now(timezone.utc),
+            ),
+        )
+
     async def sync_course(self, *, user_id: str, course_id: str,
                           depth: str = "fast", force_refresh: bool = False) -> dict:
         course = self.container.course_repository.get_course(course_id)
@@ -168,6 +207,8 @@ class ChaoxingCourseContentSyncService:
             "discussions": client.get_course_discussions,
             "assignments": client.get_course_assignments,
             "notices": client.get_course_notices,
+            # 知识图谱是后加的 section: 老客户端/测试替身可能没有该方法。
+            "knowledge_graph": getattr(client, "get_course_knowledge_graph", None),
         }
 
         unchanged_chapter_ids: set[str] | None = None
@@ -193,7 +234,12 @@ class ChaoxingCourseContentSyncService:
         section_results = {}
         try:
             for section in sections_to_sync:
-                fetcher = fetchers[section]
+                fetcher = fetchers.get(section)
+                # 只调用真正的协程方法: 客户端未实现该 section 时跳过而不是
+                # KeyError 打断整次同步；测试替身(SimpleNamespace / MagicMock)
+                # 对任意属性都会"存在"，因此用 iscoroutinefunction 作为能力探测。
+                if fetcher is None or not asyncio.iscoroutinefunction(fetcher):
+                    continue
                 kwargs: dict = {}
                 if section in ("materials", "exams"):
                     kwargs["force_refresh"] = force_refresh
@@ -246,6 +292,12 @@ class ChaoxingCourseContentSyncService:
                     self._persist_exams(
                         user_id=user_id, course_id=course_id, items=items,
                         course_external_id=str(course.external_id or ""),
+                    )
+                if section == "knowledge_graph" and status in {"complete", "partial"}:
+                    self._persist_knowledge_graph(
+                        user_id=user_id, course_id=course_id,
+                        course_external_id=str(course.external_id or ""),
+                        graph=result.get("graph") or {}, points=items,
                     )
                 error = result.get("error")
                 section_row = self.repository.upsert_section_status(

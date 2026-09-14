@@ -825,6 +825,9 @@ class LearnerStateProjectionService:
             # 教务未绑定时，学习通是唯一能支撑 ACADEMIC 投影的真实来源。
             "chaoxing_grade_items": [],
             "chaoxing_exam_items": [],
+            # 课程知识图谱: 知识点体系 + 掌握率(学习通课程图谱页)。
+            "knowledge_graphs": [],
+            "knowledge_points": [],
         }
         try:
             with self.repository._db.query() as conn:
@@ -843,6 +846,22 @@ class LearnerStateProjectionService:
                         """SELECT id, course_id, title, exam_at, score, score_max, status
                            FROM chaoxing_exams WHERE user_id = ?
                            ORDER BY exam_at IS NULL, exam_at LIMIT 200""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["knowledge_graphs"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, knowledge_point_count, own_mastery_rate,
+                                  class_mastery_rate, own_completion_rate, class_completion_rate
+                           FROM chaoxing_knowledge_graphs WHERE user_id = ? LIMIT 100""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["knowledge_points"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, external_id, name
+                           FROM chaoxing_knowledge_points WHERE user_id = ?
+                           ORDER BY position LIMIT 500""",
                         (user_id,),
                     ).fetchall()
                 ]
@@ -922,13 +941,17 @@ class LearnerStateProjectionService:
             edu_events = []
         chaoxing_grade_items = inputs.get("chaoxing_grade_items", [])
         chaoxing_exam_items = inputs.get("chaoxing_exam_items", [])
+        knowledge_graphs = inputs.get("knowledge_graphs", [])
+        knowledge_points = inputs.get("knowledge_points", [])
         if "CHAOXING" in inputs.get("paused_sources", []):
             chaoxing_grade_items = []
             chaoxing_exam_items = []
+            knowledge_graphs = []
+            knowledge_points = []
 
         has_data = bool(
             schedule_items or grade_items or exam_items
-            or chaoxing_grade_items or chaoxing_exam_items
+            or chaoxing_grade_items or chaoxing_exam_items or knowledge_graphs
         )
         # 教务是权威来源(verified)；只有学习通观测时降级为 partial，
         # 避免把平台抓取事实当成教务成绩同等可信度。
@@ -1079,6 +1102,48 @@ class LearnerStateProjectionService:
             else:
                 bucket = "beyond_30d"
             time_buckets[bucket] = time_buckets.get(bucket, 0) + 1
+        # 4.5 knowledge_mastery_observation —— 课程知识图谱(知识点体系 + 掌握率)
+        def _avg(values: list[float]) -> float | None:
+            cleaned = [float(value) for value in values if value is not None]
+            return round(sum(cleaned) / len(cleaned), 2) if cleaned else None
+
+        own_avg = _avg([graph.get("own_mastery_rate") for graph in knowledge_graphs])
+        class_avg = _avg([graph.get("class_mastery_rate") for graph in knowledge_graphs])
+        own_complete = _avg([graph.get("own_completion_rate") for graph in knowledge_graphs])
+        class_complete = _avg([graph.get("class_completion_rate") for graph in knowledge_graphs])
+        point_total = len(knowledge_points) or sum(
+            int(graph.get("knowledge_point_count") or 0) for graph in knowledge_graphs
+        )
+        if knowledge_graphs:
+            knowledge_quality = base_quality
+        else:
+            knowledge_quality = "unavailable"
+        add_academic(
+            state_type="knowledge_mastery_observation",
+            value={
+                "knowledge_point_count": point_total,
+                "own_mastery_rate": own_avg,
+                "class_mastery_rate": class_avg,
+                # 正数表示领先班级平均，负数表示落后 —— 用于发现需要补强的课程。
+                "mastery_gap_vs_class": (
+                    round(own_avg - class_avg, 2)
+                    if own_avg is not None and class_avg is not None else None
+                ),
+                "own_completion_rate": own_complete,
+                "class_completion_rate": class_complete,
+                "data_completeness": knowledge_quality,
+                "warning_codes": (
+                    list(warnings) if knowledge_graphs else ["knowledge_graph_unavailable"]
+                ),
+            },
+            quality=knowledge_quality,
+            sources=[
+                {"source_type": "chaoxing_knowledge_graph", "source_id": graph["id"],
+                 "explanation_code": "chaoxing_knowledge_graph_observed"}
+                for graph in knowledge_graphs[:10]
+            ],
+        )
+
         platform_upcoming = [item for item in upcoming_exams if item.get("source") == "chaoxing"]
         add_academic(
             state_type="exam_exposure",

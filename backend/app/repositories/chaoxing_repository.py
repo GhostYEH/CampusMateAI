@@ -124,6 +124,133 @@ class ChaoxingRepository:
             "changed": changed,
         }
 
+    def upsert_knowledge_graph(
+        self,
+        *,
+        user_id: str,
+        course_id: Optional[str],
+        external_course_id: Optional[str],
+        graph: dict,
+        points: list[dict],
+    ) -> dict:
+        """写入课程知识图谱(课程级统计 + 知识点清单)，返回落库摘要。
+
+        `changed` 表示课程级统计发生变化，`new_point_count` 表示新增知识点数量，
+        调用方据此决定是否投射事件，避免每次同步都刷事件。
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        stats = {
+            "knowledge_point_count": int(graph.get("knowledge_point_count") or 0),
+            "own_mastery_rate": graph.get("own_mastery_rate"),
+            "class_mastery_rate": graph.get("class_mastery_rate"),
+            "own_completion_rate": graph.get("own_completion_rate"),
+            "class_completion_rate": graph.get("class_completion_rate"),
+        }
+        tags = json.dumps(graph.get("tags") or [], ensure_ascii=False)
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM chaoxing_knowledge_graphs WHERE user_id = ? AND course_id IS ?",
+                (user_id, course_id),
+            ).fetchone()
+            if row is None:
+                graph_id = f"cxkg_{uuid.uuid4().hex[:16]}"
+                conn.execute(
+                    "INSERT INTO chaoxing_knowledge_graphs "
+                    "(id, user_id, course_id, external_course_id, knowledge_point_count, "
+                    " own_mastery_rate, class_mastery_rate, own_completion_rate, "
+                    " class_completion_rate, first_seen_at, synced_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (graph_id, user_id, course_id, external_course_id,
+                     stats["knowledge_point_count"], stats["own_mastery_rate"],
+                     stats["class_mastery_rate"], stats["own_completion_rate"],
+                     stats["class_completion_rate"], now, now),
+                )
+                changed = True
+            else:
+                graph_id = row["id"]
+                changed = any(
+                    not _same_score(row[key], stats[key])
+                    if key.endswith("rate") or key.endswith("count")
+                    else row[key] != stats[key]
+                    for key in stats
+                )
+                conn.execute(
+                    "UPDATE chaoxing_knowledge_graphs SET external_course_id = ?, "
+                    "knowledge_point_count = ?, own_mastery_rate = ?, class_mastery_rate = ?, "
+                    "own_completion_rate = ?, class_completion_rate = ?, synced_at = ? "
+                    "WHERE id = ?",
+                    (external_course_id, stats["knowledge_point_count"],
+                     stats["own_mastery_rate"], stats["class_mastery_rate"],
+                     stats["own_completion_rate"], stats["class_completion_rate"],
+                     now, graph_id),
+                )
+            # 知识点清单: 以 (user_id, external_id) 为幂等键。
+            existing = {
+                item["external_id"]: item
+                for item in conn.execute(
+                    "SELECT id, external_id, name FROM chaoxing_knowledge_points "
+                    "WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            }
+            new_point_count = 0
+            for position, point in enumerate(points):
+                external_id = str(point.get("external_id") or "").strip()
+                name = str(point.get("name") or "").strip()
+                if not external_id or not name:
+                    continue
+                if external_id in existing:
+                    conn.execute(
+                        "UPDATE chaoxing_knowledge_points SET course_id = ?, name = ?, "
+                        "position = ?, last_synced_at = ? WHERE id = ?",
+                        (course_id, name, position, now, existing[external_id]["id"]),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO chaoxing_knowledge_points "
+                        "(id, user_id, course_id, external_id, name, level, tags, position, "
+                        " first_seen_at, last_synced_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (f"cxkp_{uuid.uuid4().hex[:16]}", user_id, course_id, external_id,
+                         name, None, tags, position, now, now),
+                    )
+                    new_point_count += 1
+        return {
+            "graph_id": graph_id,
+            "user_id": user_id,
+            "course_id": course_id,
+            "external_course_id": external_course_id,
+            "point_count": len(points),
+            "new_point_count": new_point_count,
+            "is_new": new_point_count > 0,
+            "changed": changed,
+            **stats,
+        }
+
+    def list_knowledge_graphs(self, *, user_id: str) -> list[dict]:
+        with self._db.query() as conn:
+            rows = conn.execute(
+                "SELECT * FROM chaoxing_knowledge_graphs WHERE user_id = ?", (user_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_knowledge_points(
+        self, *, user_id: str, course_id: Optional[str] = None
+    ) -> list[dict]:
+        with self._db.query() as conn:
+            if course_id:
+                rows = conn.execute(
+                    "SELECT * FROM chaoxing_knowledge_points "
+                    "WHERE user_id = ? AND course_id = ? ORDER BY position",
+                    (user_id, course_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM chaoxing_knowledge_points WHERE user_id = ? ORDER BY position",
+                    (user_id,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
     def list_exams(
         self, *, user_id: str, course_id: Optional[str] = None
     ) -> list[dict]:

@@ -765,6 +765,54 @@ class LearnerEventService:
         )
         return self.record_event(user_id=user_id, event=event)
 
+    def record_chaoxing_knowledge_graph_synced(
+        self,
+        *,
+        user_id: str,
+        graph_id: str,
+        course_id: Optional[str],
+        knowledge_point_count: int,
+        own_mastery_rate: Optional[float] = None,
+        observed_at: Any = None,
+    ) -> Optional[LearnerEventAppendResult]:
+        """记录一次课程知识图谱同步(知识点体系 + 掌握率)。
+
+        这是外部数据源观测(课程/学校发布的知识点 + 平台统计)，不是平台自造推断，
+        因此与被删除的 C 语言学习系统知识点能力无关。
+        """
+        if self._is_source_skipped(user_id=user_id, source="chaoxing"):
+            return None
+        occurred_at = self._parse_aware_datetime(observed_at)
+        if occurred_at is None:
+            return None
+        revision = self._revision_hash({
+            "graph_id": graph_id,
+            "knowledge_point_count": knowledge_point_count,
+            "own_mastery_rate": own_mastery_rate,
+        })
+        event = LearnerEventCreate(
+            source="chaoxing",
+            event_type="knowledge_graph_synced",
+            occurred_at=occurred_at,
+            course_id=course_id,
+            subject_type="knowledge_graph",
+            subject_id=graph_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="chaoxing_knowledge_graphs", row_id=graph_id
+            ),
+            data_quality="partial",
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"chaoxing:knowledge_graph_synced:{graph_id}:{revision}",
+            payload={
+                "knowledge_point_count": knowledge_point_count,
+                "own_mastery_rate": own_mastery_rate,
+                "data_quality": "partial",
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
     def record_campus_schedule_synced(
         self,
         *,

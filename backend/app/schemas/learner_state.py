@@ -15,6 +15,7 @@ StateType = Literal[
     "data_source_health",
     "academic_course_load",
     "grade_observation",
+    "knowledge_mastery_observation",
     "credit_progress",
     "exam_exposure",
     "schedule_load",
@@ -120,6 +121,9 @@ class GradeObservationValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     observed_grade_count: int = Field(ge=0)
+    # 观测来源拆分: 教务成绩是权威来源，学习通作业得分是平台观测。
+    edu_grade_count: int = Field(default=0, ge=0)
+    platform_grade_count: int = Field(default=0, ge=0)
     score_band_distribution: dict[str, int] = Field(default_factory=dict)
     has_observed_grades: bool
     data_completeness: SnapshotDataQuality
@@ -140,6 +144,9 @@ class ExamExposureValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     upcoming_exam_count: int = Field(ge=0)
+    # 观测来源拆分: 教务考试安排 vs 学习通考试。
+    edu_exam_count: int = Field(default=0, ge=0)
+    platform_exam_count: int = Field(default=0, ge=0)
     time_bucket_distribution: dict[str, int] = Field(default_factory=dict)
     unknown_time_exam_count: int = Field(ge=0)
     data_completeness: SnapshotDataQuality
@@ -213,6 +220,29 @@ class AcademicProgressValue(BaseModel):
     observed_course_count: int = Field(ge=0)
     observed_credit_count: float = Field(ge=0)
     observed_passed_count: int = Field(ge=0)
+    # 学习通作业得分贡献的补充观测(无学分信息，只有分数)。
+    platform_grade_count: int = Field(default=0, ge=0)
+    platform_average_score: float | None = None
+    data_completeness: SnapshotDataQuality
+    warning_codes: list[str] = Field(default_factory=list, max_length=16)
+
+
+class KnowledgeMasteryObservationValue(BaseModel):
+    """课程知识图谱观测 —— 知识点体系与掌握率(来自学习通课程图谱页)。
+
+    与 C 时代被删除的"平台自造知识点推断"不同: 这里是课程/学校发布的
+    知识点体系 + 平台统计的真实掌握率，属于外部数据源观测。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    knowledge_point_count: int = Field(ge=0)
+    own_mastery_rate: float | None = None
+    class_mastery_rate: float | None = None
+    # 与班级平均的差距(正数表示领先)，用于发现"个人强于班级"的科目。
+    mastery_gap_vs_class: float | None = None
+    own_completion_rate: float | None = None
+    class_completion_rate: float | None = None
     data_completeness: SnapshotDataQuality
     warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
@@ -349,6 +379,7 @@ class LearnerStateSnapshotOut(BaseModel):
             "data_source_health": DataSourceHealthValue,
             "academic_course_load": AcademicCourseLoadValue,
             "grade_observation": GradeObservationValue,
+            "knowledge_mastery_observation": KnowledgeMasteryObservationValue,
             "credit_progress": CreditProgressValue,
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
@@ -478,6 +509,7 @@ class LearnerStateChangeOut(BaseModel):
             "data_source_health": DataSourceHealthValue,
             "academic_course_load": AcademicCourseLoadValue,
             "grade_observation": GradeObservationValue,
+            "knowledge_mastery_observation": KnowledgeMasteryObservationValue,
             "credit_progress": CreditProgressValue,
             "exam_exposure": ExamExposureValue,
             "schedule_load": ScheduleLoadValue,
