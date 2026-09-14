@@ -48,6 +48,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
       activeIndex={activeIndex}
       reduceMotion={reduceMotion}
       reuseRenderer
+      effectGeometrySelector=".floating-nav-icon"
       className="floating-nav-inner"
       onSelect={({ key }) => navigate(`/${key}`)}
       renderItem={({ key, label, icon }) => {

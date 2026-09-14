@@ -118,6 +118,16 @@
   opacity: 1;
 }
 
+.floating-nav .sylva-liquid-stage--nav .sylva-liquid-fx {
+  inset:
+    calc((var(--h) - var(--floating-nav-effect-size)) / 2 - var(--pad))
+    auto
+    auto
+    calc(var(--floating-nav-effect-x) - var(--pad));
+  width: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
+  height: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
+}
+
 .sylva-liquid-stage--surface[data-tone="light"] > .sylva-liquid-plate {
   background:
     linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.08) 48%, rgba(255,255,255,0) 70%),

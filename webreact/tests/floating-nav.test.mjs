@@ -99,7 +99,7 @@ test("navigation starts compact and reveals accessible route labels on desktop h
   assert.match(layoutStyles, /--floating-nav-expanded-width:\s*900px/);
   assert.match(layoutStyles, /\.floating-nav-label/);
   assert.match(floatingNavSource, /floating-nav-label/);
-  assert.match(layoutStyles, /--floating-nav-collapsed-width:\s*424px/);
+  assert.match(layoutStyles, /--floating-nav-collapsed-width:\s*476px/);
   assert.match(layoutStyles, /\.floating-nav:hover\s*\{/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav:is\(:hover,\s*:focus-within\)/);
 });

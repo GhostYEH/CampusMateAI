@@ -25,10 +25,12 @@ html {
    legacy class for counselor routes. */
 
 .floating-nav {
-  --floating-nav-collapsed-width: 424px;
+  --floating-nav-collapsed-width: 476px;
   --floating-nav-expanded-width: 900px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
+  --floating-nav-effect-size: var(--floating-nav-item-size);
+  --floating-nav-effect-x: 0px;
   --floating-nav-list-start-padding: 8px;
   --floating-nav-list-end-padding: 8px;
   --floating-nav-foreground: #53627b;
@@ -145,6 +147,11 @@ html {
     height: 36px;
   }
 
+  .floating-nav:hover {
+    --floating-nav-effect-size: 36px;
+    --floating-nav-effect-x: 2px;
+  }
+
   .floating-nav:hover .floating-nav-label {
     max-width: 80px;
     margin-right: 0;
@@ -162,7 +169,8 @@ html {
   /* Dock magnification is an icon-dock effect: it scales each <li> without
      affecting layout, so expanded pills would visually overlap while the bar
      is 900px wide. Neutralize the motion scale while labels are visible. */
-  .floating-nav:hover .floating-nav-list > li {
+  .floating-nav:hover .floating-nav-list > li,
+  .floating-nav.floating-nav--collapsing .floating-nav-list > li {
     transform: none !important;
     scale: none !important;
     will-change: auto;
