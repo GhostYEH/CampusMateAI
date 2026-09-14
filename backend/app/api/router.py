@@ -40,6 +40,7 @@ from .routes import (
     learning_plans,
     learner_control,
     agent_runtime,
+    agent_observability,
     final_review,
     course_research,
 )
@@ -96,6 +97,8 @@ api_router.include_router(agent_runtime.runs_router)
 api_router.include_router(agent_runtime.approvals_router)
 api_router.include_router(agent_runtime.artifacts_router)
 api_router.include_router(agent_runtime.memories_router)
+# 管理员只读观测面(§Task 9):仅 admin,聚合优先、脱敏
+api_router.include_router(agent_observability.router)
 # notices/manual 端点由 notices.py 提供(canonical:返回 notice_id 供 workflow 创建)。
 # agent_runtime.notices_manual_router 是早期占位,已被取代,不再注册。
 # CampusAgentRuntime 领域路由(§9.3 期末复习 / §9.5 课程研究)

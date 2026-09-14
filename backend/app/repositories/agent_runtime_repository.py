@@ -643,6 +643,120 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    # ===== 管理员观测(只读、有界) =====
+
+    def observability_runs(self, *, since: str, limit: int = 5000) -> list[dict]:
+        """时间窗内的运行行,只取聚合需要的列,并带最大行数上限。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT run_id, status, started_at, finished_at, attempt_no, created_at "
+                "FROM agent_runs WHERE created_at >= ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (since, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def observability_model_calls(self, *, since: str, limit: int = 20000) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT call_id, latency_ms, total_tokens, status FROM agent_model_calls "
+                "WHERE started_at >= ? ORDER BY started_at DESC LIMIT ?",
+                (since, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def observability_tool_calls(self, *, since: str, limit: int = 20000) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT call_id, tool_name, status FROM agent_tool_calls "
+                "WHERE started_at >= ? ORDER BY started_at DESC LIMIT ?",
+                (since, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def observability_approvals(self, *, since: str, limit: int = 5000) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT approval_id, status, created_at, resolved_at FROM agent_approvals "
+                "WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?",
+                (since, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def count_runs_by_status(self, status: str) -> int:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS total FROM agent_runs WHERE status = ?", (status,)
+            ).fetchone()
+            return int(row["total"]) if row else 0
+        finally:
+            self._release(conn)
+
+    def count_stale_leases(self, *, now: str) -> int:
+        """已过期但未收口的租约数量:反映崩溃恢复是否及时。"""
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS total FROM agent_runs "
+                "WHERE status IN ('RUNNING', 'QUEUED') AND lease_owner IS NOT NULL "
+                "AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?",
+                (now,),
+            ).fetchone()
+            return int(row["total"]) if row else 0
+        finally:
+            self._release(conn)
+
+    def list_tool_calls_by_run(self, run_id: str, *, limit: int = 100) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT call_id, tool_name, status, error_code, started_at, finished_at "
+                "FROM agent_tool_calls WHERE run_id = ? ORDER BY started_at ASC LIMIT ?",
+                (run_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def list_model_calls_by_run(self, run_id: str, *, limit: int = 100) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT call_id, provider, model, route_policy, status, latency_ms, "
+                "total_tokens, started_at FROM agent_model_calls "
+                "WHERE run_id = ? ORDER BY started_at ASC LIMIT ?",
+                (run_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
+    def list_approvals_by_run(self, run_id: str) -> list[dict]:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT approval_id, status, risk_level, action_summary, created_at, "
+                "resolved_at, expires_at FROM agent_approvals WHERE run_id = ? "
+                "ORDER BY created_at ASC",
+                (run_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            self._release(conn)
+
     # ===== 事件游标 =====
 
     def get_event_sequence(self, run_id: str, event_id: str) -> Optional[int]:

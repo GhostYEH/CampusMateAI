@@ -1868,6 +1868,20 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_lease "
             "ON agent_runs(lease_owner, lease_expires_at)"
         )
+        # 管理员观测按时间窗聚合,索引让这些查询走区间扫描而不是全表扫描。
+        for index_sql in (
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at "
+            "ON agent_runs(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_lease_expires "
+            "ON agent_runs(lease_expires_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_model_calls_started_at "
+            "ON agent_model_calls(started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_started_at "
+            "ON agent_tool_calls(started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_approvals_created_at "
+            "ON agent_approvals(created_at)",
+        ):
+            conn.execute(index_sql)
         shadow_result_cols = {row["name"] for row in conn.execute("PRAGMA table_info(model_shadow_results)").fetchall()}
         if "inference_source" not in shadow_result_cols:
             conn.execute(
