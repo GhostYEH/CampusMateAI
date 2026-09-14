@@ -14,7 +14,8 @@ API:
 权限与隔离:
 - 所有路由必须登录(current_user)。
 - 所有记录绑定当前登录用户,跨用户访问返回 404(StudySessionNotFound)。
-- 任务拆解的 task_id 若为后端 assignment ID,需通过权限校验(详见 TaskBreakdownService)。
+- 任务拆解的 task_id 只接受当前用户的个人待办 PersonalTask ID,不接受教师
+  Assignment ID(详见 TaskBreakdownService)。
 
 科学边界:
 - self_report 仅由用户主动输入,不根据表情自动填写。
@@ -428,8 +429,11 @@ async def task_breakdown(
 ) -> TaskBreakdownResponse:
     """任务拆解。
 
-    输入 task_id(后端 assignment ID,需权限校验) 或自由文本 goal,可同时提供。
-    输出结构化步骤,mode 标注 llm | rule_fallback。
+    输入 task_id(个人待办 PersonalTask ID,必须是当前用户所有且未软删除;
+    不接受教师 Assignment ID) 或自由文本 goal,可同时提供。
+
+    输出结构化步骤,mode 标注 llm | rule_fallback。响应的 goal 只返回展示用目标,
+    不包含任务说明、通知原文等内部生成上下文。
     """
     return await service.breakdown(req, user=user)
 

@@ -6,6 +6,7 @@
 偶发 500 的真实原因之一。
 """
 import asyncio
+import json
 import ssl
 from types import SimpleNamespace
 
@@ -97,11 +98,23 @@ def test_task_breakdown_with_valid_llm_returns_llm_mode() -> None:
     """LLM 正常输出 JSON 时保持 llm 模式（回归保护）。"""
     from app.services.llm.openai_compatible import StubLLMClient
 
+    # 规范化要求有效步骤不少于 3 个,否则整次降级为 rule_fallback
     stub = StubLLMClient(
-        response_text=(
-            '[{"step_number":1,"title":"复习定义","description":"重读教材第一小节",'
-            '"estimated_minutes":20,"dependencies":[],"completion_criteria":"能复述定义",'
-            '"is_policy_step":false,"knowledge_source":null}]'
+        response_text=json.dumps(
+            [
+                {"step_number": 1, "title": "复习定义", "description": "重读教材第一小节",
+                 "estimated_minutes": 20, "dependencies": [],
+                 "completion_criteria": "能复述定义",
+                 "is_policy_step": False, "knowledge_source": None},
+                {"step_number": 2, "title": "做例题", "description": "完成课后例题",
+                 "estimated_minutes": 30, "dependencies": [1],
+                 "completion_criteria": "例题全部做完",
+                 "is_policy_step": False, "knowledge_source": None},
+                {"step_number": 3, "title": "整理错题", "description": "归纳易错点",
+                 "estimated_minutes": 15, "dependencies": [2],
+                 "completion_criteria": "错题本已更新",
+                 "is_policy_step": False, "knowledge_source": None},
+            ]
         )
     )
     service = _build_service(stub)
