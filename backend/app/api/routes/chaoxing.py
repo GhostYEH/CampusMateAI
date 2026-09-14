@@ -472,7 +472,15 @@ async def _perform_sync_chaoxing(
                     "last_synced_at": now_iso,
                     "course_id": course.get("local_course_id"),
                 }
-                
+                # 成绩事实一旦观测到就要保留: 学习通某些页面轮次不再回传分数时，
+                # 不能用 None 覆盖已经确认过的成绩。
+                if assignment.get("submitted_at"):
+                    update_fields["remote_submitted_at"] = assignment["submitted_at"]
+                if assignment.get("score") is not None:
+                    update_fields["score"] = assignment["score"]
+                    update_fields["score_max"] = assignment.get("score_max")
+                    update_fields["graded_at"] = now_iso
+
                 # Update status
                 current_status = existing_task["status"]
                 new_status = assignment.get("status", "pending")
@@ -518,6 +526,21 @@ async def _perform_sync_chaoxing(
                             final_task, observed_at=now_iso
                         ),
                     )
+                if final_task is not None and final_task.score is not None:
+                    _project_learner_event(
+                        container,
+                        action="assignment_graded",
+                        subject_type="personal_task",
+                        subject_id=task_id,
+                        callback=lambda final_task=final_task: container.learner_event_service.record_chaoxing_assignment_graded(
+                            user_id=user.id,
+                            task_id=final_task.id,
+                            course_id=final_task.course_id,
+                            score=final_task.score,
+                            score_max=final_task.score_max,
+                            observed_at=now_iso,
+                        ),
+                    )
             else:
                 # Create new task
                 # Always persist first, including a first observation that is already
@@ -535,6 +558,18 @@ async def _perform_sync_chaoxing(
                 )
                 stats["assignments_created"] += 1
                 if saved_task is not None:
+                    score_fields = {}
+                    if assignment.get("submitted_at"):
+                        score_fields["remote_submitted_at"] = assignment["submitted_at"]
+                    if assignment.get("score") is not None:
+                        score_fields["score"] = assignment["score"]
+                        score_fields["score_max"] = assignment.get("score_max")
+                        score_fields["graded_at"] = now_iso
+                    if score_fields:
+                        saved_task = (
+                            task_repo.update_task(saved_task.id, user_id=user.id, fields=score_fields)
+                            or saved_task
+                        )
                     _project_learner_event(
                         container,
                         action="assignment_discovered",
@@ -552,6 +587,21 @@ async def _perform_sync_chaoxing(
                                 subject_id=completed_task.id,
                                 callback=lambda completed_task=completed_task: container.learner_event_service.record_chaoxing_assignment_submitted(
                                     completed_task, observed_at=now_iso
+                                ),
+                            )
+                        if assignment.get("score") is not None:
+                            _project_learner_event(
+                                container,
+                                action="assignment_graded",
+                                subject_type="personal_task",
+                                subject_id=saved_task.id,
+                                callback=lambda saved_task=saved_task, assignment=assignment: container.learner_event_service.record_chaoxing_assignment_graded(
+                                    user_id=user.id,
+                                    task_id=saved_task.id,
+                                    course_id=saved_task.course_id,
+                                    score=assignment.get("score"),
+                                    score_max=assignment.get("score_max"),
+                                    observed_at=now_iso,
                                 ),
                             )
 

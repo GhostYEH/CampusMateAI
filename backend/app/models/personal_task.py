@@ -36,6 +36,11 @@ class PersonalTaskRow:
     course_id: Optional[str] = None
     source_url: Optional[str] = None
     last_synced_at: Optional[str] = None
+    # 外部平台(学习通)回传的成绩事实，未采集到时为 None。
+    remote_submitted_at: Optional[str] = None
+    score: Optional[float] = None
+    score_max: Optional[float] = None
+    graded_at: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
     completed_at: Optional[str] = None
@@ -66,6 +71,12 @@ class PersonalTaskRow:
             course_id=row["course_id"] if "course_id" in keys else None,
             source_url=row["source_url"] if "source_url" in keys else None,
             last_synced_at=row["last_synced_at"] if "last_synced_at" in keys else None,
+            remote_submitted_at=(
+                row["remote_submitted_at"] if "remote_submitted_at" in keys else None
+            ),
+            score=row["score"] if "score" in keys else None,
+            score_max=row["score_max"] if "score_max" in keys else None,
+            graded_at=row["graded_at"] if "graded_at" in keys else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             completed_at=row["completed_at"],

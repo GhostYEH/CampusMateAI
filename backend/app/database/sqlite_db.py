@@ -316,6 +316,11 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     course_id TEXT,
     source_url TEXT,
     last_synced_at TEXT,
+    -- 学习通等外部平台回传的成绩事实(均为可空，未采集到时保持 NULL)。
+    remote_submitted_at TEXT,
+    score REAL,
+    score_max REAL,
+    graded_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, source_notice_id),
     UNIQUE(user_id, source, external_id)
@@ -447,6 +452,32 @@ CREATE TABLE IF NOT EXISTS chaoxing_credentials (
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+"""
+
+# 学习通考试/测验事实表 —— 承载考试时间与得分，供世界模型 ACADEMIC/WORLD 投影消费。
+# 与 course_content_items 中的 exam_candidate 条目互补: 后者用于前端内容展示，
+# 本表用于结构化成绩与考试暴露度计算，并作为 exam_discovered 事件的证据表。
+CHAOXING_ASSESSMENT_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS chaoxing_exams (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    exam_at TEXT,
+    score REAL,
+    score_max REAL,
+    status TEXT NOT NULL DEFAULT 'discovered',
+    source_url TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_exams_user
+    ON chaoxing_exams(user_id);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_exams_course
+    ON chaoxing_exams(user_id, course_id);
 """
 
 NOTICES_SCHEMA_SQL = """
@@ -1768,6 +1799,7 @@ class Database:
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 conn.executescript(HOME_BANNER_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
+                conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
@@ -1984,6 +2016,23 @@ class Database:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_url TEXT")
         if "last_synced_at" not in task_cols:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN last_synced_at TEXT")
+        for column, column_type in (
+            ("remote_submitted_at", "TEXT"),
+            ("score", "REAL"),
+            ("score_max", "REAL"),
+            ("graded_at", "TEXT"),
+        ):
+            if column not in task_cols:
+                conn.execute(
+                    f"ALTER TABLE personal_tasks ADD COLUMN {column} {column_type}"
+                )
+
+        # 学习通考试表可能在旧库缺失(本表晚于 chaoxing_credentials 引入)。
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_exams'"
+        )
+        if cur.fetchone() is None:
+            conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")

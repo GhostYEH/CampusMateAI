@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from app.repositories.chaoxing_repository import ChaoxingRepository
@@ -965,3 +966,113 @@ async def test_chaoxing_sync_notices(db, mock_httpx_client):
     assert any(item.title == "HTML通知" for item in page_result.items)
 
 
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_sync_persists_graded_assignment_facts(db, mock_httpx_client):
+    """已批阅作业的分数与真实提交时间要落库，并投射 assignment_graded。
+
+    此前"作业分数完全没有采集、完成时间只是同步发现时间"，这条用例锁住补线后的行为。
+    """
+    from app.repositories.learner_event_repository import LearnerEventRepository
+    from app.services.learner_event_service import LearnerEventService
+
+    repo = ChaoxingRepository(db)
+    course_repo = CourseRepository(db)
+    task_repo = PersonalTaskRepository(db)
+    repo.save_credentials("user1", {"cookie": "A"})
+    event_service = LearnerEventService(
+        LearnerEventRepository(db),
+        personal_task_repository=task_repo,
+        course_content_repository=None,
+    )
+
+    class MockContainer:
+        def __init__(self):
+            self.chaoxing_repository = repo
+            self.course_repository = course_repo
+            self.personal_task_repository = task_repo
+            self.learner_event_service = event_service
+            self.db = db
+
+    container = MockContainer()
+    user = UserRow(id="user1", username="test1", password_hash="test", role="student",
+                   display_name="test", created_at="", updated_at="")
+
+    mock_json_response = MagicMock()
+    mock_json_response.status_code = 404
+
+    mock_courses_response = MagicMock()
+    mock_courses_response.status_code = 200
+    mock_courses_response.text = '''
+        <li class="course">
+            <span class="course-name">高等数学</span>
+            <a href="/mycourse/stu?courseid=111&clazzid=222">链接</a>
+        </li>
+    '''
+    mock_courses_response.raise_for_status = MagicMock()
+
+    mock_course_page_response = MagicMock()
+    mock_course_page_response.status_code = 200
+    mock_course_page_response.text = """
+        <html>
+            <input name="courseid" value="111" />
+            <input name="clazzid" value="222" />
+            <a title="作业" data-url="/work">作业</a>
+            <input name="workEnc" value="enc" />
+        </html>
+    """
+
+    mock_assignments_response = MagicMock()
+    mock_assignments_response.status_code = 200
+    mock_assignments_response.text = """
+        <html>
+            <li class="work-item" data-workid="99993">
+                <div class="work-title">第三次作业</div>
+                <div class="work-deadline">2026-08-20</div>
+                <span class="status">已批阅</span>
+                <span>提交时间：2026-08-18 21:30</span>
+                <span>成绩：92分</span>
+            </li>
+        </html>
+    """
+
+    mock_notices_response_empty = MagicMock()
+    mock_notices_response_empty.status_code = 200
+    mock_notices_response_empty.text = "<html></html>"
+    mock_notices_response_empty.raise_for_status = MagicMock()
+    mock_notices_response_empty.json.side_effect = Exception("Not JSON")
+
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response,
+        mock_assignments_response, mock_course_page_response, mock_notices_response_empty,
+    ]
+
+    await sync_chaoxing(user=user, container=container)
+
+    tasks, _ = task_repo.list_tasks(user_id="user1")
+    graded = next(task for task in tasks if task.external_id == "99993")
+    assert graded.score == 92.0
+    assert graded.graded_at is not None
+    # 真实提交时间而非同步时刻。
+    assert graded.remote_submitted_at == "2026-08-18T21:30:00+08:00"
+
+    events, _ = event_service.list_events(user_id="user1", page=1, page_size=20)
+    event_types = {event.event_type for event in events}
+    assert "assignment_graded" in event_types
+    submitted = next(event for event in events if event.event_type == "assignment_submitted")
+    assert submitted.payload["submitted_at_source"] == "remote"
+    # 事件存储统一折算为 UTC，与学习通回传的北京时间指同一时刻。
+    assert datetime.fromisoformat(submitted.occurred_at) == datetime.fromisoformat(
+        "2026-08-18T21:30:00+08:00"
+    )
+
+    # 再次同步不再重复产生评分事件(dedupe 生效)。
+    mock_httpx_client.side_effect = [
+        mock_json_response, mock_courses_response, mock_course_page_response,
+        mock_assignments_response, mock_course_page_response, mock_notices_response_empty,
+    ]
+    await sync_chaoxing(user=user, container=container)
+    events2, _ = event_service.list_events(user_id="user1", page=1, page_size=20)
+    graded_events = [e for e in events2 if e.event_type == "assignment_graded"]
+    assert len(graded_events) == 1

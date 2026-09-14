@@ -5,7 +5,12 @@ import httpx
 import json
 import re
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
+
+# 学习通所有时间字段均为北京时间(UTC+8)，解析出的时间统一按此归一，
+# 便于 learner_event_service 直接消费(它要求 occurred_at 带时区)。
+_CST = timezone(timedelta(hours=8))
 
 
 class ChaoxingFetchError(RuntimeError):
@@ -307,6 +312,130 @@ class ChaoxingParser:
             })
         return courses
 
+    # ------------------------------------------------------------------
+    # 成绩事实解析 —— 学习通页面结构不稳定，以下解析全部为"尽力而为":
+    # 解析不到时返回 None，调用方保持原有降级行为，绝不因为解析失败中断同步。
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_float(value) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def to_iso(value) -> str | None:
+        """把学习通的时间表示转换为带时区的 ISO 字符串。
+
+        支持毫秒/秒级时间戳(学习通章节卡片常用)与 "2024-03-05 12:30" 文本。
+        学习通时间均为北京时间，统一按 UTC+8 归一。
+        """
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text or text in ("0", "None"):
+            return None
+        if re.fullmatch(r"\d{10,13}", text):
+            timestamp = float(text)
+            if timestamp > 1e11:  # 毫秒级时间戳
+                timestamp /= 1000.0
+            try:
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone(_CST).isoformat()
+            except (OverflowError, OSError, ValueError):
+                return None
+        normalized = (
+            text.replace("年", "-").replace("月", "-").replace("日", " ")
+            .replace("/", "-").replace("T", " ")
+        )
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=_CST).isoformat()
+
+    @staticmethod
+    def parse_score(text) -> tuple[float | None, float | None]:
+        """从自由文本中解析 (得分, 满分)，解析不到返回 (None, None)。"""
+        if not text:
+            return (None, None)
+        raw = str(text)
+        # 先剔除日期/时间片段，避免把 2024/03/05 或 12:30 误判成分数。
+        cleaned = re.sub(r"\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}\s*日?", " ", raw)
+        cleaned = re.sub(r"\d{1,2}:\d{2}(:\d{2})?", " ", cleaned)
+        patterns = (
+            r"(?:成绩|得分|分数|评分)\D{0,4}(\d{1,3}(?:\.\d+)?)(?:\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?))?",
+            r"(\d{1,3}(?:\.\d+)?)\s*分(?!钟)",
+            r"(\d{1,3}(?:\.\d+)?)\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, cleaned)
+            if not match:
+                continue
+            score = ChaoxingParser._to_float(match.group(1))
+            if score is None:
+                continue
+            score_max = None
+            if match.lastindex and match.lastindex > 1:
+                candidate = ChaoxingParser._to_float(match.group(2))
+                score_max = candidate if (candidate and candidate > 0) else None
+            return (score, score_max)
+        return (None, None)
+
+    @staticmethod
+    def parse_submitted_at(text) -> str | None:
+        """从自由文本中解析真实提交时间，返回带时区 ISO 字符串。"""
+        if not text:
+            return None
+        match = re.search(
+            r"(?:提交时间|交卷时间|完成时间|提交于|提交)\D{0,6}"
+            r"(\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}(?:\s*日)?"
+            r"(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
+            str(text),
+        )
+        if not match:
+            return None
+        return ChaoxingParser.to_iso(match.group(1))
+
+    @staticmethod
+    def parse_exam_at(metadata: dict) -> str | None:
+        """从章节卡片 metadata 中解析考试时间(优先开始时间，其次结束时间)。"""
+        if not isinstance(metadata, dict):
+            return None
+        for key in ("begintime", "starttime", "startDate", "beginDate",
+                    "startTime", "beginTime", "endtime", "endDate", "endTime"):
+            iso = ChaoxingParser.to_iso(metadata.get(key))
+            if iso:
+                return iso
+        return None
+
+    @staticmethod
+    def parse_metadata_score(metadata: dict) -> tuple[float | None, float | None]:
+        """从章节卡片 metadata 中解析结构化分数(仅在字段明确存在时取值)。"""
+        if not isinstance(metadata, dict):
+            return (None, None)
+        score = None
+        for key in ("score", "grade", "finalScore", "studentScore"):
+            if key in metadata:
+                score = ChaoxingParser._to_float(metadata.get(key))
+                if score is not None:
+                    break
+        score_max = None
+        for key in ("scoreMax", "totalScore", "fullScore", "scoreTotal"):
+            if key in metadata:
+                score_max = ChaoxingParser._to_float(metadata.get(key))
+                if score_max is not None:
+                    break
+        if score is None and score_max is None:
+            # 退化为从自由文本中尽力提取，例如 "已批阅 88分"。
+            return ChaoxingParser.parse_score(
+                " ".join(str(metadata.get(key) or "") for key in ("raw_status", "label", "statusText"))
+            )
+        return (score, score_max)
+
 
 class ChaoxingClient:
     def __init__(self, cookies: dict | None = None):
@@ -488,6 +617,8 @@ class ChaoxingClient:
                 candidate_type = "work"
             if not candidate_type:
                 continue
+            exam_at = ChaoxingParser.parse_exam_at(metadata)
+            score, score_max = ChaoxingParser.parse_metadata_score(metadata)
             exam_items.append({
                 "kind": "exam_candidate",
                 "external_id": item.get("external_id"),
@@ -500,6 +631,11 @@ class ChaoxingClient:
                     "candidate_type": candidate_type,
                     "course_id": course_id,
                     "clazz_id": clazz_id,
+                    **({
+                        "exam_at": exam_at,
+                        "score": score,
+                        "score_max": score_max,
+                    } if (exam_at or score is not None) else {}),
                 },
             })
         return {"status": "complete", "items": exam_items, "error": None}
@@ -594,7 +730,20 @@ class ChaoxingClient:
                     "status": assignment.get("status") or "unknown",
                     "deadline": assignment.get("deadline") or None,
                     "source_url": assignment.get("link") or None,
-                    "metadata": {"course_id": course_id, "clazz_id": clazz_id},
+                    "metadata": {
+                        "course_id": course_id,
+                        "clazz_id": clazz_id,
+                        **{
+                            key: value
+                            for key, value in (
+                                ("submitted_at", assignment.get("submitted_at")),
+                                ("score", assignment.get("score")),
+                                ("score_max", assignment.get("score_max")),
+                                ("remote_status", assignment.get("remote_status")),
+                            )
+                            if value is not None
+                        },
+                    },
                 })
             return {"status": "complete", "items": items, "error": None}
         except ChaoxingFetchError as error:
@@ -829,12 +978,24 @@ class ChaoxingClient:
                     marker in status_text
                     for marker in ("已交", "已完成", "已提交", "已批阅", "待批阅")
                 )
+                # 仅在已提交/已批阅时尝试解析真实提交时间与得分: 学习通把这两个
+                # 事实放在同一个条目文本里，未提交的条目不应该产出成绩假象。
+                score: float | None = None
+                score_max: float | None = None
+                submitted_at: str | None = None
+                if completed:
+                    item_text = item.get_text(" ", strip=True)
+                    score, score_max = ChaoxingParser.parse_score(item_text)
+                    submitted_at = ChaoxingParser.parse_submitted_at(item_text)
                 assignments.append({
                     "title": title_elem.get_text(" ", strip=True),
                     "deadline": deadline_elem.get_text(" ", strip=True) if deadline_elem else "",
                     "external_id": external_id,
                     "status": "completed" if completed else "pending",
                     "remote_status": status_text,
+                    "submitted_at": submitted_at,
+                    "score": score,
+                    "score_max": score_max,
                     "course_id": item_course_id,
                     "clazz_id": item_clazz_id,
                     "link": work_url,

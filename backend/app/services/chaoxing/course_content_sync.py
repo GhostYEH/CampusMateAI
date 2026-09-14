@@ -95,6 +95,54 @@ class ChaoxingCourseContentSyncService:
             "cpi": course.remote_cpi,
         }
 
+    def _persist_exams(self, *, user_id: str, course_id: str, items: list[dict],
+                       course_external_id: str) -> None:
+        """把 exam_candidate 落库为结构化 chaoxing_exams 并投射 exam_discovered。
+
+        course_content_items 里的条目只服务前端展示；这里补写结构化考试事实，
+        让世界模型能把学习通考试计入 exam_exposure。仅在首次发现或考试时间/分数
+        变化时投射事件，避免每次同步重复刷事件。
+        """
+        repository = getattr(self.container, "chaoxing_repository", None)
+        if repository is None or not hasattr(repository, "upsert_exam"):
+            return
+        event_service = getattr(self.container, "learner_event_service", None)
+        seen: set[str] = set()
+        for item in items:
+            external_id = str(item.get("external_id") or "")
+            if not external_id or external_id in seen:
+                continue
+            seen.add(external_id)
+            metadata = item.get("metadata") or {}
+            exam_row = repository.upsert_exam(
+                user_id=user_id,
+                course_id=course_id,
+                external_id=f"{course_external_id or course_id}:{external_id}",
+                title=str(item.get("title") or "未命名考试"),
+                exam_at=metadata.get("exam_at"),
+                score=metadata.get("score"),
+                score_max=metadata.get("score_max"),
+                status="discovered",
+                source_url=item.get("source_url"),
+            )
+            if not (exam_row.get("is_new") or exam_row.get("changed")):
+                continue
+            if event_service is None or not hasattr(event_service, "project_safely"):
+                continue
+            bucket = event_service.exam_time_bucket(exam_row.get("exam_at")) or "unknown"
+            event_service.project_safely(
+                action="exam_discovered",
+                subject_type="exam",
+                subject_id=exam_row["id"],
+                callback=lambda exam_row=exam_row, bucket=bucket: event_service.record_chaoxing_exam_discovered(
+                    user_id=user_id,
+                    exam_id=exam_row["id"],
+                    course_id=course_id,
+                    exam_time_bucket=bucket,
+                    observed_at=datetime.now(timezone.utc),
+                ),
+            )
+
     async def sync_course(self, *, user_id: str, course_id: str,
                           depth: str = "fast", force_refresh: bool = False) -> dict:
         course = self.container.course_repository.get_course(course_id)
@@ -194,6 +242,11 @@ class ChaoxingCourseContentSyncService:
                             user_id=user_id, course_id=course_id,
                             kinds=self.SECTION_KINDS[section], external_keys=keys,
                         )
+                if section == "exams" and status in {"complete", "partial"}:
+                    self._persist_exams(
+                        user_id=user_id, course_id=course_id, items=items,
+                        course_external_id=str(course.external_id or ""),
+                    )
                 error = result.get("error")
                 section_row = self.repository.upsert_section_status(
                     user_id=user_id, course_id=course_id, section=section,
