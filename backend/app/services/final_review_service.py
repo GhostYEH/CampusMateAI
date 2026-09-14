@@ -1,64 +1,53 @@
+"""期末复习领域服务(历史遗留壳)。
+
+期末复习的读写现在由两处承担:
+
+- 只读与命令入口:`api/routes/final_review.py` + `repositories/final_review_repository.py`;
+- 审批后的高风险写操作:`services/agent_runtime/handlers/final_review.py`,
+  经 `ToolInvocationGateway` 执行,终态由 `AgentWorker` 原子写入。
+
+本模块保留类名只为兼容早期导入方,但它**不再提供任何领域副作用**:
+早期版本在这里直接 `activate` 计划、直接应用调整,绕过了 Gateway 的
+角色授权、参数 Schema、资源归属与审批复核,是"审批未通过但副作用已发生"的窗口。
+写操作请改用受管接口(`POST /final-review/campaigns/{id}/activate`、
+`POST /final-review/adjustment-proposals/{id}/decision`)。
+"""
 from __future__ import annotations
 
-from datetime import date
-
-from ..core.exceptions import AppException
+from ..core.exceptions import AgentRuntimeError
 from ..repositories.final_review_repository import FinalReviewRepository
 from ..repositories.personal_task_repository import PersonalTaskRepository
 
+_LEGACY_WRITE_MESSAGE = (
+    "期末复习写操作必须经 ToolInvocationGateway 执行，"
+    "请改用受管接口 POST /final-review/campaigns/{campaign_id}/activate 或 "
+    "POST /final-review/adjustment-proposals/{proposal_id}/decision"
+)
+
 
 class FinalReviewService:
+    """已停用的写入口,仅保留签名以便早期调用方显式失败而不是静默绕过策略。"""
+
     def __init__(self, repository: FinalReviewRepository, tasks: PersonalTaskRepository) -> None:
-        self.repo,self.tasks=repository,tasks
+        self.repo, self.tasks = repository, tasks
 
-    def campaign(self,user_id:str,exam_id:str,capacity:int)->dict:
-        if not self.repo.exam_owned(user_id,exam_id): raise AppException(code="AGENT_PERMISSION_DENIED",http_status=404,message="考试不存在")
-        return self.repo.create_campaign(user_id,exam_id,capacity)[0]
+    def campaign(self, user_id: str, exam_id: str, capacity: int) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
-    def generate(self,user_id:str,campaign_id:str)->dict:
-        campaign=self.repo.get_campaign(user_id,campaign_id)
-        if not campaign: raise AppException(code="AGENT_PERMISSION_DENIED",http_status=404,message="复活动不存在")
-        existing=self.repo.versions(campaign_id)
-        if existing:return existing[-1]
-        capacity=campaign["daily_capacity_minutes"]
-        content={"days":[{"day_offset":0,"items":[{"title":"复习核心知识点","duration_minutes":min(45,capacity)},{"title":"完成诊断练习","duration_minutes":min(30,max(15,capacity-45))}]}],"explanation_codes":["EXAM_DATE_OBSERVED","CAPACITY_RESPECTED"]}
-        return self.repo.create_version(campaign_id,content,"INITIAL_PLAN")
+    def generate(self, user_id: str, campaign_id: str) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
-    def today(self,user_id:str,campaign_id:str)->dict:
-        campaign=self.repo.get_campaign(user_id,campaign_id)
-        if not campaign or not campaign["active_version"]: raise AppException(code="AGENT_INVALID_STATE",http_status=409,message="计划尚未激活")
-        versions=self.repo.versions(campaign_id); version=next(v for v in versions if v["version"]==campaign["active_version"])
-        return self.repo.agenda(campaign_id,version["version"],date.today().isoformat(),version["content"]["days"][0]["items"])
+    def today(self, user_id: str, campaign_id: str) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
-    def activate(self,user_id:str,campaign_id:str)->dict:
-        campaign=self.repo.get_campaign(user_id,campaign_id); versions=self.repo.versions(campaign_id)
-        if not campaign or not versions:raise AppException(code="AGENT_INVALID_STATE",http_status=409,message="没有可激活计划")
-        version=versions[-1]; self.repo.activate(campaign_id,version["version"])
-        agenda=self.today(user_id,campaign_id)
-        for item in agenda["items"]:
-            task=self.tasks.create_task(
-                user_id=user_id,title=item["title"],source_name="期末复习计划",
-                source="final_review",external_id=f"{campaign_id}:{version['version']}:{item['id']}",
-            )
-            self.repo.link_daily_item_task(item["id"],task.id)
-        return self.repo.get_campaign(user_id,campaign_id)
+    def activate(self, user_id: str, campaign_id: str) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
-    def analyze(self,user_id:str,campaign_id:str)->dict:
-        campaign=self.repo.get_campaign(user_id,campaign_id); checkin=self.repo.latest_checkin(campaign_id)
-        if not campaign or not checkin: raise AppException(code="AGENT_INVALID_STATE",http_status=409,message="缺少每日反馈")
-        content={"capacity_multiplier":0.8 if checkin["completion_percent"]<60 else 1.0,"explanation_codes":["LOW_COMPLETION_OBSERVED"] if checkin["completion_percent"]<60 else ["PACE_MAINTAINED"]}
-        return self.repo.create_proposal(campaign_id,campaign["active_version"] or 1,content,"CHECKIN_EVIDENCE")
+    def analyze(self, user_id: str, campaign_id: str) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
-    def decide(self,user_id:str,proposal_id:str,decision:str)->dict:
-        proposal=self.repo.get_proposal(user_id,proposal_id)
-        if not proposal or proposal["status"]!="PENDING":raise AppException(code="AGENT_INVALID_STATE",http_status=409,message="调整建议不可处理")
-        self.repo.decide_proposal(proposal_id,decision)
-        if decision=="REJECTED":return {"status":"REJECTED","new_version":None}
-        versions=self.repo.versions(proposal["campaign_id"]); base=next(v for v in versions if v["version"]==proposal["base_version"])
-        content=dict(base["content"]); content["adjustment"]=json.loads(proposal["content_json"])
-        created=self.repo.create_version(proposal["campaign_id"],content,"APPROVED_ADJUSTMENT",base["plan_version_id"])
-        self.repo.activate(proposal["campaign_id"],created["version"])
-        return {"status":"APPROVED","new_version":created}
+    def decide(self, user_id: str, proposal_id: str, decision: str) -> dict:
+        raise AgentRuntimeError(_LEGACY_WRITE_MESSAGE, code="AGENT_INVALID_STATE", http_status=409)
 
 
-import json
+__all__ = ["FinalReviewService"]

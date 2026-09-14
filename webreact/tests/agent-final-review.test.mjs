@@ -71,3 +71,58 @@ describe("final-review full flow", () => {
     assert.equal(request.data.insufficient_time, true);
   });
 });
+
+describe("期末复习写操作的异步命令契约", () => {
+  // 审批后的高风险写操作由 Worker 经 Gateway 执行,路由只创建命令。
+  // 客户端不能把命令被受理当成"计划已生效",必须按 run_id 观察进展。
+
+  it("激活只创建命令:响应带 run_id 且未生效", async () => {
+    mock.onPost("/final-review/campaigns/c1/activate", {
+      campaign_id: "c1",
+      active_version: 1,
+      activated: false,
+      status: "PENDING",
+      run_id: "run_activate",
+    });
+
+    const result = await api.activateFinalReviewCampaign("c1", 1, "k-act");
+
+    assert.equal(result.activated, false);
+    assert.equal(result.status, "PENDING");
+    assert.equal(result.run_id, "run_activate");
+  });
+
+  it("调整决策只创建命令:new_version 在命令完成前为 null", async () => {
+    mock.onPost("/final-review/adjustment-proposals/p1/decision", {
+      proposal_id: "p1",
+      status: "pending",
+      new_version: null,
+      active_version: null,
+      run_id: "run_adjust",
+      pending: true,
+    });
+
+    const result = await api.resolveAdjustmentProposal("p1", "APPROVED", null, "k-decide");
+
+    assert.equal(result.pending, true);
+    assert.equal(result.new_version, null);
+    assert.equal(result.run_id, "run_adjust");
+    assert.equal(mock.lastRequest().headers["Idempotency-Key"], "k-decide");
+  });
+
+  it("拒绝决策不产生任何写命令", async () => {
+    mock.onPost("/final-review/adjustment-proposals/p2/decision", {
+      proposal_id: "p2",
+      status: "rejected",
+      new_version: null,
+      pending: false,
+    });
+
+    const result = await api.resolveAdjustmentProposal("p2", "REJECTED", "时间不够", "k-reject");
+
+    assert.equal(result.status, "rejected");
+    assert.equal(result.new_version, null);
+    assert.equal(result.run_id, undefined);
+    assert.ok(mock.requests.every((r) => !r.url.includes("/activate")));
+  });
+});

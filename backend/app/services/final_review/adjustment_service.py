@@ -1,7 +1,10 @@
 """Adjustment Service —— Analyzer 产生 adjustment proposal(§8.1)。
 
-关键约束:Analyzer 只产生 adjustment proposal,不直接修改 active plan。
-应用 adjustment 创建新版本而非覆盖旧版本。
+关键约束:
+- `analyze()` **只产生 proposal,不产生任何计划写副作用**(不建版本、不改 active plan);
+- `apply_proposal()` 才是写操作,且只允许由 `final_review.adjust.apply` 工具的
+  执行器经 `ToolInvocationGateway` 调用——路由只解析用户审批并创建命令。
+- 应用 adjustment 创建新版本而非覆盖旧版本,三步落库在同一事务内完成。
 
 风险分级:
 - AUTO_SAFE: 仅重排序,不改变总负荷(用户启用时显示建议)
@@ -111,25 +114,26 @@ class AdjustmentAnalyzer:
         """应用 proposal。approved=True 时创建新版本;approved=False 不改计划。
 
         返回 {proposal_id, status, new_version, active_version}。
+
+        受管入口:本方法只允许由 `final_review.adjust.apply` 工具的执行器调用
+        (经 `ToolInvocationGateway` 的角色授权、参数 Schema、资源归属与审批复核)。
+        路由不得直接调用,否则会重新引入"审批未通过但副作用已发生"的窗口。
+
+        幂等:创建新版本、激活与标记提案在同一个事务里完成,重复执行(崩溃重放)
+        只会返回既有结果,不会产生第二个版本。
         """
         proposal_row = self._repo.get_proposal(proposal_id, user_id=user_id)
         if not proposal_row:
             raise ValueError("proposal 不存在或无权访问")
-        if proposal_row.status != "pending":
-            return {
-                "proposal_id": proposal_id,
-                "status": proposal_row.status,
-                "new_version": proposal_row.target_version,
-                "active_version": None,
-            }
 
         if not approved:
-            self._repo.resolve_proposal(
-                proposal_id,
-                user_id=user_id,
-                status="rejected",
-                approval_id=proposal_row.approval_id,
-            )
+            if proposal_row.status == "pending":
+                self._repo.resolve_proposal(
+                    proposal_id,
+                    user_id=user_id,
+                    status="rejected",
+                    approval_id=proposal_row.approval_id,
+                )
             return {
                 "proposal_id": proposal_id,
                 "status": "rejected",
@@ -137,56 +141,25 @@ class AdjustmentAnalyzer:
                 "active_version": None,
             }
 
-        # approved:创建新版本
-        campaign = self._repo.get_campaign(proposal_row.campaign_id, user_id=user_id)
-        if not campaign:
-            raise ValueError("campaign 不存在")
-
         source_plan_row = self._repo.get_plan_version(
             proposal_row.campaign_id, proposal_row.source_version, user_id=user_id
         )
         if not source_plan_row:
             raise ValueError("source plan version 不存在")
-
         source_plan = json.loads(source_plan_row.plan_json)
         proposal = json.loads(proposal_row.proposal_json)
 
-        # 构建新 plan
+        # 构建新 plan 是纯计算,不产生副作用;落库由仓储在单事务内完成。
         new_plan = self._apply_adjustment(source_plan, proposal)
-        new_version = self._repo.next_plan_version(proposal_row.campaign_id)
-
-        self._repo.create_plan_version(
-            campaign_id=proposal_row.campaign_id,
-            version=new_version,
+        result = self._repo.apply_proposal_version(
+            proposal_id=proposal_id,
             user_id=user_id,
             plan=new_plan,
-            source_snapshot_id=source_plan_row.source_snapshot_id,
             model_provider=proposal_row.model_provider or "deterministic",
-            route_policy="reasoning_primary",
-            risk_level=proposal_row.risk_level,
-            supersedes_version=proposal_row.source_version,
         )
-
-        # 激活新版本
-        self._repo.activate_campaign(
-            proposal_row.campaign_id, user_id=user_id, version=new_version
-        )
-
-        # 标记 proposal
-        self._repo.resolve_proposal(
-            proposal_id,
-            user_id=user_id,
-            status="approved",
-            approval_id=proposal_row.approval_id,
-            target_version=new_version,
-        )
-
-        return {
-            "proposal_id": proposal_id,
-            "status": "approved",
-            "new_version": new_version,
-            "active_version": new_version,
-        }
+        if result is None:
+            raise ValueError("proposal 不存在或无权访问")
+        return result
 
     async def _model_analyze(
         self, plan: dict, evidence: dict, *, run_id: Optional[str] = None

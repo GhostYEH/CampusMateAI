@@ -14,6 +14,8 @@ from app.services.final_review.planner import _deterministic_plan
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
+from final_review_helpers import drain_worker
+
 
 def _setup():
     container = reset_container_for_tests(
@@ -106,7 +108,7 @@ class TestPlanGenerate:
         assert artifact.json()["artifact_type"] == "FINAL_REVIEW_PLAN"
 
     def test_plan_cannot_activate_until_its_approval_is_resolved(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         cid = _create_campaign(client, headers, [exam_id])
@@ -132,6 +134,14 @@ class TestPlanGenerate:
             json={"version": 1}, headers=headers,
         )
         assert activated.status_code == 200, activated.text
+        # 路由只创建命令:激活由 Worker 经 Gateway 完成。
+        assert activated.json()["status"] == "PENDING"
+        assert activated.json()["activated"] is False
+        drain_worker(container)
+        campaign = client.get(
+            f"/api/v1/final-review/campaigns/{cid}", headers=headers
+        ).json()
+        assert campaign["active_version"] == 1
 
     def test_generate_plan_reuses_same_idempotency_key_and_rejects_conflict(self):
         _, client = _setup()
@@ -242,7 +252,7 @@ class TestPlanGenerate:
         assert v1["version"] == 1
 
     def test_activate_campaign(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         cid = _create_campaign(client, headers, [exam_id])
@@ -260,7 +270,24 @@ class TestPlanGenerate:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["active_version"] == 1
-        assert resp.json()["activated"] is True
+        # 命令已受理但尚未执行:终态由 Worker 原子写入。
+        assert resp.json()["activated"] is False
+        assert resp.json()["run_id"].startswith("run_")
+
+        drain_worker(container)
+
+        campaign = client.get(
+            f"/api/v1/final-review/campaigns/{cid}", headers=headers
+        ).json()
+        assert campaign["active_version"] == 1
+        # 命令完成后重复调用是幂等的:不重复入队,直接返回已激活。
+        again = client.post(
+            f"/api/v1/final-review/campaigns/{cid}/activate",
+            json={"version": 1}, headers=headers,
+        )
+        assert again.status_code == 200
+        assert again.json()["activated"] is True
+        assert again.json()["status"] == "ACTIVE"
 
     def test_activate_nonexistent_version(self):
         _, client = _setup()

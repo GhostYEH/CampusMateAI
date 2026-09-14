@@ -13,6 +13,8 @@ from app.main import create_app
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
+from final_review_helpers import drain_worker
+
 
 def _setup():
     container = reset_container_for_tests(
@@ -51,8 +53,8 @@ def _create_exam(client, headers, course_name="高等数学", exam_date="2026-12
     return resp.json()["id"]
 
 
-def _create_active_campaign(client, headers, exam_ids, capacity=120):
-    """创建 campaign → 生成 plan → 激活。返回 campaign_id。"""
+def _create_active_campaign(container, client, headers, exam_ids, capacity=120):
+    """创建 campaign → 生成 plan → 审批 → 激活(由 Worker 完成)。返回 campaign_id。"""
     cid = client.post(
         "/api/v1/final-review/campaigns",
         json={"exam_ids": exam_ids, "daily_capacity_minutes": capacity},
@@ -75,15 +77,17 @@ def _create_active_campaign(client, headers, exam_ids, capacity=120):
         json={"version": 1}, headers=headers,
     )
     assert activated.status_code == 200, activated.text
+    # 激活是异步命令:驱动 Worker 执行审批后的实际写入。
+    drain_worker(container)
     return cid
 
 
 class TestDailyAgenda:
     def test_get_today_agenda(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         resp = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -96,10 +100,10 @@ class TestDailyAgenda:
 
     def test_today_agenda_idempotent(self):
         """重复获取今日议程返回相同 agenda_id(幂等)。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         r1 = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -112,10 +116,10 @@ class TestDailyAgenda:
 
     def test_today_agenda_items_have_personal_tasks(self):
         """agenda items 物化为 personal_tasks。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         resp = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -128,7 +132,7 @@ class TestDailyAgenda:
 
     def test_today_agenda_not_activated(self):
         """未激活的 campaign 不能获取 agenda。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         # 创建 campaign 但不激活
@@ -148,10 +152,10 @@ class TestDailyAgenda:
         assert resp.status_code == 409
 
     def test_complete_item(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         agenda = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -170,10 +174,10 @@ class TestDailyAgenda:
 
     def test_complete_item_idempotent(self):
         """重复完成同一 item 不报错。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         agenda = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -194,7 +198,7 @@ class TestDailyAgenda:
         assert r2.status_code == 200
 
     def test_complete_nonexistent_item(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         resp = client.post(
             "/api/v1/final-review/daily-items/nonexistent/complete",
@@ -203,10 +207,10 @@ class TestDailyAgenda:
         assert resp.status_code == 404
 
     def test_daily_checkin(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         agenda = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -225,10 +229,10 @@ class TestDailyAgenda:
         assert resp.json()["recorded"] is True
 
     def test_daily_checkin_with_insufficient_time(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         from datetime import datetime, timezone
         today = datetime.now(timezone.utc).date().isoformat()
         resp = client.post(
@@ -245,10 +249,10 @@ class TestDailyAgenda:
         assert resp.json()["evidence_count"] >= 1
 
     def test_cross_user_agenda_denied(self):
-        _, client = _setup()
+        container, client = _setup()
         headers1 = _login(client, "student_demo")
         exam_id = _create_exam(client, headers1)
-        cid = _create_active_campaign(client, headers1, [exam_id])
+        cid = _create_active_campaign(container, client, headers1, [exam_id])
         headers2 = _login(client, "student_demo_01")
         resp = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",

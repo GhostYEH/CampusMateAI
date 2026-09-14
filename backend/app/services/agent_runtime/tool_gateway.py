@@ -9,6 +9,12 @@
 顺序不能调换:先做便宜且明确的拒绝,最后才产生副作用;审批与幂等声明之间
 不允许插入任何领域写入,否则会留下"审批未通过但副作用已发生"的窗口。
 
+审批语义:
+- 未携带审批的调用由 Gateway 自己开票(等待用户确认);
+- 携带 `approval_id` 的调用视为"用户已在领域层确认过",Gateway 只做复核,
+  已批准才继续执行,**已拒绝/已过期一律拒绝**,未决策则继续等待;
+- 重放同一调用时同样复核审批状态,因此"批准后进程重启"可以从安全恢复点继续。
+
 隐私约束:
 - 事件、审计与异常中只出现动作摘要、请求哈希、安全业务引用与错误码;
 - 绝不写入 prompt、完整模型响应、凭据或原始工具参数。
@@ -30,7 +36,7 @@ from ...core.exceptions import (
     AgentToolRejected,
 )
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
-from ...schemas.agent_contract_enums import RiskLevel
+from ...schemas.agent_contract_enums import ApprovalStatus, RiskLevel
 from .approval_gate import ApprovalGate
 from .hard_deny import check_hard_deny
 from .risk_engine import RiskEngine
@@ -61,13 +67,18 @@ def _safe_result_ref(value: Any) -> dict[str, Any]:
 
 
 class ToolInvocationRequest(BaseModel):
-    """一次工具调用请求。"""
+    """一次工具调用请求。
+
+    `approval_id` 可选:用户已在领域层确认过的动作(如期末复习计划激活)把既有审批
+    带进来,由 Gateway 复核后直接执行,不重复开票。未通过(拒绝/过期)一律不执行。
+    """
 
     run_id: str
     role_code: str
     tool_name: str
     arguments: dict[str, Any] = {}
     idempotency_key: str
+    approval_id: Optional[str] = None
 
 
 class ToolInvocationResult(BaseModel):
@@ -176,37 +187,67 @@ class ToolInvocationGateway:
         )
         if not is_new:
             existing = self._repo.get_tool_call(call_id) or {}
-            if existing.get("status") == "completed":
+            existing_status = existing.get("status")
+            if existing_status == "completed":
                 return ToolInvocationResult(
                     status="REPLAYED",
                     call_id=call_id,
                     result_ref=self._decode_result_ref(existing.get("result_digest")),
                 )
-            if existing.get("status") == "awaiting_approval":
-                return ToolInvocationResult(
-                    status="AWAITING_APPROVAL",
-                    call_id=call_id,
-                    approval_id=existing.get("error_code") or None,
-                )
+            if existing_status in {"awaiting_approval", "approved"}:
+                # 重放必须复核审批状态:已批准才继续执行,未决策就继续等,
+                # 已拒绝/已过期一律不执行——过期绝不等于批准。
+                resumed_approval_id = existing.get("error_code") or request.approval_id
+                if existing_status == "awaiting_approval":
+                    if self._approval_decision(resumed_approval_id, user_id=user_id) == "WAIT":
+                        return ToolInvocationResult(
+                            status="AWAITING_APPROVAL",
+                            call_id=call_id,
+                            approval_id=resumed_approval_id,
+                        )
+                    # 审批已通过:补记状态后继续执行(执行器必须自带幂等)。
+                    self._repo.record_tool_call_finish(
+                        call_id, status="approved", result_digest=None,
+                        error_code=resumed_approval_id,
+                    )
 
         # 10. 审批门:只保存动作摘要与请求哈希,不保存原始参数
         if needs_approval:
-            approval_id = self._approvals.require(
-                run_id=request.run_id,
-                user_id=user_id,
-                risk_level=effective_risk,
-                action_summary=self._action_summary(spec, arguments),
-                ttl_minutes=self._approval_ttl,
-            )
-            self._repo.record_tool_call_finish(
-                call_id, status="awaiting_approval", result_digest=None,
-                error_code=approval_id,
-            )
-            self._emit(request.run_id, "APPROVAL_REQUIRED", run["status"],
-                       summary="工具调用需要用户确认", approval_id=approval_id)
-            return ToolInvocationResult(
-                status="AWAITING_APPROVAL", call_id=call_id, approval_id=approval_id
-            )
+            approval_id = request.approval_id
+            if approval_id:
+                # 领域层已确认过的动作:复核后直接执行,不重复开票。
+                if self._approval_decision(approval_id, user_id=user_id) == "WAIT":
+                    self._repo.record_tool_call_finish(
+                        call_id, status="awaiting_approval", result_digest=None,
+                        error_code=approval_id,
+                    )
+                    self._emit(request.run_id, "APPROVAL_REQUIRED", run["status"],
+                               summary="工具调用需要用户确认", approval_id=approval_id)
+                    return ToolInvocationResult(
+                        status="AWAITING_APPROVAL", call_id=call_id, approval_id=approval_id
+                    )
+                self._repo.record_tool_call_finish(
+                    call_id, status="approved", result_digest=None, error_code=approval_id,
+                )
+                self._emit(request.run_id, "APPROVAL_GRANTED", run["status"],
+                           summary="用户已确认，继续执行工具调用", approval_id=approval_id)
+            else:
+                approval_id = self._approvals.require(
+                    run_id=request.run_id,
+                    user_id=user_id,
+                    risk_level=effective_risk,
+                    action_summary=self._action_summary(spec, arguments),
+                    ttl_minutes=self._approval_ttl,
+                )
+                self._repo.record_tool_call_finish(
+                    call_id, status="awaiting_approval", result_digest=None,
+                    error_code=approval_id,
+                )
+                self._emit(request.run_id, "APPROVAL_REQUIRED", run["status"],
+                           summary="工具调用需要用户确认", approval_id=approval_id)
+                return ToolInvocationResult(
+                    status="AWAITING_APPROVAL", call_id=call_id, approval_id=approval_id
+                )
 
         # 11. 领域 Service 执行
         if spec.executor is None:
@@ -251,6 +292,23 @@ class ToolInvocationGateway:
         )
 
     # ===== 内部步骤 =====
+
+    def _approval_decision(self, approval_id: Optional[str], *, user_id: str) -> str:
+        """复核审批状态,返回 `EXECUTE`(已批准)或 `WAIT`(尚未决策)。
+
+        拒绝、过期或记录缺失一律抛错:过期绝不等于批准,任何情况下都不得执行。
+        """
+        approval = self._repo.get_approval(approval_id) if approval_id else None
+        if approval is None:
+            raise AgentToolRejected("审批记录不存在，拒绝执行工具调用")
+        if str(approval.user_id) != str(user_id):
+            raise AgentPermissionDenied("审批不属于当前用户，拒绝执行工具调用")
+        status = approval.status
+        if status == ApprovalStatus.APPROVED.value:
+            return "EXECUTE"
+        if status == ApprovalStatus.PENDING.value:
+            return "WAIT"
+        raise AgentToolRejected(f"审批未通过({status})，拒绝执行工具调用")
 
     @staticmethod
     def _validate_arguments(spec, arguments: dict) -> dict:

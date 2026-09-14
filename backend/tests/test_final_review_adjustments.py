@@ -14,6 +14,8 @@ from app.main import create_app
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
+from final_review_helpers import drain_worker
+
 
 def _setup():
     container = reset_container_for_tests(
@@ -52,7 +54,7 @@ def _create_exam(client, headers, course_name="高等数学", exam_date="2026-12
     return resp.json()["id"]
 
 
-def _create_active_campaign(client, headers, exam_ids, capacity=120):
+def _create_active_campaign(container, client, headers, exam_ids, capacity=120):
     cid = client.post(
         "/api/v1/final-review/campaigns",
         json={"exam_ids": exam_ids, "daily_capacity_minutes": capacity},
@@ -70,16 +72,18 @@ def _create_active_campaign(client, headers, exam_ids, capacity=120):
         f"/api/v1/final-review/campaigns/{cid}/activate",
         json={"version": 1}, headers=headers,
     )
+    # 激活是异步命令:驱动 Worker 完成审批后的实际执行。
+    drain_worker(container)
     return cid
 
 
 class TestAdjustmentAnalyze:
     def test_analyze_produces_proposal_not_direct_change(self):
         """Analyzer 只产生 proposal,不直接改 active version。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         # 获取今日议程(不完成任何 item → 产生 missed evidence)
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
@@ -99,10 +103,10 @@ class TestAdjustmentAnalyze:
         assert campaign["active_version"] == 1
 
     def test_analyze_creates_proposal_record(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -121,7 +125,7 @@ class TestAdjustmentAnalyze:
         assert proposals[0]["status"] == "pending"
 
     def test_analyze_requires_active_campaign(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         # 创建 campaign 但不激活
@@ -144,10 +148,10 @@ class TestAdjustmentAnalyze:
 class TestAdjustmentDecision:
     def test_approve_creates_v2_and_retains_v1(self):
         """审批通过后创建 v2,v1 保留可读。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -162,10 +166,21 @@ class TestAdjustmentDecision:
             json={"decision": "APPROVED"}, headers=headers,
         )
         assert resp.status_code == 200, resp.text
-        body = resp.json()
-        assert body["status"] == "approved"
-        assert body["new_version"] == 2
-        assert body["active_version"] == 2
+        # 路由只创建命令:新版本由 Worker 经 Gateway 创建并激活。
+        assert resp.json()["pending"] is True
+        assert resp.json()["new_version"] is None
+        assert resp.json()["run_id"].startswith("run_")
+        drain_worker(container)
+        proposal = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/adjustment-proposals",
+            headers=headers,
+        ).json()[0]
+        assert proposal["status"] == "approved"
+        assert proposal["target_version"] == 2
+        campaign = client.get(
+            f"/api/v1/final-review/campaigns/{cid}", headers=headers
+        ).json()
+        assert campaign["active_version"] == 2
         # v1 保留可读
         v1 = client.get(
             f"/api/v1/final-review/campaigns/{cid}/plan-versions/1",
@@ -183,10 +198,10 @@ class TestAdjustmentDecision:
 
     def test_reject_does_not_change_plan(self):
         """拒绝后不改计划,active version 不变。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -211,7 +226,7 @@ class TestAdjustmentDecision:
         assert campaign["active_version"] == 1
 
     def test_decision_on_nonexistent_proposal(self):
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         resp = client.post(
             "/api/v1/final-review/adjustment-proposals/nonexistent/decision",
@@ -221,10 +236,10 @@ class TestAdjustmentDecision:
 
     def test_double_decision_idempotent(self):
         """重复审批同一 proposal 不创建多个版本。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -243,15 +258,36 @@ class TestAdjustmentDecision:
             json={"decision": "APPROVED"}, headers=headers,
         )
         assert r1.status_code == 200
-        # 第二次决策:proposal 已非 pending,返回已有状态
+        # 第二次决策复用同一命令(同 idempotency key + 同请求哈希),不重复入队
         assert r2.status_code == 200
-        assert r2.json()["new_version"] == r1.json()["new_version"]
+        assert r2.json()["run_id"] == r1.json()["run_id"]
+
+        drain_worker(container)
+        versions = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions",
+            headers=headers,
+        ).json()
+        assert [v["version"] for v in versions] == [1, 2]
+
+        # 命令完成后再次决策只回显既有结果,不会产生第三个版本
+        r3 = client.post(
+            f"/api/v1/final-review/adjustment-proposals/{proposal_id}/decision",
+            json={"decision": "APPROVED"}, headers=headers,
+        )
+        assert r3.status_code == 200
+        assert r3.json()["new_version"] == 2
+        drain_worker(container)
+        versions = client.get(
+            f"/api/v1/final-review/campaigns/{cid}/plan-versions",
+            headers=headers,
+        ).json()
+        assert [v["version"] for v in versions] == [1, 2]
 
     def test_cross_user_proposal_denied(self):
-        _, client = _setup()
+        container, client = _setup()
         headers1 = _login(client, "student_demo")
         exam_id = _create_exam(client, headers1)
-        cid = _create_active_campaign(client, headers1, [exam_id])
+        cid = _create_active_campaign(container, client, headers1, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers1,
@@ -272,7 +308,7 @@ class TestAdjustmentDecision:
 class TestProviderFallback:
     def test_plan_generation_falls_back_to_deterministic(self):
         """无可用 provider 时,planner 降级到确定性规则。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
         cid = client.post(
@@ -291,10 +327,10 @@ class TestProviderFallback:
 
     def test_adjustment_falls_back_to_rules(self):
         """无可用 provider 时,analyzer 降级到规则分析。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -315,11 +351,11 @@ class TestProviderFallback:
 class TestPartialResult:
     def test_agenda_with_no_items_for_today(self):
         """今日无计划项时,agenda 为空但不报错(partial result)。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         # 创建一个考试,日期很远
         exam_id = _create_exam(client, headers, exam_date="2099-12-30")
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         resp = client.get(
             f"/api/v1/final-review/campaigns/{cid}/agendas/today",
             headers=headers,
@@ -330,10 +366,10 @@ class TestPartialResult:
 
     def test_analyze_with_no_evidence(self):
         """无 evidence 时,analyzer 仍产生 proposal(no_change)。"""
-        _, client = _setup()
+        container, client = _setup()
         headers = _login(client)
         exam_id = _create_exam(client, headers)
-        cid = _create_active_campaign(client, headers, [exam_id])
+        cid = _create_active_campaign(container, client, headers, [exam_id])
         # 不获取 agenda(无 evidence)
         resp = client.post(
             f"/api/v1/final-review/campaigns/{cid}/adjustments/analyze",

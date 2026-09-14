@@ -26,8 +26,9 @@ from ...core.exceptions import (
     ValidationFailed,
 )
 from ...models.multi_role import UserRow
+from ...repositories.agent_runtime_repository import build_request_hash
 from ...repositories.final_review_repository import FinalReviewRepository
-from ...schemas.agent_contract_enums import RiskLevel
+from ...schemas.agent_contract_enums import ApprovalStatus, RiskLevel
 from ...schemas.final_review import (
     ActivateIn,
     ActivateOut,
@@ -52,9 +53,23 @@ from ..deps import ServiceContainer, get_container, student_only
 
 router = APIRouter(prefix="/final-review", tags=["final-review"])
 
+# 审批后的实际执行由这两个 Handler 经 Gateway 完成,路由不再直接写计划状态。
+_ACTIVATE_JOB_KIND = "final_review_plan_activate"
+_ADJUST_APPLY_JOB_KIND = "final_review_adjust_apply"
+
 
 def _repo(container: ServiceContainer) -> FinalReviewRepository:
     return FinalReviewRepository(container.db)
+
+
+def _settle_waiting_run(container: ServiceContainer, approval_id: Optional[str], status: str) -> None:
+    """把等待该审批的 Run 收口到指定终态(仅用于拒绝/取消,不产生领域副作用)。"""
+    if not approval_id:
+        return
+    approval = container.agent_runtime_repository.get_approval(approval_id)
+    run = container.agent_runtime_repository.get_run(approval.run_id) if approval else None
+    if run and run["status"] == "AWAITING_APPROVAL":
+        container.agent_run_manager.transition(approval.run_id, status, phase="IDLE")
 
 
 def _validate_exam_ids(user_id: str, exam_ids: list[str], container: ServiceContainer) -> None:
@@ -407,7 +422,11 @@ async def activate_campaign(
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> ActivateOut:
-    """激活指定版本。激活后可生成每日议程。"""
+    """激活指定版本。
+
+    路由只创建命令:审批后的实际激活由 Handler 经 `ToolInvocationGateway` 执行,
+    最终状态由 Worker 原子写入,进程在中间崩溃也能从 checkpoint 恢复且只激活一次。
+    """
     repo = _repo(container)
     plan = repo.get_plan_version(campaign_id, body.version, user_id=user.id)
     if not plan:
@@ -417,16 +436,44 @@ async def activate_campaign(
     approval = container.agent_runtime_repository.get_approval(plan.approval_id)
     if not approval or approval.status != "APPROVED":
         raise AgentApprovalRequired(details={"approval_id": plan.approval_id})
-    row = repo.activate_campaign(campaign_id, user_id=user.id, version=body.version)
-    if not row:
+
+    campaign = repo.get_campaign(campaign_id, user_id=user.id)
+    if not campaign:
         raise NotFoundError("campaign 不存在")
-    run = container.agent_runtime_repository.get_run(approval.run_id)
-    if run and run["status"] == "AWAITING_APPROVAL":
-        container.agent_run_manager.transition(
-            approval.run_id, "SUCCEEDED", phase="IDLE"
+    if campaign.active_version == body.version:
+        # 幂等:同一版本已经激活,不重复入队。
+        return ActivateOut(
+            campaign_id=campaign_id,
+            active_version=body.version,
+            activated=True,
+            status="ACTIVE",
         )
+
+    handler = container.agent_handler_registry.require(_ACTIVATE_JOB_KIND)
+    input_ref = {
+        "campaign_id": campaign_id,
+        "version": body.version,
+        "approval_id": plan.approval_id,
+    }
+    created = container.agent_runtime_repository.create_job_with_run_and_event(
+        user_id=user.id,
+        job_kind=handler.job_kind,
+        input_ref=input_ref,
+        idempotency_key=(
+            body.idempotency_key
+            or idempotency_key
+            or f"{_ACTIVATE_JOB_KIND}:{campaign_id}:{body.version}"
+        ),
+        request_hash=build_request_hash(handler.job_kind, input_ref),
+        handler_code=handler.code,
+        handler_version=handler.version,
+    )
     return ActivateOut(
-        campaign_id=campaign_id, active_version=body.version, activated=True
+        campaign_id=campaign_id,
+        active_version=body.version,
+        activated=False,
+        status="PENDING",
+        run_id=created["run_id"],
     )
 
 
@@ -704,49 +751,74 @@ async def proposal_decision(
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AdjustmentDecisionOut:
-    """审批 adjustment proposal。APPROVED 创建新版本;REJECTED 不改计划。"""
-    repo = _repo(container)
-    from ...services.final_review.adjustment_service import AdjustmentAnalyzer
+    """审批 adjustment proposal。
 
-    analyzer = AdjustmentAnalyzer(
-        final_review_repo=repo,
-        model_router=container.agent_model_router,
-        risk_engine=container.agent_risk_engine,
-    )
-    approved = body.decision == "APPROVED"
+    路由只解析用户审批并创建命令:批准后的新版本由 Handler 经 Gateway 创建并激活,
+    最终状态由 Worker 原子写入;拒绝则不创建任何命令,计划保持不变。
+    """
+    repo = _repo(container)
     proposal = repo.get_proposal(proposal_id, user_id=user.id)
     if not proposal:
         raise NotFoundError("proposal 不存在")
-    if proposal.status == "pending" and proposal.approval_id:
-        container.agent_approval_gate.resolve(
-            proposal.approval_id,
-            decision=body.decision,
-            reason=body.reason,
-            user_id=user.id,
-        )
-    try:
-        result = analyzer.apply_proposal(
-            proposal_id=proposal_id, user_id=user.id, approved=approved
-        )
-    except ValueError:
-        raise NotFoundError("proposal 不存在")
+
+    approved = body.decision == "APPROVED"
     if proposal.approval_id:
         approval = container.agent_runtime_repository.get_approval(proposal.approval_id)
-        run = (
-            container.agent_runtime_repository.get_run(approval.run_id)
-            if approval else None
-        )
-        if run and run["status"] == "AWAITING_APPROVAL":
-            container.agent_run_manager.transition(
-                approval.run_id,
-                "SUCCEEDED" if approved else "CANCELLED",
-                phase="IDLE",
+        if approval is not None and approval.status == ApprovalStatus.PENDING.value:
+            # 路由只解析用户审批,不执行写操作;过期由 ApprovalGate 判定(过期绝不等于批准)。
+            container.agent_approval_gate.resolve(
+                proposal.approval_id,
+                decision=body.decision,
+                reason=body.reason,
+                user_id=user.id,
             )
+        elif approved and approval is not None and approval.status != ApprovalStatus.APPROVED.value:
+            raise AgentRuntimeError(
+                f"审批未通过({approval.status})，不能执行该调整",
+                code="AGENT_INVALID_STATE",
+                http_status=410 if approval.status == ApprovalStatus.EXPIRED.value else 409,
+            )
+
+    if not approved:
+        # 拒绝只做收口:标记提案被拒并结束等待中的 Run,绝不改动计划。
+        repo.resolve_proposal(
+            proposal_id,
+            user_id=user.id,
+            status="rejected",
+            approval_id=proposal.approval_id,
+        )
+        _settle_waiting_run(container, proposal.approval_id, "CANCELLED")
+        return AdjustmentDecisionOut(
+            proposal_id=proposal_id, status="rejected", new_version=None
+        )
+
+    if proposal.status != "pending":
+        # 幂等:已处理的提案直接回显既有结果,不重复入队。
+        return AdjustmentDecisionOut(
+            proposal_id=proposal_id,
+            status=proposal.status,
+            new_version=proposal.target_version,
+        )
+
+    handler = container.agent_handler_registry.require(_ADJUST_APPLY_JOB_KIND)
+    input_ref = {
+        "proposal_id": proposal_id,
+        "approved": True,
+        "approval_id": proposal.approval_id,
+    }
+    created = container.agent_runtime_repository.create_job_with_run_and_event(
+        user_id=user.id,
+        job_kind=handler.job_kind,
+        input_ref=input_ref,
+        idempotency_key=(
+            body.idempotency_key or idempotency_key or f"{_ADJUST_APPLY_JOB_KIND}:{proposal_id}"
+        ),
+        request_hash=build_request_hash(handler.job_kind, input_ref),
+        handler_code=handler.code,
+        handler_version=handler.version,
+    )
     return AdjustmentDecisionOut(
-        proposal_id=result["proposal_id"],
-        status=result["status"],
-        new_version=result["new_version"],
-        active_version=result["active_version"],
+        proposal_id=proposal_id, status="pending", pending=True, run_id=created["run_id"]
     )
 
 

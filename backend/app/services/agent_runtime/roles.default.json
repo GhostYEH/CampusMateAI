@@ -2,8 +2,8 @@
   "version": "1.0",
   "comment": "逻辑角色声明(§5.3)。新增校园场景角色时只改本文件,不改运行时核心代码;文件损坏时运行时会回退到内置定义。",
   "roles": [
-    {"agent_code": "planner", "version": "1.0", "capabilities": ["plan.generate", "schedule.adapt"], "tools": ["course.read", "exam.read", "plan.propose"], "model_policy": "reasoning_primary"},
-    {"agent_code": "analyzer", "version": "1.0", "capabilities": ["plan.analyze"], "tools": ["course.read", "exam.read", "plan.propose"], "model_policy": "reasoning_primary"},
+    {"agent_code": "planner", "version": "1.0", "capabilities": ["plan.generate", "schedule.adapt"], "tools": ["course.read", "exam.read", "plan.propose", "final_review.plan.activate"], "model_policy": "reasoning_primary"},
+    {"agent_code": "analyzer", "version": "1.0", "capabilities": ["plan.analyze"], "tools": ["course.read", "exam.read", "plan.propose", "final_review.adjust.apply"], "model_policy": "reasoning_primary"},
     {"agent_code": "notice_interpreter", "version": "1.0", "capabilities": ["notice.interpret"], "tools": ["notice.read"], "model_policy": "fast_structured"},
     {"agent_code": "workflow_planner", "version": "1.0", "capabilities": ["workflow.plan"], "tools": ["task.propose", "reminder.schedule"], "model_policy": "fast_structured"},
     {"agent_code": "coordinator", "version": "1.0", "capabilities": ["research.coordinate"], "tools": ["course.read"], "model_policy": "reasoning_primary"},

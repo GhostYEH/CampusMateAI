@@ -11,7 +11,7 @@
       "enabled": true,
       "roles": ["planner", "analyzer"],
       "skill": "final_review",
-      "tools": ["exam.read", "task.create", "plan.activate"]
+      "tools": ["exam.read", "task.create", "plan.activate", "final_review.plan.activate"]
     },
     {
       "code": "final_review.adjust",
@@ -22,7 +22,7 @@
       "enabled": true,
       "roles": ["planner", "analyzer"],
       "skill": "final_review",
-      "tools": ["exam.read", "task.create", "plan.activate"]
+      "tools": ["exam.read", "task.create", "plan.activate", "final_review.adjust.apply"]
     },
     {
       "code": "course_research.run",

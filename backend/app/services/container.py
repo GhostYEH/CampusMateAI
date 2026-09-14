@@ -79,11 +79,18 @@ from ..services.agent_runtime.capability_registry import (
     build_capability_registry,
 )
 from ..services.agent_runtime.event_notifier import EventNotifier
+from ..services.agent_runtime.handlers.final_review import (
+    FinalReviewAdjustApplyHandler,
+    FinalReviewPlanActivateHandler,
+    build_adjust_apply_tool,
+    build_plan_activate_tool,
+)
 from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
 from ..services.agent_runtime.handlers.registry import JobHandlerRegistry
 from ..services.agent_runtime.worker import AgentWorker
 from ..services.llm.model_router import ModelRouter
 from ..services.llm.provider_registry import ProviderRegistry
+from ..services.final_review.adjustment_service import AdjustmentAnalyzer
 from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
 from ..services.course_research.citation_verifier import CitationVerifier
@@ -318,13 +325,40 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     agent_registry_obj = AgentRegistry()
     agent_skill_registry = SkillRegistry()
+    agent_risk_engine = RiskEngine()
+    agent_provider_registry = ProviderRegistry(settings)
+    agent_model_router = ModelRouter(
+        agent_provider_registry, repository=agent_runtime_repository
+    )
+    # 期末复习的高风险写操作只能经 Gateway 执行,执行器直接绑定领域 Service。
+    final_review_analyzer = AdjustmentAnalyzer(
+        final_review_repo=final_review_repository,
+        model_router=agent_model_router,
+        risk_engine=agent_risk_engine,
+    )
     agent_tool_registry = ToolRegistry()
+    agent_tool_registry.register(build_plan_activate_tool(final_review_repository))
+    agent_tool_registry.register(build_adjust_apply_tool(final_review_analyzer))
     agent_handler_registry = JobHandlerRegistry(
         known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
     )
     agent_handler_registry.register(
         LearningGoalHandler(learning_planner_service, agent_event_store)
     )
+    agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_tool_gateway = ToolInvocationGateway(
+        agent_runtime_repository,
+        agent_tool_registry,
+        agent_risk_engine,
+        agent_approval_gate,
+        agent_registry=agent_registry_obj,
+        handler_registry=agent_handler_registry,
+        event_store=agent_event_store,
+    )
+    # Handler 自身要经 Gateway 执行受管工具,所以必须在 Gateway 之后注册;
+    # 注册完成后才冻结目录,保证运行期只读。
+    agent_handler_registry.register(FinalReviewPlanActivateHandler(agent_tool_gateway))
+    agent_handler_registry.register(FinalReviewAdjustApplyHandler(agent_tool_gateway))
     agent_handler_registry.freeze()
     # 能力目录在启动时一次性交叉校验 Agent/Role/Skill/Handler/Tool;
     # 清单损坏或已发布语义被改动时直接抛错,阻止 runtime 启动。
@@ -344,26 +378,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         poll_interval_seconds=settings.agent_worker_poll_ms / 1000,
         concurrency=settings.agent_worker_concurrency,
     )
-    agent_risk_engine = RiskEngine()
-    agent_approval_gate = ApprovalGate(agent_runtime_repository)
-    agent_tool_gateway = ToolInvocationGateway(
-        agent_runtime_repository,
-        agent_tool_registry,
-        agent_risk_engine,
-        agent_approval_gate,
-        agent_registry=agent_registry_obj,
-        handler_registry=agent_handler_registry,
-        event_store=agent_event_store,
-    )
     agent_executor = AgentExecutor(
         agent_runtime_repository,
         registry=agent_registry_obj,
         tools=agent_tool_registry,
         event_store=agent_event_store,
-    )
-    agent_provider_registry = ProviderRegistry(settings)
-    agent_model_router = ModelRouter(
-        agent_provider_registry, repository=agent_runtime_repository
     )
 
     # EduConnector
