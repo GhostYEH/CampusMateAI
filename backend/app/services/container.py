@@ -72,6 +72,7 @@ from ..services.agent_runtime.executor import AgentExecutor
 from ..services.agent_runtime.memory_manager import MemoryManager
 from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
+from ..services.agent_runtime.tool_gateway import ToolInvocationGateway
 from ..services.agent_runtime.tool_registry import ToolRegistry
 from ..services.agent_runtime.event_notifier import EventNotifier
 from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
@@ -168,6 +169,7 @@ class ServiceContainer:
     agent_approval_gate: ApprovalGate
     agent_executor: AgentExecutor
     agent_handler_registry: JobHandlerRegistry
+    agent_tool_gateway: ToolInvocationGateway
     agent_worker: AgentWorker
     agent_event_notifier: EventNotifier
     agent_provider_registry: ProviderRegistry
@@ -331,6 +333,15 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     agent_risk_engine = RiskEngine()
     agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_tool_gateway = ToolInvocationGateway(
+        agent_runtime_repository,
+        agent_tool_registry,
+        agent_risk_engine,
+        agent_approval_gate,
+        agent_registry=agent_registry_obj,
+        handler_registry=agent_handler_registry,
+        event_store=agent_event_store,
+    )
     agent_executor = AgentExecutor(
         agent_runtime_repository,
         registry=agent_registry_obj,
@@ -450,6 +461,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_approval_gate=agent_approval_gate,
         agent_executor=agent_executor,
         agent_handler_registry=agent_handler_registry,
+        agent_tool_gateway=agent_tool_gateway,
         agent_worker=agent_worker,
         agent_event_notifier=agent_event_notifier,
         agent_provider_registry=agent_provider_registry,

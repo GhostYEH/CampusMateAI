@@ -949,6 +949,51 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    def claim_tool_call(
+        self,
+        *,
+        run_id: str,
+        tool_name: str,
+        request_hash: str,
+        idempotency_key: str,
+        step_id: Optional[str] = None,
+    ) -> tuple[str, bool]:
+        """原子幂等声明:相同 (run_id, idempotency_key, request_hash) 只声明一次。
+
+        返回 `(call_id, is_new)`。`is_new=False` 表示命中既有声明,调用方必须重放
+        首次结果而不是再执行一次领域副作用。
+        """
+        now = _now()
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT call_id FROM agent_tool_calls "
+                "WHERE run_id = ? AND idempotency_key = ? AND request_hash = ?",
+                (run_id, idempotency_key, request_hash),
+            ).fetchone()
+            if row is not None:
+                return row["call_id"], False
+            call_id = _uuid("tcall")
+            conn.execute(
+                "INSERT INTO agent_tool_calls (call_id, run_id, step_id, tool_name, "
+                "idempotency_key, request_hash, status, started_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
+                (call_id, run_id, step_id, tool_name, idempotency_key, request_hash, now),
+            )
+        return call_id, True
+
+    def get_tool_call(self, call_id: str) -> Optional[dict]:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT call_id, run_id, step_id, tool_name, idempotency_key, request_hash, "
+                "status, result_digest, error_code, started_at, finished_at "
+                "FROM agent_tool_calls WHERE call_id = ?",
+                (call_id,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            self._release(conn)
+
     def record_tool_call_finish(
         self,
         call_id: str,
