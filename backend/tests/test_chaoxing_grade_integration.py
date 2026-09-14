@@ -421,3 +421,32 @@ def test_zero_score_is_treated_as_observed_failure():
     assert graded is not None and graded.created is True
     events, _ = event_service.list_events(user_id="user1", page=1, page_size=10)
     assert events[0].payload["normalized_score_band"] == "0_59"
+
+
+def test_parse_score_rejects_full_score_and_weight_descriptions():
+    """裸"X分"不能把满分/总分/权重当成实得分。"""
+    assert ChaoxingParser.parse_score("第三次作业 截止：2026-08-20 已交 满分100分") == (None, None)
+    assert ChaoxingParser.parse_score("第一章作业 总分：100分 未交") == (None, None)
+    assert ChaoxingParser.parse_score("小测验 共 20 分 已批阅") == (None, None)
+    assert ChaoxingParser.parse_score("作业 权重 30分 已交") == (None, None)
+    # 批阅语境下的真实分数仍要采信，带满分的形式也要采信。
+    assert ChaoxingParser.parse_score("已批阅 88分") == (88.0, None)
+    assert ChaoxingParser.parse_score("已批阅 92/100") == (92.0, 100.0)
+
+
+def test_learning_activity_prefers_remote_submitted_at():
+    """晚同步时完成时间取平台回传的真实提交时间，而不是本地"发现已完成"时间。"""
+    db = _make_db()
+    _add_user(db)
+    service = _projection_service(db)
+    # 真实提交在 10 天前(超出 7 天窗口)，本地 completed_at 因晚同步是今天。
+    tasks = [{
+        "id": "t1", "status": "completed", "deleted_at": None,
+        "completed_at": _now().isoformat(),
+        "remote_submitted_at": (_now() - timedelta(days=10)).isoformat(),
+    }]
+    value, _, _, _ = service._activity(
+        events=[], sessions=[], tasks=tasks, as_of=_now(), user_id="user1"
+    )
+    assert value["observed_completed_tasks_7d"] == 0
+    assert value["observed_completed_tasks_30d"] == 1

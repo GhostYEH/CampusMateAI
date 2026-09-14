@@ -351,7 +351,8 @@ class LearnerStateProjectionService:
         try:
             with self.repository._db.query() as conn:
                 task_rows = conn.execute(
-                    """SELECT id,status,deadline,created_at,completed_at,deleted_at
+                    """SELECT id,status,deadline,created_at,completed_at,deleted_at,
+                              remote_submitted_at
                        FROM personal_tasks WHERE user_id=?
                        ORDER BY created_at DESC LIMIT 200""",
                     (user_id,),
@@ -1409,7 +1410,10 @@ class LearnerStateProjectionService:
                 session_times[subject_id] = (when, 0)
         task_times: dict[str, datetime] = {}
         for row in tasks:
-            when = _parse(row.get("completed_at"))
+            # 学习通晚同步时 completed_at 只是"发现已完成"的本地时间，优先采用
+            # 平台回传的真实提交时间，否则 7d/30d 完成窗口会整体错位；
+            # 事件循环在下面只能 setdefault，无法纠正这里填错的时间。
+            when = _parse(row.get("remote_submitted_at") or row.get("completed_at"))
             if row.get("status") == "completed" and when and when <= as_of and not row.get("deleted_at"):
                 task_times[row["id"]] = when
         for event in events:

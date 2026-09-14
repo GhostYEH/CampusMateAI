@@ -359,30 +359,58 @@ class ChaoxingParser:
 
     @staticmethod
     def parse_score(text) -> tuple[float | None, float | None]:
-        """从自由文本中解析 (得分, 满分)，解析不到返回 (None, None)。"""
+        """从自由文本中解析 (得分, 满分)，解析不到返回 (None, None)。
+
+        学习通列表页文案噪声很大，"满分100分""共 20 分""权重 30分"都不是得分，
+        裸 "X分" 一律采信会把满分当成实得分。因此分三档由严到宽:
+          1. 带明确关键词(成绩/得分/分数/评分) —— 直接采信;
+          2. "X/Y" 形式 —— 日期片段已剔除，误判风险低;
+          3. 裸 "X分" —— 只在批阅语境下采信，且先剔掉满分类描述。
+        """
         if not text:
             return (None, None)
         raw = str(text)
         # 先剔除日期/时间片段，避免把 2024/03/05 或 12:30 误判成分数。
         cleaned = re.sub(r"\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}\s*日?", " ", raw)
         cleaned = re.sub(r"\d{1,2}:\d{2}(:\d{2})?", " ", cleaned)
-        patterns = (
-            r"(?:成绩|得分|分数|评分)\D{0,4}(\d{1,3}(?:\.\d+)?)(?:\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?))?",
-            r"(\d{1,3}(?:\.\d+)?)\s*分(?!钟)",
-            r"(\d{1,3}(?:\.\d+)?)\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?)",
-        )
-        for pattern in patterns:
-            match = re.search(pattern, cleaned)
-            if not match:
-                continue
+
+        def _pair(match) -> tuple[float | None, float | None]:
             score = ChaoxingParser._to_float(match.group(1))
             if score is None:
-                continue
+                return (None, None)
             score_max = None
             if match.lastindex and match.lastindex > 1:
                 candidate = ChaoxingParser._to_float(match.group(2))
                 score_max = candidate if (candidate and candidate > 0) else None
             return (score, score_max)
+
+        match = re.search(
+            r"(?:成绩|得分|分数|评分)\D{0,4}(\d{1,3}(?:\.\d+)?)"
+            r"(?:\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?))?",
+            cleaned,
+        )
+        if match:
+            result = _pair(match)
+            if result[0] is not None:
+                return result
+
+        match = re.search(
+            r"(\d{1,3}(?:\.\d+)?)\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?)", cleaned
+        )
+        if match:
+            result = _pair(match)
+            if result[0] is not None:
+                return result
+
+        # 裸 "X分": 没有批阅语义时宁可放弃，也不能把满分当实得分。
+        if not re.search(r"(批阅|已阅|已评|评分|得分|成绩)", cleaned):
+            return (None, None)
+        if re.search(r"(满分|总分|分制|权重)", cleaned):
+            return (None, None)
+        stripped = re.sub(r"[共占]\s*\d{1,3}(?:\.\d+)?\s*分", " ", cleaned)
+        match = re.search(r"(\d{1,3}(?:\.\d+)?)\s*分(?!钟)", stripped)
+        if match:
+            return _pair(match)
         return (None, None)
 
     @staticmethod
