@@ -96,11 +96,12 @@ test("topbar controls share one desktop height and top alignment", () => {
 });
 
 test("navigation starts compact and reveals accessible route labels on desktop hover", () => {
-  assert.match(layoutStyles, /--floating-nav-expanded-width:\s*900px/);
+  assert.match(layoutStyles, /--floating-nav-expanded-width:\s*960px/);
   assert.match(layoutStyles, /\.floating-nav-label/);
   assert.match(floatingNavSource, /floating-nav-label/);
   assert.match(layoutStyles, /--floating-nav-collapsed-width:\s*476px/);
   assert.match(layoutStyles, /\.floating-nav:hover\s*\{/);
+  assert.match(layoutStyles, /\.floating-nav:hover \.floating-nav-button\s*\{[^}]*gap:\s*12px/s);
   assert.doesNotMatch(layoutStyles, /\.floating-nav:is\(:hover,\s*:focus-within\)/);
 });
 

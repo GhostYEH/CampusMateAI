@@ -67,6 +67,12 @@ def run():
                 .map(stage => stage.getBoundingClientRect());
               const stageGaps = stages.slice(1)
                 .map((stage, index) => stage.left - stages[index].right);
+              const iconLabelGaps = [...nav.querySelectorAll('.floating-nav-button')]
+                .map(button => {
+                  const icon = button.querySelector('.floating-nav-icon')?.getBoundingClientRect();
+                  const label = button.querySelector('.floating-nav-label')?.getBoundingClientRect();
+                  return icon && label ? label.left - icon.right : Number.POSITIVE_INFINITY;
+                });
               return {
                 width: navRect.width,
                 clientWidth: nav.clientWidth,
@@ -74,6 +80,7 @@ def run():
                 firstStageInset: stages[0].left - navRect.left,
                 lastStageInset: navRect.right - stages.at(-1).right,
                 minStageGap: Math.min(...stageGaps),
+                minIconLabelGap: Math.min(...iconLabelGaps),
               };
             }"""
         )
@@ -114,12 +121,16 @@ def run():
             failures.append(f"收起态入口超出容器：{collapsed}")
         if expanded["width"] < collapsed["clientWidth"] + 200:
             failures.append(f"导航未正常展开：{expanded}")
+        if expanded["width"] < 950:
+            failures.append(f"展开态宽度不足以容纳统一间距：{expanded}")
         if expanded["scrollWidth"] > expanded["clientWidth"] + 1:
             failures.append(f"展开态内容溢出：{expanded}")
         if expanded["firstStageInset"] < 14 or expanded["lastStageInset"] < 14:
             failures.append(f"展开态首尾留白不足：{expanded}")
         if expanded["minStageGap"] < 3.5:
             failures.append(f"展开态入口间距过密：{expanded}")
+        if expanded["minIconLabelGap"] < 11.5:
+            failures.append(f"展开态图标与文字间距过密：{expanded}")
         if expanded_effect and abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:
             failures.append(f"液态画布未固定到选中图标：{expanded_effect}")
         if not collapse_start:
