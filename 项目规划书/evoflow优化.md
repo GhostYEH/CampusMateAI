@@ -28,11 +28,12 @@
 
 原结论方向正确：最值得借鉴的是“Agent 运行时与控制平面”，而不是 EvoFlow 的整体技术栈。CampusMateAI 已具备更适合校园场景的隐私边界、学习状态、校园领域服务和多端产品面，整体迁移会增加复杂度并削弱差异化。
 
-需要做三项修订：
+需要做四项修订：
 
 1. 在“持久化任务队列”之前增加一个独立 P0：**运行状态与事件原子提交**。当前状态更新和事件追加分属不同提交，进程崩溃可能造成状态与事件不一致。
 2. 将“扩展 CI”从 P2 提升到 P1：运行时契约横跨 Web、Android、HarmonyOS 和微信端，没有契约门禁就无法安全追加恢复事件和错误码。
 3. 将 Skill 热加载和远程安装降到 P2/不做：近期只实现版本、启停、角色绑定和启动校验；动态加载会扩大供应链与权限面，收益不足。
+4. 将“同步创建即拿到结果”视为既有兼容契约：`202 + QUEUED` 上线前必须同步改造 Web、Android、HarmonyOS 的 learning_goal 业务流，不能只更新 DTO/契约测试。微信端当前没有该业务页面，只需维持通用事件契约。
 
 | 项目 | 业务收益 | 实现成本 | 主要风险 | 修订优先级 | 决策 |
 | --- | --- | --- | --- | --- | --- |
@@ -42,12 +43,13 @@
 | Tool Invocation Gateway | 极高 | 高 | 审批恢复、策略绕过 | P0 | 先迁移高风险写操作 |
 | JobHandlerRegistry | 高 | 中低 | 路由迁移回归 | P1，但作为 Worker 前置一起做 |
 | 管理员观测控制面 | 高 | 中 | 隐私泄漏、指标误导 | P1 | 只读、聚合优先 |
-| 跨端契约 CI | 高 | 中 | Android CI 的 JDK 供应 | P1 | Web/微信先落地，Android设准入门 |
+| 异步业务流迁移 | 极高 | 中高 | `plan_id` 尚未生成、界面假成功 | P0 | 与异步 API 同批交付 |
+| 跨端契约 CI | 高 | 中 | Android CI 的 JDK 供应 | P1 | Web/微信先落地，Android 设准入门 |
 | Skill 版本/启停/角色绑定 | 中 | 中 | 配置漂移 | P1 | 启动时加载，不热加载 |
 | Notification Channel/Outbox | 中高 | 高 | 重复通知、平台授权 | P2 | 单独立项 |
 | LangGraph/Tauri/沙箱/技能市场 | 低 | 极高 | 运维、许可、攻击面 | 不做 | 仅在需求发生根本变化时复评 |
 
-粗略工作量为 28–42 人日，误差约 ±30%。一名熟悉后端和跨端契约的工程师约需 6–9 周；两名工程师按“运行时内核/控制面与客户端”拆分约需 4–6 周。第一批可独立交付的 P0 内核预计 12–18 人日。
+粗略工作量修订为 34–50 人日，误差约 ±30%。一名熟悉后端和跨端契约的工程师约需 8–12 周；两名工程师按“运行时内核/客户端与控制面”拆分约需 5–8 周。Task 1–4A 强串行，客户端迁移可在 4A 契约冻结后并行；第一批可独立交付的 P0 内核预计 16–24 人日。Task 9–10 的管理员观测面不阻塞 P0 上线，可在运行时稳定后交付。
 
 ## 2. 目标架构与不变量
 
@@ -91,6 +93,25 @@ Later: Notification Outbox --> App / Android / WeChat / Webhook
 新建 `backend/app/services/agent_runtime/handlers/base.py`：
 
 ```python
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any, Literal, Protocol
+
+from pydantic import BaseModel
+
+
+class RecoveryAction(StrEnum):
+    REQUEUE = "REQUEUE"
+    FAIL = "FAIL"
+
+
+@dataclass(frozen=True)
+class RecoveryDecision:
+    action: RecoveryAction
+    checkpoint: dict[str, Any] | None = None
+    error_code: str | None = None
+
+
 @dataclass(frozen=True)
 class HandlerContext:
     run_id: str
@@ -105,6 +126,7 @@ class HandlerContext:
 class HandlerResult:
     status: Literal["SUCCEEDED", "PARTIAL", "AWAITING_APPROVAL"]
     artifact_ids: tuple[str, ...] = ()
+    job_output_patch: dict[str, Any] = field(default_factory=dict)
     checkpoint: dict[str, Any] | None = None
     summary: str | None = None
 
@@ -112,6 +134,7 @@ class JobHandler(Protocol):
     code: str
     version: str
     job_kind: str
+    enabled: bool
     input_model: type[BaseModel]
     max_attempts: int
 
@@ -119,7 +142,7 @@ class JobHandler(Protocol):
     async def recover(self, context: HandlerContext) -> RecoveryDecision: ...
 ```
 
-注册表必须在启动时拒绝重复 `job_kind`、空版本、未声明输入模型和未知工具能力。路由不得再包含 `if job_kind == ...` 的执行分支。
+注册表必须在启动时拒绝重复 `job_kind`、空版本、未声明输入模型和未知工具能力。每个 Handler 还必须有显式 `enabled` 状态；路由不得再包含 `if job_kind == ...` 的执行分支。
 
 ### 3.2 Job 创建与幂等
 
@@ -128,6 +151,9 @@ class JobHandler(Protocol):
 - 请求哈希由规范化后的 `job_kind + input_ref` 生成，不包含 Header 顺序或 JSON 键顺序。
 - 相同 `(user_id, operation, idempotency_key)` 携带不同请求哈希时返回 `409` 和 `AGENT_IDEMPOTENCY_CONFLICT`。
 - Job、首个 Run、幂等声明和 `RUN_QUEUED` 事件必须在同一事务中创建。
+- 已知但未注册或未启用的 `job_kind` 返回 `409 AGENT_CAPABILITY_DISABLED`，且不得创建 Job、Run 或事件；Worker/Runtime 处于不接单模式时返回 `503 AGENT_RUNTIME_UNAVAILABLE`。
+- `learning_goal` 完成时继续把 `plan_id` 写入既有 `job.input_ref`，维持已经被客户端依赖的兼容行为；`job.input_ref` 更新必须先于 `RUN_COMPLETED` 对外可见，并与 Run 终态和完成事件在同一事务提交。
+- 异步客户端流程固定为：创建 Job → 使用 `latest_run_id` 展示 QUEUED/RUNNING 并订阅事件 → 收到终态后重新 GET Job → 从 `input_ref.plan_id` 读取结果引用 → 加载学习计划详情。不得在 `202` 创建响应中假定 `plan_id` 已存在，也不得把学习计划 ID 填入 `artifact_id`。
 
 ### 3.3 Worker 租约与重试
 
@@ -136,24 +162,39 @@ class JobHandler(Protocol):
 - 默认最多 3 次尝试，退避为 1s、5s、15s；处理器可降低但不能无限重试。
 - 不可重试错误直接 `FAILED`；可重试错误回到 `QUEUED` 并追加 `RUN_RETRY_SCHEDULED`。
 - Worker 崩溃后，另一 Worker 在租约过期后调用 Handler 的 `recover()`；不得无条件把所有运行标记失败。
+- `AGENT_RUNTIME_MODE` 只有 `worker`、`drain`、`disabled`：`worker` 接单并执行，`drain` 拒绝新任务但排空已有队列，`disabled` 拒绝新任务且不领取任务。不得保留 `inline` 回退路径，以免长期维护两套执行语义。
 
 ### 3.4 SSE 恢复
 
 - `Last-Event-ID` 必须通过 `(run_id, event_id)` 索引直接定位，不再扫描 10,000 条事件。
 - 找不到或不属于该 Run 的游标返回 `409 AGENT_CURSOR_INVALID`，客户端随后调用 REST 事件列表做一次安全全量归并。
 - SSE 发送 15 秒注释心跳；同进程事件由内存通知器唤醒，跨进程仍以数据库短轮询兜底。
+- 非终态 Run 不得因固定空闲次数或 60 秒无业务事件而断流；注释心跳用于维持连接，但不推进事件序列。流只在客户端断开、Run 终态事件已发送完毕或服务端关闭时结束。
 - 追加事件类型只能附加在枚举末尾：`RUN_RETRY_SCHEDULED`、`RUN_RECOVERY_STARTED`、`RUN_RECOVERED`。
 - Web、Android、HarmonyOS、微信端 reducer 必须按 `(run_id, sequence)` 去重，并对未知事件执行“记录游标、不提升权限、不崩溃”的安全降级。
 
 ### 3.5 Tool Invocation Gateway
 
 ```python
+from typing import Any, Literal
+
+from pydantic import BaseModel
+
+
 class ToolInvocationRequest(BaseModel):
     run_id: str
     role_code: str
     tool_name: str
     arguments: dict[str, Any]
     idempotency_key: str
+
+
+class ToolInvocationResult(BaseModel):
+    status: Literal["COMPLETED", "AWAITING_APPROVAL", "REPLAYED"]
+    call_id: str
+    result_ref: dict[str, Any] | None = None
+    approval_id: str | None = None
+
 
 class ToolInvocationGateway:
     async def invoke(self, request: ToolInvocationRequest) -> ToolInvocationResult: ...
@@ -169,6 +210,7 @@ class ToolInvocationGateway:
 
 - Modify: `backend/app/database/sqlite_db.py`
 - Modify: `backend/app/repositories/agent_runtime_repository.py`
+- Modify: `backend/app/services/agent_runtime/event_store.py`
 - Modify: `backend/tests/test_agent_runtime_migrations.py`
 - Modify: `backend/tests/test_agent_runtime_repository.py`
 - Create: `backend/tests/test_agent_runtime_atomicity.py`
@@ -180,7 +222,9 @@ class ToolInvocationGateway:
 - [ ] 运行 `cd backend && python -m pytest tests/test_agent_runtime_migrations.py tests/test_agent_runtime_repository.py tests/test_agent_runtime_atomicity.py -q`，确认新增测试因缺少事务 API 失败。
 - [ ] 增加 `agent_idempotency_claims` 表，以 `(scope, user_id, idempotency_key)` 为主键保存 `request_hash` 和 `resource_id`；不要直接对可能含历史重复数据的旧列强加唯一索引。
 - [ ] 为 `agent_events` 增加或确认 `(run_id, sequence)` 唯一约束及 `(run_id, event_id)` 查询索引。
-- [ ] 在 Repository 实现 `create_job_with_run_and_event()`、`transition_run_with_event()`、`claim_next_run()`、`renew_run_lease()`、`save_checkpoint()`、`release_run_lease()`、`get_event_sequence()`；所有复合写操作使用 `Database.transaction()`。
+- [ ] 在 Repository 实现 `create_job_with_run_and_event()`、`transition_run_with_event()`、`complete_run_with_job_output_and_event()`、`claim_next_run()`、`renew_run_lease()`、`save_checkpoint()`、`release_run_lease()`、`get_event_sequence()`；所有复合写操作使用 `Database.transaction()`。
+- [ ] `complete_run_with_job_output_and_event()` 在一个事务中合并安全的 `job_input_ref_patch`、更新 Run/Job 状态并追加终态事件；事件提交后客户端重新读取 Job 时必须已能看到 `plan_id`。
+- [ ] 修正 `event_store.py` 中“业务状态与对应事件已在同一事务提交”的误导性模块注释；直接 `append()` 只允许写不伴随状态变化的进度事件，状态事件必须走 Repository 原子方法。
 - [ ] 对状态更新使用期望状态和租约所有者条件，更新行数不为 1 时抛 `AgentInvalidState`，避免后到 Worker 覆盖新状态。
 - [ ] 重新运行上述测试，预期全部通过。
 - [ ] 运行 `python -m pytest tests/test_agent_runtime_lifecycle.py tests/test_agent_runtime_cancellation.py -q`，确认生命周期回归通过。
@@ -199,13 +243,13 @@ class ToolInvocationGateway:
 - Create: `backend/tests/test_agent_handler_registry.py`
 - Modify: `backend/tests/test_agent_runtime_api.py`
 
-- [ ] 为重复 `job_kind`、未知类型、输入 Schema 校验失败和 Handler 版本冻结编写失败测试。
-- [ ] 为 `learning_goal` 编写 Handler 测试，固定输入模型为 `goal_id: str` 与 `available_minutes: int[1..1440]`，并验证产物和事件与现状等价。
+- [ ] 为重复 `job_kind`、未知类型、未启用类型、输入 Schema 校验失败和 Handler 版本冻结编写失败测试。
+- [ ] 为 `learning_goal` 编写 Handler 测试，固定输入模型为 `goal_id: str` 与 `available_minutes: int[1..1440]`，并断言 Handler 返回 `job_output_patch={"plan_id": ...}`，完成事务对 Job 写回后才出现 `RUN_COMPLETED`。
 - [ ] 运行 `python -m pytest tests/test_agent_handler_registry.py tests/test_agent_runtime_api.py -q`，确认测试失败。
 - [ ] 实现 `JobHandler`、`HandlerContext`、`HandlerResult`、`RecoveryDecision` 和只读注册表。
 - [ ] 把 `_execute_learning_goal_run` 从路由迁入 `LearningGoalHandler`；路由只负责认证、幂等声明、入队和响应映射。
 - [ ] `build_container()` 显式注册 Handler；禁止自动扫描 Python 模块，避免不可审计的代码加载。
-- [ ] 保留公共 `job_kind` 字符串和值域；未知类型返回稳定业务错误，不返回 Python 类型或栈信息。
+- [ ] 保留公共 `job_kind` 字符串和值域；未知类型继续由请求 Schema 返回 422，已知但未注册或未启用的类型返回 `409 AGENT_CAPABILITY_DISABLED`，且不产生永久 QUEUED 记录。
 - [ ] 重新运行目标测试，预期全部通过。
 - [ ] 提交：`git commit -m "separate agent workflows from HTTP routing"`。
 
@@ -222,18 +266,19 @@ class ToolInvocationGateway:
 - Modify: `backend/tests/test_agent_runtime_recovery.py`
 - Create: `backend/tests/test_agent_worker.py`
 
-- [ ] 用可控时钟编写失败测试：Worker 领取、续租、完成、可重试失败退避、达到最大次数失败、取消后不再执行。
+- [ ] 用可控时钟编写失败测试：Worker 领取、续租、完成、可重试失败退避、达到最大次数失败、取消后不再执行，以及 `worker/drain/disabled` 三种运行模式。
 - [ ] 编写崩溃测试：Worker A 在 checkpoint 后停止续租，租约过期后 Worker B 恢复；领域副作用只发生一次。
 - [ ] 编写审批测试：`AWAITING_APPROVAL` 不被领取，审批后回到 `QUEUED` 并从 checkpoint 继续。
 - [ ] 运行 `python -m pytest tests/test_agent_worker.py tests/test_agent_runtime_recovery.py -q`，确认测试失败。
 - [ ] 实现 `AgentWorker.start()`、`stop()`、`run_once()` 和心跳协程；为每个实例生成随机、不可复用的 `worker_id`。
-- [ ] 增加 `AGENT_WORKER_ENABLED`、`AGENT_WORKER_CONCURRENCY`、`AGENT_WORKER_LEASE_SECONDS`、`AGENT_WORKER_HEARTBEAT_SECONDS`、`AGENT_WORKER_POLL_MS` 配置并校验合理范围。
-- [ ] 在 FastAPI lifespan 中启动 Worker，在 shutdown 先停止领取、等待当前 checkpoint，再释放资源；删除“启动时一律标记失败”的旧恢复策略。
-- [ ] Worker 被关闭或禁用时，新建任务返回明确 `503`，不得悄悄回退为 HTTP 请求内执行。
+- [ ] 增加 `AGENT_RUNTIME_MODE=worker|drain|disabled`、`AGENT_WORKER_CONCURRENCY`、`AGENT_WORKER_LEASE_SECONDS`、`AGENT_WORKER_HEARTBEAT_SECONDS`、`AGENT_WORKER_POLL_MS` 配置并校验合理范围。
+- [ ] 在 FastAPI lifespan 中按模式启动 Worker，在 shutdown 先停止领取、等待当前 checkpoint，再释放资源；删除“启动时一律标记失败”的旧恢复策略。
+- [ ] 将 `test_recover_fails_interrupted_runs_without_unsafe_replay` 改写为“有效租约不抢占、过期租约按 Handler recovery 决策重排或失败”的测试；这是预期语义替换，不应把旧断言失败误判为回归。
+- [ ] `drain/disabled` 模式下新建任务返回 `503 AGENT_RUNTIME_UNAVAILABLE`；任何模式都不得悄悄回退为 HTTP 请求内执行。
 - [ ] 重新运行目标测试，预期全部通过。
 - [ ] 提交：`git commit -m "make agent runs durable across process restarts"`。
 
-### Task 4: 固化异步 Job API 与原子幂等语义
+### Task 4A: 固化异步 Job API、能力准入与原子幂等语义
 
 **Files:**
 
@@ -249,15 +294,46 @@ class ToolInvocationGateway:
 
 - [ ] 增加 API 测试：新建返回 `202` 且 Run 为 `QUEUED`；请求耗时不受 Handler 执行时间影响。
 - [ ] 增加幂等重放和冲突测试；冲突必须为 `409 AGENT_IDEMPOTENCY_CONFLICT`。
+- [ ] 增加能力准入测试：`learning_goal` 已启用时可入队；`final_review/course_research/notice_workflow` 在对应 Handler 启用前返回 `409 AGENT_CAPABILITY_DISABLED`，数据库中没有孤儿 Job/Run。
+- [ ] 增加结果发布顺序测试：`RUN_COMPLETED` 可见时重新 GET Job 必须已经包含 `input_ref.plan_id`。
 - [ ] 更新四端契约测试，确认所有客户端接受任意 2xx 成功状态，并保留未知枚举安全降级。
 - [ ] 运行后端和各端最小契约测试，确认修改前失败。
 - [ ] 路由改用 `create_job_with_run_and_event()`，通过 `Response.status_code` 区分新入队与幂等重放，响应 JSON 字段保持不变。
+- [ ] 在 `AgentErrorCode` 末尾追加 `AGENT_CAPABILITY_DISABLED` 和 `AGENT_RUNTIME_UNAVAILABLE`，分别稳定映射到 409 与 503；不得复用 provider 错误掩盖 runtime 状态。
 - [ ] `AGENT_CONTRACT_VERSION` 暂时保留 `v1`；只有未来发生不可兼容 wire format 变更时才新开版本。
 - [ ] 运行 `cd backend && python -m pytest tests/test_agent_runtime_api.py tests/test_agent_runtime_contracts.py -q`。
 - [ ] 运行 `cd webreact && npm test -- --test-name-pattern="agent runtime"`；若 Node 版本不支持该过滤参数，则运行 `npm test`。
 - [ ] 运行 `cd wx && npm run typecheck`。
 - [ ] Android 本地测试必须先按仓库说明设置捆绑 JDK 21，再运行 `cd android && .\gradlew.bat testDebugUnitTest --tests "*AgentRuntimeApiContractTest"`。
 - [ ] 提交：`git commit -m "define asynchronous and idempotent agent job creation"`。
+
+### Task 4B: 迁移 learning_goal 异步客户端业务流
+
+**Files:**
+
+- Modify: `webreact/src/pages/LearningStatePage.jsx`
+- Modify: `webreact/src/hooks/useAgentRun.js`
+- Create: `webreact/tests/learning-goal-async-flow.test.mjs`
+- Modify: `android/app/src/main/java/com/example/campusai/ui/screens/agent/GoalExecutionViewModel.kt`
+- Modify: `android/app/src/main/java/com/example/campusai/data/repository/AgentRuntimeRepository.kt`
+- Create: `android/app/src/test/java/com/example/campusai/ui/screens/agent/GoalExecutionViewModelTest.kt`
+- Modify: `harmony/entry/src/main/ets/features/goals/GoalExecutionPage.ets`
+- Modify: `harmony/entry/src/main/ets/repository/AgentRuntimeRepository.ets`
+- Create: `harmony/entry/src/test/ets/agent/GoalExecutionAsyncFlow.test.ets`
+- Modify: `wx/miniprogram/services/agent-runtime.test.ts`
+
+- [ ] 编写 Web 失败测试：创建响应没有 `plan_id` 时显示“任务已加入队列”，订阅 `latest_run_id`；终态成功后重新 GET Job 并刷新计划列表，期间不得显示“计划草案已生成”。
+- [ ] 编写 Android 失败测试：`generate()` 不再立即读取 `job.inputRef["plan_id"]`；监听 Run 成功后调用 `getJob(jobId)`，再加载 `planSummary(planId)`。
+- [ ] 编写 HarmonyOS 失败测试：创建后 `plan_id` 缺失不会访问 `undefined.length`；页面展示队列状态，终态后重新读取 Job 和计划摘要。
+- [ ] 编写三端恢复测试：页面/App 重建后，QUEUED/RUNNING Job 根据 `latest_run_id` 重新订阅；SUCCEEDED Job 根据写回的 `input_ref.plan_id` 恢复摘要。
+- [ ] 编写三端异常测试：Run 为 FAILED/CANCELLED、终态 Job 仍缺 `plan_id`、SSE 断线时显示可重试状态，不能静默空白或假成功。
+- [ ] 运行新增目标测试，确认当前同步假设导致测试失败。
+- [ ] Web 使用 `useAgentRun` 驱动队列/运行/终态提示；成功终态先刷新 Job，再刷新学习计划与摘要。
+- [ ] Android 在 ViewModel 作用域收集 `streamRunEvents()`；终态成功后调用 Repository 的 `getJob()`，校验非空 `plan_id` 后加载摘要。
+- [ ] HarmonyOS 使用现有 `streamEvents()` 接入 Goal 页面；终态成功后重新 `getJob()`，不得把类型断言当作空值校验。
+- [ ] 微信端当前没有 learning_goal 创建页面，不新增虚构业务 UI；仅保留 `202`、未知事件和 reducer 去重的通用契约测试。
+- [ ] 运行 `cd webreact && node --test tests/learning-goal-async-flow.test.mjs`，并按仓库 JDK 规则运行 Android 目标单测；HarmonyOS 在可用官方工具链中运行新增测试。
+- [ ] 提交：`git commit -m "keep learning goal UX correct after asynchronous enqueue"`。
 
 ### Task 5: 优化事件恢复与客户端单一状态源
 
@@ -279,12 +355,13 @@ class ToolInvocationGateway:
 - Modify: `wx/miniprogram/services/agent-runtime.ts`
 
 - [ ] 编写 SQL 查询计数测试，证明 `Last-Event-ID` 恢复不会加载历史事件列表。
-- [ ] 编写 SSE 测试：合法续传、错误 Run 游标、未知游标、心跳、终态关闭、断开不取消。
+- [ ] 编写 SSE 测试：合法续传、错误 Run 游标、未知游标、心跳、终态关闭、断开不取消；用可控时钟证明 QUEUED Run 连续 120 秒没有业务事件时连接仍保持。
 - [ ] 编写四端 reducer 测试：重复事件、乱序事件、未知事件和 REST 快照后 SSE 续接。
 - [ ] 运行目标测试，确认缺少直接游标定位和未知游标错误时失败。
 - [ ] 实现 `(run_id, event_id) -> sequence` 直接查询，移除 10,000 条扫描和吞异常逻辑。
 - [ ] `AgentEventStore.append()` 提交后通知本进程 `EventNotifier`；SSE 无事件时等待通知，最长 1 秒后查询数据库，兼容多进程写入。
 - [ ] 每 15 秒发送 SSE 注释心跳；心跳不写入数据库，不推进客户端业务状态。
+- [ ] 删除 `idle_count > 60` 的固定空闲断流条件；终态只在已发送最后一条持久化事件后关闭，非终态由客户端断开或服务关闭来结束。
 - [ ] 客户端将持久化 REST/SSE 事件统一交给同一个 reducer，以 `sequence` 为唯一推进依据。
 - [ ] 重新运行后端和跨端目标测试，预期全部通过。
 - [ ] 提交：`git commit -m "resume agent event streams from durable cursors"`。
@@ -352,6 +429,7 @@ class ToolInvocationGateway:
 - Create: `backend/tests/test_agent_capability_registry.py`
 
 - [ ] 为清单 Schema、语义版本、启用状态、角色绑定、Handler 绑定、Tool 引用完整性编写失败测试。
+- [ ] 冻结现有公开 capability code 与语义：`final_review.plan`、`final_review.adjust`、`course_research.run`、`notice.workflow`、`citation.verify` 必须继续存在，且各自的 route policy、risk level、requires approval 不得改变；新能力只能追加。
 - [ ] 增加生产环境测试：清单损坏必须阻止 runtime 启动；不得静默回退到默认宽权限。
 - [ ] 运行目标测试，确认当前静态清单与硬编码 `/capabilities` 无法通过。
 - [ ] 实现只读 `CapabilityRegistry`，启动时一次性加载并交叉校验 Agent、Role、Skill、Handler、Tool。
@@ -432,8 +510,9 @@ class ToolInvocationGateway:
 
 - [ ] 增加故障演练：Handler 异常、模型超时、工具超时、审批期间重启、租约中断、重复请求、SSE 断线重连、数据库短时锁竞争。
 - [ ] 验证 SLO：入队 API P95 < 200ms；单实例空闲时调度 P95 < 2s；恢复时间不超过租约期 + 2 次轮询；重复领域副作用为 0；合法游标恢复无事件缺失。
-- [ ] 首先只启用 `learning_goal`，观察至少一个完整验收周期；再启用 `final_review`，最后迁移 `course_research` 和 `notice_workflow`。
-- [ ] 回滚只关闭 Worker/新建 Job，不删除新表、不降级数据库；已排队任务保留，恢复后继续处理。
+- [ ] 首先只启用 `learning_goal`：连续观察 3 天且累计至少 50 个非测试 Run，要求重复副作用为 0、游标恢复事件缺失为 0、非业务校验失败的成功率不低于 98%；达标后再启用 `final_review`，最后迁移 `course_research` 和 `notice_workflow`。
+- [ ] 常规回滚先切换 `AGENT_RUNTIME_MODE=drain`，拒绝新任务并把队列排空，再回滚应用版本；若无法排空则保持新版本 `disabled` 并修复前滚，避免旧版启动逻辑把新队列任务统一标记 FAILED。
+- [ ] 回滚不删除新表、不降级数据库、不恢复 `inline` 双路径；切换模式、排空状态、剩余队列数和版本兼容性必须记录在发布检查单。
 - [ ] 更新 README 的运行、配置、恢复、观测和故障处理说明；把 v2 增量决策回写设计文档，不复制 EvoFlow 文档内容。
 - [ ] 运行全量后端、Web、微信及可用移动端验证；检查 `git diff`、`git diff --cached`、`git status` 和敏感信息扫描。
 - [ ] 提交：`git commit -m "document and validate the durable agent runtime rollout"`。
@@ -462,10 +541,11 @@ WebSocket 也不作为默认升级项。只有出现客户端双向实时控制�
 ## 7. 完成定义
 
 - HTTP 请求不再直接执行 Agent Workflow。
+- Web、Android、HarmonyOS 在 `202` 创建后能够展示排队/运行状态，并在终态后重新读取 Job 获得 `plan_id`；微信端通用契约继续通过。任何端都不能出现假成功、空值崩溃或静默空白。
 - 进程在任意安全 checkpoint 重启后，运行可恢复或以稳定错误明确失败，不会长期伪装为 RUNNING。
 - 状态、事件、幂等声明和必要业务引用具备明确事务边界。
 - 所有注册工具都通过 ToolInvocationGateway；权限、Schema、归属、风险、审批和幂等测试齐全。
-- SSE 可按持久化游标准确恢复，四端 reducer 对重复、乱序和未知事件安全。
+- SSE 可按持久化游标准确恢复，非终态不会因 60 秒空闲而断流，四端 reducer 对重复、乱序和未知事件安全。
 - 管理员能看到队列、耗时、Token、工具、错误、重试和审批等待，但看不到敏感内容。
 - Web/微信契约 CI 生效；Android/HarmonyOS 的未自动化部分有明确、可验证的环境前置条件，不能被标记为已覆盖。
 - 全量相关测试通过，工作区只提交本计划对应任务的文件，无密钥、本机路径、缓存或构建产物。
