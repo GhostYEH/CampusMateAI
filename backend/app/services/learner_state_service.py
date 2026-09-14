@@ -92,7 +92,7 @@ class LearnerStateProjectionService:
         self._student_goal_repository = student_goal_repository
 
     def project_user(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         as_of = _require_utc(as_of)
         current = None
@@ -137,7 +137,7 @@ class LearnerStateProjectionService:
                 trigger=trigger,
                 corrections=corrections if self._control_repository is not None else None,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,
@@ -165,7 +165,7 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_academic(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         """ACADEMIC 投影：将教务事实安全地投影到学生状态世界模型。
 
@@ -198,7 +198,7 @@ class LearnerStateProjectionService:
                 user_id=user_id, inputs=inputs, as_of=as_of,
                 input_digest=input_digest, trigger=trigger,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,
@@ -226,7 +226,7 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_world(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         """WORLD 投影：通用大学生世界状态(校园生活/事务/个人成长)。
 
@@ -259,7 +259,7 @@ class LearnerStateProjectionService:
                 user_id=user_id, inputs=inputs, as_of=as_of,
                 input_digest=input_digest, trigger=trigger,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,

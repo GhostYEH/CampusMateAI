@@ -70,7 +70,7 @@ def test_data_summary():
     assert resp.status_code == 200, resp.text
     data = resp.json()
     for field in (
-        "event_count", "snapshot_count", "knowledge_snapshot_count",
+        "event_count", "snapshot_count",
         "correction_count", "learning_plan_count",
         "plan_feedback_count", "plan_evaluation_count", "shadow_run_count",
         "enabled_sources", "paused_sources",

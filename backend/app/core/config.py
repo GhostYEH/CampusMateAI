@@ -100,16 +100,10 @@ class Settings(BaseSettings):
     # ===== CampusAgentRuntime model providers (§6) =====
     # Zhipu reasoning primary; Xunfei fast structured.复用 OpenAICompatibleClient。
     # 真实凭据只存在于未追踪的 backend/.env,绝不进入客户端/日志/fixture/commit。
-    zhipu_llm_base_url: str = ""
-    zhipu_llm_api_key: str = ""
-    zhipu_llm_model: str = ""
+    # 注意: zhipu_llm_* / xunfei_llm_* 凭据字段与 agent_artifact_path 声明在上方
+    # 通用 LLM 配置区,此处不再重复声明(重复声明在 Pydantic 中会覆盖前值)。
     zhipu_llm_timeout_seconds: int = 30
-    xunfei_llm_base_url: str = "https://spark-api-open.xf-yun.com/v1"
-    xunfei_llm_api_key: str = ""
-    xunfei_llm_model: str = "lite"
     xunfei_llm_timeout_seconds: int = 30
-    # Agent artifact 存储目录(相对 backend/ 根目录)
-    agent_artifact_path: str = "./data/agent_artifacts"
     # production 禁止 mock providers
     agent_allow_mock_providers: bool = False
 

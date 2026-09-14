@@ -116,6 +116,7 @@ export default function LiquidMetalNav({
   dockMagnification = 60,
   dockBaseItemSize = 44,
   reuseRenderer = false,
+  effectGeometrySelector,
 }) {
   const mouseX = useMotionValue(Number.POSITIVE_INFINITY);
   const listRef = useRef(null);
@@ -163,10 +164,11 @@ export default function LiquidMetalNav({
       getEngaged: () => activeIndexRef.current === index
         || hoveredIndexRef.current === index
         || focusedIndexRef.current === index,
+      geometrySelector: effectGeometrySelector,
       maxFps: 20,
       dprCap: 1,
     });
-  }, [reduceMotion, reuseRenderer]);
+  }, [effectGeometrySelector, reduceMotion, reuseRenderer]);
   const registerStage = useCallback((index, stage) => {
     const previousStage = stageRefs.current.get(index);
     if (stage) stageRefs.current.set(index, stage);
@@ -193,6 +195,7 @@ export default function LiquidMetalNav({
     const handleTransitionEnd = (event) => {
       if (event.target !== nav || event.propertyName !== "width") return;
       navTransitionRef.current = false;
+      nav.classList.remove("floating-nav--collapsing");
       scheduleDockMeasure();
     };
 
@@ -208,6 +211,7 @@ export default function LiquidMetalNav({
       nav?.removeEventListener("transitionrun", handleTransitionRun);
       nav?.removeEventListener("transitionend", handleTransitionEnd);
       nav?.removeEventListener("transitioncancel", handleTransitionEnd);
+      nav?.classList.remove("floating-nav--collapsing");
       if (geometryFrameRef.current) cancelAnimationFrame(geometryFrameRef.current);
     };
   }, [scheduleDockMeasure]);
@@ -224,6 +228,7 @@ export default function LiquidMetalNav({
 
   const handleMouseMove = (event) => {
     if (reduceMotion) return;
+    listRef.current?.closest(".floating-nav")?.classList.remove("floating-nav--collapsing");
     if (reuseRenderer) {
       hoverGateRef.current.notePointerMove();
       sharedRendererRef.current.move(event.nativeEvent || event);
@@ -237,6 +242,7 @@ export default function LiquidMetalNav({
   };
 
   const handleMouseLeave = () => {
+    if (!reduceMotion) listRef.current?.closest(".floating-nav")?.classList.add("floating-nav--collapsing");
     if (reuseRenderer) {
       const hoveredIndex = hoverGateRef.current.current();
       if (hoveredIndex !== null) {

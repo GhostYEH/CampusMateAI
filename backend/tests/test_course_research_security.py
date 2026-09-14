@@ -309,7 +309,11 @@ class TestProviderFallback:
             runtime_repo, AgentRegistry(), ToolRegistry(), event_store,
         )
         # 无 provider
-        settings = Settings(app_env="development", agent_allow_mock_providers=True)
+        settings = Settings(
+            app_env="development",
+            agent_allow_mock_providers=True,
+            _env_file=None,
+        )
         provider_reg = ProviderRegistry(settings)
         model_router = ModelRouter(provider_reg)
         pipeline = CourseResearchPipeline(

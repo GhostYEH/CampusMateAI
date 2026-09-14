@@ -267,6 +267,12 @@ class SimulationService:
         return result
 
     def _collect_baseline_snapshots(self, *, user_id: str, as_of: datetime) -> list[Any]:
+        """读取当前投影状态,但**不落库**。
+
+        反事实模拟是只读操作:调用投影服务时传 persist=False,
+        否则每次模拟都会因为 as_of 变化而写出一份新的投影 run 与快照,
+        污染 data-summary 的业务计数。
+        """
         if self._learner_state_service is None:
             return []
         snapshots: list[Any] = []
@@ -275,7 +281,7 @@ class SimulationService:
             if method is None:
                 continue
             try:
-                projection = method(user_id, as_of=as_of, trigger="simulation")
+                projection = method(user_id, as_of=as_of, trigger="simulation", persist=False)
                 snapshots.extend(projection.snapshots)
             except Exception as exc:
                 logger.warning("simulation_baseline_snapshots_failed method={} err={}", method_name, type(exc).__name__)

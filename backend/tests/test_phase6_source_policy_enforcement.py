@@ -117,7 +117,7 @@ def _make_shadow_request(uid, req_id="req_test_001"):
             "data_quality": "verified",
             "evidence_count": 1,
             "deadline_bucket": "DUE_24H",
-            "knowledge_band": None,
+            "state_band": None,
             "confidence_bucket": "HIGH",
         },
         request_id=req_id,
