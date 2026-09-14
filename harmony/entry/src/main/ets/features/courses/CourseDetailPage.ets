@@ -1,6 +1,7 @@
-import { CourseContentBundle, CourseContentItem, CourseContentSummary, CourseItem } from '../../data/Models';
+import { CourseContentBundle, CourseContentItem, CourseContentSummary, CourseItem, CourseKnowledgeGraph, KnowledgePoint } from '../../data/Models';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
+import { CourseKnowledgeGraphView } from './CourseKnowledgeGraphView';
 
 @Component
 export struct CourseDetailPage {
@@ -12,15 +13,47 @@ export struct CourseDetailPage {
   @State detailError: string = '';
   @State detailSummary?: CourseContentSummary = undefined;
   @State detailContent: CourseContentItem[] = [];
+  @State knowledgeGraph?: CourseKnowledgeGraph = undefined;
+  @State knowledgeLoading: boolean = false;
+  @State knowledgeSyncing: boolean = false;
+  @State knowledgeError: string = '';
+  @State knowledgeExpanded: boolean = false;
   onBack: () => void = () => {};
   onLoadContent: (courseId: string) => Promise<CourseContentBundle> = async (_: string) => ({ items: [] });
   onSyncContent: (courseId: string) => Promise<CourseContentBundle> = async (_: string) => ({ items: [] });
   onCacheContent: (courseId: string, itemId: string) => Promise<void> = async (_: string, __: string) => {};
+  onLoadKnowledgeGraph: (courseId: string) => Promise<CourseKnowledgeGraph> = async (_: string) => ({ course_id: '', available: false, knowledge_point_count: 0 });
+  onSyncKnowledgeGraph: (courseId: string) => Promise<CourseKnowledgeGraph> = async (_: string) => ({ course_id: '', available: false, knowledge_point_count: 0 });
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
   aboutToAppear(): void {
     this.loadContent(false);
+    this.loadKnowledgeGraph();
+  }
+
+  async loadKnowledgeGraph(): Promise<void> {
+    this.knowledgeLoading = true;
+    this.knowledgeError = '';
+    try {
+      this.knowledgeGraph = await this.onLoadKnowledgeGraph(this.course.id);
+    } catch (_) {
+      this.knowledgeError = '知识点数据加载失败，请稍后重试';
+    } finally {
+      this.knowledgeLoading = false;
+    }
+  }
+
+  async syncKnowledgeGraph(): Promise<void> {
+    this.knowledgeSyncing = true;
+    this.knowledgeError = '';
+    try {
+      this.knowledgeGraph = await this.onSyncKnowledgeGraph(this.course.id);
+    } catch (_) {
+      this.knowledgeError = '知识点同步失败，请稍后重试';
+    } finally {
+      this.knowledgeSyncing = false;
+    }
   }
 
   async loadContent(sync: boolean): Promise<void> {
@@ -62,6 +95,78 @@ export struct CourseDetailPage {
       Text(label).fontColor(this.palette().muted).fontSize(11).width(74)
       Text(value).fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Medium).layoutWeight(1)
     }.width('100%').padding({ top: 14, bottom: 14 })
+  }
+
+  @Builder MasteryStat(label: string, value: string) {
+    Column({ space: 2 }) {
+      Text(value).fontColor(this.palette().text).fontSize(17).fontWeight(FontWeight.Bold)
+      Text(label).fontColor(this.palette().muted).fontSize(10)
+    }.alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder MasteryBar(label: string, own: number, classRate: number) {
+    Column({ space: 4 }) {
+      Row() {
+        Text(label).fontColor(this.palette().muted).fontSize(11)
+        Text(CourseKnowledgeGraphView.rateText(own)).fontColor(this.palette().text).fontSize(11).fontWeight(FontWeight.Medium)
+      }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+      Stack({ alignContent: Alignment.TopStart }) {
+        Column().width('100%').height(6).borderRadius(3).backgroundColor(this.palette().soft)
+        Column().width(CourseKnowledgeGraphView.barWidth(own)).height(6).borderRadius(3).backgroundColor(this.palette().primary)
+      }.width('100%').height(6)
+      Text(`班级平均 ${CourseKnowledgeGraphView.rateText(classRate)}`).fontColor(this.palette().muted).fontSize(10)
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  /** 知识点掌握 —— 学习通课程图谱页观测(课程级掌握率 + 班级对比 + 知识点清单)。 */
+  @Builder KnowledgePanel() {
+    Column({ space: 11 }) {
+      Row() {
+        Row({ space: 7 }) {
+          SymbolGlyph($r('sys.symbol.doc')).fontSize(18).fontColor([this.palette().primary])
+          Text('知识点掌握').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold)
+        }
+        Text(CourseKnowledgeGraphView.countLabel(this.knowledgeGraph))
+          .fontColor(this.palette().muted).fontSize(11)
+      }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+      if (this.knowledgeLoading) {
+        Text('知识点数据加载中…').fontColor(this.palette().muted).fontSize(12)
+      } else if (this.knowledgeGraph?.available !== true) {
+        Text(CourseKnowledgeGraphView.unavailableHint(this.knowledgeError))
+          .fontColor(this.palette().muted).fontSize(12)
+        Button(this.knowledgeSyncing ? '同步中…' : '同步知识点')
+          .width('100%').height(42).fontSize(12).fontWeight(FontWeight.Bold)
+          .enabled(!this.knowledgeSyncing).onClick(() => this.syncKnowledgeGraph())
+      } else {
+        Row() {
+          this.MasteryStat('知识点', `${this.knowledgeGraph?.knowledge_point_count ?? 0}`)
+          this.MasteryStat('我的掌握率', CourseKnowledgeGraphView.rateText(this.knowledgeGraph?.own_mastery_rate))
+          this.MasteryStat('班级平均', CourseKnowledgeGraphView.rateText(this.knowledgeGraph?.class_mastery_rate))
+          this.MasteryStat(
+            CourseKnowledgeGraphView.gapLabel(this.knowledgeGraph?.mastery_gap_vs_class),
+            CourseKnowledgeGraphView.gapText(this.knowledgeGraph?.mastery_gap_vs_class)
+          )
+        }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+        this.MasteryBar('掌握率', this.knowledgeGraph?.own_mastery_rate ?? 0, this.knowledgeGraph?.class_mastery_rate ?? 0)
+        this.MasteryBar('完成率', this.knowledgeGraph?.own_completion_rate ?? 0, this.knowledgeGraph?.class_completion_rate ?? 0)
+        if ((this.knowledgeGraph?.tags ?? []).length > 0) {
+          Text(CourseKnowledgeGraphView.tagsText(this.knowledgeGraph)).fontColor(this.palette().muted).fontSize(10)
+        }
+        if (CourseKnowledgeGraphView.points(this.knowledgeGraph).length > 0) {
+          Text(CourseKnowledgeGraphView.pointsToggleLabel(this.knowledgeGraph, this.knowledgeExpanded))
+            .fontColor(this.palette().primary).fontSize(11).fontWeight(FontWeight.Medium)
+            .onClick(() => { this.knowledgeExpanded = !this.knowledgeExpanded; })
+          if (this.knowledgeExpanded) {
+            ForEach(CourseKnowledgeGraphView.points(this.knowledgeGraph), (point: KnowledgePoint) => {
+              Row({ space: 8 }) {
+                Text(`#${(point.position ?? 0) + 1}`).fontColor(this.palette().muted).fontSize(10)
+                Text(point.name).fontColor(this.palette().text).fontSize(12).maxLines(1).layoutWeight(1)
+              }.width('100%')
+            }, (point: KnowledgePoint) => point.external_id)
+          }
+        }
+      }
+    }.width('100%').padding(14).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(16).alignItems(HorizontalAlign.Start)
   }
 
   @Builder ContentItem(item: CourseContentItem) {
@@ -113,6 +218,7 @@ export struct CourseDetailPage {
           Button(this.detailLoading ? '同步中…' : '同步学习通课程内容')
             .width('100%').height(46).fontSize(13).fontWeight(FontWeight.Bold)
             .enabled(!this.detailLoading).onClick(() => this.loadContent(true))
+          this.KnowledgePanel()
           Scroll() {
             Row({ space: 8 }) {
               ForEach(['全部','章节','资料','作业','通知','考试','讨论'], (label: string) => {

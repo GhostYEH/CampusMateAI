@@ -28,6 +28,7 @@ import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
+import com.example.campusai.data.remote.CourseKnowledgeGraphDto
 import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.hitokoto.HitokotoRepository
@@ -667,6 +668,27 @@ class AppRepository(
         val response = ApiClient.api.syncCourseContent(courseId)
         if (!response.isSuccessful) throw IllegalStateException("course_content_sync_failed_${response.code()}")
         return loadCourseContent(courseId)
+    }
+
+    /**
+     * 课程知识点掌握（学习通课程图谱页观测：课程级掌握率 + 班级对比 + 知识点清单）。
+     * 未同步过时后端返回 available=false 的对象而不是 404，这里原样透传给 UI 做引导。
+     */
+    suspend fun loadCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
+        return try {
+            val response = ApiClient.api.getCourseKnowledgeGraph(courseId)
+            if (response.isSuccessful) response.body() else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 只同步 knowledge_graph 这一个 section，不连带跑完整 deep 同步。 */
+    suspend fun syncCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
+        val response = ApiClient.api.syncCourseContent(courseId, sections = "knowledge_graph")
+        if (!response.isSuccessful) throw IllegalStateException("course_knowledge_graph_sync_failed_${response.code()}")
+        return loadCourseKnowledgeGraph(courseId)
     }
 
     suspend fun getCourseResourceUrl(courseId: String, itemId: String): String? {

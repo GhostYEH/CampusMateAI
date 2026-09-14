@@ -609,6 +609,28 @@ data class CourseContentPageDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
+// ── 课程知识点掌握（学习通课程图谱页观测，非本地推断）──
+data class KnowledgePointDto(
+    val external_id: String,
+    val name: String,
+    val tags: List<String> = emptyList(),
+    val position: Int = 0,
+)
+
+data class CourseKnowledgeGraphDto(
+    val course_id: String,
+    val available: Boolean = false,
+    val synced_at: String? = null,
+    val knowledge_point_count: Int = 0,
+    val own_mastery_rate: Double? = null,
+    val class_mastery_rate: Double? = null,
+    val mastery_gap_vs_class: Double? = null,
+    val own_completion_rate: Double? = null,
+    val class_completion_rate: Double? = null,
+    val tags: List<String> = emptyList(),
+    val points: List<KnowledgePointDto> = emptyList(),
+)
+
 // 全校活动列表（校园动态 / 我的活动）
 data class ActivityDto(
     val id: String,
@@ -1055,7 +1077,15 @@ interface ApiService {
     ): Response<CourseContentPageDto>
 
     @POST("courses/{courseId}/sync")
-    suspend fun syncCourseContent(@Path("courseId") courseId: String): Response<Unit>
+    suspend fun syncCourseContent(
+        @Path("courseId") courseId: String,
+        @Query("sections") sections: String? = null,
+    ): Response<Unit>
+
+    @GET("courses/{courseId}/knowledge-graph")
+    suspend fun getCourseKnowledgeGraph(
+        @Path("courseId") courseId: String,
+    ): Response<CourseKnowledgeGraphDto>
 
     @GET("courses/{courseId}/resources/{itemId}/open")
     suspend fun openCourseResource(

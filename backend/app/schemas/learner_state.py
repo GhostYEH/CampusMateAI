@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -30,6 +30,21 @@ StateType = Literal[
     "preference_profile",
 ]
 ChangeType = Literal["ADDED", "UPDATED", "REMOVED", "UNCHANGED"]
+
+# 从 StateType 派生，避免 API 层手写枚举与 schema 漂移
+# （曾发生 knowledge_mastery_observation 只进了 StateType、漏进 Query pattern）。
+STATE_TYPE_PATTERN = "^(?:" + "|".join(get_args(StateType)) + ")$"
+
+# ACADEMIC 投影对外暴露的状态类型，须与 learner_state_service._compute_academic 写入的集合一致。
+ACADEMIC_STATE_TYPES = (
+    "academic_course_load",
+    "grade_observation",
+    "knowledge_mastery_observation",
+    "credit_progress",
+    "exam_exposure",
+    "schedule_load",
+    "goal_state",
+)
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -316,28 +331,34 @@ class PreferenceProfileValue(BaseModel):
     warning_codes: list[str] = Field(default_factory=list, max_length=16)
 
 
+# state_type → 值模型。**唯一真源**：StateValue 联合类型与两个 model_validator 都从这里
+# 派生。历史上三处各写一份，导致 knowledge_mastery_observation 只加进了校验映射表、
+# 没加进 Union，接口在序列化时直接 500（union 逐个试错 → 上百条 validation error）。
+STATE_VALUE_MODELS: dict[str, type[BaseModel]] = {
+    "observed_learning_activity": ObservedLearningActivityValue,
+    "task_workload": TaskWorkloadValue,
+    "deadline_exposure": DeadlineExposureValue,
+    "course_participation": CourseParticipationValue,
+    "data_source_health": DataSourceHealthValue,
+    "academic_course_load": AcademicCourseLoadValue,
+    "grade_observation": GradeObservationValue,
+    "knowledge_mastery_observation": KnowledgeMasteryObservationValue,
+    "credit_progress": CreditProgressValue,
+    "exam_exposure": ExamExposureValue,
+    "schedule_load": ScheduleLoadValue,
+    "goal_state": GoalStateValue,
+    "workload_pressure": WorkloadPressureValue,
+    "schedule_conflict": ScheduleConflictValue,
+    "academic_progress": AcademicProgressValue,
+    "focus_rhythm": FocusRhythmValue,
+    "goal_progress": GoalProgressValue,
+    "execution_consistency": ExecutionConsistencyValue,
+    "growth_momentum": GrowthMomentumValue,
+    "preference_profile": PreferenceProfileValue,
+}
+
 StateValue = Annotated[
-    Union[
-        ObservedLearningActivityValue,
-        TaskWorkloadValue,
-        DeadlineExposureValue,
-        CourseParticipationValue,
-        DataSourceHealthValue,
-        AcademicCourseLoadValue,
-        GradeObservationValue,
-        CreditProgressValue,
-        ExamExposureValue,
-        ScheduleLoadValue,
-        GoalStateValue,
-        WorkloadPressureValue,
-        ScheduleConflictValue,
-        AcademicProgressValue,
-        FocusRhythmValue,
-        GoalProgressValue,
-        ExecutionConsistencyValue,
-        GrowthMomentumValue,
-        PreferenceProfileValue,
-    ],
+    Union[tuple(STATE_VALUE_MODELS.values())],
     Field(union_mode="smart"),
 ]
 
@@ -371,28 +392,7 @@ class LearnerStateSnapshotOut(BaseModel):
 
     @model_validator(mode="after")
     def validate_value_for_state(self) -> "LearnerStateSnapshotOut":
-        expected = {
-            "observed_learning_activity": ObservedLearningActivityValue,
-            "task_workload": TaskWorkloadValue,
-            "deadline_exposure": DeadlineExposureValue,
-            "course_participation": CourseParticipationValue,
-            "data_source_health": DataSourceHealthValue,
-            "academic_course_load": AcademicCourseLoadValue,
-            "grade_observation": GradeObservationValue,
-            "knowledge_mastery_observation": KnowledgeMasteryObservationValue,
-            "credit_progress": CreditProgressValue,
-            "exam_exposure": ExamExposureValue,
-            "schedule_load": ScheduleLoadValue,
-            "goal_state": GoalStateValue,
-            "workload_pressure": WorkloadPressureValue,
-            "schedule_conflict": ScheduleConflictValue,
-            "academic_progress": AcademicProgressValue,
-            "focus_rhythm": FocusRhythmValue,
-            "goal_progress": GoalProgressValue,
-            "execution_consistency": ExecutionConsistencyValue,
-            "growth_momentum": GrowthMomentumValue,
-            "preference_profile": PreferenceProfileValue,
-        }[self.state_type]
+        expected = STATE_VALUE_MODELS[self.state_type]
         if not isinstance(self.value, expected):
             raise ValueError("value does not match state_type")
         if self.data_quality == "unavailable" and self.confidence != 0:
@@ -501,28 +501,7 @@ class LearnerStateChangeOut(BaseModel):
 
     @model_validator(mode="after")
     def validate_values(self) -> "LearnerStateChangeOut":
-        expected = {
-            "observed_learning_activity": ObservedLearningActivityValue,
-            "task_workload": TaskWorkloadValue,
-            "deadline_exposure": DeadlineExposureValue,
-            "course_participation": CourseParticipationValue,
-            "data_source_health": DataSourceHealthValue,
-            "academic_course_load": AcademicCourseLoadValue,
-            "grade_observation": GradeObservationValue,
-            "knowledge_mastery_observation": KnowledgeMasteryObservationValue,
-            "credit_progress": CreditProgressValue,
-            "exam_exposure": ExamExposureValue,
-            "schedule_load": ScheduleLoadValue,
-            "goal_state": GoalStateValue,
-            "workload_pressure": WorkloadPressureValue,
-            "schedule_conflict": ScheduleConflictValue,
-            "academic_progress": AcademicProgressValue,
-            "focus_rhythm": FocusRhythmValue,
-            "goal_progress": GoalProgressValue,
-            "execution_consistency": ExecutionConsistencyValue,
-            "growth_momentum": GrowthMomentumValue,
-            "preference_profile": PreferenceProfileValue,
-        }[self.state_type]
+        expected = STATE_VALUE_MODELS[self.state_type]
         if self.previous_value is not None and not isinstance(self.previous_value, expected):
             raise ValueError("previous_value does not match state_type")
         if self.current_value is not None and not isinstance(self.current_value, expected):

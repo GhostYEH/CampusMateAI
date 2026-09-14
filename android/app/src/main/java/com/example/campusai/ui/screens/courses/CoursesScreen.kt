@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Class
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -72,6 +73,7 @@ import com.example.campusai.data.model.Course
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
+import com.example.campusai.data.remote.CourseKnowledgeGraphDto
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -507,6 +509,11 @@ private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismi
     var loading by remember(course.id) { mutableStateOf(true) }
     var syncing by remember(course.id) { mutableStateOf(false) }
     var error by remember(course.id) { mutableStateOf<String?>(null) }
+    var graph by remember(course.id) { mutableStateOf<CourseKnowledgeGraphDto?>(null) }
+    var graphLoading by remember(course.id) { mutableStateOf(true) }
+    var graphSyncing by remember(course.id) { mutableStateOf(false) }
+    var graphError by remember(course.id) { mutableStateOf<String?>(null) }
+    var graphExpanded by remember(course.id) { mutableStateOf(false) }
     var filter by remember(course.id) { mutableStateOf("全部") }
     val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
     val kinds = mapOf(
@@ -524,6 +531,10 @@ private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismi
             content = loaded.second
         } catch (_: Exception) { error = "课程内容加载失败，已保留现有信息" }
         finally { loading = false }
+    }
+    androidx.compose.runtime.LaunchedEffect(course.id) {
+        graph = repository.loadCourseKnowledgeGraph(course.id)
+        graphLoading = false
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -567,6 +578,84 @@ private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismi
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 enabled = !syncing,
             ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "同步学习通课程内容", fontWeight = FontWeight.Bold) }
+            }
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(PrimarySoft).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.List, null, tint = Primary, modifier = Modifier.size(18.dp))
+                            Text("知识点掌握", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Text(
+                            if (graph?.available == true) "${graph?.knowledge_point_count ?: 0} 个知识点" else "尚未同步",
+                            color = Muted, fontSize = 11.sp,
+                        )
+                    }
+                    val current = graph
+                    when {
+                        graphLoading -> Text("知识点数据加载中…", color = Muted, fontSize = 12.sp)
+                        current == null || !current.available -> {
+                            Text(
+                                graphError ?: "这门课还没有知识点数据。知识图谱属于深度同步内容，需从学习通课程图谱页拉取。",
+                                color = Muted, fontSize = 12.sp,
+                            )
+                            Button(
+                                onClick = {
+                                    graphSyncing = true
+                                    graphError = null
+                                    scope.launch {
+                                        try { graph = repository.syncCourseKnowledgeGraph(course.id) }
+                                        catch (_: Exception) { graphError = "知识点同步失败，请稍后重试" }
+                                        finally { graphSyncing = false; graphLoading = false }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                enabled = !graphSyncing,
+                            ) { Text(if (graphSyncing) "同步中…" else "同步知识点", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        }
+                        else -> {
+                            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                                MasteryStat("知识点", current.knowledge_point_count.toString())
+                                MasteryStat("我的掌握率", rateText(current.own_mastery_rate))
+                                MasteryStat("班级平均", rateText(current.class_mastery_rate))
+                                MasteryStat(
+                                    if ((current.mastery_gap_vs_class ?: 0.0) < 0) "落后班级" else "领先班级",
+                                    current.mastery_gap_vs_class?.let { (if (it > 0) "+" else "") + it.toString() } ?: "—",
+                                    highlight = (current.mastery_gap_vs_class ?: 0.0) >= 0,
+                                )
+                            }
+                            MasteryBar("掌握率", current.own_mastery_rate, current.class_mastery_rate)
+                            MasteryBar("完成率", current.own_completion_rate, current.class_completion_rate)
+                            if (current.tags.isNotEmpty()) {
+                                Text(current.tags.joinToString(" · "), color = Muted, fontSize = 10.sp)
+                            }
+                            if (current.points.isNotEmpty()) {
+                                Text(
+                                    if (graphExpanded) "收起知识点" else "查看 ${current.points.size} 个知识点",
+                                    color = Primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.campusClickable { graphExpanded = !graphExpanded },
+                                )
+                                if (graphExpanded) {
+                                    current.points.forEach { point ->
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Text("#${point.position + 1}", color = Muted, fontSize = 10.sp)
+                                            Text(point.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
@@ -621,6 +710,45 @@ private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismi
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun rateText(value: Double?): String {
+    if (value == null) return "—"
+    return if (value % 1.0 == 0.0) "${value.toInt()}%" else "$value%"
+}
+
+@Composable
+private fun MasteryStat(label: String, value: String, highlight: Boolean? = null) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            value,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = when (highlight) { true -> Success; false -> CourseOrange; null -> TextPrimary },
+        )
+        Text(label, color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun MasteryBar(label: String, own: Double?, classRate: Double?) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+            Text(label, color = Muted, fontSize = 11.sp)
+            Text(rateText(own), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+        }
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.6f))) {
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction = ((own ?: 0.0) / 100.0).coerceIn(0.0, 1.0).toFloat())
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Primary)
+            )
+        }
+        Text("班级平均 ${rateText(classRate)}", color = Muted, fontSize = 10.sp)
     }
 }
 

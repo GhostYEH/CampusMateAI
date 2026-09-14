@@ -183,22 +183,30 @@ class ChaoxingCourseContentSyncService:
         )
 
     async def sync_course(self, *, user_id: str, course_id: str,
-                          depth: str = "fast", force_refresh: bool = False) -> dict:
+                          depth: str = "fast", force_refresh: bool = False,
+                          sections: list[str] | None = None) -> dict:
         course = self.container.course_repository.get_course(course_id)
         if course is None or course.provider != "chaoxing" or course.owner_user_id != user_id:
             raise ValueError("course_not_found")
-        credentials = self.container.chaoxing_repository.get_credentials(user_id)
-        if not credentials:
-            raise ValueError("chaoxing_credentials_not_found")
-        client = ChaoxingClient(cookies=credentials)
-        context = self._build_context(course)
-
-        if depth == "fast":
+        if sections:
+            # 显式白名单覆盖 depth 推导：客户端只想刷新单个 section(如知识图谱)时
+            # 不必连带跑完 deep 的全部重量级抓取。非法入参在碰凭据之前就拒绝。
+            unknown = sorted(set(sections) - set(self.SECTION_KINDS))
+            if unknown:
+                raise ValueError("unknown_sections:" + ",".join(unknown))
+            sections_to_sync = set(sections)
+        elif depth == "fast":
             sections_to_sync = self.FAST_SECTIONS
         elif depth == "deep":
             sections_to_sync = self.DEEP_SECTIONS
         else:
             sections_to_sync = self.FAST_SECTIONS | self.DEEP_SECTIONS
+
+        credentials = self.container.chaoxing_repository.get_credentials(user_id)
+        if not credentials:
+            raise ValueError("chaoxing_credentials_not_found")
+        client = ChaoxingClient(cookies=credentials)
+        context = self._build_context(course)
 
         fetchers = {
             "chapters": client.get_course_chapters,

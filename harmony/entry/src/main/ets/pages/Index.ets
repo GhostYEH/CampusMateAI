@@ -35,7 +35,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseKnowledgeGraph, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { NotificationCaptureCapability } from '../data/notification/NotificationCaptureCapability';
@@ -608,6 +608,23 @@ struct Index {
     const client = this.createApiClient();
     await client.requestVoid(http.RequestMethod.POST, `courses/${courseId}/sync`);
     return this.loadCourseContent(courseId);
+  }
+
+  /** 课程知识点掌握（学习通课程图谱页观测）。未同步过时返回 available=false 而不是抛错。 */
+  async loadCourseKnowledgeGraph(courseId: string): Promise<CourseKnowledgeGraph> {
+    const client = this.createApiClient();
+    return client.request<CourseKnowledgeGraph>(
+      http.RequestMethod.GET, `courses/${courseId}/knowledge-graph`
+    );
+  }
+
+  /** 只同步 knowledge_graph 这一个 section，不连带跑完整 deep 同步。 */
+  async syncCourseKnowledgeGraph(courseId: string): Promise<CourseKnowledgeGraph> {
+    const client = this.createApiClient();
+    await client.requestVoid(
+      http.RequestMethod.POST, `courses/${courseId}/sync?sections=knowledge_graph`
+    );
+    return this.loadCourseKnowledgeGraph(courseId);
   }
 
   async cacheCourseContent(courseId: string, itemId: string): Promise<void> {
@@ -1560,7 +1577,7 @@ struct Index {
   @Builder SecondaryContent(route: string) {
     if (route === AppRoute.COURSE_DETAIL) {
       if (this.courseDetailItem() !== undefined) {
-        CourseDetailPage({ course: this.courseDetailItem()!, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onLoadContent: (courseId: string) => this.loadCourseContent(courseId), onSyncContent: (courseId: string) => this.syncCourseContent(courseId), onCacheContent: (courseId: string, itemId: string) => this.cacheCourseContent(courseId, itemId) })
+        CourseDetailPage({ course: this.courseDetailItem()!, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onLoadContent: (courseId: string) => this.loadCourseContent(courseId), onSyncContent: (courseId: string) => this.syncCourseContent(courseId), onCacheContent: (courseId: string, itemId: string) => this.cacheCourseContent(courseId, itemId), onLoadKnowledgeGraph: (courseId: string) => this.loadCourseKnowledgeGraph(courseId), onSyncKnowledgeGraph: (courseId: string) => this.syncCourseKnowledgeGraph(courseId) })
       }
     } else if (route === AppRoute.TASK_DETAIL) {
       if (this.taskDetailItem() !== undefined) {

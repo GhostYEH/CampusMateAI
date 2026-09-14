@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
+    ACADEMIC_STATE_TYPES,
+    STATE_TYPE_PATTERN,
     LearnerStateChangePage,
     LearnerStateEvidenceOut,
     LearnerStateEvidencePage,
@@ -102,7 +104,7 @@ def list_changes(
     from_run_id: str | None = Query(None, min_length=1, max_length=128),
     to_run_id: str | None = Query(None, min_length=1, max_length=128),
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|workload_pressure|schedule_conflict|academic_progress|focus_rhythm|goal_progress|execution_consistency|growth_momentum|preference_profile)$"),
+    state_type: str | None = Query(None, pattern=STATE_TYPE_PATTERN),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     include_unchanged: bool = Query(False),
@@ -134,7 +136,7 @@ def list_changes(
 @router.get("/snapshots", response_model=LearnerStateSnapshotPage)
 def list_snapshots(
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
-    state_type: str | None = Query(None, pattern="^(observed_learning_activity|task_workload|deadline_exposure|course_participation|data_source_health|academic_course_load|grade_observation|credit_progress|exam_exposure|schedule_load|goal_state|workload_pressure|schedule_conflict|academic_progress|focus_rhythm|goal_progress|execution_consistency|growth_momentum|preference_profile)$"),
+    state_type: str | None = Query(None, pattern=STATE_TYPE_PATTERN),
     course_id: str | None = Query(None, min_length=1, max_length=128),
     projection_kind: str = Query("CORE", pattern="^(CORE|ACADEMIC|WORLD)$"),
     projection_scope: str = Query("__user__", pattern="^__user__$"),
@@ -224,10 +226,7 @@ def get_academic_state(
     container.learner_state_service.project_academic(
         user.id, as_of=as_of, trigger="api_academic"
     )
-    academic_types = (
-        "academic_course_load", "grade_observation", "credit_progress",
-        "exam_exposure", "schedule_load", "goal_state",
-    )
+    academic_types = ACADEMIC_STATE_TYPES
     items, total = container.learner_state_repository.list_snapshots(
         user_id=user.id, page=page, page_size=page_size,
         scope_type=None, state_type=None, course_id=None,

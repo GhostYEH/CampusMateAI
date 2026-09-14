@@ -14,6 +14,22 @@ export interface CourseSectionStatus { section: string; status: string; item_cou
 export interface CourseContentSummary { course_id: string; provider?: string; cover_url?: string; teacher_name?: string; school_name?: string; class_name?: string; student_count?: number; sections: CourseSectionStatus[]; }
 export interface CourseContentPage { items: CourseContentItem[]; total: number; page: number; page_size: number; has_more: boolean; }
 export interface CourseContentBundle { summary?: CourseContentSummary; items: CourseContentItem[]; }
+/** 课程知识点（学习通课程图谱页观测，非本地推断）。 */
+export interface KnowledgePoint { external_id: string; name: string; tags?: string[]; position?: number; }
+/** 课程知识图谱：课程级统计 + 知识点清单。available=false 表示尚未同步过。 */
+export interface CourseKnowledgeGraph {
+  course_id: string;
+  available: boolean;
+  synced_at?: string;
+  knowledge_point_count: number;
+  own_mastery_rate?: number;
+  class_mastery_rate?: number;
+  mastery_gap_vs_class?: number;
+  own_completion_rate?: number;
+  class_completion_rate?: number;
+  tags?: string[];
+  points?: KnowledgePoint[];
+}
 export interface PagedResponse<T> { items: T[]; total: number; page: number; page_size: number; has_more: boolean; }
 export interface UserItem { id?: string; username?: string; name?: string; display_name?: string; role?: string; detail?: string; college?: string; major?: string; grade?: string; university_id?: string; university_name?: string; }
 export interface MeResponse { user: UserItem; }

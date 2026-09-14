@@ -138,7 +138,14 @@ export async function getCourseDetail(courseId) {
   return { course: course.data, classes: grouped, contentSummary: summary.data, remoteContent: itemsOf(content.data) };
 }
 
-export async function syncCourse(courseId, depth = "fast") { return dataOf(await client.post(`/courses/${courseId}/sync`, null, { params: { depth } })); }
+export async function syncCourse(courseId, depth = "fast", sections = null) {
+  return dataOf(await client.post(`/courses/${courseId}/sync`, null, {
+    params: sections?.length ? { depth, sections: sections.join(",") } : { depth },
+  }));
+}
+export async function getCourseKnowledgeGraph(courseId) {
+  return dataOf(await client.get(`/courses/${courseId}/knowledge-graph`));
+}
 export async function openCourseResource(courseId, itemId) { return dataOf(await client.get(`/courses/${courseId}/resources/${itemId}/open`)); }
 export async function downloadCourseResource(courseId, itemId, filename = "课程资料") {
   const response = await client.get(`/courses/${courseId}/resources/${itemId}/download`, { responseType: "blob" });

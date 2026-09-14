@@ -44,6 +44,7 @@ import agentEventReducerTest from './ets/agent/AgentEventReducer.test';
 import finalReviewStateTest from './ets/finalreview/FinalReviewState.test';
 import courseResearchStateTest from './ets/research/CourseResearchState.test';
 import noticeWorkflowStateTest from './ets/notification/NoticeWorkflowState.test';
+import courseKnowledgeGraphViewTest from './ets/courses/CourseKnowledgeGraphView.test';
 
 export default function testsuite(): void {
   appStateTest();
@@ -92,4 +93,5 @@ export default function testsuite(): void {
   finalReviewStateTest();
   courseResearchStateTest();
   noticeWorkflowStateTest();
+  courseKnowledgeGraphViewTest();
 }
