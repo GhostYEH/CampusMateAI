@@ -79,16 +79,6 @@ def _memory_to_out(memory: dict) -> AgentMemoryOut:
     )
 
 
-def _capability_out(name: str, policy: str, risk: str, approval: bool) -> AgentCapabilityOut:
-    return AgentCapabilityOut(
-        name=name,
-        version="1.0",
-        route_policy=policy,
-        risk_level=risk,
-        requires_approval=approval,
-    )
-
-
 def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOut:
     input_ref = job.get("input_ref", job.get("input_ref_json", {}))
     if isinstance(input_ref, str):
@@ -125,16 +115,18 @@ def _job_input_ref(job: dict) -> dict:
 @router.get("/capabilities")
 async def get_capabilities(
     user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
 ) -> AgentCapabilitiesOut:
-    """返回 runtime 能力清单 + 契约版本。"""
+    """返回 runtime 能力清单 + 契约版本。
+
+    清单由启动时冻结的 `CapabilityRegistry` 生成,不再在路由里硬编码;
+    新增能力只能追加到 `capabilities.default.json`,已发布语义由启动校验钉死。
+    """
     return AgentCapabilitiesOut(
         contract_version=AGENT_CONTRACT_VERSION,
         capabilities=[
-            _capability_out("final_review.plan", "reasoning_primary", "CONFIRM_REQUIRED", True),
-            _capability_out("final_review.adjust", "reasoning_primary", "CONFIRM_REQUIRED", True),
-            _capability_out("course_research.run", "reasoning_primary", "AUTO_SAFE", False),
-            _capability_out("notice.workflow", "fast_structured", "AUTO_SAFE", False),
-            _capability_out("citation.verify", "dual_review", "AUTO_SAFE", False),
+            AgentCapabilityOut(**item)
+            for item in container.agent_capability_registry.describe()
         ],
     )
 

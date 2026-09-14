@@ -74,6 +74,10 @@ from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
 from ..services.agent_runtime.tool_gateway import ToolInvocationGateway
 from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.agent_runtime.capability_registry import (
+    CapabilityRegistry,
+    build_capability_registry,
+)
 from ..services.agent_runtime.event_notifier import EventNotifier
 from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
 from ..services.agent_runtime.handlers.registry import JobHandlerRegistry
@@ -168,6 +172,7 @@ class ServiceContainer:
     agent_risk_engine: RiskEngine
     agent_approval_gate: ApprovalGate
     agent_executor: AgentExecutor
+    agent_capability_registry: CapabilityRegistry
     agent_handler_registry: JobHandlerRegistry
     agent_tool_gateway: ToolInvocationGateway
     agent_worker: AgentWorker
@@ -321,6 +326,14 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         LearningGoalHandler(learning_planner_service, agent_event_store)
     )
     agent_handler_registry.freeze()
+    # 能力目录在启动时一次性交叉校验 Agent/Role/Skill/Handler/Tool;
+    # 清单损坏或已发布语义被改动时直接抛错,阻止 runtime 启动。
+    agent_capability_registry = build_capability_registry(
+        agent_codes=[role.agent_code for role in agent_registry_obj.list_roles()],
+        skill_codes=[skill.skill_code for skill in agent_skill_registry.list_skills()],
+        handler_job_kinds=agent_handler_registry.job_kinds(),
+        tool_codes=[tool.tool_code for tool in agent_tool_registry.list_tools()],
+    )
     agent_worker = AgentWorker(
         agent_runtime_repository,
         agent_handler_registry,
@@ -460,6 +473,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_risk_engine=agent_risk_engine,
         agent_approval_gate=agent_approval_gate,
         agent_executor=agent_executor,
+        agent_capability_registry=agent_capability_registry,
         agent_handler_registry=agent_handler_registry,
         agent_tool_gateway=agent_tool_gateway,
         agent_worker=agent_worker,

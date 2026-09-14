@@ -48,6 +48,8 @@ _DEFAULT_TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec("schedule.read", "schedule", "read"),
     ToolSpec("learner_state.read", "learner_state", "read"),
     ToolSpec("knowledge.search", "knowledge", "search"),
+    # 通知只读:notice_workflow Skill 与能力目录都引用它,补上以免出现"声明了不存在的工具"。
+    ToolSpec("notice.read", "notice", "read"),
     ToolSpec("task.propose", "task", "propose", RiskLevel.AUTO_SAFE),
     ToolSpec("task.create", "task", "create", RiskLevel.AUTO_SAFE),
     ToolSpec("task.update", "task", "update", RiskLevel.CONFIRM_REQUIRED, True),
