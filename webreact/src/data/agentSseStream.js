@@ -198,6 +198,20 @@ export function createAgentSseStream({
         continue;
       }
 
+      if (response.status === 409) {
+        // 游标失效(不属于该 Run / 已不存在):丢弃游标重连,由服务端从头推流,
+        // 并结合 REST 事件列表做一次安全全量归并,绝不静默丢事件。
+        signal?.removeEventListener("abort", externalAbort);
+        lastEvent = null;
+        seenSequences.clear();
+        maxSequence = 0;
+        if (attempt >= maxReconnects) { emit("error", { message: "事件游标失效" }); break; }
+        emit("reconnecting", { attempt: attempt + 1, reason: "cursor" });
+        await sleep(delayFn(attempt));
+        attempt += 1;
+        continue;
+      }
+
       if (!response.ok || !response.body) {
         signal?.removeEventListener("abort", externalAbort);
         if (attempt >= maxReconnects) { emit("error", { message: `服务返回 ${response.status}` }); break; }
