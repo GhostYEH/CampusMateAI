@@ -1,5 +1,6 @@
 package com.example.campusai
 
+import com.example.campusai.data.model.FocusPlanStep
 import com.example.campusai.data.model.FocusPlanStepStatus
 import com.example.campusai.data.remote.TaskBreakdownResponseDto
 import com.example.campusai.data.remote.TaskBreakdownStepDto
@@ -109,5 +110,19 @@ class FocusPlanMapperTest {
         // 没有来源时不能静默留空,必须提示人工确认
         assertEquals("政策相关,暂无权威资料,建议先向辅导员确认", plan.steps[1].knowledgeHint)
         assertEquals(null, plan.steps[2].knowledgeHint)
+    }
+
+    @Test
+    fun legacyPolicyStepWithoutKnowledgeStatusStillRequestsConfirmation() {
+        val legacy = FocusPlanStep(
+            stepNumber = 1,
+            title = "咨询辅导员",
+            description = "确认申请要求",
+            estimatedMinutes = 15,
+            completionCriteria = "已确认",
+            isPolicyStep = true,
+        )
+
+        assertEquals("政策相关,暂无权威资料,建议先向辅导员确认", legacy.knowledgeHint)
     }
 }

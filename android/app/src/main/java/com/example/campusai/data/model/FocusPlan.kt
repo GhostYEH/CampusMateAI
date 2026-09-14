@@ -26,7 +26,8 @@ data class FocusPlanStep(
 
     /** 政策步骤但知识库证据不足,需要用户向辅导员或相关部门确认。 */
     val needsKnowledgeConfirmation: Boolean
-        get() = knowledgeStatus == "needs_confirmation"
+        get() = isPolicyStep && knowledgeSource.isNullOrBlank() &&
+            (knowledgeStatus == null || knowledgeStatus == "needs_confirmation")
 
     /** 展示用的政策来源说明;无来源时给出可执行的确认提示。 */
     val knowledgeHint: String?
