@@ -225,7 +225,6 @@ fun AppNavHost(
         composable("home") {
             DashboardScreen(
                 repository = repository,
-                focusRepository = modules.focus,
             ) { route ->
                 navController.navigate(route) {
                     popUpTo("home") { inclusive = false }
