@@ -25,6 +25,10 @@ from app.schemas.agent_contract_enums import (
     RunPhase,
     RunStatus,
 )
+from app.schemas.agent_observability import (
+    AgentRunTraceOut,
+    AgentRuntimeOverviewOut,
+)
 from app.schemas.agent_runtime import (
     AgentApprovalOut,
     AgentArtifactOut,
@@ -261,6 +265,71 @@ def test_runtime_fixture_round_trip() -> None:
     AgentApprovalOut(**data["approval"])
     AgentArtifactOut(**data["artifact"])
     AgentErrorEnvelope(**data["error_envelope"])
+
+
+def test_runtime_fixture_v2_increments_round_trip() -> None:
+    """v2 增量契约与 v1 共用同一份 fixture,四端据此避免各自手写漂移。"""
+    data = json.loads((FIXTURE_DIR / "runtime.json").read_text(encoding="utf-8"))
+    v2 = data["v2"]
+
+    # 202 创建:只有入队保证,创建响应里没有 plan_id
+    creation = v2["creation_202"]
+    assert creation["http_status"] == 202
+    AgentJobOut(**creation["job"])
+    assert creation["job"]["status"] == "QUEUED"
+    assert "plan_id" not in creation["job"]["input_ref"]
+    assert creation["job"]["latest_run_id"]
+
+    # 幂等重放与冲突
+    assert v2["idempotent_replay"]["http_status"] == 200
+    assert v2["idempotent_replay"]["replayed"] is True
+    conflict = AgentErrorEnvelope(**v2["idempotency_conflict"]["error_envelope"])
+    assert conflict.code.value == "AGENT_IDEMPOTENCY_CONFLICT"
+    assert v2["idempotency_conflict"]["http_status"] == 409
+
+    # 能力准入与 runtime 不可用的稳定映射
+    disabled = AgentErrorEnvelope(**v2["capability_disabled"]["error_envelope"])
+    assert disabled.code.value == "AGENT_CAPABILITY_DISABLED"
+    assert v2["capability_disabled"]["http_status"] == 409
+    unavailable = AgentErrorEnvelope(**v2["runtime_unavailable"]["error_envelope"])
+    assert unavailable.code.value == "AGENT_RUNTIME_UNAVAILABLE"
+    assert v2["runtime_unavailable"]["http_status"] == 503
+
+    # 游标失效:客户端必须能识别并改走 REST 全量归并
+    cursor = AgentErrorEnvelope(**v2["cursor_invalid"]["error_envelope"])
+    assert cursor.code.value == "AGENT_CURSOR_INVALID"
+    assert v2["cursor_invalid"]["http_status"] == 409
+
+    # 恢复事件全部是合法的 AgentEventOut
+    assert {e["type"] for e in v2["recovery_events"]} == {
+        "RUN_RETRY_SCHEDULED", "RUN_RECOVERY_STARTED", "RUN_RECOVERED",
+    }
+    for event in v2["recovery_events"]:
+        AgentEventOut(**event)
+
+    # 未知未来事件:不得进入强类型校验,客户端按"记录游标、不提升权限、不崩溃"降级
+    unknown = v2["unknown_future_event"]["frame"]
+    assert unknown["event"] not in {member.value for member in AgentEventType}
+    assert unknown["data"]["sequence"] == 99
+
+
+def test_admin_observability_fixture_is_privacy_safe() -> None:
+    """管理员观测 fixture 与真实响应一样脱敏。"""
+    data = json.loads((FIXTURE_DIR / "runtime.json").read_text(encoding="utf-8"))
+    observability = data["v2"]["admin_observability"]
+    AgentRuntimeOverviewOut(**observability["overview"])
+    AgentRunTraceOut(**observability["run_trace"])
+
+    # 只扫描实际响应体;comment 是给人看的说明,不算载荷。
+    serialized = json.dumps(
+        {"overview": observability["overview"], "run_trace": observability["run_trace"]},
+        ensure_ascii=False,
+    )
+    for forbidden in (
+        "prompt", "model_response", "credential", "memory_content",
+        "raw_arguments", "hidden_reasoning", "arguments",
+    ):
+        assert forbidden not in serialized, f"观测 fixture 不得包含 {forbidden}"
 
 
 def test_final_review_fixture_round_trip() -> None:
