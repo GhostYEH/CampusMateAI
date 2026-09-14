@@ -1456,6 +1456,15 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     request_id TEXT,
     idempotency_key TEXT,
     retry_of TEXT,
+    -- v2 持久化队列字段: 处理器身份、尝试次数、租约与恢复点。
+    handler_code TEXT,
+    handler_version TEXT,
+    attempt_no INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    heartbeat_at TEXT,
+    checkpoint_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(job_id) REFERENCES agent_jobs(job_id) ON DELETE CASCADE,
@@ -1464,6 +1473,19 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE INDEX IF NOT EXISTS idx_agent_runs_job ON agent_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_user_status ON agent_runs(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status_phase ON agent_runs(status, phase);
+
+CREATE TABLE IF NOT EXISTS agent_idempotency_claims (
+    scope TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scope, user_id, idempotency_key),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_idem_claims_resource
+    ON agent_idempotency_claims(resource_id);
 
 CREATE TABLE IF NOT EXISTS agent_run_controls (
     command_id TEXT PRIMARY KEY,
@@ -1566,6 +1588,8 @@ CREATE TABLE IF NOT EXISTS agent_events (
     UNIQUE(run_id, sequence)
 );
 CREATE INDEX IF NOT EXISTS idx_agent_events_run_seq ON agent_events(run_id, sequence);
+-- Last-Event-ID 续传: 由 (run_id, event_id) 直接定位 sequence, 不再扫描事件列表。
+CREATE INDEX IF NOT EXISTS idx_agent_events_run_event ON agent_events(run_id, event_id);
 
 CREATE TABLE IF NOT EXISTS agent_memories (
     memory_id TEXT PRIMARY KEY,
@@ -1786,12 +1810,32 @@ class Database:
                 "total_tokens": "INTEGER",
                 "cached_tokens": "INTEGER",
             },
-            "agent_runs": {"retry_of": "TEXT"},
+            "agent_runs": {
+                "retry_of": "TEXT",
+                # v2 持久化队列: 旧库补列, 默认值必须让既有行保持可领取。
+                "handler_code": "TEXT",
+                "handler_version": "TEXT",
+                "attempt_no": "INTEGER NOT NULL DEFAULT 0",
+                "next_attempt_at": "TEXT",
+                "lease_owner": "TEXT",
+                "lease_expires_at": "TEXT",
+                "heartbeat_at": "TEXT",
+                "checkpoint_json": "TEXT",
+            },
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        # v2 队列索引依赖上面补出来的列,必须在补列之后再建,否则旧库初始化会失败。
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_claim "
+            "ON agent_runs(status, next_attempt_at, lease_expires_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_lease "
+            "ON agent_runs(lease_owner, lease_expires_at)"
+        )
         shadow_result_cols = {row["name"] for row in conn.execute("PRAGMA table_info(model_shadow_results)").fetchall()}
         if "inference_source" not in shadow_result_cols:
             conn.execute(
