@@ -1076,3 +1076,35 @@ async def test_chaoxing_sync_persists_graded_assignment_facts(db, mock_httpx_cli
     events2, _ = event_service.list_events(user_id="user1", page=1, page_size=20)
     graded_events = [e for e in events2 if e.event_type == "assignment_graded"]
     assert len(graded_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_login_non_dict_json_does_not_crash(mock_httpx_client):
+    """风控页返回 JSON 数组时不能抛 AttributeError，要降级为 structure_changed。"""
+    mock_login_response = MagicMock()
+    mock_login_response.status_code = 200
+    mock_login_response.json.return_value = []
+    mock_login_response.raise_for_status = MagicMock()
+    mock_httpx_client.side_effect = [mock_login_response]
+
+    success, msg = await ChaoxingClient().login("test_user", "password")
+
+    assert success is False
+    assert msg == "structure_changed"
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_login_html_response_does_not_crash(mock_httpx_client):
+    """登录接口返回 HTML(验证页)时 response.json() 抛 JSONDecodeError，不能逃逸。"""
+    import json as _json
+
+    mock_login_response = MagicMock()
+    mock_login_response.status_code = 200
+    mock_login_response.json.side_effect = _json.JSONDecodeError("bad", "<html>", 0)
+    mock_login_response.raise_for_status = MagicMock()
+    mock_httpx_client.side_effect = [mock_login_response]
+
+    success, msg = await ChaoxingClient().login("test_user", "password")
+
+    assert success is False
+    assert msg == "structure_changed"

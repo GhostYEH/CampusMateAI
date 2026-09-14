@@ -840,6 +840,10 @@ class ChaoxingClient:
             response.raise_for_status()
             
             data = response.json()
+            # 风控/验证页会返回 HTML 或 JSON 数组，非 dict 时直接判为结构变化，
+            # 否则 data.get 抛 AttributeError 逃逸出去让调用方 500。
+            if not isinstance(data, dict):
+                return False, "structure_changed"
             if not data.get("result"):
                 error_msg = data.get("errorMsg", "Unknown error")
                 if "验证码" in error_msg or "异常" in error_msg or "短信" in error_msg:
@@ -863,7 +867,7 @@ class ChaoxingClient:
         except httpx.HTTPStatusError as e: 
             print(f"Error response {e.response.status_code} while requesting {e.request.url!r}.")
             return False, f"http_error_{e.response.status_code}"
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             return False, "structure_changed"
 
 
