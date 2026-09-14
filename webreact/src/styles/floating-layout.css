@@ -132,12 +132,12 @@ html {
 
   .floating-nav:hover .floating-nav-list {
     justify-content: center;
-    gap: 4px;
+    gap: 1px;
     padding: 8px;
   }
 
   .floating-nav:hover .floating-nav-button {
-    gap: 6px;
+    gap: 5px;
     padding: 0 2px;
   }
 

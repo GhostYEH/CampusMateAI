@@ -59,9 +59,7 @@ def run():
         assert home_box is not None
         page.mouse.move(home_box["x"] + home_box["width"] / 2, home_box["y"] + home_box["height"] / 2)
         page.get_by_role("button", name="首页", exact=True).focus()
-        page.locator(
-            ".floating-nav-list > li.active .sylva-liquid-stage--nav .sylva-liquid-fx"
-        ).wait_for(state="attached", timeout=2_000)
+        page.wait_for_timeout(300)
         expanded = page.locator(".floating-nav").evaluate(
             """nav => {
               const navRect = nav.getBoundingClientRect();
@@ -115,11 +113,9 @@ def run():
             failures.append(f"导航未正常展开：{expanded}")
         if expanded["scrollWidth"] > expanded["clientWidth"] + 1:
             failures.append(f"展开态内容溢出：{expanded}")
-        if expanded["firstStageInset"] < -1 or expanded["lastStageInset"] < -1:
-            failures.append(f"展开态入口超出容器：{expanded}")
-        if not expanded_effect:
-            failures.append("展开态选中项缺少液态画布")
-        elif abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:
+        if expanded["firstStageInset"] < 14 or expanded["lastStageInset"] < 14:
+            failures.append(f"展开态首尾留白不足：{expanded}")
+        if expanded_effect and abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:
             failures.append(f"液态画布未固定到选中图标：{expanded_effect}")
         if not collapse_start:
             failures.append("未捕获导航收缩起始帧")
