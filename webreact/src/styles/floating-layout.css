@@ -138,7 +138,7 @@ html {
 
   .floating-nav:hover .floating-nav-button {
     gap: 6px;
-    padding: 0 6px 0 2px;
+    padding: 0 2px;
   }
 
   .floating-nav:hover .floating-nav-icon {
@@ -170,7 +170,8 @@ html {
      affecting layout, so expanded pills would visually overlap while the bar
      is 900px wide. Neutralize the motion scale while labels are visible. */
   .floating-nav:hover .floating-nav-list > li,
-  .floating-nav.floating-nav--collapsing .floating-nav-list > li {
+  .floating-nav.floating-nav--collapsing .floating-nav-list > li,
+  .floating-nav:not(:hover) .floating-nav-list > li {
     transform: none !important;
     scale: none !important;
     will-change: auto;

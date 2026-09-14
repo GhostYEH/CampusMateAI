@@ -59,7 +59,9 @@ def run():
         assert home_box is not None
         page.mouse.move(home_box["x"] + home_box["width"] / 2, home_box["y"] + home_box["height"] / 2)
         page.get_by_role("button", name="首页", exact=True).focus()
-        page.wait_for_timeout(200)
+        page.locator(
+            ".floating-nav-list > li.active .sylva-liquid-stage--nav .sylva-liquid-fx"
+        ).wait_for(state="attached", timeout=2_000)
         expanded = page.locator(".floating-nav").evaluate(
             """nav => {
               const navRect = nav.getBoundingClientRect();
