@@ -15,14 +15,14 @@ describe("agentContracts enums", () => {
   });
 
   it("event type 包含生命周期控制事件", () => {
-    assert.equal(C.EVENT_TYPE.length, 19);
+    assert.equal(C.EVENT_TYPE.length, 22);
     assert.ok(C.EVENT_TYPE.includes("APPROVAL_REQUIRED"));
     assert.ok(C.EVENT_TYPE.includes("RUN_PARTIAL"));
     assert.ok(C.EVENT_TYPE.includes("MODEL_FALLBACK"));
   });
 
-  it("error code 包含 12 个稳定码", () => {
-    assert.equal(C.ERROR_CODE.length, 12);
+  it("error code 包含 14 个稳定码", () => {
+    assert.equal(C.ERROR_CODE.length, 14);
     assert.ok(C.ERROR_CODE.includes("AGENT_ACADEMIC_POLICY_RESTRICTED"));
     assert.ok(C.ERROR_CODE.includes("AGENT_IDEMPOTENCY_CONFLICT"));
   });

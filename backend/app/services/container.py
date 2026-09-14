@@ -73,6 +73,9 @@ from ..services.agent_runtime.memory_manager import MemoryManager
 from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
 from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
+from ..services.agent_runtime.handlers.registry import JobHandlerRegistry
+from ..services.agent_runtime.worker import AgentWorker
 from ..services.llm.model_router import ModelRouter
 from ..services.llm.provider_registry import ProviderRegistry
 from ..services.final_review_service import FinalReviewService
@@ -163,6 +166,8 @@ class ServiceContainer:
     agent_risk_engine: RiskEngine
     agent_approval_gate: ApprovalGate
     agent_executor: AgentExecutor
+    agent_handler_registry: JobHandlerRegistry
+    agent_worker: AgentWorker
     agent_provider_registry: ProviderRegistry
     agent_model_router: ModelRouter
     final_review_repository: FinalReviewRepository
@@ -304,6 +309,23 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_registry_obj = AgentRegistry()
     agent_skill_registry = SkillRegistry()
     agent_tool_registry = ToolRegistry()
+    agent_handler_registry = JobHandlerRegistry(
+        known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
+    )
+    agent_handler_registry.register(
+        LearningGoalHandler(learning_planner_service, agent_event_store)
+    )
+    agent_handler_registry.freeze()
+    agent_worker = AgentWorker(
+        agent_runtime_repository,
+        agent_handler_registry,
+        agent_event_store,
+        mode=settings.agent_runtime_mode,
+        lease_seconds=settings.agent_worker_lease_seconds,
+        heartbeat_seconds=settings.agent_worker_heartbeat_seconds,
+        poll_interval_seconds=settings.agent_worker_poll_ms / 1000,
+        concurrency=settings.agent_worker_concurrency,
+    )
     agent_risk_engine = RiskEngine()
     agent_approval_gate = ApprovalGate(agent_runtime_repository)
     agent_executor = AgentExecutor(
@@ -424,6 +446,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_risk_engine=agent_risk_engine,
         agent_approval_gate=agent_approval_gate,
         agent_executor=agent_executor,
+        agent_handler_registry=agent_handler_registry,
+        agent_worker=agent_worker,
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
         final_review_repository=final_review_repository,

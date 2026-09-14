@@ -93,18 +93,16 @@ class TestRunManagerTransitions:
 
 
 class TestRunManagerRecovery:
-    def test_recover_fails_interrupted_runs_without_unsafe_replay(self, run_manager):
+    def test_legacy_recovery_hook_does_not_fail_runs(self, run_manager):
         repo = run_manager._repo
         run_id1 = _create_run(repo)
         run_manager.transition(run_id1, "RUNNING", phase="CONTEXT_BUILDING")
         run_id2 = _create_run(repo)
         run_manager.transition(run_id2, "RUNNING", phase="WAITING_FOR_MODEL")
         recovered = run_manager.recover_incomplete_runs()
-        assert len(recovered) == 2
-        for run in recovered:
-            assert run["status"] == "FAILED"
-            assert run["phase"] == "IDLE"
-            assert run["error_code"] == "AGENT_RECOVERY_UNSUPPORTED"
+        assert recovered == []
+        assert run_manager._repo.get_run(run_id1)["status"] == "RUNNING"
+        assert run_manager._repo.get_run(run_id2)["status"] == "RUNNING"
 
     def test_recover_skips_terminal_runs(self, run_manager):
         repo = run_manager._repo

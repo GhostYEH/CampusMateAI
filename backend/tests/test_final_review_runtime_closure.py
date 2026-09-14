@@ -73,7 +73,7 @@ def _active_campaign(client, headers):
     return campaign_id
 
 
-def test_recovery_fails_interrupted_runs_with_a_readable_reason():
+def test_legacy_recovery_hook_leaves_interrupted_runs_for_worker():
     db = reset_db_for_tests()
     conn = db._connect()
     try:
@@ -92,9 +92,8 @@ def test_recovery_fails_interrupted_runs_with_a_readable_reason():
 
     recovered = manager.recover_incomplete_runs()
 
-    assert recovered[0]["status"] == "FAILED"
-    assert recovered[0]["error_code"] == "AGENT_RECOVERY_UNSUPPORTED"
-    assert "安全恢复" in recovered[0]["error_message"]
+    assert recovered == []
+    assert repo.get_run(run_id)["status"] == "RUNNING"
 
 
 def test_rejecting_a_plan_ends_its_waiting_run():

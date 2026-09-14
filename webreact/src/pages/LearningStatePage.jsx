@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
 import * as runtimeApi from "../data/agentRuntimeApi.js";
+import { useAgentRun } from "../hooks/useAgentRun.js";
 
 const DATA_QUALITY_LABEL = {
   FRESH: "数据较新",
@@ -529,7 +530,7 @@ function LearningPlanCenter({ plans, onAction, busy }) {
   );
 }
 
-function GoalExecutionCenter({ goals, plans, jobs, summary, onGenerate, onControl, busy }) {
+function GoalExecutionCenter({ goals, plans, jobs, summary, activeRun, onGenerate, onControl, busy }) {
   const activeGoals = goals?.items || [];
   const [goalId, setGoalId] = useState(activeGoals[0]?.goal_id || "");
   const [minutes, setMinutes] = useState(60);
@@ -566,11 +567,12 @@ function GoalExecutionCenter({ goals, plans, jobs, summary, onGenerate, onContro
       <div className="ls-goal-execution__runs" aria-label="任务执行记录">
         {(jobs || []).filter((job) => job.job_kind === "learning_goal").slice(0, 5).map((job) => {
           const runId = job.latest_run_id;
-          const status = job.status;
+          const status = activeRun?.run_id === runId ? activeRun.status : job.status;
           return (
             <article key={job.job_id} className="ls-goal-execution__run">
-              <div><strong>{job.input_ref?.plan_id ? "学习计划" : "目标计划"}</strong><span>{status}</span></div>
+              <div><strong>{job.input_ref?.plan_id ? "学习计划" : "目标计划"}</strong><span aria-live="polite">{status}</span></div>
               <small>{job.updated_at ? formatTime(job.updated_at) : ""}</small>
+              {activeRun?.run_id === runId && activeRun.error?.message && <small>{activeRun.error.message}</small>}
               {runId && <div className="ls-goal-execution__actions">
                 {(status === "RUNNING" || status === "QUEUED") && <button className="ls-btn ls-btn--sm" onClick={() => onControl("pause", runId)} disabled={busy}>暂停</button>}
                 {status === "PAUSED" && <button className="ls-btn ls-btn--sm" onClick={() => onControl("resume", runId)} disabled={busy}>恢复</button>}
@@ -765,6 +767,34 @@ export default function LearningStatePage() {
   }, []);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const pendingRunId = useMemo(
+    () => runtimeJobs.data?.find((job) => job.job_kind === "learning_goal" &&
+      ["QUEUED", "RUNNING", "AWAITING_APPROVAL", "PAUSED"].includes(job.status))?.latest_run_id || null,
+    [runtimeJobs.data],
+  );
+  const [trackedRunId, setTrackedRunId] = useState(null);
+  const activeRunId = trackedRunId || pendingRunId;
+  const activeRunState = useAgentRun({ runId: activeRunId, enabled: Boolean(activeRunId) });
+  const handledTerminalRun = useRef(null);
+
+  useEffect(() => {
+    const run = activeRunState.run;
+    if (!run || !activeRunState.isTerminal || handledTerminalRun.current === run.run_id) return;
+    handledTerminalRun.current = run.run_id;
+    if (run.status !== "SUCCEEDED") {
+      showToast(run.status === "CANCELLED" ? "任务已取消，可重新发起" : "任务未完成，可稍后重试");
+      return;
+    }
+    // 终态事件可见后再读取 Job，避免在异步写回 plan_id 前刷新出空计划。
+    runtimeApi.getAgentJob(run.job_id).then((job) => {
+      if (job?.input_ref?.plan_id) {
+        showToast("计划草案已生成，请确认后创建待办");
+        refresh();
+      } else {
+        showToast("任务已完成，但计划引用暂不可用，请重试");
+      }
+    }).catch(() => showToast("任务已完成，但计划加载失败，请重试"));
+  }, [activeRunState.isTerminal, activeRunState.run, refresh, showToast]);
 
   const handleArchiveGoal = useCallback(async (goalId) => {
     setBusy(true);
@@ -811,11 +841,12 @@ export default function LearningStatePage() {
   const handleGoalGenerate = useCallback(async (goalId, availableMinutes) => {
     setBusy(true);
     try {
-      await runtimeApi.createAgentJob(
+      const job = await runtimeApi.createAgentJob(
         { job_kind: "learning_goal", input_ref: { goal_id: goalId, available_minutes: availableMinutes } },
         `learning-goal-${goalId}-${Date.now()}`,
       );
-      showToast("计划草案已生成，请确认后创建待办");
+      setTrackedRunId(job?.latest_run_id || null);
+      showToast("任务已加入队列，正在准备计划");
       refresh();
     } catch (e) { showToast(e.message); }
     finally { setBusy(false); }
@@ -896,7 +927,7 @@ export default function LearningStatePage() {
           <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />
         </div>
         <div className="ls-layout__side">
-          <GoalExecutionCenter goals={goals.data} plans={plans.data} jobs={runtimeJobs.data} summary={planSummary.data} onGenerate={handleGoalGenerate} onControl={handleGoalRunControl} busy={busy} />
+          <GoalExecutionCenter goals={goals.data} plans={plans.data} jobs={runtimeJobs.data} summary={planSummary.data} activeRun={activeRunState.run} onGenerate={handleGoalGenerate} onControl={handleGoalRunControl} busy={busy} />
           <LearningPlanCenter plans={plans.data} onAction={handlePlanAction} busy={busy} />
           <GoalsSection goals={goals.data} onArchive={handleArchiveGoal} onCreate={handleCreateGoal} onProgress={handleGoalProgress} onUpdate={handleGoalUpdate} busy={busy} />
         </div>

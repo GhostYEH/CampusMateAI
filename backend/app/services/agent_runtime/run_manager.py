@@ -192,7 +192,14 @@ class RunManager:
             event_type="RUN_RESUMED", event_summary="运行已恢复",
         )
 
-    def retry(self, run_id: str, *, idempotency_key: Optional[str] = None) -> dict:
+    def retry(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        handler_code: Optional[str] = None,
+        handler_version: Optional[str] = None,
+    ) -> dict:
         """为失败/部分/取消的 Run 创建新的可追踪 Run，不重放旧 Run。"""
         run = self._repo.get_run(run_id)
         if not run:
@@ -209,34 +216,18 @@ class RunManager:
         new_run_id = self._repo.create_run(
             job_id=run["job_id"], user_id=run["user_id"],
             request_id=run.get("request_id"), idempotency_key=key, retry_of=run_id,
+            handler_code=handler_code or run.get("handler_code"),
+            handler_version=handler_version or run.get("handler_version"),
         )
-        return self.transition(
-            new_run_id, "RUNNING", phase="WAITING_FOR_MODEL",
-            event_type="RUN_RETRIED", event_summary=f"已从运行 {run_id} 创建重试",
-        )
+        return self._repo.get_run(new_run_id) or {}
 
     def recover_incomplete_runs(self) -> list[dict]:
-        """终止无法安全恢复的中断执行，并保留持久审批等待态。
+        """兼容旧调用方；恢复工作已由带租约的 AgentWorker 接管。
 
-        当前 final-review 执行发生在请求内，进程重启后不能安全重放模型或写入。
-        ``AWAITING_APPROVAL`` 是持久化的用户等待态，不属于中断执行，保持不变。
+        旧的“启动时把所有 RUNNING 标记 FAILED”会丢失安全 checkpoint，且会
+        破坏至少一次投递语义，因此这里不再修改任何运行记录。
         """
-        incomplete = self._repo.list_incomplete_runs()
-        recovered: list[dict] = []
-        for run in incomplete:
-            if run["status"] == "AWAITING_APPROVAL":
-                continue
-            failed = self.transition(
-                run["run_id"],
-                "FAILED",
-                phase="IDLE",
-                error_code="AGENT_RECOVERY_UNSUPPORTED",
-                error_message="系统重启后无法安全恢复此运行，请重新发起请求。",
-                event_type="RUN_FAILED",
-                event_summary="系统重启后无法安全恢复，运行已终止",
-            )
-            recovered.append(failed)
-        return recovered
+        return []
 
 
 __all__ = ["RunManager"]

@@ -101,8 +101,11 @@ def test_contract_version_is_v1() -> None:
                 "RUN_FAILED",
                 "RUN_CANCELLED",
                 "RUN_PAUSED",
-                "RUN_RESUMED",
-                "RUN_RETRIED",
+                    "RUN_RESUMED",
+                    "RUN_RETRIED",
+                    "RUN_RETRY_SCHEDULED",
+                    "RUN_RECOVERY_STARTED",
+                    "RUN_RECOVERED",
             },
         ),
         (
@@ -138,8 +141,10 @@ def test_agent_error_codes_frozen() -> None:
         "AGENT_RUN_NOT_FOUND",
         "AGENT_RUN_CANCELLED",
         "AGENT_OUTPUT_SCHEMA_INVALID",
-        "AGENT_SOURCE_POLICY_VIOLATION",
-        "AGENT_ACADEMIC_POLICY_RESTRICTED",
+            "AGENT_SOURCE_POLICY_VIOLATION",
+            "AGENT_ACADEMIC_POLICY_RESTRICTED",
+            "AGENT_CAPABILITY_DISABLED",
+            "AGENT_RUNTIME_UNAVAILABLE",
     }
     actual = {member.value for member in AgentErrorCode}
     assert actual == expected

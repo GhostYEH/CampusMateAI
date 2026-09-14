@@ -529,7 +529,21 @@ class AgentRuntimeRepository:
                     (owner, lease_expires_at, now, now, now, row["run_id"], now, now),
                 )
                 if cursor.rowcount == 1:
-                    return self._fetch_run(conn, row["run_id"])
+                    claimed = self._fetch_run(conn, row["run_id"])
+                    conn.execute(
+                        "UPDATE agent_jobs SET status = 'RUNNING', updated_at = ? WHERE job_id = ?",
+                        (now, claimed["job_id"]),
+                    )
+                    self._insert_event(
+                        conn,
+                        run_id=row["run_id"],
+                        type="RUN_STARTED",
+                        status="RUNNING",
+                        phase="CONTEXT_BUILDING",
+                        role="runtime",
+                        summary="任务开始执行",
+                    )
+                    return claimed
         return None
 
     def renew_run_lease(
@@ -638,24 +652,28 @@ class AgentRuntimeRepository:
         request_id: Optional[str] = None,
         idempotency_key: Optional[str] = None,
         retry_of: Optional[str] = None,
+        handler_code: Optional[str] = None,
+        handler_version: Optional[str] = None,
     ) -> str:
         run_id = _uuid("run")
         now = _now()
-        conn = self._conn()
-        try:
+        with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agent_runs (run_id, job_id, user_id, status, phase, request_id, "
-                "idempotency_key, retry_of, created_at, updated_at) VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?)",
-                (run_id, job_id, user_id, request_id, idempotency_key, retry_of, now, now),
+                "idempotency_key, retry_of, handler_code, handler_version, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, job_id, user_id, request_id, idempotency_key, retry_of,
+                 handler_code, handler_version, now, now),
             )
             conn.execute(
-                "UPDATE agent_jobs SET status = 'RUNNING', updated_at = ? WHERE job_id = ?",
+                "UPDATE agent_jobs SET status = 'QUEUED', updated_at = ? WHERE job_id = ?",
                 (now, job_id),
             )
-            conn.commit()
-            return run_id
-        finally:
-            self._release(conn)
+            self._insert_event(
+                conn, run_id=run_id, type="RUN_QUEUED", status="QUEUED", phase="IDLE",
+                summary="任务已加入队列，等待执行",
+            )
+        return run_id
 
     def get_run(self, run_id: str) -> Optional[dict]:
         conn = self._conn()

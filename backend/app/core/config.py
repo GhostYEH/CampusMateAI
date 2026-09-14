@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     xunfei_llm_timeout_seconds: int = 30
     # production 禁止 mock providers
     agent_allow_mock_providers: bool = False
+    # Agent Runtime v2 持久化队列。inline 不再是合法模式，避免两套执行语义并存。
+    agent_runtime_mode: str = "worker"
+    agent_worker_concurrency: int = 1
+    agent_worker_lease_seconds: float = 30.0
+    agent_worker_heartbeat_seconds: float = 10.0
+    agent_worker_poll_ms: int = 500
 
     # ===== MiMo TTS =====
     mimo_base_url: str = "https://api.xiaomimimo.com/v1"
@@ -278,6 +284,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _normalize(self):
+        if self.agent_runtime_mode not in {"worker", "drain", "disabled"}:
+            raise ValueError("AGENT_RUNTIME_MODE must be worker, drain, or disabled")
+        if self.agent_worker_concurrency < 1:
+            raise ValueError("AGENT_WORKER_CONCURRENCY must be at least 1")
+        if self.agent_worker_lease_seconds <= 0:
+            raise ValueError("AGENT_WORKER_LEASE_SECONDS must be positive")
+        if self.agent_worker_heartbeat_seconds <= 0 or self.agent_worker_heartbeat_seconds >= self.agent_worker_lease_seconds:
+            raise ValueError("AGENT_WORKER_HEARTBEAT_SECONDS must be positive and less than the lease")
+        if self.agent_worker_poll_ms < 0:
+            raise ValueError("AGENT_WORKER_POLL_MS must not be negative")
         # 允许在 development 下未配置 LLM 时使用 fallback
         if self.llm_provider == "none" and not self.enable_fallback_mode:
             # 强制开启降级模式，否则功能不可用
