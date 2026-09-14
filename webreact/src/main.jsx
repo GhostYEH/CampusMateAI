@@ -13,6 +13,7 @@ import "./styles/button-effects.css";
 import "./styles/learning-state.css";
 import "./styles/prediction.css";
 import "./styles/agent-workspaces.css";
+import "./styles/agent-ops.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
