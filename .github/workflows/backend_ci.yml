@@ -65,7 +65,7 @@ jobs:
       - name: Run retrieval evaluation (human-readable)
         working-directory: backend
         run: |
-          python -m scripts.evaluate_retrieval
+          python -m scripts.evaluate_retrieval --seed-corpus tests/fixtures/retrieval_evaluation_corpus.json
 
       - name: Run retrieval evaluation (JSON, for CI parsing)
         working-directory: backend
