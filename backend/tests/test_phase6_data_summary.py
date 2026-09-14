@@ -28,7 +28,7 @@ def test_summary_fields():
     assert resp.status_code == 200
     data = resp.json()
     expected = {
-        "event_count", "snapshot_count", "knowledge_snapshot_count",
+        "event_count", "snapshot_count",
         "correction_count", "learning_plan_count",
         "plan_feedback_count", "plan_evaluation_count", "shadow_run_count",
         "enabled_sources", "paused_sources", "oldest_recorded_at",

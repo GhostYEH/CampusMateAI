@@ -335,6 +335,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         forecast_service=forecast_service,
         learner_state_service=learner_state_service,
         learner_state_repository=learner_state_repository,
+        learning_plan_repository=learning_plan_repository,
     )
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)

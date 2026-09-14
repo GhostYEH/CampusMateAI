@@ -169,9 +169,14 @@ def test_scenario_3_accept_plan_changes_schedule_conflict():
         container, user_id=user_id, title="计划内任务",
         deadline=AS_OF + timedelta(days=3),
     )
+    # 计划推演要求计划真实存在且处于 PROPOSED/ACCEPTED 状态。
+    # demo seeder 不创建学习计划,因此这里显式生成一个,而不是硬编码一个不存在的 plan_id。
+    plan = container.learning_planner_service.generate(
+        user_id=user_id, available_minutes=60, as_of=AS_OF,
+    )
     response = _simulate(
         container, user_id=user_id,
-        intervention=AcceptPlanIntervention(plan_id="plan_demo_001"),
+        intervention=AcceptPlanIntervention(plan_id=plan.plan_id),
     )
     assert "plan_acceptance_assumed" in response.assumptions
     assert response.data_quality in ("verified", "partial", "stale", "unavailable")
