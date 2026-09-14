@@ -73,6 +73,7 @@ from ..services.agent_runtime.memory_manager import MemoryManager
 from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
 from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.agent_runtime.event_notifier import EventNotifier
 from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
 from ..services.agent_runtime.handlers.registry import JobHandlerRegistry
 from ..services.agent_runtime.worker import AgentWorker
@@ -168,6 +169,7 @@ class ServiceContainer:
     agent_executor: AgentExecutor
     agent_handler_registry: JobHandlerRegistry
     agent_worker: AgentWorker
+    agent_event_notifier: EventNotifier
     agent_provider_registry: ProviderRegistry
     agent_model_router: ModelRouter
     final_review_repository: FinalReviewRepository
@@ -285,7 +287,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
     )
-    agent_runtime_repository = AgentRuntimeRepository(db)
+    agent_event_notifier = EventNotifier()
+    agent_runtime_repository = AgentRuntimeRepository(db, agent_event_notifier)
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
@@ -448,6 +451,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_executor=agent_executor,
         agent_handler_registry=agent_handler_registry,
         agent_worker=agent_worker,
+        agent_event_notifier=agent_event_notifier,
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
         final_review_repository=final_review_repository,

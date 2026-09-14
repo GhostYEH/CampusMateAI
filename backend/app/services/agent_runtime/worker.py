@@ -186,6 +186,12 @@ class AgentWorker:
         run_id = run["run_id"]
         handler = self._registry.get(run.get("handler_code") or "")
         context = self._build_context(run)
+        # 先留下可审计的观测点,再交回 Handler 决策。
+        self._events.append(
+            run_id=run_id, type="RUN_RECOVERY_STARTED", status=run["status"],
+            phase="RECOVERY_CHECKING", role="runtime",
+            summary="检测到执行中断，正在检查安全恢复点",
+        )
         if handler is None:
             return self._fail_run(
                 run, error_code="AGENT_CAPABILITY_DISABLED",

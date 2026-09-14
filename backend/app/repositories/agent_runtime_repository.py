@@ -71,8 +71,10 @@ def _safe_input_ref_patch(patch: dict | None) -> dict:
 class AgentRuntimeRepository:
     """agent_jobs/runs/steps/events/traces 仓储。"""
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, event_notifier: Optional[Any] = None) -> None:
         self._db = db
+        # 仅用于同进程 SSE 唤醒。通知丢失不会丢事件:SSE 会回落到短周期轮询。
+        self.event_notifier = event_notifier
 
     def _conn(self) -> sqlite3.Connection:
         return self._db._connect()
@@ -203,6 +205,16 @@ class AgentRuntimeRepository:
         )
         return event_id, sequence
 
+    def _notify(self, run_id: str) -> None:
+        """提交后唤醒本进程等待该 Run 的 SSE 流。任何异常都不得回滚已提交的事务。"""
+        notifier = self.event_notifier
+        if notifier is None:
+            return
+        try:
+            notifier.notify(run_id)
+        except Exception:  # noqa: BLE001 - 通知是纯优化,失败只影响延迟
+            pass
+
     def _fetch_run(self, conn: sqlite3.Connection, run_id: str) -> Optional[dict]:
         row = conn.execute(
             f"SELECT {_RUN_COLUMNS} FROM agent_runs WHERE run_id = ?", (run_id,)
@@ -295,6 +307,7 @@ class AgentRuntimeRepository:
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (scope, user_id, idempotency_key, fingerprint, job_id, now),
                 )
+        self._notify(run_id)
         return {
             "job_id": job_id,
             "run_id": run_id,
@@ -397,6 +410,7 @@ class AgentRuntimeRepository:
                     role=event_role, summary=event_summary, progress=event_progress,
                     artifact_id=event_artifact_id, approval_id=event_approval_id,
                 )
+        self._notify(run_id)
         return self.get_run(run_id) or {}
 
     def complete_run_with_job_output_and_event(
@@ -490,6 +504,7 @@ class AgentRuntimeRepository:
                 phase=phase or run["phase"], role=event_role, summary=event_summary,
                 progress=event_progress, artifact_id=event_artifact_id,
             )
+        self._notify(run_id)
         return self.get_run(run_id) or {}
 
     # ===== 租约队列 =====
@@ -886,11 +901,13 @@ class AgentRuntimeRepository:
         `transition_run_with_event()` 或 `complete_run_with_job_output_and_event()`。
         """
         with self._db.transaction() as conn:
-            return self._insert_event(
+            result = self._insert_event(
                 conn, run_id=run_id, type=type, status=status, phase=phase, role=role,
                 summary=summary, progress=progress, artifact_id=artifact_id,
                 approval_id=approval_id,
             )
+        self._notify(run_id)
+        return result
 
     def list_events(self, run_id: str, after_sequence: int = 0, limit: int = 100) -> list[dict]:
         conn = self._conn()

@@ -141,10 +141,12 @@ def test_agent_error_codes_frozen() -> None:
         "AGENT_RUN_NOT_FOUND",
         "AGENT_RUN_CANCELLED",
         "AGENT_OUTPUT_SCHEMA_INVALID",
-            "AGENT_SOURCE_POLICY_VIOLATION",
-            "AGENT_ACADEMIC_POLICY_RESTRICTED",
-            "AGENT_CAPABILITY_DISABLED",
-            "AGENT_RUNTIME_UNAVAILABLE",
+        "AGENT_SOURCE_POLICY_VIOLATION",
+        "AGENT_ACADEMIC_POLICY_RESTRICTED",
+        # v2 追加:能力准入、runtime 不可用、SSE 游标无效
+        "AGENT_CAPABILITY_DISABLED",
+        "AGENT_RUNTIME_UNAVAILABLE",
+        "AGENT_CURSOR_INVALID",
     }
     actual = {member.value for member in AgentErrorCode}
     assert actual == expected

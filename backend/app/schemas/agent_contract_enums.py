@@ -146,6 +146,7 @@ class AgentErrorCode(str, Enum):
     # v2 追加:只能加在末尾,不得复用 provider 错误掩盖 runtime 状态。
     AGENT_CAPABILITY_DISABLED = "AGENT_CAPABILITY_DISABLED"
     AGENT_RUNTIME_UNAVAILABLE = "AGENT_RUNTIME_UNAVAILABLE"
+    AGENT_CURSOR_INVALID = "AGENT_CURSOR_INVALID"
 
 
 # 冻结的契约版本号。客户端可据此判断兼容性。

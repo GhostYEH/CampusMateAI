@@ -576,6 +576,14 @@ class AgentRuntimeUnavailable(AgentRuntimeError):
     message = "Agent 运行时当前不接受新任务。"
 
 
+class AgentCursorInvalid(AgentRuntimeError):
+    """SSE 续传游标无效或不属于该 Run。客户端应改用 REST 全量归并。"""
+
+    code = "AGENT_CURSOR_INVALID"
+    http_status = 409
+    message = "事件游标无效。"
+
+
 def _build_error_body(
     code: str,
     message: str,

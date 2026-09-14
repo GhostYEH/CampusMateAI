@@ -11,7 +11,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from ...core.exceptions import AgentRuntimeError, AgentRunNotFound, ValidationFailed
+from ...core.exceptions import (
+    AgentCursorInvalid,
+    AgentRuntimeError,
+    AgentRunNotFound,
+    ValidationFailed,
+)
 from ...models.multi_role import UserRow
 from ...repositories.agent_artifact_repository import AgentArtifactRepository
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
@@ -52,6 +57,9 @@ approvals_router = APIRouter(prefix="/agent-approvals", tags=["agent-runtime"])
 artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["agent-runtime"])
 notices_manual_router = APIRouter(prefix="/notices", tags=["agent-runtime"])
 memories_router = APIRouter(prefix="/agent-memories", tags=["agent-runtime"])
+
+# SSE 注释心跳间隔:只用于维持连接,不写库、不推进事件序列。
+_SSE_HEARTBEAT_SECONDS = 15.0
 
 
 def _repo(container: ServiceContainer) -> AgentRuntimeRepository:
@@ -487,58 +495,58 @@ async def stream_events(
     container: ServiceContainer = Depends(get_container),
     last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    """SSE 流。支持 Last-Event-ID 续传。断开不取消 run。"""
+    """SSE 流。以持久化事件为真源,支持 Last-Event-ID 续传。断开不取消 run。"""
+    import time
+
     repo = _repo(container)
     run = repo.get_run(run_id)
     if not run:
         raise AgentRunNotFound("Run 不存在")
     if run["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Run 不存在")
-    # 解析 Last-Event-ID 中的 sequence
+    # 直接按 (run_id, event_id) 索引定位 sequence,不再扫描历史事件列表。
     after_sequence = 0
     if last_event_id:
-        try:
-            # event_id 格式: evt_xxx,sequence 存在 db
-            events = repo.list_events(run_id, limit=1)
-            # 简单实现:从 Last-Event-ID 对应的 sequence 之后开始
-            all_events = repo.list_events(run_id, limit=10000)
-            for e in all_events:
-                if e["event_id"] == last_event_id:
-                    after_sequence = e["sequence"]
-                    break
-        except Exception:
-            pass
+        sequence = repo.get_event_sequence(run_id, last_event_id)
+        if sequence is None:
+            # 游标不属于该 Run 或已不存在:明确报错,客户端改走 REST 全量归并。
+            raise AgentCursorInvalid("事件游标无效或不属于该运行")
+        after_sequence = sequence
+
+    terminal_statuses = {"SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"}
 
     async def event_generator():
-        import asyncio
-
         current_seq = after_sequence
-        idle_count = 0
+        last_activity = time.monotonic()
         while True:
             if await request.is_disconnected():
-                break
+                return
             events = repo.list_events(run_id, after_sequence=current_seq, limit=50)
             if events:
-                idle_count = 0
                 for evt in events:
                     out = _event_to_out(evt)
-                    payload = out.model_dump_json()
-                    yield f"id: {evt['event_id']}\nevent: {evt['type']}\ndata: {payload}\n\n"
+                    yield (
+                        f"id: {evt['event_id']}\nevent: {evt['type']}\n"
+                        f"data: {out.model_dump_json()}\n\n"
+                    )
                     current_seq = evt["sequence"]
-            else:
-                idle_count += 1
-                # 检查 run 是否已终态
-                current_run = repo.get_run(run_id)
-                if current_run and current_run["status"] in (
-                    "SUCCEEDED",
-                    "PARTIAL",
-                    "FAILED",
-                    "CANCELLED",
-                ):
-                    break
-                if idle_count > 60:  # 最多空闲 60 次
-                    break
-            await asyncio.sleep(1)
+                last_activity = time.monotonic()
+                # 终态事件发送完毕后才关闭,避免客户端漏掉最后一条。
+                if events[-1]["status"] in terminal_statuses:
+                    return
+                continue
+            current_run = repo.get_run(run_id)
+            if current_run and current_run["status"] in terminal_statuses:
+                # 终态 Run 已无新事件(例如客户端用终态游标重连)。
+                return
+            # 同进程靠通知唤醒;跨进程或通知丢失时最多等 1 秒后回落查询。
+            awaited = await container.agent_event_notifier.wait(run_id, timeout=1.0)
+            if awaited:
+                continue
+            if time.monotonic() - last_activity >= _SSE_HEARTBEAT_SECONDS:
+                # 注释心跳只维持连接:不写库、不推进 sequence、不改变客户端业务状态。
+                yield ": keep-alive\n\n"
+                last_activity = time.monotonic()
 
     return StreamingResponse(
         event_generator(),
