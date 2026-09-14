@@ -5,7 +5,6 @@ import { SecondaryHeader } from '../ui/SecondaryHeader';
 import { ApiClient, ApiClientAuth, ApiError, ApiErrorCode, SseEvent } from '../data/ApiClient';
 import { AuthTokens } from '../data/auth/TokenStore';
 import { LoginScreen } from '../features/login/LoginScreen';
-import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { DashboardPageImmersive } from '../features/dashboard/DashboardPageImmersive';
 import { AppDock } from '../ui/AppDock';
 import { CoursesPage } from '../features/courses/CoursesPage';

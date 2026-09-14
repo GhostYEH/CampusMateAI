@@ -15,6 +15,8 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
+from agent_entry_probe import enter_from_home_entry
+
 BASE = os.environ.get("WEB_BASE_URL", "http://127.0.0.1:5184")
 API_BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8765/api/v1")
 DEMO_USERNAME = os.environ.get("DEMO_USERNAME", "student_demo")
@@ -98,19 +100,7 @@ def run():
 
             # 从首页入口进入(不直接拼 URL);首页 WebGL 重页面,headless 下用页面内 JS 点击。
             page.goto(f"{BASE}/home", wait_until="domcontentloaded")
-            clicked = page.evaluate(
-                """async () => {
-                  const deadline = Date.now() + 15000;
-                  while (Date.now() < deadline) {
-                    const target = Array.from(document.querySelectorAll("button.sylva-agent-entry"))
-                      .find((node) => (node.textContent || "").trim() === "课程研究");
-                    if (target) { target.click(); return true; }
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                  }
-                  return false;
-                }"""
-            )
-            _check(clicked is True, "首页存在「课程研究」入口", failures)
+            enter_from_home_entry(page, "课程研究", _check, failures)
             page.wait_for_url("**/agent/course-research", timeout=15000)
             page.locator(".course-research-workspace").wait_for(timeout=15000)
 
