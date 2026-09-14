@@ -350,6 +350,7 @@ async def _perform_sync_chaoxing(
         "assignments_created": 0,
         "assignments_updated": 0,
         "scores_fetched": 0,
+        "scores_pending": 0,
         "notices_fetched": 0,
         "notices_created": 0,
         "notices_updated": 0,
@@ -462,6 +463,7 @@ async def _perform_sync_chaoxing(
                 for assignment in items
                 if assignment.get("external_id") not in already_scored
             ]
+            stats["scores_pending"] = len(candidates)
             stats["scores_fetched"] = await client.enrich_assignment_scores(candidates)
         except Exception:
             logger.warning("Chaoxing assignment score enrichment failed", exc_info=False)

@@ -552,3 +552,33 @@ async def test_enrich_scores_survives_report_failure():
     assert fetched == 1
     assert assignments[0]["score"] is None
     assert assignments[1]["score"] == 75.0
+
+
+@pytest.mark.asyncio
+async def test_enrich_scores_respects_time_budget():
+    """总时间预算耗尽后不再发起新请求，未处理的作业留给下次同步(渐进补齐)。
+
+    前端 /chaoxing/sync 的超时是 120 秒，补抓必须有硬预算，否则会把同步拖爆。
+    """
+    import asyncio
+
+    client = ChaoxingClient()
+    assignments = [
+        {"title": "慢作业", "status": "completed", "score": None, "link": "u1"},
+        {"title": "来不及的作业", "status": "completed", "score": None, "link": "u2"},
+    ]
+    called: list[str] = []
+
+    async def slow_report(link):
+        called.append(link)
+        await asyncio.sleep(1.1)
+        return (80.0, None)
+
+    client.get_assignment_report = slow_report
+    fetched = await client.enrich_assignment_scores(
+        assignments, concurrency=1, budget_seconds=1.0
+    )
+    assert called == ["u1"]
+    assert fetched == 1
+    assert assignments[0]["score"] == 80.0
+    assert assignments[1]["score"] is None

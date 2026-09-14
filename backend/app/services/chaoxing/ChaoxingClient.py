@@ -1101,11 +1101,17 @@ class ChaoxingClient:
         return ChaoxingParser.parse_report_score(report_html)
 
     async def enrich_assignment_scores(self, assignments: list[dict], *,
-                                       limit: int = 20, concurrency: int = 3) -> int:
+                                       limit: int = 20, concurrency: int = 3,
+                                       budget_seconds: float = 45.0) -> int:
         """为"已提交但还没有分数"的作业补抓报告页得分，就地写回并返回成功条数。
 
-        逐作业请求不可避免(列表页没有分数)，因此用 limit 限制单次同步的请求量、
-        用 concurrency 控制并发；失败静默跳过，下一次同步会自然重试。
+        逐作业请求不可避免(列表页没有分数)，每个作业需要详情页 + 报告页两次请求，
+        因此用三道闸限制对同步接口的影响:
+        - limit: 单次最多处理多少个作业;
+        - concurrency: 并发上限;
+        - budget_seconds: 整批总时间预算。前端同步请求超时是 120 秒，补抓必须留出
+          余量，超预算的作业本轮直接跳过，下次同步继续补(渐进收敛)。
+        失败静默跳过，绝不抛出。
         """
         targets = [
             item for item in assignments
@@ -1115,12 +1121,18 @@ class ChaoxingClient:
         ][:max(0, limit)]
         if not targets:
             return 0
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(1.0, budget_seconds)
         semaphore = asyncio.Semaphore(max(1, concurrency))
         fetched = 0
 
         async def worker(item: dict) -> None:
             nonlocal fetched
+            if loop.time() >= deadline:
+                return
             async with semaphore:
+                if loop.time() >= deadline:
+                    return
                 score, score_max = await self.get_assignment_report(str(item["link"]))
                 if score is not None:
                     item["score"] = score
