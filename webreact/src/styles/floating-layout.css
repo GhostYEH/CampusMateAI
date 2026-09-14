@@ -132,13 +132,13 @@ html {
 
   .floating-nav:hover .floating-nav-list {
     justify-content: center;
-    gap: 1px;
+    gap: 4px;
     padding: 8px;
   }
 
   .floating-nav:hover .floating-nav-button {
-    gap: 5px;
-    padding: 0 2px;
+    gap: 6px;
+    padding: 0 1px;
   }
 
   .floating-nav:hover .floating-nav-icon {
@@ -157,7 +157,7 @@ html {
     margin-right: 0;
     opacity: 1;
     transform: translateX(0);
-    font-size: 12.5px;
+    font-size: 12px;
     text-overflow: ellipsis;
     transition:
       max-width .28s ease-out,
