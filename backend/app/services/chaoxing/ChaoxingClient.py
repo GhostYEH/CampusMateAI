@@ -413,6 +413,22 @@ class ChaoxingParser:
             return _pair(match)
         return (None, None)
 
+    # 作业报告页(selectWorkQuestionYiPiYue)的得分结构: 大号数字 + "分"。
+    # 实测同页不含满分与提交时间，因此满分只能留空。
+    _REPORT_SCORE_RE = re.compile(
+        r'class="numberH2"[^>]*>\s*<span>\s*(\d+(?:\.\d+)?)\s*</span>'
+    )
+
+    @classmethod
+    def parse_report_score(cls, html) -> tuple[float | None, float | None]:
+        """从作业报告页解析 (得分, 满分)。解析不到返回 (None, None)。"""
+        if not html:
+            return (None, None)
+        match = cls._REPORT_SCORE_RE.search(str(html))
+        if not match:
+            return (None, None)
+        return (ChaoxingParser._to_float(match.group(1)), None)
+
     @staticmethod
     def parse_submitted_at(text) -> str | None:
         """从自由文本中解析真实提交时间，返回带时区 ISO 字符串。"""
@@ -541,7 +557,7 @@ class ChaoxingClient:
             }
         except (ValueError, TypeError, AttributeError):
             return {"status": "failed", "items": [], "error": "structure_changed"}
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             return {"status": "failed", "items": [], "error": "network_error"}
         except httpx.HTTPStatusError as error:
             return {"status": "failed", "items": [], "error": f"http_error_{error.response.status_code}"}
@@ -584,7 +600,7 @@ class ChaoxingClient:
                 if parsed["status"] == "structure_changed":
                     return [], parsed.get("error") or "structure_changed"
                 return parsed.get("items") or [], None
-            except httpx.RequestError:
+            except (httpx.RequestError, OSError):
                 return [], "chapter_cards_network_error"
             except httpx.HTTPStatusError as error:
                 return [], f"chapter_cards_http_{error.response.status_code}"
@@ -729,7 +745,7 @@ class ChaoxingClient:
             return {"status": "complete", "items": discussions, "error": None}
         except (ValueError, TypeError):
             return {"status": "failed", "items": [], "error": "structure_changed"}
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             return {"status": "failed", "items": [], "error": "network_error"}
         except httpx.HTTPStatusError as error:
             return {"status": "unavailable", "items": [], "error": f"http_error_{error.response.status_code}"}
@@ -841,7 +857,7 @@ class ChaoxingClient:
             
             return True, "success"
             
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             print(f"An error occurred while requesting {e.request.url!r}.")
             return False, "request_error"
         except httpx.HTTPStatusError as e: 
@@ -878,7 +894,7 @@ class ChaoxingClient:
                     pass
             elif res.status_code in (302, 403):
                 return False, "reauth_required"
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             pass
             
         # Fallback to HTML parsing if JSON API fails or returns no data
@@ -895,7 +911,7 @@ class ChaoxingClient:
             if courses or any(marker in response.text for marker in ("暂无课程", "还没有课程", "course-list")):
                 return True, courses
             return False, "structure_changed"
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             print(f"Network error while fetching courses: {e}")
             return False, "network_error"
         except httpx.HTTPStatusError as e:
@@ -922,7 +938,7 @@ class ChaoxingClient:
             }
         except ChaoxingFetchError:
             raise
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
@@ -1033,10 +1049,87 @@ class ChaoxingClient:
             return list(assignments)
         except ChaoxingFetchError:
             raise
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
+
+    async def _get_text(self, url: str, attempts: int = 2) -> str:
+        """带一次重试的文本抓取。学习通 TLS 偶发 SSLV3_ALERT_BAD_RECORD_MAC，
+        失败返回空串由调用方降级，绝不抛出中断同步。"""
+        for attempt in range(attempts):
+            try:
+                response = await self.client.get(url, follow_redirects=True)
+                return response.text or ""
+            except (httpx.RequestError, httpx.HTTPStatusError, OSError):
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(0.8)
+        return ""
+
+    async def get_assignment_report(self, work_url: str) -> tuple[float | None, float | None]:
+        """抓单个作业的报告页取分，返回 (得分, 满分)。
+
+        学习通作业列表页只给状态(未提交/待批阅/已完成)，**不含分数**；
+        得分只出现在作业报告页: 先用作业详情页里的 workId/workAnswerId 等参数
+        拼出 selectWorkQuestionYiPiYue 地址，再解析大号分数节点。
+        任何失败都返回 (None, None) —— 分数属于增量信息，绝不能中断同步。
+        """
+        if not work_url:
+            return (None, None)
+        detail_html = await self._get_text(str(work_url))
+        if not detail_html:
+            return (None, None)
+        params: dict[str, str] = {}
+        for key, pattern in (
+            ("workId", r"workId=(\d+)"),
+            ("workAnswerId", r"workAnswerId=(\d+)"),
+            ("courseId", r"courseId=(\d+)"),
+            ("classId", r"classId=(\d+)"),
+            ("cpi", r"cpi=(\d+)"),
+        ):
+            match = re.search(pattern, detail_html)
+            params[key] = match.group(1) if match else ""
+        if not all(params[key] for key in ("workId", "workAnswerId", "courseId", "classId")):
+            return (None, None)
+        report_url = (
+            "https://mooc1.chaoxing.com/mooc-ans/work/phone/selectWorkQuestionYiPiYue"
+            f"?courseId={params['courseId']}&workAnswerId={params['workAnswerId']}"
+            f"&workId={params['workId']}&knowledgeId=0&status=4&classId={params['classId']}"
+            f"&oldWorkId=&mooc=1&ut=s&cpi={params['cpi']}"
+        )
+        report_html = await self._get_text(report_url)
+        return ChaoxingParser.parse_report_score(report_html)
+
+    async def enrich_assignment_scores(self, assignments: list[dict], *,
+                                       limit: int = 20, concurrency: int = 3) -> int:
+        """为"已提交但还没有分数"的作业补抓报告页得分，就地写回并返回成功条数。
+
+        逐作业请求不可避免(列表页没有分数)，因此用 limit 限制单次同步的请求量、
+        用 concurrency 控制并发；失败静默跳过，下一次同步会自然重试。
+        """
+        targets = [
+            item for item in assignments
+            if item.get("status") == "completed"
+            and item.get("score") is None
+            and item.get("link")
+        ][:max(0, limit)]
+        if not targets:
+            return 0
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+        fetched = 0
+
+        async def worker(item: dict) -> None:
+            nonlocal fetched
+            async with semaphore:
+                score, score_max = await self.get_assignment_report(str(item["link"]))
+                if score is not None:
+                    item["score"] = score
+                    if score_max is not None:
+                        item["score_max"] = score_max
+                    fetched += 1
+
+        await asyncio.gather(*(worker(item) for item in targets), return_exceptions=True)
+        return fetched
 
     async def get_all_notices(self) -> list[dict]:
         """Fetch the authenticated notification inbox returned by Chaoxing."""
@@ -1152,7 +1245,7 @@ class ChaoxingClient:
             raise
         except (ValueError, TypeError) as e:
             raise ChaoxingFetchError("structure_changed") from e
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e

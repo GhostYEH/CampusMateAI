@@ -349,6 +349,7 @@ async def _perform_sync_chaoxing(
         "assignments_pending": 0,
         "assignments_created": 0,
         "assignments_updated": 0,
+        "scores_fetched": 0,
         "notices_fetched": 0,
         "notices_created": 0,
         "notices_updated": 0,
@@ -440,6 +441,30 @@ async def _perform_sync_chaoxing(
                 warnings.append(f"assignments:{course.get('course_id')}:{error.code}")
                 continue
             assignment_batches.append((course, data.get("assignments", [])))
+
+    # 作业得分补抓: 学习通作业列表页只给状态(未提交/待批阅/已完成)、不含分数，
+    # 得分只在作业报告页。只抓"已提交且库里还没有分数"的作业，已抓到的不重复请求，
+    # 单次请求量由 enrich_assignment_scores 的 limit 兜底。
+    if hasattr(client, "enrich_assignment_scores"):
+        try:
+            with container.db.query() as conn:
+                already_scored = {
+                    row["external_id"]
+                    for row in conn.execute(
+                        "SELECT external_id FROM personal_tasks "
+                        "WHERE user_id = ? AND source = 'chaoxing' AND score IS NOT NULL",
+                        (user.id,),
+                    ).fetchall()
+                }
+            candidates = [
+                assignment
+                for _course, items in assignment_batches
+                for assignment in items
+                if assignment.get("external_id") not in already_scored
+            ]
+            stats["scores_fetched"] = await client.enrich_assignment_scores(candidates)
+        except Exception:
+            logger.warning("Chaoxing assignment score enrichment failed", exc_info=False)
 
     for course, assignments in assignment_batches:
         for assignment in assignments:

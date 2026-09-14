@@ -11,13 +11,15 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.database.sqlite_db import Database, PERSONAL_TASK_SCHEMA_SQL
 from app.models.personal_task import PersonalTaskRow
 from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.course_content_repository import CourseContentRepository
 from app.repositories.learner_event_repository import LearnerEventRepository
 from app.repositories.learner_state_repository import LearnerStateRepository
-from app.services.chaoxing.ChaoxingClient import ChaoxingParser
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingParser
 from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
 from app.services.learner_event_service import LearnerEventService
 from app.services.learner_state_service import LearnerStateProjectionService
@@ -450,3 +452,103 @@ def test_learning_activity_prefers_remote_submitted_at():
     )
     assert value["observed_completed_tasks_7d"] == 0
     assert value["observed_completed_tasks_30d"] == 1
+
+
+# --------------------------------------------------------------------------
+# 5. 作业报告页得分采集(真实页面结构)
+# --------------------------------------------------------------------------
+
+def test_parse_report_score_matches_real_page_structure():
+    """真实作业报告页的得分节点: <h2 class="numberH2"><span>98.4</span>分</h2>。"""
+    assert ChaoxingParser.parse_report_score(
+        '<h2 aria-hidden="true" class="numberH2"><span>100</span>分</h2>'
+    ) == (100.0, None)
+    assert ChaoxingParser.parse_report_score(
+        '<h2 class="numberH2"><span>98.4</span>分</h2>'
+    ) == (98.4, None)
+    # 未批阅的作业报告页没有该节点，必须返回 None 而不是 0。
+    assert ChaoxingParser.parse_report_score("<html>作业报告 待批阅</html>") == (None, None)
+    assert ChaoxingParser.parse_report_score("") == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_get_assignment_report_builds_report_url_and_reads_score():
+    """从作业详情页提取参数，再请求报告页取分。"""
+    client = ChaoxingClient(cookies={"k": "v"})
+    detail_html = (
+        '<script>url = "/mooc-ans/work/phone/doHomeWork?courseId=266563284'
+        '&workAnswerId=55820539&workId=55229412&classId=153271804&cpi=494587010"</script>'
+    )
+    report_html = '<h2 class="numberH2"><span>98.4</span>分</h2>'
+    seen: list[str] = []
+
+    async def fake_get(url, **kwargs):
+        seen.append(str(url))
+        response = type("R", (), {"text": detail_html if len(seen) == 1 else report_html})()
+        return response
+
+    client.client.get = fake_get
+    score, score_max = await client.get_assignment_report("https://mooc1.chaoxing.com/detail")
+    assert score == 98.4
+    assert score_max is None
+    assert "selectWorkQuestionYiPiYue" in seen[-1]
+    assert "workId=55229412" in seen[-1]
+    assert "status=4" in seen[-1]
+
+
+@pytest.mark.asyncio
+async def test_get_assignment_report_returns_none_when_params_missing():
+    """详情页没有作业参数(页面结构变化/已过时效)时安静降级，不抛异常。"""
+    client = ChaoxingClient(cookies={"k": "v"})
+
+    async def fake_get(url, **kwargs):
+        return type("R", (), {"text": "<html>已过时效，不能操作!</html>"})()
+
+    client.client.get = fake_get
+    assert await client.get_assignment_report("https://mooc1.chaoxing.com/detail") == (None, None)
+    assert await client.get_assignment_report("") == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_enrich_scores_only_targets_unscored_completed_assignments():
+    """只对"已提交且没有分数"的作业请求报告页，并遵守 limit。"""
+    client = ChaoxingClient()
+    assignments = [
+        {"title": "未批阅", "status": "completed", "score": None, "link": "u1"},
+        {"title": "还没交", "status": "pending", "score": None, "link": "u2"},
+        {"title": "已有分数", "status": "completed", "score": 88.0, "link": "u3"},
+        {"title": "另一个未批阅", "status": "completed", "score": None, "link": "u4"},
+    ]
+    called: list[str] = []
+
+    async def fake_report(link):
+        called.append(link)
+        return (90.0, None)
+
+    client.get_assignment_report = fake_report
+    fetched = await client.enrich_assignment_scores(assignments, limit=1)
+    assert called == ["u1"]
+    assert fetched == 1
+    assert assignments[0]["score"] == 90.0
+    assert assignments[2]["score"] == 88.0
+
+
+@pytest.mark.asyncio
+async def test_enrich_scores_survives_report_failure():
+    """单个作业报告页失败不能影响其它作业，也不能抛出。"""
+    client = ChaoxingClient()
+    assignments = [
+        {"title": "会失败", "status": "completed", "score": None, "link": "u1"},
+        {"title": "会成功", "status": "completed", "score": None, "link": "u2"},
+    ]
+
+    async def fake_report(link):
+        if link == "u1":
+            raise RuntimeError("network_error")
+        return (75.0, None)
+
+    client.get_assignment_report = fake_report
+    fetched = await client.enrich_assignment_scores(assignments)
+    assert fetched == 1
+    assert assignments[0]["score"] is None
+    assert assignments[1]["score"] == 75.0
