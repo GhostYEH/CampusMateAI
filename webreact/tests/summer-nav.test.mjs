@@ -27,7 +27,7 @@ test("fixed navigation keeps its center when route content changes scrollbar sta
 test("compact global and study navigation docks stack without moving either to the header", () => {
   assert.match(
     summerStyles,
-    /@media \(max-width: 1399px\)[\s\S]*\.app-layout\.study-mode \.study-summer-dock\s*\{[^}]*bottom:\s*calc\(75px \+ env\(safe-area-inset-bottom\)\)/,
+    /@media \(max-width: 1439px\)[\s\S]*\.app-layout\.study-mode \.study-summer-dock\s*\{[^}]*bottom:\s*calc\(75px \+ env\(safe-area-inset-bottom\)\)/,
   );
   assert.doesNotMatch(
     summerStyles,

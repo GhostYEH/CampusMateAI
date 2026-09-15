@@ -173,12 +173,12 @@ def run():
         expect(surface_signature(page) == home_surface, "不同页面的导航材质不一致")
 
         print("responsive: compact", flush=True)
-        page.set_viewport_size({"width": 1399, "height": 900})
+        page.set_viewport_size({"width": 1439, "height": 900})
         page.wait_for_timeout(250)
         compact_nav = rect(page, ".floating-nav")
         compact_study_dock = rect(page, ".study-summer-dock")
-        expect(abs((compact_nav["y"] + compact_nav["height"]) - (900 - 15)) < 1.5, "1399px 导航没有切换到底部")
-        expect(compact_study_dock["y"] + compact_study_dock["height"] <= compact_nav["y"] - 8, "1399px 学习二级导航与全局导航重叠")
+        expect(abs((compact_nav["y"] + compact_nav["height"]) - (900 - 15)) < 1.5, "1439px 导航没有切换到底部")
+        expect(compact_study_dock["y"] + compact_study_dock["height"] <= compact_nav["y"] - 8, "1439px 学习二级导航与全局导航重叠")
         expect(page.locator(".floating-nav-label:visible").count() == 0, "底部紧凑导航仍显示文字")
         expect(page.locator(".floating-nav canvas").count() == 0, "响应式切换时导航挂载了液态画布")
 

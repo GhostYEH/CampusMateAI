@@ -32,6 +32,8 @@ test("global navigation gives every route the homepage primary-action plate", as
   assert.doesNotMatch(layoutStyles, /data-(?:ogui-tone|contrast)/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav:hover/);
   assert.doesNotMatch(layoutStyles, /transition:\s*width/);
+  assert.match(layoutStyles, /\.floating-nav \.floating-nav-button\s*\{[^}]*gap:\s*5px[^}]*padding:\s*0 9px/s);
+  assert.match(layoutStyles, /@media \(max-width: 1439px\)[\s\S]*\.floating-nav-label\s*\{[^}]*display:\s*none/s);
   assert.match(layoutStyles, /\.floating-nav-label\s*\{[^}]*max-width:\s*none[^}]*opacity:\s*1[^}]*transform:\s*none/s);
   assert.match(layoutStyles, /\.floating-nav \.sylva-liquid-stage--nav:hover[^}]*translate:\s*none/s);
 });

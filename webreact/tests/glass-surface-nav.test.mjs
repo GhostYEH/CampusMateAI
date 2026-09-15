@@ -41,6 +41,6 @@ test("navigation no longer ships gooey particle keyframes or styles", () => {
 
 test("stable desktop controls remain unclipped while compact navigation can scroll", () => {
   assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*overflow:\s*visible;/s);
-  assert.match(layoutStyles, /@media \(max-width: 1399px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow-x:\s*auto;/);
+  assert.match(layoutStyles, /@media \(max-width: 1439px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow-x:\s*auto;/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav:hover\s*\{/);
 });

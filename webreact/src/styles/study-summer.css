@@ -351,7 +351,7 @@
 .study-summer-immersive__exit:active { color: var(--summer-primary); border-color: rgba(215, 239, 131, .4); background: rgba(215, 239, 131, .12); }
 
 /* 紧凑布局保留两层导航，并在底部垂直堆叠，避免与顶栏或彼此重叠。 */
-@media (max-width: 1399px) {
+@media (max-width: 1439px) {
   .app-layout.study-mode .study-summer-dock {
     bottom: calc(75px + env(safe-area-inset-bottom));
   }

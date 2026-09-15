@@ -103,16 +103,17 @@ test("desktop navigation keeps every route label visible without hover resizing"
   assert.match(layoutStyles, /\.floating-nav-label\s*\{[^}]*display:\s*block[^}]*max-width:\s*none[^}]*opacity:\s*1/s);
   assert.doesNotMatch(layoutStyles, /\.floating-nav:hover\s*\{/);
   assert.doesNotMatch(layoutStyles, /--floating-nav-(?:collapsed|expanded)-width/);
+  assert.match(layoutStyles, /\.floating-nav \.floating-nav-button\s*\{[^}]*gap:\s*5px[^}]*padding:\s*0 9px/s);
   assert.match(floatingNavSource, /staticControls/);
 });
 
 test("centered navigation uses balanced fixed insets", () => {
   assert.match(layoutStyles, /\.floating-nav \.floating-nav-list[^}]*padding:\s*10px 6px/s);
-  assert.match(layoutStyles, /\.floating-nav[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/s);
+  assert.match(layoutStyles, /\.floating-nav[^}]*left:\s*50vw[^}]*transform:\s*translateX\(-50%\)/s);
 });
 
 test("mobile floating navigation keeps its primary controls compact", () => {
-  const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 1399px)"));
+  const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 1439px)"));
 
   assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });
