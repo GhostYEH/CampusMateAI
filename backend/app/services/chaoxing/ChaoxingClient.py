@@ -682,12 +682,17 @@ class ChaoxingClient:
     async def get_course_exams(self, context: dict, *,
                                force_refresh: bool = False,
                                unchanged_chapter_ids: set[str] | None = None) -> dict:
-        """利用 chapter card 中的 test/work 信息获取考试/作业候选条目。
+        """利用 chapter card 中的 test 信息获取测验/考试候选条目。
 
         学习通专用考试页通常需要签名 task ID，无法直接获取完整考试详情。
-        但 chapter card 中的 test/work 类型附件携带了 jobid/aid/objectId 等信息，
-        可以保存为 exam_candidate，供前端跳转到学习通完成考试。
-        需要真实学习通账号验证 chapter card 中 test/work 的 metadata 完整性。
+        但 chapter card 中的 test 类型附件携带了 jobid/aid/objectId 等信息，
+        可以保存为 exam_candidate，供前端跳转到学习通完成测验。
+
+        **work(作业) 不属于这里**：产品契约把作业与考试分开，作业由
+        get_all_assignments / get_course_assignments 落到 personal_tasks；
+        把 work 也写成 exam_candidate 会污染考试统计与学习模型的考试暴露度。
+
+        需要真实学习通账号验证 chapter card 中 test 的 metadata 完整性。
         """
         materials_result = await self.get_course_materials(
             context, force_refresh=force_refresh,
@@ -702,13 +707,10 @@ class ChaoxingClient:
             metadata = item.get("metadata") or {}
             raw_type = str(metadata.get("raw_type") or metadata.get("attachment_type") or "").lower()
             kind = item.get("kind")
-            candidate_type = None
-            if kind == "quiz" and raw_type == "test":
-                candidate_type = "test"
-            elif kind == "task" and raw_type == "work":
-                candidate_type = "work"
-            if not candidate_type:
+            # 只收测验/考试；作业(work/task)留在作业链路。
+            if not (kind == "quiz" and raw_type == "test"):
                 continue
+            candidate_type = "test"
             exam_at = ChaoxingParser.parse_exam_at(metadata)
             score, score_max = ChaoxingParser.parse_metadata_score(metadata)
             exam_items.append({
@@ -733,11 +735,14 @@ class ChaoxingClient:
         return {"status": "complete", "items": exam_items, "error": None}
 
     async def get_course_exam_candidates(self, context: dict) -> dict:
-        """低成本派生课程考试/测验候选，不触发逐章节卡片抓取。
+        """低成本派生课程测验/考试候选，不触发逐章节卡片抓取。
 
         全局同步(课程 + 作业 + 考试 + 轻量状态)不能为每门课深抓所有章节卡片，
         因此这里只用一次 `gas/clazz` 章节请求: 章节节点上的 attachment 若声明为
-        work/test，就是作业/测验入口，足以让考试进入课程详情与世界模型。
+        test，就是测验/考试入口，足以让考试进入课程详情与世界模型。
+
+        **work(作业) 不在这里输出**：作业已有独立链路(get_all_assignments →
+        personal_tasks)，再写一份 exam_candidate 会把同一份作业同时算成作业和考试。
 
         代价是这条路径通常拿不到考试时间(章节附件不携带 begin/end 时间)，
         带时间的考试由课程详情页显式触发的 deep 同步(章节卡片 + parse_exam_at)补齐。
@@ -761,7 +766,7 @@ class ChaoxingClient:
             raw_type = str(
                 metadata.get("attachment_type") or metadata.get("raw_type") or ""
             ).lower()
-            if raw_type not in ("work", "test"):
+            if raw_type != "test":
                 continue
             external_id = _identifier(item.get("external_id"))
             if not external_id or external_id in seen:
@@ -778,7 +783,7 @@ class ChaoxingClient:
                 "source_url": item.get("source_url"),
                 "metadata": {
                     **metadata,
-                    "candidate_type": "test" if raw_type == "test" else "work",
+                    "candidate_type": "test",
                     "course_id": course_id,
                     "clazz_id": clazz_id,
                     **({

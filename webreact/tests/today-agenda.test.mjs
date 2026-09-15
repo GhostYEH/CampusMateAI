@@ -375,3 +375,117 @@ test("home due items keep the backend order and only include pending work", () =
   assert.equal(due[0].route, "/tasks/chaoxing/ptask_1");
   assert.equal(due[0].due, "2026-09-15T23:59:59+08:00");
 });
+
+// ---------- 今日分组必须服从页面筛选 ----------
+
+function agendaWithMixedKinds() {
+  return A.normalizeTodayAgenda(agendaPayload({
+    items: [
+      { ...pendingItem(1), kind: "assignment", source: "chaoxing", sourceId: "ptask_1",
+        source_id: "ptask_1", title: "第三章作业", completable: false, editable: false },
+      { ...pendingItem(2), title: "写实验报告" },
+      { ...pendingItem(3), kind: "exam", source: "chaoxing", sourceId: "exam_1",
+        source_id: "exam_1", title: "期中测验", completable: false, editable: false },
+      { ...pendingItem(4), kind: "class", source: "academic", sourceId: "class_1",
+        source_id: "class_1", title: "高等数学", completable: false, editable: false },
+    ],
+    summary: { total: 4, pending: 4, completed: 0, overdue: 0 },
+  }));
+}
+
+test("today group honours the caller's search / kind / status filter", () => {
+  const agenda = agendaWithMixedKinds();
+  const all = A.groupTasksWithAgenda({ tasks: [], agenda, stateOf: () => "later" });
+  assert.equal(all.today.length, 4);
+
+  // 搜索：只保留标题命中的
+  const searched = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaMatchesQuery(item, "实验"),
+  });
+  assert.deepEqual(searched.today.map((i) => i.title), ["写实验报告"]);
+
+  // 类型：只保留考试
+  const examsOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+  assert.deepEqual(examsOnly.today.map((i) => i.title), ["期中测验"]);
+
+  // 状态：已完成的筛选下，未完成的今日事项不应出现
+  const doneOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaMatchesStatus(item, "done"),
+  });
+  assert.deepEqual(doneOnly.today, []);
+
+  // "即将截止"对今日事项不适用（agenda 只覆盖今天）
+  assert.equal(A.agendaMatchesStatus(A.normalizeTodayAgendaItem(pendingItem(9)), "upcoming"), false);
+});
+
+test("filtered-out today items do not reappear in other groups", () => {
+  const agenda = agendaWithMixedKinds();
+  const groups = A.groupTasksWithAgenda({
+    tasks: [
+      // 与 agenda 同一条（会被去重）
+      { sourceId: "ptask_1", kind: "personal", title: "第三章作业" },
+      { sourceId: "ptask_9", kind: "personal", title: "下周的事" },
+    ],
+    agenda,
+    stateOf: (task) => (String(task.sourceId) === "ptask_9" ? "upcoming" : "today"),
+    // 只看考试：作业被筛掉，但它也不能跑到"即将截止"里去
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+
+  assert.deepEqual(groups.today.map((i) => i.sourceId), ["exam_1"]);
+  assert.deepEqual(groups.upcoming.map((t) => t.sourceId), ["ptask_9"]);
+  assert.equal(groups.later.length, 0);
+});
+
+test("grouped count reflects what actually renders, not the pre-filter list", () => {
+  const agenda = agendaWithMixedKinds();
+  const onlyExams = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+  assert.equal(A.countGroupedTasks(onlyExams), 1);
+
+  // 只有课程/考试、没有普通任务时列表并不为空 —— 空状态必须按分组结果判断。
+  const classesOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "class",
+  });
+  assert.equal(A.countGroupedTasks(classesOnly), 1);
+
+  const nothing = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: () => false,
+  });
+  assert.equal(A.countGroupedTasks(nothing), 0);
+});
+
+// ---------- 登录态探测闸门 ----------
+
+test("auth probe is gated by bound state and staleness", () => {
+  const bound = (authState) => ({ state: "ok", authState });
+  assert.equal(A.shouldProbeChaoxingAuth(bound("unknown")), true);
+  // 缓存的过期结论需要被证伪（用户可能已在别处重新登录）
+  assert.equal(A.shouldProbeChaoxingAuth(bound("expired")), true);
+  assert.equal(A.shouldProbeChaoxingAuth(bound("online")), false);
+  assert.equal(A.shouldProbeChaoxingAuth(bound("offline")), false);
+  // 没绑定就不该为一个不存在的账号发请求
+  assert.equal(A.shouldProbeChaoxingAuth({ state: "not_bound", authState: "unknown" }), false);
+  assert.equal(A.shouldProbeChaoxingAuth(null), false);
+});
+
+test("app context resets chaoxing auth state on logout and identity change", () => {
+  const context = read("src/app/AppContext.jsx");
+  // 退出登录必须立刻清掉上一个用户的登录态观测与探测闸门
+  const logoutBlock = context.slice(context.indexOf("const logout = useCallback"), context.indexOf("const toggleTask"));
+  assert.match(logoutBlock, /authProbeOnce\.current = false/);
+  assert.match(logoutBlock, /setChaoxingAuthState\("unknown"\)/);
+  // 身份变化（登录/切换）同样要重置，否则第二个用户不会触发自己的探测
+  const sessionEffect = context.slice(context.indexOf("// 用户身份变化"));
+  assert.match(sessionEffect, /authProbeOnce\.current = false/);
+  assert.match(sessionEffect, /setChaoxingAuthState\("unknown"\)/);
+});

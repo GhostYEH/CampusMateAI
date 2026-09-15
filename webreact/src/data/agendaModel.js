@@ -233,19 +233,46 @@ export function selectAgendaForSidebar(agenda, limit = 8) {
   };
 }
 
+/** 把 agenda 的 kind 映射到任务总览的类型筛选词表。 */
+export function agendaFilterKind(item = {}) {
+  if (item.kind === "personal_task") return "personal";
+  return String(item.kind || "");
+}
+
+/** agenda 条目是否满足任务总览的状态筛选。 */
+export function agendaMatchesStatus(item = {}, status = "all") {
+  if (status === "all") return true;
+  if (status === "done") return Boolean(item.done);
+  // 今天分组里的未完成项：pending 与 today 都命中。
+  if (status === "pending" || status === "today") return !item.done;
+  if (status === "overdue") return Boolean(item.overdue);
+  // agenda 只覆盖"今天"，不会出现在"即将截止"里。
+  if (status === "upcoming") return false;
+  return true;
+}
+
+/** agenda 条目的搜索文本（与本地清单的搜索字段保持一致）。 */
+export function agendaMatchesQuery(item = {}, query = "") {
+  const needle = String(query || "").trim().toLocaleLowerCase();
+  if (!needle) return true;
+  return [item.title, item.kindLabel, item.sourceLabel, item.courseName, item.description]
+    .some((value) => String(value || "").toLocaleLowerCase().includes(needle));
+}
+
 /**
  * 任务总览的分组。
  *
- * "今天"分组必须来自统一今日待办（未完成项），其余分组继续用本地清单，
- * 但要按 sourceId 去重，避免同一条在"今天"和"即将截止"里各出现一次 ——
- * 那正是改造前三个页面口径不一致的表现。
+ * "今天"分组来自统一今日待办（未完成项），但**必须服从页面当前的搜索/类型/状态筛选** ——
+ * 否则用户筛了"个人待办"却仍看到全部今日事项，筛选形同虚设。
+ *
+ * 去重使用**全量** agenda 的 sourceId：被筛选隐藏的今日事项不应跑到"即将截止"里去。
  */
-export function groupTasksWithAgenda({ tasks = [], agenda = null, stateOf }) {
+export function groupTasksWithAgenda({ tasks = [], agenda = null, stateOf, filter } = {}) {
   const resolveState = stateOf || defaultGroupState;
   const groups = { today: [], upcoming: [], later: [], completed: [] };
   const agendaPending = agendaPendingItems(agenda);
   const agendaKeys = new Set(agendaPending.map((item) => String(item.sourceId)));
-  groups.today = agendaPending;
+  groups.today = filter ? agendaPending.filter(filter) : agendaPending;
   (tasks || []).forEach((task) => {
     if (agendaKeys.has(String(task.sourceId))) return;
     const state = resolveState(task);
@@ -255,6 +282,25 @@ export function groupTasksWithAgenda({ tasks = [], agenda = null, stateOf }) {
     else groups.later.push(task);
   });
   return groups;
+}
+
+/** 分组里一共可见多少条（空状态要按这个判断，而不是按筛选前的列表长度）。 */
+export function countGroupedTasks(groups = {}) {
+  return Object.values(groups).reduce((total, rows) => total + (rows?.length || 0), 0);
+}
+
+/**
+ * 是否需要在本次会话里向 /chaoxing/status 复检一次登录态。
+ *
+ * 今日待办接口不触网，登录态只能读服务端缓存，所以两种情况都要复检：
+ * - `unknown`：还没有可信观测，不探就永远不知道；
+ * - `expired`：用户可能已在别处重新登录，缓存里的过期结论需要被证伪。
+ * 未绑定学习通时不探（没有意义，也不该为一个没绑定的账号发请求）。
+ */
+export function shouldProbeChaoxingAuth(chaoxing = {}) {
+  if (!chaoxing || chaoxing.state === "not_bound") return false;
+  const authState = chaoxing.authState || "unknown";
+  return authState === "unknown" || authState === "expired";
 }
 
 function defaultGroupState(task) {

@@ -19,7 +19,7 @@ from app.models.multi_role import UserRow
 from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.personal_task_repository import PersonalTaskRepository
-from app.services.chaoxing.ChaoxingClient import ChaoxingClient
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
@@ -218,8 +218,33 @@ async def test_exam_candidates_derived_from_chapter_attachments():
     await client.client.aclose()
 
     assert result["status"] == "complete"
-    assert {item["external_id"] for item in result["items"]} == {"att-test", "att-work"}
+    # 只有测验/考试进入考试链路；work(作业) 由作业链路负责，不能重复算成考试。
+    assert {item["external_id"] for item in result["items"]} == {"att-test"}
     assert all(item["kind"] == "exam_candidate" for item in result["items"])
+    assert all(item["metadata"]["candidate_type"] == "test" for item in result["items"])
+
+
+@pytest.mark.asyncio
+async def test_deep_exam_path_excludes_work_assignments():
+    """deep 同步的考试候选同样只收 quiz/test，不收 task/work。"""
+    client = ChaoxingClient()
+    materials = {
+        "status": "complete",
+        "error": None,
+        "items": [
+            {"kind": "quiz", "external_id": "q1", "title": "章节测验",
+             "metadata": {"raw_type": "test"}},
+            {"kind": "task", "external_id": "w1", "title": "章节作业",
+             "metadata": {"raw_type": "work"}},
+        ],
+    }
+    with patch.object(ChaoxingClient, "get_course_materials",
+                      new=AsyncMock(return_value=materials)):
+        result = await client.get_course_exams({"course_id": "111", "clazz_id": "222"})
+    await client.client.aclose()
+
+    assert [item["external_id"] for item in result["items"]] == ["q1"]
+    assert result["items"][0]["metadata"]["candidate_type"] == "test"
 
 
 @pytest.mark.asyncio
@@ -371,3 +396,91 @@ def test_ordinary_personal_task_still_completable():
 
     assert client.post(f"/api/v1/tasks/{row.id}/complete", headers=headers).status_code == 200
     assert client.post(f"/api/v1/tasks/{row.id}/restore", headers=headers).status_code == 200
+
+
+# ---------- 通知段失败不能伪报成功 ----------
+
+@pytest.mark.asyncio
+async def test_notice_failure_is_reported_as_failed_not_complete(db, mock_httpx_client):
+    """get_all_notices 抛异常时必须报 failed，而不是 complete + 0 条。"""
+    container = MockContainer(db)
+    container.chaoxing_repository.save_credentials("user1", {"cookie": "A"})
+    mock_httpx_client.side_effect = [
+        _response("", 404),
+        _response(COURSES_HTML),
+        _response(COURSE_PAGE_HTML),
+        _response(ASSIGNMENTS_HTML),
+        _response(COURSE_PAGE_HTML),
+    ]
+    with patch.object(ChaoxingClient, "get_course_exam_candidates",
+                      new=AsyncMock(return_value={"status": "complete",
+                                                  "items": [], "error": None})), \
+         patch.object(ChaoxingClient, "get_all_notices",
+                      new=AsyncMock(side_effect=RuntimeError("boom"))):
+        result = await sync_chaoxing(user=_user(), container=container)
+
+    notices = result["sections"]["notices"]
+    assert notices["status"] == "failed"
+    assert notices["item_count"] == 0
+    assert notices["error_code"] == "unexpected_error:RuntimeError"
+    assert notices["error_message"]
+    # 其它段照常成功，整体不再被伪报为 complete。
+    assert result["sections"]["courses"]["status"] == "complete"
+    assert result["sections"]["assignments"]["status"] == "complete"
+    assert result["complete"] is False
+    assert any("notices" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_notice_fetch_error_code_is_propagated(db, mock_httpx_client):
+    """上游明确报错时，error_code 要带出来，而不是退化成 complete。"""
+    container = MockContainer(db)
+    container.chaoxing_repository.save_credentials("user1", {"cookie": "A"})
+    mock_httpx_client.side_effect = [
+        _response("", 404),
+        _response(COURSES_HTML),
+        _response(COURSE_PAGE_HTML),
+        _response(ASSIGNMENTS_HTML),
+        _response(COURSE_PAGE_HTML),
+    ]
+    with patch.object(ChaoxingClient, "get_course_exam_candidates",
+                      new=AsyncMock(return_value={"status": "complete",
+                                                  "items": [], "error": None})), \
+         patch.object(ChaoxingClient, "get_all_notices",
+                      new=AsyncMock(side_effect=ChaoxingFetchError("http_error_500"))):
+        result = await sync_chaoxing(user=_user(), container=container)
+
+    notices = result["sections"]["notices"]
+    assert notices["status"] == "failed"
+    assert notices["error_code"] == "http_error_500"
+    assert result["complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_notice_partial_when_some_courses_fail(db, mock_httpx_client):
+    """逐课程抓通知时：部分失败 = partial，全失败 = failed。"""
+    container = MockContainer(db)
+    container.chaoxing_repository.save_credentials("user1", {"cookie": "A"})
+    mock_httpx_client.side_effect = [
+        _response("", 404),
+        _response(COURSES_HTML),
+        _response(COURSE_PAGE_HTML),
+        _response(ASSIGNMENTS_HTML),
+        _response(COURSE_PAGE_HTML),
+    ]
+    original = ChaoxingClient.get_all_notices
+    del ChaoxingClient.get_all_notices
+    try:
+        with patch.object(ChaoxingClient, "get_course_exam_candidates",
+                          new=AsyncMock(return_value={"status": "complete",
+                                                      "items": [], "error": None})), \
+             patch.object(ChaoxingClient, "get_notices",
+                          new=AsyncMock(side_effect=ChaoxingFetchError("http_error_500"))):
+            result = await sync_chaoxing(user=_user(), container=container)
+    finally:
+        ChaoxingClient.get_all_notices = original
+
+    notices = result["sections"]["notices"]
+    assert notices["status"] == "failed"
+    assert notices["error_code"] == "http_error_500"
+    assert "1/1" in notices["error_message"]

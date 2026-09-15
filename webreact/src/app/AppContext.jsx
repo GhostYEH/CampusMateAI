@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { applyTokenPair, getChaoxingStatus, getDashboard, getTodayAgenda, login as loginRequest, probeBackend, revokeTrustedDevice, trustedDeviceAutoLogin } from "../data/api.js";
-import { createInFlightDeduper, normalizeTodayAgenda } from "../data/agendaModel.js";
+import { createInFlightDeduper, normalizeTodayAgenda, shouldProbeChaoxingAuth } from "../data/agendaModel.js";
 import { clearStoredSession, readStoredSession } from "./auth.js";
 
 const AppContext = createContext(null);
@@ -75,6 +75,12 @@ export function AppProvider({ children }) {
     localStorage.removeItem("campus_trusted_device_enabled");
     clearStoredSession();
     setSession(null);
+    // 立即清掉上一个用户的登录态观测与探测闸门，否则退出后仍会看到
+    // "学习通登录态已过期"，且下一个用户不会触发自己的探测。
+    authProbeOnce.current = false;
+    setChaoxingAuthState("unknown");
+    setTodayAgenda(null);
+    setAgendaError("");
   }, []);
 
   const toggleTask = useCallback((id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, done: !task.done } : task)), []);
@@ -90,13 +96,15 @@ export function AppProvider({ children }) {
         const normalized = normalizeTodayAgenda(value);
         setTodayAgenda(normalized);
         setAgendaError("");
-        // 今日待办接口不触网，登录态只能读服务端进程内缓存。缓存为空且确实绑定了
-        // 学习通时，非阻塞地探一次 /chaoxing/status（服务端 30s 缓存，不会形成风暴），
-        // 否则用户会把"登录态过期"误读成"今天没有待办"。
+        // 今日待办接口不触网，登录态只能读服务端进程内缓存。缓存为空、或缓存说
+        // "已过期"（用户可能已在别处重新登录）时，每个会话非阻塞地复检一次
+        // /chaoxing/status（服务端 30s 去重，不会形成风暴），否则用户会把
+        // "登录态过期"误读成"今天没有待办"，或看到已经失效的过期提示。
         const chaoxing = normalized?.sources?.chaoxing;
         if (chaoxing?.authState && chaoxing.authState !== "unknown") {
           setChaoxingAuthState(chaoxing.authState);
-        } else if (chaoxing && chaoxing.state !== "not_bound" && !authProbeOnce.current) {
+        }
+        if (shouldProbeChaoxingAuth(chaoxing) && !authProbeOnce.current) {
           authProbeOnce.current = true;
           getChaoxingStatus()
             .then((status) => setChaoxingAuthState(status?.status || "unknown"))
@@ -111,6 +119,11 @@ export function AppProvider({ children }) {
       .finally(() => { setAgendaLoading(false); }));
   }, []);
   useEffect(() => {
+    // 用户身份变化（登录/切换/退出）时必须重置登录态观测：
+    // 否则第二个用户会继承前一个用户的 expired 提示，而且因为探测闸门已置位，
+    // 永远不会触发属于自己的那次探测。
+    authProbeOnce.current = false;
+    setChaoxingAuthState("unknown");
     if (!session) { setDashboardSummary(null); setTodayAgenda(null); setAgendaError(""); return undefined; }
     let active = true;
     getDashboard().then((value) => active && setDashboardSummary(value)).catch(() => {});

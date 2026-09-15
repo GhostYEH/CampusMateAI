@@ -10,11 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError, _auth_error
 from ...services.chaoxing.session_cache import (
     cached_auth_state,
+    forget as _forget_status,
     get_cached as _get_cached_status,
     invalidate as _invalidate_status,
     set_cached as _set_cached_status,
     status_cache as _status_cache,
 )
+from ...services.chaoxing.sync_facts import last_chaoxing_sync_at
 from ..deps import require_role
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
@@ -235,16 +237,8 @@ def _count_user_chaoxing(container: ServiceContainer, user_id: str, kind: str) -
 
 
 def _last_user_sync_at(container: ServiceContainer, user_id: str):
-    with container.db.query() as conn:
-        row = conn.execute(
-            "SELECT MAX(last_synced_at) AS synced_at FROM ("
-            "SELECT last_synced_at FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing' "
-            "UNION ALL SELECT last_synced_at FROM personal_tasks WHERE user_id = ? AND source LIKE 'chaoxing%' "
-            "UNION ALL SELECT last_synced_at FROM notices WHERE user_id = ? AND source = 'chaoxing'"
-            ")",
-            (user_id, user_id, user_id),
-        ).fetchone()
-    return row["synced_at"] if row else None
+    """最近一次学习通同步时间 —— 统一实现见 services/chaoxing/sync_facts.py。"""
+    return last_chaoxing_sync_at(container, user_id)
 
 @router.post("/chaoxing/login")
 async def login_chaoxing(
@@ -267,7 +261,8 @@ async def login_chaoxing(
     cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
     container.chaoxing_repository.save_credentials(user.id, cookies)
 
-    _invalidate_status(user.id)
+    # 换账号/重新登录后，上一个账号的登录态观测必须作废。
+    _forget_status(user.id)
     return {"status": "success"}
 
 @router.get("/chaoxing/status", response_model=ChaoxingSyncStatus)
@@ -787,18 +782,28 @@ async def _perform_sync_chaoxing(
     }
 
     # Notice Sync
+    # 通知段必须自己记录失败事实: 只往 warnings 里塞一条字符串、状态仍报 complete，
+    # 等于把抓取失败伪装成"0 条成功"，下游无法区分"没有通知"和"没抓到通知"。
     notice_sync_available = True
+    notice_error: str | None = None
+    notice_attempted = 0
+    notice_failures = 0
     if hasattr(client, "get_all_notices"):
+        notice_attempted = 1
         try:
             all_notices = await client.get_all_notices()
         except ChaoxingFetchError as error:
             if error.code in ("reauth_required", "verification_required"):
                 raise _fetch_http_exception(error) from error
             warnings.append(f"notices:{error.code}")
+            notice_error = error.code
+            notice_failures += 1
             all_notices = []
         except Exception as error:  # noqa: BLE001 - 单段失败不得中断整次同步
             logger.warning("chaoxing notice sync failed: %s", type(error).__name__)
             warnings.append(f"notices:unexpected:{type(error).__name__}")
+            notice_error = f"unexpected_error:{type(error).__name__}"
+            notice_failures += 1
             all_notices = []
         notice_batches = [
             (course_by_remote_id.get(str(notice.get("course_id"))) or {
@@ -810,16 +815,28 @@ async def _perform_sync_chaoxing(
     else:
         notice_batches = []
         for course in courses:
+            notice_attempted += 1
             try:
                 notices = await client.get_notices(course["link"])
             except ChaoxingFetchError as error:
                 if error.code == "http_error_404":
                     notice_sync_available = False
+                    notice_error = notice_error or "notice_endpoint_unavailable"
+                    notice_failures += 1
                     logger.warning("Chaoxing notice endpoint unavailable for course %s", course.get("course_id"))
                     continue
                 if error.code in ("reauth_required", "verification_required"):
                     raise _fetch_http_exception(error) from error
                 warnings.append(f"notices:{course.get('course_id')}:{error.code}")
+                notice_error = notice_error or error.code
+                notice_failures += 1
+                continue
+            except Exception as error:  # noqa: BLE001
+                logger.warning("chaoxing notice sync failed for %s: %s",
+                               course.get("course_id"), type(error).__name__)
+                warnings.append(f"notices:{course.get('course_id')}:unexpected")
+                notice_error = notice_error or f"unexpected_error:{type(error).__name__}"
+                notice_failures += 1
                 continue
             notice_batches.append((course, notices))
 
@@ -965,11 +982,21 @@ async def _perform_sync_chaoxing(
     _invalidate_status(user.id)
 
     sections["notices"] = {
-        "status": "unavailable" if not notice_sync_available else "complete",
+        # 按"成功/失败"如实分类: 全部失败 = failed，部分成功 = partial，
+        # 只有真正没有失败时才允许 complete。接口整体不可用单独报 unavailable。
+        "status": (
+            "unavailable" if not notice_sync_available
+            else "failed" if (notice_failures and not stats["notices_fetched"])
+            else "partial" if notice_failures
+            else "complete"
+        ),
         "item_count": stats["notices_fetched"],
         "last_synced_at": now_iso,
-        "error_code": None if notice_sync_available else "notice_endpoint_unavailable",
-        "error_message": None if notice_sync_available else "学习通通知接口不可用",
+        "error_code": notice_error,
+        "error_message": (
+            None if notice_error is None
+            else f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败"
+        ),
     }
 
     return {
@@ -990,5 +1017,5 @@ async def disconnect_chaoxing(
     container: ServiceContainer = Depends(_container),
 ):
     container.chaoxing_repository.delete_credentials(user.id)
-    _invalidate_status(user.id)
+    _forget_status(user.id)
     return {"status": "disconnected"}

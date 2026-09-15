@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 
 from .chaoxing.session_cache import cached_auth_state
+from .chaoxing.sync_facts import last_chaoxing_sync_at
 
 # 学习通所有时间字段均为北京时间(UTC+8)，与 ChaoxingClient 的口径保持一致。
 SHANGHAI = timezone(timedelta(hours=8))
@@ -39,6 +40,15 @@ _BUCKET = {
     "timeless": 5,
     "completed": 6,
 }
+
+
+def _now() -> datetime:
+    """当前时间。
+
+    单独抽出来是为了让测试能冻结服务时钟 —— "今天"是这套逻辑的核心输入，
+    如果测试依赖真实执行时刻，23:00 之后跑就会把"今天待完成"判成逾期而变红。
+    """
+    return datetime.now(timezone.utc)
 
 
 def _parse_datetime(value: Any) -> Optional[datetime]:
@@ -389,7 +399,7 @@ class TodayAgendaService:
     # ---------- 入口 ----------
 
     def build(self, *, user_id: str, now: Optional[datetime] = None) -> dict:
-        moment = now or datetime.now(timezone.utc)
+        moment = now or _now()
         if moment.tzinfo is None:
             moment = moment.replace(tzinfo=timezone.utc)
         start, end = _day_bounds(moment)
@@ -400,7 +410,13 @@ class TodayAgendaService:
 
         items = sorted([*chaoxing_items, *personal_items, *class_items], key=self._sort_key)
 
-        last_synced_at = _parse_datetime(chaoxing_meta.get("last_synced_at"))
+        # 同步时间必须来自"持久化的同步事实"(课程/作业/通知/考试/section 任意一处)，
+        # 不能从今天命中的事项反推: 课程同步成功但今天没有作业时，反推会得出
+        # "从未同步过"，把用户引导去重新绑定而不是等待今天没有任务。
+        last_synced_raw = last_chaoxing_sync_at(self.container, user_id)
+        last_synced_at = _parse_datetime(last_synced_raw) or _parse_datetime(
+            chaoxing_meta.get("last_synced_at")
+        )
         stale = bool(
             last_synced_at is not None
             and moment - last_synced_at > CHAOXING_STALE_AFTER
@@ -428,11 +444,13 @@ class TodayAgendaService:
         else:
             message = "还没有绑定学习通"
 
+        # 同步事实是"课程/作业/通知/考试/section 任一成功过"的统一结论。
+        unified_synced_iso = _iso(last_synced_at)
         return {
             "date": start.date().isoformat(),
             "timezone": AGENDA_TIMEZONE,
             "generated_at": moment.astimezone(timezone.utc).isoformat(),
-            "last_chaoxing_synced_at": chaoxing_meta.get("last_synced_at"),
+            "last_chaoxing_synced_at": unified_synced_iso,
             "stale": stale,
             "summary": self._summary(items),
             "sources": {
@@ -440,7 +458,7 @@ class TodayAgendaService:
                     "state": chaoxing_state,
                     "message": message,
                     "item_count": chaoxing_meta["item_count"],
-                    "last_synced_at": chaoxing_meta.get("last_synced_at"),
+                    "last_synced_at": unified_synced_iso,
                     "auth_state": auth_state,
                 },
                 "personal": {
@@ -460,4 +478,9 @@ class TodayAgendaService:
         }
 
 
-__all__ = ["TodayAgendaService", "AGENDA_TIMEZONE", "SHANGHAI", "CHAOXING_STALE_AFTER"]
+__all__ = [
+    "AGENDA_TIMEZONE",
+    "CHAOXING_STALE_AFTER",
+    "SHANGHAI",
+    "TodayAgendaService",
+]

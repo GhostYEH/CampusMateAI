@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -426,15 +427,28 @@ def _student_client():
     return client, container, {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
+def _frozen_clock(monkeypatch):
+    """把服务时钟钉死在"今天 12:00"（上海），消除测试对执行时刻的依赖。
+
+    不写死日期(测试跑在哪一天都成立)，只钉住时刻：否则把截止时间写成"今天 23:00"
+    的测试在 23:00 之后运行就会被生产逻辑正确地判成逾期，变成假失败。
+    """
+    from app.services import agenda_service as agenda_service_module
+
+    frozen = datetime.now(SHANGHAI).replace(hour=12, minute=0, second=0, microsecond=0)
+    monkeypatch.setattr(agenda_service_module, "_now", lambda: frozen)
+    return frozen
+
+
 def test_agenda_route_requires_authentication():
     client, _container, _headers = _student_client()
     assert client.get("/api/v1/agenda/today").status_code == 401
 
 
-def test_agenda_route_returns_unified_contract_for_today_personal_task():
+def test_agenda_route_returns_unified_contract_for_today_personal_task(monkeypatch):
     client, container, headers = _student_client()
-    today_deadline = datetime.now(SHANGHAI).replace(hour=23, minute=0, second=0,
-                                                    microsecond=0)
+    frozen = _frozen_clock(monkeypatch)
+    today_deadline = frozen + timedelta(hours=2)
     created = client.post("/api/v1/tasks", headers=headers, json={
         "title": "今天要交的申请材料",
         "deadline": today_deadline.isoformat(),
@@ -447,7 +461,7 @@ def test_agenda_route_returns_unified_contract_for_today_personal_task():
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["date"] == datetime.now(SHANGHAI).date().isoformat()
+    assert payload["date"] == frozen.date().isoformat()
     assert payload["timezone"] == "Asia/Shanghai"
     assert set(payload["summary"]) == {"total", "pending", "completed", "overdue"}
     assert set(payload["sources"]) == {"chaoxing", "personal", "schedule"}
@@ -463,8 +477,9 @@ def test_agenda_route_returns_unified_contract_for_today_personal_task():
     assert payload["sources"]["chaoxing"]["state"] == "not_bound"
 
 
-def test_agenda_route_does_not_treat_old_timeless_task_as_today():
+def test_agenda_route_does_not_treat_old_timeless_task_as_today(monkeypatch):
     client, container, headers = _student_client()
+    _frozen_clock(monkeypatch)
     created = client.post("/api/v1/tasks", headers=headers, json={
         "title": "很久以前记下的无期限待办", "source_name": "个人安排",
     })
@@ -477,10 +492,10 @@ def test_agenda_route_does_not_treat_old_timeless_task_as_today():
     assert not [row for row in payload["items"] if row["source_id"] == task_id]
 
 
-def test_completing_personal_task_is_reflected_in_agenda():
+def test_completing_personal_task_is_reflected_in_agenda(monkeypatch):
     client, _container, headers = _student_client()
-    today_deadline = datetime.now(SHANGHAI).replace(hour=23, minute=0, second=0,
-                                                    microsecond=0)
+    frozen = _frozen_clock(monkeypatch)
+    today_deadline = frozen + timedelta(hours=2)
     created = client.post("/api/v1/tasks", headers=headers, json={
         "title": "今天要完成的事", "deadline": today_deadline.isoformat(),
         "source_name": "个人安排",
@@ -568,3 +583,142 @@ def test_schedule_connector_failure_does_not_break_the_agenda(db):
 
     assert payload["sources"]["schedule"]["state"] == "unavailable"
     assert _titles(payload) == ["今天截止"]
+
+
+# ---------- 已同步但今天没有学习通事项 ----------
+
+def test_synced_course_without_today_items_is_empty_not_never_synced(db):
+    """课程同步成功、今天却没有作业/考试时，不能报成"从未同步过"。
+
+    同步时间必须来自持久化的同步事实（课程/作业/通知/考试/section），
+    不能从"今天命中的事项"反推 —— 反推会把用户引导去重新绑定学习通。
+    """
+    container = FakeContainer(db, bound=True)
+    container.course_repository.create_course(
+        name="离散数学", owner_user_id="user1", provider="chaoxing",
+        external_id="11_22", status="active",
+        last_synced_at=_iso(NOW - timedelta(minutes=5)),
+    )
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+    assert payload["sources"]["chaoxing"]["message"] == "学习通今天没有需要处理的事项"
+    assert payload["last_chaoxing_synced_at"] == _iso(NOW - timedelta(minutes=5))
+    assert payload["stale"] is False
+
+
+def test_notice_only_sync_counts_as_synced(db):
+    """只同步过通知也算"同步过"，不能报成从未同步。"""
+    container = FakeContainer(db, bound=True)
+    with container.db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO notices (id, user_id, source, external_id, title, created_at, updated_at, last_synced_at) "
+            "VALUES (?, ?, 'chaoxing', ?, ?, ?, ?, ?)",
+            ("n1", "user1", "ext-n1", "通知", "now", "now", _iso(NOW - timedelta(minutes=3))),
+        )
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+    assert payload["last_chaoxing_synced_at"] == _iso(NOW - timedelta(minutes=3))
+
+
+def test_course_content_section_only_sync_counts_as_synced(db):
+    """只同步过课程内容 section（课程详情页触发）也算"同步过"。"""
+    container = FakeContainer(db, bound=True)
+    course = container.course_repository.create_course(
+        name="数据结构", owner_user_id="user1", provider="chaoxing",
+        external_id="33_44", status="active",
+    )
+    with container.db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO course_sync_sections "
+            "(user_id, course_id, section, status, item_count, last_synced_at) "
+            "VALUES (?, ?, 'chapters', 'complete', 3, ?)",
+            ("user1", course.id, _iso(NOW - timedelta(hours=1))),
+        )
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+    assert payload["last_chaoxing_synced_at"] == _iso(NOW - timedelta(hours=1))
+
+
+def test_stale_is_derived_from_sync_facts_not_from_today_items(db):
+    """很久没同步过课程时，即使今天一条学习通事项都没有，也要标 stale。"""
+    container = FakeContainer(db, bound=True)
+    container.course_repository.create_course(
+        name="大学英语", owner_user_id="user1", provider="chaoxing",
+        external_id="55_66", status="active",
+        last_synced_at=_iso(NOW - timedelta(days=3)),
+    )
+
+    payload = _build(container)
+
+    assert payload["stale"] is True
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+
+
+# ---------- 登录态观测的时效 ----------
+
+def test_auth_state_outlives_the_probe_dedup_window(db):
+    """/chaoxing/status 的 30s 只是去重窗口，不能决定登录态能报多久。
+
+    否则 31 秒后今日待办就退化成 unknown，用户会把"登录态过期"读成"今天没事"。
+    """
+    from app.schemas.chaoxing import ChaoxingSyncStatus
+    from app.services.chaoxing import session_cache
+
+    container = FakeContainer(db, bound=True)
+    session_cache.forget("user1")
+    try:
+        session_cache.set_cached("user1", ChaoxingSyncStatus(status="expired"))
+        # 模拟 31 秒前观测到的结果：探测去重缓存已过期，但登录态仍然可信。
+        stale_at = time.monotonic() - 31
+        session_cache.status_cache["user1"] = (stale_at, ChaoxingSyncStatus(status="expired"))
+        session_cache.auth_state_cache["user1"] = (stale_at, "expired")
+
+        assert session_cache.get_cached("user1") is None
+        assert session_cache.cached_auth_state("user1") == "expired"
+        payload = _build(container)
+        assert payload["sources"]["chaoxing"]["state"] == "expired"
+        assert payload["sources"]["chaoxing"]["auth_state"] == "expired"
+
+        # 超过可信窗口才退回 unknown，并且绝不猜成 online。
+        session_cache.auth_state_cache["user1"] = (
+            time.monotonic() - session_cache.AUTH_STATE_TTL - 1, "expired",
+        )
+        assert session_cache.cached_auth_state("user1") == "unknown"
+    finally:
+        session_cache.forget("user1")
+
+
+def test_forget_clears_auth_state_on_credential_change(db):
+    """换账号/解绑后不能把上一个账号的登录态带给新账号。"""
+    from app.schemas.chaoxing import ChaoxingSyncStatus
+    from app.services.chaoxing import session_cache
+
+    session_cache.set_cached("user1", ChaoxingSyncStatus(status="expired"))
+    assert session_cache.cached_auth_state("user1") == "expired"
+
+    session_cache.forget("user1")
+    assert session_cache.cached_auth_state("user1") == "unknown"
+    assert session_cache.get_cached("user1") is None
+
+
+def test_late_hour_deadline_is_overdue_only_after_its_time(db):
+    """23:00 截止的事项在 23:01 就是逾期 —— 这是正确行为。
+
+    钉住这个语义，是为了说明为什么路由级测试必须冻结服务时钟：
+    任何把"今天待完成"的截止时间写成某个固定时刻的测试，只要在该时刻之后运行
+    就会因为这条正确逻辑而变红。
+    """
+    container = FakeContainer(db)
+    _personal_task(container, title="今天 23:00 截止", deadline=_at(23, 0))
+
+    midday = TodayAgendaService(container).build(user_id="user1", now=_at(12, 0))
+    late = TodayAgendaService(container).build(user_id="user1", now=_at(23, 1))
+
+    assert next(i for i in midday["items"] if i["title"] == "今天 23:00 截止")["status"] == "pending"
+    assert next(i for i in late["items"] if i["title"] == "今天 23:00 截止")["status"] == "overdue"
