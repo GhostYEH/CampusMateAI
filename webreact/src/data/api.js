@@ -117,6 +117,11 @@ export async function trustedDeviceAutoLogin() {
 export async function revokeTrustedDevice() { try { await client.post("/auth/trusted-device/revoke", {}); } catch { /* a missing cookie is valid */ } }
 
 export async function getDashboard() { return dataOf(await client.get("/dashboard/student")); }
+/**
+ * 全站统一的"今日待办"事实源。
+ * 首页、学习陪伴、任务总览、全局角标都读这一个接口，前端不再各自组合过滤。
+ */
+export async function getTodayAgenda() { return dataOf(await client.get("/agenda/today")); }
 export async function getCourses(params = {}) { return dataOf(await client.get("/courses", { params: { page_size: 100, ...params } })); }
 export async function getClasses(courseId) { return dataOf(await client.get("/classes", { params: { page_size: 100, ...(courseId ? { course_id: courseId } : {}) } })); }
 

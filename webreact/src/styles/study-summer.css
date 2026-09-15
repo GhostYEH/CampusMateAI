@@ -471,3 +471,8 @@
   .modal.modal--study > footer { flex-wrap: wrap; }
   .modal.modal--study > footer .button { flex: 1; }
 }
+
+/* 学习通作业/考试是只读条目: 没有勾选框，点击进入详情而不是伪造完成。 */
+.study-summer-todos__list > button.is-readonly .study-summer-todo-lock { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; border: 1.5px solid rgba(255,255,255,.22); border-radius: 50%; color: rgba(255,255,255,.5); background: rgba(255,255,255,.05); }
+.study-summer-todos__list > button.is-readonly:hover .study-summer-todo-lock { border-color: rgba(255,255,255,.38); }
+.study-summer-todos__notice { margin: 0 9px 6px; color: rgba(255,214,131,.86); font-size: 11px; line-height: 1.5; }

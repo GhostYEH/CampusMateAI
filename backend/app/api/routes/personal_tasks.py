@@ -65,6 +65,19 @@ def _learner_event_service(
     return c.learner_event_service
 
 
+# 学习通作业/考试的状态由学习通决定，CampusMate 侧默认只读。
+# 允许在这里勾选"完成"会让本地状态与学习通真实状态分叉(下一次同步又会翻回去)，
+# 所以这些条目只能通过同步更新，不能在个人待办接口里伪造完成。
+_READ_ONLY_SOURCES = {"chaoxing"}
+
+
+def _assert_task_writable(row: PersonalTaskRow) -> None:
+    if (row.source or "") in _READ_ONLY_SOURCES:
+        raise PersonalTaskConflict(
+            "学习通作业/考试的状态由学习通决定，请到课程详情查看原始任务"
+        )
+
+
 def _to_out(row: PersonalTaskRow) -> PersonalTaskOut:
     return PersonalTaskOut(
         id=row.id,
@@ -328,6 +341,7 @@ def update_personal_task(
     existing = repo.get_task(task_id, user_id=user.id)
     if existing is None:
         raise PersonalTaskNotFound()
+    _assert_task_writable(existing)
     if existing.status == "deleted":
         raise PersonalTaskConflict("已删除的任务不能修改,请先恢复")
     fields = req.model_dump(exclude_unset=True)
@@ -349,6 +363,7 @@ def complete_personal_task(
     existing = repo.get_task(task_id, user_id=user.id)
     if existing is None:
         raise PersonalTaskNotFound()
+    _assert_task_writable(existing)
     if existing.status == "deleted":
         raise PersonalTaskConflict("已删除的任务不能完成,请先恢复")
     if existing.status == "completed":
@@ -382,6 +397,7 @@ def restore_personal_task(
     existing = repo.get_task(task_id, user_id=user.id)
     if existing is None:
         raise PersonalTaskNotFound()
+    _assert_task_writable(existing)
     updated = repo.restore(task_id, user_id=user.id)
     if updated is None:
         raise PersonalTaskConflict("当前状态不允许恢复")

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from datetime import datetime, timezone
 
 from ...repositories.course_content_repository import CourseContentRepository
 from .ChaoxingClient import ChaoxingClient
+
+logger = logging.getLogger(__name__)
 
 
 class ChaoxingCourseContentSyncService:
@@ -248,85 +251,30 @@ class ChaoxingCourseContentSyncService:
                 # 对任意属性都会"存在"，因此用 iscoroutinefunction 作为能力探测。
                 if fetcher is None or not asyncio.iscoroutinefunction(fetcher):
                     continue
-                kwargs: dict = {}
-                if section in ("materials", "exams"):
-                    kwargs["force_refresh"] = force_refresh
-                    kwargs["unchanged_chapter_ids"] = unchanged_chapter_ids
-                result = await fetcher(context, **kwargs)
-                items = result.get("items") or []
-                status = result.get("status") or "failed"
-                saved_chapters = []
-                if status in {"complete", "partial"}:
-                    keys: set[tuple[str, str]] = set()
-                    new_resource_counts = (
-                        self._count_resources_per_chapter(items) if section == "chapters" else {}
+                try:
+                    section_results[section] = await self._sync_section(
+                        section=section, fetcher=fetcher, context=context,
+                        user_id=user_id, course_id=course_id, course=course,
+                        force_refresh=force_refresh,
+                        unchanged_chapter_ids=unchanged_chapter_ids,
                     )
-                    for item in items:
-                        external_id = str(item.get("external_id") or "")
-                        kind = str(item.get("kind") or "")
-                        if not external_id or not kind:
-                            continue
-                        keys.add((kind, external_id))
-                        if section == "chapters" and kind == "chapter":
-                            item_metadata = dict(item.get("metadata") or {})
-                            fp = self._resource_fingerprint(items, external_id)
-                            sig = self._chapter_signature(item, new_resource_counts.get(external_id, 0), fp)
-                            item_metadata["sync_signature"] = sig
-                            item["metadata"] = item_metadata
-                        saved_item = self.repository.upsert_item(
-                            user_id=user_id, course_id=course_id, kind=kind,
-                            external_id=external_id, title=item.get("title") or "无标题",
-                            **{key: value for key, value in item.items()
-                               if key not in {"kind", "external_id", "title"}},
-                        )
-                        if section == "chapters" and kind == "chapter":
-                            saved_chapters.append(saved_item)
-                    if status == "complete":
-                        if unchanged_chapter_ids and section in ("materials", "exams"):
-                            existing_items = self.repository.list_items(
-                                user_id=user_id, course_id=course_id,
-                                include_stale=True, page_size=1000,
-                            )
-                            section_kinds = self.SECTION_KINDS[section]
-                            for existing_item in existing_items:
-                                parent = str(existing_item.parent_external_id or "")
-                                if parent in unchanged_chapter_ids and existing_item.kind in section_kinds:
-                                    keys.add((str(existing_item.kind), str(existing_item.external_id)))
-                        self.repository.mark_section_stale_except(
-                            user_id=user_id, course_id=course_id,
-                            kinds=self.SECTION_KINDS[section], external_keys=keys,
-                        )
-                if section == "exams" and status in {"complete", "partial"}:
-                    self._persist_exams(
-                        user_id=user_id, course_id=course_id, items=items,
-                        course_external_id=str(course.external_id or ""),
+                except Exception as error:  # noqa: BLE001
+                    # 单个 section 的意外异常绝不能中断其它 section，也不能被表现成
+                    # "0 条内容": 记为 failed，并保留上一次同步到的有效缓存
+                    # (mark_section_stale_except 只在 complete 时才执行)。
+                    logger.warning(
+                        "chaoxing course section sync failed course_id=%s section=%s exception_type=%s",
+                        course_id, section, type(error).__name__,
                     )
-                if section == "knowledge_graph" and status in {"complete", "partial"}:
-                    self._persist_knowledge_graph(
-                        user_id=user_id, course_id=course_id,
-                        course_external_id=str(course.external_id or ""),
-                        graph=result.get("graph") or {}, points=items,
+                    error_code = f"unexpected_error:{type(error).__name__}"
+                    self.repository.upsert_section_status(
+                        user_id=user_id, course_id=course_id, section=section,
+                        status="failed", item_count=0, error_code=error_code,
+                        error_message="该部分同步异常，已保留上一次的有效数据",
                     )
-                error = result.get("error")
-                section_row = self.repository.upsert_section_status(
-                    user_id=user_id, course_id=course_id, section=section,
-                    status=status, item_count=len(items), error_code=error,
-                    error_message=error,
-                )
-                if section == "chapters" and section_row.status == "complete":
-                    event_service = getattr(self.container, "learner_event_service", None)
-                    project_safely = getattr(event_service, "project_safely", None)
-                    if callable(project_safely):
-                        for chapter in saved_chapters:
-                            project_safely(
-                                action="chapter_completed",
-                                subject_type="chapter",
-                                subject_id=chapter.id,
-                                callback=lambda chapter=chapter: event_service.record_chaoxing_chapter_completed(
-                                    chapter, section_status=section_row.status
-                                ),
-                            )
-                section_results[section] = {"status": status, "item_count": len(items), "error": error}
+                    section_results[section] = {
+                        "status": "failed", "item_count": 0, "error": error_code,
+                    }
         finally:
             await client.client.aclose()
         return {
@@ -335,3 +283,88 @@ class ChaoxingCourseContentSyncService:
             "depth": depth,
             "sections": section_results,
         }
+
+    async def _sync_section(self, *, section: str, fetcher, context: dict,
+                            user_id: str, course_id: str, course,
+                            force_refresh: bool,
+                            unchanged_chapter_ids: set[str] | None) -> dict:
+        """抓取并落库单个 section，返回该 section 的独立状态。"""
+        kwargs: dict = {}
+        if section in ("materials", "exams"):
+            kwargs["force_refresh"] = force_refresh
+            kwargs["unchanged_chapter_ids"] = unchanged_chapter_ids
+        result = await fetcher(context, **kwargs)
+        items = result.get("items") or []
+        status = result.get("status") or "failed"
+        saved_chapters = []
+        if status in {"complete", "partial"}:
+            keys: set[tuple[str, str]] = set()
+            new_resource_counts = (
+                self._count_resources_per_chapter(items) if section == "chapters" else {}
+            )
+            for item in items:
+                external_id = str(item.get("external_id") or "")
+                kind = str(item.get("kind") or "")
+                if not external_id or not kind:
+                    continue
+                keys.add((kind, external_id))
+                if section == "chapters" and kind == "chapter":
+                    item_metadata = dict(item.get("metadata") or {})
+                    fp = self._resource_fingerprint(items, external_id)
+                    sig = self._chapter_signature(item, new_resource_counts.get(external_id, 0), fp)
+                    item_metadata["sync_signature"] = sig
+                    item["metadata"] = item_metadata
+                saved_item = self.repository.upsert_item(
+                    user_id=user_id, course_id=course_id, kind=kind,
+                    external_id=external_id, title=item.get("title") or "无标题",
+                    **{key: value for key, value in item.items()
+                       if key not in {"kind", "external_id", "title"}},
+                )
+                if section == "chapters" and kind == "chapter":
+                    saved_chapters.append(saved_item)
+            if status == "complete":
+                if unchanged_chapter_ids and section in ("materials", "exams"):
+                    existing_items = self.repository.list_items(
+                        user_id=user_id, course_id=course_id,
+                        include_stale=True, page_size=1000,
+                    )
+                    section_kinds = self.SECTION_KINDS[section]
+                    for existing_item in existing_items:
+                        parent = str(existing_item.parent_external_id or "")
+                        if parent in unchanged_chapter_ids and existing_item.kind in section_kinds:
+                            keys.add((str(existing_item.kind), str(existing_item.external_id)))
+                self.repository.mark_section_stale_except(
+                    user_id=user_id, course_id=course_id,
+                    kinds=self.SECTION_KINDS[section], external_keys=keys,
+                )
+        if section == "exams" and status in {"complete", "partial"}:
+            self._persist_exams(
+                user_id=user_id, course_id=course_id, items=items,
+                course_external_id=str(course.external_id or ""),
+            )
+        if section == "knowledge_graph" and status in {"complete", "partial"}:
+            self._persist_knowledge_graph(
+                user_id=user_id, course_id=course_id,
+                course_external_id=str(course.external_id or ""),
+                graph=result.get("graph") or {}, points=items,
+            )
+        error = result.get("error")
+        section_row = self.repository.upsert_section_status(
+            user_id=user_id, course_id=course_id, section=section,
+            status=status, item_count=len(items), error_code=error,
+            error_message=error,
+        )
+        if section == "chapters" and section_row.status == "complete":
+            event_service = getattr(self.container, "learner_event_service", None)
+            project_safely = getattr(event_service, "project_safely", None)
+            if callable(project_safely):
+                for chapter in saved_chapters:
+                    project_safely(
+                        action="chapter_completed",
+                        subject_type="chapter",
+                        subject_id=chapter.id,
+                        callback=lambda chapter=chapter: event_service.record_chaoxing_chapter_completed(
+                            chapter, section_status=section_row.status
+                        ),
+                    )
+        return {"status": status, "item_count": len(items), "error": error}

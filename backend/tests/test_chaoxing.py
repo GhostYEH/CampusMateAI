@@ -507,7 +507,9 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
     
     # 幂等性：不新增记录，只更新
     assert tasks2[0].title == "第一次作业（修改标题）"
-    assert tasks2[0].deadline == "2026-08-12"
+    # 学习通只给日期，没有具体时刻: 统一归一成北京时间当天 23:59:59 收口，
+    # 否则同一份数据会在当天零点就被判成"已逾期"。
+    assert tasks2[0].deadline == "2026-08-12T23:59:59+08:00"
     assert tasks2[0].status == "completed" # 已批阅 -> completed
     assert tasks2[1].external_id == "99992"
     assert tasks2[1].status == "completed"
@@ -1108,3 +1110,26 @@ async def test_chaoxing_login_html_response_does_not_crash(mock_httpx_client):
 
     assert success is False
     assert msg == "structure_changed"
+
+
+def test_deadline_normalization_unifies_chaoxing_time_to_iso_with_timezone():
+    """学习通只给日期时按当天 23:59:59(+08:00) 收口；带时刻的按北京时间归一。"""
+    from app.api.routes.chaoxing import _normalize_deadline
+
+    assert _normalize_deadline("2026-08-10") == "2026-08-10T23:59:59+08:00"
+    assert _normalize_deadline("2026年8月10日") == "2026-08-10T23:59:59+08:00"
+    assert _normalize_deadline("2026-08-10 23:30") == "2026-08-10T23:30:00+08:00"
+    assert _normalize_deadline(1754841600000) is not None
+    assert _normalize_deadline("") is None
+    assert _normalize_deadline(None) is None
+    # 解析不出来的文本原样保留，不丢信息也不编造时间。
+    assert _normalize_deadline("截止时间待定") == "截止时间待定"
+
+
+def test_deadline_iso_is_comparable_across_midnight():
+    """归一化后的字符串必须能直接比较，否则"今天/逾期"的判定会错。"""
+    from app.api.routes.chaoxing import _normalize_deadline
+
+    before = _normalize_deadline("2026-09-15")
+    after = _normalize_deadline("2026-09-16")
+    assert before < after

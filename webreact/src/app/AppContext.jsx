@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { applyTokenPair, getDashboard, login as loginRequest, probeBackend, revokeTrustedDevice, trustedDeviceAutoLogin } from "../data/api.js";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { applyTokenPair, getChaoxingStatus, getDashboard, getTodayAgenda, login as loginRequest, probeBackend, revokeTrustedDevice, trustedDeviceAutoLogin } from "../data/api.js";
+import { createInFlightDeduper, normalizeTodayAgenda } from "../data/agendaModel.js";
 import { clearStoredSession, readStoredSession } from "./auth.js";
 
 const AppContext = createContext(null);
@@ -20,6 +21,14 @@ export function AppProvider({ children }) {
   const [session, setSession] = useState(() => readStoredSession());
   const [backendOnline, setBackendOnline] = useState(false);
   const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [todayAgenda, setTodayAgenda] = useState(null);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+  const [agendaError, setAgendaError] = useState("");
+  const [chaoxingAuthState, setChaoxingAuthState] = useState("unknown");
+  // 并发去重: 多个组件同时挂载时只允许一个在途请求，避免请求风暴。
+  const agendaOnce = useRef(createInFlightDeduper());
+  // 登录态探测每次会话最多自动触发一次，避免反复打学习通。
+  const authProbeOnce = useRef(false);
   const [reduceMotion, setReduceMotionState] = useState(() => readBoolean("campus_reduce_motion"));
   const [tasks, setTasks] = useState(() => {
     try { return JSON.parse(localStorage.getItem("campus_tasks") || "[]"); } catch { return []; }
@@ -74,20 +83,53 @@ export function AppProvider({ children }) {
   const deleteTask = useCallback((id) => setTasks((current) => current.filter((task) => task.id !== id)), []);
   const setReduceMotion = useCallback((value) => { setReduceMotionState(Boolean(value)); localStorage.setItem("campus_reduce_motion", String(Boolean(value))); }, []);
   const refreshDashboard = useCallback(async () => { const value = await getDashboard(); setDashboardSummary(value); return value; }, []);
+  const refreshAgenda = useCallback(() => {
+    setAgendaLoading(true);
+    return agendaOnce.current(() => getTodayAgenda()
+      .then((value) => {
+        const normalized = normalizeTodayAgenda(value);
+        setTodayAgenda(normalized);
+        setAgendaError("");
+        // 今日待办接口不触网，登录态只能读服务端进程内缓存。缓存为空且确实绑定了
+        // 学习通时，非阻塞地探一次 /chaoxing/status（服务端 30s 缓存，不会形成风暴），
+        // 否则用户会把"登录态过期"误读成"今天没有待办"。
+        const chaoxing = normalized?.sources?.chaoxing;
+        if (chaoxing?.authState && chaoxing.authState !== "unknown") {
+          setChaoxingAuthState(chaoxing.authState);
+        } else if (chaoxing && chaoxing.state !== "not_bound" && !authProbeOnce.current) {
+          authProbeOnce.current = true;
+          getChaoxingStatus()
+            .then((status) => setChaoxingAuthState(status?.status || "unknown"))
+            .catch(() => setChaoxingAuthState("unknown"));
+        }
+        return normalized;
+      })
+      .catch((error) => {
+        setAgendaError(error?.response?.data?.detail || "今日待办加载失败，请稍后重试");
+        return null;
+      })
+      .finally(() => { setAgendaLoading(false); }));
+  }, []);
   useEffect(() => {
-    if (!session) { setDashboardSummary(null); return undefined; }
+    if (!session) { setDashboardSummary(null); setTodayAgenda(null); setAgendaError(""); return undefined; }
     let active = true;
     getDashboard().then((value) => active && setDashboardSummary(value)).catch(() => {});
+    void refreshAgenda();
     return () => { active = false; };
-  }, [session]);
+  }, [session, refreshAgenda]);
 
   const value = useMemo(() => ({
     session, backendOnline, dashboardSummary, reduceMotion, tasks,
-    pendingCount: Number(dashboardSummary?.pending_assignment_count || 0) + Number(dashboardSummary?.pending_personal_task_count || 0),
+    todayAgenda, agendaLoading, agendaError, refreshAgenda, chaoxingAuthState,
+    // 全局待办角标与首页"待办事项"共用统一今日待办的 summary，
+    // 不再由 dashboard 的 pending_assignment_count + pending_personal_task_count 拼出来。
+    pendingCount: todayAgenda
+      ? todayAgenda.summary.pending
+      : Number(dashboardSummary?.pending_assignment_count || 0) + Number(dashboardSummary?.pending_personal_task_count || 0),
     unreadCount: Number(dashboardSummary?.unread_announcement_count || 0),
     setDashboardSummary, refreshDashboard, login, applyQrLoginResult, tryTrustedLogin, logout,
     toggleTask, addTask, updateTask, deleteTask, setReduceMotion,
-  }), [session, backendOnline, dashboardSummary, reduceMotion, tasks, refreshDashboard, login, applyQrLoginResult, tryTrustedLogin, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion]);
+  }), [session, backendOnline, dashboardSummary, reduceMotion, tasks, todayAgenda, agendaLoading, agendaError, refreshAgenda, chaoxingAuthState, refreshDashboard, login, applyQrLoginResult, tryTrustedLogin, logout, toggleTask, addTask, updateTask, deleteTask, setReduceMotion]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

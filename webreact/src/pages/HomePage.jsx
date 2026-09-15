@@ -4,7 +4,8 @@ import * as api from "../data/api.js";
 
 import { useApp } from "../app/AppContext.jsx";
 import { buildHomeSearchResults } from "../data/alignment.js";
-import { buildDueItems, buildMainQuests, todayScheduleItems } from "../data/dashboardModel.js";
+import { buildAgendaDueItems, resolveAgendaFreshnessNotice } from "../data/agendaModel.js";
+import { buildMainQuests, todayScheduleItems } from "../data/dashboardModel.js";
 import { resolveHomeLearningCommand } from "../data/homeLearningModel.js";
 import { resolveHomeOverviewMetrics } from "../data/overviewMetrics.js";
 import ClassicHome from "./home/ClassicHome.jsx";
@@ -87,7 +88,7 @@ function loadHomeState(dashboardCacheKey) {
 }
 
 function useStudentDashboardData(searchQuery) {
-  const { session, setDashboardSummary } = useApp();
+  const { session, setDashboardSummary, todayAgenda, agendaError, refreshAgenda, chaoxingAuthState } = useApp();
   const dashboardCacheKey = dashboardCacheKeyFor(session);
   const cachedHomeState = homeDashboardCache.get(dashboardCacheKey);
   const [loading, setLoading] = useState(() => !cachedHomeState);
@@ -106,7 +107,7 @@ function useStudentDashboardData(searchQuery) {
   const [hotPosts, setHotPosts] = useState(() => cachedHomeState?.hotPosts || []);
   const [reloadVersion, setReloadVersion] = useState(0);
 
-  const reload = useCallback(() => setReloadVersion((v) => v + 1), []);
+  const reload = useCallback(() => { void refreshAgenda(); setReloadVersion((v) => v + 1); }, [refreshAgenda]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
@@ -157,11 +158,25 @@ function useStudentDashboardData(searchQuery) {
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
   const matches = useCallback((item, fields) => !normalizedSearch || fields.some((field) => String(item?.[field] || "").toLocaleLowerCase().includes(normalizedSearch)), [normalizedSearch]);
 
-  const dueItems = useMemo(() => buildDueItems(dashboard), [dashboard]);
+  // 今日待办统一来自 /agenda/today（AppContext 全局只拉一次），
+  // 首页不再用 dashboard.due_soon_*（它还会被截断，口径与学习陪伴不一致）。
+  const dueItems = useMemo(() => buildAgendaDueItems(todayAgenda), [todayAgenda]);
   const filteredDueItems = useMemo(() => dueItems.filter((item) => matches(item, ["title", "kind", "course_name", "source_name"])), [dueItems, matches]);
   const filteredCourses = useMemo(() => courses.filter((item) => matches(item, ["name", "code", "semester"])), [courses, matches]);
   const searchResults = useMemo(() => buildHomeSearchResults({ courses, assignments: searchFacts.assignments, tasks: personalTasks, notices: searchFacts.notices }, searchQuery), [courses, personalTasks, searchFacts, searchQuery]);
-  const overviewMetrics = useMemo(() => resolveHomeOverviewMetrics({ ...liveOverview, fallback: dashboard }), [liveOverview, dashboard]);
+  const overviewMetrics = useMemo(() => {
+    const metrics = resolveHomeOverviewMetrics({ ...liveOverview, fallback: dashboard });
+    // 首页"待办事项 N 项"必须与学习陪伴/任务总览同源，否则同一时刻三个数字不一样。
+    return todayAgenda ? { ...metrics, pendingCount: todayAgenda.summary.pending } : metrics;
+  }, [liveOverview, dashboard, todayAgenda]);
+  const agendaNotice = useMemo(
+    () => resolveAgendaFreshnessNotice(todayAgenda, { authState: chaoxingAuthState }),
+    [todayAgenda, chaoxingAuthState],
+  );
+  const agendaEmpty = useMemo(
+    () => (!todayAgenda && agendaError ? agendaError : ""),
+    [todayAgenda, agendaError],
+  );
   const todayCourses = useMemo(() => todayScheduleItems(scheduleItems, new Date(now)), [scheduleItems, now]);
   const mainQuests = useMemo(() => buildMainQuests({ scheduleItems, dueItems, exams }, new Date(now)), [scheduleItems, dueItems, exams, now]);
   const filteredMainQuests = useMemo(() => mainQuests.filter((item) => matches(item, ["title", "meta", "sourceType"])), [mainQuests, matches]);
@@ -196,7 +211,8 @@ function useStudentDashboardData(searchQuery) {
     user: session, scheduleItems, scheduleLoading, normalizedSearch,
     filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests,
     todayFocusSeconds, learningCommand, visibleHotPosts,
-  }), [loading, refreshing, error, now, dashboard, courses, studySessions, personalTasks, exams, searchResults, session, scheduleItems, scheduleLoading, normalizedSearch, filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests, todayFocusSeconds, learningCommand, visibleHotPosts]);
+    todayAgenda, agendaNotice, agendaEmpty,
+  }), [loading, refreshing, error, now, dashboard, courses, studySessions, personalTasks, exams, searchResults, session, scheduleItems, scheduleLoading, normalizedSearch, filteredDueItems, filteredCourses, overviewMetrics, todayCourses, mainQuests, filteredMainQuests, todayFocusSeconds, learningCommand, visibleHotPosts, todayAgenda, agendaNotice, agendaEmpty]);
 
   return { state, reload };
 }
@@ -253,6 +269,11 @@ export default function HomePage() {
       </div>
       <div className="rising-sheet-scrim" aria-hidden="true" />
       <div className="rising-sheet-content">
+        {(state.agendaNotice || state.agendaEmpty) && (
+          <div className="page-notice notice-info" role="status">
+            {state.agendaNotice || state.agendaEmpty}
+          </div>
+        )}
         <div id="campus-dashboard" className="sylva-dashboard" tabIndex={-1}>{dashboard}</div>
       </div>
     </section>

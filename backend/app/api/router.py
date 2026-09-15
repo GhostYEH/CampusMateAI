@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .routes import (
+    agenda,
     announcements,
     assignments,
     auth,
@@ -73,6 +74,8 @@ api_router.include_router(focus_ai.router, tags=["focus-ai"])
 api_router.include_router(focus_realtime_voice.router, tags=["focus-realtime-voice"])
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
+# 全站统一的"今日待办"事实源(首页/学习陪伴/任务总览/全局角标共用)
+api_router.include_router(agenda.router)
 # 学生通用目标(个人成长/学业/科研/竞赛/证书/求职等)
 api_router.include_router(student_goals.router)
 # 个人中心(我的文件 / 收藏夹)

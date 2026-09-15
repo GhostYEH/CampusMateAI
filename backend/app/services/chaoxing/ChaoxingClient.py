@@ -732,6 +732,64 @@ class ChaoxingClient:
             })
         return {"status": "complete", "items": exam_items, "error": None}
 
+    async def get_course_exam_candidates(self, context: dict) -> dict:
+        """低成本派生课程考试/测验候选，不触发逐章节卡片抓取。
+
+        全局同步(课程 + 作业 + 考试 + 轻量状态)不能为每门课深抓所有章节卡片，
+        因此这里只用一次 `gas/clazz` 章节请求: 章节节点上的 attachment 若声明为
+        work/test，就是作业/测验入口，足以让考试进入课程详情与世界模型。
+
+        代价是这条路径通常拿不到考试时间(章节附件不携带 begin/end 时间)，
+        带时间的考试由课程详情页显式触发的 deep 同步(章节卡片 + parse_exam_at)补齐。
+        解析不到就是解析不到，不编造时间。
+        """
+        chapter_result = await self.get_course_chapters(context)
+        if chapter_result["status"] != "complete":
+            return {
+                "status": chapter_result["status"],
+                "items": [],
+                "error": chapter_result.get("error"),
+            }
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        exam_items: list[dict] = []
+        seen: set[str] = set()
+        for item in chapter_result["items"]:
+            if item.get("kind") == "chapter":
+                continue
+            metadata = item.get("metadata") or {}
+            raw_type = str(
+                metadata.get("attachment_type") or metadata.get("raw_type") or ""
+            ).lower()
+            if raw_type not in ("work", "test"):
+                continue
+            external_id = _identifier(item.get("external_id"))
+            if not external_id or external_id in seen:
+                continue
+            seen.add(external_id)
+            exam_at = ChaoxingParser.parse_exam_at(metadata)
+            score, score_max = ChaoxingParser.parse_metadata_score(metadata)
+            exam_items.append({
+                "kind": "exam_candidate",
+                "external_id": external_id,
+                "title": item.get("title") or "未命名考试",
+                "parent_external_id": item.get("parent_external_id"),
+                "status": "unknown",
+                "source_url": item.get("source_url"),
+                "metadata": {
+                    **metadata,
+                    "candidate_type": "test" if raw_type == "test" else "work",
+                    "course_id": course_id,
+                    "clazz_id": clazz_id,
+                    **({
+                        "exam_at": exam_at,
+                        "score": score,
+                        "score_max": score_max,
+                    } if (exam_at or score is not None) else {}),
+                },
+            })
+        return {"status": "complete", "items": exam_items, "error": None}
+
     async def get_course_discussions(self, context: dict) -> dict:
         """利用 bbsid 获取课程讨论区数据。
 

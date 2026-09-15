@@ -1951,3 +1951,7 @@ html[data-theme="auto"] .courses-page .course-card {
 .mastery-tags { display: flex; gap: 7px; flex-wrap: wrap; }
 .mastery-tags span { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 11px; }
 .mastery-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 11px; }
+
+/* 只读的学习通条目: 勾选框换成锁图标，避免被误认为可以在 CampusMate 里勾完成。 */
+.task-check.is-readonly { border-color: rgba(148,163,184,.5); color: rgba(148,163,184,.9); background: rgba(148,163,184,.12); }
+.task-row.task-state-today .task-status { color: var(--blue, #4a7dff); }
