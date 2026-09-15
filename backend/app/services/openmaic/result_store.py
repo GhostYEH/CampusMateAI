@@ -8,9 +8,9 @@
 
 跨请求/跨进程预占：
 - 每个 {user_id}/{course_id} 目录下有一个 `.active.json` 预占文件，
-  用 `os.open(..., O_CREAT | O_EXCL)` 原子创建 —— 该原语在 POSIX 与 Windows
-  上都是原子的，因此多进程(多 uvicorn worker)并发时只有一个请求能成为
-  "提交者"，其余请求复用同一任务，避免重复提交到 OpenMAIC。
+  用稳定的 `.active.lock` 操作系统文件锁保护读改写临界区，并以旧租约版本执行
+  compare-and-swap 接管；初次创建仍使用 `O_CREAT | O_EXCL`。因此多进程
+  (多 uvicorn worker)并发时只有一个请求能成为"提交者"，其余复用同一任务。
 - 预占带租约(`ttl_seconds`)：提交者崩溃且不再轮询时，租约到期后可被接管；
   客户端每次轮询都会续租(touch)，正常生成不会因超时被抢占。
 - 任务进入终态(succeeded/failed)时释放预占。
@@ -25,7 +25,9 @@ import json
 import os
 import re
 import tempfile
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +37,7 @@ _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 # 预占文件名以 "." 开头，与历史会话文件区分；list_sessions 显式跳过隐藏文件。
 RESERVATION_FILENAME = ".active.json"
+RESERVATION_LOCK_FILENAME = ".active.lock"
 
 TERMINAL_STATUSES = ("succeeded", "failed")
 
@@ -146,6 +149,8 @@ class OpenMAICResultStore:
         self._root = storage_dir
         self._root.mkdir(parents=True, exist_ok=True)
         self._max_results = max(1, int(max_results))
+        self._thread_locks: Dict[str, threading.Lock] = {}
+        self._thread_locks_guard = threading.Lock()
 
     # ===== 路径 =====
 
@@ -161,6 +166,52 @@ class OpenMAICResultStore:
 
     def _reservation_path(self, user_id: str, course_id: str) -> Path:
         return self._course_dir(user_id, course_id) / RESERVATION_FILENAME
+
+    def _reservation_lock_path(self, user_id: str, course_id: str) -> Path:
+        return self._course_dir(user_id, course_id) / RESERVATION_LOCK_FILENAME
+
+    @contextmanager
+    def _reservation_guard(self, user_id: str, course_id: str):
+        """同一课程预占的线程级 + 进程级互斥锁。
+
+        锁文件保持存在，仅锁定首字节；进程异常退出时操作系统自动释放锁，
+        不需要通过删除锁文件恢复，因此不会引入另一套 stale-lock 竞态。
+        """
+        lock_path = self._reservation_lock_path(user_id, course_id)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        key = str(lock_path)
+        with self._thread_locks_guard:
+            thread_lock = self._thread_locks.setdefault(key, threading.Lock())
+        with thread_lock:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+            locked = False
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    if os.fstat(fd).st_size == 0:
+                        os.write(fd, b"\0")
+                        os.fsync(fd)
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+                locked = True
+                yield
+            finally:
+                if locked:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    if os.name == "nt":
+                        import msvcrt
+
+                        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
 
     @staticmethod
     def _valid_session_id(session_id: Optional[str]) -> bool:
@@ -267,7 +318,7 @@ class OpenMAICResultStore:
             return None
         return OpenMAICReservation.from_dict(data)
 
-    def acquire_reservation(
+    def _acquire_reservation_unlocked(
         self,
         *,
         user_id: str,
@@ -275,11 +326,6 @@ class OpenMAICResultStore:
         session_id: str,
         mode: str,
     ) -> bool:
-        """尝试原子抢占预占。已被占用返回 False。
-
-        `O_CREAT | O_EXCL` 在 POSIX 与 Windows 上都是原子的：并发/多进程下
-        只有一个调用能创建成功，其余收到 FileExistsError。
-        """
         path = self._reservation_path(user_id, course_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         reservation = OpenMAICReservation(session_id=session_id, mode=mode)
@@ -295,7 +341,7 @@ class OpenMAICResultStore:
             os.close(fd)
         return True
 
-    def steal_reservation(
+    def acquire_reservation(
         self,
         *,
         user_id: str,
@@ -303,15 +349,44 @@ class OpenMAICResultStore:
         session_id: str,
         mode: str,
     ) -> bool:
-        """接管过期预占。先删再原子创建；创建失败说明被别人抢先，返回 False。"""
-        path = self._reservation_path(user_id, course_id)
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-        return self.acquire_reservation(
-            user_id=user_id, course_id=course_id, session_id=session_id, mode=mode
-        )
+        """尝试原子抢占预占。已被占用返回 False。"""
+        with self._reservation_guard(user_id, course_id):
+            return self._acquire_reservation_unlocked(
+                user_id=user_id,
+                course_id=course_id,
+                session_id=session_id,
+                mode=mode,
+            )
+
+    def steal_reservation(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        session_id: str,
+        mode: str,
+        expected: OpenMAICReservation,
+    ) -> bool:
+        """仅当磁盘租约仍与调用者读到的版本一致时接管。"""
+        with self._reservation_guard(user_id, course_id):
+            current = self.read_reservation(user_id=user_id, course_id=course_id)
+            if (
+                current is None
+                or current.session_id != expected.session_id
+                or current.updated_at != expected.updated_at
+            ):
+                return False
+            path = self._reservation_path(user_id, course_id)
+            try:
+                os.unlink(path)
+            except OSError:
+                return False
+            return self._acquire_reservation_unlocked(
+                user_id=user_id,
+                course_id=course_id,
+                session_id=session_id,
+                mode=mode,
+            )
 
     def update_reservation(
         self,
@@ -322,13 +397,14 @@ class OpenMAICResultStore:
         job_id: Optional[str] = None,
     ) -> None:
         """提交成功/续租时刷新预占。只更新仍属于该 session 的预占。"""
-        path = self._reservation_path(user_id, course_id)
-        current = self.read_reservation(user_id=user_id, course_id=course_id)
-        if current is None or current.session_id != session_id:
-            return
-        current.job_id = job_id if job_id is not None else current.job_id
-        current.updated_at = _now()
-        self._write_json_atomic(path, current.to_dict())
+        with self._reservation_guard(user_id, course_id):
+            path = self._reservation_path(user_id, course_id)
+            current = self.read_reservation(user_id=user_id, course_id=course_id)
+            if current is None or current.session_id != session_id:
+                return
+            current.job_id = job_id if job_id is not None else current.job_id
+            current.updated_at = _now()
+            self._write_json_atomic(path, current.to_dict())
 
     def touch_reservation(self, *, user_id: str, course_id: str, session_id: str) -> None:
         self.update_reservation(
@@ -339,15 +415,16 @@ class OpenMAICResultStore:
         self, *, user_id: str, course_id: str, session_id: Optional[str] = None
     ) -> None:
         """释放预占。给定 session_id 时只释放仍指向它的预占，避免误删他人的。"""
-        path = self._reservation_path(user_id, course_id)
-        if session_id is not None:
-            current = self.read_reservation(user_id=user_id, course_id=course_id)
-            if current is not None and current.session_id != session_id:
-                return
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+        with self._reservation_guard(user_id, course_id):
+            path = self._reservation_path(user_id, course_id)
+            if session_id is not None:
+                current = self.read_reservation(user_id=user_id, course_id=course_id)
+                if current is not None and current.session_id != session_id:
+                    return
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     @staticmethod
     def reservation_is_stale(reservation: OpenMAICReservation, ttl_seconds: float) -> bool:
@@ -362,6 +439,7 @@ __all__ = [
     "OpenMAICSession",
     "OpenMAICReservation",
     "RESERVATION_FILENAME",
+    "RESERVATION_LOCK_FILENAME",
     "TERMINAL_STATUSES",
     "new_session_id",
 ]

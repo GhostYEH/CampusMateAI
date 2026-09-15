@@ -38,7 +38,7 @@ after(async () => {
   await vite.close();
 });
 
-const { InteractiveClassroomView } = await vite.ssrLoadModule(
+const { InteractiveClassroomView, interactiveErrorText } = await vite.ssrLoadModule(
   "/src/components/interactive/InteractiveClassroomPanel.jsx",
 );
 
@@ -54,6 +54,8 @@ const enabledStatus = (overrides = {}) => ({
   service: "openmaic",
   version: "1.0.0",
   embed_origin: TRUSTED,
+  browser_embed_available: true,
+  browser_embed_reason: null,
   ...overrides,
 });
 
@@ -188,6 +190,20 @@ test("成功课堂的 iframe 在 React 中被沙箱约束", () => {
   assert.match(markup, /sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"/);
 });
 
+test("ACCESS_CODE 仅后端认证时禁止浏览器内嵌和生成不可访问的课堂", () => {
+  const markup = renderPanel({
+    status: enabledStatus({
+      browser_embed_available: false,
+      browser_embed_reason: "目标互动课堂启用了独立访问保护，CampusMate 不会把访问码发送到浏览器。",
+    }),
+    session: { session_id: "s1", status: "succeeded", step: "completed", url: CLASSROOM_URL },
+  });
+  assert.doesNotMatch(markup, /<iframe/);
+  assert.doesNotMatch(markup, /开始生成/);
+  assert.match(markup, /课堂浏览授权尚未配置/);
+  assert.match(markup, /不会把访问码发送到浏览器/);
+});
+
 test("Origin 不匹配时真实渲染为降级态且不出现 iframe", () => {
   const markup = renderPanel({
     status: enabledStatus({ embed_origin: "http://127.0.0.1:9999" }),
@@ -266,6 +282,21 @@ test("失败态真实渲染出错误信息与重试入口", () => {
   assert.match(markup, /role="alert"/);
   assert.match(markup, /场景生成失败/);
   assert.match(markup, /重新生成/);
+});
+
+test("失败态优先展示服务端 error，字符串错误不会被通用文案覆盖", () => {
+  assert.equal(interactiveErrorText("场景生成失败", "通用失败"), "场景生成失败");
+  const markup = renderPanel({
+    session: {
+      session_id: "s1",
+      status: "failed",
+      step: "failed",
+      message: "生成失败",
+      error: "场景 3 的可视化生成超时",
+    },
+  });
+  assert.match(markup, /场景 3 的可视化生成超时/);
+  assert.doesNotMatch(markup, />生成失败</);
 });
 
 test("服务不可用时真实渲染隔离态，不抛到整页", () => {

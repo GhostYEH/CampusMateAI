@@ -218,6 +218,40 @@ def test_poll_success_validates_url_and_id():
     assert result.scenes_count == 6
 
 
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        "not-an-object",
+        {},
+        {"classroomId": "room_1"},
+        {"url": f"{BASE}/classroom/room_1"},
+    ],
+)
+def test_poll_rejects_succeeded_without_complete_classroom_result(result):
+    """捕获把缺少 classroomId/url 的上游假成功保存为已完成的回归。"""
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "status": "succeeded",
+                "step": "completed",
+                "progress": 100,
+                "done": True,
+                "result": result,
+            },
+        )
+
+    import asyncio
+
+    from app.services.openmaic.errors import OpenMAICProtocolError
+
+    with pytest.raises(OpenMAICProtocolError):
+        asyncio.run(_client_with(handler).poll("job_abc"))
+
+
 def test_poll_rejects_foreign_origin_url():
     def handler(request):
         return httpx.Response(

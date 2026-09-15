@@ -34,6 +34,7 @@ class OpenMAICStatusOut(BaseModel):
     - enabled:    == configured and available，客户端据此决定是否展示生成入口。
     - unavailable: configured and not available。
     - embed_origin: 可信 OpenMAIC Origin（含端口），未配置时为 None（客户端 fail-closed）。
+    - browser_embed_available: 学生浏览器能否安全打开/内嵌课堂；服务端可认证不代表浏览器可认证。
     """
 
     enabled: bool
@@ -44,6 +45,8 @@ class OpenMAICStatusOut(BaseModel):
     capabilities: Dict[str, bool] = Field(default_factory=dict)
     unavailable: bool = False
     embed_origin: Optional[str] = None
+    browser_embed_available: bool = False
+    browser_embed_reason: Optional[str] = None
     # 未启用/不可用时的说明文案
     reason: Optional[str] = None
 

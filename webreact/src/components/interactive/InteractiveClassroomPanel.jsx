@@ -12,12 +12,16 @@ import {
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 
-const errorText = (error, fallback = "操作失败，请稍后重试") =>
-  error?.response?.data?.detail ||
-  error?.response?.data?.message ||
-  (error?.response?.data?.code === "OPENMAIC_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
-  error?.message ||
-  fallback;
+export const interactiveErrorText = (error, fallback = "操作失败，请稍后重试") => {
+  if (typeof error === "string" && error.trim()) return error.trim();
+  return (
+    error?.response?.data?.detail ||
+    error?.response?.data?.message ||
+    (error?.response?.data?.code === "OPENMAIC_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
+    error?.message ||
+    fallback
+  );
+};
 
 const MODE_ICONS = {
   adaptive: "PhPath",
@@ -63,7 +67,9 @@ export function InteractiveClassroomView({
 
   const targetMode = INTERACTIVE_MODES.find((m) => m.mode === mode) || INTERACTIVE_MODES[0];
   const live = polling || isSessionLive(session);
-  const safeUrl = isTrustedEmbedUrl(session?.url, trustedOrigins) ? session.url : null;
+  const browserEmbedAvailable = trustedEmbedOrigins != null || status.browser_embed_available === true;
+  const safeUrl =
+    browserEmbedAvailable && isTrustedEmbedUrl(session?.url, trustedOrigins) ? session.url : null;
   const hasGeneratedUrl = Boolean(session?.url);
   const openInNewWindow = () => {
     if (safeUrl) window.open(safeUrl, "_blank", "noopener,noreferrer");
@@ -101,6 +107,30 @@ export function InteractiveClassroomView({
           </p>
           <Button variant="quiet" icon="PhArrowClockwise" onClick={onRefresh}>
             重新检测
+          </Button>
+        </div>
+      </Panel>
+    );
+  }
+
+  if (status.browser_embed_available === false && trustedEmbedOrigins == null) {
+    return (
+      <Panel className="interactive-panel">
+        <SectionHeading title="智能辅导" detail="课程互动课堂" />
+        <div className="interactive-unavailable interactive-state">
+          <span className="interactive-state-icon">
+            <Icon name="PhLock" size={26} />
+          </span>
+          <h3>课堂浏览授权尚未配置</h3>
+          <p>
+            {status.browser_embed_reason ||
+              "互动课堂当前不能安全地在学生浏览器中打开。CampusMate 不会把服务端访问凭据发送到浏览器。"}
+          </p>
+          <Button variant="quiet" icon="PhArrowClockwise" onClick={onRefresh}>
+            重新检测
+          </Button>
+          <Button variant="quiet" icon="PhChatCircleText" onClick={onAskCpm}>
+            先问 CPM 获取辅导
           </Button>
         </div>
       </Panel>
@@ -189,7 +219,7 @@ export function InteractiveClassroomView({
                         {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN") : "已生成"}
                       </small>
                     </span>
-                    {isTrustedEmbedUrl(item.url, trustedOrigins) ? (
+                    {browserEmbedAvailable && isTrustedEmbedUrl(item.url, trustedOrigins) ? (
                       <a
                         className="button button-quiet"
                         href={item.url}
@@ -231,7 +261,7 @@ export function InteractiveClassroomView({
       {!live && session && session.status === "failed" && (
         <div className="interactive-error interactive-state" role="alert">
           <Icon name="PhWarningCircle" size={20} />
-          <p>{session.message || session.error || "课堂生成失败"}</p>
+          <p>{session.error || session.message || "课堂生成失败"}</p>
           <Button onClick={onRetry}>重新生成</Button>
           <Button variant="quiet" onClick={onReset}>
             放弃
@@ -324,8 +354,10 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
       service: result.service,
       version: result.version,
       embed_origin: result.embed_origin,
+      browser_embed_available: result.browser_embed_available === true,
+      browser_embed_reason: result.browser_embed_reason,
     });
-    if (result.enabled) {
+    if (result.enabled && result.browser_embed_available === true) {
       setItemsLoading(true);
       api
         .listInteractiveClassrooms(courseId)
@@ -373,14 +405,14 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
           loadOverview();
         } else if (next.status === "failed") {
           setPolling(false);
-          setError(errorText(next.error || next.message, "课堂生成失败，可重试。"));
+          setError(interactiveErrorText(next.error || next.message, "课堂生成失败，可重试。"));
         } else {
           schedulePoll(next);
         }
       } catch (err) {
         if (!alive.current) return;
         setPolling(false);
-        setError(errorText(err, "进度查询失败"));
+        setError(interactiveErrorText(err, "进度查询失败"));
       }
     }, delay);
   };
@@ -406,7 +438,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
     } catch (err) {
       if (!alive.current) return;
       setPolling(false);
-      setError(errorText(err));
+      setError(interactiveErrorText(err));
     }
   };
 

@@ -7,7 +7,8 @@
 - 客户端断开/并发请求不重复提交：同一 user_id+course_id 通过跨进程原子预占
   (result_store.acquire_reservation) 保证只有一个提交者，其余复用同一任务，
   且复用返回的是任务**真实 mode**。
-- 不向 OpenMAIC 发送任何服务端凭据/客户端 Key；访问码只在客户端内部使用。
+- 不向 CampusMate 客户端返回任何 OpenMAIC 凭据/Provider Key；访问码仅由后端
+  OpenMAICClient 用于服务间认证。
 """
 from __future__ import annotations
 
@@ -83,6 +84,8 @@ class OpenMAICClassroomService:
         - unavailable: configured and not available（配置了但当前不可用）。
         - embed_origin: 可信的 OpenMAIC Origin（含端口），仅在 configured 时返回，
           供客户端按完整 URL.origin 精确校验课堂地址；未配置时为 null(fail-closed)。
+        - browser_embed_available: 学生浏览器能否安全加载课堂。后端通过 ACCESS_CODE
+          仅代表服务间认证成功，不代表浏览器拥有 OpenMAIC cookie。
         """
         configured = self.enabled
         origin = (self._settings.openmaic_origin or None) if configured else None
@@ -95,6 +98,8 @@ class OpenMAICClassroomService:
             "version": "",
             "capabilities": {},
             "embed_origin": origin,
+            "browser_embed_available": False,
+            "browser_embed_reason": None,
             "reason": None,
         }
         if not configured:
@@ -116,6 +121,14 @@ class OpenMAICClassroomService:
             unavailable=False,
             version=health.version,
             capabilities=health.capabilities,
+            # ACCESS_CODE cookie 只在后端 httpx 会话中。浏览器直连 OpenMAIC
+            # 不会继承该 cookie，因此必须明确阻止生成无法供学生打开的课堂。
+            browser_embed_available=not health.access_code_required,
+            browser_embed_reason=(
+                None
+                if not health.access_code_required
+                else "目标互动课堂启用了独立访问保护，CampusMate 不会把访问码发送到浏览器。"
+            ),
             reason=None,
         )
         return base
@@ -181,6 +194,7 @@ class OpenMAICClassroomService:
                         course_id=course_id,
                         session_id=session_id,
                         mode=mode,
+                        expected=reservation,
                     ):
                         return session_id, None
                 else:

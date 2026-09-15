@@ -358,11 +358,15 @@ class OpenMAICClient:
         classroom_id: Optional[str] = None
         classroom_url: Optional[str] = None
         scenes_count: Optional[int] = None
-        if status == "succeeded" and isinstance(result, dict):
+        if status == "succeeded":
+            if not isinstance(result, dict):
+                raise OpenMAICProtocolError("OpenMAIC 成功响应缺少课堂结果")
             classroom_id = self._validate_classroom_id(result.get("classroomId"))
             classroom_url = self._validate_classroom_url(
                 result.get("url"), classroom_id
             )
+            if classroom_id is None or classroom_url is None:
+                raise OpenMAICProtocolError("OpenMAIC 成功响应缺少课堂 ID 或地址")
             try:
                 scenes_count = (
                     int(result.get("scenesCount"))

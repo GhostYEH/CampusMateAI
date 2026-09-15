@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -42,6 +43,7 @@ from app.services.openmaic.client import (
     normalize_step,
 )
 from app.services.openmaic.course_context import build_course_context, build_cpm_course_block
+from app.services.openmaic import result_store as result_store_module
 from app.services.openmaic.result_store import OpenMAICResultStore, OpenMAICSession
 
 BASE = "http://127.0.0.1:3000"
@@ -319,6 +321,8 @@ def test_status_exposes_trusted_origin_with_port(tmp_path):
     assert body["unavailable"] is False
     # 必须带端口，客户端才能做完整 origin 精确校验
     assert body["embed_origin"] == "http://127.0.0.1:3000"
+    assert body["browser_embed_available"] is True
+    assert body["browser_embed_reason"] is None
     assert body["version"] == "0.9.9"
 
 
@@ -444,6 +448,8 @@ def test_access_code_is_verified_and_cookie_is_reused(tmp_path):
         f"/api/v1/courses/{cid}/interactive-classroom/status", headers=headers
     ).json()
     assert status["enabled"] is True, status
+    assert status["browser_embed_available"] is False
+    assert "访问保护" in status["browser_embed_reason"]
     gen = tc.post(
         f"/api/v1/courses/{cid}/interactive-classroom/generate",
         headers=headers,
@@ -617,6 +623,76 @@ def test_stale_reservation_can_be_taken_over(tmp_path):
     assert resp.status_code == 202, resp.text
     assert resp.json()["session"]["session_id"] != "om_stale"
     assert resp.json()["mode"] == "explore"
+
+
+def test_concurrent_stale_takeover_has_exactly_one_winner(tmp_path, monkeypatch):
+    """两个调用都读到同一旧租约时，接管必须具备 compare-and-swap 语义。"""
+    store = OpenMAICResultStore(tmp_path / "om")
+    assert store.acquire_reservation(
+        user_id="u1", course_id="c1", session_id="om_stale", mode="adaptive"
+    )
+    stale = store.read_reservation(user_id="u1", course_id="c1")
+    assert stale is not None
+    stale.updated_at = "2020-01-01T00:00:00+00:00"
+    store._write_json_atomic(store._reservation_path("u1", "c1"), stale.to_dict())
+    service = OpenMAICClassroomService(
+        _test_settings(openmaic_reservation_ttl_seconds=30), store, client=None
+    )
+
+    # 先让两个接管者都读取同一份旧租约，再强制 B 的 unlink 发生在 A 完成接管后。
+    # 旧实现因此稳定地产生两个 winner；具备 CAS 的实现会在 B unlink 前拒绝接管。
+    reads_ready = threading.Barrier(2)
+    first_takeover_entered = threading.Event()
+    first_takeover_finished = threading.Event()
+    thread_role = threading.local()
+    read_count = 0
+    read_lock = threading.Lock()
+    original_read = store.read_reservation
+
+    def synchronized_read(*, user_id, course_id):
+        nonlocal read_count
+        value = original_read(user_id=user_id, course_id=course_id)
+        with read_lock:
+            read_count += 1
+            should_wait = read_count <= 2
+        if should_wait:
+            reads_ready.wait(timeout=5)
+            if getattr(thread_role, "value", None) == "B":
+                assert first_takeover_entered.wait(timeout=5)
+        return value
+
+    reservation_path = os.fspath(store._reservation_path("u1", "c1"))
+    real_unlink = result_store_module.os.unlink
+
+    def ordered_unlink(path, *args, **kwargs):
+        if os.fspath(path) != reservation_path:
+            return real_unlink(path, *args, **kwargs)
+        if getattr(thread_role, "value", None) == "B":
+            assert first_takeover_finished.wait(timeout=5)
+        else:
+            first_takeover_entered.set()
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(store, "read_reservation", synchronized_read)
+    monkeypatch.setattr(result_store_module.os, "unlink", ordered_unlink)
+
+    def acquire(role_and_mode):
+        role, mode = role_and_mode
+        thread_role.value = role
+        try:
+            return service._acquire(user_id="u1", course_id="c1", mode=mode)
+        finally:
+            if role == "A":
+                first_takeover_finished.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(acquire, (("A", "explain"), ("B", "practice"))))
+
+    winners = [session_id for session_id, reusable in results if reusable is None]
+    reused = [reusable for _, reusable in results if reusable is not None]
+    assert len(winners) == 1
+    assert len(reused) == 1
+    assert reused[0].session_id == winners[0]
 
 
 def container_from(tc: TestClient) -> ServiceContainer:

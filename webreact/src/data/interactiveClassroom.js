@@ -1,8 +1,9 @@
 /**
  * 课程智能辅导空间（OpenMAIC 学生侧互动课堂）共享数据契约与安全判定。
  *
- * Web 客户端只允许通过 CampusMate 后端（/api/v1/courses/{course_id}/interactive-classroom/*）
- * 触达 OpenMAIC，绝不直连 OpenMAIC，也绝不在前端保存任何 OpenMAIC 密钥/访问码。
+ * 生成、查询等 API 只允许通过 CampusMate 后端
+ * （/api/v1/courses/{course_id}/interactive-classroom/*）触达 OpenMAIC，前端绝不保存
+ * OpenMAIC 密钥/访问码；生成后的课堂页面仅在后端确认浏览器可访问且 Origin 可信时加载。
  * 内嵌课堂 iframe / 新窗口链接之前必须做**完整 Origin 精确校验**（scheme + host + port）：
  * 后端在 /status 里返回可信的 OpenMAIC Origin（含端口），前端只接受与其完全相等的课堂 URL。
  * 后端未返回可信 Origin 时（默认未配置）白名单为空 —— fail-closed，一律不内嵌、不外链。
