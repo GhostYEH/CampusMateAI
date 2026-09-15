@@ -713,6 +713,7 @@ async def _perform_sync_chaoxing(
     exam_repo = getattr(container, "chaoxing_repository", None)
     exam_error: str | None = None
     exam_failures = 0
+    exam_succeeded = 0
     exam_attempted = 0
     exam_capable = (
         hasattr(client, "get_course_exam_candidates")
@@ -740,37 +741,47 @@ async def _perform_sync_chaoxing(
                 exam_failures += 1
                 exam_error = exam_error or str(result.get("error") or status or "unknown")
                 continue
-            for item in result.get("items") or []:
-                external_id = str(item.get("external_id") or "")
-                if not external_id:
-                    continue
-                metadata = item.get("metadata") or {}
-                # 幂等键与 deep 同步保持一致(course_external_id:exam_id)，避免两条
-                # 路径各写一行、同一场考试在课程详情里出现两次。
-                exam_row = exam_repo.upsert_exam(
-                    user_id=user.id,
-                    course_id=course_data.get("local_course_id"),
-                    external_id=(
-                        f"{course_data.get('external_id') or course_remote_id}:{external_id}"
-                    ),
-                    title=str(item.get("title") or "未命名考试"),
-                    exam_at=metadata.get("exam_at"),
-                    score=metadata.get("score"),
-                    score_max=metadata.get("score_max"),
-                    status="discovered",
-                    source_url=item.get("source_url"),
-                )
-                stats["exams_fetched"] += 1
-                if exam_row.get("is_new"):
-                    stats["exams_created"] += 1
-                elif exam_row.get("changed"):
-                    stats["exams_updated"] += 1
+            try:
+                for item in result.get("items") or []:
+                    external_id = str(item.get("external_id") or "")
+                    if not external_id:
+                        continue
+                    metadata = item.get("metadata") or {}
+                    # 幂等键与 deep 同步保持一致(course_external_id:exam_id)，避免两条
+                    # 路径各写一行、同一场考试在课程详情里出现两次。
+                    exam_row = exam_repo.upsert_exam(
+                        user_id=user.id,
+                        course_id=course_data.get("local_course_id"),
+                        external_id=(
+                            f"{course_data.get('external_id') or course_remote_id}:{external_id}"
+                        ),
+                        title=str(item.get("title") or "未命名考试"),
+                        exam_at=metadata.get("exam_at"),
+                        score=metadata.get("score"),
+                        score_max=metadata.get("score_max"),
+                        status="discovered",
+                        source_url=item.get("source_url"),
+                    )
+                    stats["exams_fetched"] += 1
+                    if exam_row.get("is_new"):
+                        stats["exams_created"] += 1
+                    elif exam_row.get("changed"):
+                        stats["exams_updated"] += 1
+            except Exception as error:  # noqa: BLE001 - 落库失败同样算这门课失败
+                logger.warning("chaoxing exam persist failed for %s: %s",
+                               course_remote_id, type(error).__name__)
+                exam_failures += 1
+                exam_error = exam_error or f"unexpected_error:{type(error).__name__}"
+                continue
+            # 只有"这门课成功返回(哪怕 0 条)"才计为成功来源。
+            # 不能用 exams_fetched 推断成功数: 成功但空 + 另一门失败时会被误报成 failed。
+            exam_succeeded += 1
     sections["exams"] = {
         "status": (
             "unavailable" if not exam_capable
-            else "failed" if (exam_failures and not stats["exams_fetched"])
-            else "partial" if exam_failures
-            else "complete"
+            else "complete" if exam_failures == 0
+            else "failed" if exam_succeeded == 0
+            else "partial"
         ),
         "item_count": stats["exams_fetched"],
         "last_synced_at": now_iso,
@@ -787,11 +798,13 @@ async def _perform_sync_chaoxing(
     notice_sync_available = True
     notice_error: str | None = None
     notice_attempted = 0
+    notice_succeeded = 0
     notice_failures = 0
     if hasattr(client, "get_all_notices"):
         notice_attempted = 1
         try:
             all_notices = await client.get_all_notices()
+            notice_succeeded += 1
         except ChaoxingFetchError as error:
             if error.code in ("reauth_required", "verification_required"):
                 raise _fetch_http_exception(error) from error
@@ -838,6 +851,8 @@ async def _perform_sync_chaoxing(
                 notice_error = notice_error or f"unexpected_error:{type(error).__name__}"
                 notice_failures += 1
                 continue
+            # 成功返回(哪怕 0 条通知)也算一次成功来源。
+            notice_succeeded += 1
             notice_batches.append((course, notices))
 
     for course, notices in notice_batches:
@@ -982,13 +997,13 @@ async def _perform_sync_chaoxing(
     _invalidate_status(user.id)
 
     sections["notices"] = {
-        # 按"成功/失败"如实分类: 全部失败 = failed，部分成功 = partial，
-        # 只有真正没有失败时才允许 complete。接口整体不可用单独报 unavailable。
+        # 按**来源**的成功/失败如实分类，不能用条目数推断成功数:
+        # "成功但返回 0 条" + "另一来源失败" 是 partial，不是 failed。
         "status": (
-            "unavailable" if not notice_sync_available
-            else "failed" if (notice_failures and not stats["notices_fetched"])
-            else "partial" if notice_failures
-            else "complete"
+            "unavailable" if (not notice_sync_available and notice_succeeded == 0)
+            else "complete" if notice_failures == 0
+            else "failed" if notice_succeeded == 0
+            else "partial"
         ),
         "item_count": stats["notices_fetched"],
         "last_synced_at": now_iso,

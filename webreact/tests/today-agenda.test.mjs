@@ -485,7 +485,112 @@ test("app context resets chaoxing auth state on logout and identity change", () 
   assert.match(logoutBlock, /authProbeOnce\.current = false/);
   assert.match(logoutBlock, /setChaoxingAuthState\("unknown"\)/);
   // 身份变化（登录/切换）同样要重置，否则第二个用户不会触发自己的探测
-  const sessionEffect = context.slice(context.indexOf("// 用户身份变化"));
+  const sessionEffect = context.slice(context.indexOf("// 身份变化（登录/切换/退出）"));
   assert.match(sessionEffect, /authProbeOnce\.current = false/);
   assert.match(sessionEffect, /setChaoxingAuthState\("unknown"\)/);
+});
+
+// ---------- 切换账号不得串数据 ----------
+
+function scopedLoader({ load, onData, onError, onLoadingChange } = {}) {
+  return A.createSessionScopedLoader({ load, onData, onError, onLoadingChange });
+}
+
+/** 让 loader 内部排队的微任务跑完（load 是在微任务里被调用的）。 */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("a late response from a previous account never reaches the new one", async () => {
+  const seen = [];
+  let resolveA;
+  const loader = scopedLoader({
+    load: () => new Promise((resolve) => { resolveA = resolve; }),
+    onData: (value) => seen.push(value),
+    onLoadingChange: () => {},
+    onError: () => {},
+  });
+
+  const inFlight = loader.refresh();   // 账号 A 的请求还在途中
+  await flush();                       // 等 load 真正被调用
+  loader.reset();                      // 未完成就退出 / 切换到账号 B
+  resolveA("A 的今日待办");
+  await inFlight;
+
+  assert.deepEqual(seen, [], "上一个账号的迟到响应不得回写状态");
+});
+
+test("errors from a previous account are dropped too", async () => {
+  const errors = [];
+  let rejectA;
+  const loader = scopedLoader({
+    load: () => new Promise((_resolve, reject) => { rejectA = reject; }),
+    onData: () => {},
+    onError: (error) => errors.push(error),
+    onLoadingChange: () => {},
+  });
+
+  const inFlight = loader.refresh();
+  await flush();
+  loader.reset();
+  rejectA(new Error("A 的请求失败"));
+  await inFlight;
+
+  assert.deepEqual(errors, []);
+});
+
+test("the new account issues its own request instead of reusing the old promise", async () => {
+  const pending = [];
+  const loader = scopedLoader({
+    load: () => new Promise((resolve) => pending.push(resolve)),
+    onData: () => {},
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  loader.refresh();   // 账号 A
+  await flush();
+  loader.reset();     // 切到账号 B
+  loader.refresh();   // 账号 B 必须自己发一次
+  await flush();
+
+  assert.equal(pending.length, 2, "去重器必须按身份隔离，B 不能复用 A 的 Promise");
+  pending.forEach((resolve, index) => resolve(`v${index}`));
+});
+
+test("same-identity concurrent refreshes still collapse into one request", async () => {
+  let calls = 0;
+  const loader = scopedLoader({
+    load: () => { calls += 1; return Promise.resolve("agenda"); },
+    onData: () => {},
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  await Promise.all([loader.refresh(), loader.refresh(), loader.refresh()]);
+  assert.equal(calls, 1, "同一身份内的并发刷新仍要去重");
+});
+
+test("onData gets an isCurrent guard so follow-up async work is also protected", async () => {
+  let captured;
+  const loader = scopedLoader({
+    load: () => Promise.resolve("agenda"),
+    onData: (_value, isCurrent) => { captured = isCurrent; },
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  await loader.refresh();
+  assert.equal(captured(), true);
+
+  // 登录态探测是在 onData 之后异步完成的，身份一变它也必须作废。
+  loader.reset();
+  assert.equal(captured(), false, "身份变化后 isCurrent() 必须为 false");
+});
+
+test("app context wires the session-scoped loader and resets it on identity change", () => {
+  const context = read("src/app/AppContext.jsx");
+  assert.match(context, /createSessionScopedLoader/);
+  assert.doesNotMatch(context, /agendaOnce/);
+  // 身份变化与退出登录都要作废在途请求
+  assert.match(context, /agendaLoader\.current\.reset\(\)/);
+  assert.match(context, /agendaLoader\.current\?\.reset\(\)/);
 });

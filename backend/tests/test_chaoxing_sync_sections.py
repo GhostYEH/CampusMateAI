@@ -484,3 +484,150 @@ async def test_notice_partial_when_some_courses_fail(db, mock_httpx_client):
     assert notices["status"] == "failed"
     assert notices["error_code"] == "http_error_500"
     assert "1/1" in notices["error_message"]
+
+
+# ---------- 成功来源数不能被条目数代替 ----------
+
+TWO_COURSES_HTML = """
+    <li class="course">
+        <span class="course-name">高等数学</span>
+        <a href="/mycourse/stu?courseid=111&clazzid=222">链接</a>
+    </li>
+    <li class="course">
+        <span class="course-name">线性代数</span>
+        <a href="/mycourse/stu?courseid=333&clazzid=444">链接</a>
+    </li>
+"""
+
+
+def _url_router(*, courses_html=TWO_COURSES_HTML, work_html=ASSIGNMENTS_HTML):
+    """按 URL 分派假响应，不依赖请求顺序（多课程场景下顺序很脆）。"""
+    def handler(url, **kwargs):
+        target = str(url)
+        if "backclazzdata" in target:
+            # JSON 课程接口不可用 -> 回落 HTML
+            return _response("", 404)
+        if "visit/courses/list" in target:
+            return _response(courses_html)
+        if "work" in target:
+            return _response(work_html)
+        # 课程页：提供 courseid/clazzid/workEnc 供上下文提取
+        return _response(COURSE_PAGE_HTML)
+    return handler
+
+
+async def _run_sync_with(db, mock_get, *, notice_side_effect=None, exam_side_effect=None):
+    container = MockContainer(db)
+    container.chaoxing_repository.save_credentials("user1", {"cookie": "A"})
+    mock_get.side_effect = _url_router()
+
+    original_notices = ChaoxingClient.get_all_notices
+    # 走逐课程通知路径（才能构造"一个成功一个失败"）
+    del ChaoxingClient.get_all_notices
+    try:
+        patches = []
+        if exam_side_effect is not None:
+            patches.append(patch.object(ChaoxingClient, "get_course_exam_candidates",
+                                        new=AsyncMock(side_effect=exam_side_effect)))
+        else:
+            patches.append(patch.object(ChaoxingClient, "get_course_exam_candidates",
+                                        new=AsyncMock(return_value={"status": "complete",
+                                                                    "items": [], "error": None})))
+        if notice_side_effect is not None:
+            patches.append(patch.object(ChaoxingClient, "get_notices",
+                                        new=AsyncMock(side_effect=notice_side_effect)))
+        for item in patches:
+            item.start()
+        try:
+            return await sync_chaoxing(user=_user(), container=container)
+        finally:
+            for item in patches:
+                item.stop()
+    finally:
+        ChaoxingClient.get_all_notices = original_notices
+
+
+@pytest.mark.asyncio
+async def test_notice_partial_when_one_source_is_empty_and_another_fails(db, mock_httpx_client):
+    """一个来源成功但返回 0 条 + 一个来源失败 = partial（不是 failed）。"""
+    result = await _run_sync_with(
+        db, mock_httpx_client,
+        notice_side_effect=[[], ChaoxingFetchError("http_error_500")],
+    )
+
+    notices = result["sections"]["notices"]
+    assert notices["item_count"] == 0
+    assert notices["status"] == "partial", "成功但空的一次抓取不能被当成失败"
+    assert notices["error_code"] == "http_error_500"
+    assert result["complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_notice_failed_only_when_every_source_fails(db, mock_httpx_client):
+    result = await _run_sync_with(
+        db, mock_httpx_client,
+        notice_side_effect=[ChaoxingFetchError("http_error_500"),
+                            ChaoxingFetchError("http_error_500")],
+    )
+
+    notices = result["sections"]["notices"]
+    assert notices["status"] == "failed"
+    assert notices["error_message"] == "2/2 个通知来源抓取失败"
+
+
+@pytest.mark.asyncio
+async def test_notice_complete_when_all_sources_succeed_but_empty(db, mock_httpx_client):
+    """全部来源都成功返回空 —— 这是 complete + 0 条，不是 failed。"""
+    result = await _run_sync_with(db, mock_httpx_client, notice_side_effect=[[], []])
+
+    notices = result["sections"]["notices"]
+    assert notices["status"] == "complete"
+    assert notices["item_count"] == 0
+    assert notices["error_code"] is None
+
+
+@pytest.mark.asyncio
+async def test_exam_partial_when_one_course_empty_and_another_fails(db, mock_httpx_client):
+    """考试链路同理：成功但 0 条 + 另一门失败 = partial，不是 failed。"""
+    result = await _run_sync_with(
+        db, mock_httpx_client,
+        notice_side_effect=[[], []],
+        exam_side_effect=[
+            {"status": "complete", "items": [], "error": None},
+            RuntimeError("boom"),
+        ],
+    )
+
+    exams = result["sections"]["exams"]
+    assert exams["status"] == "partial", "exams_fetched=0 不能推断成全部失败"
+    assert exams["item_count"] == 0
+    assert exams["error_code"]
+    assert "1/2" in exams["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_exam_failed_only_when_every_course_fails(db, mock_httpx_client):
+    result = await _run_sync_with(
+        db, mock_httpx_client,
+        notice_side_effect=[[], []],
+        exam_side_effect=[RuntimeError("boom"), RuntimeError("boom")],
+    )
+
+    exams = result["sections"]["exams"]
+    assert exams["status"] == "failed"
+    assert exams["error_message"] == "2/2 门课程的考试入口抓取失败"
+
+
+@pytest.mark.asyncio
+async def test_exam_complete_when_all_courses_succeed_but_empty(db, mock_httpx_client):
+    result = await _run_sync_with(
+        db, mock_httpx_client,
+        notice_side_effect=[[], []],
+        exam_side_effect=[
+            {"status": "complete", "items": [], "error": None},
+            {"status": "complete", "items": [], "error": None},
+        ],
+    )
+
+    assert result["sections"]["exams"]["status"] == "complete"
+    assert result["sections"]["exams"]["item_count"] == 0

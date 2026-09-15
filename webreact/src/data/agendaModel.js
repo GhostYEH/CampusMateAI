@@ -324,3 +324,53 @@ export function createInFlightDeduper() {
     return inFlight;
   };
 }
+
+/**
+ * 按身份隔离的加载器：解决"切换账号串数据"这一类问题。
+ *
+ * 两个必须同时成立的保护，缺一个都会串：
+ * 1. **去重器按身份隔离** —— 身份一变就换一个全新的去重器。否则账号 B 会复用
+ *    账号 A 还在途中的 Promise，直接拿到别人的数据。
+ * 2. **代次校验拒绝迟到回写** —— 每次 `reset()` 让代次 +1；异步回调只有在代次
+ *    未变时才允许写入状态。否则 A 的响应会在 B 的界面上落地，
+ *    而且先 `setState(null)` 也拦不住它。
+ *
+ * `onData(value, isCurrent)` 会拿到一个 `isCurrent()`，用于它自己发起的后续
+ * 异步动作（例如登录态探测）同样拒绝迟到回写。
+ */
+export function createSessionScopedLoader({ load, onData, onError, onLoadingChange } = {}) {
+  let epoch = 0;
+  let dedupe = createInFlightDeduper();
+
+  return {
+    /** 身份变化时调用：作废在途请求并换新去重器。 */
+    reset() {
+      epoch += 1;
+      dedupe = createInFlightDeduper();
+      return epoch;
+    },
+
+    currentEpoch() {
+      return epoch;
+    },
+
+    refresh() {
+      const token = epoch;
+      const isCurrent = () => epoch === token;
+      onLoadingChange?.(true);
+      return dedupe(() => Promise.resolve()
+        .then(load)
+        .then((value) => {
+          if (!isCurrent()) return null;
+          onData?.(value, isCurrent);
+          return value;
+        })
+        .catch((error) => {
+          if (!isCurrent()) return null;
+          onError?.(error);
+          return null;
+        })
+        .finally(() => { if (isCurrent()) onLoadingChange?.(false); }));
+    },
+  };
+}

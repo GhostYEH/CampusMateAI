@@ -12,6 +12,7 @@ import pytest
 
 from app.database.sqlite_db import Database
 from app.repositories.chaoxing_repository import ChaoxingRepository
+from app.repositories.course_content_repository import CourseContentRepository
 from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.personal_task_repository import PersonalTaskRepository
 from app.services.agenda_service import SHANGHAI, TodayAgendaService
@@ -63,6 +64,7 @@ class FakeContainer:
         self.personal_task_repository = PersonalTaskRepository(db)
         self.chaoxing_repository = ChaoxingRepository(db)
         self.course_repository = CourseRepository(db)
+        self.course_content_repository = CourseContentRepository(db)
         self.edu_connector = edu
         if bound:
             self.chaoxing_repository.save_credentials("user1", {"cookie": "A"})
@@ -722,3 +724,75 @@ def test_late_hour_deadline_is_overdue_only_after_its_time(db):
 
     assert next(i for i in midday["items"] if i["title"] == "今天 23:00 截止")["status"] == "pending"
     assert next(i for i in late["items"] if i["title"] == "今天 23:00 截止")["status"] == "overdue"
+
+
+def _insert_section(db, *, user_id, course_id, section, status, when):
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO course_sync_sections "
+            "(user_id, course_id, section, status, item_count, last_synced_at, error_code) "
+            "VALUES (?, ?, ?, ?, 0, ?, ?)",
+            (user_id, course_id, section, status, when, None if status in ("complete", "partial") else "boom"),
+        )
+
+
+def test_failed_section_attempt_does_not_count_as_a_successful_sync(db):
+    """首次同步只有 failed 记录时，必须仍是 never_synced。
+
+    `course_sync_sections.last_synced_at` 是**最近一次尝试**时间（失败也会被刷成
+    当前时间），把它当成同步事实会把 never_synced 误报成 empty。
+    """
+    container = FakeContainer(db, bound=True)
+    course = container.course_repository.create_course(
+        name="数据结构", owner_user_id="user1", provider="chaoxing",
+        external_id="33_44", status="active",
+    )
+    _insert_section(db, user_id="user1", course_id=course.id,
+                    section="chapters", status="failed", when=_iso(NOW))
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "never_synced"
+    assert payload["last_chaoxing_synced_at"] is None
+    assert payload["stale"] is False
+
+
+def test_partial_section_counts_as_synced(db):
+    """partial 表示确实抓到了数据，算成功同步。"""
+    container = FakeContainer(db, bound=True)
+    course = container.course_repository.create_course(
+        name="数据结构", owner_user_id="user1", provider="chaoxing",
+        external_id="33_44", status="active",
+    )
+    _insert_section(db, user_id="user1", course_id=course.id,
+                    section="materials", status="partial", when=_iso(NOW - timedelta(minutes=10)))
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+    assert payload["last_chaoxing_synced_at"] == _iso(NOW - timedelta(minutes=10))
+
+
+def test_earlier_success_still_counts_after_a_later_failure(db):
+    """先成功、后失败：失败不删除已有条目，因此仍应判定为"已同步过"。
+
+    这条靠 course_content_items 兜底 —— 它只在成功路径上写入，且失败不会改动它。
+    """
+    container = FakeContainer(db, bound=True)
+    course = container.course_repository.create_course(
+        name="数据结构", owner_user_id="user1", provider="chaoxing",
+        external_id="33_44", status="active",
+    )
+    container.course_content_repository.upsert_item(
+        user_id="user1", course_id=course.id, kind="chapter",
+        external_id="ch1", title="第一章",
+        last_synced_at=_iso(NOW - timedelta(hours=2)),
+    )
+    # 之后一次同步失败：section 变 failed，但条目还在。
+    _insert_section(db, user_id="user1", course_id=course.id,
+                    section="chapters", status="failed", when=_iso(NOW))
+
+    payload = _build(container)
+
+    assert payload["sources"]["chaoxing"]["state"] == "empty"
+    assert payload["last_chaoxing_synced_at"] == _iso(NOW - timedelta(hours=2))
