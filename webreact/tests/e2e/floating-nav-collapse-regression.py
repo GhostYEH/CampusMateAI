@@ -29,7 +29,7 @@ def install_fixtures(page):
 def run():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page = browser.new_page(viewport={"width": int(os.environ.get("WEB_VIEWPORT_WIDTH", "1440")), "height": 900})
         page.set_default_timeout(10_000)
         install_fixtures(page)
 
@@ -59,8 +59,31 @@ def run():
         assert home_box is not None
         page.mouse.move(home_box["x"] + home_box["width"] / 2, home_box["y"] + home_box["height"] / 2)
         page.get_by_role("button", name="首页", exact=True).focus()
-        page.wait_for_timeout(200)
-        expanded_width = page.locator(".floating-nav").evaluate("nav => nav.getBoundingClientRect().width")
+        page.wait_for_timeout(300)
+        expanded = page.locator(".floating-nav").evaluate(
+            """nav => {
+              const navRect = nav.getBoundingClientRect();
+              const stages = [...nav.querySelectorAll('.sylva-liquid-stage--nav')]
+                .map(stage => stage.getBoundingClientRect());
+              const stageGaps = stages.slice(1)
+                .map((stage, index) => stage.left - stages[index].right);
+              const iconLabelGaps = [...nav.querySelectorAll('.floating-nav-button')]
+                .map(button => {
+                  const icon = button.querySelector('.floating-nav-icon')?.getBoundingClientRect();
+                  const label = button.querySelector('.floating-nav-label')?.getBoundingClientRect();
+                  return icon && label ? label.left - icon.right : Number.POSITIVE_INFINITY;
+                });
+              return {
+                width: navRect.width,
+                clientWidth: nav.clientWidth,
+                scrollWidth: nav.scrollWidth,
+                firstStageInset: stages[0].left - navRect.left,
+                lastStageInset: navRect.right - stages.at(-1).right,
+                minStageGap: Math.min(...stageGaps),
+                minIconLabelGap: Math.min(...iconLabelGaps),
+              };
+            }"""
+        )
         expanded_effect = page.locator(".floating-nav").evaluate(
             """nav => {
               const stage = nav.querySelector('.floating-nav-list > li.active .sylva-liquid-stage--nav');
@@ -96,11 +119,19 @@ def run():
             failures.append(f"收起态内容溢出：{collapsed}")
         if collapsed["leftInset"] < -1 or collapsed["rightInset"] < -1:
             failures.append(f"收起态入口超出容器：{collapsed}")
-        if expanded_width < collapsed["clientWidth"] + 200:
-            failures.append(f"导航未正常展开：{expanded_width}")
-        if not expanded_effect:
-            failures.append("展开态选中项缺少液态画布")
-        elif abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:
+        if expanded["width"] < collapsed["clientWidth"] + 200:
+            failures.append(f"导航未正常展开：{expanded}")
+        if expanded["width"] < 950:
+            failures.append(f"展开态宽度不足以容纳统一间距：{expanded}")
+        if expanded["scrollWidth"] > expanded["clientWidth"] + 1:
+            failures.append(f"展开态内容溢出：{expanded}")
+        if expanded["firstStageInset"] < 14 or expanded["lastStageInset"] < 14:
+            failures.append(f"展开态首尾留白不足：{expanded}")
+        if expanded["minStageGap"] < 3.5:
+            failures.append(f"展开态入口间距过密：{expanded}")
+        if expanded["minIconLabelGap"] < 11.5:
+            failures.append(f"展开态图标与文字间距过密：{expanded}")
+        if expanded_effect and abs(expanded_effect["horizontalPadding"] - expanded_effect["verticalPadding"]) >= 1:
             failures.append(f"液态画布未固定到选中图标：{expanded_effect}")
         if not collapse_start:
             failures.append("未捕获导航收缩起始帧")

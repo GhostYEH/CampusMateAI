@@ -26,7 +26,7 @@ html {
 
 .floating-nav {
   --floating-nav-collapsed-width: 476px;
-  --floating-nav-expanded-width: 900px;
+  --floating-nav-expanded-width: 960px;
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 8px;
   --floating-nav-effect-size: var(--floating-nav-item-size);
@@ -127,7 +127,7 @@ html {
   }
 
   .floating-nav:hover {
-    width: min(var(--floating-nav-expanded-width), calc(100vw - 580px));
+    width: min(var(--floating-nav-expanded-width), calc(100vw - 480px));
   }
 
   .floating-nav:hover .floating-nav-list {
@@ -137,8 +137,8 @@ html {
   }
 
   .floating-nav:hover .floating-nav-button {
-    gap: 6px;
-    padding: 0 6px 0 2px;
+    gap: 12px;
+    padding: 0 1px;
   }
 
   .floating-nav:hover .floating-nav-icon {
@@ -157,7 +157,7 @@ html {
     margin-right: 0;
     opacity: 1;
     transform: translateX(0);
-    font-size: 12.5px;
+    font-size: 12px;
     text-overflow: ellipsis;
     transition:
       max-width .28s ease-out,
@@ -168,9 +168,10 @@ html {
 
   /* Dock magnification is an icon-dock effect: it scales each <li> without
      affecting layout, so expanded pills would visually overlap while the bar
-     is 900px wide. Neutralize the motion scale while labels are visible. */
+     is fully expanded. Neutralize the motion scale while labels are visible. */
   .floating-nav:hover .floating-nav-list > li,
-  .floating-nav.floating-nav--collapsing .floating-nav-list > li {
+  .floating-nav.floating-nav--collapsing .floating-nav-list > li,
+  .floating-nav:not(:hover) .floating-nav-list > li {
     transform: none !important;
     scale: none !important;
     will-change: auto;
