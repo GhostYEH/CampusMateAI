@@ -27,12 +27,14 @@ from app.repositories.multi_role_repository import CourseRepository
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.openmaic.client import OpenMAICClient
+from app.services.openmaic.classroom_service import OpenMAICClassroomService
 from app.services.openmaic.course_context import build_course_context
 from app.services.openmaic.requirement_builder import (
     build_input_payload,
     build_requirement,
     validate_mode,
 )
+from app.services.openmaic.result_store import OpenMAICResultStore
 
 BASE = "http://127.0.0.1:3000"
 
@@ -296,11 +298,17 @@ def test_status_safe_degrade_when_not_configured():
 # ===== 路由：权限 + 202 提交 + 轮询成功 =====
 
 
-def _setup_routes(handler, **settings_overrides):
+def _setup_routes(tmp_path, handler, **settings_overrides):
     container = reset_container_for_tests(
         _test_settings(**settings_overrides)
     )
     seed_demo_data(container, force=True)
+    # 课堂会话/预占是磁盘状态，必须落在每个用例独立的临时目录，
+    # 否则会写进仓库 data/ 并在多次运行之间互相污染。
+    container.openmaic_result_store = OpenMAICResultStore(tmp_path / "openmaic_classrooms")
+    container.openmaic_classroom_service = OpenMAICClassroomService(
+        container.settings, container.openmaic_result_store
+    )
     # 注入带 MockTransport 的客户端，避免真实联调
     container.openmaic_classroom_service._client = _client_with(handler)
     client = TestClient(create_app())
@@ -339,9 +347,9 @@ def _success_handler(requests: list):
     return handler
 
 
-def test_generate_returns_202_then_poll_succeeds():
+def test_generate_returns_202_then_poll_succeeds(tmp_path):
     calls = []
-    _, client, headers, cid = _setup_routes(_success_handler(calls))
+    _, client, headers, cid = _setup_routes(tmp_path, _success_handler(calls))
     gen = client.post(
         f"/api/v1/courses/{cid}/interactive-classroom/generate",
         headers=headers,
@@ -380,9 +388,9 @@ def test_generate_returns_202_then_poll_succeeds():
     assert any(r["classroom_id"] == "room_ok" for r in rooms.json()["items"])
 
 
-def test_generate_rebinds_submit_only_to_configured_payload():
+def test_generate_rebinds_submit_only_to_configured_payload(tmp_path):
     calls = []
-    _, client, headers, cid = _setup_routes(_success_handler(calls))
+    _, client, headers, cid = _setup_routes(tmp_path, _success_handler(calls))
     client.post(
         f"/api/v1/courses/{cid}/interactive-classroom/generate",
         headers=headers,
@@ -404,20 +412,20 @@ def test_generate_rebinds_submit_only_to_configured_payload():
     assert payload["enableTTS"] is True
 
 
-def test_nonexistent_course_rejected():
-    _, client, headers, _ = _setup_routes(_success_handler([]))
+def test_nonexistent_course_rejected(tmp_path):
+    _, client, headers, _ = _setup_routes(tmp_path, _success_handler([]))
     resp = client.get("/api/v1/courses/no_such_course/interactive-classroom/status", headers=headers)
     assert resp.status_code in (404, 403)
 
 
-def test_no_permission_course_rejected():
-    container, client, headers, _ = _setup_routes(_success_handler([]))
+def test_no_permission_course_rejected(tmp_path):
+    container, client, headers, _ = _setup_routes(tmp_path, _success_handler([]))
     # 演示学生已经存在并且有权限加载 demo 课程;越权测试通过不存在课程已经部分覆盖。
     # 完整权限校验已经在 assert_course_access 级别完成，这里不再插入违反约束的数据。
     pass
 
 
-def test_task_failure_surfaces_retryable_state():
+def test_task_failure_surfaces_retryable_state(tmp_path):
     def handler(request: httpx.Request):
         if request.url.path.endswith("/api/health"):
             return httpx.Response(200, json={"success": True, "capabilities": {}})
@@ -434,7 +442,7 @@ def test_task_failure_surfaces_retryable_state():
             },
         )
 
-    _, client, headers, cid = _setup_routes(handler)
+    _, client, headers, cid = _setup_routes(tmp_path, handler)
     gen = client.post(
         f"/api/v1/courses/{cid}/interactive-classroom/generate",
         headers=headers,
@@ -451,8 +459,8 @@ def test_task_failure_surfaces_retryable_state():
 # ===== 课程上下文不泄露隐私 =====
 
 
-def test_course_context_includes_chapters_but_not_credentials():
-    container, client, headers, _ = _setup_routes(_success_handler([]))
+def test_course_context_includes_chapters_but_not_credentials(tmp_path):
+    container, client, headers, _ = _setup_routes(tmp_path, _success_handler([]))
     user = container.user_repository.get_user_by_username("student_demo")
     courses = client.get("/api/v1/courses", headers=headers).json()["items"]
     cid = courses[0]["id"]

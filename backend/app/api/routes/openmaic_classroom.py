@@ -51,7 +51,7 @@ async def get_status(
     # 先校验权限（即使服务未启用，也只在有权限时暴露状态）
     assert_course_access(container, user, course_id)
     payload: Dict[str, Any] = await service.status()
-    if not payload.get("enabled"):
+    if payload.get("reason") is None and not payload.get("enabled"):
         payload["reason"] = "互动课堂服务未启用"
     return OpenMAICStatusOut(**payload)
 
@@ -86,7 +86,8 @@ async def generate_classroom(
         accepted=True,
         session=OpenMAICSessionOut.from_session(session),
         poll_interval_ms=5000,
-        mode=req.mode,
+        # 复用已有任务时必须返回任务真实 mode，而不是本次请求的 mode
+        mode=session.mode,
     )
 
 

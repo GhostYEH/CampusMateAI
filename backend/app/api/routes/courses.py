@@ -16,6 +16,7 @@ from ...core.exceptions import CourseNotFound, Forbidden
 from ...models.multi_role import CourseRow, UserRow
 from ...schemas.multi_role import CourseCreate, CourseOut, CourseUpdate, Page
 from ...services.container import ServiceContainer, get_container
+from ...services.course_access import can_view_course
 from ..deps import current_user, require_role
 
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -181,13 +182,8 @@ def update_course(
 def _assert_can_view_course(
     course: CourseRow, user: UserRow, container: ServiceContainer
 ) -> None:
-    if user.role == "admin":
-        return
-    # 学生: 必须已加入该课程下的任一班级
-    enrolls = container.enrollment_repository.list_user_classes(user.id)
-    if course.provider == "chaoxing" and course.owner_user_id == user.id:
-        return
-    if not any(e["course_id"] == course.id for e in enrolls):
+    # 统一策略见 services/course_access.py：管理员 / 已加入班级 / 学生自有的学习通导入课程。
+    if not can_view_course(container, user, course):
         raise Forbidden("你未加入此课程下的任何班级")
 
 

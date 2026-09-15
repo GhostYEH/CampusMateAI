@@ -51,6 +51,7 @@ from ...models.multi_role import UserRow
 from ...models.personal_task import PersonalTaskRow
 from ...schemas.chat import ChatFinalMeta, ChatRequest
 from ...services.container import ServiceContainer, get_container
+from ...services.course_access import can_view_course
 from ...services.emotion_context import EmotionContextBuilder
 from ..deps import current_user_optional
 
@@ -163,8 +164,8 @@ def _collect_teaching_context(
         if c is None:
             warnings.append(f"课程 {req.course_id} 不存在,已忽略")
         elif _is_student():
-            enrolls = enr_repo.list_user_classes(user.id)
-            if not any(e["course_id"] == c.id for e in enrolls):
+            # 复用统一课程可见性策略：已加入班级的课程，或学生自己导入的学习通课程。
+            if not can_view_course(container, user, c):
                 warnings.append(f"无权访问课程 {c.name},已忽略")
             else:
                 # 富课程上下文：章节/作业/互动课堂存在状态(权限内、后端重查)

@@ -3,7 +3,9 @@
  *
  * Web 客户端只允许通过 CampusMate 后端（/api/v1/courses/{course_id}/interactive-classroom/*）
  * 触达 OpenMAIC，绝不直连 OpenMAIC，也绝不在前端保存任何 OpenMAIC 密钥/访问码。
- * 内嵌课堂 iframe / 新窗口链接之前必须做 host 白名单校验（安全降级）。
+ * 内嵌课堂 iframe / 新窗口链接之前必须做**完整 Origin 精确校验**（scheme + host + port）：
+ * 后端在 /status 里返回可信的 OpenMAIC Origin（含端口），前端只接受与其完全相等的课堂 URL。
+ * 后端未返回可信 Origin 时（默认未配置）白名单为空 —— fail-closed，一律不内嵌、不外链。
  */
 
 // 5 种面向学生的互动课堂模式。文案只描述能力用途，不承诺后端无法保证的具体场景。
@@ -15,52 +17,102 @@ export const INTERACTIVE_MODES = [
   { mode: "project", label: "项目式学习", description: "以项目任务加深对课程的理解与运用" },
 ];
 
-// 服务端 step 取值的阶段中文文案（queued..done / failed）。
+/**
+ * 服务端 step 取值的阶段中文文案。
+ * 对齐 OpenMAIC 真实生成步骤（lib/server/classroom-generation.ts 的 ClassroomGenerationStep）
+ * 以及 job 级别的 queued / failed。
+ */
 export const INTERACTIVE_STEP_LABELS = {
   queued: "排队中",
-  analyzing: "分析课程",
-  outlining: "生成大纲",
-  generating: "生成场景",
-  media: "生成媒体",
-  voice: "生成语音",
-  saving: "保存课堂",
-  done: "已完成",
+  initializing: "初始化课堂",
+  researching: "检索课程资料",
+  generating_outlines: "生成教学大纲",
+  generating_scenes: "生成课堂场景",
+  generating_media: "生成图片与视频",
+  generating_tts: "生成语音讲解",
+  persisting: "保存课堂",
+  completed: "已完成",
   failed: "生成失败",
 };
 
-// 允许内嵌/新窗口打开的课堂 host 白名单。默认空：未配置时不内嵌、也不外倒链接，
-// 网络层始终走 CampusMate 后端。后端 /status 拿不到可信前缀时，Web 用此常量兜底。
-export const DEFAULT_TRUSTED_EMBED_HOSTS = [];
+/** 允许内嵌/新窗口打开的课堂 Origin 白名单（完整 origin，含端口）。默认空 = fail-closed。 */
+export const DEFAULT_TRUSTED_EMBED_ORIGINS = [];
 
-function normHosts(hosts) {
-  return Array.isArray(hosts) ? hosts : DEFAULT_TRUSTED_EMBED_HOSTS;
-}
+/** 任务终态：命中后不再轮询。 */
+export const TERMINAL_STATUSES = ["succeeded", "failed"];
 
 function globalOrigin() {
-  if (typeof globalThis !== "undefined" && globalThis.location && typeof globalThis.location.href === "string" && globalThis.location.href) {
+  if (
+    typeof globalThis !== "undefined" &&
+    globalThis.location &&
+    typeof globalThis.location.href === "string" &&
+    globalThis.location.href
+  ) {
     return globalThis.location.href;
   }
   return "http://localhost";
 }
 
 /**
- * 判定 OpenMAIC 课堂 url 的 host 是否落在允许嵌入的白名单内。
- * 由于默认白名单为空，未显式注入可信 host 前始终判定为“不可安全内嵌”。
- * 用于 iframe 内嵌 与 新窗口打开的护栏；判定失败时调用方应降级为不渲染空白 iframe。
+ * 把任意来源的白名单条目归一化成 `URL.origin`（scheme + host + port）。
+ * 非法条目被丢弃；相对路径/危险协议不会成为可信 Origin。
  */
-export function isTrustedEmbedUrl(url, hosts = DEFAULT_TRUSTED_EMBED_HOSTS) {
-  if (!url || typeof url !== "string") return false;
+export function normalizeTrustedOrigins(origins) {
+  const list = Array.isArray(origins) ? origins : [];
+  const out = [];
+  for (const entry of list) {
+    const text = String(entry ?? "").trim();
+    if (!text) continue;
+    try {
+      const parsed = new URL(text);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") continue;
+      if (!out.includes(parsed.origin)) out.push(parsed.origin);
+    } catch {
+      // 非法条目忽略
+    }
+  }
+  return out;
+}
+
+/** 取一个 URL 的完整 origin；非法或非 http(s) 返回 null。 */
+export function urlOrigin(url) {
+  if (!url || typeof url !== "string") return null;
   try {
     const parsed = new URL(url, globalOrigin());
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-    const hostname = parsed.hostname.toLowerCase();
-    return normHosts(hosts).some((host) => {
-      const safe = String(host ?? "").trim().toLowerCase();
-      return safe !== "" && (hostname === safe || hostname.endsWith(`.${safe}`));
-    });
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.origin;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * 判定 OpenMAIC 课堂 url 是否可信（可安全内嵌 / 可新窗口打开）。
+ *
+ * 采用**完整 URL.origin 精确比对**（含端口），而不是 host 后缀匹配：
+ * `http://openmaic.example.com:3000` 与 `http://openmaic.example.com:3001`
+ * 或 `https://openmaic.example.com` 互不信任。
+ * 白名单为空时恒为 false —— 未配置可信 Origin 前 fail-closed。
+ */
+export function isTrustedEmbedUrl(url, origins = DEFAULT_TRUSTED_EMBED_ORIGINS) {
+  const origin = urlOrigin(url);
+  if (!origin) return false;
+  const trusted = normalizeTrustedOrigins(origins);
+  if (trusted.length === 0) return false;
+  return trusted.includes(origin);
+}
+
+/** 从后端 /status 结果解析出可信 Origin 列表（未配置时为空 → fail-closed）。 */
+export function trustedOriginsFromStatus(status) {
+  if (!status || typeof status !== "object") return [];
+  return normalizeTrustedOrigins([status.embed_origin]);
+}
+
+/** 是否处于进行中（需要继续轮询）。 */
+export function isSessionLive(session) {
+  if (!session || typeof session !== "object") return false;
+  if (!session.status) return false;
+  return !TERMINAL_STATUSES.includes(session.status);
 }
 
 /** step 文案兜底：未知阶段显示笼统“处理中”。 */

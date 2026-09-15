@@ -27,12 +27,24 @@ class OpenMAICGenerateRequest(BaseModel):
 
 
 class OpenMAICStatusOut(BaseModel):
+    """互动课堂状态契约。
+
+    - configured: 后端是否配置了 OpenMAIC（OPENMAIC_ENABLED + BASE_URL）。
+    - available:  当前是否可用（health 可达 且 ACCESS_CODE 已通过）。
+    - enabled:    == configured and available，客户端据此决定是否展示生成入口。
+    - unavailable: configured and not available。
+    - embed_origin: 可信 OpenMAIC Origin（含端口），未配置时为 None（客户端 fail-closed）。
+    """
+
     enabled: bool
+    configured: bool = False
+    available: bool = False
     service: str = "openmaic"
     version: str = ""
     capabilities: Dict[str, bool] = Field(default_factory=dict)
     unavailable: bool = False
-    # 未启用时的说明文案
+    embed_origin: Optional[str] = None
+    # 未启用/不可用时的说明文案
     reason: Optional[str] = None
 
 

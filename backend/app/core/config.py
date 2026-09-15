@@ -146,12 +146,17 @@ class Settings(BaseSettings):
     # 返回明确的"服务未启用"状态，不影响课程详情与 CPM 基础聊天。
     openmaic_enabled: bool = False
     openmaic_base_url: str = ""
+    # 目标 OpenMAIC 部署若启用了 ACCESS_CODE 保护，后端用此访问码换 cookie。
+    # 仅后端可见：绝不写入任何响应体、日志或客户端。
+    openmaic_access_code: str = ""
     # 提交/轮询单次请求超时(秒)
     openmaic_request_timeout_seconds: float = 30.0
     # 课程上下文送入生成 requirements 的最大字符数(防隐私/体积爆炸)
     openmaic_course_context_max_chars: int = 4000
     # 同一课程最多保留的生成课堂记录数(超出后丢弃最早的已结束记录)
     openmaic_max_results_per_course: int = 20
+    # user_id+course_id 生成预占的租约时长(秒)，超时后允许新请求接管
+    openmaic_reservation_ttl_seconds: int = 600
 
     @property
     def openmaic_available(self) -> bool:
@@ -349,6 +354,8 @@ class Settings(BaseSettings):
                 )
             if self.openmaic_request_timeout_seconds < 1:
                 raise ValueError("OPENMAIC_REQUEST_TIMEOUT_SECONDS must be positive")
+            if self.openmaic_reservation_ttl_seconds < 30:
+                raise ValueError("OPENMAIC_RESERVATION_TTL_SECONDS must be at least 30")
         if self.app_env == "production":
             if self.jwt_secret == "campusmate_dev_secret_change_in_production" or len(self.jwt_secret) < 32:
                 raise ValueError(

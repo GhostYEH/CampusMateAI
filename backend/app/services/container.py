@@ -448,7 +448,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
     )
-    openmaic_result_store = OpenMAICResultStore(_openmaic_store_dir(settings))
+    openmaic_result_store = OpenMAICResultStore(
+        _openmaic_store_dir(settings),
+        max_results=settings.openmaic_max_results_per_course,
+    )
     openmaic_classroom_service = OpenMAICClassroomService(
         settings=settings,
         store=openmaic_result_store,
