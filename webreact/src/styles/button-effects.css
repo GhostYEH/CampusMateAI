@@ -33,8 +33,6 @@
 
 .sylva-liquid-stage--nav {
   --h: var(--floating-nav-item-size, 44px);
-  overflow: hidden;
-  border-radius: 999px;
 }
 
 .sylva-liquid-stage--surface {
@@ -108,24 +106,6 @@
     0 calc(var(--h) * .27) calc(var(--h) * .62) rgba(0,0,0,.22),
     inset 0 1px 0 rgba(255,255,255,.10);
   transition-duration: .10s;
-}
-
-.sylva-liquid-stage--nav .sylva-liquid-plate {
-  opacity: 0;
-}
-
-.sylva-liquid-stage--nav[data-active="true"] .sylva-liquid-plate {
-  opacity: 1;
-}
-
-.floating-nav .sylva-liquid-stage--nav .sylva-liquid-fx {
-  inset:
-    calc((var(--h) - var(--floating-nav-effect-size)) / 2 - var(--pad))
-    auto
-    auto
-    calc(var(--floating-nav-effect-x) - var(--pad));
-  width: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
-  height: calc(var(--floating-nav-effect-size) + 2 * var(--pad));
 }
 
 .sylva-liquid-stage--surface[data-tone="light"] > .sylva-liquid-plate {

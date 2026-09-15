@@ -38,18 +38,19 @@ test("global search gets a wider desktop field without changing mobile layout", 
   assert.match(tinyStyles, /\.search-wrap[^}]*width: 174px/);
 });
 
-test("floating navigation foreground uses explicit contrast tokens", () => {
-  assert.match(navStyles, /\.liquid-metal-nav-container nav ul[^}]*color: var\(--floating-nav-foreground/);
+test("floating navigation foreground uses the homepage primary-action palette globally", () => {
+  assert.match(navStyles, /\.liquid-metal-nav-container nav ul[^}]*color: var\(--floating-nav-foreground, #f7f8f2\)/);
   assert.doesNotMatch(navStyles, /mix-blend-mode:\s*difference/);
-  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-foreground:/);
-  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="light"\]/);
-  assert.match(layoutStyles, /\.floating-nav\[data-ogui-tone="dark"\]/);
+  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-foreground:\s*#f7f8f2/);
+  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-active-foreground:\s*#ffffff/);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav\[data-(?:ogui-tone|contrast)=/);
   assert.doesNotMatch(layoutStyles, /html\[data-theme="auto"\] \.floating-nav/);
 });
 
 test("counselor uses the same global floating navigation as other routes", () => {
   assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \? "dark" : "light";/);
-  assert.match(appShell, /<FloatingNav tone=\{topbarGlassTone\}/);
+  assert.match(appShell, /<FloatingNav pendingCount=\{pendingCount\}/);
+  assert.doesNotMatch(appShell, /<FloatingNav tone=/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav\{/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-list\{/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav-button\{/);
@@ -95,25 +96,23 @@ test("topbar controls share one desktop height and top alignment", () => {
   assert.match(styles, /\.topbar-info-surface[^}]*top:\s*14px/);
 });
 
-test("navigation starts compact and reveals accessible route labels on desktop hover", () => {
-  assert.match(layoutStyles, /--floating-nav-expanded-width:\s*960px/);
+test("desktop navigation keeps every route label visible without hover resizing", () => {
   assert.match(layoutStyles, /\.floating-nav-label/);
   assert.match(floatingNavSource, /floating-nav-label/);
-  assert.match(layoutStyles, /--floating-nav-collapsed-width:\s*476px/);
-  assert.match(layoutStyles, /\.floating-nav:hover\s*\{/);
-  assert.match(layoutStyles, /\.floating-nav:hover \.floating-nav-button\s*\{[^}]*gap:\s*12px/s);
-  assert.doesNotMatch(layoutStyles, /\.floating-nav:is\(:hover,\s*:focus-within\)/);
+  assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*width:\s*max-content/s);
+  assert.match(layoutStyles, /\.floating-nav-label\s*\{[^}]*display:\s*block[^}]*max-width:\s*none[^}]*opacity:\s*1/s);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav:hover\s*\{/);
+  assert.doesNotMatch(layoutStyles, /--floating-nav-(?:collapsed|expanded)-width/);
+  assert.match(floatingNavSource, /staticControls/);
 });
 
-test("centered navigation balances the first icon and final profile edge insets", () => {
-  assert.match(layoutStyles, /--floating-nav-list-start-padding:\s*8px/);
-  assert.match(layoutStyles, /--floating-nav-list-end-padding:\s*8px/);
-  assert.match(layoutStyles, /\.floating-nav-list[^}]*padding:\s*8px var\(--floating-nav-list-end-padding\) 8px var\(--floating-nav-list-start-padding\)/s);
+test("centered navigation uses balanced fixed insets", () => {
+  assert.match(layoutStyles, /\.floating-nav \.floating-nav-list[^}]*padding:\s*10px 6px/s);
   assert.match(layoutStyles, /\.floating-nav[^}]*left:\s*50%[^}]*transform:\s*translateX\(-50%\)/s);
 });
 
-test("mobile floating navigation keeps its glass surface compact", () => {
-  const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 760px)"));
+test("mobile floating navigation keeps its primary controls compact", () => {
+  const mobileStyles = layoutStyles.slice(layoutStyles.lastIndexOf("@media (max-width: 1399px)"));
 
   assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });

@@ -124,8 +124,10 @@ test("global navigation keeps one liquid-metal state system across page scenes",
   const navStyles = await readFile(new URL("src/styles/floating-layout.css", webRoot), "utf8");
   const studyStyles = await readFile(new URL("src/styles/study-summer.css", webRoot), "utf8");
 
-  assert.match(navStyles, /--floating-nav-foreground:\s*#53627b/);
+  assert.match(navStyles, /--floating-nav-foreground:\s*#f7f8f2/);
   assert.match(navStyles, /--floating-nav-active-foreground:\s*#ffffff/);
+  assert.match(navStyles, /background:\s*transparent/);
+  assert.doesNotMatch(navStyles, /data-(?:ogui-tone|contrast)/);
   assert.doesNotMatch(navStyles, /--floating-nav-active-background/);
   assert.doesNotMatch(navStyles, /rgba\(34,\s*40,\s*31,\s*\.74\)/);
   assert.doesNotMatch(studyStyles, /\.app-layout\.study-mode \.floating-nav\s*\{[^}]*background/);

@@ -1,6 +1,5 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Glass } from "open-glass-ui";
 import { Icon } from "../Icon.jsx";
 import LiquidMetalNav from "./LiquidMetalNav.jsx";
 import { navItems } from "./navItems.js";
@@ -8,22 +7,10 @@ import { navItems } from "./navItems.js";
 const STUDY_ROUTE_PREFIXES = Object.freeze(["study", "island", "plans", "docs", "statistics"]);
 const WORLD_MODEL_ROUTE_PREFIXES = Object.freeze(["learning-state", "prediction"]);
 
-const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0, unreadCount = 0, reduceMotion = false, onIntent }) {
-  const dockRef = useRef(null);
+const FloatingNav = memo(function FloatingNav({ pendingCount = 0, unreadCount = 0, reduceMotion = false, onIntent }) {
   const preloadedRouteKeys = useRef(new Set());
   const location = useLocation();
   const navigate = useNavigate();
-  const isHomeScene = location.pathname === "/home";
-
-  // The living home scene can vary continuously. A stable opaque dark glass
-  // treatment keeps the nav readable without synchronously reading GPU pixels.
-  useEffect(() => {
-    const dock = dockRef.current;
-    if (!dock) return undefined;
-    if (isHomeScene) dock.setAttribute("data-contrast", "dark");
-    else dock.removeAttribute("data-contrast");
-    return undefined;
-  }, [isHomeScene]);
 
   const isActive = (key) => {
     const prefixes = key === "study"
@@ -42,13 +29,12 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
     void onIntent?.(`/${item.key}`);
   };
 
-  return <Glass ref={dockRef} className={`floating-nav floating-nav--${tone}`} material="clear" tone={tone} interactive onPointerOver={preloadFromEvent} onFocusCapture={preloadFromEvent}>
+  return <div className="floating-nav floating-nav--primary" onPointerOver={preloadFromEvent} onFocusCapture={preloadFromEvent}>
     <LiquidMetalNav
       items={navItems}
       activeIndex={activeIndex}
       reduceMotion={reduceMotion}
-      reuseRenderer
-      effectGeometrySelector=".floating-nav-icon"
+      staticControls
       className="floating-nav-inner"
       onSelect={({ key }) => navigate(`/${key}`)}
       renderItem={({ key, label, icon }) => {
@@ -63,7 +49,7 @@ const FloatingNav = memo(function FloatingNav({ tone = "dark", pendingCount = 0,
         </>;
       }}
     />
-  </Glass>;
+  </div>;
 });
 
 export default FloatingNav;

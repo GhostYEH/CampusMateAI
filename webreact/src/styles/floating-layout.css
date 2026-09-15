@@ -18,65 +18,29 @@ html {
   padding-top: 0 !important;
 }
 
-/* ── contrast tokens ────────────────────────────────────────────────
-   Every nav color flows from these tokens. The base block is the
-   light-page default (dark text on whitish glass). data-contrast is set
-   by the adaptive sampler on the Sylva home page; --light stays as the
-   legacy class for counselor routes. */
+/* The global dock is only a positioning shell. Each route control owns the
+   same dark liquid-metal plate as the homepage's primary action. */
 
 .floating-nav {
-  --floating-nav-collapsed-width: 476px;
-  --floating-nav-expanded-width: 960px;
   --floating-nav-item-size: 44px;
-  --floating-nav-item-gap: 8px;
-  --floating-nav-effect-size: var(--floating-nav-item-size);
-  --floating-nav-effect-x: 0px;
-  --floating-nav-list-start-padding: 8px;
-  --floating-nav-list-end-padding: 8px;
-  --floating-nav-foreground: #53627b;
-  --floating-nav-active-foreground: var(--blue);
+  --floating-nav-item-gap: 4px;
+  --floating-nav-foreground: #f7f8f2;
+  --floating-nav-active-foreground: #ffffff;
   position: fixed;
   top: 14px;
   left: 50%;
   z-index: 60;
-  width: var(--floating-nav-collapsed-width);
+  width: max-content;
   min-height: var(--topbar-control-height);
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow: visible;
   transform: translateX(-50%) translateZ(0);
   border-radius: 999px;
+  background: transparent;
   scrollbar-width: none;
-  transition: width .34s cubic-bezier(.22, .61, .36, 1);
-}
-
-/* The material tone is selected from the page scene, never the OS theme. */
-.floating-nav[data-ogui-tone="light"] {
-  --floating-nav-foreground: #3a4252;
-  --floating-nav-active-foreground: #2657c3;
-}
-
-.floating-nav[data-ogui-tone="dark"] {
-  --floating-nav-foreground: #eef3ff;
-  --floating-nav-active-foreground: #ffffff;
-}
-
-/* bright scene behind the nav → dark text on a light glass */
-
-.floating-nav[data-contrast="light"] {
-  --floating-nav-foreground: #3a4252;
-  --floating-nav-active-foreground: #2657c3;
-}
-
-/* dark scene behind the nav → light text on a darker glass */
-
-.floating-nav[data-contrast="dark"] {
-  --floating-nav-foreground: #eef3ff;
-  --floating-nav-active-foreground: #ffffff;
-  background: rgba(11, 20, 35, .74);
 }
 
 .floating-nav-inner {
-  width: 100%;
+  width: max-content;
   min-width: 0;
 }
 
@@ -86,113 +50,67 @@ html {
 
 .floating-nav .floating-nav-list {
   width: max-content;
-  padding: 8px var(--floating-nav-list-end-padding) 8px var(--floating-nav-list-start-padding);
+  min-width: 0;
+  padding: 10px 6px;
 }
 
 .floating-nav-button {
   color: var(--floating-nav-foreground);
-  transition: color .2s ease, box-shadow .2s ease;
+  transition: color .16s ease;
 }
 
 .floating-nav .floating-nav-button {
-  gap: 0;
+  gap: 4px;
   width: auto;
-  min-width: var(--floating-nav-item-size);
+  min-width: 0;
+  padding: 0 7px;
+}
+
+.floating-nav .floating-nav-icon {
+  flex-basis: 24px;
+  width: 24px;
+  height: 24px;
+}
+
+.floating-nav .sylva-liquid-stage--nav,
+.floating-nav .sylva-liquid-stage--nav:hover,
+.floating-nav .sylva-liquid-stage--nav.press {
+  translate: none;
+  transition: none;
 }
 
 .floating-nav-label {
   display: block;
-  max-width: 0;
-  overflow: hidden;
-  margin-right: 0;
-  opacity: 0;
-  transform: translateX(-6px);
+  max-width: none;
+  opacity: 1;
+  transform: none;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
-  transition:
-    max-width .34s cubic-bezier(.22, .61, .36, 1),
-    margin-right .34s cubic-bezier(.22, .61, .36, 1),
-    opacity .18s ease,
-    transform .3s cubic-bezier(.22, .61, .36, 1);
 }
 
 .floating-nav-list > li.active .floating-nav-button {
   color: var(--floating-nav-active-foreground);
 }
 
-@media (hover: hover) and (pointer: fine) and (min-width: 1101px) {
-  .floating-nav {
-    overflow: visible;
-  }
-
-  .floating-nav:hover {
-    width: min(var(--floating-nav-expanded-width), calc(100vw - 480px));
-  }
-
-  .floating-nav:hover .floating-nav-list {
-    justify-content: center;
-    gap: 4px;
-    padding: 8px;
-  }
-
-  .floating-nav:hover .floating-nav-button {
-    gap: 12px;
-    padding: 0 1px;
-  }
-
-  .floating-nav:hover .floating-nav-icon {
-    flex-basis: 36px;
-    width: 36px;
-    height: 36px;
-  }
-
-  .floating-nav:hover {
-    --floating-nav-effect-size: 36px;
-    --floating-nav-effect-x: 2px;
-  }
-
-  .floating-nav:hover .floating-nav-label {
-    max-width: 80px;
-    margin-right: 0;
-    opacity: 1;
-    transform: translateX(0);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    transition:
-      max-width .28s ease-out,
-      margin-right .28s ease-out,
-      opacity .16s ease .06s,
-      transform .24s ease-out;
-  }
-
-  /* Dock magnification is an icon-dock effect: it scales each <li> without
-     affecting layout, so expanded pills would visually overlap while the bar
-     is fully expanded. Neutralize the motion scale while labels are visible. */
-  .floating-nav:hover .floating-nav-list > li,
-  .floating-nav.floating-nav--collapsing .floating-nav-list > li,
-  .floating-nav:not(:hover) .floating-nav-list > li {
-    transform: none !important;
-    scale: none !important;
-    will-change: auto;
-  }
-
-  .floating-nav-button {
-    transform-origin: center bottom;
-    will-change: transform;
-  }
+.floating-nav-list > li.active .sylva-liquid-plate {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 13%), rgb(255 255 255 / 3%) 48%, transparent 70%),
+    rgb(8 10 8 / 58%);
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 38%),
+    0 12px 24px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    inset 0 0 0 1px rgb(255 255 255 / 9%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .floating-nav,
-  .floating-nav-label,
   .floating-nav-button {
     transition: none;
-    will-change: auto;
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1399px) {
   :root {
     --floating-nav-clearance: 76px;
   }
@@ -206,14 +124,11 @@ html {
   }
 
   .floating-nav {
-    --floating-nav-collapsed-width: calc(100vw - 24px);
     --floating-nav-item-size: 34px;
     --floating-nav-item-gap: 1px;
-    --floating-nav-list-start-padding: 7px;
-    --floating-nav-list-end-padding: 7px;
     top: auto;
     bottom: calc(15px + env(safe-area-inset-bottom));
-    width: var(--floating-nav-collapsed-width);
+    width: min(720px, calc(100vw - 24px));
     min-height: 0;
     height: calc(var(--floating-nav-item-size) + 16px);
     overflow-x: auto;
@@ -221,8 +136,26 @@ html {
   }
 
   .floating-nav .floating-nav-list {
+    width: 100%;
+    min-width: max-content;
     justify-content: space-between;
-    padding: 7px var(--floating-nav-list-end-padding) 7px var(--floating-nav-list-start-padding);
+    padding: 7px;
+  }
+
+  .floating-nav-inner {
+    width: 100%;
+  }
+
+  .floating-nav .floating-nav-button {
+    gap: 0;
+    min-width: var(--floating-nav-item-size);
+    padding: 0;
+  }
+
+  .floating-nav .floating-nav-icon {
+    flex-basis: var(--floating-nav-item-size);
+    width: var(--floating-nav-item-size);
+    height: var(--floating-nav-item-size);
   }
 
   .floating-nav-label {
