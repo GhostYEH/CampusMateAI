@@ -5,7 +5,9 @@ import com.example.campusai.ui.components.GlassTextButton as TextButton
 import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,8 +82,16 @@ private val CpmViolet = Color(0xFF8152F6)
 private val CpmLine = Color(0xFFDDE3FA)
 
 @Composable
-fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
-    val factory = remember(repository) { CounselorViewModelFactory(repository) }
+fun CounselorScreen(
+    repository: AppRepository,
+    initialPrompt: String? = null,
+    courseId: String? = null,
+    courseName: String? = null,
+) {
+    val initialCourse = remember(courseId, courseName) {
+        if (courseId.isNullOrBlank()) null else CpmCourseContext(courseId = courseId, courseName = courseName.orEmpty())
+    }
+    val factory = remember(repository, initialCourse) { CounselorViewModelFactory(repository, initialCourse) }
     val viewModel: CounselorViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
@@ -104,6 +114,14 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraPermissionGranted = granted
+    }
+    // 只读查询后台已生成的交互课堂；未生成时保持空，仅展示提示，绝不触发 OpenMAIC 生成。
+    var classroomUrls by remember(courseId) { mutableStateOf<List<String>>(emptyList()) }
+    val courseContextId = initialCourse?.courseId
+    LaunchedEffect(courseContextId, state.chatActive) {
+        if (!courseContextId.isNullOrBlank() && state.chatActive) {
+            classroomUrls = repository.suggestInteractiveClassroomUrls(courseContextId)
+        }
     }
     LaunchedEffect(initialPrompt) {
         if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
@@ -156,6 +174,15 @@ fun CounselorScreen(repository: AppRepository, initialPrompt: String? = null) {
         expressionPermissionGranted = cameraPermissionGranted,
         expressionStatus = expressionStatus,
         hasUsableExpression = observationActive && CounselorExpressionPolicy.isUsable(expressionResult),
+        courseContext = state.courseContext,
+        classroomUrls = classroomUrls,
+        onOpenClassroom = { url ->
+            if (url.isNotBlank()) {
+                scope.launch {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            }
+        },
         onInputChange = viewModel::updateInput,
         onSend = viewModel::send,
         onAsk = viewModel::send,
@@ -190,6 +217,9 @@ private fun CpmCounselorContent(
     expressionPermissionGranted: Boolean,
     expressionStatus: ExpressionServiceStatus,
     hasUsableExpression: Boolean,
+    courseContext: CpmCourseContext?,
+    classroomUrls: List<String>,
+    onOpenClassroom: (String) -> Unit,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onAsk: (String) -> Unit,
@@ -242,6 +272,20 @@ private fun CpmCounselorContent(
                         exit = fadeOut(tween(if (reduceMotion) 0 else 180)) + shrinkVertically(),
                     ) { CpmHeader(mockMode) }
                 }
+                if (courseContext != null) {
+                    item("course-context") {
+                        CpmCourseContextTag(courseName = courseContext.courseName.ifBlank { courseContext.courseId })
+                    }
+                    val firstUrl = classroomUrls.firstOrNull()
+                    if (!firstUrl.isNullOrBlank()) {
+                        item("course-classroom") {
+                            CpmInteractiveClassroomCard(
+                                courseName = courseContext.courseName,
+                                onOpen = { onOpenClassroom(firstUrl) },
+                            )
+                        }
+                    }
+                }
                 item("expression-status") {
                     ExpressionPrivacyStatus(
                         enabled = expressionEnabled,
@@ -275,6 +319,36 @@ private fun CpmCounselorContent(
                 item("tail") { Spacer(Modifier.height(2.dp)) }
             }
             CpmComposer(state.input, state.sending, onInputChange, onSend)
+        }
+    }
+}
+
+@Composable
+private fun CpmCourseContextTag(courseName: String) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xCCFFFFFF))
+            .border(1.dp, CpmLine, RoundedCornerShape(16.dp)).padding(horizontal = 13.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.AutoAwesome, null, tint = CpmViolet, modifier = Modifier.size(16.dp))
+        Text("  正在围绕《$courseName》为你解答", color = TextPrimary, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun CpmInteractiveClassroomCard(courseName: String, onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xF2FFF8F0))
+            .border(1.dp, Color(0xFFF2D9B8), RoundedCornerShape(16.dp)).padding(13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFE28A3C), modifier = Modifier.size(18.dp))
+        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+            Text("已生成互动课堂", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("「$courseName」的互动课堂已在后台生成，可在外置浏览器打开。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        }
+        TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            Text("打开", color = Color(0xFFB26A1F), fontSize = 12.sp)
         }
     }
 }

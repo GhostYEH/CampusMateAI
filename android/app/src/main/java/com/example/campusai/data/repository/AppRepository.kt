@@ -1202,7 +1202,7 @@ class AppRepository(
         dataStore.saveSession(user)
     }
 
-    suspend fun chat(message: String, expression: ExpressionResult? = null): String {
+    suspend fun chat(message: String, expression: ExpressionResult? = null, courseId: String? = null): String {
         if (_backendOnline.value && !_mockMode.value) {
             val expressionSignal = expression
                 ?.let { CounselorExpressionPolicy.usableOrNull(it) }
@@ -1220,6 +1220,7 @@ class AppRepository(
                     message = message,
                     session_id = "android-${_session.value?.name ?: "anonymous"}",
                     stream = false,
+                    course_id = courseId,
                     expression_signal = expressionSignal,
                 ),
             )
@@ -1238,6 +1239,7 @@ class AppRepository(
     suspend fun streamChat(
         message: String,
         expression: ExpressionResult? = null,
+        courseId: String? = null,
         onChunk: suspend (String) -> Unit,
     ) {
         if (_mockMode.value) {
@@ -1260,10 +1262,28 @@ class AppRepository(
                 message = message,
                 session_id = "android-${_session.value?.name ?: "anonymous"}",
                 stream = true,
+                course_id = courseId,
                 expression_signal = expressionSignal,
             ),
             onChunk = onChunk,
         )
+    }
+
+    /**
+     * 只读查询后端已为该课程生成的交互课堂 URL，不触发 OpenMAIC 生成。
+     * 后端不可用或尚未生成时返回空列表，调用方据此只展示提示而不打开播放器。
+     */
+    suspend fun suggestInteractiveClassroomUrls(courseId: String): List<String> {
+        if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
+            return try {
+                val resp = ApiClient.api.getInteractiveClassroom(courseId)
+                if (resp.isSuccessful) resp.body()?.existingClassroomUrls() ?: emptyList()
+                else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+        return emptyList()
     }
 
     suspend fun extractNotice(text: String): ExtractResult {

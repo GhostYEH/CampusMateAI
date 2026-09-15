@@ -270,16 +270,30 @@ fun AppNavHost(
             )
         }
         composable(
-            route = "counselor?prompt={prompt}",
-            arguments = listOf(navArgument("prompt") {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            }),
+            route = "counselor?prompt={prompt}&courseId={courseId}&courseName={courseName}",
+            arguments = listOf(
+                navArgument("prompt") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("courseId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("courseName") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
         ) { backStackEntry ->
             CounselorScreen(
                 repository = repository,
                 initialPrompt = backStackEntry.arguments?.getString("prompt"),
+                courseId = backStackEntry.arguments?.getString("courseId"),
+                courseName = backStackEntry.arguments?.getString("courseName"),
             )
         }
         // Historical study links now enter the one official Focus timer; no second timer exists.
@@ -292,7 +306,15 @@ fun AppNavHost(
             }
         }
         composable("courses") {
-            CoursesScreen(repository, onOpenSchedule = { go(courseScheduleRoute()) })
+            CoursesScreen(
+                repository,
+                onOpenSchedule = { go(courseScheduleRoute()) },
+                onOpenCounselor = { courseId, courseName, initialPrompt ->
+                    go(
+                        "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
+                    )
+                },
+            )
         }
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }

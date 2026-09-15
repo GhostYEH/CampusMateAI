@@ -120,6 +120,8 @@ export async function getDashboard() { return dataOf(await client.get("/dashboar
 export async function getCourses(params = {}) { return dataOf(await client.get("/courses", { params: { page_size: 100, ...params } })); }
 export async function getClasses(courseId) { return dataOf(await client.get("/classes", { params: { page_size: 100, ...(courseId ? { course_id: courseId } : {}) } })); }
 
+export async function getCourse(courseId) { return dataOf(await client.get(`/courses/${courseId}`)); }
+
 export async function getCourseDetail(courseId) {
   const [course, classes, summary, content] = await Promise.all([
     client.get(`/courses/${courseId}`),
@@ -278,12 +280,51 @@ export async function loginChaoxing(username, password) {
 export async function syncChaoxing() { return dataOf(await client.post("/chaoxing/sync", {}, { timeout: 120000 })); }
 export async function disconnectChaoxing() { return dataOf(await client.post("/chaoxing/disconnect")); }
 
-export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [] } = {}) {
+// ===== 课程智能辅导空间（OpenMAIC 学生侧互动课堂）=====
+// 只能经 CampusMate 后端触达 OpenMAIC，不直连、不在前端保存任何 OpenMAIC 访问资料。
+
+/**
+ * 查询互动课堂能力状态。未配置服务 / 请求失败时不抛出 —— 返回 enabled:false，
+ * 让课程详情其余标签不受影响。unavailable 标记请求层面的不可用。
+ */
+export async function getInteractiveClassroomStatus(courseId) {
+  try {
+    return dataOf(await client.get(`/courses/${courseId}/interactive-classroom/status`));
+  } catch (error) {
+    return { enabled: false, unavailable: true, reason: error?.message || "服务暂不可用" };
+  }
+}
+
+/** 提交一次课堂生成，返回 202 与初始 session（含 session_id / poll_interval_ms）。 */
+export async function generateInteractiveClassroom(courseId, payload) {
+  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/generate`, { mode: payload.mode, ...(payload.learning_objective ? { learning_objective: payload.learning_objective } : {}) }));
+}
+
+/** 轮询生成进度（服务端会现场轮询一次 OpenMAIC 后返回）。 */
+export async function getInteractiveClassroomJob(courseId, sessionId) {
+  return dataOf(await client.get(`/courses/${courseId}/interactive-classroom/jobs/${sessionId}`));
+}
+
+/** 列出该课程已生成的课堂。 */
+export async function listInteractiveClassrooms(courseId) {
+  return dataOf(await client.get(`/courses/${courseId}/interactive-classroom`));
+}
+
+/** 失败时重试生成。 */
+export async function retryInteractiveClassroom(courseId, sessionId, payload) {
+  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...(payload.learning_objective ? { learning_objective: payload.learning_objective } : {}) }));
+}
+
+export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null } = {}) {
   try {
     const token = localStorage.getItem("campus_access_token");
     const response = await fetch(`${BASE_URL}/counselor/chat`, {
       method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ message, stream: true, web_search: webSearch, attachment, recent_tasks: recentTasks, ...(conversationId ? { conversation_id: conversationId } : {}) }), signal,
+      body: JSON.stringify({
+        message, stream: true, web_search: webSearch, attachment, recent_tasks: recentTasks,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+        ...(courseId ? { course_id: courseId } : {}),
+      }), signal,
     });
     if (!response.ok) throw new Error(`服务器错误 (${response.status})`);
     const reader = response.body?.getReader();

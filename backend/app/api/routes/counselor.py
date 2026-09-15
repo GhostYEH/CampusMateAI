@@ -167,10 +167,14 @@ def _collect_teaching_context(
             if not any(e["course_id"] == c.id for e in enrolls):
                 warnings.append(f"无权访问课程 {c.name},已忽略")
             else:
-                parts.append(
-                    f"[课程上下文] {c.name} ({c.code or '无代码'}) 学期:{c.semester or '未指定'}\n"
-                    f"  课程描述: {c.description or '(无)'}"
-                )
+                # 富课程上下文：章节/作业/互动课堂存在状态(权限内、后端重查)
+                from ...services.openmaic.course_context import build_cpm_course_block
+                try:
+                    block = build_cpm_course_block(container, user, c)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("CPM 课程上下文构建失败: {}", type(exc).__name__)
+                    block = f"[课程上下文] {c.name} ({c.code or '无代码'}) 学期:{c.semester or '未指定'}"
+                parts.append(block)
                 context_used["course_id"] = c.id
                 context_used["course_name"] = c.name
 

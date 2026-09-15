@@ -13,14 +13,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 fun interface CpmChatStreamer {
-    suspend fun stream(question: String, expression: ExpressionResult?, onChunk: (String) -> Unit)
+    suspend fun stream(question: String, expression: ExpressionResult?, courseId: String?, onChunk: (String) -> Unit)
 }
 
 class CounselorViewModel(
     private val streamer: CpmChatStreamer,
     private val clock: () -> Long = System::currentTimeMillis,
+    initialCourse: CpmCourseContext? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(CpmCounselorUiState())
+    private val _uiState = MutableStateFlow(
+        if (initialCourse != null) CpmCounselorUiState().copy(courseContext = initialCourse)
+        else CpmCounselorUiState(),
+    )
     val uiState: StateFlow<CpmCounselorUiState> = _uiState.asStateFlow()
     private var expression: ExpressionResult? = null
 
@@ -30,16 +34,27 @@ class CounselorViewModel(
         expression = value
     }
 
+    /**
+     * 新建普通会话：清空课程上下文，避免上一个课程的旧 courseId 泄漏到
+     * 来源中不含课程的新会话。
+     */
+    fun startPlainSession() {
+        if (_uiState.value.courseContext != null || _uiState.value.chatActive) {
+            _uiState.value = CpmCounselorUiState()
+        }
+    }
+
     fun send(prompt: String = _uiState.value.input) {
         val question = prompt.trim()
         if (question.isEmpty() || _uiState.value.sending) return
         val submitted = CpmCounselorStateReducer.submit(_uiState.value, question, clock())
         val assistantId = submitted.messages.last().id
+        val sentCourseId = submitted.courseContext?.courseId
         _uiState.value = submitted
         viewModelScope.launch {
             try {
                 var received = false
-                streamer.stream(question, expression) { chunk ->
+                streamer.stream(question, expression, sentCourseId) { chunk ->
                     if (chunk.isNotEmpty()) {
                         received = true
                         _uiState.update { CpmCounselorStateReducer.appendChunk(it, assistantId, chunk) }
@@ -75,15 +90,20 @@ class CounselorViewModel(
     }
 }
 
-class CounselorViewModelFactory(private val repository: AppRepository) : ViewModelProvider.Factory {
+class CounselorViewModelFactory(
+    private val repository: AppRepository,
+    private val initialCourse: CpmCourseContext? = null,
+) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = CounselorViewModel(
-        streamer = CpmChatStreamer { question, expression, onChunk ->
+        streamer = CpmChatStreamer { question, expression, courseId, onChunk ->
             repository.streamChat(
                 message = question,
                 expression = expression,
+                courseId = courseId,
                 onChunk = { chunk -> onChunk(chunk) },
             )
         },
+        initialCourse = initialCourse,
     ) as T
 }

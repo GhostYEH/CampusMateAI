@@ -14,6 +14,7 @@ import "./styles/learning-state.css";
 import "./styles/prediction.css";
 import "./styles/agent-workspaces.css";
 import "./styles/agent-ops.css";
+import "./styles/interactive-classroom.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

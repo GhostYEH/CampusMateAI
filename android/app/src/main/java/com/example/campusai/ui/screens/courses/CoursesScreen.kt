@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
@@ -98,7 +99,11 @@ private val CourseGreen = Color(0xFF37B89B)
 private val CoursePurple = Color(0xFF9369E8)
 
 @Composable
-fun CoursesScreen(repository: AppRepository, onOpenSchedule: () -> Unit = {}) {
+fun CoursesScreen(
+    repository: AppRepository,
+    onOpenSchedule: () -> Unit = {},
+    onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit = { _, _, _ -> },
+) {
     val courses by repository.courses.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
@@ -192,7 +197,7 @@ fun CoursesScreen(repository: AppRepository, onOpenSchedule: () -> Unit = {}) {
     }
 
     selectedCourse?.let { course ->
-        CourseDetailSheet(course = course, repository = repository, onDismiss = { selectedCourse = null })
+        CourseDetailSheet(course = course, repository = repository, onDismiss = { selectedCourse = null }, onOpenCounselor = onOpenCounselor)
     }
 }
 
@@ -501,7 +506,12 @@ private fun EmptyCourses() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismiss: () -> Unit) {
+private fun CourseDetailSheet(
+    course: Course,
+    repository: AppRepository,
+    onDismiss: () -> Unit,
+    onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var summary by remember(course.id) { mutableStateOf<CourseContentSummaryDto?>(null) }
@@ -559,6 +569,27 @@ private fun CourseDetailSheet(course: Course, repository: AppRepository, onDismi
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
+            item {
+                Button(
+                    onClick = {
+                        onOpenCounselor(
+                            course.id,
+                            course.name,
+                            "请结合《${course.name}》这门课的内容，帮我梳理一下本课程的学习重点、难点和复习方法。",
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF385AF6),
+                        contentColor = Color.White,
+                    ),
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("问 CPM · 围绕本课程学习", fontWeight = FontWeight.Bold)
+                }
+            }
             item {
                 Button(
                 onClick = {

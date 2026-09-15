@@ -43,6 +43,7 @@ from .routes import (
     agent_observability,
     final_review,
     course_research,
+    openmaic_classroom,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -108,5 +109,7 @@ api_router.include_router(course_research.router)
 # 否则会产生重复的 OpenAPI operationId。
 # CampusMate EduConnector — 高校教务系统统一连接层
 api_router.include_router(edu.router)
+# OpenMAIC 互动课堂适配层(学生侧课程智能辅导空间)
+api_router.include_router(openmaic_classroom.router)
 
 __all__ = ["api_router"]

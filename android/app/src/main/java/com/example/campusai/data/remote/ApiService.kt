@@ -32,6 +32,7 @@ import com.example.campusai.data.remote.agent.NoticeWorkflowCreateRequest
 import com.example.campusai.data.remote.agent.NoticeWorkflowDto
 import com.example.campusai.data.remote.agent.NotificationSourceDto
 import com.example.campusai.data.remote.agent.NotificationSourcePatchRequest
+import com.squareup.moshi.Json
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.ResponseBody
@@ -52,6 +53,7 @@ data class ChatRequest(
     val message: String,
     val session_id: String = "android-session",
     val stream: Boolean = false,
+    @Json(name = "course_id") val course_id: String? = null,
     val expression_signal: ExpressionSignalRequest? = null,
 )
 data class ChatResponse(val answer: String? = null, val message: String? = null)
@@ -609,6 +611,17 @@ data class CourseContentPageDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
+// ── 交互课堂（后台已生成；仅查询已存在的课堂，不触发 OpenMAIC 生成）──
+data class InteractiveClassroomItemDto(
+    @Json(name = "url") val url: String? = null,
+)
+data class InteractiveClassroomDto(
+    @Json(name = "enabled") val enabled: Boolean = false,
+    @Json(name = "items") val items: List<InteractiveClassroomItemDto> = emptyList(),
+) {
+    fun existingClassroomUrls(): List<String> = if (enabled) items.mapNotNull { it.url } else emptyList()
+}
+
 // ── 课程知识点掌握（学习通课程图谱页观测，非本地推断）──
 data class KnowledgePointDto(
     val external_id: String,
@@ -1086,6 +1099,12 @@ interface ApiService {
     suspend fun getCourseKnowledgeGraph(
         @Path("courseId") courseId: String,
     ): Response<CourseKnowledgeGraphDto>
+
+    // 查询后端已生成的交互课堂（只读，绝不调用 OpenMAIC 生成）
+    @GET("courses/{courseId}/interactive-classroom")
+    suspend fun getInteractiveClassroom(
+        @Path("courseId") courseId: String,
+    ): Response<InteractiveClassroomDto>
 
     @GET("courses/{courseId}/resources/{itemId}/open")
     suspend fun openCourseResource(

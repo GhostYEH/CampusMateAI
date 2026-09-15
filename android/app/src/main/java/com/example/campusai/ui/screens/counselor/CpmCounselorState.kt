@@ -19,6 +19,12 @@ data class CpmChatMessage(
     val errorMessage: String? = null,
 )
 
+/** 进入 CPM 时携带的课程上下文；仅用于把 course_id 传给后端，不本地落盘。 */
+data class CpmCourseContext(
+    val courseId: String,
+    val courseName: String = "",
+)
+
 data class CpmPrompt(
     val id: String,
     val label: String,
@@ -51,6 +57,7 @@ data class CpmCounselorUiState(
     val speechText: String = "",
     val speechRequestId: Int = 0,
     val lastCompletedAnswer: String = "",
+    val courseContext: CpmCourseContext? = null,
     val playbackCommand: DigitalHumanCommand = DigitalHumanCommand.NONE,
     val playbackCommandId: Int = 0,
 ) {

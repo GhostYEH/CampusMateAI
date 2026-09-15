@@ -1,0 +1,67 @@
+/* 课程智能辅导空间（OpenMAIC 学生互动课堂）+ CPM 课程上下文 */
+
+.interactive-panel .interactive-panel-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; justify-content: space-between; }
+.interactive-ask-cpm { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.interactive-state { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 28px 16px; }
+.interactive-state .interactive-state-icon { color: var(--muted, #7a7f8c); }
+.interactive-state h3 { margin: 0; font-size: 1.05rem; }
+.interactive-state p { margin: 0; color: var(--muted, #7a7f8c); font-size: 0.92rem; max-width: 46ch; }
+.interactive-loading { display: flex; gap: 10px; align-items: center; color: var(--muted, #7a7f8c); }
+
+.interactive-modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-block: 6px 14px; }
+.interactive-modes button { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; border: 1px solid var(--line-weak, rgba(0,0,0,0.1)); border-radius: 12px; padding: 14px; background: transparent; cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+.interactive-modes button:hover { transform: translateY(-2px); }
+.interactive-modes button.active { border-color: var(--accent, #3168da); background: color-mix(in srgb, var(--accent, #3168da) 8%, transparent); }
+.interactive-modes button strong { font-size: 0.96rem; }
+.interactive-modes button small { color: var(--muted, #7a7f8c); line-height: 1.4; }
+.interactive-modes button svg { color: var(--accent, #3168da); }
+
+.interactive-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.interactive-actions.interactive-primary { margin-bottom: 8px; }
+.interactive-objective { display: inline-flex; flex-direction: column; gap: 3px; }
+.interactive-objective span { font-size: 0.75rem; color: var(--muted, #7a7f8c); }
+.interactive-objective input { border: 1px solid var(--line-weak, rgba(0,0,0,0.15)); border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; min-width: 240px; }
+.interactive-objective input:disabled { opacity: 0.55; }
+
+.interactive-error { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--danger, #c0392b); background: color-mix(in srgb, var(--danger, #c0392b) 8%, transparent); padding: 10px 12px; border-radius: 8px; }
+.interactive-hint { color: var(--muted, #7a7f8c); font-size: 0.85rem; }
+
+.interactive-list { margin-top: 14px; }
+.interactive-list h3 { font-size: 0.9rem; margin-bottom: 8px; }
+.interactive-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-weak, rgba(0,0,0,0.08)); border-radius: 10px; margin-bottom: 8px; }
+
+.interactive-progress { padding: 18px 16px; }
+.interactive-progress-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.interactive-progress-head span { font-weight: 600; }
+.interactive-progress-head strong { color: var(--accent, #3168da); }
+.interactive-progress p { color: var(--muted, #7a7f8c); font-size: 0.9rem; margin: 10px 0 12px; }
+.mastery-track { height: 8px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.mastery-track span { display: block; height: 100%; background: var(--accent, #3168da); border-radius: 999px; transition: width .3s ease; }
+
+.interactive-result { display: flex; flex-direction: column; gap: 10px; }
+.interactive-result-bar { position: relative; width: 100%; height: min(68vh, 620px); border-radius: 14px; overflow: hidden; border: 1px solid var(--line-weak, rgba(0,0,0,0.12)); background: #0d0f17; }
+.interactive-frame { width: 100%; height: 100%; border: 0; display: block; }
+.interactive-fallback { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #cfd3de; text-align: center; padding: 20px; }
+.interactive-fallback h3 { margin: 0; color: #fff; }
+.interactive-fallback p { margin: 0; color: #aab0bd; max-width: 52ch; }
+.interactive-result-controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+/* CPM 课程上下文标签 */
+.counselor-course-context { display: flex; align-items: center; gap: 10px; margin: 14px auto 4px; max-width: var(--content-max, 1180px); padding: 10px 14px; width: min(100% - 32px, 1180px); border: 1px solid var(--line-weak, rgba(49,104,218,0.35)); background: color-mix(in srgb, #3168da 8%, transparent); border-radius: 12px; }
+.counselor-course-context > svg { color: var(--accent, #3168da); flex-shrink: 0; }
+.counselor-course-context span { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.counselor-course-context strong { font-size: 0.92rem; }
+.counselor-course-context small { color: var(--muted, #7a7f8c); font-size: 0.78rem; }
+.counselor-course-context button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--accent, #3168da); cursor: pointer; font-size: 0.85rem; font-weight: 600; padding: 6px 8px; border-radius: 8px; }
+.counselor-course-context button:hover { background: color-mix(in srgb, #3168da 12%, transparent); }
+
+/* 响应式：平板以下放宽 ime 列宽，桌面 3 列完全铺开 */
+@media (max-width: 900px) {
+  .interactive-modes { grid-template-columns: repeat(2, 1fr); }
+  .interactive-result-bar { height: 48vh; }
+}
+@media (max-width: 560px) {
+  .interactive-modes { grid-template-columns: 1fr; }
+  .interactive-objective input { min-width: 160px; width: 100%; box-sizing: border-box; }
+  .counselor-course-context { flex-direction: column; align-items: flex-start; gap: 8px; }
+}

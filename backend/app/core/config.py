@@ -141,6 +141,33 @@ class Settings(BaseSettings):
     volc_seeduplex_api_key: str = ""
     volc_seeduplex_ws_url: str = "wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue"
 
+    # ===== OpenMAIC 互动课堂生成 =====
+    # 默认安全关闭；未启用或未配置 OPENMAIC_BASE_URL 时，所有互动课堂接口
+    # 返回明确的"服务未启用"状态，不影响课程详情与 CPM 基础聊天。
+    openmaic_enabled: bool = False
+    openmaic_base_url: str = ""
+    # 提交/轮询单次请求超时(秒)
+    openmaic_request_timeout_seconds: float = 30.0
+    # 课程上下文送入生成 requirements 的最大字符数(防隐私/体积爆炸)
+    openmaic_course_context_max_chars: int = 4000
+    # 同一课程最多保留的生成课堂记录数(超出后丢弃最早的已结束记录)
+    openmaic_max_results_per_course: int = 20
+
+    @property
+    def openmaic_available(self) -> bool:
+        return self.openmaic_enabled and bool(self.openmaic_base_url)
+
+    @property
+    def openmaic_origin(self) -> str:
+        """从 OPENMAIC_BASE_URL 推导唯一允许的课堂 URL Origin。
+
+        仅接受与已配置 Origin 完全一致的返回 URL，防止恶意跳转到其他地址。
+        """
+        parsed = urlparse(self.openmaic_base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        return f"{parsed.scheme}://{parsed.netloc}"
+
     # ===== CORS =====
     # 用字符串表示，逗号分隔；通过 cors_origins_list 属性解析为 List[str]
     # (避免 pydantic-settings 把 List[str] 当复杂类型尝试 JSON 解析)
@@ -314,6 +341,14 @@ class Settings(BaseSettings):
         # ===== production 强约束 =====
         # 正式 Release 不得启用测试环境数据 seeding
         # 不得依赖 DEMO_MODE / USE_MOCK_BACKEND 等开关返回模拟业务数据
+        if self.openmaic_enabled:
+            parsed = urlparse(self.openmaic_base_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise ValueError(
+                    "OPENMAIC_BASE_URL must be a safe HTTP(S) origin without credentials/query/fragment"
+                )
+            if self.openmaic_request_timeout_seconds < 1:
+                raise ValueError("OPENMAIC_REQUEST_TIMEOUT_SECONDS must be positive")
         if self.app_env == "production":
             if self.jwt_secret == "campusmate_dev_secret_change_in_production" or len(self.jwt_secret) < 32:
                 raise ValueError(

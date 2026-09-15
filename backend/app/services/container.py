@@ -95,6 +95,9 @@ from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
 from ..services.course_research.citation_verifier import CitationVerifier
 from ..services.course_research.source_fetcher import ControlledSourceFetcher
+from ..services.openmaic.client import OpenMAICClient
+from ..services.openmaic.classroom_service import OpenMAICClassroomService
+from ..services.openmaic.result_store import OpenMAICResultStore
 from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
@@ -190,6 +193,9 @@ class ServiceContainer:
     final_review_service: FinalReviewService
     course_research_repository: CourseResearchRepository
     course_research_pipeline: CourseResearchPipeline
+    # OpenMAIC 互动课堂适配层
+    openmaic_result_store: OpenMAICResultStore
+    openmaic_classroom_service: OpenMAICClassroomService
     notice_workflow_repository: NoticeWorkflowRepository
     notice_workflow_service: NoticeWorkflowService
     # QR 扫码登录与可信设备
@@ -206,6 +212,17 @@ class ServiceContainer:
 
 
 _container: Optional[ServiceContainer] = None
+
+
+def _openmaic_store_dir(settings: Settings) -> Path:
+    """OpenMAIC 课堂会话存储目录，紧随数据库文件目录，保证各环境隔离。"""
+    if settings.database_path is not None:
+        base = settings.database_path.parent
+    else:
+        base = Path(__file__).resolve().parents[2] / "data"
+    path = base / "openmaic_classrooms"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
@@ -431,6 +448,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
     )
+    openmaic_result_store = OpenMAICResultStore(_openmaic_store_dir(settings))
+    openmaic_classroom_service = OpenMAICClassroomService(
+        settings=settings,
+        store=openmaic_result_store,
+    )
     container = ServiceContainer(
         settings=settings,
         db=db,
@@ -514,6 +536,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             course_content_lookup=course_content_repository,
             retrieval_service=retrieval,
         ),
+        openmaic_result_store=openmaic_result_store,
+        openmaic_classroom_service=openmaic_classroom_service,
         notice_workflow_repository=notice_workflow_repository,
         notice_workflow_service=NoticeWorkflowService(
             repository=notice_workflow_repository,

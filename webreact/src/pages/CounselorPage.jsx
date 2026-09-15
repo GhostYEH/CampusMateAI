@@ -26,6 +26,14 @@ const actionSuggestions = [
   ["更多建议", "PhSquaresFour"],
 ];
 const sampleQuestion = "期末考试周的复习计划应该怎么安排更高效？";
+// 课程上下文下的动态推荐问题：只做通用措辞，不冒充真实的掌握状态。
+const courseContextSuggestions = [
+  "讲解这门课当前最重要的知识点",
+  "根据我的掌握情况安排复习",
+  "帮我设计一次可视化学习",
+  "为这门课生成自测",
+  "哪些内容适合用互动课堂学习",
+];
 const sampleAnswer = `期末考试周的复习建议如下，结合近期课程安排与常见复习方法，帮助你高效备考：
 
 1. **制定复习计划：** 按科目和难度分配时间，优先复习高难度与高分值内容。
@@ -74,7 +82,10 @@ function sessionTime(item) {
 
 export default function CounselorPage() {
   const { reduceMotion } = useApp();
-  const [messages, setMessages] = useState(() => [{ role: "user", text: sampleQuestion }, { role: "assistant", text: sampleAnswer }]);
+  const [messages, setMessages] = useState(() => {
+    const hasInitialPrompt = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("prompt");
+    return hasInitialPrompt ? [] : [{ role: "user", text: sampleQuestion }, { role: "assistant", text: sampleAnswer }];
+  });
   const [sources, setSources] = useState(sampleSources);
   const [sessions, setSessions] = useState(readSessions);
   const [conversationId, setConversationId] = useState("sample-main");
@@ -97,6 +108,18 @@ export default function CounselorPage() {
   const { stop: stopSpeech, speak: speakSpeech } = digitalHuman;
   const suggestions = suggestionSets[suggestionPage];
   const recentTasksRef = useRef([]);
+  // 课程辅导上下文：从 URL 查询参数读取（?course=<id>&prompt=<初始问题>）。
+  const [courseId, setCourseId] = useState(() => new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("course") || null);
+  const [courseName, setCourseName] = useState("");
+
+  useEffect(() => {
+    if (!courseId) { setCourseName(""); return; }
+    let alive = true;
+    api.getCourse(courseId).then((data) => { if (alive) setCourseName(data?.name || data?.title || ""); }).catch(() => { if (alive) setCourseName(""); });
+    return () => { alive = false; };
+  }, [courseId]);
+
+  const exitCourseContext = () => { setCourseId(null); setCourseName(""); stopSpeech(); if (typeof window !== "undefined" && window.history) { const url = new URL(window.location.href); url.searchParams.delete("course"); url.searchParams.delete("prompt"); window.history.replaceState({}, "", url); } setNotice("已退出课程辅导"); };
 
   useEffect(() => {
     let alive = true;
@@ -140,6 +163,7 @@ export default function CounselorPage() {
     try {
       await api.chatStream(text, {
         conversationId: id,
+        courseId: courseId || undefined,
         recentTasks: recentTasksRef.current,
         webSearch: webSearchEnabled,
         attachment,
@@ -163,7 +187,7 @@ export default function CounselorPage() {
         },
       });
     } finally { setSending(false); aborter.current = null; }
-  }, [attachment, conversationId, input, messages, persistSession, sending, speakSpeech, stopSpeech, webSearchEnabled]);
+  }, [attachment, conversationId, input, messages, persistSession, sending, speakSpeech, stopSpeech, webSearchEnabled, courseId]);
 
   useEffect(() => {
     const prompt = new URLSearchParams(window.location.search).get("prompt");
@@ -192,10 +216,11 @@ export default function CounselorPage() {
   return <main className="counselor-reference">
     <section className="counselor-reference-hero"><RippleDistortion className="counselor-ripple" src="/assets/counselor-campus-hero-reference.png" brushSize={110} strength={0.2} swirl={0.7} rings={4} spacing={8} glint={0.35} tint="#3168da" tintAmount={0.12} grayscale={false} highlightColor="#b9f4ff" trigger="both" quality="medium" enabled={!reduceMotion} /><div className="counselor-reference-hero-wash" /><div className="counselor-reference-hero-copy"><span className="counselor-hero-kicker">CAMPUS INTELLIGENCE · READY TO HELP</span><div className="counselor-reference-title"><h1>AI校园助手</h1><Icon name="PhSparkle" size={31} /></div><p>你的专属校园智能伙伴，随时为你解答疑问，<br />提供学习与生活的贴心帮助。</p></div></section>
     {notice && <div className="counselor-toast" role="status"><Icon name="PhInfo" size={16} />{notice}</div>}
+    {courseId && <div className="counselor-course-context" role="status"><Icon name="PhBookOpen" size={18} /><span><strong>当前正在辅导：{courseName || "该课程"}</strong><small>{courseId} · 已定向到课程上下文</small></span><button type="button" onClick={exitCourseContext}><Icon name="PhX" size={14} />退出课程辅导</button></div>}
     <section className="counselor-reference-grid">
       <aside className="counselor-reference-left">
         <section className="counselor-panel history-panel counselor-session-panel"><div className="counselor-panel-head"><h2>会话记录</h2><button className="new-chat" type="button" onClick={newSession}><Icon name="PhPlus" size={16} />新建对话</button></div><div className="reference-session-list">{displaySessions.map((session) => <button type="button" key={session.id} className={session.id === conversationId ? "active" : ""} onClick={() => restoreSession(session)}><Icon name="PhChatCircleText" size={15} /><strong>{session.title}</strong><small>{sessionTime(session)}</small></button>)}</div><button className="all-history" type="button" onClick={() => setShowAllSessions((value) => !value)}>{showAllSessions ? "收起记录" : "查看全部记录"}<Icon name={showAllSessions ? "PhCaretDown" : "PhCaretRight"} size={14} /></button></section>
-        <section className="counselor-panel recommendations-panel"><div className="counselor-panel-head"><h2>推荐问题</h2><button className="switch-link" type="button" onClick={() => setSuggestionPage((value) => (value + 1) % suggestionSets.length)}>换一换 <Icon name="PhArrowClockwise" size={15} /></button></div><div className="reference-question-list">{suggestions.map((question) => <button type="button" key={question} onClick={() => send(question)}><Icon name="PhQuestion" size={14} /><span>{question}</span></button>)}</div></section>
+        <section className="counselor-panel recommendations-panel"><div className="counselor-panel-head"><h2>{courseId ? "课程学习建议" : "推荐问题"}</h2><button className="switch-link" type="button" onClick={() => setSuggestionPage((value) => (value + 1) % suggestionSets.length)}>{courseId ? "换一批" : "换一换"} <Icon name="PhArrowClockwise" size={15} /></button></div><div className="reference-question-list">{(courseId ? courseContextSuggestions : suggestions).map((question) => <button type="button" key={question} onClick={() => send(question)}><Icon name="PhQuestion" size={14} /><span>{question}</span></button>)}</div></section>
       </aside>
       <section className="counselor-panel reference-chat-panel counselor-chat-panel"><header className="reference-chat-heading"><span className="reference-heading-avatar"><Icon name="PhRobot" size={20} /></span><div><h2>智能对话</h2><p>随时为你解答学习、生活、考试等各类问题</p></div><button type="button" className={deepThinking ? "reference-deep-thinking active" : "reference-deep-thinking"} aria-pressed={deepThinking} onClick={() => { setDeepThinking((value) => !value); setNotice(deepThinking ? "深度思考已关闭" : "深度思考已开启"); }}><Icon name="PhSparkle" size={15} />深度思考<Icon name="PhCaretDown" size={13} /></button><button type="button" className="reference-more" aria-label="更多对话选项"><Icon name="PhDotsThree" size={20} /></button></header><div ref={chatRef} className="reference-chat-messages">{!messages.length && <div className="empty-conversation"><span className="assistant-face"><Icon name="PhRobot" size={22} /></span><h2>开始一段新对话</h2><p>告诉我你想了解的校园问题，我会尽力帮你。</p></div>}{messages.map((message, index) => <div className={`reference-message ${message.role}`} key={`${conversationId}-${index}`}><div className="reference-avatar"><Icon name={message.role === "user" ? "PhUser" : "PhRobot"} size={19} /></div><div className="reference-bubble"><div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }} />{message.streaming && <span className="typing-cursor">▍</span>}{message.role === "assistant" && index === messages.length - 1 && message.text && sources.length > 0 && <div className="reference-sources"><span>相关来源：</span>{sources.map((source) => <button type="button" key={source.document_id || source.title} onClick={() => copyText(source.title || source.document_title || "引用来源", "来源标题已复制")}>{source.title || source.document_title || "知识库资料"}<Icon name="PhArrowUpRight" size={12} /></button>)}</div>}</div></div>)}</div>
         <div className="reference-action-row">{actionSuggestions.map(([label, icon]) => <button type="button" key={label} onClick={() => send(label)}><Icon name={icon} size={18} />{label}</button>)}</div>

@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -26,7 +27,7 @@ class CounselorViewModelTest {
     fun `send publishes every chunk before completion and queues final speech`() = runTest(dispatcher) {
         val finish = CompletableDeferred<Unit>()
         val viewModel = CounselorViewModel(
-            streamer = CpmChatStreamer { _, _, emit ->
+            streamer = CpmChatStreamer { _, _, _, emit ->
                 emit("实时")
                 finish.await()
                 emit("回答")
@@ -55,7 +56,7 @@ class CounselorViewModelTest {
     fun `retry resends the last user prompt after an error`() = runTest(dispatcher) {
         var attempts = 0
         val viewModel = CounselorViewModel(
-            streamer = CpmChatStreamer { _, _, emit ->
+            streamer = CpmChatStreamer { _, _, _, emit ->
                 attempts += 1
                 if (attempts == 1) throw IllegalStateException("offline")
                 emit("重试成功")
@@ -72,5 +73,61 @@ class CounselorViewModelTest {
 
         assertEquals(2, attempts)
         assertEquals("重试成功", viewModel.uiState.value.messages.last().content)
+    }
+
+    @Test
+    fun `plain chat sends null courseId and keeps no course context`() = runTest(dispatcher) {
+        var sentCourseId: String? = "not-sent"
+        val viewModel = CounselorViewModel(
+            streamer = CpmChatStreamer { _, _, courseId, emit ->
+                sentCourseId = courseId
+                emit("你好")
+            },
+            clock = { 1L },
+        )
+        viewModel.updateInput("普通问题")
+        viewModel.send()
+        advanceUntilIdle()
+
+        assertNull(sentCourseId)
+        assertNull(viewModel.uiState.value.courseContext)
+    }
+
+    @Test
+    fun `course session keeps courseId and forwards it to streaming chat`() = runTest(dispatcher) {
+        var sentCourseId: String? = null
+        val course = CpmCourseContext(courseId = "course-42", courseName = "数据结构")
+        val viewModel = CounselorViewModel(
+            streamer = CpmChatStreamer { _, _, courseId, emit ->
+                sentCourseId = courseId
+                emit("围绕课程回答")
+            },
+            clock = { 2L },
+            initialCourse = course,
+        )
+        viewModel.updateInput("请讲解链表")
+        viewModel.send()
+        runCurrent()
+        val second = sentCourseId
+        viewModel.send("再问一次")
+        advanceUntilIdle()
+
+        assertEquals("course-42", viewModel.uiState.value.courseContext?.courseId)
+        assertEquals("course-42", second)
+        assertEquals("course-42", sentCourseId)
+    }
+
+    @Test
+    fun `starting a new plain session clears old courseId`() = runTest(dispatcher) {
+        val viewModel = CounselorViewModel(
+            streamer = CpmChatStreamer { _, _, _, emit -> emit("ok") },
+            clock = { 3L },
+            initialCourse = CpmCourseContext(courseId = "course-9", courseName = "高数"),
+        )
+        assertTrue(viewModel.uiState.value.courseContext != null)
+
+        viewModel.startPlainSession()
+
+        assertNull(viewModel.uiState.value.courseContext)
     }
 }
