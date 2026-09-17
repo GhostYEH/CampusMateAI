@@ -18,6 +18,7 @@ export struct FocusSessionPage {
   @Prop assistDetail: string = '';
   @Prop assistLabel: string = '';
   @Prop assistConfidence: number = 0;
+  @Prop behaviorReminder: string = '';
   @Prop messages: ChatMessage[] = [];
   @Prop sending: boolean = false;
   @Prop voiceState: FocusVoiceState = { phase: 'IDLE', message: '点击麦克风，和 CampusMate 实时对话', transcript: '', answer: '' };
@@ -50,6 +51,10 @@ export struct FocusSessionPage {
   }
   aboutToDisappear(): void { this.stopClock(); }
   isPaused(): boolean { return this.session?.status === 'paused'; }
+  observationRunning(): boolean {
+    return this.session !== undefined && FocusPresentationState.shouldShowObservation(
+      this.session.mode, this.session.status, this.sessionMode);
+  }
   totalSeconds(): number { return Math.max(1, this.session?.planned_duration_seconds ?? this.plannedSeconds); }
   stopClock(): void { if (this.timerId >= 0) { clearInterval(this.timerId); this.timerId = -1; } }
   syncClock(force: boolean = false): void {
@@ -158,8 +163,14 @@ export struct FocusSessionPage {
     Column({ space: 7 }) {
       Row() {
         Row({ space: 6 }) { SymbolGlyph($r('sys.symbol.eye')).fontSize(16).fontColor([this.sessionMode === 'SMART_GUARD' ? this.palette().success : this.palette().muted]); Text('学习状态辅助').fontColor(this.palette().text).fontSize(13).fontWeight(FontWeight.Bold) }.alignItems(VerticalAlign.Center)
-        Blank(); Text(this.sessionMode === 'SMART_GUARD' ? '本地运行中' : '暂未开启').fontColor(this.palette().muted).fontSize(10)
+        Blank(); Text(this.observationRunning() ? '本地运行中' : this.sessionMode === 'SMART_GUARD' ? '观察已暂停' : '暂未开启').fontColor(this.palette().muted).fontSize(10)
       }.width('100%')
+      if (this.behaviorReminder.length > 0) {
+        Row({ space: 8 }) {
+          SymbolGlyph($r('sys.symbol.bell')).fontSize(16).fontColor([this.palette().primary])
+          Text(this.behaviorReminder).fontColor(this.palette().text).fontSize(12).fontWeight(FontWeight.Bold).layoutWeight(1).lineHeight(18)
+        }.width('100%').padding(11).backgroundColor(this.palette().soft).border({ width: 1, color: this.palette().glass.highlight }).borderRadius(14).alignItems(VerticalAlign.Top)
+      }
       Text(this.sessionMode === 'SMART_GUARD' ? this.assistDetail : '选择智能监督后，系统会在设备本地辅助观察学习状态。').fontColor(this.palette().muted).fontSize(11).lineHeight(17)
       if (this.sessionMode === 'SMART_GUARD' && this.assistLabel.length > 0) Text(`${this.assistLabel} · ${Math.round(this.assistConfidence * 100)}%`).fontColor(this.palette().primary).fontSize(11).fontWeight(FontWeight.Bold)
     }.width('100%').padding(14).backgroundColor(this.glassSurface()).backdropBlur(this.glassBlur()).border({ width: 1, color: this.glassBorder() }).borderRadius(19).shadow({ radius: 18, color: this.glassShadow(), offsetY: 5 })

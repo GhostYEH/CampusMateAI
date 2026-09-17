@@ -27,7 +27,7 @@ export class FocusPresentationState {
   }
 
   static shouldShowObservation(mode: FocusMode, status: string, sessionMode: string): boolean {
-    return mode === 'focus' && status.length > 0 && sessionMode === 'SMART_GUARD';
+    return mode === 'focus' && status === 'active' && sessionMode === 'SMART_GUARD';
   }
 
   static robotStateForVoice(phase: string): FocusRobotState {

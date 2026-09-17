@@ -51,3 +51,12 @@ internal fun presentFocusReminder(
         it.isNotEmpty() && observationEnabled &&
             sessionMode == com.example.campusai.data.model.FocusSessionMode.SMART_GUARD
     }
+
+internal fun focusReminderFeedbackKey(reminder: String?): String = reminder?.trim().orEmpty()
+
+internal fun shouldPerformFocusReminderFeedback(
+    previousFeedbackKey: String,
+    reminder: String?,
+): Boolean = focusReminderFeedbackKey(reminder).let { key ->
+    key.isNotEmpty() && key != previousFeedbackKey
+}

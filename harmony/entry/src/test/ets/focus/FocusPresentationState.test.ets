@@ -29,6 +29,10 @@ export default function focusPresentationStateTest(): void {
       expect(FocusPresentationState.shouldShowObservation('focus', '', 'SMART_GUARD')).assertFalse();
     });
 
+    it('stops presenting a live observation reminder when the session is paused', 0, () => {
+      expect(FocusPresentationState.shouldShowObservation('focus', 'paused', 'SMART_GUARD')).assertFalse();
+    });
+
     it('allows only one focus action until the current action completes', 0, () => {
       const gate: FocusSessionActionGate = new FocusSessionActionGate();
       expect(gate.tryStart()).assertTrue();

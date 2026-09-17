@@ -42,7 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -120,6 +122,20 @@ fun FocusSessionScreen(
     val continuityState by manager.learningContinuityState.collectAsStateWithLifecycle()
     val presence by manager.presence.collectAsStateWithLifecycle()
     val gentleReminder by manager.gentleReminder.collectAsStateWithLifecycle()
+    val hapticFeedback = LocalHapticFeedback.current
+    val visibleReminder = presentFocusReminder(sessionMode, observationActive, gentleReminder)
+    var lastReminderFeedbackKey by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(visibleReminder) {
+        val feedbackKey = focusReminderFeedbackKey(visibleReminder)
+        when {
+            feedbackKey.isEmpty() -> lastReminderFeedbackKey = ""
+            shouldPerformFocusReminderFeedback(lastReminderFeedbackKey, visibleReminder) -> {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                lastReminderFeedbackKey = feedbackKey
+            }
+        }
+    }
 
     var microphonePermissionGranted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -413,7 +429,7 @@ fun FocusSessionScreen(
             observationDetailsExpanded = observationDetailsExpanded,
             expressionLabel = expressionResult?.label?.name,
             presence = presence.state,
-            gentleReminder = gentleReminder,
+            gentleReminder = visibleReminder,
             onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
             onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
             onInterrupt = voiceController::interruptRealtime,
@@ -604,7 +620,7 @@ private fun FocusExecutionContent(
                 expanded = observationDetailsExpanded,
                 expressionLabel = expressionLabel,
                 presence = presence,
-                reminder = presentFocusReminder(sessionMode, observationEnabled, gentleReminder),
+                reminder = gentleReminder,
                 onToggleDetails = onToggleDetails,
                 onAttachPreview = onAttachPreview,
             )
