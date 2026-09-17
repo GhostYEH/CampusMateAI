@@ -79,6 +79,11 @@ from ..services.agent_runtime.capability_registry import (
     build_capability_registry,
 )
 from ..services.agent_runtime.event_notifier import EventNotifier
+from ..services.agent_runtime.handlers.interactive_classroom import (
+    ContainerRef as InteractiveClassroomContainerRef,
+    InteractiveClassroomGenerateHandler,
+    build_interactive_classroom_tools,
+)
 from ..services.agent_runtime.handlers.final_review import (
     FinalReviewAdjustApplyHandler,
     FinalReviewPlanActivateHandler,
@@ -356,6 +361,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_tool_registry = ToolRegistry()
     agent_tool_registry.register(build_plan_activate_tool(final_review_repository))
     agent_tool_registry.register(build_adjust_apply_tool(final_review_analyzer))
+    # 互动课堂：只读工具 + 一个必须审批的生成工具（会真实调用外部服务并产生费用）。
+    # 工具注册早于 ServiceContainer 构造，因此先用占位引用，容器建好后再绑定。
+    interactive_classroom_ref = InteractiveClassroomContainerRef()
+    for _tool in build_interactive_classroom_tools(interactive_classroom_ref):
+        agent_tool_registry.register(_tool)
     agent_handler_registry = JobHandlerRegistry(
         known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
     )
@@ -376,6 +386,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # 注册完成后才冻结目录,保证运行期只读。
     agent_handler_registry.register(FinalReviewPlanActivateHandler(agent_tool_gateway))
     agent_handler_registry.register(FinalReviewAdjustApplyHandler(agent_tool_gateway))
+    agent_handler_registry.register(InteractiveClassroomGenerateHandler(agent_tool_gateway))
     agent_handler_registry.freeze()
     # 能力目录在启动时一次性交叉校验 Agent/Role/Skill/Handler/Tool;
     # 清单损坏或已发布语义被改动时直接抛错,阻止 runtime 启动。
@@ -559,6 +570,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         retrieval.rebuild()
     except Exception:
         pass
+    # 容器已构造完成：把延迟引用绑定到真实实例，互动课堂工具才能执行。
+    interactive_classroom_ref.bind(container)
     return container
 
 
