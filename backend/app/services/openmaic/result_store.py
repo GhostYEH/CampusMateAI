@@ -68,6 +68,10 @@ class OpenMAICSession:
     course_id: str
     user_id: str
     mode: str = "adaptive"
+    # 学生本次请求的原始意图（可能被归一化/被 adaptive 覆盖）
+    requested_mode: Optional[str] = None
+    # adaptive 选择的理由（仅当 mode == adaptive 时非空），供 UI 解释"为什么推荐这个"
+    adaptive_reason: Optional[str] = None
     job_id: Optional[str] = None
     status: str = "queued"
     step: str = "queued"
@@ -77,6 +81,14 @@ class OpenMAICSession:
     classroom_id: Optional[str] = None
     classroom_url: Optional[str] = None
     scenes_count: Optional[int] = None
+    # 部分完成：succeeded 但生成器只产出少于预期的场景（不创造 OpenMAIC 没有的状态值）
+    partial: bool = False
+    # 稳定错误码（对应 OpenMAIC 侧 error / 我方归一化结果），用于客户端分支
+    error_code: Optional[str] = None
+    # 本次生成的**学生输入快照**（不可变，retry 的权威依据）。
+    # 旧数据没有这个键 → None，调用方据此走兼容降级。只存业务引用，
+    # 不含凭据 / Cookie / Token / 资料正文 / 内部 URL。
+    request_snapshot: Optional[Dict[str, Any]] = None
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
 
@@ -86,6 +98,8 @@ class OpenMAICSession:
             "course_id": self.course_id,
             "user_id": self.user_id,
             "mode": self.mode,
+            "requested_mode": self.requested_mode,
+            "adaptive_reason": self.adaptive_reason,
             "job_id": self.job_id,
             "status": self.status,
             "step": self.step,
@@ -95,6 +109,9 @@ class OpenMAICSession:
             "classroom_id": self.classroom_id,
             "classroom_url": self.classroom_url,
             "scenes_count": self.scenes_count,
+            "partial": self.partial,
+            "error_code": self.error_code,
+            "request_snapshot": self.request_snapshot,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

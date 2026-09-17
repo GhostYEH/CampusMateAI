@@ -1,13 +1,12 @@
 package com.example.campusai.ui.screens.counselor
 
+import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassTextButton as TextButton
 
 import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -72,6 +71,7 @@ import com.example.campusai.R
 import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.ExpressionServiceStatus
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.AgentRuntimeRepository
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.yield
@@ -87,15 +87,20 @@ fun CounselorScreen(
     initialPrompt: String? = null,
     courseId: String? = null,
     courseName: String? = null,
+    agentRuntimeRepository: AgentRuntimeRepository? = null,
+    onOpenCourseDeepLink: (String) -> Unit = {},
 ) {
     val initialCourse = remember(courseId, courseName) {
         if (courseId.isNullOrBlank()) null else CpmCourseContext(courseId = courseId, courseName = courseName.orEmpty())
     }
-    val factory = remember(repository, initialCourse) { CounselorViewModelFactory(repository, initialCourse) }
+    val factory = remember(repository, initialCourse, agentRuntimeRepository) {
+        CounselorViewModelFactory(repository, initialCourse, agentRuntimeRepository)
+    }
     val viewModel: CounselorViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val accessToken by repository.accessToken.collectAsStateWithLifecycle()
+    val session by repository.session.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
     val assistanceEnabled by repository.learningAssistanceEnabled.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -115,16 +120,21 @@ fun CounselorScreen(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraPermissionGranted = granted
     }
-    // 只读查询后台已生成的交互课堂；未生成时保持空，仅展示提示，绝不触发 OpenMAIC 生成。
-    var classroomUrls by remember(courseId) { mutableStateOf<List<String>>(emptyList()) }
-    val courseContextId = initialCourse?.courseId
-    LaunchedEffect(courseContextId, state.chatActive) {
-        if (!courseContextId.isNullOrBlank() && state.chatActive) {
-            classroomUrls = repository.suggestInteractiveClassroomUrls(courseContextId)
-        }
-    }
     LaunchedEffect(initialPrompt) {
         if (!viewModel.uiState.value.chatActive) initialPrompt?.takeIf(String::isNotBlank)?.let(viewModel::send)
+    }
+    // 身份变化（登录 / 换账号 / 登出）时，课堂任务的恢复记录必须立即作废：
+    // 否则新账号会恢复出上一个账号的 job 与深链。
+    val classroomIdentity = session?.accountId?.takeIf(String::isNotBlank)
+        ?: session?.studentId?.takeIf(String::isNotBlank)
+        ?: ""
+    LaunchedEffect(accessToken, classroomIdentity) {
+        if (accessToken.isNullOrBlank()) viewModel.onClassroomSessionEnded()
+        else viewModel.onClassroomIdentityChanged(classroomIdentity)
+    }
+    DisposableEffect(viewModel) {
+        viewModel.resumeClassroomObservation()
+        onDispose { viewModel.stopClassroomObservation() }
     }
     LaunchedEffect(expressionResult, observationActive) {
         viewModel.updateExpression(
@@ -175,20 +185,18 @@ fun CounselorScreen(
         expressionStatus = expressionStatus,
         hasUsableExpression = observationActive && CounselorExpressionPolicy.isUsable(expressionResult),
         courseContext = state.courseContext,
-        classroomUrls = classroomUrls,
-        onOpenClassroom = { url ->
-            if (url.isNotBlank()) {
-                scope.launch {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                }
-            }
-        },
+        classroomProposal = state.classroomProposal,
+        classroomJob = state.classroomJob,
         onInputChange = viewModel::updateInput,
         onSend = viewModel::send,
         onAsk = viewModel::send,
         onShuffle = viewModel::shuffleRecommendations,
         onRetry = viewModel::retryLast,
         onPlayback = viewModel::sendPlaybackCommand,
+        onConfirmClassroom = viewModel::confirmClassroomProposal,
+        onApproveClassroom = viewModel::approveClassroomProposal,
+        onRejectClassroom = viewModel::rejectClassroomProposal,
+        onOpenCourseDeepLink = { deepLink -> onOpenCourseDeepLink(deepLink) },
     )
     if (!assistanceEnabled && !consentDismissed) {
         AlertDialog(
@@ -218,14 +226,18 @@ private fun CpmCounselorContent(
     expressionStatus: ExpressionServiceStatus,
     hasUsableExpression: Boolean,
     courseContext: CpmCourseContext?,
-    classroomUrls: List<String>,
-    onOpenClassroom: (String) -> Unit,
+    classroomProposal: com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto?,
+    classroomJob: com.example.campusai.data.classroom.ClassroomJobState,
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     onAsk: (String) -> Unit,
     onShuffle: () -> Unit,
     onRetry: () -> Unit,
     onPlayback: (DigitalHumanCommand) -> Unit,
+    onConfirmClassroom: () -> Unit,
+    onApproveClassroom: () -> Unit,
+    onRejectClassroom: () -> Unit,
+    onOpenCourseDeepLink: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.content?.length) {
@@ -276,12 +288,15 @@ private fun CpmCounselorContent(
                     item("course-context") {
                         CpmCourseContextTag(courseName = courseContext.courseName.ifBlank { courseContext.courseId })
                     }
-                    val firstUrl = classroomUrls.firstOrNull()
-                    if (!firstUrl.isNullOrBlank()) {
-                        item("course-classroom") {
-                            CpmInteractiveClassroomCard(
-                                courseName = courseContext.courseName,
-                                onOpen = { onOpenClassroom(firstUrl) },
+                    classroomProposal?.let { proposal ->
+                        item("classroom-proposal") {
+                            CpmInteractiveClassroomProposalCard(
+                                proposal = proposal,
+                                job = classroomJob,
+                                onConfirm = onConfirmClassroom,
+                                onApprove = onApproveClassroom,
+                                onReject = onRejectClassroom,
+                                onOpenDeepLink = onOpenCourseDeepLink,
                             )
                         }
                     }
@@ -336,19 +351,66 @@ private fun CpmCourseContextTag(courseName: String) {
 }
 
 @Composable
-private fun CpmInteractiveClassroomCard(courseName: String, onOpen: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xF2FFF8F0))
-            .border(1.dp, Color(0xFFF2D9B8), RoundedCornerShape(16.dp)).padding(13.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun CpmInteractiveClassroomProposalCard(
+    proposal: com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto,
+    job: com.example.campusai.data.classroom.ClassroomJobState,
+    onConfirm: () -> Unit,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onOpenDeepLink: (String) -> Unit,
+) {
+    val phase = job.phase
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xF2FFF8F0))
+            .border(1.dp, Color(0xFFF2D9B8), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFFE28A3C), modifier = Modifier.size(18.dp))
-        Column(Modifier.weight(1f).padding(start = 8.dp)) {
-            Text("已生成互动课堂", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text("「$courseName」的互动课堂已在后台生成，可在外置浏览器打开。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.School, null, tint = Color(0xFFE28A3C), modifier = Modifier.size(18.dp))
+            Text("CPM 推荐一节互动课堂", Modifier.padding(start = 8.dp), fontWeight = FontWeight.Bold, color = TextPrimary)
         }
-        TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 8.dp)) {
-            Text("打开", color = Color(0xFFB26A1F), fontSize = 12.sp)
+        Text("${proposal.courseName.ifBlank { proposal.courseId }} · ${proposal.modeLabel.ifBlank { proposal.mode }}", color = Muted, fontSize = 11.sp)
+        if (proposal.intentNote.isNotBlank()) Text(proposal.intentNote, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        if (!proposal.available) {
+            Text("互动课堂当前不可用${proposal.reason?.let { "：$it" }.orEmpty()}。你仍可以继续文字提问。", color = Color(0xFFB26A1F), fontSize = 11.sp)
+        }
+        when (phase) {
+            com.example.campusai.data.classroom.JobPhase.CREATING_JOB -> Text("正在提交生成请求…", color = CpmBlue, fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.QUEUED -> Text("已排队，正在准备这节课。", color = CpmBlue, fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.RUNNING -> Text("正在生成课堂内容…", color = CpmBlue, fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.AWAITING_APPROVAL -> Text("已准备好，需要你确认后才会调用生成服务。", color = Color(0xFFB26A1F), fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.APPROVING -> Text("正在确认…", color = CpmBlue, fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.SUCCEEDED -> {
+                if (job.deepLink.isNullOrBlank()) Text("课堂已生成，正在获取课程详情入口…", color = CpmBlue, fontSize = 11.sp)
+                else Text("课堂已生成。", color = Color(0xFF247A52), fontSize = 11.sp)
+            }
+            com.example.campusai.data.classroom.JobPhase.FAILED -> Text("生成失败${job.error.takeIf { it.isNotBlank() }?.let { "：$it" }.orEmpty()}", color = Color(0xFFC63D4F), fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.REJECTED -> Text("已拒绝，本次不会生成课堂。", color = Muted, fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.EXPIRED -> Text("确认已过期，请重新发起。", color = Color(0xFFC63D4F), fontSize = 11.sp)
+            com.example.campusai.data.classroom.JobPhase.IDLE -> Unit
+        }
+        if (job.error.isNotBlank() && phase != com.example.campusai.data.classroom.JobPhase.FAILED) {
+            Text(job.error, color = Color(0xFFC63D4F), fontSize = 11.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (job.canConfirm) {
+                Button(
+                    onClick = onConfirm,
+                    enabled = proposal.available,
+                    colors = ButtonDefaults.buttonColors(containerColor = CpmBlue),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                ) { Text(if (phase == com.example.campusai.data.classroom.JobPhase.FAILED) "重新发起" else "确认生成", fontSize = 12.sp) }
+            }
+            if (job.canApprove) {
+                Button(onClick = onApprove, colors = ButtonDefaults.buttonColors(containerColor = CpmBlue), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)) { Text("批准并开始生成", fontSize = 12.sp) }
+                TextButton(onClick = onReject, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("不用了", color = Muted, fontSize = 12.sp) }
+            }
+            if (!job.deepLink.isNullOrBlank() && phase == com.example.campusai.data.classroom.JobPhase.SUCCEEDED) {
+                TextButton(onClick = { onOpenDeepLink(job.deepLink) }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("去课程详情", color = CpmBlue, fontSize = 12.sp) }
+            }
         }
     }
 }

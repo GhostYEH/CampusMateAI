@@ -1285,15 +1285,36 @@ class AgentRuntimeRepository:
         risk_level: str,
         action_summary: str,
         expires_at: str,
+        tool_name: Optional[str] = None,
+        request_hash: Optional[str] = None,
+        call_id: Optional[str] = None,
     ) -> str:
+        """创建审批记录。
+
+        `tool_name` / `request_hash` / `call_id` 是**绑定信息**：审批只对
+        "这一个工具 + 这一组参数"（以及由 Gateway 创建时的这一次工具调用）有效。
+        缺了它们，一次批准就能被复用到另一门课程或另一组参数。
+        """
         approval_id = _uuid("apv")
         now = _now()
         conn = self._conn()
         try:
             conn.execute(
                 "INSERT INTO agent_approvals (approval_id, run_id, user_id, status, risk_level, "
-                "action_summary, expires_at, created_at) VALUES (?, ?, ?, 'PENDING', ?, ?, ?, ?)",
-                (approval_id, run_id, user_id, risk_level, action_summary, expires_at, now),
+                "action_summary, tool_name, request_hash, call_id, expires_at, created_at) "
+                "VALUES (?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    approval_id,
+                    run_id,
+                    user_id,
+                    risk_level,
+                    action_summary,
+                    tool_name,
+                    request_hash,
+                    call_id,
+                    expires_at,
+                    now,
+                ),
             )
             conn.commit()
             return approval_id
@@ -1305,6 +1326,7 @@ class AgentRuntimeRepository:
         try:
             row = conn.execute(
                 "SELECT approval_id, run_id, user_id, status, risk_level, action_summary, "
+                "tool_name, request_hash, call_id, "
                 "expires_at, resolved_at, decision_reason, created_at FROM agent_approvals "
                 "WHERE approval_id = ?",
                 (approval_id,),
@@ -1322,6 +1344,10 @@ class AgentRuntimeRepository:
                 status=row["status"],
                 resolved_at=row["resolved_at"],
                 decision_reason=row["decision_reason"],
+                # 绑定信息必须读出来，否则 Gateway 的绑定校验形同虚设
+                tool_name=row["tool_name"],
+                request_hash=row["request_hash"],
+                call_id=row["call_id"],
             )
         finally:
             self._release(conn)
@@ -1342,6 +1368,32 @@ class AgentRuntimeRepository:
                 (status, now, decision_reason, approval_id),
             )
             conn.commit()
+        finally:
+            self._release(conn)
+
+    def resolve_approval_if_pending(
+        self,
+        approval_id: str,
+        *,
+        status: str,
+        decision_reason: Optional[str] = None,
+    ) -> bool:
+        """**原子**落定审批决定（compare-and-set）。返回是否由本次调用真正落定。
+
+        必须用这个而不是 `resolve_approval`：后者是无条件 UPDATE，
+        "先读后写"的调用方在并发下会出现 lost update —— 并发的 approve 与 reject
+        可以双双通过 PENDING 检查，最终谁后写谁生效，而两边都返回成功。
+        """
+        now = _now()
+        conn = self._conn()
+        try:
+            cursor = conn.execute(
+                "UPDATE agent_approvals SET status = ?, resolved_at = ?, decision_reason = ? "
+                "WHERE approval_id = ? AND status = 'PENDING'",
+                (status, now, decision_reason, approval_id),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
         finally:
             self._release(conn)
 

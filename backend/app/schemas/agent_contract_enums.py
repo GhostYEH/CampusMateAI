@@ -81,6 +81,12 @@ class AgentEventType(str, Enum):
     RUN_RETRY_SCHEDULED = "RUN_RETRY_SCHEDULED"
     RUN_RECOVERY_STARTED = "RUN_RECOVERY_STARTED"
     RUN_RECOVERED = "RUN_RECOVERED"
+    # 审批通过、原 Run 重新排队时发出。
+    # 注意：`agent_runtime` 审批路由与 `ToolInvocationGateway` 一直在发这个类型，
+    # 但它曾经**不在**本枚举里 —— 于是 SSE 把它序列化成 AgentEventOut 时直接
+    # ValidationError，学生看不到"审批已通过、继续执行"的事件。
+    # 新增类型一律追加在末尾（客户端对未知类型安全降级）。
+    APPROVAL_GRANTED = "APPROVAL_GRANTED"
 
 
 class ArtifactType(str, Enum):

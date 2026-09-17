@@ -79,7 +79,12 @@ def _memory_to_out(memory: dict) -> AgentMemoryOut:
     )
 
 
-def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOut:
+def _job_to_out(
+    job: dict,
+    *,
+    latest_run_id: Optional[str] = None,
+    pending_approval_id: Optional[str] = None,
+) -> AgentJobOut:
     input_ref = job.get("input_ref", job.get("input_ref_json", {}))
     if isinstance(input_ref, str):
         try:
@@ -94,6 +99,7 @@ def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOu
         created_at=job["created_at"],
         updated_at=job["updated_at"],
         latest_run_id=latest_run_id,
+        pending_approval_id=pending_approval_id,
         input_ref=input_ref if isinstance(input_ref, dict) else {},
     )
 
@@ -134,6 +140,21 @@ async def get_capabilities(
 # ===== jobs =====
 
 
+def _pending_approval_id(repo, run_id: Optional[str]) -> Optional[str]:
+    """取该 Run 上待处理的审批单 id（仅 AWAITING_APPROVAL 时有意义）。"""
+    if not run_id:
+        return None
+    run = repo.get_run(run_id)
+    if not run or run.get("status") != "AWAITING_APPROVAL":
+        return None
+    pending = [
+        item
+        for item in repo.list_approvals_by_run(run_id)
+        if item.get("status") == "PENDING"
+    ]
+    return pending[-1]["approval_id"] if pending else None
+
+
 @jobs_router.post("")
 async def create_job(
     body: AgentJobCreateIn,
@@ -170,7 +191,12 @@ async def create_job(
                 )
             latest = repo.get_run_by_job(existing["job_id"])
             response.status_code = 200
-            return _job_to_out(existing, latest_run_id=latest["run_id"] if latest else None)
+            latest_run_id = latest["run_id"] if latest else None
+            return _job_to_out(
+                existing,
+                latest_run_id=latest_run_id,
+                pending_approval_id=_pending_approval_id(repo, latest_run_id),
+            )
 
     created = repo.create_job_with_run_and_event(
         user_id=user.id,
@@ -183,7 +209,11 @@ async def create_job(
     )
     response.status_code = 200 if created["replayed"] else 202
     job = created["job"]
-    return _job_to_out(job, latest_run_id=created["run_id"])
+    return _job_to_out(
+        job,
+        latest_run_id=created["run_id"],
+        pending_approval_id=_pending_approval_id(repo, created["run_id"]),
+    )
 
 
 @jobs_router.get("")
@@ -227,7 +257,12 @@ async def get_job(
     if job["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Job 不存在")
     latest = repo.get_run_by_job(job_id)
-    return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
+    latest_run_id = latest["run_id"] if latest else None
+    return _job_to_out(
+        job,
+        latest_run_id=latest_run_id,
+        pending_approval_id=_pending_approval_id(repo, latest_run_id),
+    )
 
 
 # ===== runs =====
@@ -562,6 +597,14 @@ async def resolve_approval(
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentApprovalOut:
+    """落定一次审批决定。
+
+    - 决策本身是**幂等**的：重复提交同一个决定返回同一结果（不会 409）；
+    - 相反的决定一律 409，绝不覆盖已生效的决定；
+    - `Idempotency-Key` 会被**真正记录**（`agent_run_controls`），而不是收下就丢；
+    - 只有**本次真正落定**的决定才会驱动 Run 状态迁移 ——
+      重放不会把已经跑完的 Run 再取消/再排队一次。
+    """
     repo = _repo(container)
     from ...services.agent_runtime.approval_gate import ApprovalGate
 
@@ -570,12 +613,39 @@ async def resolve_approval(
         approval_id, decision=body.decision, reason=body.reason, user_id=user.id
     )
     apv = repo.get_approval(approval_id)
-    if body.decision == "REJECTED":
-        run = repo.get_run(apv.run_id)
-        if run and run["status"] == "AWAITING_APPROVAL":
-            container.agent_run_manager.cancel(
-                apv.run_id, reason=body.reason or "用户拒绝审批"
-            )
+    key = body.idempotency_key or idempotency_key or f"approval:{approval_id}"
+    newly_applied = not result.get("replayed")
+    if newly_applied:
+        # 只有首次落定才记录 + 迁移状态；重放只回读现状。
+        repo.record_control(
+            run_id=apv.run_id,
+            user_id=user.id,
+            action="approval_approve" if body.decision == "APPROVED" else "approval_reject",
+            idempotency_key=key,
+            resulting_status=apv.status,
+        )
+        if body.decision == "REJECTED":
+            run = repo.get_run(apv.run_id)
+            if run and run["status"] == "AWAITING_APPROVAL":
+                container.agent_run_manager.cancel(
+                    apv.run_id, reason=body.reason or "用户拒绝审批"
+                )
+        else:
+            # 批准后必须让**原 Run** 重新可被 Worker 领取。
+            # 否则批准了也永远不会执行，客户端就只剩"再建一个携带旧 approval_id 的
+            # 新 Job"这条错误路径 —— 而那正是"一次批准被复用到别的请求"的漏洞。
+            run = repo.get_run(apv.run_id)
+            if run and run["status"] == "AWAITING_APPROVAL":
+                container.agent_run_manager.transition(
+                    apv.run_id,
+                    "QUEUED",
+                    phase="QUEUED",
+                    event_type="APPROVAL_GRANTED",
+                    event_status="QUEUED",
+                    event_phase="QUEUED",
+                    event_role="runtime",
+                    event_summary="审批已通过，运行重新排队执行",
+                )
     return AgentApprovalOut(
         approval_id=apv.approval_id,
         run_id=apv.run_id,

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,7 @@ def test_contract_version_is_v1() -> None:
                     "RUN_RETRY_SCHEDULED",
                     "RUN_RECOVERY_STARTED",
                     "RUN_RECOVERED",
+                    "APPROVAL_GRANTED",
             },
         ),
         (
@@ -265,6 +267,46 @@ def test_runtime_fixture_round_trip() -> None:
     AgentApprovalOut(**data["approval"])
     AgentArtifactOut(**data["artifact"])
     AgentErrorEnvelope(**data["error_envelope"])
+
+
+def test_fixture_covers_approval_granted_event() -> None:
+    """审批通过 → 原 Run 重新排队的事件必须在契约里。
+
+    修复前的真实缺陷：`agent_runtime` 审批路由与 `ToolInvocationGateway`
+    都在发 `APPROVAL_GRANTED`，但它**不在** `AgentEventType` 里，
+    于是 SSE 序列化成 `AgentEventOut` 时直接 ValidationError ——
+    学生看不到"审批已通过、原 Run 继续执行"。
+    """
+    data = json.loads((FIXTURE_DIR / "runtime.json").read_text(encoding="utf-8"))
+    types = {evt["type"] for evt in data["events"]}
+    assert "APPROVAL_GRANTED" in types, "契约 fixture 必须覆盖审批通过事件"
+
+
+def test_every_emitted_event_type_is_in_the_contract_enum() -> None:
+    """仓库里出现的每个事件类型字面量都必须是 `AgentEventType` 的成员。
+
+    这是一条**全仓扫描**护栏：新增事件类型却忘了加进枚举时，
+    本测试立即变红，而不是等到 SSE 在运行时抛 ValidationError 才发现。
+    """
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    patterns = (
+        re.compile(r"event_type=\"([A-Z][A-Z0-9_]*)\""),
+        re.compile(r"_emit\(\s*[^,]+,\s*\"([A-Z][A-Z0-9_]*)\""),
+        re.compile(r"\"event_type\":\s*\"([A-Z][A-Z0-9_]*)\""),
+    )
+    allowed = {member.value for member in AgentEventType}
+    offenders: list[str] = []
+    for path in sorted(app_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern in patterns:
+            for value in pattern.findall(text):
+                if value not in allowed:
+                    offenders.append(f"{path.relative_to(app_dir)}: {value}")
+    assert not offenders, (
+        "以下事件类型没有出现在 AgentEventType 里，SSE 序列化会失败: " + ", ".join(sorted(set(offenders)))
+    )
 
 
 def test_runtime_fixture_v2_increments_round_trip() -> None:

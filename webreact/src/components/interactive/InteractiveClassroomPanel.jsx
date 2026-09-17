@@ -1,16 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../data/api.js";
 import {
+  CLASSROOM_STATES,
+  CLASSROOM_STATE_TEXT,
   INTERACTIVE_MODES,
+  MODE_INTENT_NOTE,
+  canGenerateInState,
+  classroomState,
+  compositionSummary,
+  describeComposition,
   interactiveStepLabel,
+  isSafeClassroomUrl,
   isSessionLive,
-  isTrustedEmbedUrl,
+  normalizeMode,
   normalizeTrustedOrigins,
   trustedOriginsFromStatus,
 } from "../../data/interactiveClassroom.js";
+import { createEpochGuard } from "../../data/epochGuard.js";
+import { createPollScope } from "../../data/pollScope.js";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
+import ClassroomEmbed from "./ClassroomEmbed.jsx";
 
 export const interactiveErrorText = (error, fallback = "操作失败，请稍后重试") => {
   if (typeof error === "string" && error.trim()) return error.trim();
@@ -18,6 +29,9 @@ export const interactiveErrorText = (error, fallback = "操作失败，请稍后
     error?.response?.data?.detail ||
     error?.response?.data?.message ||
     (error?.response?.data?.code === "OPENMAIC_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
+    (error?.response?.data?.code === "OPENMAIC_INCOMPATIBLE"
+      ? "互动课堂服务版本不兼容，已暂停生成，请联系管理员核对部署版本。"
+      : null) ||
     error?.message ||
     fallback
   );
@@ -26,12 +40,147 @@ export const interactiveErrorText = (error, fallback = "操作失败，请稍后
 const MODE_ICONS = {
   adaptive: "PhPath",
   explain: "PhChatCircleText",
-  explore: "PhMagnifyingGlass",
-  practice: "PhExam",
-  project: "PhTray",
+  quiz: "PhExam",
+  simulation: "PhFlask",
+  visualization: "PhCube",
+  mindmap: "PhTreeStructure",
+  coding: "PhCode",
+  pbl: "PhTray",
+  review: "PhClockCounterClockwise",
 };
 
-const modeLabel = (mode) => INTERACTIVE_MODES.find((m) => m.mode === mode)?.label || mode || "互动课堂";
+const DIFFICULTY_OPTIONS = [
+  { value: "beginner", label: "入门" },
+  { value: "standard", label: "标准" },
+  { value: "advanced", label: "进阶" },
+];
+
+const DURATION_OPTIONS = [15, 30, 45, 60];
+
+const modeLabel = (mode) =>
+  INTERACTIVE_MODES.find((m) => m.mode === normalizeMode(mode))?.label || "互动课堂";
+
+const statusText = (state, status) => {
+  const base = CLASSROOM_STATE_TEXT[state] || CLASSROOM_STATE_TEXT.not_configured;
+  if (state === CLASSROOM_STATES.EMBED_BLOCKED && status?.browser_embed_reason) {
+    return { ...base, body: status.browser_embed_reason };
+  }
+  return base;
+};
+
+/** 学生可见的生成前简报（不可用时也能展示课程与形态，只是不能生成）。 */
+function PlanCard({
+  plan,
+  planLoading,
+  brief,
+  onBriefChange,
+  onToggleMaterial,
+  onGenerate,
+  polling,
+}) {
+  if (planLoading && !plan) {
+    return <p className="interactive-hint">正在准备这次的学习计划…</p>;
+  }
+  if (!plan) return null;
+  const selected = new Set(brief.materialIds || []);
+  return (
+    <div className="interactive-plan">
+      <h3>生成前请确认</h3>
+      <ul className="interactive-plan-facts">
+        <li>
+          <span>课程</span>
+          <strong>{plan.course_name || plan.course_id}</strong>
+        </li>
+        <li>
+          <span>学习形态</span>
+          <strong>{plan.mode_label || modeLabel(plan.mode)}</strong>
+        </li>
+        {plan.adaptive_reason ? (
+          <li>
+            <span>为什么推荐</span>
+            <strong>{plan.adaptive_reason}</strong>
+          </li>
+        ) : null}
+      </ul>
+
+      {Array.isArray(plan.context_warnings) && plan.context_warnings.length > 0 ? (
+        <div className="page-notice notice-warn" role="status">
+          以下数据本次未能读取，生成结果可能不完整：{plan.context_warnings.join("；")}
+        </div>
+      ) : null}
+
+      {Array.isArray(plan.materials) && plan.materials.length > 0 ? (
+        <fieldset className="interactive-materials">
+          <legend>使用哪些课程资料</legend>
+          {plan.materials.map((material) => (
+            <label key={material.id}>
+              <input
+                type="checkbox"
+                checked={selected.has(material.id)}
+                onChange={() => onToggleMaterial(material.id)}
+              />
+              <span>{material.title}</span>
+              <small>{material.kind}</small>
+            </label>
+          ))}
+        </fieldset>
+      ) : (
+        <p className="interactive-hint">这门课暂时没有已同步的可用资料，课堂将依据课程结构生成。</p>
+      )}
+
+      <p className="interactive-hint">{MODE_INTENT_NOTE}</p>
+
+      <div className="interactive-actions interactive-primary">
+        <Button icon="PhPlay" disabled={polling} onClick={() => onGenerate(plan.mode)}>
+          确认生成 {plan.mode_label || modeLabel(plan.mode)}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** 真实组成展示：只呈现回读到的内容，绝不根据请求形态推断。 */
+function CompositionBlock({ composition, loading, error, onReload }) {
+  if (loading) return <p className="interactive-hint">正在读取这节课的真实内容…</p>;
+  if (error) {
+    return (
+      <div className="page-notice notice-warn" role="status">
+        课堂内容读取失败：{error}
+        <button type="button" className="text-button" onClick={onReload}>
+          重试
+        </button>
+      </div>
+    );
+  }
+  const description = describeComposition(composition);
+  if (!description) return null;
+  if (description.error) {
+    return (
+      <div className="page-notice notice-warn" role="status">
+        课堂内容读取失败：{description.error}
+      </div>
+    );
+  }
+  return (
+    <div className="interactive-composition">
+      <p>{compositionSummary(description)}</p>
+      {description.widgets && description.widgets.length > 0 ? (
+        <p className="interactive-hint">
+          互动形式：
+          {description.widgets.map((w) => `${w.label} ×${w.count}`).join("、")}
+        </p>
+      ) : null}
+      {description.requires3d && !description.external3dAvailable ? (
+        <p className="interactive-hint">
+          这节课包含 3D 内容，但当前环境无法访问外部 3D 资源，这部分可能打不开。
+        </p>
+      ) : null}
+      {description.requires3d && description.external3dAvailable ? (
+        <p className="interactive-hint">这节课包含 3D 内容，需要能访问外部 CDN 才能正常查看。</p>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * 互动课堂的**纯展示**视图：只由 props 决定渲染结果，不发起请求、不读取全局状态。
@@ -42,21 +191,28 @@ export function InteractiveClassroomView({
   items = [],
   itemsLoading = false,
   mode = "adaptive",
-  learningObjective = "",
-  showObjective = false,
+  brief = { objective: "", currentDifficulty: "", duration: null, difficultyLevel: "", wantsMorePractice: false, materialIds: [] },
+  plan = null,
+  planLoading = false,
   session = null,
   polling = false,
+  composition = null,
+  compositionLoading = false,
+  compositionError = "",
   error = "",
   notice = "",
   trustedEmbedOrigins = null,
   onSelectMode = () => {},
-  onToggleObjective = () => {},
-  onObjectiveChange = () => {},
+  onBriefChange = () => {},
+  onToggleMaterial = () => {},
+  onPreviewPlan = () => {},
   onGenerate = () => {},
   onRetry = () => {},
   onReset = () => {},
   onRefresh = () => {},
   onAskCpm = () => {},
+  onLoadComposition = () => {},
+  onStopViewing = () => {},
 }) {
   // 可信 Origin：显式注入优先（测试/受限部署，传入即权威，空数组=完全禁止内嵌），
   // 否则使用后端 /status 返回的 OpenMAIC Origin（未配置时为空 → fail-closed）。
@@ -65,67 +221,65 @@ export function InteractiveClassroomView({
     return trustedOriginsFromStatus(status);
   }, [trustedEmbedOrigins, status]);
 
-  const targetMode = INTERACTIVE_MODES.find((m) => m.mode === mode) || INTERACTIVE_MODES[0];
+  const state = classroomState(status);
+  const targetMode = INTERACTIVE_MODES.find((m) => m.mode === normalizeMode(mode)) || INTERACTIVE_MODES[0];
   const live = polling || isSessionLive(session);
   const browserEmbedAvailable = trustedEmbedOrigins != null || status.browser_embed_available === true;
   const safeUrl =
-    browserEmbedAvailable && isTrustedEmbedUrl(session?.url, trustedOrigins) ? session.url : null;
+    browserEmbedAvailable && isSafeClassroomUrl(session?.url, trustedOrigins) ? session.url : null;
   const hasGeneratedUrl = Boolean(session?.url);
   const openInNewWindow = () => {
     if (safeUrl) window.open(safeUrl, "_blank", "noopener,noreferrer");
   };
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-    else document.exitFullscreen?.();
-  };
 
-  if (status.loading) {
+  if (state === CLASSROOM_STATES.LOADING) {
+    const text = CLASSROOM_STATE_TEXT.loading;
     return (
       <Panel className="interactive-panel">
         <SectionHeading title="智能辅导" detail="正在检测辅导服务…" />
         <div className="interactive-loading">
           <span className="loading-orb" />
-          <p>正在检测互动课堂能力…</p>
+          <p>{text.body}</p>
         </div>
       </Panel>
     );
   }
 
-  if (!status.enabled) {
+  if (!canGenerateInState(state)) {
+    const text = statusText(state, status);
+    // 区分两种情况：
+    // - 有公开地址但浏览器被拦（如 ACCESS_CODE 保护）→ "课堂浏览授权尚未配置"；
+    // - 课堂已生成但**根本没有公开地址**（未配置 OPENMAIC_EMBED_ORIGIN）
+    //   → "已生成，但当前部署未开放浏览器访问"，否则学生以为白生成了。
+    const generatedButClosed =
+      state === CLASSROOM_STATES.EMBED_BLOCKED &&
+      session?.status === "succeeded" &&
+      !session?.url;
     return (
       <Panel className="interactive-panel">
         <SectionHeading title="智能辅导" detail="课程互动课堂" />
         <div className="interactive-unavailable interactive-state">
           <span className="interactive-state-icon">
-            <Icon name={status.unavailable ? "PhWifiSlash" : "PhInfo"} size={26} />
+            <Icon
+              name={
+                generatedButClosed
+                  ? "PhGraduationCap"
+                  : state === CLASSROOM_STATES.UNAVAILABLE
+                    ? "PhWifiSlash"
+                    : state === CLASSROOM_STATES.INCOMPATIBLE
+                      ? "PhWarningCircle"
+                      : state === CLASSROOM_STATES.EMBED_BLOCKED
+                        ? "PhLock"
+                        : "PhInfo"
+              }
+              size={26}
+            />
           </span>
-          <h3>{status.unavailable ? "辅导服务暂不可用" : "本课程尚未开启智能辅导"}</h3>
-          <p>
-            {status.unavailable
-              ? "当前无法连接互动课堂服务，请稍后再试。这不影响课程其它内容。"
-              : "OpenMAIC 互动课堂尚未为这门课配置。你可以先对 CPM 提问，获取学习建议。"}
-          </p>
-          <Button variant="quiet" icon="PhArrowClockwise" onClick={onRefresh}>
-            重新检测
-          </Button>
-        </div>
-      </Panel>
-    );
-  }
-
-  if (status.browser_embed_available === false && trustedEmbedOrigins == null) {
-    return (
-      <Panel className="interactive-panel">
-        <SectionHeading title="智能辅导" detail="课程互动课堂" />
-        <div className="interactive-unavailable interactive-state">
-          <span className="interactive-state-icon">
-            <Icon name="PhLock" size={26} />
-          </span>
-          <h3>课堂浏览授权尚未配置</h3>
-          <p>
-            {status.browser_embed_reason ||
-              "互动课堂当前不能安全地在学生浏览器中打开。CampusMate 不会把服务端访问凭据发送到浏览器。"}
-          </p>
+          <h3>{generatedButClosed ? "课堂已生成，但当前部署未开放浏览器访问" : text.title}</h3>
+          <p>{text.body}</p>
+          {status.compatibility_reason && state === CLASSROOM_STATES.INCOMPATIBLE ? (
+            <p className="interactive-hint">{status.compatibility_reason}</p>
+          ) : null}
           <Button variant="quiet" icon="PhArrowClockwise" onClick={onRefresh}>
             重新检测
           </Button>
@@ -155,6 +309,21 @@ export function InteractiveClassroomView({
         </button>
       </div>
 
+      {status.degraded ? (
+        <div className="page-notice notice-warn" role="status">
+          部分能力当前不可用
+          {Array.isArray(status.unavailable_capabilities) && status.unavailable_capabilities.length
+            ? `：${status.unavailable_capabilities.join("、")}`
+            : ""}
+          ，仍可生成其它形式的内容。
+        </div>
+      ) : null}
+      {status.external_3d_available === false ? (
+        <div className="page-notice notice-warn" role="status">
+          当前环境无法访问外部 3D 资源，3D/可视化形态不可用。
+        </div>
+      ) : null}
+
       {!live && !hasGeneratedUrl && (
         <>
           <div className="interactive-modes" role="radiogroup" aria-label="选择辅导模式">
@@ -162,8 +331,8 @@ export function InteractiveClassroomView({
               <button
                 key={m.mode}
                 type="button"
-                className={mode === m.mode ? "active" : ""}
-                aria-pressed={mode === m.mode}
+                className={normalizeMode(mode) === m.mode ? "active" : ""}
+                aria-pressed={normalizeMode(mode) === m.mode}
                 onClick={() => onSelectMode(m.mode)}
               >
                 <Icon name={MODE_ICONS[m.mode] || "PhPath"} size={20} />
@@ -172,35 +341,95 @@ export function InteractiveClassroomView({
               </button>
             ))}
           </div>
-          <div className="interactive-actions">
+
+          <div className="interactive-brief">
             <label className="interactive-objective">
-              <span>{showObjective ? "学习目标" : "可选"}</span>
+              <span>学习目标</span>
               <input
-                value={learningObjective}
-                disabled={!showObjective}
-                onChange={(e) => onObjectiveChange(e.target.value)}
-                placeholder={showObjective ? "例如：期中考试前巩固第 3 章难点" : ""}
-                aria-label="补充学习目标"
+                value={brief.objective || ""}
+                onChange={(e) => onBriefChange({ objective: e.target.value })}
+                placeholder="例如：期中考试前巩固第 3 章难点"
+                aria-label="学习目标"
               />
             </label>
-            <Button variant="quiet" icon="PhPlus" onClick={onToggleObjective} disabled={polling}>
-              {showObjective ? "收起学习目标" : "添加学习目标"}
-            </Button>
+            <label className="interactive-objective">
+              <span>当前困惑</span>
+              <input
+                value={brief.currentDifficulty || ""}
+                onChange={(e) => onBriefChange({ currentDifficulty: e.target.value })}
+                placeholder="例如：不知道怎么求特征向量"
+                aria-label="当前困惑"
+              />
+            </label>
+            <label className="interactive-objective">
+              <span>希望时长</span>
+              <select
+                value={brief.duration ?? ""}
+                onChange={(e) =>
+                  onBriefChange({ duration: e.target.value ? Number(e.target.value) : null })
+                }
+                aria-label="希望时长"
+              >
+                <option value="">不指定</option>
+                {DURATION_OPTIONS.map((min) => (
+                  <option key={min} value={min}>
+                    {min} 分钟
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="interactive-objective">
+              <span>难度</span>
+              <select
+                value={brief.difficultyLevel || ""}
+                onChange={(e) => onBriefChange({ difficultyLevel: e.target.value })}
+                aria-label="难度"
+              >
+                <option value="">不指定</option>
+                {DIFFICULTY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="interactive-checkbox">
+              <input
+                type="checkbox"
+                checked={Boolean(brief.wantsMorePractice)}
+                onChange={(e) => onBriefChange({ wantsMorePractice: e.target.checked })}
+              />
+              <span>多给我一些练习</span>
+            </label>
           </div>
-          <div className="interactive-actions interactive-primary">
-            <Button icon="PhPlay" disabled={polling} onClick={() => onGenerate(mode)}>
-              开始生成 {targetMode.label}
-            </Button>
-            {error && (
-              <div className="interactive-error" role="alert">
-                <Icon name="PhWarningCircle" size={16} />
-                {error}
-                <button type="button" className="text-button" onClick={onRetry}>
-                  重试
-                </button>
-              </div>
-            )}
-          </div>
+
+          <PlanCard
+            plan={plan}
+            planLoading={planLoading}
+            brief={brief}
+            onBriefChange={onBriefChange}
+            onToggleMaterial={onToggleMaterial}
+            onGenerate={onGenerate}
+            polling={polling}
+          />
+          {!plan && !planLoading ? (
+            <div className="interactive-actions">
+              <Button variant="quiet" icon="PhEye" onClick={onPreviewPlan} disabled={polling}>
+                查看这次会生成什么
+              </Button>
+            </div>
+          ) : null}
+
+          {error && (
+            <div className="interactive-error" role="alert">
+              <Icon name="PhWarningCircle" size={16} />
+              {error}
+              <button type="button" className="text-button" onClick={onRetry}>
+                重试
+              </button>
+            </div>
+          )}
+
           {itemsLoading ? (
             <p className="interactive-hint">正在读取已生成的课堂…</p>
           ) : (
@@ -217,9 +446,12 @@ export function InteractiveClassroomView({
                       <small>
                         {item.scenes_count ? `${item.scenes_count} 个场景` : "互动课堂"} ·{" "}
                         {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN") : "已生成"}
+                        {!item.url && item.url_unavailable_reason
+                          ? ` · ${item.url_unavailable_reason}`
+                          : ""}
                       </small>
                     </span>
-                    {browserEmbedAvailable && isTrustedEmbedUrl(item.url, trustedOrigins) ? (
+                    {browserEmbedAvailable && isSafeClassroomUrl(item.url, trustedOrigins) ? (
                       <a
                         className="button button-quiet"
                         href={item.url}
@@ -230,7 +462,11 @@ export function InteractiveClassroomView({
                         打开
                       </a>
                     ) : (
-                      <Button variant="quiet" disabled>
+                      <Button
+                        variant="quiet"
+                        disabled
+                        title={item.url_unavailable_reason || "当前无法打开"}
+                      >
                         待打开
                       </Button>
                     )}
@@ -252,8 +488,18 @@ export function InteractiveClassroomView({
             <span style={{ width: `${Math.max(0, Math.min(100, Number(session?.progress) || 8))}%` }} />
           </div>
           <p>{session?.message || "正在生成你的互动课堂，请稍候…"}</p>
-          <Button variant="quiet" icon="PhX" onClick={onReset}>
-            取消
+          {session?.updated_at ? (
+            <p className="interactive-hint">
+              最近更新：{new Date(session.updated_at).toLocaleString("zh-CN")}
+            </p>
+          ) : null}
+          <Button
+            variant="quiet"
+            icon="PhEyeSlash"
+            onClick={onStopViewing}
+            title="只停止本页的进度刷新，不会取消服务器上的生成任务"
+          >
+            停止查看进度
           </Button>
         </div>
       )}
@@ -262,6 +508,7 @@ export function InteractiveClassroomView({
         <div className="interactive-error interactive-state" role="alert">
           <Icon name="PhWarningCircle" size={20} />
           <p>{session.error || session.message || "课堂生成失败"}</p>
+          {session.error_code ? <p className="interactive-hint">错误码：{session.error_code}</p> : null}
           <Button onClick={onRetry}>重新生成</Button>
           <Button variant="quiet" onClick={onReset}>
             放弃
@@ -272,28 +519,26 @@ export function InteractiveClassroomView({
       {hasGeneratedUrl && !live && (
         <div className="interactive-result">
           <div className="interactive-result-bar">
-            {safeUrl ? (
-              <iframe
-                className="interactive-frame"
-                src={safeUrl}
-                title="智能辅导互动课堂"
-                aria-label="智能辅导互动课堂"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
-              />
-            ) : (
-              <div className="interactive-fallback">
-                <Icon name="PhLock" size={24} />
-                <h3>无法在此内嵌课堂</h3>
-                <p>该课堂地址不在受信任的互动课堂服务范围内，已阻止打开。请返回重新生成。</p>
-              </div>
-            )}
+            <ClassroomEmbed
+              /* 传原始 url 让内嵌组件给出**具体**的拒绝原因；
+                 是否渲染 iframe 由 ClassroomEmbed 内部统一判定。 */
+              url={hasGeneratedUrl ? session.url : null}
+              trustedOrigins={trustedOrigins}
+              onOpenExternal={openInNewWindow}
+            />
           </div>
+          <CompositionBlock
+            composition={composition}
+            loading={compositionLoading}
+            error={compositionError}
+            onReload={onLoadComposition}
+          />
+          {session.partial ? (
+            <div className="page-notice notice-warn" role="status">
+              部分内容没有生成成功，你可以先看已生成的部分，或重新生成一次。
+            </div>
+          ) : null}
           <div className="interactive-result-controls">
-            {safeUrl ? (
-              <Button variant="quiet" icon="PhArrowsOut" onClick={toggleFullscreen}>
-                全屏
-              </Button>
-            ) : null}
             <Button
               variant="quiet"
               icon="PhArrowSquareOut"
@@ -313,6 +558,13 @@ export function InteractiveClassroomView({
         </div>
       )}
 
+      {!live && session && session.status === "succeeded" && !hasGeneratedUrl && (
+        <div className="page-notice notice-warn" role="status">
+          课堂已生成，但当前部署未开放浏览器访问。
+          {status.browser_embed_reason ? `（${status.browser_embed_reason}）` : ""}
+        </div>
+      )}
+
       {notice && !live && (
         <div className="page-notice notice-info" role="status">
           {notice}
@@ -322,10 +574,26 @@ export function InteractiveClassroomView({
   );
 }
 
+const EMPTY_BRIEF = {
+  objective: "",
+  currentDifficulty: "",
+  duration: null,
+  difficultyLevel: "",
+  wantsMorePractice: false,
+  materialIds: [],
+};
+
 /**
  * 课程智能辅导空间面板（容器）。独立封装，自带状态与错误处理：
- * 服务不可用（enabled:false）或请求失败都只影响本面板，绝不抛到课程详情整页。
- * OpenMAIC 课堂 iframe / 新窗口链接仅在 URL 完整 Origin 命中后端返回的可信 Origin 时才渲染。
+ * 服务不可用（enabled:false）/ 版本不兼容 / 请求失败都只影响本面板，绝不抛到课程详情整页。
+ *
+ * 生成必须由学生**明确确认**：先看 /plan 的课程、资料与推荐理由，再点"确认生成"。
+ * /plan 是只读的，不创建任何 OpenMAIC 任务。
+ *
+ * 并发正确性（这是修复的重点）：切换课程 A→B 时，A 的旧请求可能晚于 B 返回。
+ * 共享一个 `alive` 布尔量是不够的 —— B 的 effect 会把 `alive` 立刻设回 true，
+ * A 的迟到响应就会被误认为有效并覆盖 B 的界面。这里改用 **courseId 绑定的 epoch**：
+ * 每个异步结果在写回之前都要确认"我出发时的 epoch 仍然是当前 epoch"。
  */
 export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigins = null }) {
   const navigate = useNavigate();
@@ -333,110 +601,199 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [mode, setMode] = useState("adaptive");
-  const [learningObjective, setLearningObjective] = useState("");
+  const [brief, setBrief] = useState(EMPTY_BRIEF);
+  const [plan, setPlan] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
   const [session, setSession] = useState(null);
   const [polling, setPolling] = useState(false);
+  const [composition, setComposition] = useState(null);
+  const [compositionLoading, setCompositionLoading] = useState(false);
+  const [compositionError, setCompositionError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [showObjective, setShowObjective] = useState(false);
-  const pollTimer = useRef(null);
-  const alive = useRef(true);
+  // 轮询作用域：**停止查看**必须作废所有在途 poll，否则在途响应会把轮询重新点着。
+  const pollScope = useRef(createPollScope()).current;
+  // 课程/会话作用域的 epoch：异步结果写回前必须确认自己没被切换作废。
+  const guard = useRef(createEpochGuard()).current;
+  const isCurrent = (myEpoch) => guard.isCurrent(myEpoch);
 
-  const loadOverview = async () => {
-    setStatus((s) => ({ ...s, loading: true }));
-    // status 接口已对失败宽容；此项失败也不应让其余 tabs 抛错。
-    const result = await api.getInteractiveClassroomStatus(courseId);
-    if (!alive.current) return;
-    setStatus({
-      enabled: !!result.enabled,
-      loading: false,
-      unavailable: !!result.unavailable,
-      service: result.service,
-      version: result.version,
-      embed_origin: result.embed_origin,
-      browser_embed_available: result.browser_embed_available === true,
-      browser_embed_reason: result.browser_embed_reason,
-    });
-    if (result.enabled && result.browser_embed_available === true) {
-      setItemsLoading(true);
-      api
-        .listInteractiveClassrooms(courseId)
-        .then((data) => {
-          if (alive.current) setItems(data.items || []);
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (alive.current) setItemsLoading(false);
-        });
-    } else {
-      setItems([]);
-    }
-  };
+  const stopPoll = useCallback(() => {
+    pollScope.stop();
+  }, [pollScope]);
+
+  const loadOverview = useCallback(
+    async (myEpoch) => {
+      setStatus((s) => ({ ...s, loading: true }));
+      // status 接口已对失败宽容；此项失败也不应让其余 tabs 抛错。
+      const result = await api.getInteractiveClassroomStatus(courseId);
+      if (!isCurrent(myEpoch)) return;
+      setStatus({
+        enabled: !!result.enabled,
+        loading: false,
+        unavailable: !!result.unavailable,
+        incompatible: !!result.incompatible,
+        compatibility: result.compatibility,
+        compatibility_reason: result.compatibility_reason,
+        degraded: !!result.degraded,
+        unavailable_capabilities: result.unavailable_capabilities || [],
+        service: result.service,
+        version: result.version,
+        embed_origin: result.embed_origin,
+        browser_embed_available: result.browser_embed_available === true,
+        browser_embed_reason: result.browser_embed_reason,
+        external_3d_available: result.external_3d_available !== false,
+      });
+      if (result.enabled && result.browser_embed_available === true) {
+        setItemsLoading(true);
+        api
+          .listInteractiveClassrooms(courseId)
+          .then((data) => {
+            if (isCurrent(myEpoch)) setItems(data.items || []);
+          })
+          .catch(() => {
+            // 历史列表失败只影响列表本身
+          })
+          .finally(() => {
+            if (isCurrent(myEpoch)) setItemsLoading(false);
+          });
+      } else {
+        setItems([]);
+      }
+    },
+    [courseId],
+  );
+
+  const loadPlan = useCallback(
+    async (targetMode, myEpoch) => {
+      setPlanLoading(true);
+      try {
+        const data = await api.getInteractiveClassroomPlan(courseId, targetMode);
+        if (isCurrent(myEpoch)) setPlan(data);
+      } catch {
+        if (isCurrent(myEpoch)) setPlan(null);
+      } finally {
+        if (isCurrent(myEpoch)) setPlanLoading(false);
+      }
+    },
+    [courseId],
+  );
+
+  // 切换课程：递增 epoch 让所有在途请求作废，并清空上一门课的全部状态。
+  useEffect(() => {
+    const myEpoch = guard.next();
+    stopPoll();
+    setSession(null);
+    setComposition(null);
+    setCompositionError("");
+    setPlan(null);
+    setPlanLoading(false);
+    setItems([]);
+    setItemsLoading(false);
+    setBrief(EMPTY_BRIEF);
+    setMode("adaptive");
+    setError("");
+    setNotice("");
+    setPolling(false);
+    setStatus({ enabled: false, loading: true, unavailable: false });
+    loadOverview(myEpoch);
+    return () => {
+      // 卸载：作废在途请求并停止轮询
+      guard.invalidate();
+      stopPoll();
+    };
+  }, [courseId, loadOverview, stopPoll, guard]);
 
   useEffect(() => {
-    alive.current = true;
-    loadOverview();
-    return () => {
-      alive.current = false;
-      if (pollTimer.current) clearTimeout(pollTimer.current);
-    };
-  }, [courseId]);
+    if (status.loading || !status.enabled) return;
+    loadPlan(mode, guard.current);
+  }, [courseId, mode, status.loading, status.enabled, loadPlan]);
 
-  const stopPoll = () => {
-    if (pollTimer.current) {
-      clearTimeout(pollTimer.current);
-      pollTimer.current = null;
-    }
-  };
-
-  const schedulePoll = (sess) => {
-    const delay = Number(sess.poll_interval_ms) || 3000;
-    pollTimer.current = setTimeout(async () => {
-      pollTimer.current = null;
-      if (!alive.current) return;
+  const loadComposition = useCallback(
+    async (sess, myEpoch) => {
+      const sid = sess?.session_id || sess?.id;
+      if (!sid) return;
+      setCompositionLoading(true);
+      setCompositionError("");
       try {
-        const job = await api.getInteractiveClassroomJob(courseId, sess.session_id || sess.id || sess.classroom_id);
-        const next = job?.session || job;
-        if (!alive.current) return;
-        setSession(next);
-        if (next.status === "succeeded") {
-          setPolling(false);
-          setNotice("课堂已生成");
-          loadOverview();
-        } else if (next.status === "failed") {
-          setPolling(false);
-          setError(interactiveErrorText(next.error || next.message, "课堂生成失败，可重试。"));
-        } else {
-          schedulePoll(next);
-        }
+        const data = await api.getInteractiveClassroomComposition(courseId, sid);
+        if (isCurrent(myEpoch)) setComposition(data);
       } catch (err) {
-        if (!alive.current) return;
-        setPolling(false);
-        setError(interactiveErrorText(err, "进度查询失败"));
+        // 读取失败必须明说，不能显示成"这节课没有内容"
+        if (isCurrent(myEpoch)) {
+          setCompositionError(interactiveErrorText(err, "课堂内容读取失败"));
+        }
+      } finally {
+        if (isCurrent(myEpoch)) setCompositionLoading(false);
       }
-    }, delay);
-  };
+    },
+    [courseId],
+  );
+
+  const schedulePoll = useCallback(
+    (sess, myEpoch, myToken = pollScope.begin()) => {
+      const delay = Number(sess.poll_interval_ms) || 3000;
+      pollScope.arm(async () => {
+        pollScope.disarm();
+        // 课程切走 / 学生点了"停止查看" → 在途响应一律丢弃，绝不重新安排轮询
+        if (!isCurrent(myEpoch) || !pollScope.isCurrent(myToken)) return;
+        try {
+          const job = await api.getInteractiveClassroomJob(courseId, sess.session_id || sess.id);
+          if (!isCurrent(myEpoch) || !pollScope.isCurrent(myToken)) return;
+          const next = job?.session || job;
+          setSession(next);
+          if (next.status === "succeeded") {
+            setPolling(false);
+            setNotice("课堂已生成");
+            loadOverview(myEpoch);
+            loadComposition(next, myEpoch);
+          } else if (next.status === "failed") {
+            setPolling(false);
+            setError(interactiveErrorText(next.error || next.message, "课堂生成失败，可重试。"));
+          } else {
+            schedulePoll(next, myEpoch, myToken);
+          }
+        } catch (err) {
+          if (!isCurrent(myEpoch) || !pollScope.isCurrent(myToken)) return;
+          setPolling(false);
+          setError(interactiveErrorText(err, "进度查询失败"));
+        }
+      }, delay, myToken);
+    },
+    [courseId, loadComposition, loadOverview, pollScope],
+  );
 
   const startGenerate = async (targetMode = mode, retire = null) => {
+    const myEpoch = guard.current;
     stopPoll();
     setError("");
     setNotice("");
     setSession(null);
+    setComposition(null);
     setPolling(true);
     const payload = {
-      mode: targetMode,
-      ...(learningObjective.trim() ? { learning_objective: learningObjective.trim() } : {}),
+      mode: normalizeMode(targetMode),
+      ...(brief.objective.trim() ? { learning_objective: brief.objective.trim() } : {}),
+      ...(brief.currentDifficulty.trim()
+        ? { current_difficulty: brief.currentDifficulty.trim() }
+        : {}),
+      ...(brief.duration ? { desired_duration_minutes: Number(brief.duration) } : {}),
+      ...(brief.difficultyLevel ? { difficulty_level: brief.difficultyLevel } : {}),
+      ...(brief.wantsMorePractice ? { wants_more_practice: true } : {}),
+      ...(brief.materialIds.length ? { selected_material_ids: brief.materialIds } : {}),
     };
     try {
       const resp = retire
         ? await api.retryInteractiveClassroom(courseId, retire.session_id || retire.id, payload)
         : await api.generateInteractiveClassroom(courseId, payload);
+      if (!isCurrent(myEpoch)) return;
       const created = resp?.session || resp;
-      if (!alive.current) return;
       setSession(created);
-      schedulePoll(created);
+      // 学生指定的资料无法使用时必须明说；旧任务没有快照时也要明确告知降级
+      if (resp?.materials_warning) setNotice(resp.materials_warning);
+      else if (resp?.request_source_note) setNotice(resp.request_source_note);
+      schedulePoll(created, myEpoch);
     } catch (err) {
-      if (!alive.current) return;
+      if (!isCurrent(myEpoch)) return;
       setPolling(false);
       setError(interactiveErrorText(err));
     }
@@ -455,12 +812,13 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
     setError("");
     setNotice("");
     setSession(null);
+    setComposition(null);
+    setCompositionError("");
     setPolling(false);
-    setShowObjective(false);
   };
 
   const askCpm = () => {
-    const label = INTERACTIVE_MODES.find((m) => m.mode === mode)?.label || mode;
+    const label = INTERACTIVE_MODES.find((m) => m.mode === normalizeMode(mode))?.label || mode;
     const params = new URLSearchParams();
     params.set("course", courseId);
     if (label) params.set("prompt", `我想用「${label}」方式学习这门课。`);
@@ -473,25 +831,42 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
       items={items}
       itemsLoading={itemsLoading}
       mode={mode}
-      learningObjective={learningObjective}
-      showObjective={showObjective}
+      brief={brief}
+      plan={plan}
+      planLoading={planLoading}
       session={session}
       polling={polling}
+      composition={composition}
+      compositionLoading={compositionLoading}
+      compositionError={compositionError}
       error={error}
       notice={notice}
       trustedEmbedOrigins={trustedEmbedOrigins}
       onSelectMode={(m) => {
         setMode(m);
-        setShowObjective(false);
         setError("");
       }}
-      onToggleObjective={() => setShowObjective((v) => !v)}
-      onObjectiveChange={setLearningObjective}
+      onBriefChange={(patch) => setBrief((prev) => ({ ...prev, ...patch }))}
+      onToggleMaterial={(id) =>
+        setBrief((prev) => ({
+          ...prev,
+          materialIds: prev.materialIds.includes(id)
+            ? prev.materialIds.filter((x) => x !== id)
+            : [...prev.materialIds, id],
+        }))
+      }
+      onPreviewPlan={() => loadPlan(mode, guard.current)}
       onGenerate={(m) => startGenerate(m)}
       onRetry={retryCurrent}
       onReset={resetPanel}
-      onRefresh={loadOverview}
+      onRefresh={() => loadOverview(guard.current)}
       onAskCpm={askCpm}
+      onLoadComposition={() => loadComposition(session, guard.current)}
+      onStopViewing={() => {
+        stopPoll();
+        setPolling(false);
+        setNotice("已停止查看进度。生成任务仍在服务端继续，稍后可从历史课堂打开。");
+      }}
     />
   );
 }
