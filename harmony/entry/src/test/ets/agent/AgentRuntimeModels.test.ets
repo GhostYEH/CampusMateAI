@@ -120,6 +120,21 @@ interface MockUnknownErrorRaw {
   request_id: string;
 }
 
+interface MockJobInputRef {
+  goal_id: string;
+}
+
+interface MockJobRaw {
+  job_id: string;
+  user_id: string;
+  job_kind: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  latest_run_id: string;
+  input_ref: MockJobInputRef;
+}
+
 interface MockApprovalRaw {
   approval_id: string;
   run_id: string;
@@ -272,7 +287,7 @@ export default function agentRuntimeModelsTest(): void {
     it('recognises v2 recovery event types', 0, () => {
       const recovery: string[] = ['RUN_RETRY_SCHEDULED', 'RUN_RECOVERY_STARTED', 'RUN_RECOVERED'];
       recovery.forEach((raw: string) => {
-        expect(AgentDtoParser.eventType(raw) !== AgentEventType.UNKNOWN).assertTrue();
+        expect(AgentEnumParser.eventType(raw) !== AgentEventType.UNKNOWN).assertTrue();
       });
     });
 
@@ -281,21 +296,20 @@ export default function agentRuntimeModelsTest(): void {
         'AGENT_CAPABILITY_DISABLED', 'AGENT_RUNTIME_UNAVAILABLE',
         'AGENT_CURSOR_INVALID', 'AGENT_IDEMPOTENCY_CONFLICT'
       ];
-      codes.forEach((raw: string) => {
-        const env = AgentDtoParser.errorEnvelope(
-          { code: raw, message: 'x', request_id: 'req_x' } as Object as Record<string, Object>
-        );
+      codes.forEach((rawCode: string) => {
+        const raw: MockUnknownErrorRaw = { code: rawCode, message: 'x', request_id: 'req_x' };
+        const env = AgentDtoParser.errorEnvelope(raw as Object as Record<string, Object>);
         expect(env.code !== AgentErrorCode.UNKNOWN).assertTrue();
       });
     });
 
     it('202 creation without plan id is a queued job, not a failure', 0, () => {
-      const raw: Record<string, Object> = {
+      const raw: MockJobRaw = {
         job_id: 'job_01H8XKQD9', user_id: 'user_demo_001', job_kind: 'learning_goal',
         status: 'QUEUED', created_at: 't', updated_at: 't',
         latest_run_id: 'run_01H8XKQDA', input_ref: { goal_id: 'goal_demo_001' }
       };
-      const job = AgentDtoParser.job(raw);
+      const job = AgentDtoParser.job(raw as Object as Record<string, Object>);
       expect(job.status).assertEqual(RunStatus.QUEUED);
       expect(job.latest_run_id !== null).assertTrue();
       expect(job.input_ref['plan_id'] === undefined).assertTrue();

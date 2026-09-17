@@ -41,7 +41,7 @@ export class CourseKnowledgeGraphView {
     return (graph?.tags ?? []).join(' · ');
   }
 
-  static pointsToggleLabel(graph?: CourseKnowledgeGraph, expanded: boolean): string {
+  static pointsToggleLabel(graph: CourseKnowledgeGraph | undefined, expanded: boolean): string {
     if (expanded) return '收起知识点';
     return `查看 ${CourseKnowledgeGraphView.points(graph).length} 个知识点`;
   }
