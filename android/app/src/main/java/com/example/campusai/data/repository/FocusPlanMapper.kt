@@ -21,6 +21,8 @@ internal fun TaskBreakdownResponseDto.toFocusPlan(
             dependencies = step.dependencies,
             isPolicyStep = step.is_policy_step,
             knowledgeSource = step.knowledge_source,
+            knowledgeDocumentId = step.knowledge_document_id,
+            knowledgeStatus = step.knowledge_status,
         )
     },
 )

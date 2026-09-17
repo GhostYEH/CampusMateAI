@@ -775,3 +775,96 @@ Each milestone is independently verified and committed. A later milestone may ad
 - JSON/Markdown artifacts are first-class; PDF is a later export.
 - Academic policy is independent of assistance mode and resolves to the strictest supported restriction.
 - Client code never owns domain decisions.
+
+---
+
+# 附录 A — v2 增量决策（2026-09-14）
+
+本附录只记录 v2 相对 v1 的**增量决策与不变量**,不复制外部项目文档。
+`CampusAgentRuntime v2` 是内部架构版本;`/api/v1` 公共契约继续兼容,
+不因内部重构强制客户端升版。`AGENT_CONTRACT_VERSION` 仍为 `v1`。
+
+## A.1 相对初版计划的三项修订
+
+1. **新增 P0:运行状态与事件原子提交。** 初版把状态更新与事件追加分成两次提交,
+   进程崩溃可能留下"状态已变但事件缺失"。v2 要求所有伴随状态变化的事件都经
+   `AgentRuntimeRepository` 的原子方法写入,与 `agent_runs` 同一事务提交。
+2. **契约 CI 从 P2 提升到 P1。** 运行时契约横跨 Web / Android / HarmonyOS / 微信,
+   没有门禁就无法安全追加恢复事件与错误码。
+3. **Skill 热加载与远程安装降级为不做。** 近期只实现版本、启停、角色绑定与启动校验;
+   动态加载会扩大供应链与权限面,收益不足。
+
+## A.2 执行模型
+
+HTTP 请求不再执行工作流。`POST /api/v1/agent-jobs` 固定顺序为:
+
+```
+能力准入 → runtime 可用性 → 输入 Schema → 原子入队（Job + 首个 Run + 幂等声明 + RUN_QUEUED）
+```
+
+- 新任务返回 `202`;相同幂等键与相同请求哈希重放返回原 Job,`200`。
+- 相同 `(user_id, operation, idempotency_key)` 携带不同请求哈希返回
+  `409 AGENT_IDEMPOTENCY_CONFLICT`。
+- 已知但未注册/未启用的 `job_kind` 返回 `409 AGENT_CAPABILITY_DISABLED`,且不留下任何孤儿记录。
+- runtime 处于 `drain`/`disabled` 返回 `503 AGENT_RUNTIME_UNAVAILABLE`。
+- **不保留 `inline` 回退路径**,避免长期维护两套执行语义。
+
+## A.3 Worker 与租约
+
+- 领取条件:`status='QUEUED'`、`next_attempt_at <= now`、无有效租约。
+- 默认 3 次尝试,退避 1s / 5s / 15s;可重试错误回 `QUEUED` 并追加 `RUN_RETRY_SCHEDULED`。
+- 崩溃恢复由 Handler 的 `recover()` 决策,追加 `RUN_RECOVERY_STARTED` / `RUN_RECOVERED`;
+  不再有"启动时一律标记失败"的旧策略。
+- `AWAITING_APPROVAL` 不占 Worker;审批通过后重新排入 `QUEUED`,从 checkpoint 继续。
+- 目标是 at-least-once + 幂等副作用,**不宣称 exactly-once**。
+
+## A.4 追加的公共枚举(只能加在末尾)
+
+- 事件类型:`RUN_RETRY_SCHEDULED`、`RUN_RECOVERY_STARTED`、`RUN_RECOVERED`。
+- 错误码:`AGENT_CAPABILITY_DISABLED`(409)、`AGENT_RUNTIME_UNAVAILABLE`(503)、
+  `AGENT_CURSOR_INVALID`(409)。
+
+四端 reducer 必须按 `(run_id, sequence)` 去重,并对未知事件"记录游标、不提升权限、不崩溃"。
+
+## A.5 工具调用治理
+
+所有注册工具经 `ToolInvocationGateway`,校验顺序固定:
+
+```
+运行/用户有效性 → Handler capability → Role permission → 参数 Schema
+→ 资源归属 → Hard Deny → RiskEngine → ApprovalGate → 幂等原子声明
+→ 领域 Service 执行 → 安全事件/审计
+```
+
+`AUTO_SAFE` 也必须做资源归属与 Hard Deny 校验;`MANUAL_ONLY` 永不由 Agent 自动执行。
+
+## A.6 能力目录
+
+`capabilities.default.json` 是受控、可审计的目录,启动时一次性交叉校验
+Agent / Role / Skill / Handler / Tool。已发布能力 code 与语义被冻结
+(`final_review.plan`、`final_review.adjust`、`course_research.run`、`notice.workflow`、
+`citation.verify`),改名或改变 route policy / risk level / requires_approval 会阻止启动。
+清单损坏必须阻止 runtime 启动,**不得静默回退到默认宽权限**。
+只支持配置级启停与角色绑定,不支持热加载 / 远程 URL / 压缩包安装 / 插件加载。
+
+## A.7 观测面
+
+`/api/v1/admin/agent-runtime/*` 仅 `admin` 可访问,严格只读,聚合优先。
+响应只保留安全摘要、哈希、计数、耗时与业务标识;不返回 prompt、完整模型内容、
+凭据、记忆正文或原始工具参数。所有查询带时间窗与行数上限。
+
+## A.8 升级基础设施的触发门槛
+
+满足任一条件才为 PostgreSQL/Redis 队列编写独立迁移计划:
+
+- 持续需要 2 个以上后端副本且 SQLite 写锁等待 P95 超过 100ms;
+- 活跃 Run 持续超过 20 个,或队列深度超过 100 且持续 15 分钟;
+- 单机 Worker 调度延迟 P95 连续 3 天超过 2 秒;
+- 需要跨区域执行、优先级队列、定时任务或超出数据库轮询能力的事件广播。
+
+WebSocket 同样不作为默认升级项。
+
+## A.9 回滚约定
+
+先切 `AGENT_RUNTIME_MODE=drain` 排空队列,再回滚应用版本;无法排空时保持新版本
+`disabled` 并修复前滚。回滚不删除新表、不降级数据库、不恢复 `inline` 双路径。

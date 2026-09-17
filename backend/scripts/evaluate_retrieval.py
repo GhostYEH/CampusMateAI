@@ -90,6 +90,46 @@ def load_fixtures(path: Path) -> List[EvalCase]:
     return cases
 
 
+def load_evaluation_corpus(path: Path) -> List[dict]:
+    """加载显式提供的评测语料。"""
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    documents = data.get("documents", [])
+    if not isinstance(documents, list):
+        raise ValueError("评测语料的 documents 必须是数组")
+
+    normalized: List[dict] = []
+    for index, item in enumerate(documents, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"评测语料第 {index} 项必须是对象")
+        title = str(item.get("title", "")).strip()
+        content = str(item.get("content", "")).strip()
+        if not title or not content:
+            raise ValueError(f"评测语料第 {index} 项缺少 title 或 content")
+        normalized.append({"title": title, "content": content})
+    return normalized
+
+
+def seed_evaluation_corpus(
+    repository: DocumentRepository,
+    documents: List[dict],
+) -> int:
+    """将评测语料显式写入当前测试库，并保持重复运行幂等。"""
+    added = 0
+    for document in documents:
+        _, created = repository.add_document(
+            title=document["title"],
+            content_text=document["content"],
+            raw_text=document["content"],
+            source_type="evaluation_fixture",
+            is_official=False,
+            is_demo=True,
+        )
+        if created:
+            added += 1
+    return added
+
+
 def _title_match(retrieved_title: str, expected: str) -> bool:
     """标题匹配 — 支持子串包含(避免后缀差异导致漏判)。"""
     if not retrieved_title or not expected:
@@ -291,6 +331,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="以 JSON 格式输出指标(便于 CI 解析)",
     )
+    parser.add_argument(
+        "--seed-corpus",
+        type=Path,
+        help="显式导入评测语料后再运行评测(仅用于 test/dev 环境)",
+    )
     args = parser.parse_args(argv)
 
     if not args.fixtures.exists():
@@ -302,6 +347,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     db = init_db(settings)
     repo = DocumentRepository(db)
     retrieval = RetrievalService(repo)
+    if args.seed_corpus:
+        if settings.app_env == "production":
+            print("ERROR: production 环境禁止导入评测语料。", file=sys.stderr)
+            return 5
+        if not args.seed_corpus.exists():
+            print(f"ERROR: 评测语料文件不存在: {args.seed_corpus}", file=sys.stderr)
+            return 5
+        try:
+            corpus = load_evaluation_corpus(args.seed_corpus)
+            added = seed_evaluation_corpus(repo, corpus)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            print(f"ERROR: 加载评测语料失败: {exc}", file=sys.stderr)
+            return 5
+        message = f"[INFO] 评测语料已就绪: 新增 {added} 份文档。"
+        print(message, file=sys.stderr if args.json else sys.stdout)
     retrieval.rebuild()
     if retrieval.chunk_count == 0:
         print("ERROR: 知识库为空,无法进行评测。请先上传或同步正式资料。", file=sys.stderr)
@@ -312,7 +372,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("ERROR: fixtures 中未找到任何样例。", file=sys.stderr)
         return 4
 
-    print(f"[INFO] 加载 {len(cases)} 条评测样例,知识库 chunk 数: {retrieval.chunk_count}")
+    print(
+        f"[INFO] 加载 {len(cases)} 条评测样例,知识库 chunk 数: {retrieval.chunk_count}",
+        file=sys.stderr if args.json else sys.stdout,
+    )
 
     results = evaluate_all(cases, retrieval)
     metrics = compute_metrics(results)

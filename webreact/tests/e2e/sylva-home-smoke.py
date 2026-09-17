@@ -144,16 +144,20 @@ def run():
         assert page.locator(".sylva-scene-stat").count() == 3
         print("first viewport workbench verified", flush=True)
 
-        # ── adaptive navigation contrast ─────────────────────────────────
+        # ── global primary-action navigation ─────────────────────────────
         global_nav = page.locator(".floating-nav")
         global_nav.wait_for(state="visible")
-        assert global_nav.locator(".floating-nav-button").count() == 8
+        assert global_nav.locator(".floating-nav-button").count() == 9
         assert global_nav.get_by_role("button", name="首页").get_attribute("aria-current") == "page"
-        nav_contrast = global_nav.get_attribute("data-contrast")
-        assert nav_contrast in ("light", "dark"), nav_contrast
+        assert global_nav.get_attribute("data-contrast") is None
+        assert global_nav.get_attribute("data-ogui-tone") is None
+        plate_opacities = global_nav.locator(".sylva-liquid-plate").evaluate_all(
+            "elements => elements.map(element => getComputedStyle(element).opacity)"
+        )
+        assert plate_opacities == ["1"] * 9, plate_opacities
         nav_color = page.locator(".floating-nav-button").first.evaluate("el => getComputedStyle(el).color")
         assert nav_color and nav_color != "rgba(0, 0, 0, 0)", nav_color
-        print(f"nav contrast={nav_contrast} color={nav_color}", flush=True)
+        print(f"global primary navigation color={nav_color}", flush=True)
 
         # ── clicking a priority item opens its task route ────────────────
         page.locator(".sylva-priority-list > button").first.click()
@@ -199,7 +203,7 @@ def run():
         assert mobile_box and abs(mobile_box["width"] - 390) < 2
         assert abs(mobile_box["height"] - 844) < 2
         assert page.locator(".floating-nav").is_visible()
-        assert page.locator(".floating-nav-button").count() == 8
+        assert page.locator(".floating-nav-button").count() == 9
         assert page.locator(".sylva-overview-primary").is_visible()
         assert page.locator(".sylva-priority-card").is_visible()
         overflow_m = page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")

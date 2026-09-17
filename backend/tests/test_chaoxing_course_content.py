@@ -611,3 +611,64 @@ async def test_chapter_with_job_count_not_skipped_for_card_only_detection(db: Da
     _, kwargs = mock_client.get_course_materials.call_args
     skip_ids = kwargs.get("unchanged_chapter_ids") or set()
     assert "ch1" not in skip_ids, "job_count > 0 的 chapter 不应被跳过"
+
+
+@pytest.mark.asyncio
+async def test_section_exception_isolated_and_cache_preserved(db: Database):
+    """单个 section 抛异常不得中断其它 section，也不得把缓存当成"没有内容"。"""
+    from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
+
+    course = _course(db, "user1", "11_22")
+    repo = CourseContentRepository(db)
+    repo.upsert_item(
+        user_id="user1", course_id=course.id, kind="document",
+        external_id="doc-cached", title="上次同步到的讲义.pdf",
+        parent_external_id="ch1",
+    )
+
+    container = MagicMock()
+    container.course_repository.get_course.return_value = course
+    container.chaoxing_repository.get_credentials.return_value = {"cookie": "val"}
+    container.course_content_repository = repo
+
+    chapter_dict = {
+        "kind": "chapter", "external_id": "ch1", "title": "第一章",
+        "status": "unknown", "metadata": {"job_count": 0, "raw_status": 0},
+    }
+    mock_client = MagicMock()
+    mock_client.client = MagicMock()
+    mock_client.client.aclose = AsyncMock()
+    mock_client.get_course_chapters = AsyncMock(return_value={
+        "status": "complete", "items": [chapter_dict], "error": None,
+    })
+    # materials 直接抛异常（不是返回 failed），代表最坏情况。
+    mock_client.get_course_materials = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_client.get_course_exams = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    mock_client.get_course_discussions = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+
+    with patch("app.services.chaoxing.course_content_sync.ChaoxingClient", return_value=mock_client):
+        service = ChaoxingCourseContentSyncService(container)
+        result = await service.sync_course(user_id="user1", course_id=course.id, depth="deep")
+
+    # 异常段被记为 failed，而不是丢掉或表现成 0 条成功。
+    assert result["sections"]["materials"]["status"] == "failed"
+    assert result["sections"]["materials"]["error"].startswith("unexpected_error:")
+    # 其它段照常完成 —— 一个段炸掉不影响其余段。
+    assert result["sections"]["exams"]["status"] == "complete"
+    assert result["sections"]["discussions"]["status"] == "complete"
+
+    statuses = {row.section: row for row in repo.list_section_statuses(
+        user_id="user1", course_id=course.id)}
+    assert statuses["materials"].status == "failed"
+    assert statuses["materials"].item_count == 0
+
+    # 失败段不得把已有有效缓存标记成过期(mark_section_stale_except 只在
+    # complete 时才允许执行)，否则用户会以为资料被删了。
+    cached = repo.list_items(user_id="user1", course_id=course.id, kind="document",
+                             include_stale=True)
+    assert [item.external_id for item in cached] == ["doc-cached"]
+    assert not cached[0].is_stale

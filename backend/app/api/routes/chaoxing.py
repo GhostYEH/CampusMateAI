@@ -4,11 +4,19 @@ import logging
 import re
 import asyncio
 import threading
-import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError, _auth_error
+from ...services.chaoxing.session_cache import (
+    cached_auth_state,
+    forget as _forget_status,
+    get_cached as _get_cached_status,
+    invalidate as _invalidate_status,
+    set_cached as _set_cached_status,
+    status_cache as _status_cache,
+)
+from ...services.chaoxing.sync_facts import last_chaoxing_sync_at
 from ..deps import require_role
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
@@ -22,17 +30,12 @@ logger = logging.getLogger(__name__)
 _sync_locks: dict[str, threading.Lock] = {}
 _sync_locks_guard = threading.Lock()
 
-_status_cache: dict[str, tuple[float, ChaoxingSyncStatus]] = {}
-_STATUS_CACHE_TTL = 30.0
-_STATUS_CACHE_MAX_SIZE = 512
+# 探测结果缓存在 services/chaoxing/session_cache.py，与"今日待办"共享：
+# 今日待办只读缓存、不触网，因此必须有一个统一的地方存放最近一次探测结论。
 
 
 def _status_cache_set(user_id: str, result: ChaoxingSyncStatus) -> None:
-    if len(_status_cache) >= _STATUS_CACHE_MAX_SIZE:
-        oldest = sorted(_status_cache.items(), key=lambda kv: kv[1][0])
-        for key, _ in oldest[: len(_status_cache) // 4]:
-            _status_cache.pop(key, None)
-    _status_cache[user_id] = (time.monotonic(), result)
+    _set_cached_status(user_id, result)
 
 
 def _get_user_sync_lock(user_id: str) -> threading.Lock:
@@ -72,6 +75,47 @@ def _parse_chaoxing_datetime(value):
         except ValueError:
             continue
     return None
+
+
+# 学习通时间一律是北京时间；统一按 UTC+8 归一后再落库，避免同一条记录在不同
+# 页面被按不同时区解读。
+_CST = timezone(timedelta(hours=8))
+_DATE_ONLY_RE = re.compile(r"(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?")
+
+
+def _normalize_deadline(value):
+    """把学习通回传的截止时间统一成带时区的 ISO 字符串。
+
+    - 纯日期("2026-08-10")没有具体时刻，按当天 23:59:59 收口：否则同一份数据会在
+      当天零点就被判成"已逾期"，制造出并不存在的逾期项。
+    - 解析不出来的文本原样保留(不丢信息)，由下游按"无有效截止时间"处理。
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        moment = value
+    elif isinstance(value, (int, float)):
+        timestamp = value / 1000 if value > 10_000_000_000 else value
+        moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            return _normalize_deadline(int(text))
+        date_only = _DATE_ONLY_RE.fullmatch(text)
+        if date_only:
+            try:
+                day = datetime(
+                    int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3))
+                )
+            except ValueError:
+                return text
+            return day.replace(hour=23, minute=59, second=59, tzinfo=_CST).isoformat()
+        moment = _parse_chaoxing_datetime(text)
+        if moment is None:
+            return text
+    return (moment if moment.tzinfo else moment.replace(tzinfo=_CST)).isoformat()
 
 
 def _fetch_http_exception(error: ChaoxingFetchError) -> HTTPException:
@@ -193,16 +237,8 @@ def _count_user_chaoxing(container: ServiceContainer, user_id: str, kind: str) -
 
 
 def _last_user_sync_at(container: ServiceContainer, user_id: str):
-    with container.db.query() as conn:
-        row = conn.execute(
-            "SELECT MAX(last_synced_at) AS synced_at FROM ("
-            "SELECT last_synced_at FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing' "
-            "UNION ALL SELECT last_synced_at FROM personal_tasks WHERE user_id = ? AND source LIKE 'chaoxing%' "
-            "UNION ALL SELECT last_synced_at FROM notices WHERE user_id = ? AND source = 'chaoxing'"
-            ")",
-            (user_id, user_id, user_id),
-        ).fetchone()
-    return row["synced_at"] if row else None
+    """最近一次学习通同步时间 —— 统一实现见 services/chaoxing/sync_facts.py。"""
+    return last_chaoxing_sync_at(container, user_id)
 
 @router.post("/chaoxing/login")
 async def login_chaoxing(
@@ -225,7 +261,8 @@ async def login_chaoxing(
     cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
     container.chaoxing_repository.save_credentials(user.id, cookies)
 
-    _status_cache.pop(user.id, None)
+    # 换账号/重新登录后，上一个账号的登录态观测必须作废。
+    _forget_status(user.id)
     return {"status": "success"}
 
 @router.get("/chaoxing/status", response_model=ChaoxingSyncStatus)
@@ -233,9 +270,9 @@ async def get_chaoxing_status(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> ChaoxingSyncStatus:
-    cached = _status_cache.get(user.id)
-    if cached and time.monotonic() - cached[0] < _STATUS_CACHE_TTL:
-        return cached[1]
+    cached = _get_cached_status(user.id)
+    if cached is not None:
+        return cached
 
     credentials = container.chaoxing_repository.get_credentials(user.id)
     if not credentials:
@@ -349,11 +386,22 @@ async def _perform_sync_chaoxing(
         "assignments_pending": 0,
         "assignments_created": 0,
         "assignments_updated": 0,
+        "scores_fetched": 0,
+        "scores_pending": 0,
+        "exams_fetched": 0,
+        "exams_created": 0,
+        "exams_updated": 0,
         "notices_fetched": 0,
         "notices_created": 0,
         "notices_updated": 0,
     }
     warnings = []
+    # 每个 section 独立上报状态: 单个 section 失败不得让其它已成功的数据丢失，
+    # 也不允许把抓取异常表现成"0 条内容"。
+    sections: dict[str, dict] = {
+        "courses": {"status": "complete", "item_count": len(courses),
+                    "last_synced_at": now_iso, "error_code": None, "error_message": None},
+    }
     
     # Save courses to DB (Idempotent Sync)
     for course_data in courses:
@@ -411,10 +459,15 @@ async def _perform_sync_chaoxing(
                 subject_id=saved_course.id,
                 callback=lambda saved_course=saved_course: container.learner_event_service.record_chaoxing_course_synced(saved_course),
             )
-        course_data["local_course_id"] = saved_course.id if saved_course else existing_course.id
+        course_data["local_course_id"] = (
+            saved_course.id if saved_course is not None
+            else existing_course.id if existing_course is not None
+            else None
+        )
 
     # Homework sync
     course_by_remote_id = {str(course.get("course_id")): course for course in courses}
+    assignment_error: str | None = None
     if hasattr(client, "get_all_assignments"):
         try:
             all_assignments = await client.get_all_assignments()
@@ -422,6 +475,12 @@ async def _perform_sync_chaoxing(
             if error.code in ("reauth_required", "verification_required"):
                 raise _fetch_http_exception(error) from error
             warnings.append(f"assignments:{error.code}")
+            assignment_error = error.code
+            all_assignments = []
+        except Exception as error:  # noqa: BLE001 - 单段失败不得中断整次同步
+            logger.warning("chaoxing assignment sync failed: %s", type(error).__name__)
+            warnings.append(f"assignments:unexpected:{type(error).__name__}")
+            assignment_error = "unexpected_error"
             all_assignments = []
         assignment_batches = [
             (course_by_remote_id.get(str(assignment.get("course_id"))) or {
@@ -438,8 +497,40 @@ async def _perform_sync_chaoxing(
                 if error.code in ("reauth_required", "verification_required"):
                     raise _fetch_http_exception(error) from error
                 warnings.append(f"assignments:{course.get('course_id')}:{error.code}")
+                assignment_error = error.code
+                continue
+            except Exception as error:  # noqa: BLE001
+                logger.warning("chaoxing assignment sync failed for %s: %s",
+                               course.get("course_id"), type(error).__name__)
+                warnings.append(f"assignments:{course.get('course_id')}:unexpected")
+                assignment_error = "unexpected_error"
                 continue
             assignment_batches.append((course, data.get("assignments", [])))
+
+    # 作业得分补抓: 学习通作业列表页只给状态(未提交/待批阅/已完成)、不含分数，
+    # 得分只在作业报告页。只抓"已提交且库里还没有分数"的作业，已抓到的不重复请求，
+    # 单次请求量由 enrich_assignment_scores 的 limit 兜底。
+    if hasattr(client, "enrich_assignment_scores"):
+        try:
+            with container.db.query() as conn:
+                already_scored = {
+                    row["external_id"]
+                    for row in conn.execute(
+                        "SELECT external_id FROM personal_tasks "
+                        "WHERE user_id = ? AND source = 'chaoxing' AND score IS NOT NULL",
+                        (user.id,),
+                    ).fetchall()
+                }
+            candidates = [
+                assignment
+                for _course, items in assignment_batches
+                for assignment in items
+                if assignment.get("external_id") not in already_scored
+            ]
+            stats["scores_pending"] = len(candidates)
+            stats["scores_fetched"] = await client.enrich_assignment_scores(candidates)
+        except Exception:
+            logger.warning("Chaoxing assignment score enrichment failed", exc_info=False)
 
     for course, assignments in assignment_batches:
         for assignment in assignments:
@@ -466,13 +557,21 @@ async def _perform_sync_chaoxing(
                 existing_task_row = task_repo.get_task(task_id, user_id=user.id)
                 update_fields = {
                     "title": assignment["title"],
-                    "deadline": assignment["deadline"],
+                    "deadline": _normalize_deadline(assignment.get("deadline")),
                     "source_name": course["name"],
                     "source_url": assignment.get("link"),
                     "last_synced_at": now_iso,
                     "course_id": course.get("local_course_id"),
                 }
-                
+                # 成绩事实一旦观测到就要保留: 学习通某些页面轮次不再回传分数时，
+                # 不能用 None 覆盖已经确认过的成绩。
+                if assignment.get("submitted_at"):
+                    update_fields["remote_submitted_at"] = assignment["submitted_at"]
+                if assignment.get("score") is not None:
+                    update_fields["score"] = assignment["score"]
+                    update_fields["score_max"] = assignment.get("score_max")
+                    update_fields["graded_at"] = now_iso
+
                 # Update status
                 current_status = existing_task["status"]
                 new_status = assignment.get("status", "pending")
@@ -518,6 +617,21 @@ async def _perform_sync_chaoxing(
                             final_task, observed_at=now_iso
                         ),
                     )
+                if final_task is not None and final_task.score is not None:
+                    _project_learner_event(
+                        container,
+                        action="assignment_graded",
+                        subject_type="personal_task",
+                        subject_id=task_id,
+                        callback=lambda final_task=final_task: container.learner_event_service.record_chaoxing_assignment_graded(
+                            user_id=user.id,
+                            task_id=final_task.id,
+                            course_id=final_task.course_id,
+                            score=final_task.score,
+                            score_max=final_task.score_max,
+                            observed_at=now_iso,
+                        ),
+                    )
             else:
                 # Create new task
                 # Always persist first, including a first observation that is already
@@ -525,7 +639,7 @@ async def _perform_sync_chaoxing(
                 saved_task = task_repo.create_task(
                     user_id=user.id,
                     title=assignment["title"],
-                    deadline=assignment["deadline"],
+                    deadline=_normalize_deadline(assignment.get("deadline")),
                     source_name=course["name"],
                     source="chaoxing",
                     external_id=external_id,
@@ -535,6 +649,18 @@ async def _perform_sync_chaoxing(
                 )
                 stats["assignments_created"] += 1
                 if saved_task is not None:
+                    score_fields = {}
+                    if assignment.get("submitted_at"):
+                        score_fields["remote_submitted_at"] = assignment["submitted_at"]
+                    if assignment.get("score") is not None:
+                        score_fields["score"] = assignment["score"]
+                        score_fields["score_max"] = assignment.get("score_max")
+                        score_fields["graded_at"] = now_iso
+                    if score_fields:
+                        saved_task = (
+                            task_repo.update_task(saved_task.id, user_id=user.id, fields=score_fields)
+                            or saved_task
+                        )
                     _project_learner_event(
                         container,
                         action="assignment_discovered",
@@ -554,16 +680,143 @@ async def _perform_sync_chaoxing(
                                     completed_task, observed_at=now_iso
                                 ),
                             )
+                        if assignment.get("score") is not None:
+                            _project_learner_event(
+                                container,
+                                action="assignment_graded",
+                                subject_type="personal_task",
+                                subject_id=saved_task.id,
+                                callback=lambda saved_task=saved_task, assignment=assignment: container.learner_event_service.record_chaoxing_assignment_graded(
+                                    user_id=user.id,
+                                    task_id=saved_task.id,
+                                    course_id=saved_task.course_id,
+                                    score=assignment.get("score"),
+                                    score_max=assignment.get("score_max"),
+                                    observed_at=now_iso,
+                                ),
+                            )
+
+    sections["assignments"] = {
+        "status": "failed" if assignment_error else "complete",
+        "item_count": stats["assignments_fetched"],
+        "last_synced_at": now_iso,
+        "error_code": assignment_error,
+        "error_message": (
+            None if assignment_error is None
+            else "作业列表抓取失败，已保留上一次同步到的作业"
+        ),
+    }
+
+    # 考试同步 —— 走低成本路径: 每门课一次章节请求，从章节附件里挑 work/test 入口。
+    # 带考试时间的考试由课程详情页显式触发的 deep 同步(章节卡片 + parse_exam_at)补齐；
+    # 全局同步不为每门课深抓全部章节卡片。
+    exam_repo = getattr(container, "chaoxing_repository", None)
+    exam_error: str | None = None
+    exam_failures = 0
+    exam_succeeded = 0
+    exam_attempted = 0
+    exam_capable = (
+        hasattr(client, "get_course_exam_candidates")
+        and exam_repo is not None
+        and hasattr(exam_repo, "upsert_exam")
+    )
+    if exam_capable:
+        for course_data in courses:
+            course_remote_id = str(course_data.get("course_id") or "")
+            exam_attempted += 1
+            try:
+                result = await client.get_course_exam_candidates({
+                    "course_id": course_remote_id,
+                    "clazz_id": course_data.get("clazz_id"),
+                    "cpi": course_data.get("cpi"),
+                })
+            except Exception as error:  # noqa: BLE001 - 单门课失败不影响其它课程
+                logger.warning("chaoxing exam sync failed for %s: %s",
+                               course_remote_id, type(error).__name__)
+                exam_failures += 1
+                exam_error = exam_error or "unexpected_error"
+                continue
+            status = result.get("status")
+            if status != "complete":
+                exam_failures += 1
+                exam_error = exam_error or str(result.get("error") or status or "unknown")
+                continue
+            try:
+                for item in result.get("items") or []:
+                    external_id = str(item.get("external_id") or "")
+                    if not external_id:
+                        continue
+                    metadata = item.get("metadata") or {}
+                    # 幂等键与 deep 同步保持一致(course_external_id:exam_id)，避免两条
+                    # 路径各写一行、同一场考试在课程详情里出现两次。
+                    exam_row = exam_repo.upsert_exam(
+                        user_id=user.id,
+                        course_id=course_data.get("local_course_id"),
+                        external_id=(
+                            f"{course_data.get('external_id') or course_remote_id}:{external_id}"
+                        ),
+                        title=str(item.get("title") or "未命名考试"),
+                        exam_at=metadata.get("exam_at"),
+                        score=metadata.get("score"),
+                        score_max=metadata.get("score_max"),
+                        status="discovered",
+                        source_url=item.get("source_url"),
+                    )
+                    stats["exams_fetched"] += 1
+                    if exam_row.get("is_new"):
+                        stats["exams_created"] += 1
+                    elif exam_row.get("changed"):
+                        stats["exams_updated"] += 1
+            except Exception as error:  # noqa: BLE001 - 落库失败同样算这门课失败
+                logger.warning("chaoxing exam persist failed for %s: %s",
+                               course_remote_id, type(error).__name__)
+                exam_failures += 1
+                exam_error = exam_error or f"unexpected_error:{type(error).__name__}"
+                continue
+            # 只有"这门课成功返回(哪怕 0 条)"才计为成功来源。
+            # 不能用 exams_fetched 推断成功数: 成功但空 + 另一门失败时会被误报成 failed。
+            exam_succeeded += 1
+    sections["exams"] = {
+        "status": (
+            "unavailable" if not exam_capable
+            else "complete" if exam_failures == 0
+            else "failed" if exam_succeeded == 0
+            else "partial"
+        ),
+        "item_count": stats["exams_fetched"],
+        "last_synced_at": now_iso,
+        "error_code": exam_error,
+        "error_message": (
+            None if exam_error is None
+            else f"{exam_failures}/{exam_attempted} 门课程的考试入口抓取失败"
+        ),
+    }
 
     # Notice Sync
+    # 通知段必须自己记录失败事实: 只往 warnings 里塞一条字符串、状态仍报 complete，
+    # 等于把抓取失败伪装成"0 条成功"，下游无法区分"没有通知"和"没抓到通知"。
     notice_sync_available = True
+    notice_error: str | None = None
+    notice_attempted = 0
+    notice_succeeded = 0
+    notice_failures = 0
     if hasattr(client, "get_all_notices"):
+        notice_attempted = 1
         try:
             all_notices = await client.get_all_notices()
+            notice_succeeded += 1
         except ChaoxingFetchError as error:
             if error.code in ("reauth_required", "verification_required"):
                 raise _fetch_http_exception(error) from error
             warnings.append(f"notices:{error.code}")
+            notice_error = error.code
+            notice_failures += 1
+            all_notices = []
+        except Exception as error:  # noqa: BLE001 - 单段失败不得中断整次同步
+            logger.warning("chaoxing notice sync failed: %s", type(error).__name__)
+            warnings.append(f"notices:unexpected:{type(error).__name__}")
+            notice_error = f"unexpected_error:{type(error).__name__}"
+            notice_failures += 1
             all_notices = []
         notice_batches = [
             (course_by_remote_id.get(str(notice.get("course_id"))) or {
@@ -575,17 +828,31 @@ async def _perform_sync_chaoxing(
     else:
         notice_batches = []
         for course in courses:
+            notice_attempted += 1
             try:
                 notices = await client.get_notices(course["link"])
             except ChaoxingFetchError as error:
                 if error.code == "http_error_404":
                     notice_sync_available = False
+                    notice_error = notice_error or "notice_endpoint_unavailable"
+                    notice_failures += 1
                     logger.warning("Chaoxing notice endpoint unavailable for course %s", course.get("course_id"))
                     continue
                 if error.code in ("reauth_required", "verification_required"):
                     raise _fetch_http_exception(error) from error
                 warnings.append(f"notices:{course.get('course_id')}:{error.code}")
+                notice_error = notice_error or error.code
+                notice_failures += 1
                 continue
+            except Exception as error:  # noqa: BLE001
+                logger.warning("chaoxing notice sync failed for %s: %s",
+                               course.get("course_id"), type(error).__name__)
+                warnings.append(f"notices:{course.get('course_id')}:unexpected")
+                notice_error = notice_error or f"unexpected_error:{type(error).__name__}"
+                notice_failures += 1
+                continue
+            # 成功返回(哪怕 0 条通知)也算一次成功来源。
+            notice_succeeded += 1
             notice_batches.append((course, notices))
 
     for course, notices in notice_batches:
@@ -727,15 +994,36 @@ async def _perform_sync_chaoxing(
     # 更新同步时间
     container.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
 
-    _status_cache.pop(user.id, None)
+    _invalidate_status(user.id)
+
+    sections["notices"] = {
+        # 按**来源**的成功/失败如实分类，不能用条目数推断成功数:
+        # "成功但返回 0 条" + "另一来源失败" 是 partial，不是 failed。
+        "status": (
+            "unavailable" if (not notice_sync_available and notice_succeeded == 0)
+            else "complete" if notice_failures == 0
+            else "failed" if notice_succeeded == 0
+            else "partial"
+        ),
+        "item_count": stats["notices_fetched"],
+        "last_synced_at": now_iso,
+        "error_code": notice_error,
+        "error_message": (
+            None if notice_error is None
+            else f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败"
+        ),
+    }
 
     return {
         "status": "sync completed",
         "notice_sync": "available" if notice_sync_available else "unavailable",
         "source": "chaoxing_live",
-        "complete": notice_sync_available and not warnings,
+        "complete": all(
+            section["status"] == "complete" for section in sections.values()
+        ),
         "warnings": warnings,
         "stats": stats,
+        "sections": sections,
     }
 
 @router.post("/chaoxing/disconnect")
@@ -744,5 +1032,5 @@ async def disconnect_chaoxing(
     container: ServiceContainer = Depends(_container),
 ):
     container.chaoxing_repository.delete_credentials(user.id)
-    _status_cache.pop(user.id, None)
+    _forget_status(user.id)
     return {"status": "disconnected"}

@@ -16,10 +16,11 @@ test("primary navigation preloads the target route on pointer or keyboard intent
   assert.match(floatingNav, /onIntent\?\.\(`\/\$\{item\.key\}`\)/);
 });
 
-test("adaptive nav contrast does not poll WebGL pixels continuously", () => {
+test("global primary navigation does not sample or mutate scene contrast", () => {
   assert.doesNotMatch(floatingNav, /setInterval/);
   assert.doesNotMatch(floatingNav, /readPixels/);
-  assert.match(floatingNav, /setAttribute\("data-contrast", "dark"\)/);
+  assert.doesNotMatch(floatingNav, /data-contrast|setAttribute\("data-contrast"/);
+  assert.match(floatingNav, /floating-nav floating-nav--primary/);
 });
 
 test("route-specific shader backgrounds load only when their route renders", () => {

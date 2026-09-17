@@ -560,6 +560,30 @@ class AgentAcademicPolicyRestricted(AgentRuntimeError):
     message = "学术策略限制该操作。"
 
 
+class AgentCapabilityDisabled(AgentRuntimeError):
+    """已知但未注册/未启用的能力。入队前拦截,不留下孤儿 Job。"""
+
+    code = "AGENT_CAPABILITY_DISABLED"
+    http_status = 409
+    message = "该 Agent 能力当前不可用。"
+
+
+class AgentRuntimeUnavailable(AgentRuntimeError):
+    """Runtime 处于 drain/disabled,不接单。不得回退为请求内执行。"""
+
+    code = "AGENT_RUNTIME_UNAVAILABLE"
+    http_status = 503
+    message = "Agent 运行时当前不接受新任务。"
+
+
+class AgentCursorInvalid(AgentRuntimeError):
+    """SSE 续传游标无效或不属于该 Run。客户端应改用 REST 全量归并。"""
+
+    code = "AGENT_CURSOR_INVALID"
+    http_status = 409
+    message = "事件游标无效。"
+
+
 def _build_error_body(
     code: str,
     message: str,

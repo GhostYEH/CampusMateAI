@@ -92,7 +92,7 @@ class LearnerStateProjectionService:
         self._student_goal_repository = student_goal_repository
 
     def project_user(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         as_of = _require_utc(as_of)
         current = None
@@ -137,7 +137,7 @@ class LearnerStateProjectionService:
                 trigger=trigger,
                 corrections=corrections if self._control_repository is not None else None,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,
@@ -165,7 +165,7 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_academic(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         """ACADEMIC 投影：将教务事实安全地投影到学生状态世界模型。
 
@@ -198,7 +198,7 @@ class LearnerStateProjectionService:
                 user_id=user_id, inputs=inputs, as_of=as_of,
                 input_digest=input_digest, trigger=trigger,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,
@@ -226,7 +226,7 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_world(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read"
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
     ) -> ProjectionResult:
         """WORLD 投影：通用大学生世界状态(校园生活/事务/个人成长)。
 
@@ -259,7 +259,7 @@ class LearnerStateProjectionService:
                 user_id=user_id, inputs=inputs, as_of=as_of,
                 input_digest=input_digest, trigger=trigger,
             )
-            if current is None or current_as_of is None or as_of >= current_as_of:
+            if persist and (current is None or current_as_of is None or as_of >= current_as_of):
                 self.repository.save_projection(
                     run={
                         "run_id": result.run_id,
@@ -296,6 +296,8 @@ class LearnerStateProjectionService:
             "exam_items": [],
             "grade_items": [],
             "events": [],
+            "chaoxing_exam_items": [],
+            "chaoxing_grade_items": [],
         }
         if self._student_goal_repository is not None:
             try:
@@ -349,12 +351,31 @@ class LearnerStateProjectionService:
         try:
             with self.repository._db.query() as conn:
                 task_rows = conn.execute(
-                    """SELECT id,status,deadline,created_at,completed_at,deleted_at
+                    """SELECT id,status,deadline,created_at,completed_at,deleted_at,
+                              remote_submitted_at
                        FROM personal_tasks WHERE user_id=?
                        ORDER BY created_at DESC LIMIT 200""",
                     (user_id,),
                 ).fetchall()
                 inputs["tasks"] = [dict(row) for row in task_rows]
+                inputs["chaoxing_grade_items"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, title, score, score_max, graded_at
+                           FROM personal_tasks
+                           WHERE user_id = ? AND source = 'chaoxing'
+                             AND score IS NOT NULL AND deleted_at IS NULL
+                           ORDER BY graded_at DESC LIMIT 200""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["chaoxing_exam_items"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, title, exam_at, score, score_max, status
+                           FROM chaoxing_exams WHERE user_id = ?
+                           ORDER BY exam_at IS NULL, exam_at LIMIT 200""",
+                        (user_id,),
+                    ).fetchall()
+                ]
                 session_rows = conn.execute(
                     """SELECT id,started_at,ended_at,duration_seconds,status
                        FROM study_sessions WHERE user_id=?
@@ -448,22 +469,37 @@ class LearnerStateProjectionService:
                     "explanation_code": source.get("explanation_code", "state_observed"),
                 })
 
-        has_data = bool(tasks or sessions or goals or schedule_items or exam_items or grade_items)
+        # 学习通考试/作业得分参与 WORLD 投影: 教务未绑定时它是唯一真实来源。
+        chaoxing_exam_items = inputs.get("chaoxing_exam_items", [])
+        chaoxing_grade_items = inputs.get("chaoxing_grade_items", [])
+        if "CHAOXING" in inputs.get("paused_sources", []):
+            chaoxing_exam_items = []
+            chaoxing_grade_items = []
+        merged_exam_items = list(exam_items) + [
+            {"id": row["id"], "starts_at": row.get("exam_at")}
+            for row in chaoxing_exam_items
+        ]
+
+        has_data = bool(
+            tasks or sessions or goals or schedule_items or exam_items or grade_items
+            or chaoxing_exam_items or chaoxing_grade_items
+        )
 
         # 1. workload_pressure
         self._compute_workload_pressure(
-            tasks=tasks, exam_items=exam_items, as_of=as_of, warnings=warnings,
+            tasks=tasks, exam_items=merged_exam_items, as_of=as_of, warnings=warnings,
             has_data=has_data, add_world=add_world,
         )
         # 2. schedule_conflict
         self._compute_schedule_conflict(
-            schedule_items=schedule_items, exam_items=exam_items, tasks=tasks,
+            schedule_items=schedule_items, exam_items=merged_exam_items, tasks=tasks,
             as_of=as_of, warnings=warnings, has_data=has_data, add_world=add_world,
         )
         # 3. academic_progress
         self._compute_academic_progress(
             grade_items=grade_items, schedule_items=schedule_items,
-            warnings=warnings, has_data=has_data, add_world=add_world,
+            warnings=warnings, has_data=has_data,
+            chaoxing_grade_items=chaoxing_grade_items, add_world=add_world,
         )
         # 4. focus_rhythm
         self._compute_focus_rhythm(
@@ -570,26 +606,61 @@ class LearnerStateProjectionService:
         )
 
     @staticmethod
-    def _compute_academic_progress(*, grade_items, schedule_items, warnings, has_data, add_world) -> None:
+    def _compute_academic_progress(*, grade_items, schedule_items, warnings, has_data,
+                                   chaoxing_grade_items=None, add_world) -> None:
+        chaoxing_grade_items = chaoxing_grade_items or []
         observed_courses = {item.get("course_code") for item in grade_items if item.get("course_code")}
         observed_credits = sum(float(item.get("credit") or 0) for item in grade_items)
         passed_count = 0
         for item in grade_items:
             score = item.get("score")
-            if not score:
+            # 0 分是有效成绩(挂科)，判定口径与学习通侧保持一致。此处 0 分同样
+            # 不会计入 passed_count，但保留显式判定，避免后人在本循环里新增
+            # "已观测成绩数"之类的统计时静默漏掉挂科记录。
+            if score is None or str(score).strip() == "":
                 continue
             try:
                 if float(score) >= 60:
                     passed_count += 1
             except (TypeError, ValueError):
                 continue
-        quality = "verified" if grade_items else ("partial" if schedule_items else "unavailable")
+        # 学习通作业得分没有学分信息，只贡献"观测到成绩的课程数/通过数/均分"。
+        platform_courses = {
+            item.get("course_id") for item in chaoxing_grade_items if item.get("course_id")
+        }
+        platform_passed = 0
+        platform_score_sum = 0.0
+        platform_score_count = 0
+        for item in chaoxing_grade_items:
+            score = item.get("score")
+            # 0 分是有效成绩: 缺失才跳过，否则不及格会被算成"未观测"。
+            if score is None or str(score).strip() == "":
+                continue
+            try:
+                numeric = float(score)
+            except (TypeError, ValueError):
+                continue
+            platform_score_count += 1
+            platform_score_sum += numeric
+            if numeric >= 60:
+                platform_passed += 1
+        if grade_items:
+            quality = "verified"
+        elif schedule_items or chaoxing_grade_items:
+            quality = "partial"
+        else:
+            quality = "unavailable"
         add_world(
             state_type="academic_progress",
             value={
-                "observed_course_count": len(observed_courses),
+                "observed_course_count": len(observed_courses) + len(platform_courses),
                 "observed_credit_count": round(observed_credits, 2),
-                "observed_passed_count": passed_count,
+                "observed_passed_count": passed_count + platform_passed,
+                "platform_grade_count": len(chaoxing_grade_items),
+                "platform_average_score": (
+                    round(platform_score_sum / platform_score_count, 2)
+                    if platform_score_count else None
+                ),
                 "data_completeness": quality, "warning_codes": list(warnings),
             },
             quality=quality,
@@ -750,7 +821,52 @@ class LearnerStateProjectionService:
             "grade_items": [],
             "exam_items": [],
             "edu_events": [],
+            # 学习通侧成绩事实: 作业得分(来自 personal_tasks)与考试(来自 chaoxing_exams)。
+            # 教务未绑定时，学习通是唯一能支撑 ACADEMIC 投影的真实来源。
+            "chaoxing_grade_items": [],
+            "chaoxing_exam_items": [],
+            # 课程知识图谱: 知识点体系 + 掌握率(学习通课程图谱页)。
+            "knowledge_graphs": [],
+            "knowledge_points": [],
         }
+        try:
+            with self.repository._db.query() as conn:
+                inputs["chaoxing_grade_items"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, title, score, score_max, graded_at
+                           FROM personal_tasks
+                           WHERE user_id = ? AND source = 'chaoxing'
+                             AND score IS NOT NULL AND deleted_at IS NULL
+                           ORDER BY graded_at DESC LIMIT 200""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["chaoxing_exam_items"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, title, exam_at, score, score_max, status
+                           FROM chaoxing_exams WHERE user_id = ?
+                           ORDER BY exam_at IS NULL, exam_at LIMIT 200""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["knowledge_graphs"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, knowledge_point_count, own_mastery_rate,
+                                  class_mastery_rate, own_completion_rate, class_completion_rate
+                           FROM chaoxing_knowledge_graphs WHERE user_id = ? LIMIT 100""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+                inputs["knowledge_points"] = [
+                    dict(row) for row in conn.execute(
+                        """SELECT id, course_id, external_id, name
+                           FROM chaoxing_knowledge_points WHERE user_id = ?
+                           ORDER BY position LIMIT 500""",
+                        (user_id,),
+                    ).fetchall()
+                ]
+        except Exception:
+            pass
         if self._edu_data_repository is not None:
             try:
                 inputs["schedule_items"] = [
@@ -823,9 +939,28 @@ class LearnerStateProjectionService:
             grade_items = []
             exam_items = []
             edu_events = []
+        chaoxing_grade_items = inputs.get("chaoxing_grade_items", [])
+        chaoxing_exam_items = inputs.get("chaoxing_exam_items", [])
+        knowledge_graphs = inputs.get("knowledge_graphs", [])
+        knowledge_points = inputs.get("knowledge_points", [])
+        if "CHAOXING" in inputs.get("paused_sources", []):
+            chaoxing_grade_items = []
+            chaoxing_exam_items = []
+            knowledge_graphs = []
+            knowledge_points = []
 
-        has_data = bool(schedule_items or grade_items or exam_items)
-        base_quality = "verified" if has_data else "unavailable"
+        has_data = bool(
+            schedule_items or grade_items or exam_items
+            or chaoxing_grade_items or chaoxing_exam_items or knowledge_graphs
+        )
+        # 教务是权威来源(verified)；只有学习通观测时降级为 partial，
+        # 避免把平台抓取事实当成教务成绩同等可信度。
+        if schedule_items or grade_items or exam_items:
+            base_quality = "verified"
+        elif has_data:
+            base_quality = "partial"
+        else:
+            base_quality = "unavailable"
 
         def add_academic(
             *, state_type: str, value: dict[str, Any], quality: str,
@@ -871,39 +1006,55 @@ class LearnerStateProjectionService:
             sources=[{"source_type": "edu_schedule", "source_id": item["id"], "explanation_code": "edu_schedule_observed"} for item in schedule_items[:10]],
         )
 
-        # 2. grade_observation
-        score_bands: dict[str, int] = {}
-        for item in grade_items:
-            score = item.get("score")
-            if not score:
-                continue
+        # 2. grade_observation —— 教务成绩与学习通作业得分共用同一套分段口径
+        def _band_for(score) -> str | None:
+            # 0 分是有效成绩(0_59 段)，只有缺失或空值才不产出分段。
+            if score is None or str(score).strip() == "":
+                return None
             try:
                 numeric = float(score)
             except (TypeError, ValueError):
-                score_bands["non_numeric"] = score_bands.get("non_numeric", 0) + 1
-                continue
+                return "non_numeric"
             if numeric >= 90:
-                band = "90_100"
-            elif numeric >= 80:
-                band = "80_89"
-            elif numeric >= 70:
-                band = "70_79"
-            elif numeric >= 60:
-                band = "60_69"
-            else:
-                band = "0_59"
+                return "90_100"
+            if numeric >= 80:
+                return "80_89"
+            if numeric >= 70:
+                return "70_79"
+            if numeric >= 60:
+                return "60_69"
+            return "0_59"
+
+        score_bands: dict[str, int] = {}
+        for item in grade_items:
+            band = _band_for(item.get("score"))
+            if band is None:
+                continue
+            score_bands[band] = score_bands.get(band, 0) + 1
+        for item in chaoxing_grade_items:
+            band = _band_for(item.get("score"))
+            if band is None:
+                continue
             score_bands[band] = score_bands.get(band, 0) + 1
         add_academic(
             state_type="grade_observation",
             value={
-                "observed_grade_count": len(grade_items),
+                "observed_grade_count": len(grade_items) + len(chaoxing_grade_items),
+                "edu_grade_count": len(grade_items),
+                "platform_grade_count": len(chaoxing_grade_items),
                 "score_band_distribution": score_bands,
-                "has_observed_grades": bool(grade_items),
+                "has_observed_grades": bool(grade_items or chaoxing_grade_items),
                 "data_completeness": base_quality,
                 "warning_codes": list(warnings),
             },
             quality=base_quality,
-            sources=[{"source_type": "edu_grade", "source_id": item["id"], "explanation_code": "edu_grade_observed"} for item in grade_items[:10]],
+            sources=[
+                {"source_type": "edu_grade", "source_id": item["id"], "explanation_code": "edu_grade_observed"}
+                for item in grade_items[:10]
+            ] + [
+                {"source_type": "chaoxing_grade", "source_id": item["id"], "explanation_code": "chaoxing_assignment_graded"}
+                for item in chaoxing_grade_items[:10]
+            ],
         )
 
         # 3. credit_progress
@@ -921,11 +1072,14 @@ class LearnerStateProjectionService:
             quality=base_quality,
         )
 
-        # 4. exam_exposure
+        # 4. exam_exposure —— 教务考试与学习通考试共用同一套时间分桶口径
         upcoming_exams = []
         unknown_time_count = 0
         time_buckets: dict[str, int] = {}
-        for item in exam_items:
+        for item in list(exam_items) + [
+            {"id": row["id"], "starts_at": row.get("exam_at"), "source": "chaoxing"}
+            for row in chaoxing_exam_items
+        ]:
             starts_at = item.get("starts_at")
             if not starts_at:
                 unknown_time_count += 1
@@ -948,17 +1102,72 @@ class LearnerStateProjectionService:
             else:
                 bucket = "beyond_30d"
             time_buckets[bucket] = time_buckets.get(bucket, 0) + 1
+        # 4.5 knowledge_mastery_observation —— 课程知识图谱(知识点体系 + 掌握率)
+        def _avg(values: list[float]) -> float | None:
+            cleaned = [float(value) for value in values if value is not None]
+            return round(sum(cleaned) / len(cleaned), 2) if cleaned else None
+
+        own_avg = _avg([graph.get("own_mastery_rate") for graph in knowledge_graphs])
+        class_avg = _avg([graph.get("class_mastery_rate") for graph in knowledge_graphs])
+        own_complete = _avg([graph.get("own_completion_rate") for graph in knowledge_graphs])
+        class_complete = _avg([graph.get("class_completion_rate") for graph in knowledge_graphs])
+        point_total = len(knowledge_points) or sum(
+            int(graph.get("knowledge_point_count") or 0) for graph in knowledge_graphs
+        )
+        if knowledge_graphs:
+            knowledge_quality = base_quality
+        else:
+            knowledge_quality = "unavailable"
+        add_academic(
+            state_type="knowledge_mastery_observation",
+            value={
+                "knowledge_point_count": point_total,
+                "own_mastery_rate": own_avg,
+                "class_mastery_rate": class_avg,
+                # 正数表示领先班级平均，负数表示落后 —— 用于发现需要补强的课程。
+                "mastery_gap_vs_class": (
+                    round(own_avg - class_avg, 2)
+                    if own_avg is not None and class_avg is not None else None
+                ),
+                "own_completion_rate": own_complete,
+                "class_completion_rate": class_complete,
+                "data_completeness": knowledge_quality,
+                "warning_codes": (
+                    list(warnings) if knowledge_graphs else ["knowledge_graph_unavailable"]
+                ),
+            },
+            quality=knowledge_quality,
+            sources=[
+                {"source_type": "chaoxing_knowledge_graph", "source_id": graph["id"],
+                 "explanation_code": "chaoxing_knowledge_graph_observed"}
+                for graph in knowledge_graphs[:10]
+            ],
+        )
+
+        platform_upcoming = [item for item in upcoming_exams if item.get("source") == "chaoxing"]
         add_academic(
             state_type="exam_exposure",
             value={
                 "upcoming_exam_count": len(upcoming_exams),
+                "edu_exam_count": len(upcoming_exams) - len(platform_upcoming),
+                "platform_exam_count": len(platform_upcoming),
                 "time_bucket_distribution": time_buckets,
                 "unknown_time_exam_count": unknown_time_count,
                 "data_completeness": base_quality,
                 "warning_codes": list(warnings),
             },
             quality=base_quality,
-            sources=[{"source_type": "edu_exam", "source_id": item["id"], "explanation_code": "edu_exam_observed"} for item in upcoming_exams[:10]],
+            sources=[
+                {
+                    "source_type": "chaoxing_exam" if item.get("source") == "chaoxing" else "edu_exam",
+                    "source_id": item["id"],
+                    "explanation_code": (
+                        "chaoxing_exam_observed" if item.get("source") == "chaoxing"
+                        else "edu_exam_observed"
+                    ),
+                }
+                for item in upcoming_exams[:10]
+            ],
         )
 
         # 5. schedule_load
@@ -1266,7 +1475,10 @@ class LearnerStateProjectionService:
                 session_times[subject_id] = (when, 0)
         task_times: dict[str, datetime] = {}
         for row in tasks:
-            when = _parse(row.get("completed_at"))
+            # 学习通晚同步时 completed_at 只是"发现已完成"的本地时间，优先采用
+            # 平台回传的真实提交时间，否则 7d/30d 完成窗口会整体错位；
+            # 事件循环在下面只能 setdefault，无法纠正这里填错的时间。
+            when = _parse(row.get("remote_submitted_at") or row.get("completed_at"))
             if row.get("status") == "completed" and when and when <= as_of and not row.get("deleted_at"):
                 task_times[row["id"]] = when
         for event in events:

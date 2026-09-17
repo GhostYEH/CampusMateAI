@@ -129,7 +129,7 @@ class AgentArtifactOut(_StrictModel):
 class AgentJobCreateIn(_StrictModel):
     """创建 Job 请求。"""
 
-    job_kind: str = Field(..., pattern="^(learning_goal|final_review|course_research|notice_workflow)$")
+    job_kind: str = Field(..., pattern="^(learning_goal|final_review|course_research|notice_workflow|interactive_classroom)$")
     input_ref: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = Field(None, min_length=1, max_length=128)
 
@@ -144,6 +144,9 @@ class AgentJobOut(_StrictModel):
     created_at: str = Field(..., min_length=1, max_length=64)
     updated_at: str = Field(..., min_length=1, max_length=64)
     latest_run_id: Optional[str] = Field(None, max_length=64)
+    # 最新 Run 处于 AWAITING_APPROVAL 时，给出待处理的审批单 id，
+    # 客户端据此渲染确认卡并调用 /agent-approvals/{id}/decision。
+    pending_approval_id: Optional[str] = Field(None, max_length=64)
     input_ref: dict[str, Any] = Field(default_factory=dict)
 
 

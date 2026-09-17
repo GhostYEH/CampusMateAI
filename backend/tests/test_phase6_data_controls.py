@@ -27,7 +27,7 @@ def test_list_all_sources():
     resp = client.get("/api/v1/learner-state/data-controls", headers=auth)
     assert resp.status_code == 200
     keys = {item["source_key"] for item in resp.json()["items"]}
-    expected = {"CORE_STUDY", "PERSONAL_TASK", "CHAOXING", "EDU", "PRACTICE", "MODEL_SHADOW", "PROACTIVE_SUGGESTIONS"}
+    expected = {"CORE_STUDY", "PERSONAL_TASK", "CHAOXING", "EDU", "MODEL_SHADOW", "PROACTIVE_SUGGESTIONS"}
     assert keys == expected
 
 

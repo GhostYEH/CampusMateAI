@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
+const floatingNavSource = fs.readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 const buttonStyles = fs.readFileSync(new URL("../src/styles/button-effects.css", import.meta.url), "utf8");
 const layoutStyles = fs.readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
@@ -35,7 +36,7 @@ test("floating navigation coalesces pointer updates to one animation frame", () 
 test("floating navigation mounts the liquid renderer for pointer and focus interaction", () => {
   assert.match(source, /LiquidMetalButton/);
   assert.match(source, /variant="nav"/);
-  assert.match(source, /disableEffects=\{reduceMotion\}/);
+  assert.match(source, /disableEffects=\{reduceMotion \|\| staticControls\}/);
   assert.doesNotMatch(source, /disableEffects=\{reduceMotion \|\| !active\}/);
   assert.match(source, /defer/);
   assert.match(source, /maxFps=\{20\}/);
@@ -43,12 +44,25 @@ test("floating navigation mounts the liquid renderer for pointer and focus inter
 });
 
 test("floating navigation disables proximity scaling when reduced motion is enabled", () => {
-  assert.match(source, /reduceMotion \? 1 : [a-zA-Z]+/);
+  assert.match(source, /reduceMotion \|\| staticControls \? 1 : [a-zA-Z]+/);
   assert.match(source, /data-reduce-motion/);
 });
 
-test("floating navigation replaces the static hover highlight with liquid motion", () => {
-  assert.match(buttonStyles, /\.sylva-liquid-stage--nav\[data-active="true"\] \.sylva-liquid-plate/);
+test("global navigation opts into stable controls without dock scaling or liquid canvases", () => {
+  assert.match(source, /staticControls = false/);
+  assert.match(source, /function StaticDockItem/);
+  assert.match(source, /staticControls \? StaticDockItem : DockItem/);
+  assert.match(source, /data-static-controls/);
+  assert.match(source, /reduceMotion \|\| staticControls \? 1/);
+  assert.match(source, /disableEffects=\{reduceMotion \|\| staticControls\}/);
+  assert.match(floatingNavSource, /staticControls/);
+  assert.doesNotMatch(floatingNavSource, /reuseRenderer/);
+});
+
+test("floating navigation keeps the primary-action plate while adding liquid motion", () => {
+  assert.match(buttonStyles, /\.sylva-liquid-plate\s*\{/);
+  assert.match(buttonStyles, /\.sylva-liquid-stage\.hot \.sylva-liquid-plate/);
+  assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav \.sylva-liquid-plate\s*\{[^}]*opacity:\s*0/s);
   assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav:hover \.sylva-liquid-plate/);
   assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav\.hot \.sylva-liquid-plate/);
   assert.doesNotMatch(

@@ -409,9 +409,90 @@ production 已被 config 校验拦截):
 - 多角色附件仅上传 + 列表,未实现下载接口
 - 多角色权限测试不覆盖 SSE 流式 AI 上下文
 
+
+## Agent Runtime v2（持久化队列与控制平面）
+
+Agent 工作流**不再在 HTTP 请求内执行**。`POST /api/v1/agent-jobs` 只做认证、能力准入、
+幂等声明与原子入队,真正的执行由带租约的 `AgentWorker` 完成。
+
+### 运行模式
+
+| `AGENT_RUNTIME_MODE` | 行为 |
+| --- | --- |
+| `worker`（默认） | 接单并执行,同时恢复过期租约 |
+| `drain` | 拒绝新任务(503 `AGENT_RUNTIME_UNAVAILABLE`),但排空已有队列 |
+| `disabled` | 拒绝新任务且不领取任务 |
+
+```bash
+AGENT_RUNTIME_MODE=worker
+AGENT_WORKER_CONCURRENCY=1          # 单进程并发
+AGENT_WORKER_LEASE_SECONDS=30       # 租约时长
+AGENT_WORKER_HEARTBEAT_SECONDS=10   # 心跳间隔,必须小于租约
+AGENT_WORKER_POLL_MS=500            # 空队列轮询间隔
+```
+
+### 核心不变量
+
+- `agent_runs.status/phase` 的每次变化与对应 `agent_events` 在**同一事务**提交;
+  状态事件只能走仓储的原子方法,`AgentEventStore.append()` 仅用于不伴随状态变化的进度事件。
+- 同一 `run_id` 的 `sequence` 严格递增;SSE 以持久化事件为唯一真源。
+- 领取任务必须持有有期限租约;只有持有者可续租、写 checkpoint 或完成运行。
+- 处理器可能重复执行,因此副作用必须由 `idempotency_key + request_hash` 防重;
+  目标是 at-least-once + 幂等副作用,**不宣称 exactly-once**。
+- `AWAITING_APPROVAL` 不占 Worker,审批通过后重新排入 `QUEUED` 并从 checkpoint 继续。
+
+### 恢复与重试
+
+- 默认最多 3 次尝试,退避 1s / 5s / 15s;可重试错误回 `QUEUED` 并追加
+  `RUN_RETRY_SCHEDULED`,不可重试错误直接 `FAILED`。
+- Worker 崩溃后,另一个 Worker 在租约过期后调用 Handler 的 `recover()` 决定重排还是明确失败;
+  **不会**无条件把中断运行标记失败。
+- 进程重启不会让运行长期伪装成 `RUNNING`。
+
+### 工具调用
+
+所有注册工具都必须经过 `ToolInvocationGateway`,校验顺序固定为:
+
+```
+运行/用户有效性 → Handler capability → Role permission → 参数 Schema
+→ 资源归属 → Hard Deny → RiskEngine → ApprovalGate → 幂等原子声明
+→ 领域 Service 执行 → 安全事件/审计
+```
+
+任何工作流都不得绕过该入口直接执行注册工具。
+
+### 事件流恢复
+
+- `Last-Event-ID` 通过 `(run_id, event_id)` 索引直接定位,不扫描历史事件列表。
+- 游标无效或不属于该 Run 返回 `409 AGENT_CURSOR_INVALID`,客户端应丢弃游标重连并做一次
+  REST 全量归并。
+- 每 15 秒发送注释心跳维持连接;非终态运行不会因空闲被断流,流只在客户端断开、
+  终态事件发送完毕或服务端关闭时结束。
+
+### 管理员观测(只读)
+
+```bash
+GET /api/v1/admin/agent-runtime/overview?since_hours=24
+GET /api/v1/admin/agent-runtime/runs/{run_id}/trace
+```
+
+仅 `admin` 可访问(未登录 401,学生/教师 403)。响应只包含计数、耗时、Token、状态与安全业务标识,
+**不含** prompt、完整模型内容、凭据、记忆正文或原始工具参数。所有查询都带时间窗与行数上限。
+
+### 故障处理与回滚
+
+1. 常规回滚先切 `AGENT_RUNTIME_MODE=drain`,拒绝新任务并把队列排空;
+2. 再回滚应用版本;
+3. 若无法排空,保持新版本 `disabled` 并修复前滚——**不要**让旧版启动逻辑把新队列任务统一标记 FAILED。
+
+回滚不删除新表、不降级数据库、不恢复 `inline` 双路径。切换模式、排空状态、剩余队列数与版本兼容性
+应记录在发布检查单中。
+
+故障演练见 `tests/test_agent_runtime_failure_drills.py`。
+
 ## 下一阶段
 
-- 接入 PostgreSQL + Redis(从 SQLite 迁移)
+- 接入 PostgreSQL + Redis(从 SQLite 迁移;触发门槛见 Agent Runtime v2 章节:持续需要 2 个以上副本且写锁等待 P95 > 100ms、活跃 Run 持续 > 20、队列深度 > 100 持续 15 分钟,或单机调度延迟 P95 连续 3 天 > 2s)
 - 引入向量检索 + Embedding 模型(中文友好)
 - 接入真实学校通知源
 - 增加限流与缓存

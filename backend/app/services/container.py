@@ -72,13 +72,37 @@ from ..services.agent_runtime.executor import AgentExecutor
 from ..services.agent_runtime.memory_manager import MemoryManager
 from ..services.agent_runtime.skill_registry import SkillRegistry
 from ..services.agent_runtime.risk_engine import RiskEngine
+from ..services.agent_runtime.tool_gateway import ToolInvocationGateway
 from ..services.agent_runtime.tool_registry import ToolRegistry
+from ..services.agent_runtime.capability_registry import (
+    CapabilityRegistry,
+    build_capability_registry,
+)
+from ..services.agent_runtime.event_notifier import EventNotifier
+from ..services.agent_runtime.handlers.interactive_classroom import (
+    ContainerRef as InteractiveClassroomContainerRef,
+    InteractiveClassroomGenerateHandler,
+    build_interactive_classroom_tools,
+)
+from ..services.agent_runtime.handlers.final_review import (
+    FinalReviewAdjustApplyHandler,
+    FinalReviewPlanActivateHandler,
+    build_adjust_apply_tool,
+    build_plan_activate_tool,
+)
+from ..services.agent_runtime.handlers.learning_goal import LearningGoalHandler
+from ..services.agent_runtime.handlers.registry import JobHandlerRegistry
+from ..services.agent_runtime.worker import AgentWorker
 from ..services.llm.model_router import ModelRouter
 from ..services.llm.provider_registry import ProviderRegistry
+from ..services.final_review.adjustment_service import AdjustmentAnalyzer
 from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
 from ..services.course_research.citation_verifier import CitationVerifier
 from ..services.course_research.source_fetcher import ControlledSourceFetcher
+from ..services.openmaic.client import OpenMAICClient
+from ..services.openmaic.classroom_service import OpenMAICClassroomService
+from ..services.openmaic.result_store import OpenMAICResultStore
 from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
@@ -163,12 +187,20 @@ class ServiceContainer:
     agent_risk_engine: RiskEngine
     agent_approval_gate: ApprovalGate
     agent_executor: AgentExecutor
+    agent_capability_registry: CapabilityRegistry
+    agent_handler_registry: JobHandlerRegistry
+    agent_tool_gateway: ToolInvocationGateway
+    agent_worker: AgentWorker
+    agent_event_notifier: EventNotifier
     agent_provider_registry: ProviderRegistry
     agent_model_router: ModelRouter
     final_review_repository: FinalReviewRepository
     final_review_service: FinalReviewService
     course_research_repository: CourseResearchRepository
     course_research_pipeline: CourseResearchPipeline
+    # OpenMAIC 互动课堂适配层
+    openmaic_result_store: OpenMAICResultStore
+    openmaic_classroom_service: OpenMAICClassroomService
     notice_workflow_repository: NoticeWorkflowRepository
     notice_workflow_service: NoticeWorkflowService
     # QR 扫码登录与可信设备
@@ -185,6 +217,17 @@ class ServiceContainer:
 
 
 _container: Optional[ServiceContainer] = None
+
+
+def _openmaic_store_dir(settings: Settings) -> Path:
+    """OpenMAIC 课堂会话存储目录，紧随数据库文件目录，保证各环境隔离。"""
+    if settings.database_path is not None:
+        base = settings.database_path.parent
+    else:
+        base = Path(__file__).resolve().parents[2] / "data"
+    path = base / "openmaic_classrooms"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
@@ -280,7 +323,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
     )
-    agent_runtime_repository = AgentRuntimeRepository(db)
+    agent_event_notifier = EventNotifier()
+    agent_runtime_repository = AgentRuntimeRepository(db, agent_event_notifier)
     artifact_root = Path(settings.agent_artifact_path)
     if not artifact_root.is_absolute():
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
@@ -303,18 +347,70 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     agent_registry_obj = AgentRegistry()
     agent_skill_registry = SkillRegistry()
-    agent_tool_registry = ToolRegistry()
     agent_risk_engine = RiskEngine()
+    agent_provider_registry = ProviderRegistry(settings)
+    agent_model_router = ModelRouter(
+        agent_provider_registry, repository=agent_runtime_repository
+    )
+    # 期末复习的高风险写操作只能经 Gateway 执行,执行器直接绑定领域 Service。
+    final_review_analyzer = AdjustmentAnalyzer(
+        final_review_repo=final_review_repository,
+        model_router=agent_model_router,
+        risk_engine=agent_risk_engine,
+    )
+    agent_tool_registry = ToolRegistry()
+    agent_tool_registry.register(build_plan_activate_tool(final_review_repository))
+    agent_tool_registry.register(build_adjust_apply_tool(final_review_analyzer))
+    # 互动课堂：只读工具 + 一个必须审批的生成工具（会真实调用外部服务并产生费用）。
+    # 工具注册早于 ServiceContainer 构造，因此先用占位引用，容器建好后再绑定。
+    interactive_classroom_ref = InteractiveClassroomContainerRef()
+    for _tool in build_interactive_classroom_tools(interactive_classroom_ref):
+        agent_tool_registry.register(_tool)
+    agent_handler_registry = JobHandlerRegistry(
+        known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
+    )
+    agent_handler_registry.register(
+        LearningGoalHandler(learning_planner_service, agent_event_store)
+    )
     agent_approval_gate = ApprovalGate(agent_runtime_repository)
+    agent_tool_gateway = ToolInvocationGateway(
+        agent_runtime_repository,
+        agent_tool_registry,
+        agent_risk_engine,
+        agent_approval_gate,
+        agent_registry=agent_registry_obj,
+        handler_registry=agent_handler_registry,
+        event_store=agent_event_store,
+    )
+    # Handler 自身要经 Gateway 执行受管工具,所以必须在 Gateway 之后注册;
+    # 注册完成后才冻结目录,保证运行期只读。
+    agent_handler_registry.register(FinalReviewPlanActivateHandler(agent_tool_gateway))
+    agent_handler_registry.register(FinalReviewAdjustApplyHandler(agent_tool_gateway))
+    agent_handler_registry.register(InteractiveClassroomGenerateHandler(agent_tool_gateway))
+    agent_handler_registry.freeze()
+    # 能力目录在启动时一次性交叉校验 Agent/Role/Skill/Handler/Tool;
+    # 清单损坏或已发布语义被改动时直接抛错,阻止 runtime 启动。
+    agent_capability_registry = build_capability_registry(
+        agent_codes=[role.agent_code for role in agent_registry_obj.list_roles()],
+        skill_codes=[skill.skill_code for skill in agent_skill_registry.list_skills()],
+        handler_job_kinds=agent_handler_registry.job_kinds(),
+        tool_codes=[tool.tool_code for tool in agent_tool_registry.list_tools()],
+    )
+    agent_worker = AgentWorker(
+        agent_runtime_repository,
+        agent_handler_registry,
+        agent_event_store,
+        mode=settings.agent_runtime_mode,
+        lease_seconds=settings.agent_worker_lease_seconds,
+        heartbeat_seconds=settings.agent_worker_heartbeat_seconds,
+        poll_interval_seconds=settings.agent_worker_poll_ms / 1000,
+        concurrency=settings.agent_worker_concurrency,
+    )
     agent_executor = AgentExecutor(
         agent_runtime_repository,
         registry=agent_registry_obj,
         tools=agent_tool_registry,
         event_store=agent_event_store,
-    )
-    agent_provider_registry = ProviderRegistry(settings)
-    agent_model_router = ModelRouter(
-        agent_provider_registry, repository=agent_runtime_repository
     )
 
     # EduConnector
@@ -339,6 +435,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         forecast_service=forecast_service,
         learner_state_service=learner_state_service,
         learner_state_repository=learner_state_repository,
+        learning_plan_repository=learning_plan_repository,
     )
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
@@ -361,6 +458,14 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         session_manager=session_manager,
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
+    )
+    openmaic_result_store = OpenMAICResultStore(
+        _openmaic_store_dir(settings),
+        max_results=settings.openmaic_max_results_per_course,
+    )
+    openmaic_classroom_service = OpenMAICClassroomService(
+        settings=settings,
+        store=openmaic_result_store,
     )
     container = ServiceContainer(
         settings=settings,
@@ -423,6 +528,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_risk_engine=agent_risk_engine,
         agent_approval_gate=agent_approval_gate,
         agent_executor=agent_executor,
+        agent_capability_registry=agent_capability_registry,
+        agent_handler_registry=agent_handler_registry,
+        agent_tool_gateway=agent_tool_gateway,
+        agent_worker=agent_worker,
+        agent_event_notifier=agent_event_notifier,
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
         final_review_repository=final_review_repository,
@@ -440,6 +550,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             course_content_lookup=course_content_repository,
             retrieval_service=retrieval,
         ),
+        openmaic_result_store=openmaic_result_store,
+        openmaic_classroom_service=openmaic_classroom_service,
         notice_workflow_repository=notice_workflow_repository,
         notice_workflow_service=NoticeWorkflowService(
             repository=notice_workflow_repository,
@@ -458,6 +570,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         retrieval.rebuild()
     except Exception:
         pass
+    # 容器已构造完成：把延迟引用绑定到真实实例，互动课堂工具才能执行。
+    interactive_classroom_ref.bind(container)
     return container
 
 

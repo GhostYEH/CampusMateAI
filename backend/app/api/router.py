@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .routes import (
+    agenda,
     announcements,
     assignments,
     auth,
@@ -40,8 +41,10 @@ from .routes import (
     learning_plans,
     learner_control,
     agent_runtime,
+    agent_observability,
     final_review,
     course_research,
+    openmaic_classroom,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -71,6 +74,8 @@ api_router.include_router(focus_ai.router, tags=["focus-ai"])
 api_router.include_router(focus_realtime_voice.router, tags=["focus-realtime-voice"])
 # 个人待办(学生从通知抽取)
 api_router.include_router(personal_tasks.router)
+# 全站统一的"今日待办"事实源(首页/学习陪伴/任务总览/全局角标共用)
+api_router.include_router(agenda.router)
 # 学生通用目标(个人成长/学业/科研/竞赛/证书/求职等)
 api_router.include_router(student_goals.router)
 # 个人中心(我的文件 / 收藏夹)
@@ -96,6 +101,8 @@ api_router.include_router(agent_runtime.runs_router)
 api_router.include_router(agent_runtime.approvals_router)
 api_router.include_router(agent_runtime.artifacts_router)
 api_router.include_router(agent_runtime.memories_router)
+# 管理员只读观测面(§Task 9):仅 admin,聚合优先、脱敏
+api_router.include_router(agent_observability.router)
 # notices/manual 端点由 notices.py 提供(canonical:返回 notice_id 供 workflow 创建)。
 # agent_runtime.notices_manual_router 是早期占位,已被取代,不再注册。
 # CampusAgentRuntime 领域路由(§9.3 期末复习 / §9.5 课程研究)
@@ -105,5 +112,7 @@ api_router.include_router(course_research.router)
 # 否则会产生重复的 OpenAPI operationId。
 # CampusMate EduConnector — 高校教务系统统一连接层
 api_router.include_router(edu.router)
+# OpenMAIC 互动课堂适配层(学生侧课程智能辅导空间)
+api_router.include_router(openmaic_classroom.router)
 
 __all__ = ["api_router"]

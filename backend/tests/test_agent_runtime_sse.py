@@ -115,5 +115,5 @@ def test_list_events_after_sequence():
     )
     assert resp.status_code == 200
     events = resp.json()
-    assert len(events) == 3
+    assert len(events) == 4
     assert events[0]["sequence"] == 3

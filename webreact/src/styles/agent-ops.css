@@ -1,0 +1,140 @@
+/* Agent Runtime 管理员观测面（只读）。浅色主题，全部使用中性色板。 */
+
+.agent-ops-page {
+  display: grid;
+  gap: 20px;
+  padding: 20px;
+  color: var(--ink, #182134);
+}
+
+.agent-ops__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agent-ops__header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.agent-ops__window {
+  color: #5a6478;
+  font-size: 13px;
+}
+
+.agent-ops__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.agent-ops__cards article {
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.agent-ops__cards h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #5a6478;
+}
+
+.agent-ops__cards p {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #182134;
+}
+
+.agent-ops__distribution ul,
+.agent-ops__approval ul,
+.agent-ops__section ul,
+.agent-ops__section ol {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.agent-ops__distribution li,
+.agent-ops__approval li,
+.agent-ops__section li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  background: #ffffff;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.agent-ops__section li em {
+  color: #5a6478;
+  font-style: normal;
+}
+
+.agent-ops__seq {
+  font-variant-numeric: tabular-nums;
+  color: #7a8497;
+}
+
+.agent-ops__type {
+  font-weight: 600;
+}
+
+.agent-ops__auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5a6478;
+}
+
+.agent-ops__lookup form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agent-ops__lookup input {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #d7dce6;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #182134;
+}
+
+.agent-ops__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.agent-ops__facts dt {
+  font-size: 12px;
+  color: #5a6478;
+}
+
+.agent-ops__facts dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-ops__trace {
+  background: #f8fafc;
+  border: 1px solid #e3e7ef;
+  border-radius: 14px;
+  padding: 16px;
+}

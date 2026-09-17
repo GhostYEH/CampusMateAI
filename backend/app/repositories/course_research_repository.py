@@ -92,6 +92,123 @@ CREATE INDEX IF NOT EXISTS idx_crs_reports_session ON course_research_reports(se
 """
 
 
+_LEGACY_TABLES = (
+    "course_research_sessions",
+    "course_research_sources",
+    "course_research_steps",
+    "course_research_reports",
+)
+_LEGACY_SUFFIX = "__legacy"
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def _has_legacy_schema(conn: sqlite3.Connection) -> bool:
+    if not _table_exists(conn, "course_research_sessions"):
+        return False
+    columns = _table_columns(conn, "course_research_sessions")
+    return "id" in columns and "session_id" not in columns
+
+
+def _legacy_upgrade_script() -> str:
+    rename_sql = "\n".join(
+        f"ALTER TABLE {table} RENAME TO {table}{_LEGACY_SUFFIX};"
+        for table in _LEGACY_TABLES
+    )
+    return f"""
+BEGIN;
+{rename_sql}
+{_SCHEMA_SQL}
+
+INSERT INTO course_research_sessions (
+    session_id, run_id, job_id, user_id, course_id, question,
+    assistance_mode, academic_policy, source_policy_json, status,
+    created_at, updated_at, finished_at, error_code, error_message,
+    idempotency_key
+)
+SELECT
+    id,
+    'legacy-course-research-' || id,
+    NULL,
+    user_id,
+    course_id,
+    question_digest,
+    CASE WHEN effective_mode IS NOT NULL AND effective_mode <> ''
+         THEN effective_mode ELSE requested_mode END,
+    academic_policy,
+    source_policy_json,
+    status,
+    created_at,
+    updated_at,
+    CASE WHEN status IN ('COMPLETED', 'FAILED', 'CANCELLED')
+         THEN updated_at ELSE NULL END,
+    NULL,
+    NULL,
+    idempotency_key
+FROM course_research_sessions__legacy;
+
+INSERT INTO course_research_sources (
+    source_id, session_id, user_id, source_type, title, url, source_ref,
+    snippet, accessed_at, is_verified, verification_note, supports_claim,
+    is_fabricated, metadata_json, created_at
+)
+SELECT
+    s.id,
+    s.research_id,
+    r.user_id,
+    s.source_type,
+    s.safe_label,
+    s.content_ref,
+    s.content_ref,
+    NULL,
+    s.created_at,
+    CASE WHEN lower(s.verification_status) IN ('verified', 'passed', 'valid')
+         THEN 1 ELSE 0 END,
+    s.verification_status,
+    NULL,
+    0,
+    '{{}}',
+    s.created_at
+FROM course_research_sources__legacy AS s
+JOIN course_research_sessions AS r ON r.session_id = s.research_id;
+
+INSERT INTO course_research_reports (
+    report_id, session_id, user_id, artifact_id, content_hash, mime_type,
+    size_bytes, verified_source_count, unverified_source_count, fallback_used,
+    created_at
+)
+SELECT
+    p.id,
+    p.research_id,
+    r.user_id,
+    COALESCE(p.artifact_id, 'legacy-artifact-' || p.id),
+    'legacy-content-' || p.id,
+    'application/json',
+    0,
+    0,
+    0,
+    0,
+    p.created_at
+FROM course_research_reports__legacy AS p
+JOIN course_research_sessions AS r ON r.session_id = p.research_id;
+
+COMMIT;
+"""
+
+
 class CourseResearchRepository:
     """course_research_sessions / sources / reports 仓储。"""
 
@@ -102,7 +219,14 @@ class CourseResearchRepository:
     def _ensure_schema(self) -> None:
         conn = self._db._connect()
         try:
-            conn.executescript(_SCHEMA_SQL)
+            if _has_legacy_schema(conn):
+                try:
+                    conn.executescript(_legacy_upgrade_script())
+                except Exception:
+                    conn.rollback()
+                    raise
+            else:
+                conn.executescript(_SCHEMA_SQL)
             conn.commit()
         finally:
             self._db._release(conn)

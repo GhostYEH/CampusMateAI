@@ -188,4 +188,43 @@ class AgentRuntimeDtoFixtureTest {
         val run = AgentRunDto(riskLevel = null)
         assertEquals(AgentRiskLevel.UNKNOWN, run.risk())
     }
+
+    // ===== Agent Runtime v2 增量契约 =====
+    // 与 backend/tests/fixtures/agent_runtime/v1/runtime.json 的 v2 段保持一致:
+    // 恢复事件、能力准入错误码、游标失效错误码都必须可解析;未知值安全降级。
+
+    @Test
+    fun `recovery event types are recognised`() {
+        val recovery = listOf("RUN_RETRY_SCHEDULED", "RUN_RECOVERY_STARTED", "RUN_RECOVERED")
+        recovery.forEach { raw ->
+            val event = AgentEventDto(type = raw)
+            assertTrue("$raw 必须被识别", event.eventType() != AgentEventType.UNKNOWN)
+        }
+    }
+
+    @Test
+    fun `v2 error codes are recognised`() {
+        val codes = listOf(
+            "AGENT_CAPABILITY_DISABLED",
+            "AGENT_RUNTIME_UNAVAILABLE",
+            "AGENT_CURSOR_INVALID",
+            "AGENT_IDEMPOTENCY_CONFLICT",
+        )
+        codes.forEach { raw ->
+            val envelope = AgentErrorEnvelope(code = raw, message = "x", requestId = "req_x")
+            assertTrue("$raw 必须被识别", envelope.errorCode() != AgentErrorCode.UNKNOWN)
+        }
+    }
+
+    @Test
+    fun `202 creation response without plan id is not a failure`() {
+        val job = AgentJobDto(
+            jobId = "job_01H8XKQD9", userId = "user_demo_001", jobKind = "learning_goal",
+            status = "QUEUED", createdAt = "t", updatedAt = "t",
+            latestRunId = "run_01H8XKQDA", inputRef = mapOf("goal_id" to "goal_demo_001"),
+        )
+        assertEquals(AgentRunStatus.QUEUED, job.runStatus())
+        assertNotNull(job.latestRunId)
+        assertFalse("创建响应不得预先包含 plan_id", job.inputRef.containsKey("plan_id"))
+    }
 }

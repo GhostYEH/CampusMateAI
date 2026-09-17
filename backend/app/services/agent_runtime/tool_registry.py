@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Callable, Optional
+
+from pydantic import BaseModel
 
 from ...core.exceptions import AgentToolRejected
 from ...schemas.agent_contract_enums import RiskLevel
@@ -15,7 +17,14 @@ from .hard_deny import check_hard_deny
 
 @dataclass(frozen=True)
 class ToolSpec:
-    """工具声明。"""
+    """工具声明。
+
+    v2 新增字段全部可选,已发布工具不受影响:
+    - `args_model`:参数 Pydantic 模型,替代"只看字节大小"的粗校验;
+    - `ownership_field` / `ownership_resolver`:资源归属校验,`AUTO_SAFE` 也必须执行;
+    - `executor`:领域 Service 入口;未绑定的工具不能绕过网关执行;
+    - `result_builder` / `summary_builder`:只产出安全摘要与业务引用,不泄漏原始参数。
+    """
 
     tool_code: str
     resource: str
@@ -23,6 +32,12 @@ class ToolSpec:
     risk_level: RiskLevel = RiskLevel.AUTO_SAFE
     requires_approval: bool = False
     max_args_bytes: int = 4096
+    args_model: Optional[type[BaseModel]] = None
+    ownership_field: str = "user_id"
+    ownership_resolver: Optional[Callable[[dict], Optional[str]]] = None
+    executor: Optional[Callable[[dict], Any]] = None
+    result_builder: Optional[Callable[[Any], dict]] = None
+    summary_builder: Optional[Callable[[dict], str]] = None
 
 
 # 初始工具(§5.4)
@@ -33,6 +48,8 @@ _DEFAULT_TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec("schedule.read", "schedule", "read"),
     ToolSpec("learner_state.read", "learner_state", "read"),
     ToolSpec("knowledge.search", "knowledge", "search"),
+    # 通知只读:notice_workflow Skill 与能力目录都引用它,补上以免出现"声明了不存在的工具"。
+    ToolSpec("notice.read", "notice", "read"),
     ToolSpec("task.propose", "task", "propose", RiskLevel.AUTO_SAFE),
     ToolSpec("task.create", "task", "create", RiskLevel.AUTO_SAFE),
     ToolSpec("task.update", "task", "update", RiskLevel.CONFIRM_REQUIRED, True),

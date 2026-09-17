@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf, logApiError, userErrorMessage } from "../data/contracts.js";
+import { buildBreakdownPayload } from "../data/studyBreakdown.js";
 import { Icon } from "../components/Icon.jsx";
 import { Button } from "../components/Primitives.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
@@ -60,6 +61,8 @@ export function PlansPage() {
   const [breaking, setBreaking] = useState(false);
   const [breakdown, setBreakdown] = useState(null);
   const [steps, setSteps] = useState([]);
+  // 任务级拆解上下文: 选中后请求携带 task_id,让后端读取任务上下文并触发政策检索
+  const [selectedTask, setSelectedTask] = useState(null);
   const load = async () => { setLoading(true); setError(""); try { setTasks(itemsOf(await api.getTasks())); } catch (err) { logApiError("plans-load", err); setError(userErrorMessage(err, "学习清单加载失败")); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
 
@@ -70,11 +73,22 @@ export function PlansPage() {
   const completed = tasks.filter(isDone).length;
   const pending = tasks.length - completed;
 
+  function startTaskBreakdown(task) {
+    setSelectedTask({ id: task.id, title: task.title || "未命名任务" });
+    setPlanOpen(true);
+    setError(""); setNotice("");
+  }
+  function clearTaskContext() { setSelectedTask(null); }
+
   async function generatePlan() {
-    if (!goal.trim() || breaking) return;
+    const trimmedGoal = goal.trim();
+    // 任务上下文下允许不带 goal(直接用任务标题),自由输入时必须提供 goal
+    if (breaking || (!selectedTask && !trimmedGoal)) return;
     setBreaking(true); setError("");
     try {
-      const result = await api.breakdownStudyTask({ goal: goal.trim() });
+      const result = await api.breakdownStudyTask(
+        buildBreakdownPayload({ taskId: selectedTask?.id, goal: trimmedGoal }),
+      );
       setBreakdown(result);
       setSteps((result.steps || []).map((step, index) => ({
         _key: `${index}-${step.step_number || index + 1}`,
@@ -100,10 +114,11 @@ export function PlansPage() {
         title: step.title.trim(),
         description: step.description?.trim() || undefined,
         source_name: "AI 拆解步骤",
-        source_text: breakdown?.goal || goal.trim(),
+        // 只保存展示用目标,不保存任务说明或通知原文
+        source_text: breakdown?.goal || selectedTask?.title || goal.trim() || undefined,
       })));
       setTasks((current) => [...created, ...current]);
-      setBreakdown(null); setSteps([]); setGoal("");
+      setBreakdown(null); setSteps([]); setGoal(""); setSelectedTask(null);
       setNotice(`已将 ${created.length} 个步骤加入学习清单`);
     } catch (err) {
       logApiError("plans-save-steps", err);
@@ -128,7 +143,7 @@ export function PlansPage() {
       </div>
       <form className="study-sub-create" onSubmit={addTask}><Icon name="PhPlus" size={18} /><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="写下一个可以马上开始的步骤…" aria-label="新建学习任务" /><button type="submit" disabled={saving || !title.trim()}>{saving ? "保存中" : "加入清单"}</button></form>
       <p className="study-plan-note">目前每个待办作为独立个人任务保存；「计划 → 子任务 + 独立进度」的完整计划模型后端暂未提供，若需分组跟踪请等待契约升级。</p>
-      {loading ? <LoadingState /> : error ? <LoadingState error={error} onRetry={load} /> : <div className="study-plan-list">{tasks.length ? tasks.map((task) => <article className={`study-plan-row${isDone(task) ? " is-done" : ""}`} key={task.id}><button className="study-plan-check" type="button" aria-pressed={isDone(task)} aria-label={isDone(task) ? "恢复任务" : "完成任务"} onClick={() => void toggleTask(task)}><span className="study-plan-check-box" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span></button><div><strong>{task.title || "未命名任务"}</strong><small>{task.deadline ? `截止 ${dateLabel(task.deadline)}` : task.source_name || "学习清单"}</small></div><button className="study-plan-delete" type="button" aria-label={`删除 ${task.title || "任务"}`} onClick={() => void removeTask(task)}><Icon name="PhTrash" size={15} /></button></article>) : <div className="study-sub-empty"><Icon name="PhFlag" size={30} /><p>清单还是空的，从一个明确的目标开始。</p></div>}</div>}
+      {loading ? <LoadingState /> : error ? <LoadingState error={error} onRetry={load} /> : <div className="study-plan-list">{tasks.length ? tasks.map((task) => <article className={`study-plan-row${isDone(task) ? " is-done" : ""}`} key={task.id}><button className="study-plan-check" type="button" aria-pressed={isDone(task)} aria-label={isDone(task) ? "恢复任务" : "完成任务"} onClick={() => void toggleTask(task)}><span className="study-plan-check-box" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span></button><div><strong>{task.title || "未命名任务"}</strong><small>{task.deadline ? `截止 ${dateLabel(task.deadline)}` : task.source_name || "学习清单"}</small></div><button className="study-plan-delete" type="button" aria-label={`删除 ${task.title || "任务"}`} onClick={() => void removeTask(task)}><Icon name="PhTrash" size={15} /></button><button className="study-plan-ai" type="button" aria-label={`用 AI 拆解 ${task.title || "任务"}`} onClick={() => startTaskBreakdown(task)}><Icon name="PhSparkle" size={13} /> AI 拆解</button></article>) : <div className="study-sub-empty"><Icon name="PhFlag" size={30} /><p>清单还是空的，从一个明确的目标开始。</p></div>}</div>}
     </section>
 
     <section className="study-sub-panel study-plan-ai">
@@ -137,7 +152,8 @@ export function PlansPage() {
         <button type="button" className={`study-sub-link-button${planOpen ? " is-open" : ""}`} onClick={() => setPlanOpen((value) => !value)}>{planOpen ? <><Icon name="PhArrowUp" size={14} /> 收起拆解台</> : <><Icon name="PhSparkle" size={14} /> 打开拆解台</>}</button>
       </div>
       {planOpen && <div className="study-ai-planner">
-        <div className="study-ai-planner__input"><textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows="2" placeholder="例如：复习高等数学第一章，并完成课后习题" aria-label="学习目标" /><Button icon="PhSparkle" disabled={breaking || !goal.trim()} onClick={generatePlan}>{breaking ? "正在拆解…" : breakdown ? "重新生成" : "生成步骤"}</Button></div>
+        {selectedTask && <p className="study-ai-planner__context">正在拆解：<strong>{selectedTask.title}</strong><button type="button" onClick={clearTaskContext}>切换为自由目标</button></p>}
+        <div className="study-ai-planner__input"><textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows="2" placeholder={selectedTask ? "可留空，直接按任务标题拆解；也可补充更具体的目标" : "例如：复习高等数学第一章，并完成课后习题"} aria-label="学习目标" /><Button icon="PhSparkle" disabled={breaking || (!selectedTask && !goal.trim())} onClick={generatePlan}>{breaking ? "正在拆解…" : breakdown ? "重新生成" : "生成步骤"}</Button></div>
         {breakdown?.mode === "rule_fallback" && <p className="study-ai-planner__note">当前为规则降级拆解（大模型服务暂不可用），步骤为通用模板，仍可按需编辑后使用。</p>}
         {breakdown?.warnings?.length > 0 && <ul className="study-ai-planner__warnings">{breakdown.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
         {steps.length > 0 && <div className="study-ai-steps">{steps.map((step, index) => <article key={step._key} className="study-ai-step">

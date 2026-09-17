@@ -180,8 +180,11 @@ class LearnerEventService:
             return None
         if self._is_source_skipped(user_id=task.user_id, source="chaoxing"):
             return None
+        # 学习通回传的真实提交时间优先于"同步时发现已完成"的时间戳，
+        # 否则晚同步会把完成时间整体推后，污染 execution_consistency 等状态。
+        remote_submitted = getattr(task, "remote_submitted_at", None)
         occurred_at = self._parse_aware_datetime(
-            observed_at or task.last_synced_at or task.completed_at
+            remote_submitted or observed_at or task.last_synced_at or task.completed_at
         )
         if occurred_at is None:
             return None
@@ -197,13 +200,14 @@ class LearnerEventService:
             evidence_reference=EvidenceReference(
                 kind="row", table="personal_tasks", row_id=task.id, external_id=task.external_id
             ),
-            data_quality="partial",
+            data_quality="verified" if remote_submitted else "partial",
             consent_scope="connected_learning_platform",
             dedupe_key=f"chaoxing:assignment_submitted:{task.id}",
             payload={
                 "platform": "chaoxing",
                 "observation": "completed_status",
                 "observed_at": occurred_at.isoformat(),
+                "submitted_at_source": "remote" if remote_submitted else "sync_observed",
             },
         )
         return self.record_event(user_id=task.user_id, event=event)
@@ -374,7 +378,8 @@ class LearnerEventService:
 
     @staticmethod
     def _score_band(score: Optional[str]) -> Optional[str]:
-        if not score:
+        # 0 分是有效成绩(0_59 段)，只有缺失或空值才不产出分段。
+        if score is None or str(score).strip() == "":
             return None
         try:
             numeric = float(score)
@@ -409,6 +414,11 @@ class LearnerEventService:
         if delta_days <= 30:
             return "within_30d"
         return "beyond_30d"
+
+    @classmethod
+    def exam_time_bucket(cls, starts_at: Optional[str]) -> Optional[str]:
+        """公开的时间分桶入口，供学习通等同步侧复用同一套分桶口径。"""
+        return cls._exam_time_bucket(starts_at)
 
     def record_edu_schedule_synced(
         self,
@@ -639,13 +649,24 @@ class LearnerEventService:
         user_id: str,
         task_id: str,
         course_id: Optional[str],
-        score_band: Optional[str],
-        observed_at: datetime,
+        score_band: Optional[str] = None,
+        observed_at: Any = None,
+        score: Optional[float] = None,
+        score_max: Optional[float] = None,
     ) -> Optional[LearnerEventAppendResult]:
+        """记录一次作业评分。
+
+        调用方可以直接给出 `score_band`，也可以只给 `score`(可带 `score_max`)，
+        由本方法归一化成分段，避免每个调用方重复实现分段规则。
+        """
         if self._is_source_skipped(user_id=user_id, source="chaoxing"):
             return None
+        band = score_band or self._score_band(score)
+        occurred_at = self._parse_aware_datetime(observed_at)
+        if occurred_at is None:
+            return None
         revision = self._revision_hash(
-            {"task_id": task_id, "score_band": score_band}
+            {"task_id": task_id, "score_band": band}
         )
         event = LearnerEventCreate(
             source="chaoxing",
@@ -663,7 +684,9 @@ class LearnerEventService:
             source_version=revision,
             dedupe_key=f"chaoxing:assignment_graded:{task_id}:{revision}",
             payload={
-                "normalized_score_band": score_band,
+                "normalized_score_band": band,
+                "score": score,
+                "score_max": score_max,
                 "data_quality": "partial",
             },
         )
@@ -677,6 +700,13 @@ class LearnerEventService:
         course_id: Optional[str],
         observed_at: datetime,
     ) -> Optional[LearnerEventAppendResult]:
+        """记录一次本人参与讨论。
+
+        暂未接线: ChaoxingClient.get_course_discussions 只返回讨论主题列表
+        (creatername / replycount / lastreplytime)，没有"本人是否发帖或回复"的标识，
+        也没有保存学习通账号身份可供比对。在拿到身份字段前调用本方法会造出
+        "参与"假事实，因此保持只有测试覆盖。
+        """
         if self._is_source_skipped(user_id=user_id, source="chaoxing"):
             return None
         revision = self._revision_hash({"discussion_id": discussion_id})
@@ -730,6 +760,54 @@ class LearnerEventService:
             dedupe_key=f"chaoxing:exam_discovered:{exam_id}:{revision}",
             payload={
                 "exam_time_bucket": exam_time_bucket,
+                "data_quality": "partial",
+            },
+        )
+        return self.record_event(user_id=user_id, event=event)
+
+    def record_chaoxing_knowledge_graph_synced(
+        self,
+        *,
+        user_id: str,
+        graph_id: str,
+        course_id: Optional[str],
+        knowledge_point_count: int,
+        own_mastery_rate: Optional[float] = None,
+        observed_at: Any = None,
+    ) -> Optional[LearnerEventAppendResult]:
+        """记录一次课程知识图谱同步(知识点体系 + 掌握率)。
+
+        这是外部数据源观测(课程/学校发布的知识点 + 平台统计)，不是平台自造推断，
+        因此与被删除的 C 语言学习系统知识点能力无关。
+        """
+        if self._is_source_skipped(user_id=user_id, source="chaoxing"):
+            return None
+        occurred_at = self._parse_aware_datetime(observed_at)
+        if occurred_at is None:
+            return None
+        revision = self._revision_hash({
+            "graph_id": graph_id,
+            "knowledge_point_count": knowledge_point_count,
+            "own_mastery_rate": own_mastery_rate,
+        })
+        event = LearnerEventCreate(
+            source="chaoxing",
+            event_type="knowledge_graph_synced",
+            occurred_at=occurred_at,
+            course_id=course_id,
+            subject_type="knowledge_graph",
+            subject_id=graph_id,
+            outcome="synced",
+            evidence_reference=EvidenceReference(
+                kind="row", table="chaoxing_knowledge_graphs", row_id=graph_id
+            ),
+            data_quality="partial",
+            consent_scope="connected_learning_platform",
+            source_version=revision,
+            dedupe_key=f"chaoxing:knowledge_graph_synced:{graph_id}:{revision}",
+            payload={
+                "knowledge_point_count": knowledge_point_count,
+                "own_mastery_rate": own_mastery_rate,
                 "data_quality": "partial",
             },
         )

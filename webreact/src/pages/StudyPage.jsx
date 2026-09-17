@@ -10,6 +10,8 @@ import { useAmbientSound } from "../features/study/ambientSound.js";
 import { readStudyScene, saveStudyScene } from "../features/study/scenes.js";
 import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
+import { useApp } from "../app/AppContext.jsx";
+import { selectAgendaForSidebar } from "../data/agendaModel.js";
 
 const list = itemsOf;
 const POMODORO_STORAGE_KEY = "campus-study-pomodoro";
@@ -23,12 +25,9 @@ function readPomodoroState() {
   }
 }
 
-function isDone(task) {
-  return ["completed", "done", "closed"].includes(String(task?.status || "").toLowerCase());
-}
-
 export default function StudyPage() {
   const navigate = useNavigate();
+  const { refreshAgenda, agendaError } = useApp();
   const [active, setActive] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -86,10 +85,18 @@ export default function StudyPage() {
   }
 
   function refreshTasks() {
-    return api.getTasks().then((value) => {
-      const taskItems = list(value);
-      setTasks(taskItems.filter((item) => !isDone(item) && item.status !== "deleted"));
-      setTaskStats({ total: taskItems.filter((item) => item.status !== "deleted").length, completed: taskItems.filter(isDone).length });
+    // 今日待办的唯一来源是 /agenda/today。此前这里直接拉 /tasks 的全部未完成项，
+    // 于是把历史遗留的所有未完成个人待办都算成了"今天"（出现过"77 件待完成"）。
+    // 这里只刷新共享数据，列表与总数/完成数都取同一份 summary。
+    return refreshAgenda().then((agenda) => {
+      const sidebar = selectAgendaForSidebar(agenda);
+      setTasks(sidebar.items);
+      setTaskStats({
+        total: sidebar.summary.total,
+        completed: sidebar.summary.completed,
+        pending: sidebar.summary.pending,
+      });
+      return sidebar;
     });
   }
 
@@ -302,13 +309,21 @@ export default function StudyPage() {
     }
   }
   async function toggleTaskFromRoom(task) {
+    // 学习通作业/考试由学习通决定状态，这里不给勾选入口（后端也会拒绝）。
+    if (task.readOnly || !task.completable) {
+      if (task.route) navigate(task.route);
+      return;
+    }
     try {
-      await api.completeTask(task.id, !isDone(task));
+      await api.completeTask(task.sourceId, !task.done);
       await refreshTasks();
     } catch (err) {
       logApiError("study-toggle-task", err);
       setError(userErrorMessage(err, "待办状态更新失败"));
     }
+  }
+  function openTaskFromRoom(task) {
+    if (task.route) navigate(task.route);
   }
   return <><PageFrame className="study-page" showHeading={false}>
     {notice && <div className="page-notice notice-info" role="status">{notice}</div>}{error && <div className="page-notice notice-error" role="alert">{error}<Button variant="quiet" onClick={load}>重试</Button></div>}
@@ -325,6 +340,8 @@ export default function StudyPage() {
       tasks={tasks}
       taskTotal={taskStats.total}
       taskCompleted={taskStats.completed}
+      taskPending={taskStats.pending || 0}
+      agendaNotice={agendaError || ""}
       dailyGoalMinutes={dailyGoal.target_minutes}
       todayFocusMinutes={todayMinutes}
       scene={sceneState}
@@ -341,6 +358,7 @@ export default function StudyPage() {
       onReset={resetTimer}
       onSkip={skipTimer}
       onToggleTask={toggleTaskFromRoom}
+      onOpenTask={openTaskFromRoom}
       onAddTask={addTaskFromRoom}
       onOpenPlans={() => navigate("/plans")}
       onOpenPlanning={openPlanning}

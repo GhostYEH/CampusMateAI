@@ -316,6 +316,11 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
     course_id TEXT,
     source_url TEXT,
     last_synced_at TEXT,
+    -- 学习通等外部平台回传的成绩事实(均为可空，未采集到时保持 NULL)。
+    remote_submitted_at TEXT,
+    score REAL,
+    score_max REAL,
+    graded_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, source_notice_id),
     UNIQUE(user_id, source, external_id)
@@ -449,6 +454,72 @@ CREATE TABLE IF NOT EXISTS chaoxing_credentials (
 );
 """
 
+# 学习通考试/测验事实表 —— 承载考试时间与得分，供世界模型 ACADEMIC/WORLD 投影消费。
+# 与 course_content_items 中的 exam_candidate 条目互补: 后者用于前端内容展示，
+# 本表用于结构化成绩与考试暴露度计算，并作为 exam_discovered 事件的证据表。
+CHAOXING_ASSESSMENT_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS chaoxing_exams (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    exam_at TEXT,
+    score REAL,
+    score_max REAL,
+    status TEXT NOT NULL DEFAULT 'discovered',
+    source_url TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_exams_user
+    ON chaoxing_exams(user_id);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_exams_course
+    ON chaoxing_exams(user_id, course_id);
+"""
+
+# 课程知识图谱 —— 学习通课程图谱页发布的"知识点体系 + 掌握率"。
+# 这是外部数据源观测(课程/学校发布的知识点 + 平台统计)，不是平台自造推断，
+# 因此与已删除的 C 语言学习系统 knowledge_components 无关，命名也刻意避开旧术语。
+CHAOXING_KNOWLEDGE_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS chaoxing_knowledge_graphs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_course_id TEXT,
+    knowledge_point_count INTEGER NOT NULL DEFAULT 0,
+    own_mastery_rate REAL,
+    class_mastery_rate REAL,
+    own_completion_rate REAL,
+    class_completion_rate REAL,
+    first_seen_at TEXT NOT NULL,
+    synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_knowledge_graphs_user
+    ON chaoxing_knowledge_graphs(user_id);
+
+CREATE TABLE IF NOT EXISTS chaoxing_knowledge_points (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    course_id TEXT,
+    external_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    level INTEGER,
+    tags TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chaoxing_knowledge_points_user
+    ON chaoxing_knowledge_points(user_id, course_id);
+"""
+
 NOTICES_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS notices (
     id TEXT PRIMARY KEY,
@@ -532,7 +603,12 @@ CREATE TABLE IF NOT EXISTS course_sync_sections (
     section TEXT NOT NULL,
     status TEXT NOT NULL,
     item_count INTEGER NOT NULL DEFAULT 0,
+    -- last_synced_at 是"最近一次尝试"时间(失败也会刷新)；
+    -- last_success_at 只在 status 为 complete/partial 时前进，用来回答
+    -- "最近一次成功同步到数据是什么时候"。两者必须分开，否则一次失败就会
+    -- 抹掉真实的成功时间，把 never_synced 误报成 empty。
     last_synced_at TEXT NOT NULL,
+    last_success_at TEXT,
     error_code TEXT,
     error_message TEXT,
     PRIMARY KEY(user_id, course_id, section),
@@ -1456,6 +1532,15 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     request_id TEXT,
     idempotency_key TEXT,
     retry_of TEXT,
+    -- v2 持久化队列字段: 处理器身份、尝试次数、租约与恢复点。
+    handler_code TEXT,
+    handler_version TEXT,
+    attempt_no INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    heartbeat_at TEXT,
+    checkpoint_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(job_id) REFERENCES agent_jobs(job_id) ON DELETE CASCADE,
@@ -1464,6 +1549,19 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE INDEX IF NOT EXISTS idx_agent_runs_job ON agent_runs(job_id);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_user_status ON agent_runs(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_agent_runs_status_phase ON agent_runs(status, phase);
+
+CREATE TABLE IF NOT EXISTS agent_idempotency_claims (
+    scope TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scope, user_id, idempotency_key),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_idem_claims_resource
+    ON agent_idempotency_claims(resource_id);
 
 CREATE TABLE IF NOT EXISTS agent_run_controls (
     command_id TEXT PRIMARY KEY,
@@ -1566,6 +1664,8 @@ CREATE TABLE IF NOT EXISTS agent_events (
     UNIQUE(run_id, sequence)
 );
 CREATE INDEX IF NOT EXISTS idx_agent_events_run_seq ON agent_events(run_id, sequence);
+-- Last-Event-ID 续传: 由 (run_id, event_id) 直接定位 sequence, 不再扫描事件列表。
+CREATE INDEX IF NOT EXISTS idx_agent_events_run_event ON agent_events(run_id, event_id);
 
 CREATE TABLE IF NOT EXISTS agent_memories (
     memory_id TEXT PRIMARY KEY,
@@ -1593,6 +1693,13 @@ CREATE TABLE IF NOT EXISTS agent_approvals (
     status TEXT NOT NULL DEFAULT 'PENDING',
     risk_level TEXT NOT NULL,
     action_summary TEXT NOT NULL,
+    -- 审批必须绑定到"具体工具 + 具体参数"，否则一次批准可以被复用到
+    -- 另一门课程 / 另一种 mode / 另一组参数。
+    tool_name TEXT,
+    request_hash TEXT,
+    -- 由 Gateway 创建（绑定到某次工具调用）时记录 call_id；
+    -- 路由提前创建（如期末复习的计划生成）时为 NULL，此时按 tool+hash 校验。
+    call_id TEXT,
     expires_at TEXT NOT NULL,
     resolved_at TEXT,
     decision_reason TEXT,
@@ -1718,6 +1825,16 @@ class Database:
             return
         conn.close()
 
+    @staticmethod
+    def _prepare_legacy_learning_plan_runs(conn: sqlite3.Connection) -> None:
+        """补齐建索引前必须存在的旧学习计划列。"""
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(learning_plan_runs)")
+        }
+        if columns and "goal_id" not in columns:
+            conn.execute("ALTER TABLE learning_plan_runs ADD COLUMN goal_id TEXT")
+
     def _init_schema(self) -> None:
         with self._lock:
             conn = self._connect()
@@ -1734,11 +1851,14 @@ class Database:
                 conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
                 conn.executescript(HOME_BANNER_SCHEMA_SQL)
                 conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
+                conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
+                conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
                 conn.executescript(NOTICES_SCHEMA_SQL)
                 conn.executescript(QR_AUTH_SCHEMA_SQL)
                 conn.executescript(EDU_SESSION_SCHEMA_SQL)
                 conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
+                self._prepare_legacy_learning_plan_runs(conn)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
@@ -1775,12 +1895,63 @@ class Database:
                 "total_tokens": "INTEGER",
                 "cached_tokens": "INTEGER",
             },
-            "agent_runs": {"retry_of": "TEXT"},
+            "agent_runs": {
+                "retry_of": "TEXT",
+                # v2 持久化队列: 旧库补列, 默认值必须让既有行保持可领取。
+                "handler_code": "TEXT",
+                "handler_version": "TEXT",
+                "attempt_no": "INTEGER NOT NULL DEFAULT 0",
+                "next_attempt_at": "TEXT",
+                "lease_owner": "TEXT",
+                "lease_expires_at": "TEXT",
+                "heartbeat_at": "TEXT",
+                "checkpoint_json": "TEXT",
+            },
+            # "最近一次成功同步"必须独立于"最近一次尝试": last_synced_at 在失败时
+            # 也会被刷新，用它回答"是否同步过"会把 never_synced 误报成 empty。
+            "course_sync_sections": {"last_success_at": "TEXT"},
+            # 审批必须绑定到具体工具与具体参数，否则一次批准可以被复用到
+            # 另一门课程 / 另一种 mode / 另一组参数（旧库缺这三列）。
+            "agent_approvals": {
+                "tool_name": "TEXT",
+                "request_hash": "TEXT",
+                "call_id": "TEXT",
+            },
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        # 旧库回填: 当前状态为 complete/partial 的行，其 last_synced_at 就是一次
+        # 成功的尝试时间。failed 行不回填 —— 无法区分"从未成功"与"曾成功后失败"，
+        # 宁可少报也不要把失败当成功。
+        conn.execute(
+            "UPDATE course_sync_sections SET last_success_at = last_synced_at "
+            "WHERE last_success_at IS NULL AND status IN ('complete', 'partial')"
+        )
+        # v2 队列索引依赖上面补出来的列,必须在补列之后再建,否则旧库初始化会失败。
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_claim "
+            "ON agent_runs(status, next_attempt_at, lease_expires_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_lease "
+            "ON agent_runs(lease_owner, lease_expires_at)"
+        )
+        # 管理员观测按时间窗聚合,索引让这些查询走区间扫描而不是全表扫描。
+        for index_sql in (
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at "
+            "ON agent_runs(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_lease_expires "
+            "ON agent_runs(lease_expires_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_model_calls_started_at "
+            "ON agent_model_calls(started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_tool_calls_started_at "
+            "ON agent_tool_calls(started_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_approvals_created_at "
+            "ON agent_approvals(created_at)",
+        ):
+            conn.execute(index_sql)
         shadow_result_cols = {row["name"] for row in conn.execute("PRAGMA table_info(model_shadow_results)").fetchall()}
         if "inference_source" not in shadow_result_cols:
             conn.execute(
@@ -1929,6 +2100,29 @@ class Database:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN source_url TEXT")
         if "last_synced_at" not in task_cols:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN last_synced_at TEXT")
+        for column, column_type in (
+            ("remote_submitted_at", "TEXT"),
+            ("score", "REAL"),
+            ("score_max", "REAL"),
+            ("graded_at", "TEXT"),
+        ):
+            if column not in task_cols:
+                conn.execute(
+                    f"ALTER TABLE personal_tasks ADD COLUMN {column} {column_type}"
+                )
+
+        # 学习通考试表可能在旧库缺失(本表晚于 chaoxing_credentials 引入)。
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_exams'"
+        )
+        if cur.fetchone() is None:
+            conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
+
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_knowledge_points'"
+        )
+        if cur.fetchone() is None:
+            conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")

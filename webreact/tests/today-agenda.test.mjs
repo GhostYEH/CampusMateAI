@@ -1,0 +1,596 @@
+/**
+ * 全站统一"今日待办"的前端契约测试。
+ *
+ * 关键点用**真实渲染**验证（vite ssrLoadModule + renderToStaticMarkup）：
+ * 学习陪伴右侧"今日待办"只展示前 8 条，但标题处的总数/完成数必须来自 summary，
+ * 而不是对截断后的数组再统计一遍 —— 这正是"77 件待完成"的成因。
+ *
+ * 另覆盖：三端同源（首页/学习陪伴/任务总览只读 /agenda/today）、学习通条目只读、
+ * loading/empty/stale/partial/未绑定/登录态过期 的区分、并发请求去重。
+ *
+ * 说明：仓库未引入 jsdom，因此这里是 SSR 渲染而非 DOM 交互；effect 不会执行，
+ * 所以"刷新后一致"这类行为通过共享数据层的纯函数与渲染结果来验证。
+ */
+import test, { after } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { createServer } from "vite";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import "./helpers/setup-globals.mjs";
+import * as apiModule from "../src/data/api.js";
+import { createMockClient } from "./helpers/mock-client.mjs";
+
+import * as A from "../src/data/agendaModel.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const read = (rel) => readFileSync(resolve(here, "..", rel), "utf8");
+
+const vite = await createServer({
+  root: fileURLToPath(new URL("..", import.meta.url)),
+  server: { middlewareMode: true },
+  appType: "custom",
+  logLevel: "silent",
+});
+
+after(async () => { await vite.close(); });
+
+const { default: SummerFocusRoom } = await vite.ssrLoadModule(
+  "/src/components/study/SummerFocusRoom.jsx",
+);
+const { StaticRouter } = await import("react-router-dom/server.mjs");
+
+const mock = createMockClient(apiModule.client);
+
+// ---------- 后端响应样例（结构与 /agenda/today 契约一致） ----------
+
+function agendaPayload(overrides = {}) {
+  return {
+    date: "2026-09-15",
+    timezone: "Asia/Shanghai",
+    generated_at: "2026-09-15T04:00:00+00:00",
+    last_chaoxing_synced_at: "2026-09-15T03:00:00+00:00",
+    stale: false,
+    summary: { total: 2, pending: 1, completed: 1, overdue: 0 },
+    sources: {
+      chaoxing: { state: "ok", message: null, item_count: 2, last_synced_at: "2026-09-15T03:00:00+00:00" },
+      personal: { state: "ok", message: null, item_count: 0, last_synced_at: null },
+      schedule: { state: "unavailable", message: "还没有导入课表", item_count: 0, last_synced_at: null },
+    },
+    items: [
+      {
+        id: "chaoxing-assignment:ptask_1", source: "chaoxing", kind: "assignment",
+        source_id: "ptask_1", course_id: "crs_1", course_name: "高等数学",
+        title: "第三章作业", description: null, starts_at: null,
+        deadline: "2026-09-15T23:59:59+08:00", status: "pending", priority: "high",
+        editable: false, completable: false, route: "/tasks/chaoxing/ptask_1",
+        source_url: "https://mooc1.chaoxing.com/work/view?workId=1",
+        last_synced_at: "2026-09-15T03:00:00+00:00",
+      },
+      {
+        id: "personal:ptask_2", source: "personal", kind: "personal_task",
+        source_id: "ptask_2", course_id: null, course_name: null,
+        title: "今天写完实验报告", description: null, starts_at: null,
+        deadline: "2026-09-15T18:00:00+08:00", status: "completed", priority: "medium",
+        editable: true, completable: true, route: "/tasks/personal/ptask_2",
+        source_url: null, last_synced_at: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function pendingItem(index) {
+  return {
+    id: `personal:ptask_${index}`, source: "personal", kind: "personal_task",
+    source_id: `ptask_${index}`, course_id: null, course_name: null,
+    title: `待办 ${index}`, description: null, starts_at: null,
+    deadline: null, status: "pending", priority: "medium",
+    editable: true, completable: true, route: `/tasks/personal/ptask_${index}`,
+    source_url: null, last_synced_at: null,
+  };
+}
+
+// ---------- 归一化 ----------
+
+test("normalizeTodayAgendaItem maps backend contract to a stable view model", () => {
+  const [assignment, personal] = A.normalizeTodayAgenda(agendaPayload()).items;
+
+  assert.equal(assignment.kindLabel, "课程作业");
+  assert.equal(assignment.sourceLabel, "学习通");
+  assert.equal(assignment.statusLabel, "待完成");
+  assert.equal(assignment.readOnly, true);
+  assert.equal(assignment.completable, false);
+  assert.equal(assignment.route, "/tasks/chaoxing/ptask_1");
+
+  assert.equal(personal.readOnly, false);
+  assert.equal(personal.done, true);
+  assert.equal(personal.statusLabel, "已完成");
+});
+
+test("normalizeTodayAgenda never trusts unparsable payloads", () => {
+  assert.equal(A.normalizeTodayAgenda(null), null);
+  assert.equal(A.normalizeTodayAgenda(undefined), null);
+  const empty = A.normalizeTodayAgenda({});
+  assert.deepEqual(empty.items, []);
+  assert.deepEqual(empty.summary, { total: 0, pending: 0, completed: 0, overdue: 0 });
+});
+
+test("unknown kinds and statuses fall back safely instead of crashing the page", () => {
+  const item = A.normalizeTodayAgendaItem({ kind: "telepathy", status: "vibing", title: "" });
+  assert.equal(item.kindLabel, "事项");
+  assert.equal(item.statusLabel, "待完成");
+  assert.equal(item.title, "未命名事项");
+  assert.equal(item.done, false);
+});
+
+test("source URLs are only exposed for trusted chaoxing https hosts", () => {
+  assert.equal(A.isTrustedChaoxingUrl("https://mooc1.chaoxing.com/work/view"), true);
+  assert.equal(A.isTrustedChaoxingUrl("https://chaoxing.com/x"), true);
+  // fail-closed: 非学习通域名、http、伪装域名一律不放行
+  assert.equal(A.isTrustedChaoxingUrl("http://mooc1.chaoxing.com/x"), false);
+  assert.equal(A.isTrustedChaoxingUrl("https://chaoxing.com.evil.test/x"), false);
+  assert.equal(A.isTrustedChaoxingUrl("https://evil.test/chaoxing.com"), false);
+  assert.equal(A.isTrustedChaoxingUrl(""), false);
+  assert.equal(A.isTrustedChaoxingUrl(null), false);
+
+  const item = A.normalizeTodayAgendaItem({ source_url: "https://evil.test/x" });
+  assert.equal(item.sourceUrl, null);
+});
+
+// ---------- 空状态 / 新鲜度必须可区分 ----------
+
+test("empty state distinguishes not-bound, never-synced and genuinely empty", () => {
+  const notBound = A.resolveAgendaEmptyState(A.normalizeTodayAgenda(agendaPayload({
+    items: [], summary: { total: 0, pending: 0, completed: 0, overdue: 0 },
+    sources: { chaoxing: { state: "not_bound" }, personal: {}, schedule: {} },
+  })));
+  assert.equal(notBound.kind, "not-bound");
+
+  const neverSynced = A.resolveAgendaEmptyState(A.normalizeTodayAgenda(agendaPayload({
+    items: [], summary: { total: 0, pending: 0, completed: 0, overdue: 0 },
+    sources: { chaoxing: { state: "never_synced" }, personal: {}, schedule: {} },
+  })));
+  assert.equal(neverSynced.kind, "never-synced");
+
+  const trulyEmpty = A.resolveAgendaEmptyState(A.normalizeTodayAgenda(agendaPayload({
+    items: [], summary: { total: 0, pending: 0, completed: 0, overdue: 0 },
+  })));
+  assert.equal(trulyEmpty.kind, "empty");
+
+  // 有数据时不该出现空状态
+  assert.equal(A.resolveAgendaEmptyState(A.normalizeTodayAgenda(agendaPayload())), null);
+  // 请求失败要如实报错，不能伪装成"今天没有待办"
+  assert.equal(A.resolveAgendaEmptyState(null, { error: "加载失败" }).kind, "error");
+});
+
+test("freshness notice covers stale, expired session and partial failures", () => {
+  const stale = A.resolveAgendaFreshnessNotice(A.normalizeTodayAgenda(agendaPayload({ stale: true })));
+  assert.match(stale, /不是最新/);
+
+  // 登录态来自 /chaoxing/status 的探测结果（今日待办自身不触网），
+  // 因此既支持随响应下发的 auth_state，也支持调用方单独传入。
+  const expiredFromPayload = A.resolveAgendaFreshnessNotice(A.normalizeTodayAgenda(agendaPayload({
+    sources: { chaoxing: { state: "ok", auth_state: "expired" }, personal: {}, schedule: {} },
+  })));
+  assert.match(expiredFromPayload, /登录态已过期/);
+
+  const expiredFromProbe = A.resolveAgendaFreshnessNotice(
+    A.normalizeTodayAgenda(agendaPayload()),
+    { authState: "expired" },
+  );
+  assert.match(expiredFromProbe, /登录态已过期/);
+
+  const partial = A.resolveAgendaFreshnessNotice(A.normalizeTodayAgenda(agendaPayload({
+    sources: { chaoxing: { state: "partial" }, personal: {}, schedule: {} },
+  })));
+  assert.match(partial, /部分课程同步失败/);
+
+  assert.equal(A.resolveAgendaFreshnessNotice(A.normalizeTodayAgenda(agendaPayload())), "");
+});
+
+test("unknown auth state is never reported as expired", () => {
+  const agenda = A.normalizeTodayAgenda(agendaPayload());
+  assert.equal(agenda.sources.chaoxing.authState, "unknown");
+  assert.equal(A.resolveAgendaFreshnessNotice(agenda, { authState: "unknown" }), "");
+  assert.equal(A.resolveAgendaFreshnessNotice(agenda, { authState: "online" }), "");
+});
+
+// ---------- 统一 API ----------
+
+test("getTodayAgenda calls the single shared endpoint", async () => {
+  mock.reset();
+  mock.onGet("/agenda/today", agendaPayload());
+  const payload = await apiModule.getTodayAgenda();
+  assert.equal(mock.findRequests("get", "/agenda/today").length, 1);
+  assert.equal(payload.summary.pending, 1);
+});
+
+test("home, study and tasks pages all read the unified agenda source", () => {
+  // 三个页面都必须消费统一今日待办；首页不得再退回 dashboard.due_soon_*。
+  const home = read("src/pages/HomePage.jsx");
+  assert.match(home, /buildAgendaDueItems/);
+  assert.doesNotMatch(home, /buildDueItems\(dashboard\)/);
+  assert.match(home, /todayAgenda\.summary\.pending/);
+
+  const study = read("src/pages/StudyPage.jsx");
+  assert.match(study, /selectAgendaForSidebar/);
+  assert.doesNotMatch(study, /api\.getTasks\(\)/);
+
+  const tasks = read("src/pages/TasksPage.jsx");
+  assert.match(tasks, /groupTasksWithAgenda/);
+
+  // 全局角标也来自同一个 summary
+  const context = read("src/app/AppContext.jsx");
+  assert.match(context, /todayAgenda\.summary\.pending/);
+  // 今日待办不触网，登录态过期只能靠一次非阻塞探测来补齐
+  assert.match(context, /getChaoxingStatus/);
+  assert.match(context, /chaoxingAuthState/);
+});
+
+// ---------- 并发去重 ----------
+
+test("concurrent agenda refreshes collapse into a single request", async () => {
+  let calls = 0;
+  const runOnce = A.createInFlightDeduper();
+  const load = () => { calls += 1; return new Promise((r) => setTimeout(() => r("ok"), 5)); };
+
+  const results = await Promise.all([runOnce(load), runOnce(load), runOnce(load), runOnce(load)]);
+  assert.equal(calls, 1, "并发调用只应触发一次请求");
+  assert.deepEqual(results, ["ok", "ok", "ok", "ok"]);
+
+  // 完成后必须能再次发起（去重不能把后续刷新永久锁死）
+  await runOnce(load);
+  assert.equal(calls, 2);
+});
+
+// ---------- 真实渲染：学习陪伴右侧 ----------
+
+function renderRoom(overrides = {}) {
+  const agenda = A.normalizeTodayAgenda(overrides.agenda || agendaPayload());
+  const sidebar = A.selectAgendaForSidebar(agenda, 8);
+  const html = renderToStaticMarkup(createElement(StaticRouter, { location: "/study" },
+    createElement(SummerFocusRoom, {
+    active: null,
+    pomodoro: { mode: "focus", isRunning: false, focusMinutes: 25, breakMinutes: 5, round: 1 },
+    seconds: 1500,
+    goal: "",
+    preset: 25,
+    customMinutes: 45,
+    mode: "deep",
+    blockNotifications: true,
+    whiteNoise: { enabled: false, volume: 0.4, toggle: () => {}, setVolume: () => {} },
+    tasks: sidebar.items,
+    taskTotal: sidebar.summary.total,
+    taskCompleted: sidebar.summary.completed,
+    taskPending: sidebar.summary.pending,
+    agendaNotice: overrides.notice || "",
+    dailyGoalMinutes: 60,
+    todayFocusMinutes: 0,
+    scene: "summer",
+    onSelectScene: () => {},
+    ...overrides.props,
+  })));
+  return { html, sidebar };
+}
+
+test("study sidebar caps the list at 8 but reports the real total from summary", () => {
+  // 77 条未完成：列表只渲染 8 条，标题处必须显示 77 而不是 8。
+  const items = Array.from({ length: 77 }, (_, index) => pendingItem(index));
+  const { html } = renderRoom({
+    agenda: agendaPayload({
+      items,
+      summary: { total: 80, pending: 77, completed: 3, overdue: 0 },
+    }),
+  });
+
+  const rendered = html.match(/待办 \d+/g) || [];
+  assert.equal(rendered.length, 8, "列表最多渲染 8 条");
+  assert.match(html, /77 件等待完成/, "总数必须来自 summary，而不是截断后的数组");
+  assert.match(html, /3\/80 已完成/);
+  assert.doesNotMatch(html, /8 件等待完成/);
+});
+
+test("study sidebar does not present every historical pending task as today", () => {
+  // 只有统一今日待办给出的条目会进入右侧，历史遗留待办不在其中。
+  const { html } = renderRoom({
+    agenda: agendaPayload({ items: [pendingItem(1)], summary: { total: 1, pending: 1, completed: 0, overdue: 0 } }),
+  });
+  assert.match(html, /1 件等待完成/);
+  assert.equal((html.match(/待办 \d+/g) || []).length, 1);
+});
+
+test("chaoxing items render read-only in the study sidebar", () => {
+  const { html } = renderRoom();
+
+  // 学习通作业: 没有勾选框的可点击语义，带 data-readonly 标记与锁图标。
+  assert.match(html, /data-readonly="true"/);
+  assert.match(html, /学习通 · /);
+  assert.doesNotMatch(html, /aria-pressed="true"/);
+  // 个人待办仍然是可勾选的
+  assert.match(html, /aria-pressed="false"/);
+});
+
+test("study sidebar surfaces the stale notice instead of pretending data is fresh", () => {
+  const { html } = renderRoom({ notice: "学习通数据可能不是最新，建议重新同步后再确认。" });
+  assert.match(html, /可能不是最新/);
+});
+
+// ---------- 任务总览分组 ----------
+
+const agendaForGrouping = () => A.normalizeTodayAgenda(agendaPayload({
+  items: [
+    { ...pendingItem(1), kind: "assignment", source: "chaoxing", sourceId: "ptask_1",
+      source_id: "ptask_1", completable: false, editable: false },
+    { ...pendingItem(2) },
+  ],
+  summary: { total: 2, pending: 2, completed: 0, overdue: 0 },
+}));
+
+test("tasks page today group comes from the agenda and is not duplicated elsewhere", () => {
+  const groups = A.groupTasksWithAgenda({
+    tasks: [
+      { sourceId: "ptask_1", kind: "personal", title: "第三章作业", deadline: "2026-09-15T23:59:59+08:00" },
+      { sourceId: "ptask_2", kind: "personal", title: "待办 2", deadline: "2026-09-15T18:00:00+08:00" },
+      { sourceId: "ptask_9", kind: "personal", title: "下周的事", deadline: "2026-09-20T18:00:00+08:00" },
+    ],
+    agenda: agendaForGrouping(),
+    stateOf: (task) => {
+      if (String(task.deadline).startsWith("2026-09-20")) return "upcoming";
+      return "today";
+    },
+  });
+
+  assert.deepEqual(groups.today.map((item) => item.sourceId), ["ptask_1", "ptask_2"]);
+  // 已被"今天"覆盖的条目不能再出现在别的分组
+  assert.equal(groups.upcoming.length, 1);
+  assert.equal(groups.upcoming[0].sourceId, "ptask_9");
+  assert.equal(groups.later.length, 0);
+  assert.equal(groups.completed.length, 0);
+});
+
+test("tasks page keeps completed and later items when no agenda is available", () => {
+  const groups = A.groupTasksWithAgenda({
+    tasks: [
+      { sourceId: "a", done: true },
+      { sourceId: "b", done: false },
+    ],
+    agenda: null,
+    stateOf: (task) => (task.done ? "completed" : "later"),
+  });
+  assert.deepEqual(groups.today, []);
+  assert.deepEqual(groups.completed.map((t) => t.sourceId), ["a"]);
+  assert.deepEqual(groups.later.map((t) => t.sourceId), ["b"]);
+});
+
+// ---------- 首页映射 ----------
+
+test("home due items keep the backend order and only include pending work", () => {
+  const due = A.buildAgendaDueItems(A.normalizeTodayAgenda(agendaPayload()));
+  assert.equal(due.length, 1);
+  assert.equal(due[0].title, "第三章作业");
+  assert.equal(due[0].route, "/tasks/chaoxing/ptask_1");
+  assert.equal(due[0].due, "2026-09-15T23:59:59+08:00");
+});
+
+// ---------- 今日分组必须服从页面筛选 ----------
+
+function agendaWithMixedKinds() {
+  return A.normalizeTodayAgenda(agendaPayload({
+    items: [
+      { ...pendingItem(1), kind: "assignment", source: "chaoxing", sourceId: "ptask_1",
+        source_id: "ptask_1", title: "第三章作业", completable: false, editable: false },
+      { ...pendingItem(2), title: "写实验报告" },
+      { ...pendingItem(3), kind: "exam", source: "chaoxing", sourceId: "exam_1",
+        source_id: "exam_1", title: "期中测验", completable: false, editable: false },
+      { ...pendingItem(4), kind: "class", source: "academic", sourceId: "class_1",
+        source_id: "class_1", title: "高等数学", completable: false, editable: false },
+    ],
+    summary: { total: 4, pending: 4, completed: 0, overdue: 0 },
+  }));
+}
+
+test("today group honours the caller's search / kind / status filter", () => {
+  const agenda = agendaWithMixedKinds();
+  const all = A.groupTasksWithAgenda({ tasks: [], agenda, stateOf: () => "later" });
+  assert.equal(all.today.length, 4);
+
+  // 搜索：只保留标题命中的
+  const searched = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaMatchesQuery(item, "实验"),
+  });
+  assert.deepEqual(searched.today.map((i) => i.title), ["写实验报告"]);
+
+  // 类型：只保留考试
+  const examsOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+  assert.deepEqual(examsOnly.today.map((i) => i.title), ["期中测验"]);
+
+  // 状态：已完成的筛选下，未完成的今日事项不应出现
+  const doneOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaMatchesStatus(item, "done"),
+  });
+  assert.deepEqual(doneOnly.today, []);
+
+  // "即将截止"对今日事项不适用（agenda 只覆盖今天）
+  assert.equal(A.agendaMatchesStatus(A.normalizeTodayAgendaItem(pendingItem(9)), "upcoming"), false);
+});
+
+test("filtered-out today items do not reappear in other groups", () => {
+  const agenda = agendaWithMixedKinds();
+  const groups = A.groupTasksWithAgenda({
+    tasks: [
+      // 与 agenda 同一条（会被去重）
+      { sourceId: "ptask_1", kind: "personal", title: "第三章作业" },
+      { sourceId: "ptask_9", kind: "personal", title: "下周的事" },
+    ],
+    agenda,
+    stateOf: (task) => (String(task.sourceId) === "ptask_9" ? "upcoming" : "today"),
+    // 只看考试：作业被筛掉，但它也不能跑到"即将截止"里去
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+
+  assert.deepEqual(groups.today.map((i) => i.sourceId), ["exam_1"]);
+  assert.deepEqual(groups.upcoming.map((t) => t.sourceId), ["ptask_9"]);
+  assert.equal(groups.later.length, 0);
+});
+
+test("grouped count reflects what actually renders, not the pre-filter list", () => {
+  const agenda = agendaWithMixedKinds();
+  const onlyExams = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "exam",
+  });
+  assert.equal(A.countGroupedTasks(onlyExams), 1);
+
+  // 只有课程/考试、没有普通任务时列表并不为空 —— 空状态必须按分组结果判断。
+  const classesOnly = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: (item) => A.agendaFilterKind(item) === "class",
+  });
+  assert.equal(A.countGroupedTasks(classesOnly), 1);
+
+  const nothing = A.groupTasksWithAgenda({
+    tasks: [], agenda, stateOf: () => "later",
+    filter: () => false,
+  });
+  assert.equal(A.countGroupedTasks(nothing), 0);
+});
+
+// ---------- 登录态探测闸门 ----------
+
+test("auth probe is gated by bound state and staleness", () => {
+  const bound = (authState) => ({ state: "ok", authState });
+  assert.equal(A.shouldProbeChaoxingAuth(bound("unknown")), true);
+  // 缓存的过期结论需要被证伪（用户可能已在别处重新登录）
+  assert.equal(A.shouldProbeChaoxingAuth(bound("expired")), true);
+  assert.equal(A.shouldProbeChaoxingAuth(bound("online")), false);
+  assert.equal(A.shouldProbeChaoxingAuth(bound("offline")), false);
+  // 没绑定就不该为一个不存在的账号发请求
+  assert.equal(A.shouldProbeChaoxingAuth({ state: "not_bound", authState: "unknown" }), false);
+  assert.equal(A.shouldProbeChaoxingAuth(null), false);
+});
+
+test("app context resets chaoxing auth state on logout and identity change", () => {
+  const context = read("src/app/AppContext.jsx");
+  // 退出登录必须立刻清掉上一个用户的登录态观测与探测闸门
+  const logoutBlock = context.slice(context.indexOf("const logout = useCallback"), context.indexOf("const toggleTask"));
+  assert.match(logoutBlock, /authProbeOnce\.current = false/);
+  assert.match(logoutBlock, /setChaoxingAuthState\("unknown"\)/);
+  // 身份变化（登录/切换）同样要重置，否则第二个用户不会触发自己的探测
+  const sessionEffect = context.slice(context.indexOf("// 身份变化（登录/切换/退出）"));
+  assert.match(sessionEffect, /authProbeOnce\.current = false/);
+  assert.match(sessionEffect, /setChaoxingAuthState\("unknown"\)/);
+});
+
+// ---------- 切换账号不得串数据 ----------
+
+function scopedLoader({ load, onData, onError, onLoadingChange } = {}) {
+  return A.createSessionScopedLoader({ load, onData, onError, onLoadingChange });
+}
+
+/** 让 loader 内部排队的微任务跑完（load 是在微任务里被调用的）。 */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("a late response from a previous account never reaches the new one", async () => {
+  const seen = [];
+  let resolveA;
+  const loader = scopedLoader({
+    load: () => new Promise((resolve) => { resolveA = resolve; }),
+    onData: (value) => seen.push(value),
+    onLoadingChange: () => {},
+    onError: () => {},
+  });
+
+  const inFlight = loader.refresh();   // 账号 A 的请求还在途中
+  await flush();                       // 等 load 真正被调用
+  loader.reset();                      // 未完成就退出 / 切换到账号 B
+  resolveA("A 的今日待办");
+  await inFlight;
+
+  assert.deepEqual(seen, [], "上一个账号的迟到响应不得回写状态");
+});
+
+test("errors from a previous account are dropped too", async () => {
+  const errors = [];
+  let rejectA;
+  const loader = scopedLoader({
+    load: () => new Promise((_resolve, reject) => { rejectA = reject; }),
+    onData: () => {},
+    onError: (error) => errors.push(error),
+    onLoadingChange: () => {},
+  });
+
+  const inFlight = loader.refresh();
+  await flush();
+  loader.reset();
+  rejectA(new Error("A 的请求失败"));
+  await inFlight;
+
+  assert.deepEqual(errors, []);
+});
+
+test("the new account issues its own request instead of reusing the old promise", async () => {
+  const pending = [];
+  const loader = scopedLoader({
+    load: () => new Promise((resolve) => pending.push(resolve)),
+    onData: () => {},
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  loader.refresh();   // 账号 A
+  await flush();
+  loader.reset();     // 切到账号 B
+  loader.refresh();   // 账号 B 必须自己发一次
+  await flush();
+
+  assert.equal(pending.length, 2, "去重器必须按身份隔离，B 不能复用 A 的 Promise");
+  pending.forEach((resolve, index) => resolve(`v${index}`));
+});
+
+test("same-identity concurrent refreshes still collapse into one request", async () => {
+  let calls = 0;
+  const loader = scopedLoader({
+    load: () => { calls += 1; return Promise.resolve("agenda"); },
+    onData: () => {},
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  await Promise.all([loader.refresh(), loader.refresh(), loader.refresh()]);
+  assert.equal(calls, 1, "同一身份内的并发刷新仍要去重");
+});
+
+test("onData gets an isCurrent guard so follow-up async work is also protected", async () => {
+  let captured;
+  const loader = scopedLoader({
+    load: () => Promise.resolve("agenda"),
+    onData: (_value, isCurrent) => { captured = isCurrent; },
+    onError: () => {},
+    onLoadingChange: () => {},
+  });
+
+  await loader.refresh();
+  assert.equal(captured(), true);
+
+  // 登录态探测是在 onData 之后异步完成的，身份一变它也必须作废。
+  loader.reset();
+  assert.equal(captured(), false, "身份变化后 isCurrent() 必须为 false");
+});
+
+test("app context wires the session-scoped loader and resets it on identity change", () => {
+  const context = read("src/app/AppContext.jsx");
+  assert.match(context, /createSessionScopedLoader/);
+  assert.doesNotMatch(context, /agendaOnce/);
+  // 身份变化与退出登录都要作废在途请求
+  assert.match(context, /agendaLoader\.current\.reset\(\)/);
+  assert.match(context, /agendaLoader\.current\?\.reset\(\)/);
+});

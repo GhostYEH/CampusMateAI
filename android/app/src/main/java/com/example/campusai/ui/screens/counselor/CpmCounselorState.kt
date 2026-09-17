@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.counselor
 
+import com.example.campusai.data.classroom.ClassroomJobState
+import com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Balance
@@ -17,6 +19,12 @@ data class CpmChatMessage(
     val content: String,
     val status: CpmMessageStatus,
     val errorMessage: String? = null,
+)
+
+/** 进入 CPM 时携带的课程上下文；仅用于把 course_id 传给后端，不本地落盘。 */
+data class CpmCourseContext(
+    val courseId: String,
+    val courseName: String = "",
 )
 
 data class CpmPrompt(
@@ -51,8 +59,13 @@ data class CpmCounselorUiState(
     val speechText: String = "",
     val speechRequestId: Int = 0,
     val lastCompletedAnswer: String = "",
+    val courseContext: CpmCourseContext? = null,
     val playbackCommand: DigitalHumanCommand = DigitalHumanCommand.NONE,
     val playbackCommandId: Int = 0,
+    /** The final SSE metadata is retained separately from streamed answer text. */
+    val suggestedActions: List<com.example.campusai.data.remote.agent.SuggestedActionDto> = emptyList(),
+    val classroomProposal: InteractiveClassroomProposalDto? = null,
+    val classroomJob: ClassroomJobState = ClassroomJobState(),
 ) {
     val recommendations: List<CpmPrompt> get() = CpmPromptCatalog.batch(recommendationOffset)
 }

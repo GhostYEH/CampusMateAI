@@ -47,13 +47,10 @@ async def lifespan(app: FastAPI):
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
-    # 请求内执行的 run 无法在进程重启后安全重放；启动时明确收口，避免伪装为仍在运行。
-    try:
-        failed_runs = container.agent_run_manager.recover_incomplete_runs()
-        if failed_runs:
-            logger.warning("已终止 {} 个无法安全恢复的 Agent 运行", len(failed_runs))
-    except Exception as e:
-        logger.warning("Agent 运行恢复检查失败: {}", str(e)[:200])
+    # 持久化队列由 Worker 接管；有效租约不抢占，过期租约交给 Handler recovery 决策。
+    await container.agent_worker.start()
+    logger.info("Agent Worker 已启动，mode={}, concurrency={}",
+                settings.agent_runtime_mode, settings.agent_worker_concurrency)
     # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
     if settings.agent_allow_mock_providers and settings.app_env != "production":
         try:
@@ -81,6 +78,7 @@ async def lifespan(app: FastAPI):
         logger.warning("学校名单 seed 失败: {}", str(e)[:200])
     yield
     # 关闭
+    await container.agent_worker.stop()
     if container.llm is not None and hasattr(container.llm, "aclose"):
         try:
             await container.llm.aclose()  # type: ignore[attr-defined]

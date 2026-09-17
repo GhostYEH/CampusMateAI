@@ -1,5 +1,7 @@
 package com.example.campusai.data.repository
 
+import retrofit2.Response
+
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
 import com.example.campusai.data.local.CredentialStore
@@ -11,6 +13,14 @@ import com.example.campusai.data.expression.MockExpressionRecognitionService
 import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
 import com.example.campusai.data.remote.ApiClient
+import com.example.campusai.data.remote.InteractiveClassroomStatusDto
+import com.example.campusai.data.remote.InteractiveClassroomSessionDto
+import com.example.campusai.data.remote.InteractiveClassroomPlanDto
+import com.example.campusai.data.remote.InteractiveClassroomItemDto
+import com.example.campusai.data.remote.InteractiveClassroomGenerateResponse
+import com.example.campusai.data.remote.InteractiveClassroomGenerateRequest
+import com.example.campusai.data.remote.InteractiveClassroomCompositionDto
+import com.example.campusai.data.remote.agent.CounselorFinalMetaDto
 import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.RefreshRequest
 import com.example.campusai.data.remote.ChatRequest
@@ -28,9 +38,9 @@ import com.example.campusai.data.remote.FileFavoriteToggleRequest
 import com.example.campusai.data.remote.FavoriteCreateRequest
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
+import com.example.campusai.data.remote.CourseKnowledgeGraphDto
 import com.example.campusai.data.remote.HomeBannerDto
 import com.example.campusai.BuildConfig
-import com.example.campusai.data.local.DashboardStyle
 import com.example.campusai.data.hitokoto.HitokotoRepository
 import com.example.campusai.data.wallpaper.BingDailyWallpaperRepository
 import kotlinx.coroutines.*
@@ -99,9 +109,6 @@ class AppRepository(
 
     private val _darkMode = MutableStateFlow(false)
     val darkMode: StateFlow<Boolean> = _darkMode.asStateFlow()
-
-    private val _dashboardStyle = MutableStateFlow(DashboardStyle.CLASSIC)
-    val dashboardStyle: StateFlow<DashboardStyle> = _dashboardStyle.asStateFlow()
 
     private val _remindersEnabled = MutableStateFlow(true)
     val remindersEnabled: StateFlow<Boolean> = _remindersEnabled.asStateFlow()
@@ -235,7 +242,6 @@ class AppRepository(
         scope.launch { loadCachedHomeBanners() }
         scope.launch { dataStore.reduceMotion.collect { _reduceMotion.value = it } }
         scope.launch { dataStore.darkMode.collect { _darkMode.value = it } }
-        scope.launch { dataStore.dashboardStyle.collect { _dashboardStyle.value = it } }
         scope.launch { dataStore.remindersEnabled.collect { _remindersEnabled.value = it } }
         scope.launch { dataStore.learningAssistanceEnabled.collect { _learningAssistanceEnabled.value = it } }
         scope.launch {
@@ -674,6 +680,27 @@ class AppRepository(
         return loadCourseContent(courseId)
     }
 
+    /**
+     * 课程知识点掌握（学习通课程图谱页观测：课程级掌握率 + 班级对比 + 知识点清单）。
+     * 未同步过时后端返回 available=false 的对象而不是 404，这里原样透传给 UI 做引导。
+     */
+    suspend fun loadCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
+        return try {
+            val response = ApiClient.api.getCourseKnowledgeGraph(courseId)
+            if (response.isSuccessful) response.body() else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 只同步 knowledge_graph 这一个 section，不连带跑完整 deep 同步。 */
+    suspend fun syncCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
+        val response = ApiClient.api.syncCourseContent(courseId, sections = "knowledge_graph")
+        if (!response.isSuccessful) throw IllegalStateException("course_knowledge_graph_sync_failed_${response.code()}")
+        return loadCourseKnowledgeGraph(courseId)
+    }
+
     suspend fun getCourseResourceUrl(courseId: String, itemId: String): String? {
         val response = ApiClient.api.openCourseResource(courseId, itemId)
         if (!response.isSuccessful) return null
@@ -915,11 +942,6 @@ class AppRepository(
     suspend fun setDarkMode(enabled: Boolean) {
         _darkMode.value = enabled
         dataStore.setDarkMode(enabled)
-    }
-
-    suspend fun setDashboardStyle(style: DashboardStyle) {
-        _dashboardStyle.value = style
-        dataStore.setDashboardStyle(style)
     }
 
     suspend fun setRemindersEnabled(enabled: Boolean) {
@@ -1190,7 +1212,7 @@ class AppRepository(
         dataStore.saveSession(user)
     }
 
-    suspend fun chat(message: String, expression: ExpressionResult? = null): String {
+    suspend fun chat(message: String, expression: ExpressionResult? = null, courseId: String? = null): String {
         if (_backendOnline.value && !_mockMode.value) {
             val expressionSignal = expression
                 ?.let { CounselorExpressionPolicy.usableOrNull(it) }
@@ -1208,6 +1230,7 @@ class AppRepository(
                     message = message,
                     session_id = "android-${_session.value?.name ?: "anonymous"}",
                     stream = false,
+                    course_id = courseId,
                     expression_signal = expressionSignal,
                 ),
             )
@@ -1226,7 +1249,9 @@ class AppRepository(
     suspend fun streamChat(
         message: String,
         expression: ExpressionResult? = null,
+        courseId: String? = null,
         onChunk: suspend (String) -> Unit,
+        onMeta: suspend (CounselorFinalMetaDto) -> Unit = {},
     ) {
         if (_mockMode.value) {
             onChunk("**Mock 模式**未连接后端数据库与 DS，无法生成正式的校园事务答复。")
@@ -1248,10 +1273,154 @@ class AppRepository(
                 message = message,
                 session_id = "android-${_session.value?.name ?: "anonymous"}",
                 stream = true,
+                course_id = courseId,
                 expression_signal = expressionSignal,
             ),
             onChunk = onChunk,
+            onMeta = onMeta,
         )
+    }
+
+    /**
+     * 只读查询后端已为该课程生成的交互课堂 URL，不触发 OpenMAIC 生成。
+     * 后端不可用或尚未生成时返回空列表，调用方据此只展示提示而不打开播放器。
+     */
+    suspend fun suggestInteractiveClassroomUrls(courseId: String): List<String> {
+        if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
+            return try {
+                val resp = ApiClient.api.getInteractiveClassroom(courseId)
+                if (resp.isSuccessful) resp.body()?.existingClassroomUrls() ?: emptyList()
+                else emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+        return emptyList()
+    }
+
+    /** 把失败响应转成可读文案；不含任何内部细节或凭据。 */
+    private fun Response<*>.errorMessage(fallback: String): String = when (code()) {
+        401, 403 -> "登录状态已失效，请重新登录"
+        404 -> "课程或课堂不存在"
+        409 -> "当前状态不允许该操作，请刷新后重试"
+        410 -> "确认已过期，请重新发起"
+        422 -> "请求参数不合法"
+        503 -> "互动课堂服务暂不可用"
+        else -> fallback
+    }
+
+    // ── 互动课堂：状态 / 计划 / 生成 / 进度 / 组成 / 历史（真实调用点）──
+
+    /** 生成前的只读计划：课程、可选资料、推荐形态与理由。**不创建任何任务**。 */
+    suspend fun interactiveClassroomPlan(courseId: String, mode: String): InteractiveClassroomPlanDto? {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomPlan(courseId, mode)
+            if (resp.isSuccessful) resp.body() else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 历史课堂（公开地址可能为 null，附 urlUnavailableReason）。 */
+    suspend fun interactiveClassroomHistory(courseId: String): List<InteractiveClassroomItemDto> {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return emptyList()
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroom(courseId)
+            if (resp.isSuccessful && resp.body()?.enabled == true) resp.body()?.items.orEmpty()
+            else emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** 明确提交一次生成。**调用方必须先让学生确认**。 */
+    suspend fun generateInteractiveClassroom(
+        courseId: String,
+        request: InteractiveClassroomGenerateRequest,
+    ): Result<InteractiveClassroomGenerateResponse> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法生成互动课堂"))
+        }
+        return try {
+            val resp = ApiClient.api.generateInteractiveClassroom(courseId, request)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("生成请求被拒绝")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 轮询进度（服务端会现场轮询一次 OpenMAIC）。 */
+    suspend fun interactiveClassroomJob(
+        courseId: String,
+        sessionId: String,
+    ): Result<InteractiveClassroomSessionDto> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法查询进度"))
+        }
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomJob(courseId, sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("进度查询失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 重试 = 重新提交一个新任务（OpenMAIC 没有原生 retry）。 */
+    suspend fun retryInteractiveClassroom(
+        courseId: String,
+        sessionId: String,
+        request: InteractiveClassroomGenerateRequest,
+    ): Result<InteractiveClassroomGenerateResponse> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法重试"))
+        }
+        return try {
+            val resp = ApiClient.api.retryInteractiveClassroom(courseId, sessionId, request)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("重试失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 回读这节课**真实**包含的内容。读取失败返回 failure，由 UI 明说失败而不是显示空课堂。 */
+    suspend fun interactiveClassroomComposition(
+        courseId: String,
+        sessionId: String,
+    ): Result<InteractiveClassroomCompositionDto> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法读取课堂内容"))
+        }
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomComposition(courseId, sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("课堂内容读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 查询互动课堂服务状态（只读）。调用方用其中的 embed_origin 作为
+     * ClassroomUrlPolicy 的可信白名单；服务不可用时返回 null。
+     */
+    suspend fun interactiveClassroomStatus(courseId: String): InteractiveClassroomStatusDto? {
+        if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
+            return try {
+                val resp = ApiClient.api.getInteractiveClassroomStatus(courseId)
+                if (resp.isSuccessful) resp.body() else null
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return null
     }
 
     suspend fun extractNotice(text: String): ExtractResult {

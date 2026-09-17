@@ -7,7 +7,8 @@ const floatingLayout = fs.readFileSync(new URL("../src/styles/floating-layout.cs
 
 test("floating navigation is fixed and does not reserve sidebar space", () => {
   assert.match(floatingLayout, /\.floating-nav\s*\{[^}]*position:\s*fixed;/s);
-  assert.match(floatingLayout, /\.floating-nav\s*\{[^}]*left:\s*50%;/s);
-  assert.match(floatingLayout, /--floating-nav-collapsed-width/);
+  assert.match(floatingLayout, /\.floating-nav\s*\{[^}]*left:\s*50vw;/s);
+  assert.match(floatingLayout, /\.floating-nav\s*\{[^}]*width:\s*max-content;/s);
+  assert.doesNotMatch(floatingLayout, /--floating-nav-collapsed-width/);
   assert.doesNotMatch(styles, /\.sidebar\s*\{/);
 });

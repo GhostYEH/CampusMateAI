@@ -15,6 +15,7 @@ const routePreloaders = Object.freeze({
     return null;
   },
   "final-review": () => import("../pages/FinalReviewPage.jsx"),
+  admin: () => import("../pages/AgentRuntimeOpsPage.jsx"),
   "course-research": () => import("../pages/CourseResearchPage.jsx"),
 });
 

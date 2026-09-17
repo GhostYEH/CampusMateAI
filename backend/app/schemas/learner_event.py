@@ -34,6 +34,7 @@ WritableEventType = Literal[
     "assignment_graded",
     "discussion_participated",
     "exam_discovered",
+    "knowledge_graph_synced",
     "campus_schedule_synced",
     "exam_updated",
     "academic_progress_synced",
@@ -72,6 +73,7 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
         "assignment_graded",
         "discussion_participated",
         "exam_discovered",
+        "knowledge_graph_synced",
     },
     "edu": {
         "edu_schedule_synced",
@@ -114,6 +116,7 @@ EVENT_OUTCOMES: dict[str, str] = {
     "assignment_graded": "observed_completed",
     "discussion_participated": "observed_completed",
     "exam_discovered": "discovered",
+    "knowledge_graph_synced": "synced",
     "campus_schedule_synced": "synced",
     "exam_updated": "updated",
     "academic_progress_synced": "synced",

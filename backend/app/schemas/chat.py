@@ -26,8 +26,11 @@ class ChatSource(BaseModel):
 class SuggestedAction(BaseModel):
     id: str
     label: str
-    type: str = "none"  # navigate|prefillQuestion|createTask|none
+    type: str = "none"  # navigate|prefillQuestion|createTask|interactiveClassroomProposal|none
     payload: Optional[str] = None
+    # 结构化建议内容（例如互动课堂提案）。只在需要客户端渲染确认卡时使用，
+    # 绝不承载凭据、Prompt 或完整模型响应。
+    data: Optional[Dict[str, Any]] = None
 
 
 class ExpressionSignal(BaseModel):

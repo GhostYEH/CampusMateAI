@@ -8,13 +8,19 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from ...core.exceptions import AgentRuntimeError, AgentRunNotFound, AppException, ValidationFailed
+from ...core.exceptions import (
+    AgentCursorInvalid,
+    AgentRuntimeError,
+    AgentRunNotFound,
+    ValidationFailed,
+)
 from ...models.multi_role import UserRow
 from ...repositories.agent_artifact_repository import AgentArtifactRepository
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
+from ...repositories.agent_runtime_repository import build_request_hash
 from ...schemas.agent_contract_enums import (
     AGENT_CONTRACT_VERSION,
     AgentErrorCode,
@@ -52,6 +58,9 @@ artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["agent-runtime"])
 notices_manual_router = APIRouter(prefix="/notices", tags=["agent-runtime"])
 memories_router = APIRouter(prefix="/agent-memories", tags=["agent-runtime"])
 
+# SSE 注释心跳间隔:只用于维持连接,不写库、不推进事件序列。
+_SSE_HEARTBEAT_SECONDS = 15.0
+
 
 def _repo(container: ServiceContainer) -> AgentRuntimeRepository:
     return container.agent_runtime_repository
@@ -70,17 +79,12 @@ def _memory_to_out(memory: dict) -> AgentMemoryOut:
     )
 
 
-def _capability_out(name: str, policy: str, risk: str, approval: bool) -> AgentCapabilityOut:
-    return AgentCapabilityOut(
-        name=name,
-        version="1.0",
-        route_policy=policy,
-        risk_level=risk,
-        requires_approval=approval,
-    )
-
-
-def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOut:
+def _job_to_out(
+    job: dict,
+    *,
+    latest_run_id: Optional[str] = None,
+    pending_approval_id: Optional[str] = None,
+) -> AgentJobOut:
     input_ref = job.get("input_ref", job.get("input_ref_json", {}))
     if isinstance(input_ref, str):
         try:
@@ -95,6 +99,7 @@ def _job_to_out(job: dict, *, latest_run_id: Optional[str] = None) -> AgentJobOu
         created_at=job["created_at"],
         updated_at=job["updated_at"],
         latest_run_id=latest_run_id,
+        pending_approval_id=pending_approval_id,
         input_ref=input_ref if isinstance(input_ref, dict) else {},
     )
 
@@ -110,92 +115,24 @@ def _job_input_ref(job: dict) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _execute_learning_goal_run(
-    *,
-    run_id: str,
-    job: dict,
-    user: UserRow,
-    container: ServiceContainer,
-    idempotency_key: Optional[str],
-) -> dict:
-    """Execute one learning-goal run, including plan persistence.
-
-    Keeping this path shared by initial creation and retry is important: a retry
-    must actually re-plan, rather than merely creating a RUNNING placeholder.
-    """
-    input_ref = _job_input_ref(job)
-    goal_id = input_ref.get("goal_id")
-    available_minutes = input_ref.get("available_minutes", 60)
-    from ...services.agent_runtime.run_manager import RunManager
-
-    manager = RunManager(_repo(container), container.agent_event_store)
-    current = _repo(container).get_run(run_id)
-    if current is None:
-        raise AgentRunNotFound("Run 不存在")
-    if current["status"] == "QUEUED":
-        manager.transition(run_id, "RUNNING", phase="CONTEXT_BUILDING")
-        container.agent_event_store.append(
-            run_id=run_id, type="RUN_STARTED", status="RUNNING", phase="CONTEXT_BUILDING",
-            role="planner", summary="正在汇总课程、截止时间、学习状态与个人任务",
-        )
-    else:
-        manager.transition(run_id, current["status"], phase="CONTEXT_BUILDING")
-        container.agent_event_store.append(
-            run_id=run_id, type="CONTEXT_READY", status="RUNNING", phase="CONTEXT_BUILDING",
-            role="planner", summary="已重新汇总最新学习状态，开始生成计划",
-        )
-    try:
-        plan = container.learning_planner_service.generate(
-            user_id=user.id, goal_id=goal_id, available_minutes=available_minutes,
-            course_id=input_ref.get("course_id"), window_start=input_ref.get("window_start"),
-            window_end=input_ref.get("window_end"),
-            idempotency_key=idempotency_key,
-            force_new=True,
-            supersedes_plan_id=input_ref.get("plan_id"),
-            replan_key=idempotency_key,
-        )
-        completed_ref = {**input_ref, "plan_id": plan.plan_id}
-        _repo(container).update_job_input_ref(job["job_id"], completed_ref)
-        manager.transition(run_id, "SUCCEEDED", phase="PERSISTING_RESULT")
-        container.agent_event_store.append(
-            run_id=run_id, type="RUN_COMPLETED", status="SUCCEEDED", phase="PERSISTING_RESULT",
-            role="planner", summary="计划草案已生成，等待学生确认",
-        )
-    except Exception as exc:
-        try:
-            manager.transition(
-                run_id, "FAILED", phase="IDLE",
-                error_code=getattr(exc, "code", "AGENT_INVALID_STATE"),
-                error_message=str(exc)[:256],
-            )
-            container.agent_event_store.append(
-                run_id=run_id, type="RUN_FAILED", status="FAILED", phase="IDLE",
-                role="planner", summary="计划生成失败，请检查目标与可用数据",
-            )
-        except Exception:
-            pass
-        if isinstance(exc, AppException):
-            raise
-        raise AgentRuntimeError("学习目标计划生成失败", code="AGENT_INVALID_STATE", http_status=409) from exc
-    return _repo(container).get_run(run_id)
-
-
 # ===== capabilities =====
 
 
 @router.get("/capabilities")
 async def get_capabilities(
     user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(get_container),
 ) -> AgentCapabilitiesOut:
-    """返回 runtime 能力清单 + 契约版本。"""
+    """返回 runtime 能力清单 + 契约版本。
+
+    清单由启动时冻结的 `CapabilityRegistry` 生成,不再在路由里硬编码;
+    新增能力只能追加到 `capabilities.default.json`,已发布语义由启动校验钉死。
+    """
     return AgentCapabilitiesOut(
         contract_version=AGENT_CONTRACT_VERSION,
         capabilities=[
-            _capability_out("final_review.plan", "reasoning_primary", "CONFIRM_REQUIRED", True),
-            _capability_out("final_review.adjust", "reasoning_primary", "CONFIRM_REQUIRED", True),
-            _capability_out("course_research.run", "reasoning_primary", "AUTO_SAFE", False),
-            _capability_out("notice.workflow", "fast_structured", "AUTO_SAFE", False),
-            _capability_out("citation.verify", "dual_review", "AUTO_SAFE", False),
+            AgentCapabilityOut(**item)
+            for item in container.agent_capability_registry.describe()
         ],
     )
 
@@ -203,49 +140,80 @@ async def get_capabilities(
 # ===== jobs =====
 
 
+def _pending_approval_id(repo, run_id: Optional[str]) -> Optional[str]:
+    """取该 Run 上待处理的审批单 id（仅 AWAITING_APPROVAL 时有意义）。"""
+    if not run_id:
+        return None
+    run = repo.get_run(run_id)
+    if not run or run.get("status") != "AWAITING_APPROVAL":
+        return None
+    pending = [
+        item
+        for item in repo.list_approvals_by_run(run_id)
+        if item.get("status") == "PENDING"
+    ]
+    return pending[-1]["approval_id"] if pending else None
+
+
 @jobs_router.post("")
 async def create_job(
     body: AgentJobCreateIn,
     request: Request,
+    response: Response,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentJobOut:
     repo = _repo(container)
-    # 幂等:相同 idempotency_key 返回已有 job
+    # Runtime 停止接单时必须明确返回 503，不能回退到请求内执行。
+    if not container.agent_worker.accepts_new_jobs:
+        raise AgentRuntimeError(
+            "Agent 运行时当前不接受新任务",
+            code="AGENT_RUNTIME_UNAVAILABLE", http_status=503,
+        )
+
+    handler = container.agent_handler_registry.require(body.job_kind)
+    try:
+        handler.input_model.model_validate(body.input_ref)
+    except Exception as exc:
+        raise ValidationFailed("Agent Job 输入未通过 Handler Schema 校验") from exc
+
     effective_key = body.idempotency_key or idempotency_key
+    request_hash = build_request_hash(body.job_kind, body.input_ref)
+    # 兼容原子幂等声明上线前创建的旧 Job，同时避免把不同请求误当重放。
     if effective_key:
         existing = repo.find_job_by_idempotency(user.id, effective_key)
         if existing:
+            if build_request_hash(existing["job_kind"], _job_input_ref(existing)) != request_hash:
+                raise AgentRuntimeError(
+                    "幂等键已用于不同的请求",
+                    code="AGENT_IDEMPOTENCY_CONFLICT", http_status=409,
+                )
             latest = repo.get_run_by_job(existing["job_id"])
-            return _job_to_out(existing, latest_run_id=latest["run_id"] if latest else None)
-    if body.job_kind == "learning_goal":
-        input_ref = body.input_ref
-        goal_id = input_ref.get("goal_id")
-        available_minutes = input_ref.get("available_minutes", 60)
-        if (
-            not isinstance(goal_id, str)
-            or not goal_id
-            or not isinstance(available_minutes, int)
-            or not (1 <= available_minutes <= 1440)
-        ):
-            raise ValidationFailed("learning_goal 需要 goal_id 和 1-1440 的 available_minutes")
-    job_id = repo.create_job(
+            response.status_code = 200
+            latest_run_id = latest["run_id"] if latest else None
+            return _job_to_out(
+                existing,
+                latest_run_id=latest_run_id,
+                pending_approval_id=_pending_approval_id(repo, latest_run_id),
+            )
+
+    created = repo.create_job_with_run_and_event(
         user_id=user.id,
         job_kind=body.job_kind,
         input_ref=body.input_ref,
         idempotency_key=effective_key,
+        request_hash=request_hash,
+        handler_code=handler.code,
+        handler_version=handler.version,
     )
-    job = repo.get_job(job_id)
-    if body.job_kind == "learning_goal":
-        run_id = repo.create_run(job_id=job_id, user_id=user.id, idempotency_key=effective_key)
-        _execute_learning_goal_run(
-            run_id=run_id, job=job, user=user, container=container,
-            idempotency_key=effective_key,
-        )
-        job = repo.get_job(job_id)
-    latest = repo.get_run_by_job(job["job_id"]) if job else None
-    return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
+    response.status_code = 200 if created["replayed"] else 202
+    job = created["job"]
+    return _job_to_out(
+        job,
+        latest_run_id=created["run_id"],
+        pending_approval_id=_pending_approval_id(repo, created["run_id"]),
+    )
 
 
 @jobs_router.get("")
@@ -289,7 +257,12 @@ async def get_job(
     if job["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Job 不存在")
     latest = repo.get_run_by_job(job_id)
-    return _job_to_out(job, latest_run_id=latest["run_id"] if latest else None)
+    latest_run_id = latest["run_id"] if latest else None
+    return _job_to_out(
+        job,
+        latest_run_id=latest_run_id,
+        pending_approval_id=_pending_approval_id(repo, latest_run_id),
+    )
 
 
 # ===== runs =====
@@ -445,24 +418,15 @@ async def _control_run(
     elif action == "resume":
         result = manager.resume(run_id)
     else:
-        result = manager.retry(run_id, idempotency_key=key)
+        job = repo.get_job(run["job_id"])
+        handler = container.agent_handler_registry.require(job["job_kind"] if job else "")
+        result = manager.retry(
+            run_id,
+            idempotency_key=key,
+            handler_code=handler.code,
+            handler_version=handler.version,
+        )
     if action == "retry":
-        job = repo.get_job(result["job_id"])
-        if job and job["job_kind"] == "learning_goal":
-            retry_key = f"{key}:plan"
-            try:
-                result = _execute_learning_goal_run(
-                    run_id=result["run_id"], job=job, user=user, container=container,
-                    idempotency_key=retry_key,
-                )
-            except Exception:
-                failed = repo.get_run(result["run_id"])
-                if failed:
-                    repo.record_control(
-                        run_id=run_id, user_id=user.id, action=action,
-                        idempotency_key=key, resulting_status=failed["status"],
-                    )
-                raise
         repo.record_control(
             run_id=run_id, user_id=user.id, action=action,
             idempotency_key=key, resulting_status=result["status"],
@@ -558,58 +522,58 @@ async def stream_events(
     container: ServiceContainer = Depends(get_container),
     last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    """SSE 流。支持 Last-Event-ID 续传。断开不取消 run。"""
+    """SSE 流。以持久化事件为真源,支持 Last-Event-ID 续传。断开不取消 run。"""
+    import time
+
     repo = _repo(container)
     run = repo.get_run(run_id)
     if not run:
         raise AgentRunNotFound("Run 不存在")
     if run["user_id"] != user.id and user.role != "admin":
         raise AgentRunNotFound("Run 不存在")
-    # 解析 Last-Event-ID 中的 sequence
+    # 直接按 (run_id, event_id) 索引定位 sequence,不再扫描历史事件列表。
     after_sequence = 0
     if last_event_id:
-        try:
-            # event_id 格式: evt_xxx,sequence 存在 db
-            events = repo.list_events(run_id, limit=1)
-            # 简单实现:从 Last-Event-ID 对应的 sequence 之后开始
-            all_events = repo.list_events(run_id, limit=10000)
-            for e in all_events:
-                if e["event_id"] == last_event_id:
-                    after_sequence = e["sequence"]
-                    break
-        except Exception:
-            pass
+        sequence = repo.get_event_sequence(run_id, last_event_id)
+        if sequence is None:
+            # 游标不属于该 Run 或已不存在:明确报错,客户端改走 REST 全量归并。
+            raise AgentCursorInvalid("事件游标无效或不属于该运行")
+        after_sequence = sequence
+
+    terminal_statuses = {"SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"}
 
     async def event_generator():
-        import asyncio
-
         current_seq = after_sequence
-        idle_count = 0
+        last_activity = time.monotonic()
         while True:
             if await request.is_disconnected():
-                break
+                return
             events = repo.list_events(run_id, after_sequence=current_seq, limit=50)
             if events:
-                idle_count = 0
                 for evt in events:
                     out = _event_to_out(evt)
-                    payload = out.model_dump_json()
-                    yield f"id: {evt['event_id']}\nevent: {evt['type']}\ndata: {payload}\n\n"
+                    yield (
+                        f"id: {evt['event_id']}\nevent: {evt['type']}\n"
+                        f"data: {out.model_dump_json()}\n\n"
+                    )
                     current_seq = evt["sequence"]
-            else:
-                idle_count += 1
-                # 检查 run 是否已终态
-                current_run = repo.get_run(run_id)
-                if current_run and current_run["status"] in (
-                    "SUCCEEDED",
-                    "PARTIAL",
-                    "FAILED",
-                    "CANCELLED",
-                ):
-                    break
-                if idle_count > 60:  # 最多空闲 60 次
-                    break
-            await asyncio.sleep(1)
+                last_activity = time.monotonic()
+                # 终态事件发送完毕后才关闭,避免客户端漏掉最后一条。
+                if events[-1]["status"] in terminal_statuses:
+                    return
+                continue
+            current_run = repo.get_run(run_id)
+            if current_run and current_run["status"] in terminal_statuses:
+                # 终态 Run 已无新事件(例如客户端用终态游标重连)。
+                return
+            # 同进程靠通知唤醒;跨进程或通知丢失时最多等 1 秒后回落查询。
+            awaited = await container.agent_event_notifier.wait(run_id, timeout=1.0)
+            if awaited:
+                continue
+            if time.monotonic() - last_activity >= _SSE_HEARTBEAT_SECONDS:
+                # 注释心跳只维持连接:不写库、不推进 sequence、不改变客户端业务状态。
+                yield ": keep-alive\n\n"
+                last_activity = time.monotonic()
 
     return StreamingResponse(
         event_generator(),
@@ -633,6 +597,14 @@ async def resolve_approval(
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentApprovalOut:
+    """落定一次审批决定。
+
+    - 决策本身是**幂等**的：重复提交同一个决定返回同一结果（不会 409）；
+    - 相反的决定一律 409，绝不覆盖已生效的决定；
+    - `Idempotency-Key` 会被**真正记录**（`agent_run_controls`），而不是收下就丢；
+    - 只有**本次真正落定**的决定才会驱动 Run 状态迁移 ——
+      重放不会把已经跑完的 Run 再取消/再排队一次。
+    """
     repo = _repo(container)
     from ...services.agent_runtime.approval_gate import ApprovalGate
 
@@ -641,12 +613,39 @@ async def resolve_approval(
         approval_id, decision=body.decision, reason=body.reason, user_id=user.id
     )
     apv = repo.get_approval(approval_id)
-    if body.decision == "REJECTED":
-        run = repo.get_run(apv.run_id)
-        if run and run["status"] == "AWAITING_APPROVAL":
-            container.agent_run_manager.cancel(
-                apv.run_id, reason=body.reason or "用户拒绝审批"
-            )
+    key = body.idempotency_key or idempotency_key or f"approval:{approval_id}"
+    newly_applied = not result.get("replayed")
+    if newly_applied:
+        # 只有首次落定才记录 + 迁移状态；重放只回读现状。
+        repo.record_control(
+            run_id=apv.run_id,
+            user_id=user.id,
+            action="approval_approve" if body.decision == "APPROVED" else "approval_reject",
+            idempotency_key=key,
+            resulting_status=apv.status,
+        )
+        if body.decision == "REJECTED":
+            run = repo.get_run(apv.run_id)
+            if run and run["status"] == "AWAITING_APPROVAL":
+                container.agent_run_manager.cancel(
+                    apv.run_id, reason=body.reason or "用户拒绝审批"
+                )
+        else:
+            # 批准后必须让**原 Run** 重新可被 Worker 领取。
+            # 否则批准了也永远不会执行，客户端就只剩"再建一个携带旧 approval_id 的
+            # 新 Job"这条错误路径 —— 而那正是"一次批准被复用到别的请求"的漏洞。
+            run = repo.get_run(apv.run_id)
+            if run and run["status"] == "AWAITING_APPROVAL":
+                container.agent_run_manager.transition(
+                    apv.run_id,
+                    "QUEUED",
+                    phase="QUEUED",
+                    event_type="APPROVAL_GRANTED",
+                    event_status="QUEUED",
+                    event_phase="QUEUED",
+                    event_role="runtime",
+                    event_summary="审批已通过，运行重新排队执行",
+                )
     return AgentApprovalOut(
         approval_id=apv.approval_id,
         run_id=apv.run_id,

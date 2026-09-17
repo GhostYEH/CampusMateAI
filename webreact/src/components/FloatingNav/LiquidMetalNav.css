@@ -19,7 +19,7 @@
   min-width: 100%;
   margin: 0;
   padding: 8px;
-  color: var(--floating-nav-foreground, #53627b);
+  color: var(--floating-nav-foreground, #f7f8f2);
   list-style: none;
 }
 

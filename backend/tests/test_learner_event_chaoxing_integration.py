@@ -223,6 +223,8 @@ def test_assignment_discovered_and_platform_observed_submission_are_distinct():
             "platform": "chaoxing",
             "observation": "completed_status",
             "observed_at": _now().isoformat(),
+            # 没有学习通回传的真实提交时间时，明确标注时间是同步观测值。
+            "submitted_at_source": "sync_observed",
         }
         dumped = str([row.to_safe_dict() for row in rows])
         for private_text in ("作业标题", "作业正文", "通知原文"):

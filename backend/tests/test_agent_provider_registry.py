@@ -65,6 +65,8 @@ def test_registry_add_fake_refused_in_production():
         jwt_secret="x" * 32,
         edu_session_store="encrypted_sqlite",
         edu_session_encryption_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        auto_seed_demo_users=False,
+        _env_file=None,
     )
     reg = ProviderRegistry(s)
     with pytest.raises(RuntimeError):
@@ -107,7 +109,11 @@ async def test_router_fallback_to_second_provider():
 @pytest.mark.asyncio
 async def test_router_no_provider_returns_failed():
     get_settings.cache_clear()
-    s = Settings(app_env="development", agent_allow_mock_providers=True)
+    s = Settings(
+        app_env="development",
+        agent_allow_mock_providers=True,
+        _env_file=None,
+    )
     reg = ProviderRegistry(s)
     router = ModelRouter(reg)
     result = await router.route(

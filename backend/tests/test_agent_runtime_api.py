@@ -63,13 +63,15 @@ class TestJobs:
         headers = _login(client)
         resp = client.post(
             "/api/v1/agent-jobs",
-            json={"job_kind": "final_review"},
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-1"}},
             headers=headers,
         )
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 202, resp.text
         body = resp.json()
-        assert body["job_kind"] == "final_review"
+        assert body["job_kind"] == "learning_goal"
         assert body["status"] == "QUEUED"
+        assert body["latest_run_id"]
+        assert "plan_id" not in body["input_ref"]
 
     def test_create_job_idempotency_key(self):
         _, client = _client()
@@ -77,14 +79,14 @@ class TestJobs:
         # 第一次创建
         resp1 = client.post(
             "/api/v1/agent-jobs",
-            json={"job_kind": "final_review"},
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-1"}},
             headers={**headers, "Idempotency-Key": "k1"},
         )
-        assert resp1.status_code == 200
+        assert resp1.status_code == 202
         # 相同 idempotency_key 返回已有 job
         resp2 = client.post(
             "/api/v1/agent-jobs",
-            json={"job_kind": "final_review"},
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-1"}},
             headers={**headers, "Idempotency-Key": "k1"},
         )
         assert resp2.status_code == 200
@@ -94,7 +96,9 @@ class TestJobs:
         _, client = _client()
         headers = _login(client)
         create = client.post(
-            "/api/v1/agent-jobs", json={"job_kind": "course_research"}, headers=headers
+            "/api/v1/agent-jobs",
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-1"}},
+            headers=headers,
         )
         job_id = create.json()["job_id"]
         resp = client.get(f"/api/v1/agent-jobs/{job_id}", headers=headers)
@@ -107,6 +111,36 @@ class TestJobs:
         resp = client.get("/api/v1/agent-jobs/nonexistent", headers=headers)
         assert resp.status_code == 404
         assert resp.json()["code"] == "AGENT_RUN_NOT_FOUND"
+
+    def test_disabled_capability_does_not_create_orphan_job(self):
+        container, client = _client()
+        headers = _login(client)
+        resp = client.post(
+            "/api/v1/agent-jobs",
+            json={"job_kind": "final_review"},
+            headers=headers,
+        )
+        assert resp.status_code == 409
+        assert resp.json()["code"] == "AGENT_CAPABILITY_DISABLED"
+        user_id = container.user_repository.get_user_by_username("student_demo").id
+        assert container.agent_runtime_repository.list_jobs(user_id) == []
+
+    def test_idempotency_conflict_is_rejected(self):
+        _, client = _client()
+        headers = _login(client)
+        first = client.post(
+            "/api/v1/agent-jobs",
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-1"}},
+            headers={**headers, "Idempotency-Key": "same-key"},
+        )
+        assert first.status_code == 202
+        conflict = client.post(
+            "/api/v1/agent-jobs",
+            json={"job_kind": "learning_goal", "input_ref": {"goal_id": "goal-2"}},
+            headers={**headers, "Idempotency-Key": "same-key"},
+        )
+        assert conflict.status_code == 409
+        assert conflict.json()["code"] == "AGENT_IDEMPOTENCY_CONFLICT"
 
     def test_error_envelope_has_request_id(self):
         _, client = _client()

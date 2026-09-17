@@ -435,6 +435,8 @@ private fun FocusPlanCard(
                             Column(Modifier.weight(1f)) {
                                 Text(step.title, color = TextPrimary, fontSize = 14.sp, fontWeight = if (step == plan.currentStep) FontWeight.Bold else FontWeight.Normal)
                                 Text(if (step == plan.currentStep) "当前步骤 · ${step.estimatedMinutes} 分钟" else step.completionCriteria, color = Muted, fontSize = 11.sp)
+                                step.prerequisiteHint?.let { Text(it, color = Muted, fontSize = 10.sp) }
+                                step.knowledgeHint?.let { Text(it, color = Primary, fontSize = 10.sp) }
                             }
                         }
                     }

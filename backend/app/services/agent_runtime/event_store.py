@@ -1,7 +1,12 @@
 """Agent 事件存储 —— 单调序列 + append_event。
 
 事件表是事务性 event 表 + 轻量 outbox,不是 Kafka。
-业务状态与对应事件在同一数据库事务中提交。
+
+**注意**:本模块的 `append()` 只负责"不伴随状态变化"的进度/观测事件。
+伴随 `agent_runs.status` 变化的事件必须经过 `AgentRuntimeRepository` 的原子方法
+(`transition_run_with_event()` / `complete_run_with_job_output_and_event()` /
+`create_job_with_run_and_event()`),由仓储保证状态与事件在同一事务提交。
+在本模块里先改状态再 `append()` 会在进程崩溃时留下状态与事件不一致的数据。
 """
 from __future__ import annotations
 

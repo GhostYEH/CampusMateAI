@@ -1,0 +1,54 @@
+<!--
+  学习通(泛雅 V3)「课程图谱」页的真实结构片段，已脱敏：不含姓名、账号、课程 ID、学校名。
+  知识点名称是课程公开的教学大纲内容（高等数学 Ⅱ），非个人信息。
+
+  结构要点（照抄真实页面，勿"修正"）：
+  - 课程级统计用固定 id，其中 knowldegeCount 是平台自身的拼写错误，必须照抄；
+  - 知识点条目 id 形如 firstLevel-<kpId>；
+  - 分类标签在 cb_<tagId> 下拉里，其中混有层级("三级")与关系类型("父子关系")，解析器需剔除。
+
+  用途：单测与 Web E2E 都通过真实 ChaoxingParser 解析本文件，
+  避免各自手写样例导致解析口径漂移。
+-->
+<div class="zheaderBox zheaderBg1">
+  <p class="zname">知识点总数：</p><h2 class="znumber1" id="knowldegeCount">21</h2>
+</div>
+<div class="zheaderBox zheaderBg2">
+  <p class="zname">平均掌握率：</p>
+  <h2 class="znumber1"><span id="ownGraspWeightRate">87.5</span><small>%</small></h2>
+  <p class="znumber2">班级平均掌握率：<span id="graspWeightRate">69</span><i>%</i></p>
+</div>
+<div class="zheaderBox zheaderBg3">
+  <p class="zname">平均完成率：</p>
+  <h2 class="znumber1"><span id="ownCompleteWeightRate">100</span><small>%</small></h2>
+  <p class="znumber2">班级平均完成率：<span id="completeWeightRate">97</span><i>%</i></p>
+</div>
+<ul class="xrc__list">
+  <li class="xrc__list__item single" id="firstLevel-166601055">二重积分·计算</li>
+  <li class="xrc__list__item single" id="firstLevel-166601056">第一类曲线积分计算</li>
+  <li class="xrc__list__item single" id="firstLevel-166601057">第二类曲线积分计算</li>
+  <li class="xrc__list__item single" id="firstLevel-166601058">偏导数计算</li>
+  <li class="xrc__list__item single" id="firstLevel-166601059">复合函数求偏导</li>
+  <li class="xrc__list__item single" id="firstLevel-166601060">隐函数求偏导</li>
+  <li class="xrc__list__item single" id="firstLevel-166601061">格林公式</li>
+  <li class="xrc__list__item single" id="firstLevel-166601062">多元函数极值的充分条件</li>
+  <li class="xrc__list__item single" id="firstLevel-193624282">多元函数极值的求法</li>
+  <li class="xrc__list__item single" id="firstLevel-193628929">多元函数极值的定义</li>
+  <li class="xrc__list__item single" id="firstLevel-193632864">第二类曲线积分的计算</li>
+  <li class="xrc__list__item single" id="firstLevel-193640050">偏导数的求法</li>
+  <li class="xrc__list__item single" id="firstLevel-193641194">抽象函数求偏导</li>
+  <li class="xrc__list__item single" id="firstLevel-193641498">条件极值的求法</li>
+  <li class="xrc__list__item single" id="firstLevel-193660006">二重积分的极坐标变换</li>
+  <li class="xrc__list__item single" id="firstLevel-193660246">二元函数的极限</li>
+  <li class="xrc__list__item single" id="firstLevel-193660304">多元函数的概念</li>
+  <li class="xrc__list__item single" id="firstLevel-193660305">连续、偏可导、可微的关系</li>
+  <li class="xrc__list__item single" id="firstLevel-193660306">全微分的计算</li>
+  <li class="xrc__list__item single" id="firstLevel-193663008">第一类曲线积分的计算</li>
+  <li class="xrc__list__item single" id="firstLevel-193663160">高阶偏导数计算</li>
+</ul>
+<li class="xdropdownBox__item"><input type="checkbox" data="1" id="cb_1"><label for="cb_1"><div class="ellips">考点</div></label></li>
+<li class="xdropdownBox__item"><input type="checkbox" data="2" id="cb_2"><label for="cb_2"><div class="ellips">课程思政</div></label></li>
+<li class="xdropdownBox__item"><input type="checkbox" data="3" id="cb_3"><label for="cb_3"><div class="ellips">重点</div></label></li>
+<li class="xdropdownBox__item"><input type="checkbox" data="4" id="cb_4"><label for="cb_4"><div class="ellips">难点</div></label></li>
+<li class="xdropdownBox__item"><input type="checkbox" data="5" id="cb_5"><label for="cb_5"><div class="ellips">三级</div></label></li>
+<li class="xdropdownBox__item"><input type="checkbox" data="6" id="cb_6"><label for="cb_6"><div class="ellips">父子关系</div></label></li>

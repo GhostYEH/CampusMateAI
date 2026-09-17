@@ -28,7 +28,8 @@ enum class AgentEventType {
     RUN_QUEUED, RUN_STARTED, CONTEXT_READY, MODEL_STARTED, MODEL_COMPLETED,
     MODEL_FALLBACK, TOOL_STARTED, TOOL_COMPLETED, TOOL_FAILED,
     APPROVAL_REQUIRED, APPROVAL_RESOLVED, ARTIFACT_CREATED,
-    RUN_PARTIAL, RUN_COMPLETED, RUN_FAILED, RUN_CANCELLED, RUN_PAUSED, RUN_RESUMED, RUN_RETRIED, UNKNOWN,
+    RUN_PARTIAL, RUN_COMPLETED, RUN_FAILED, RUN_CANCELLED, RUN_PAUSED, RUN_RESUMED, RUN_RETRIED,
+    RUN_RETRY_SCHEDULED, RUN_RECOVERY_STARTED, RUN_RECOVERED, UNKNOWN,
 }
 enum class AgentApprovalStatus { PENDING, APPROVED, REJECTED, EXPIRED, UNKNOWN }
 enum class AgentArtifactType {
@@ -40,7 +41,8 @@ enum class AgentErrorCode {
     AGENT_APPROVAL_REQUIRED, AGENT_PROVIDER_UNAVAILABLE, AGENT_CONTEXT_EXPIRED,
     AGENT_IDEMPOTENCY_CONFLICT, AGENT_RUN_NOT_FOUND, AGENT_RUN_CANCELLED,
     AGENT_OUTPUT_SCHEMA_INVALID, AGENT_SOURCE_POLICY_VIOLATION,
-    AGENT_ACADEMIC_POLICY_RESTRICTED, UNKNOWN,
+    AGENT_ACADEMIC_POLICY_RESTRICTED, AGENT_CAPABILITY_DISABLED, AGENT_RUNTIME_UNAVAILABLE,
+    AGENT_CURSOR_INVALID, UNKNOWN,
 }
 
 // ── Runtime DTO ──
@@ -53,6 +55,7 @@ data class AgentJobDto(
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "latest_run_id") val latestRunId: String? = null,
+    @Json(name = "pending_approval_id") val pendingApprovalId: String? = null,
     @Json(name = "input_ref") val inputRef: Map<String, Any?> = emptyMap(),
 ) {
     fun kind(): AgentJobKind = safeEnum(jobKind, AgentJobKind.entries.toTypedArray(), AgentJobKind.UNKNOWN)

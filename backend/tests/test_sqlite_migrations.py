@@ -187,3 +187,45 @@ def test_legacy_database_gains_learner_state_tables_and_indexes_idempotently(tmp
             }
             assert {"projection_kind", "projection_scope"} <= columns
         database.dispose()
+
+
+def test_legacy_learning_plan_runs_gain_goal_id_before_goal_index(tmp_path):
+    """A pre-goal_id plan table must start before its new index is created."""
+    db_path = tmp_path / "legacy-learning-plan.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE learning_plan_runs (
+                run_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                planner_version TEXT NOT NULL,
+                input_digest TEXT NOT NULL,
+                as_of TEXT NOT NULL,
+                valid_until TEXT NOT NULL,
+                available_minutes INTEGER NOT NULL,
+                allocated_minutes INTEGER NOT NULL DEFAULT 0,
+                course_scope TEXT,
+                window_start TEXT,
+                window_end TEXT,
+                warning_codes_json TEXT NOT NULL DEFAULT '[]',
+                idempotency_key TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+
+    for _ in range(2):
+        database = Database(db_path)
+        with database.query() as conn:
+            columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(learning_plan_runs)")
+            }
+            indexes = {
+                row["name"]
+                for row in conn.execute("PRAGMA index_list(learning_plan_runs)")
+            }
+        database.dispose()
+
+    assert "goal_id" in columns
+    assert "idx_learning_plan_runs_goal" in indexes

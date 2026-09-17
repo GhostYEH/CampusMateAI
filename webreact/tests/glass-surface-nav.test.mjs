@@ -7,16 +7,17 @@ const liquidNavSource = await readFile(new URL("../src/components/FloatingNav/Li
 const liquidNavStyles = await readFile(new URL("../src/components/FloatingNav/LiquidMetalNav.css", import.meta.url), "utf8");
 const layoutStyles = await readFile(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
 
-test("floating navigation is hosted by the OpenGlass surface", () => {
-  assert.match(navSource, /import \{ Glass \} from "open-glass-ui"/);
-  assert.match(navSource, /<Glass[\s\S]*className=\{`floating-nav floating-nav--\$\{tone\}`\}[\s\S]*material="clear"[\s\S]*tone=\{tone\}[\s\S]*interactive/);
+test("floating navigation is hosted by a transparent shell with primary liquid-metal controls", () => {
+  assert.doesNotMatch(navSource, /import \{ Glass \} from "open-glass-ui"/);
+  assert.match(navSource, /<div className="floating-nav floating-nav--primary"/);
   assert.doesNotMatch(navSource, /LiquidGlassSurface/);
   assert.match(liquidNavSource, /<nav aria-label=\{ariaLabel\}/);
 });
 
-test("navigation delegates optical material and accessibility fallbacks to OpenGlass", () => {
+test("navigation leaves its shell transparent so each route owns the material", () => {
+  assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*background:\s*transparent/s);
   assert.doesNotMatch(layoutStyles, /\.floating-nav\.floating-nav-surface/);
-  assert.doesNotMatch(layoutStyles, /liquid glass material \(nav only\)/i);
+  assert.doesNotMatch(layoutStyles, /data-(?:ogui-tone|contrast)/);
 });
 
 test("floating navigation reuses the liquid metal runtime instead of gooey particles", () => {
@@ -38,7 +39,8 @@ test("navigation no longer ships gooey particle keyframes or styles", () => {
   assert.doesNotMatch(liquidNavStyles, /@keyframes\s+gooey-point/);
 });
 
-test("desktop hover scaling can render the edge selection marker without clipping", () => {
-  assert.match(layoutStyles, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow:\s*visible;/);
-  assert.match(layoutStyles, /@media \(max-width: 760px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow-x:\s*auto;/);
+test("stable desktop controls remain unclipped while compact navigation can scroll", () => {
+  assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*overflow:\s*visible;/s);
+  assert.match(layoutStyles, /@media \(max-width: 1439px\)[\s\S]*\.floating-nav\s*\{[\s\S]*overflow-x:\s*auto;/);
+  assert.doesNotMatch(layoutStyles, /\.floating-nav:hover\s*\{/);
 });

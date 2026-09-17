@@ -8,13 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from app.database.sqlite_db import Database
 from app.models.document import ChunkRow, DocumentRow, RetrievedChunk
+from app.repositories.document_repository import DocumentRepository
 from scripts.evaluate_retrieval import (
     EvalCase,
     EvalResult,
     compute_metrics,
     evaluate_one,
+    load_evaluation_corpus,
     load_fixtures,
+    seed_evaluation_corpus,
     _title_match,
 )
 
@@ -113,6 +117,34 @@ def test_load_fixtures_empty():
     try:
         cases = load_fixtures(tmp_path)
         assert cases == []
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def test_seed_evaluation_corpus_is_idempotent():
+    """CI 评测语料可显式导入空库，且重复运行不会新增重复文档。"""
+    data = {
+        "documents": [
+            {
+                "title": "评测用校园资料",
+                "content": "评测用校园资料包含奖学金申请条件和办理流程。",
+            }
+        ]
+    }
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as f:
+        json.dump(data, f, ensure_ascii=False)
+        tmp_path = Path(f.name)
+
+    try:
+        documents = load_evaluation_corpus(tmp_path)
+        repository = DocumentRepository(Database(None))
+        assert seed_evaluation_corpus(repository, documents) == 1
+        assert repository.count_documents() == 1
+        assert repository.count_chunks() > 0
+        assert seed_evaluation_corpus(repository, documents) == 0
+        assert repository.count_documents() == 1
     finally:
         tmp_path.unlink(missing_ok=True)
 

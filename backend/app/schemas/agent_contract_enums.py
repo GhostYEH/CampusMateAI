@@ -77,6 +77,16 @@ class AgentEventType(str, Enum):
     RUN_PAUSED = "RUN_PAUSED"
     RUN_RESUMED = "RUN_RESUMED"
     RUN_RETRIED = "RUN_RETRIED"
+    # v2 追加:恢复与重试语义。只能加在末尾,客户端对未知类型安全降级。
+    RUN_RETRY_SCHEDULED = "RUN_RETRY_SCHEDULED"
+    RUN_RECOVERY_STARTED = "RUN_RECOVERY_STARTED"
+    RUN_RECOVERED = "RUN_RECOVERED"
+    # 审批通过、原 Run 重新排队时发出。
+    # 注意：`agent_runtime` 审批路由与 `ToolInvocationGateway` 一直在发这个类型，
+    # 但它曾经**不在**本枚举里 —— 于是 SSE 把它序列化成 AgentEventOut 时直接
+    # ValidationError，学生看不到"审批已通过、继续执行"的事件。
+    # 新增类型一律追加在末尾（客户端对未知类型安全降级）。
+    APPROVAL_GRANTED = "APPROVAL_GRANTED"
 
 
 class ArtifactType(str, Enum):
@@ -139,6 +149,10 @@ class AgentErrorCode(str, Enum):
     AGENT_OUTPUT_SCHEMA_INVALID = "AGENT_OUTPUT_SCHEMA_INVALID"
     AGENT_SOURCE_POLICY_VIOLATION = "AGENT_SOURCE_POLICY_VIOLATION"
     AGENT_ACADEMIC_POLICY_RESTRICTED = "AGENT_ACADEMIC_POLICY_RESTRICTED"
+    # v2 追加:只能加在末尾,不得复用 provider 错误掩盖 runtime 状态。
+    AGENT_CAPABILITY_DISABLED = "AGENT_CAPABILITY_DISABLED"
+    AGENT_RUNTIME_UNAVAILABLE = "AGENT_RUNTIME_UNAVAILABLE"
+    AGENT_CURSOR_INVALID = "AGENT_CURSOR_INVALID"
 
 
 # 冻结的契约版本号。客户端可据此判断兼容性。

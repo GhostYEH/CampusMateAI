@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
@@ -9,6 +11,8 @@ from ...schemas.course_content import (
     CourseContentPage,
     CourseContentSummaryOut,
     CourseSectionStatusOut,
+    KnowledgeGraphOut,
+    KnowledgePointOut,
 )
 from ...services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
 from ...services.chaoxing.resource_proxy import ChaoxingResourceProxy, CourseResourceProxyError
@@ -29,6 +33,21 @@ def _course(course_id: str, user: UserRow, container: ServiceContainer):
         raise HTTPException(status_code=404, detail="course_not_found")
     _assert_can_view_course(course, user, container)
     return course
+
+
+def _decode_tags(raw) -> list[str]:
+    """知识点标签在库里是 JSON 字符串，容错解析成字符串列表。"""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(item) for item in raw if item]
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(decoded, list):
+        return []
+    return [str(item) for item in decoded if item]
 
 
 @router.get("/{course_id}/content-summary", response_model=CourseContentSummaryOut)
@@ -74,17 +93,80 @@ def list_content(course_id: str, kind: str | None = Query(None),
                              has_more=page * page_size < total)
 
 
+@router.get("/{course_id}/knowledge-graph", response_model=KnowledgeGraphOut)
+def get_knowledge_graph(course_id: str, user: UserRow = Depends(current_user),
+                        container: ServiceContainer = Depends(_container)):
+    """课程知识图谱：课程级统计 + 知识点清单。
+
+    数据来自外部数据源（课程/学校发布的课程图谱页）经 deep 同步落库的观测，
+    不是本地推断。未同步过时返回 available=False 而不是 404，方便客户端区分
+    "没有这个课程"和"这个课程还没同步"。
+    """
+    _course(course_id, user, container)
+    graphs = container.chaoxing_repository.list_knowledge_graphs(user_id=user.id)
+    graph = next((row for row in graphs if row.get("course_id") == course_id), None)
+    points = container.chaoxing_repository.list_knowledge_points(
+        user_id=user.id, course_id=course_id
+    )
+    decoded_points = [
+        KnowledgePointOut(
+            external_id=str(row.get("external_id") or ""),
+            name=str(row.get("name") or ""),
+            tags=_decode_tags(row.get("tags")),
+            position=int(row.get("position") or 0),
+        )
+        for row in points
+        if row.get("external_id") and row.get("name")
+    ]
+    # 标签是课程级概念，但只随知识点落库（每行冗余一份），取并集并保持稳定顺序。
+    tags: list[str] = []
+    for point in decoded_points:
+        for tag in point.tags:
+            if tag not in tags:
+                tags.append(tag)
+    if graph is None:
+        return KnowledgeGraphOut(
+            course_id=course_id, available=False,
+            knowledge_point_count=len(decoded_points),
+            tags=tags, points=decoded_points,
+        )
+    own = graph.get("own_mastery_rate")
+    class_avg = graph.get("class_mastery_rate")
+    return KnowledgeGraphOut(
+        course_id=course_id,
+        available=True,
+        synced_at=graph.get("synced_at"),
+        knowledge_point_count=int(graph.get("knowledge_point_count") or len(decoded_points)),
+        own_mastery_rate=own,
+        class_mastery_rate=class_avg,
+        # 正数表示领先班级平均，负数表示落后 —— 与世界模型口径一致。
+        mastery_gap_vs_class=(
+            round(float(own) - float(class_avg), 2)
+            if own is not None and class_avg is not None else None
+        ),
+        own_completion_rate=graph.get("own_completion_rate"),
+        class_completion_rate=graph.get("class_completion_rate"),
+        tags=tags,
+        points=decoded_points,
+    )
+
+
 @router.post("/{course_id}/sync")
 async def sync_course_content(course_id: str, user: UserRow = Depends(current_user),
                               depth: str = Query("fast", pattern="^(fast|deep|full)$"),
+                              sections: str | None = Query(
+                                  None, description="逗号分隔的 section 白名单，覆盖 depth 推导结果"
+                              ),
                               force_refresh: bool = Query(False),
                               container: ServiceContainer = Depends(_container)):
     course = _course(course_id, user, container)
     if course.provider != "chaoxing" or course.owner_user_id != user.id:
         raise HTTPException(status_code=400, detail="not_chaoxing_course")
+    requested = [part.strip() for part in sections.split(",") if part.strip()] if sections else None
     try:
         return await ChaoxingCourseContentSyncService(container).sync_course(
-            user_id=user.id, course_id=course_id, depth=depth, force_refresh=force_refresh
+            user_id=user.id, course_id=course_id, depth=depth,
+            force_refresh=force_refresh, sections=requested,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error

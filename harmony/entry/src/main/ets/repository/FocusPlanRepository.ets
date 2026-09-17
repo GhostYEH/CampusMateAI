@@ -14,6 +14,8 @@ export class FocusPlanMapper {
         dependencies: step.dependencies,
         isPolicyStep: step.is_policy_step,
         knowledgeSource: step.knowledge_source,
+        knowledgeDocumentId: step.knowledge_document_id,
+        knowledgeStatus: step.knowledge_status,
         status: 'PENDING'
       }));
     return {
@@ -45,6 +47,8 @@ export class FocusPlanProgress {
         dependencies: step.dependencies,
         isPolicyStep: step.isPolicyStep,
         knowledgeSource: step.knowledgeSource,
+        knowledgeDocumentId: step.knowledgeDocumentId,
+        knowledgeStatus: step.knowledgeStatus,
         status: 'COMPLETED'
       };
     });

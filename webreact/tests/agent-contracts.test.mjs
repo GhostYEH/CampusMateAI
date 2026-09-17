@@ -4,6 +4,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import * as C from "../src/data/agentContracts.js";
 
@@ -15,14 +16,14 @@ describe("agentContracts enums", () => {
   });
 
   it("event type 包含生命周期控制事件", () => {
-    assert.equal(C.EVENT_TYPE.length, 19);
+    assert.equal(C.EVENT_TYPE.length, 22);
     assert.ok(C.EVENT_TYPE.includes("APPROVAL_REQUIRED"));
     assert.ok(C.EVENT_TYPE.includes("RUN_PARTIAL"));
     assert.ok(C.EVENT_TYPE.includes("MODEL_FALLBACK"));
   });
 
-  it("error code 包含 12 个稳定码", () => {
-    assert.equal(C.ERROR_CODE.length, 12);
+  it("error code 包含 14 个稳定码", () => {
+    assert.equal(C.ERROR_CODE.length, 14);
     assert.ok(C.ERROR_CODE.includes("AGENT_ACADEMIC_POLICY_RESTRICTED"));
     assert.ok(C.ERROR_CODE.includes("AGENT_IDEMPOTENCY_CONFLICT"));
   });
@@ -169,5 +170,84 @@ describe("agentContracts reconnect backoff", () => {
 
   it("上限 30s", () => {
     assert.ok(C.reconnectDelay(20) <= C.SSE_RECONNECT_MAX_MS);
+  });
+});
+
+// ===== 共享 fixture 契约（Task 11）=====
+//
+// 四端必须消费 backend/tests/fixtures/agent_runtime/v1/runtime.json 的同一份语义，
+// 而不是各写各的样例，否则契约会静默漂移。
+
+const SHARED_FIXTURE = JSON.parse(
+  readFileSync(
+    new URL("../../backend/tests/fixtures/agent_runtime/v1/runtime.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+describe("shared runtime fixture", () => {
+  it("contract_version 为 v1 且包含 v2 增量段", () => {
+    assert.equal(SHARED_FIXTURE.contract_version, "v1");
+    assert.ok(SHARED_FIXTURE.v2, "v2 增量契约缺失");
+  });
+
+  it("202 创建只保证入队：没有 plan_id，必须订阅 latest_run_id", () => {
+    const creation = SHARED_FIXTURE.v2.creation_202;
+    assert.equal(creation.http_status, 202);
+    assert.equal(creation.job.status, "QUEUED");
+    assert.equal(creation.job.input_ref.plan_id, undefined);
+    assert.ok(creation.job.latest_run_id);
+    // 任意 2xx 都必须被当作成功处理
+    assert.ok(creation.http_status >= 200 && creation.http_status < 300);
+  });
+
+  it("幂等冲突、能力准入、运行时不可用与游标失效都有稳定错误码", () => {
+    const codes = {
+      AGENT_IDEMPOTENCY_CONFLICT: 409,
+      AGENT_CAPABILITY_DISABLED: 409,
+      AGENT_RUNTIME_UNAVAILABLE: 503,
+      AGENT_CURSOR_INVALID: 409,
+    };
+    const sections = {
+      AGENT_IDEMPOTENCY_CONFLICT: SHARED_FIXTURE.v2.idempotency_conflict,
+      AGENT_CAPABILITY_DISABLED: SHARED_FIXTURE.v2.capability_disabled,
+      AGENT_RUNTIME_UNAVAILABLE: SHARED_FIXTURE.v2.runtime_unavailable,
+      AGENT_CURSOR_INVALID: SHARED_FIXTURE.v2.cursor_invalid,
+    };
+    for (const [code, status] of Object.entries(codes)) {
+      const section = sections[code];
+      assert.equal(section.http_status, status, `${code} 的 HTTP 状态被改动`);
+      assert.equal(section.error_envelope.code, code);
+    }
+  });
+
+  it("恢复事件按 sequence 单调且可被 reducer 归并", () => {
+    const events = SHARED_FIXTURE.v2.recovery_events;
+    const sequences = events.map((e) => e.sequence);
+    assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
+    const merged = C.mergeEvents([], events, 0);
+    assert.equal(merged.length, events.length);
+  });
+
+  it("未知未来事件安全降级：不崩溃、不提升权限", () => {
+    const unknown = SHARED_FIXTURE.v2.unknown_future_event.frame;
+    // 未知类型不得被当作已知终态或已知风险级别
+    assert.equal(C.isTerminalRunStatus(unknown.event), false);
+    assert.equal(C.runStatusLabel(unknown.event), "状态待确认");
+    assert.equal(C.isSafeToAct(unknown.event), false);
+  });
+
+  it("管理员观测 fixture 不含敏感字段", () => {
+    const observability = SHARED_FIXTURE.v2.admin_observability;
+    const serialized = JSON.stringify({
+      overview: observability.overview,
+      run_trace: observability.run_trace,
+    });
+    for (const forbidden of [
+      "prompt", "model_response", "credential", "memory_content",
+      "raw_arguments", "hidden_reasoning", "arguments",
+    ]) {
+      assert.equal(serialized.includes(forbidden), false, `观测 fixture 不得包含 ${forbidden}`);
+    }
   });
 });

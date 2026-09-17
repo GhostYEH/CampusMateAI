@@ -5,7 +5,12 @@ import httpx
 import json
 import re
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
+
+# 学习通所有时间字段均为北京时间(UTC+8)，解析出的时间统一按此归一，
+# 便于 learner_event_service 直接消费(它要求 occurred_at 带时区)。
+_CST = timezone(timedelta(hours=8))
 
 
 class ChaoxingFetchError(RuntimeError):
@@ -307,6 +312,222 @@ class ChaoxingParser:
             })
         return courses
 
+    # ------------------------------------------------------------------
+    # 成绩事实解析 —— 学习通页面结构不稳定，以下解析全部为"尽力而为":
+    # 解析不到时返回 None，调用方保持原有降级行为，绝不因为解析失败中断同步。
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_float(value) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def to_iso(value) -> str | None:
+        """把学习通的时间表示转换为带时区的 ISO 字符串。
+
+        支持毫秒/秒级时间戳(学习通章节卡片常用)与 "2024-03-05 12:30" 文本。
+        学习通时间均为北京时间，统一按 UTC+8 归一。
+        """
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text or text in ("0", "None"):
+            return None
+        if re.fullmatch(r"\d{10,13}", text):
+            timestamp = float(text)
+            if timestamp > 1e11:  # 毫秒级时间戳
+                timestamp /= 1000.0
+            try:
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone(_CST).isoformat()
+            except (OverflowError, OSError, ValueError):
+                return None
+        normalized = (
+            text.replace("年", "-").replace("月", "-").replace("日", " ")
+            .replace("/", "-").replace("T", " ")
+        )
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=_CST).isoformat()
+
+    @staticmethod
+    def parse_score(text) -> tuple[float | None, float | None]:
+        """从自由文本中解析 (得分, 满分)，解析不到返回 (None, None)。
+
+        学习通列表页文案噪声很大，"满分100分""共 20 分""权重 30分"都不是得分，
+        裸 "X分" 一律采信会把满分当成实得分。因此分三档由严到宽:
+          1. 带明确关键词(成绩/得分/分数/评分) —— 直接采信;
+          2. "X/Y" 形式 —— 日期片段已剔除，误判风险低;
+          3. 裸 "X分" —— 只在批阅语境下采信，且先剔掉满分类描述。
+        """
+        if not text:
+            return (None, None)
+        raw = str(text)
+        # 先剔除日期/时间片段，避免把 2024/03/05 或 12:30 误判成分数。
+        cleaned = re.sub(r"\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}\s*日?", " ", raw)
+        cleaned = re.sub(r"\d{1,2}:\d{2}(:\d{2})?", " ", cleaned)
+
+        def _pair(match) -> tuple[float | None, float | None]:
+            score = ChaoxingParser._to_float(match.group(1))
+            if score is None:
+                return (None, None)
+            score_max = None
+            if match.lastindex and match.lastindex > 1:
+                candidate = ChaoxingParser._to_float(match.group(2))
+                score_max = candidate if (candidate and candidate > 0) else None
+            return (score, score_max)
+
+        match = re.search(
+            r"(?:成绩|得分|分数|评分)\D{0,4}(\d{1,3}(?:\.\d+)?)"
+            r"(?:\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?))?",
+            cleaned,
+        )
+        if match:
+            result = _pair(match)
+            if result[0] is not None:
+                return result
+
+        match = re.search(
+            r"(\d{1,3}(?:\.\d+)?)\s*(?:/|／)\s*(\d{1,3}(?:\.\d+)?)", cleaned
+        )
+        if match:
+            result = _pair(match)
+            if result[0] is not None:
+                return result
+
+        # 裸 "X分": 没有批阅语义时宁可放弃，也不能把满分当实得分。
+        if not re.search(r"(批阅|已阅|已评|评分|得分|成绩)", cleaned):
+            return (None, None)
+        if re.search(r"(满分|总分|分制|权重)", cleaned):
+            return (None, None)
+        stripped = re.sub(r"[共占]\s*\d{1,3}(?:\.\d+)?\s*分", " ", cleaned)
+        match = re.search(r"(\d{1,3}(?:\.\d+)?)\s*分(?!钟)", stripped)
+        if match:
+            return _pair(match)
+        return (None, None)
+
+    # 作业报告页(selectWorkQuestionYiPiYue)的得分结构: 大号数字 + "分"。
+    # 实测同页不含满分与提交时间，因此满分只能留空。
+    _REPORT_SCORE_RE = re.compile(
+        r'class="numberH2"[^>]*>\s*<span>\s*(\d+(?:\.\d+)?)\s*</span>'
+    )
+
+    @classmethod
+    def parse_report_score(cls, html) -> tuple[float | None, float | None]:
+        """从作业报告页解析 (得分, 满分)。解析不到返回 (None, None)。"""
+        if not html:
+            return (None, None)
+        match = cls._REPORT_SCORE_RE.search(str(html))
+        if not match:
+            return (None, None)
+        return (ChaoxingParser._to_float(match.group(1)), None)
+
+    @staticmethod
+    def parse_submitted_at(text) -> str | None:
+        """从自由文本中解析真实提交时间，返回带时区 ISO 字符串。"""
+        if not text:
+            return None
+        match = re.search(
+            r"(?:提交时间|交卷时间|完成时间|提交于|提交)\D{0,6}"
+            r"(\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}(?:\s*日)?"
+            r"(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)",
+            str(text),
+        )
+        if not match:
+            return None
+        return ChaoxingParser.to_iso(match.group(1))
+
+    # 课程图谱页(stat2-ans.chaoxing.com/study-knowledge/index)的课程级统计节点。
+    # 注意 "knowldegeCount" 是平台自身的拼写错误，必须照抄。
+    _GRAPH_NUMBER_IDS = {
+        "knowledge_point_count": "knowldegeCount",
+        "own_mastery_rate": "ownGraspWeightRate",
+        "class_mastery_rate": "graspWeightRate",
+        "own_completion_rate": "ownCompleteWeightRate",
+        "class_completion_rate": "completeWeightRate",
+    }
+    # 标签下拉里混着"一级~七级"(层级)和"父子关系/前后置关系"(关系类型)，
+    # 它们不是知识点分类，需要剔除。
+    _GRAPH_TAG_NOISE = ("级", "关系")
+
+    @classmethod
+    def parse_knowledge_graph(cls, html) -> dict:
+        """解析课程图谱页: 课程级统计 + 知识点清单 + 分类标签。
+
+        解析不到时返回空 dict / 空列表，由调用方降级，绝不抛异常。
+        """
+        if not html:
+            return {}
+        text = str(html)
+        result: dict = {}
+        for key, element_id in cls._GRAPH_NUMBER_IDS.items():
+            match = re.search(rf'id="{element_id}"[^>]*>\s*([\d.]+)', text)
+            if match:
+                value = ChaoxingParser._to_float(match.group(1))
+                if value is not None:
+                    result[key] = value
+        points: list[dict] = []
+        seen: set[str] = set()
+        for match in re.finditer(r'id="firstLevel-(\d+)"[^>]*>([^<]+)</li>', text):
+            external_id = match.group(1)
+            name = match.group(2).strip()
+            if not name or external_id in seen:
+                continue
+            seen.add(external_id)
+            points.append({"external_id": external_id, "name": name})
+        result["knowledge_points"] = points
+        raw_tags = set(re.findall(
+            r'<label for="cb_\d+">\s*<div class="ellips">([^<]+)</div>', text
+        ))
+        result["tags"] = sorted(
+            tag for tag in raw_tags
+            if not any(noise in tag for noise in cls._GRAPH_TAG_NOISE)
+        )
+        return result
+
+    @staticmethod
+    def parse_exam_at(metadata: dict) -> str | None:
+        """从章节卡片 metadata 中解析考试时间(优先开始时间，其次结束时间)。"""
+        if not isinstance(metadata, dict):
+            return None
+        for key in ("begintime", "starttime", "startDate", "beginDate",
+                    "startTime", "beginTime", "endtime", "endDate", "endTime"):
+            iso = ChaoxingParser.to_iso(metadata.get(key))
+            if iso:
+                return iso
+        return None
+
+    @staticmethod
+    def parse_metadata_score(metadata: dict) -> tuple[float | None, float | None]:
+        """从章节卡片 metadata 中解析结构化分数(仅在字段明确存在时取值)。"""
+        if not isinstance(metadata, dict):
+            return (None, None)
+        score = None
+        for key in ("score", "grade", "finalScore", "studentScore"):
+            if key in metadata:
+                score = ChaoxingParser._to_float(metadata.get(key))
+                if score is not None:
+                    break
+        score_max = None
+        for key in ("scoreMax", "totalScore", "fullScore", "scoreTotal"):
+            if key in metadata:
+                score_max = ChaoxingParser._to_float(metadata.get(key))
+                if score_max is not None:
+                    break
+        if score is None and score_max is None:
+            # 退化为从自由文本中尽力提取，例如 "已批阅 88分"。
+            return ChaoxingParser.parse_score(
+                " ".join(str(metadata.get(key) or "") for key in ("raw_status", "label", "statusText"))
+            )
+        return (score, score_max)
+
 
 class ChaoxingClient:
     def __init__(self, cookies: dict | None = None):
@@ -384,7 +605,7 @@ class ChaoxingClient:
             }
         except (ValueError, TypeError, AttributeError):
             return {"status": "failed", "items": [], "error": "structure_changed"}
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             return {"status": "failed", "items": [], "error": "network_error"}
         except httpx.HTTPStatusError as error:
             return {"status": "failed", "items": [], "error": f"http_error_{error.response.status_code}"}
@@ -427,7 +648,7 @@ class ChaoxingClient:
                 if parsed["status"] == "structure_changed":
                     return [], parsed.get("error") or "structure_changed"
                 return parsed.get("items") or [], None
-            except httpx.RequestError:
+            except (httpx.RequestError, OSError):
                 return [], "chapter_cards_network_error"
             except httpx.HTTPStatusError as error:
                 return [], f"chapter_cards_http_{error.response.status_code}"
@@ -461,12 +682,17 @@ class ChaoxingClient:
     async def get_course_exams(self, context: dict, *,
                                force_refresh: bool = False,
                                unchanged_chapter_ids: set[str] | None = None) -> dict:
-        """利用 chapter card 中的 test/work 信息获取考试/作业候选条目。
+        """利用 chapter card 中的 test 信息获取测验/考试候选条目。
 
         学习通专用考试页通常需要签名 task ID，无法直接获取完整考试详情。
-        但 chapter card 中的 test/work 类型附件携带了 jobid/aid/objectId 等信息，
-        可以保存为 exam_candidate，供前端跳转到学习通完成考试。
-        需要真实学习通账号验证 chapter card 中 test/work 的 metadata 完整性。
+        但 chapter card 中的 test 类型附件携带了 jobid/aid/objectId 等信息，
+        可以保存为 exam_candidate，供前端跳转到学习通完成测验。
+
+        **work(作业) 不属于这里**：产品契约把作业与考试分开，作业由
+        get_all_assignments / get_course_assignments 落到 personal_tasks；
+        把 work 也写成 exam_candidate 会污染考试统计与学习模型的考试暴露度。
+
+        需要真实学习通账号验证 chapter card 中 test 的 metadata 完整性。
         """
         materials_result = await self.get_course_materials(
             context, force_refresh=force_refresh,
@@ -481,13 +707,12 @@ class ChaoxingClient:
             metadata = item.get("metadata") or {}
             raw_type = str(metadata.get("raw_type") or metadata.get("attachment_type") or "").lower()
             kind = item.get("kind")
-            candidate_type = None
-            if kind == "quiz" and raw_type == "test":
-                candidate_type = "test"
-            elif kind == "task" and raw_type == "work":
-                candidate_type = "work"
-            if not candidate_type:
+            # 只收测验/考试；作业(work/task)留在作业链路。
+            if not (kind == "quiz" and raw_type == "test"):
                 continue
+            candidate_type = "test"
+            exam_at = ChaoxingParser.parse_exam_at(metadata)
+            score, score_max = ChaoxingParser.parse_metadata_score(metadata)
             exam_items.append({
                 "kind": "exam_candidate",
                 "external_id": item.get("external_id"),
@@ -500,6 +725,72 @@ class ChaoxingClient:
                     "candidate_type": candidate_type,
                     "course_id": course_id,
                     "clazz_id": clazz_id,
+                    **({
+                        "exam_at": exam_at,
+                        "score": score,
+                        "score_max": score_max,
+                    } if (exam_at or score is not None) else {}),
+                },
+            })
+        return {"status": "complete", "items": exam_items, "error": None}
+
+    async def get_course_exam_candidates(self, context: dict) -> dict:
+        """低成本派生课程测验/考试候选，不触发逐章节卡片抓取。
+
+        全局同步(课程 + 作业 + 考试 + 轻量状态)不能为每门课深抓所有章节卡片，
+        因此这里只用一次 `gas/clazz` 章节请求: 章节节点上的 attachment 若声明为
+        test，就是测验/考试入口，足以让考试进入课程详情与世界模型。
+
+        **work(作业) 不在这里输出**：作业已有独立链路(get_all_assignments →
+        personal_tasks)，再写一份 exam_candidate 会把同一份作业同时算成作业和考试。
+
+        代价是这条路径通常拿不到考试时间(章节附件不携带 begin/end 时间)，
+        带时间的考试由课程详情页显式触发的 deep 同步(章节卡片 + parse_exam_at)补齐。
+        解析不到就是解析不到，不编造时间。
+        """
+        chapter_result = await self.get_course_chapters(context)
+        if chapter_result["status"] != "complete":
+            return {
+                "status": chapter_result["status"],
+                "items": [],
+                "error": chapter_result.get("error"),
+            }
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        exam_items: list[dict] = []
+        seen: set[str] = set()
+        for item in chapter_result["items"]:
+            if item.get("kind") == "chapter":
+                continue
+            metadata = item.get("metadata") or {}
+            raw_type = str(
+                metadata.get("attachment_type") or metadata.get("raw_type") or ""
+            ).lower()
+            if raw_type != "test":
+                continue
+            external_id = _identifier(item.get("external_id"))
+            if not external_id or external_id in seen:
+                continue
+            seen.add(external_id)
+            exam_at = ChaoxingParser.parse_exam_at(metadata)
+            score, score_max = ChaoxingParser.parse_metadata_score(metadata)
+            exam_items.append({
+                "kind": "exam_candidate",
+                "external_id": external_id,
+                "title": item.get("title") or "未命名考试",
+                "parent_external_id": item.get("parent_external_id"),
+                "status": "unknown",
+                "source_url": item.get("source_url"),
+                "metadata": {
+                    **metadata,
+                    "candidate_type": "test",
+                    "course_id": course_id,
+                    "clazz_id": clazz_id,
+                    **({
+                        "exam_at": exam_at,
+                        "score": score,
+                        "score_max": score_max,
+                    } if (exam_at or score is not None) else {}),
                 },
             })
         return {"status": "complete", "items": exam_items, "error": None}
@@ -565,7 +856,7 @@ class ChaoxingClient:
             return {"status": "complete", "items": discussions, "error": None}
         except (ValueError, TypeError):
             return {"status": "failed", "items": [], "error": "structure_changed"}
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             return {"status": "failed", "items": [], "error": "network_error"}
         except httpx.HTTPStatusError as error:
             return {"status": "unavailable", "items": [], "error": f"http_error_{error.response.status_code}"}
@@ -594,11 +885,54 @@ class ChaoxingClient:
                     "status": assignment.get("status") or "unknown",
                     "deadline": assignment.get("deadline") or None,
                     "source_url": assignment.get("link") or None,
-                    "metadata": {"course_id": course_id, "clazz_id": clazz_id},
+                    "metadata": {
+                        "course_id": course_id,
+                        "clazz_id": clazz_id,
+                        **{
+                            key: value
+                            for key, value in (
+                                ("submitted_at", assignment.get("submitted_at")),
+                                ("score", assignment.get("score")),
+                                ("score_max", assignment.get("score_max")),
+                                ("remote_status", assignment.get("remote_status")),
+                            )
+                            if value is not None
+                        },
+                    },
                 })
             return {"status": "complete", "items": items, "error": None}
         except ChaoxingFetchError as error:
             return {"status": "failed", "items": [], "error": str(error)}
+
+    async def get_course_knowledge_graph(self, context: dict) -> dict:
+        """抓课程图谱页，返回课程级统计 + 知识点清单。
+
+        新版泛雅(fanya V3)的"课程图谱"发布课程/学校的知识点体系与掌握率，
+        比作业分数细一个量级。页面是服务端渲染，课程级统计与知识点清单
+        直接内联在 HTML 里；知识点**逐个**的掌握率需要另外请求，此处不取。
+        """
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        if not course_id or not clazz_id:
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "missing_course_context"}
+        url = (
+            "https://stat2-ans.chaoxing.com/study-knowledge/index"
+            f"?courseId={course_id}&clazzId={clazz_id}"
+        )
+        html = await self._get_text(url)
+        if not html:
+            return {"status": "failed", "items": [], "graph": {}, "error": "network_error"}
+        parsed = ChaoxingParser.parse_knowledge_graph(html)
+        if not parsed.get("knowledge_points") and not parsed.get("knowledge_point_count"):
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "structure_changed"}
+        return {
+            "status": "complete",
+            "graph": parsed,
+            "items": parsed.get("knowledge_points", []),
+            "error": None,
+        }
 
     async def get_course_notices(self, context: dict) -> dict:
         """Return only notices carrying matching course and class identifiers."""
@@ -647,6 +981,10 @@ class ChaoxingClient:
             response.raise_for_status()
             
             data = response.json()
+            # 风控/验证页会返回 HTML 或 JSON 数组，非 dict 时直接判为结构变化，
+            # 否则 data.get 抛 AttributeError 逃逸出去让调用方 500。
+            if not isinstance(data, dict):
+                return False, "structure_changed"
             if not data.get("result"):
                 error_msg = data.get("errorMsg", "Unknown error")
                 if "验证码" in error_msg or "异常" in error_msg or "短信" in error_msg:
@@ -664,13 +1002,13 @@ class ChaoxingClient:
             
             return True, "success"
             
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             print(f"An error occurred while requesting {e.request.url!r}.")
             return False, "request_error"
         except httpx.HTTPStatusError as e: 
             print(f"Error response {e.response.status_code} while requesting {e.request.url!r}.")
             return False, f"http_error_{e.response.status_code}"
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             return False, "structure_changed"
 
 
@@ -701,7 +1039,7 @@ class ChaoxingClient:
                     pass
             elif res.status_code in (302, 403):
                 return False, "reauth_required"
-        except httpx.RequestError:
+        except (httpx.RequestError, OSError):
             pass
             
         # Fallback to HTML parsing if JSON API fails or returns no data
@@ -718,7 +1056,7 @@ class ChaoxingClient:
             if courses or any(marker in response.text for marker in ("暂无课程", "还没有课程", "course-list")):
                 return True, courses
             return False, "structure_changed"
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             print(f"Network error while fetching courses: {e}")
             return False, "network_error"
         except httpx.HTTPStatusError as e:
@@ -745,7 +1083,7 @@ class ChaoxingClient:
             }
         except ChaoxingFetchError:
             raise
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
@@ -829,12 +1167,24 @@ class ChaoxingClient:
                     marker in status_text
                     for marker in ("已交", "已完成", "已提交", "已批阅", "待批阅")
                 )
+                # 仅在已提交/已批阅时尝试解析真实提交时间与得分: 学习通把这两个
+                # 事实放在同一个条目文本里，未提交的条目不应该产出成绩假象。
+                score: float | None = None
+                score_max: float | None = None
+                submitted_at: str | None = None
+                if completed:
+                    item_text = item.get_text(" ", strip=True)
+                    score, score_max = ChaoxingParser.parse_score(item_text)
+                    submitted_at = ChaoxingParser.parse_submitted_at(item_text)
                 assignments.append({
                     "title": title_elem.get_text(" ", strip=True),
                     "deadline": deadline_elem.get_text(" ", strip=True) if deadline_elem else "",
                     "external_id": external_id,
                     "status": "completed" if completed else "pending",
                     "remote_status": status_text,
+                    "submitted_at": submitted_at,
+                    "score": score,
+                    "score_max": score_max,
                     "course_id": item_course_id,
                     "clazz_id": item_clazz_id,
                     "link": work_url,
@@ -844,10 +1194,99 @@ class ChaoxingClient:
             return list(assignments)
         except ChaoxingFetchError:
             raise
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
+
+    async def _get_text(self, url: str, attempts: int = 2) -> str:
+        """带一次重试的文本抓取。学习通 TLS 偶发 SSLV3_ALERT_BAD_RECORD_MAC，
+        失败返回空串由调用方降级，绝不抛出中断同步。"""
+        for attempt in range(attempts):
+            try:
+                response = await self.client.get(url, follow_redirects=True)
+                return response.text or ""
+            except (httpx.RequestError, httpx.HTTPStatusError, OSError):
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(0.8)
+        return ""
+
+    async def get_assignment_report(self, work_url: str) -> tuple[float | None, float | None]:
+        """抓单个作业的报告页取分，返回 (得分, 满分)。
+
+        学习通作业列表页只给状态(未提交/待批阅/已完成)，**不含分数**；
+        得分只出现在作业报告页: 先用作业详情页里的 workId/workAnswerId 等参数
+        拼出 selectWorkQuestionYiPiYue 地址，再解析大号分数节点。
+        任何失败都返回 (None, None) —— 分数属于增量信息，绝不能中断同步。
+        """
+        if not work_url:
+            return (None, None)
+        detail_html = await self._get_text(str(work_url))
+        if not detail_html:
+            return (None, None)
+        params: dict[str, str] = {}
+        for key, pattern in (
+            ("workId", r"workId=(\d+)"),
+            ("workAnswerId", r"workAnswerId=(\d+)"),
+            ("courseId", r"courseId=(\d+)"),
+            ("classId", r"classId=(\d+)"),
+            ("cpi", r"cpi=(\d+)"),
+        ):
+            match = re.search(pattern, detail_html)
+            params[key] = match.group(1) if match else ""
+        if not all(params[key] for key in ("workId", "workAnswerId", "courseId", "classId")):
+            return (None, None)
+        report_url = (
+            "https://mooc1.chaoxing.com/mooc-ans/work/phone/selectWorkQuestionYiPiYue"
+            f"?courseId={params['courseId']}&workAnswerId={params['workAnswerId']}"
+            f"&workId={params['workId']}&knowledgeId=0&status=4&classId={params['classId']}"
+            f"&oldWorkId=&mooc=1&ut=s&cpi={params['cpi']}"
+        )
+        report_html = await self._get_text(report_url)
+        return ChaoxingParser.parse_report_score(report_html)
+
+    async def enrich_assignment_scores(self, assignments: list[dict], *,
+                                       limit: int = 20, concurrency: int = 3,
+                                       budget_seconds: float = 45.0) -> int:
+        """为"已提交但还没有分数"的作业补抓报告页得分，就地写回并返回成功条数。
+
+        逐作业请求不可避免(列表页没有分数)，每个作业需要详情页 + 报告页两次请求，
+        因此用三道闸限制对同步接口的影响:
+        - limit: 单次最多处理多少个作业;
+        - concurrency: 并发上限;
+        - budget_seconds: 整批总时间预算。前端同步请求超时是 120 秒，补抓必须留出
+          余量，超预算的作业本轮直接跳过，下次同步继续补(渐进收敛)。
+        失败静默跳过，绝不抛出。
+        """
+        targets = [
+            item for item in assignments
+            if item.get("status") == "completed"
+            and item.get("score") is None
+            and item.get("link")
+        ][:max(0, limit)]
+        if not targets:
+            return 0
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(1.0, budget_seconds)
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+        fetched = 0
+
+        async def worker(item: dict) -> None:
+            nonlocal fetched
+            if loop.time() >= deadline:
+                return
+            async with semaphore:
+                if loop.time() >= deadline:
+                    return
+                score, score_max = await self.get_assignment_report(str(item["link"]))
+                if score is not None:
+                    item["score"] = score
+                    if score_max is not None:
+                        item["score_max"] = score_max
+                    fetched += 1
+
+        await asyncio.gather(*(worker(item) for item in targets), return_exceptions=True)
+        return fetched
 
     async def get_all_notices(self) -> list[dict]:
         """Fetch the authenticated notification inbox returned by Chaoxing."""
@@ -963,7 +1402,7 @@ class ChaoxingClient:
             raise
         except (ValueError, TypeError) as e:
             raise ChaoxingFetchError("structure_changed") from e
-        except httpx.RequestError as e:
+        except (httpx.RequestError, OSError) as e:
             raise ChaoxingFetchError("network_error") from e
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e

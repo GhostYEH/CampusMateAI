@@ -56,3 +56,32 @@ class CourseContentSummaryOut(BaseModel):
     ends_at: Optional[str] = None
     last_synced_at: Optional[str] = None
     sections: list[CourseSectionStatusOut] = Field(default_factory=list)
+
+
+class KnowledgePointOut(BaseModel):
+    """单个课程知识点（外部数据源观测，非本地推断）。"""
+
+    external_id: str
+    name: str
+    tags: list[str] = Field(default_factory=list)
+    position: int = 0
+
+
+class KnowledgeGraphOut(BaseModel):
+    """课程知识图谱：课程级统计 + 知识点清单。
+
+    掌握率/完成率是平台发布的课程级平均值（0-100），不是逐知识点值。
+    `available=False` 表示该课程尚未同步过知识图谱（需 depth=deep 同步）。
+    """
+
+    course_id: str
+    available: bool = False
+    synced_at: Optional[str] = None
+    knowledge_point_count: int = 0
+    own_mastery_rate: Optional[float] = None
+    class_mastery_rate: Optional[float] = None
+    mastery_gap_vs_class: Optional[float] = None
+    own_completion_rate: Optional[float] = None
+    class_completion_rate: Optional[float] = None
+    tags: list[str] = Field(default_factory=list)
+    points: list[KnowledgePointOut] = Field(default_factory=list)

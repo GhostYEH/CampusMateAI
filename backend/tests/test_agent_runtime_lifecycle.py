@@ -50,7 +50,7 @@ def test_retry_creates_new_run_with_lineage(runtime):
 
     assert retried["run_id"] != run_id
     assert retried["retry_of"] == run_id
-    assert retried["status"] == "RUNNING"
+    assert retried["status"] == "QUEUED"
 
 
 def test_retrying_successful_run_is_rejected(runtime):

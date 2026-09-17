@@ -20,8 +20,9 @@
     "check:student-tools": "node scripts/check_student_tools_contracts.js",
     "check:primary-routes": "node scripts/check_primary_routes.js",
     "check:parity": "node scripts/check_android_parity.js",
-    "check:contracts": "node scripts/check_backend_contracts.js && node scripts/check_date_utils.js",
-    "check": "npm run test:domain && npm run check:home && npm run check:notifications && npm run check:community && npm run check:counselor && npm run check:full-parity && npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:layout && npm run check:student-tools && npm run check:primary-routes && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck"
+    "check:contracts": "node scripts/check_backend_contracts.js && node scripts/check_date_utils.js && npm run check:agent-runtime",
+    "check": "npm run test:domain && npm run check:home && npm run check:notifications && npm run check:community && npm run check:counselor && npm run check:full-parity && npm run check:backend && npm run check:budget && npm run check:devtools && npm run check:shell && npm run check:layout && npm run check:student-tools && npm run check:primary-routes && npm run check:parity && npm run check:contracts && node check_handlers.js && npm run typecheck",
+    "check:agent-runtime": "node scripts/check_agent_runtime_contracts.js"
   },
   "keywords": [],
   "author": "",

@@ -22,7 +22,9 @@ export struct FocusPlanPage {
       Column({ space: 4 }) {
         Text(step.title).fontColor(this.palette().text).fontSize(14).fontWeight(step.status === 'PENDING' ? FontWeight.Bold : FontWeight.Regular)
         Text(step.status === 'PENDING' ? `当前可执行 · 预计 ${step.estimatedMinutes} 分钟` : step.completionCriteria).fontColor(this.palette().muted).fontSize(11).lineHeight(16)
+        if (step.dependencies.length > 0) Text(`需先完成第 ${step.dependencies.slice().sort((left: number, right: number): number => left - right).join('、')} 步`).fontColor(this.palette().muted).fontSize(10)
         if (step.knowledgeSource !== undefined && step.knowledgeSource.length > 0) Text(`参考：${step.knowledgeSource}`).fontColor(this.palette().primary).fontSize(10)
+        else if (step.isPolicyStep && (step.knowledgeStatus === undefined || step.knowledgeStatus === 'needs_confirmation')) Text('政策相关，暂无权威资料，建议先向辅导员确认').fontColor(this.palette().primary).fontSize(10)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
     }.width('100%').padding({ top: 9, bottom: 9 }).alignItems(VerticalAlign.Top)
   }

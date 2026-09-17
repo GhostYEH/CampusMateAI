@@ -44,6 +44,7 @@ function DockItem({
   magnification,
   baseItemSize,
   reduceMotion,
+  staticControls,
   onClick,
   renderItem,
   useSharedNavigationRenderer,
@@ -75,14 +76,14 @@ function DockItem({
     <motion.li
       ref={itemRef}
       className={active ? "active" : ""}
-      style={{ scale: reduceMotion ? 1 : scale }}
+      style={{ scale: reduceMotion || staticControls ? 1 : scale }}
     >
       <LiquidMetalButton
         variant="nav"
         active={active}
         defer
-        disableEffects={reduceMotion}
-        useSharedNavigationRenderer={useSharedNavigationRenderer}
+        disableEffects={reduceMotion || staticControls}
+        useSharedNavigationRenderer={useSharedNavigationRenderer && !staticControls}
         maxFps={20}
         dprCap={1}
         className="floating-nav-button"
@@ -104,6 +105,24 @@ function DockItem({
   );
 }
 
+function StaticDockItem({ item, index, active, onClick, renderItem }) {
+  return (
+    <li className={active ? "active" : ""}>
+      <LiquidMetalButton
+        variant="nav"
+        active={active}
+        disableEffects
+        className="floating-nav-button"
+        aria-label={item.label}
+        aria-current={active ? "page" : undefined}
+        onClick={(event) => onClick(event, index)}
+      >
+        {renderItem(item, index)}
+      </LiquidMetalButton>
+    </li>
+  );
+}
+
 export default function LiquidMetalNav({
   items = [],
   activeIndex: controlledActiveIndex = 0,
@@ -116,7 +135,10 @@ export default function LiquidMetalNav({
   dockMagnification = 60,
   dockBaseItemSize = 44,
   reuseRenderer = false,
+  staticControls = false,
+  effectGeometrySelector,
 }) {
+  const interactionsDisabled = reduceMotion || staticControls;
   const mouseX = useMotionValue(Number.POSITIVE_INFINITY);
   const listRef = useRef(null);
   const pointerFrameRef = useRef(0);
@@ -155,7 +177,7 @@ export default function LiquidMetalNav({
     scheduleDockMeasure();
   }, [scheduleDockMeasure]);
   const attachIndex = useCallback((index) => {
-    if (!reuseRenderer || reduceMotion) return false;
+    if (!reuseRenderer || interactionsDisabled) return false;
     const stage = stageRefs.current.get(index);
     if (!stage) return false;
     return sharedRendererRef.current.attach(stage, {
@@ -163,10 +185,11 @@ export default function LiquidMetalNav({
       getEngaged: () => activeIndexRef.current === index
         || hoveredIndexRef.current === index
         || focusedIndexRef.current === index,
+      geometrySelector: effectGeometrySelector,
       maxFps: 20,
       dprCap: 1,
     });
-  }, [reduceMotion, reuseRenderer]);
+  }, [effectGeometrySelector, interactionsDisabled, reuseRenderer]);
   const registerStage = useCallback((index, stage) => {
     const previousStage = stageRefs.current.get(index);
     if (stage) stageRefs.current.set(index, stage);
@@ -177,6 +200,7 @@ export default function LiquidMetalNav({
   }, [attachIndex]);
 
   useLayoutEffect(() => {
+    if (staticControls) return undefined;
     const list = listRef.current;
     if (!list) return undefined;
     const nav = list.closest(".floating-nav");
@@ -193,6 +217,7 @@ export default function LiquidMetalNav({
     const handleTransitionEnd = (event) => {
       if (event.target !== nav || event.propertyName !== "width") return;
       navTransitionRef.current = false;
+      nav.classList.remove("floating-nav--collapsing");
       scheduleDockMeasure();
     };
 
@@ -208,22 +233,24 @@ export default function LiquidMetalNav({
       nav?.removeEventListener("transitionrun", handleTransitionRun);
       nav?.removeEventListener("transitionend", handleTransitionEnd);
       nav?.removeEventListener("transitioncancel", handleTransitionEnd);
+      nav?.classList.remove("floating-nav--collapsing");
       if (geometryFrameRef.current) cancelAnimationFrame(geometryFrameRef.current);
     };
-  }, [scheduleDockMeasure]);
+  }, [scheduleDockMeasure, staticControls]);
 
   useLayoutEffect(() => {
-    if (!reuseRenderer || reduceMotion) return undefined;
+    if (!reuseRenderer || interactionsDisabled) return undefined;
     attachIndex(focusedIndexRef.current ?? hoveredIndexRef.current ?? activeIndex);
     return undefined;
-  }, [activeIndex, attachIndex, reduceMotion, reuseRenderer]);
+  }, [activeIndex, attachIndex, interactionsDisabled, reuseRenderer]);
 
   useEffect(() => () => {
     if (pointerFrameRef.current) cancelAnimationFrame(pointerFrameRef.current);
   }, []);
 
   const handleMouseMove = (event) => {
-    if (reduceMotion) return;
+    if (interactionsDisabled) return;
+    listRef.current?.closest(".floating-nav")?.classList.remove("floating-nav--collapsing");
     if (reuseRenderer) {
       hoverGateRef.current.notePointerMove();
       sharedRendererRef.current.move(event.nativeEvent || event);
@@ -237,6 +264,7 @@ export default function LiquidMetalNav({
   };
 
   const handleMouseLeave = () => {
+    if (!interactionsDisabled) listRef.current?.closest(".floating-nav")?.classList.add("floating-nav--collapsing");
     if (reuseRenderer) {
       const hoveredIndex = hoverGateRef.current.current();
       if (hoveredIndex !== null) {
@@ -256,7 +284,7 @@ export default function LiquidMetalNav({
   };
 
   const handleLiquidTargetEnter = (index, stage, event) => {
-    if (!reuseRenderer || reduceMotion || (event?.pointerType && event.pointerType !== "mouse")) return;
+    if (!reuseRenderer || interactionsDisabled || (event?.pointerType && event.pointerType !== "mouse")) return;
     if (!hoverGateRef.current.claim(index)) return;
     hoveredIndexRef.current = index;
     if (!attachIndex(index)) return;
@@ -269,12 +297,12 @@ export default function LiquidMetalNav({
     attachIndex(focusedIndexRef.current ?? activeIndexRef.current);
   };
   const handleLiquidTargetDown = (index, stage, event) => {
-    if (!reuseRenderer || reduceMotion) return;
+    if (!reuseRenderer || interactionsDisabled) return;
     if (hoverGateRef.current.claim(index)) hoveredIndexRef.current = index;
     if (attachIndex(index)) sharedRendererRef.current.down(stage, event);
   };
   const handleLiquidTargetFocus = (index, stage) => {
-    if (!reuseRenderer || reduceMotion) return;
+    if (!reuseRenderer || interactionsDisabled) return;
     focusedIndexRef.current = index;
     if (attachIndex(index)) sharedRendererRef.current.focus(stage);
   };
@@ -299,17 +327,20 @@ export default function LiquidMetalNav({
     onSelect?.(item, index);
   };
 
+  const ItemComponent = staticControls ? StaticDockItem : DockItem;
+
   return (
     <div
       className={`liquid-metal-nav-container ${className}`}
       data-reduce-motion={reduceMotion ? "true" : undefined}
+      data-static-controls={staticControls ? "true" : undefined}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
       <nav aria-label={ariaLabel}>
         <ul ref={listRef} className="floating-nav-list">
           {items.map((item, index) => (
-            <DockItem
+            <ItemComponent
               key={item.key || item.href || index}
               item={item}
               index={index}
@@ -319,6 +350,7 @@ export default function LiquidMetalNav({
               magnification={dockMagnification}
               baseItemSize={dockBaseItemSize}
               reduceMotion={reduceMotion}
+              staticControls={staticControls}
               onClick={handleClick}
               renderItem={renderItem}
               useSharedNavigationRenderer={reuseRenderer}

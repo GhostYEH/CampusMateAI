@@ -1,9 +1,10 @@
 import { AgentRuntimeRepository } from '../../repository/AgentRuntimeRepository';
 import {
-  AgentJob, AgentRun, LearningPlanSummary, StudentGoal, RunStatus
+  AgentJob, AgentRun, LearningPlanSummary, StudentGoal, RunStatus, AgentEnumParser
 } from '../../data/AgentRuntimeModels';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
+import { SseEvent } from '../../data/ApiClient';
 
 // 学习目标执行中心：目标→计划草案→确认/创建待办→阶段总结→重规划。
 // 所有决策与风险判断由服务端完成，鸿蒙端只负责请求、展示和生命周期控制。
@@ -20,8 +21,11 @@ export struct GoalExecutionPage {
   @State minutesText: string = '60';
   @State planId: string = '';
   @State summary: LearningPlanSummary | null = null;
+  @State activeRunId: string = '';
+  @State liveStatus: RunStatus = RunStatus.UNKNOWN;
   @State loading: boolean = false;
   @State error: string = '';
+  private observedRunId: string = '';
 
   palette(): CampusPalette { return this.darkMode ? darkPalette : lightPalette; }
 
@@ -40,11 +44,14 @@ export struct GoalExecutionPage {
       const latest: AgentJob | undefined = this.jobs.find((job: AgentJob) => {
         return job.input_ref !== undefined && (job.input_ref['goal_id'] as string) === this.selectedGoalId;
       });
-      const latestPlanId: string | undefined = latest === undefined || latest.input_ref === undefined
-        ? undefined : latest.input_ref['plan_id'] as string;
-      if (latestPlanId !== undefined && latestPlanId.length > 0) {
-        this.planId = latestPlanId;
-        this.summary = await this.repository.getPlanSummary(latestPlanId);
+      if (latest !== undefined && latest.latest_run_id !== null) {
+        this.activeRunId = latest.latest_run_id;
+        this.liveStatus = latest.status;
+        if (latest.status === RunStatus.QUEUED || latest.status === RunStatus.RUNNING) {
+          this.subscribeRun(latest.latest_run_id, latest.job_id);
+        } else {
+          await this.loadPlanFromJob(latest);
+        }
       }
     } catch (_) {
       this.error = '目标数据加载失败，请重试';
@@ -80,8 +87,11 @@ export struct GoalExecutionPage {
     try {
       const job: AgentJob = await this.repository.createLearningGoalJob(this.selectedGoalId, this.minutes());
       this.jobs = [job, ...this.jobs.filter((item: AgentJob) => item.job_id !== job.job_id)];
-      this.planId = job.input_ref['plan_id'] as string;
-      if (this.planId.length > 0) this.summary = await this.repository.getPlanSummary(this.planId);
+      this.activeRunId = job.latest_run_id ?? '';
+      this.liveStatus = job.status;
+      this.planId = '';
+      this.summary = null;
+      if (job.latest_run_id !== null) this.subscribeRun(job.latest_run_id, job.job_id);
     } catch (_) {
       this.error = '生成计划草案失败，请检查目标数据后重试';
     } finally {
@@ -150,6 +160,51 @@ export struct GoalExecutionPage {
     }
   }
 
+  private async loadPlanFromJob(job: AgentJob): Promise<void> {
+    if (this.repository === null) return;
+    const rawPlanId: Object | undefined = job.input_ref === undefined ? undefined : job.input_ref['plan_id'];
+    const nextPlanId: string = rawPlanId === undefined || rawPlanId === null ? '' : rawPlanId as string;
+    if (nextPlanId.length === 0) {
+      this.planId = '';
+      this.summary = null;
+      return;
+    }
+    this.planId = nextPlanId;
+    this.summary = await this.repository.getPlanSummary(nextPlanId);
+  }
+
+  subscribeRun(runId: string, jobId: string): void {
+    if (this.repository === null || runId.length === 0 || this.observedRunId === runId) return;
+    this.observedRunId = runId;
+    this.repository.streamEvents(runId, '', (event: SseEvent) => {
+      if (this.activeRunId !== runId) return;
+      try {
+        const raw: Record<string, Object> = JSON.parse(event.data) as Record<string, Object>;
+        const status: RunStatus = AgentEnumParser.runStatus((raw.status ?? '') as string);
+        this.liveStatus = status;
+        if (status === RunStatus.SUCCEEDED) {
+          this.finishRun(runId, jobId, true);
+        } else if (status === RunStatus.FAILED || status === RunStatus.CANCELLED) {
+          this.error = status === RunStatus.CANCELLED ? '任务已取消，可重新生成计划' : '计划生成失败，可稍后重试';
+        }
+      } catch (_) { /* 忽略无法解析的事件，不中断页面 */ }
+    }).catch(() => {
+      if (this.activeRunId === runId) this.error = '事件流中断，可刷新重试';
+    });
+  }
+
+  private async finishRun(runId: string, jobId: string, succeeded: boolean): Promise<void> {
+    if (this.repository === null || this.activeRunId !== runId || !succeeded) return;
+    try {
+      const completed: AgentJob = await this.repository.getJob(jobId);
+      this.jobs = this.jobs.map((item: AgentJob) => item.job_id === jobId ? completed : item);
+      await this.loadPlanFromJob(completed);
+      if (this.planId.length === 0) this.error = '任务已完成，但计划引用暂不可用，请刷新重试';
+    } catch (_) {
+      this.error = '任务已完成，但结果加载失败，请重试';
+    }
+  }
+
   statusLabel(status: RunStatus): string {
     switch (status) {
       case RunStatus.QUEUED: return '排队中';
@@ -186,7 +241,9 @@ export struct GoalExecutionPage {
       Row() {
         Text(job.input_ref['plan_id'] === undefined ? '目标计划' : '学习计划')
           .fontColor(this.palette().text).fontSize(13).layoutWeight(1)
-        Text(this.statusLabel(job.status)).fontColor(this.palette().primary).fontSize(11)
+        Text(this.statusLabel(job.latest_run_id === this.activeRunId && this.liveStatus !== RunStatus.UNKNOWN
+          ? this.liveStatus : job.status))
+          .fontColor(this.palette().primary).fontSize(11)
       }.width('100%')
       Text(`更新于 ${job.updated_at}`).fontColor(this.palette().muted).fontSize(10)
       if (job.latest_run_id !== null && (job.status === RunStatus.RUNNING || job.status === RunStatus.QUEUED || job.status === RunStatus.PAUSED || job.status === RunStatus.FAILED || job.status === RunStatus.PARTIAL || job.status === RunStatus.CANCELLED)) {

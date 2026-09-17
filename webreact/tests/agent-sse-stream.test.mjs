@@ -147,6 +147,29 @@ describe("SSE stream lifecycle", () => {
     assert.equal(seenHeaders[1]?.["Last-Event-ID"], "evt_5");
   });
 
+  it("409 游标失效时丢弃游标重连，避免带着坏游标死循环", async () => {
+    const seenHeaders = [];
+    const responses = [
+      mockResponse({ status: 409 }),
+      mockResponse({ body: 'id: evt_1\ndata: {"sequence":1}\n\n' }),
+      mockResponse({ status: 204 }),
+    ];
+    let i = 0;
+    const stream = createAgentSseStream({
+      url: "http://x/events",
+      buildHeaders: () => ({}),
+      onEvent: () => {},
+      onStatus: () => {},
+      lastEventId: "evt_stale",
+      fetchImpl: (_url, opts) => { seenHeaders.push(opts.headers); return Promise.resolve(responses[i++] || mockResponse({ status: 204 })); },
+      delayFn: () => 1,
+      maxReconnects: 2,
+    });
+    await stream.done;
+    assert.equal(seenHeaders[0]["Last-Event-ID"], "evt_stale");
+    assert.equal(seenHeaders[1]?.["Last-Event-ID"], undefined, "失效游标必须被丢弃");
+  });
+
   it("401 触发 refreshAuth 后重连", async () => {
     let refreshed = 0;
     const events = [];

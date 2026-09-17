@@ -621,6 +621,90 @@ class FinalReviewRepository:
         finally:
             self._release(conn)
 
+    def apply_proposal_version(
+        self,
+        *,
+        proposal_id: str,
+        user_id: str,
+        plan: dict,
+        model_provider: str = "deterministic",
+        route_policy: str = "reasoning_primary",
+    ) -> Optional[dict]:
+        """在一个事务里应用已批准的提案:创建新版本 → 激活 → 标记提案。
+
+        三步必须同成同败:否则进程在中间崩溃会留下"版本已建但提案仍 pending"的
+        中间态,重放时会再建一个版本——这正是"激活只发生一次"要排除的情形。
+        仅当提案仍为 `pending` 时才生效;否则返回既有结果(幂等重放)。
+        """
+        now = _now()
+        with self._db.transaction() as conn:
+            proposal = conn.execute(
+                "SELECT campaign_id, source_version, model_provider, risk_level, status, "
+                "target_version FROM final_review_adjustment_proposals "
+                "WHERE proposal_id = ? AND user_id = ?",
+                (proposal_id, user_id),
+            ).fetchone()
+            if proposal is None:
+                return None
+            if proposal["status"] != "pending":
+                return {
+                    "proposal_id": proposal_id,
+                    "status": proposal["status"],
+                    "new_version": proposal["target_version"],
+                    "active_version": proposal["target_version"],
+                }
+            campaign_id = proposal["campaign_id"]
+            source_version = proposal["source_version"]
+            source = conn.execute(
+                "SELECT source_snapshot_id, risk_level, approval_id "
+                "FROM final_review_plan_versions WHERE campaign_id = ? AND version = ?",
+                (campaign_id, source_version),
+            ).fetchone()
+            if source is None:
+                raise ValueError("source plan version 不存在")
+            row = conn.execute(
+                "SELECT MAX(version) AS version FROM final_review_plan_versions "
+                "WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()
+            new_version = int(row["version"] or 0) + 1
+            conn.execute(
+                "INSERT INTO final_review_plan_versions "
+                "(campaign_id, version, user_id, plan_json, source_snapshot_id, "
+                "model_provider, route_policy, risk_level, approval_id, "
+                "supersedes_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    campaign_id,
+                    new_version,
+                    user_id,
+                    json.dumps(plan, ensure_ascii=False),
+                    source["source_snapshot_id"],
+                    model_provider or proposal["model_provider"] or "deterministic",
+                    route_policy,
+                    source["risk_level"] or proposal["risk_level"],
+                    source["approval_id"],
+                    source_version,
+                    now,
+                ),
+            )
+            conn.execute(
+                "UPDATE final_review_campaigns SET status = 'active', active_version = ?, "
+                "updated_at = ? WHERE campaign_id = ? AND user_id = ?",
+                (new_version, now, campaign_id, user_id),
+            )
+            conn.execute(
+                "UPDATE final_review_adjustment_proposals "
+                "SET status = 'approved', target_version = ?, resolved_at = ? "
+                "WHERE proposal_id = ? AND user_id = ? AND status = 'pending'",
+                (new_version, now, proposal_id, user_id),
+            )
+        return {
+            "proposal_id": proposal_id,
+            "status": "approved",
+            "new_version": new_version,
+            "active_version": new_version,
+        }
+
     def resolve_proposal(
         self,
         proposal_id: str,

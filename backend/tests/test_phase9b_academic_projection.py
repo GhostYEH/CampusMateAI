@@ -78,7 +78,7 @@ def _insert_edu_exam_item(db, user_id, item_id, semester="2024-2025-1", course_c
         )
 
 
-def test_academic_projection_creates_six_snapshots():
+def test_academic_projection_creates_expected_snapshots():
     db = _make_db()
     _add_user(db, "user1")
     _insert_edu_schedule_item(db, "user1", "sch1")
@@ -98,7 +98,10 @@ def test_academic_projection_creates_six_snapshots():
     assert "exam_exposure" in state_types
     assert "schedule_load" in state_types
     assert "goal_state" in state_types
-    assert len(result.snapshots) == 6
+    # 课程知识图谱观测是第 7 个状态: 无图谱数据时也会产出(降级为 unavailable)，
+    # 保证前端读到的状态集合稳定。
+    assert "knowledge_mastery_observation" in state_types
+    assert len(result.snapshots) == 7
 
 
 def test_academic_projection_unavailable_when_no_edu_data():

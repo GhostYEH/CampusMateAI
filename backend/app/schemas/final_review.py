@@ -90,6 +90,9 @@ class ActivateOut(_StrictModel):
     campaign_id: str
     active_version: int
     activated: bool
+    # 激活是异步命令:路由只入队,Worker 经 Gateway 落库后才真正生效。
+    status: str = "ACTIVE"
+    run_id: Optional[str] = None
 
 
 # ===== Daily agenda =====
@@ -182,12 +185,18 @@ class AdjustmentDecisionIn(_StrictModel):
 
 
 class AdjustmentDecisionOut(_StrictModel):
-    """审批决策结果。APPROVED 时创建新版本。"""
+    """审批决策结果。
+
+    决策被受理后只创建命令:新版本由 Worker 经 Gateway 创建并激活,
+    因此 `new_version` 在命令完成前为 None,客户端应据 `run_id` 观察进展。
+    """
 
     proposal_id: str
     status: str
     new_version: Optional[int] = None
     active_version: Optional[int] = None
+    run_id: Optional[str] = None
+    pending: bool = False
 
 
 __all__ = [

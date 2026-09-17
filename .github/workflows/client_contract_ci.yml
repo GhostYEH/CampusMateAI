@@ -1,0 +1,164 @@
+name: Client Contract CI
+
+# Agent Runtime 契约横跨 Web / 微信 / Android / HarmonyOS。
+# 没有契约门禁就无法安全追加恢复事件和错误码,因此这里把
+# "四端消费同一份共享 fixture" 固化成一等公民门禁。
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-contract-gate:
+    name: Agent Runtime 原子性 / Worker 恢复 / 共享 fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+      LLM_PROVIDER: none
+      LLM_BASE_URL: ""
+      LLM_API_KEY: ""
+      LLM_MODEL: ""
+      ENABLE_FALLBACK_MODE: "true"
+      DATABASE_URL: "sqlite:///./data/test_app.db"
+      KNOWLEDGE_BASE_PATH: "./data/knowledge_base"
+      AUTO_IMPORT_DEMO: "false"
+      CORS_ORIGINS: "*"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 这些门禁单独列出,失败时能直接定位是原子性、租约恢复还是契约漂移。
+      - name: Runtime atomicity and repository contract
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_agent_runtime_atomicity.py tests/test_agent_runtime_repository.py -q --tb=short
+
+      - name: Durable worker and crash recovery
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_agent_worker.py tests/test_agent_runtime_recovery.py -q --tb=short
+
+      - name: Event cursor recovery and SSE
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_agent_event_recovery.py tests/test_agent_runtime_sse.py -q --tb=short
+
+      - name: Shared cross-client fixture
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_agent_runtime_contracts.py -q --tb=short
+
+      - name: Tool gateway and capability directory
+        working-directory: backend
+        run: |
+          python -m pytest tests/test_agent_tool_gateway.py tests/test_agent_capability_registry.py -q --tb=short
+
+  web-contract:
+    name: Web 契约与生产构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: webreact/package-lock.json
+
+      - name: Install dependencies
+        working-directory: webreact
+        run: npm ci
+
+      - name: Run tests
+        working-directory: webreact
+        run: npm test
+
+      - name: Production build
+        working-directory: webreact
+        run: npm run build
+
+  wechat-contract:
+    name: 微信端类型与契约
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wx/package-lock.json
+
+      - name: Install dependencies
+        working-directory: wx
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: wx
+        run: npm run typecheck
+
+      - name: Contract checks (含 Agent Runtime 共享 fixture)
+        working-directory: wx
+        run: npm run check:contracts
+
+  # ---------------------------------------------------------------------------
+  # 未自动化的平台:这里**只做显式声明**,不伪造"已构建/已测试"状态。
+  #
+  # Android:Agent Runtime 单测需要仓库内捆绑的 JDK 21
+  #   (android/.tools/jdk21-full/jdk-21.0.12+8)。该目录未纳入 Git,
+  #   按仓库规则也不得用 actions/setup-java 绕过。在确定受控的 CI 工件或
+  #   缓存供应方案之前,Agent 单测保持"未覆盖",不得标记为已通过。
+  #   落地方式:在 windows-latest 上从仓库解析 JAVA_HOME 后运行
+  #   ./gradlew.bat testDebugUnitTest --tests "*AgentRuntime*"。
+  #
+  # HarmonyOS:官方 hvigor / SDK 尚无可重复供应方案,只做契约静态校验,
+  #   不声称完成构建。
+  # ---------------------------------------------------------------------------
+  unverified-platforms:
+    name: 未自动化平台声明
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert bundled JDK is not silently substituted
+        run: |
+          if [ ! -d android/.tools/jdk21-full ]; then
+            echo "::warning::捆绑 JDK 21 未纳入 Git，Android Agent 单测在 CI 中未覆盖（已知且显式声明）。"
+          fi
+
+      - name: Assert contract fixture is present for mobile clients
+        run: |
+          test -f backend/tests/fixtures/agent_runtime/v1/runtime.json
+          echo "共享 fixture 存在；Android / HarmonyOS 需在本地按仓库规则消费同一份语义。"

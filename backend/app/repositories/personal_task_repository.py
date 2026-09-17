@@ -449,6 +449,7 @@ class PersonalTaskRepository:
             "source_text", "source_notice_id", "priority", "importance", "reminder_minutes",
             "source", "external_id", "course_id", "source_url", "last_synced_at",
             "status", "completed_at",
+            "remote_submitted_at", "score", "score_max", "graded_at",
         }
         sets: List[str] = []
         values: List[Any] = []

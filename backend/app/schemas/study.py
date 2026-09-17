@@ -156,33 +156,57 @@ class TaskBreakdownRequest(BaseModel):
 
 
 class TaskBreakdownStep(BaseModel):
-    """结构化拆解步骤。"""
+    """结构化拆解步骤。
 
-    step_number: int = Field(..., ge=1)
-    title: str
-    description: str
-    estimated_minutes: int = Field(..., ge=0, le=600)
+    值域由服务端规范化强制保证(见 TaskBreakdownService):
+    步骤数 3~8、estimated_minutes 5~120、依赖唯一且严格小于当前 step_number。
+    """
+
+    step_number: int = Field(..., ge=1, le=8)
+    title: str = Field(..., min_length=1, max_length=256)
+    description: str = Field("", max_length=4000)
+    estimated_minutes: int = Field(..., ge=5, le=120)
     dependencies: List[int] = Field(
         default_factory=list,
-        description="依赖的 step_number 列表(必须先完成)",
+        max_length=7,
+        description="依赖的 step_number 列表(必须严格小于当前 step_number)",
     )
     completion_criteria: str = Field(
-        ..., description="完成判定标准(可观测、可检验)"
+        ..., min_length=1, max_length=1000,
+        description="完成判定标准(可观测、可检验)",
     )
     is_policy_step: bool = Field(
         False, description="是否为校园政策相关步骤(依赖知识库)"
     )
     knowledge_source: Optional[str] = Field(
-        None, description="政策步骤引用的知识库来源标题"
+        None, max_length=256, description="政策步骤引用的知识库来源标题(展示用)"
+    )
+    knowledge_document_id: Optional[str] = Field(
+        None, max_length=128,
+        description="政策步骤引用的知识库文档 ID(服务端校验用);非政策或待确认步骤必须为空",
+    )
+    knowledge_status: Literal[
+        "not_applicable", "cited", "needs_confirmation"
+    ] = Field(
+        "not_applicable",
+        description=(
+            "not_applicable=非政策步骤; cited=引用真实检索来源; "
+            "needs_confirmation=政策相关但证据不足,需人工确认"
+        ),
     )
 
 
 class TaskBreakdownResponse(BaseModel):
-    """任务拆解响应。mode 标注来源: llm | rule_fallback。"""
+    """任务拆解响应。
 
-    mode: str = Field(..., description="llm | rule_fallback")
+    `goal` 只返回 display_goal,不返回内部生成上下文(任务说明/通知原文等)。
+    """
+
+    mode: Literal["llm", "rule_fallback"] = Field(
+        ..., description="llm=模型生成成功; rule_fallback=规则降级"
+    )
     steps: List[TaskBreakdownStep]
-    goal: str = Field(..., description="实际用于拆解的目标文本")
+    goal: str = Field(..., description="展示用目标文本(display_goal)")
     related_task_id: Optional[str] = None
     related_task_title: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)

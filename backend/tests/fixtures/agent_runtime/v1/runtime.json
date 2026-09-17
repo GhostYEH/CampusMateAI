@@ -1,6 +1,6 @@
 {
   "contract_version": "v1",
-  "comment": "Runtime foundation fixture — covers job/run/event/approval/artifact shapes.",
+  "comment": "Runtime foundation fixture — covers job/run/event/approval/artifact plus the v2 increments: 202 creation, idempotency conflict, recovery events, an unknown future event clients must degrade safely, and the privacy-safe admin observability response. All clients must consume this single fixture instead of hand-writing their own samples.",
   "job": {
     "job_id": "job_01H8XKQD1",
     "user_id": "user_demo_001",
@@ -22,7 +22,9 @@
     "created_at": "2026-09-12T10:00:00+08:00",
     "updated_at": "2026-09-12T10:12:30+08:00",
     "error": null,
-    "artifact_ids": ["art_01H8XKQD3"]
+    "artifact_ids": [
+      "art_01H8XKQD3"
+    ]
   },
   "events": [
     {
@@ -48,7 +50,11 @@
       "phase": "CONTEXT_BUILDING",
       "role": "planner",
       "summary": "开始构建上下文",
-      "progress": {"current": 0, "total": 7, "percent": 0},
+      "progress": {
+        "current": 0,
+        "total": 7,
+        "percent": 0
+      },
       "artifact_id": null,
       "approval_id": null,
       "created_at": "2026-09-12T10:00:01+08:00"
@@ -62,7 +68,11 @@
       "phase": "WAITING_FOR_TOOL",
       "role": "planner",
       "summary": "已完成课程信息查询",
-      "progress": {"current": 3, "total": 7, "percent": 42},
+      "progress": {
+        "current": 3,
+        "total": 7,
+        "percent": 42
+      },
       "artifact_id": null,
       "approval_id": null,
       "created_at": "2026-09-12T10:05:00+08:00"
@@ -76,10 +86,28 @@
       "phase": "WAITING_FOR_APPROVAL",
       "role": "planner",
       "summary": "需要用户确认后继续",
-      "progress": {"current": 5, "total": 7, "percent": 71},
+      "progress": {
+        "current": 5,
+        "total": 7,
+        "percent": 71
+      },
       "artifact_id": null,
       "approval_id": "apv_01H8XKQD4",
       "created_at": "2026-09-12T10:08:00+08:00"
+    },
+    {
+      "id": "evt_10035",
+      "type": "APPROVAL_GRANTED",
+      "run_id": "run_01H8XKQD2",
+      "sequence": 35,
+      "status": "QUEUED",
+      "phase": "IDLE",
+      "role": "runtime",
+      "summary": "审批已通过，运行重新排队执行",
+      "progress": null,
+      "artifact_id": null,
+      "approval_id": "apv_01H8XKQD4",
+      "created_at": "2026-09-12T10:09:01+08:00"
     },
     {
       "id": "evt_10040",
@@ -90,7 +118,11 @@
       "phase": "IDLE",
       "role": "planner",
       "summary": "Run 已完成",
-      "progress": {"current": 7, "total": 7, "percent": 100},
+      "progress": {
+        "current": 7,
+        "total": 7,
+        "percent": 100
+      },
       "artifact_id": "art_01H8XKQD3",
       "approval_id": null,
       "created_at": "2026-09-12T10:12:30+08:00"
@@ -125,6 +157,229 @@
     "details": {
       "run_id": "run_01H8XKQD2",
       "approval_id": "apv_01H8XKQD4"
+    }
+  },
+  "v2": {
+    "comment": "v2 增量契约。四端必须消费同一份样例语义,避免各自手写漂移。",
+    "creation_202": {
+      "http_status": 202,
+      "job": {
+        "job_id": "job_01H8XKQD9",
+        "user_id": "user_demo_001",
+        "job_kind": "learning_goal",
+        "status": "QUEUED",
+        "created_at": "2026-09-14T09:00:00+08:00",
+        "updated_at": "2026-09-14T09:00:00+08:00",
+        "latest_run_id": "run_01H8XKQDA",
+        "input_ref": {
+          "goal_id": "goal_demo_001",
+          "available_minutes": 60
+        }
+      },
+      "note": "202 只保证已入队:创建响应里没有 plan_id,客户端必须订阅 latest_run_id 并在终态后重新 GET Job。"
+    },
+    "idempotent_replay": {
+      "http_status": 200,
+      "note": "相同幂等键与相同请求哈希重放返回原 Job,响应体与首次一致。",
+      "replayed": true
+    },
+    "idempotency_conflict": {
+      "http_status": 409,
+      "error_envelope": {
+        "code": "AGENT_IDEMPOTENCY_CONFLICT",
+        "message": "幂等键已用于不同的请求",
+        "request_id": "req_01H8XKQD0",
+        "details": {
+          "job_id": "job_01H8XKQD9"
+        }
+      }
+    },
+    "capability_disabled": {
+      "http_status": 409,
+      "error_envelope": {
+        "code": "AGENT_CAPABILITY_DISABLED",
+        "message": "agent 能力未启用: final_review",
+        "request_id": "req_01H8XKQD0",
+        "details": null
+      }
+    },
+    "runtime_unavailable": {
+      "http_status": 503,
+      "error_envelope": {
+        "code": "AGENT_RUNTIME_UNAVAILABLE",
+        "message": "Agent 运行时当前不接受新任务",
+        "request_id": "req_01H8XKQD0",
+        "details": null
+      }
+    },
+    "cursor_invalid": {
+      "http_status": 409,
+      "error_envelope": {
+        "code": "AGENT_CURSOR_INVALID",
+        "message": "事件游标无效。",
+        "request_id": "req_01H8XKQD0",
+        "details": null
+      },
+      "note": "客户端收到该错误后必须丢弃游标重连,并结合 REST 事件列表做一次安全全量归并。"
+    },
+    "recovery_events": [
+      {
+        "id": "evt_20001",
+        "type": "RUN_RETRY_SCHEDULED",
+        "run_id": "run_01H8XKQDA",
+        "sequence": 3,
+        "status": "QUEUED",
+        "phase": "IDLE",
+        "role": "runtime",
+        "summary": "执行失败，1 秒后重试（第 1/3 次）",
+        "progress": null,
+        "artifact_id": null,
+        "approval_id": null,
+        "created_at": "2026-09-14T09:00:05+08:00"
+      },
+      {
+        "id": "evt_20002",
+        "type": "RUN_RECOVERY_STARTED",
+        "run_id": "run_01H8XKQDA",
+        "sequence": 4,
+        "status": "RUNNING",
+        "phase": "RECOVERY_CHECKING",
+        "role": "runtime",
+        "summary": "检测到执行中断，正在检查安全恢复点",
+        "progress": null,
+        "artifact_id": null,
+        "approval_id": null,
+        "created_at": "2026-09-14T09:00:40+08:00"
+      },
+      {
+        "id": "evt_20003",
+        "type": "RUN_RECOVERED",
+        "run_id": "run_01H8XKQDA",
+        "sequence": 5,
+        "status": "QUEUED",
+        "phase": "IDLE",
+        "role": "runtime",
+        "summary": "检测到执行中断，已按安全恢复点重新排队",
+        "progress": null,
+        "artifact_id": null,
+        "approval_id": null,
+        "created_at": "2026-09-14T09:00:41+08:00"
+      }
+    ],
+    "unknown_future_event": {
+      "comment": "未来版本新增的事件类型。客户端必须记录游标、不提升权限、不崩溃,不得因此报错或中断流。",
+      "frame": {
+        "id": "evt_29999",
+        "event": "RUN_SOMETHING_UNKNOWN",
+        "data": {
+          "id": "evt_29999",
+          "type": "RUN_SOMETHING_UNKNOWN",
+          "run_id": "run_01H8XKQDA",
+          "sequence": 99,
+          "status": "RUNNING",
+          "phase": "IDLE",
+          "role": null,
+          "summary": null,
+          "progress": null,
+          "artifact_id": null,
+          "approval_id": null,
+          "created_at": "2026-09-14T09:05:00+08:00"
+        }
+      }
+    },
+    "admin_observability": {
+      "comment": "管理员观测响应必须脱敏:不得出现 prompt / model_response / credential / memory_content / raw_arguments。",
+      "overview": {
+        "window_hours": 24,
+        "since": "2026-09-13T09:00:00+00:00",
+        "queue_depth": 3,
+        "stale_lease_count": 1,
+        "run_count": 42,
+        "status_distribution": {
+          "QUEUED": 3,
+          "RUNNING": 2,
+          "SUCCEEDED": 33,
+          "FAILED": 3,
+          "CANCELLED": 1
+        },
+        "success_rate": 0.9167,
+        "duration_ms": {
+          "p50": 8400.0,
+          "p95": 61250.0,
+          "samples": 37
+        },
+        "model_latency_ms": {
+          "p50": 900.0,
+          "p95": 4200.0,
+          "samples": 51
+        },
+        "token_usage": {
+          "total_tokens": 128400,
+          "model_calls": 51
+        },
+        "tool_failure_count": 2,
+        "tool_call_count": 88,
+        "retry_count": 4,
+        "approval": {
+          "pending": 1,
+          "resolved": 6,
+          "expired": 1,
+          "wait_p50_ms": 45000.0,
+          "wait_p95_ms": 180000.0
+        }
+      },
+      "run_trace": {
+        "run": {
+          "run_id": "run_01H8XKQD2",
+          "job_id": "job_01H8XKQD1",
+          "status": "SUCCEEDED",
+          "phase": "IDLE",
+          "risk_level": "CONFIRM_REQUIRED",
+          "handler_code": "learning_goal",
+          "handler_version": "1.0.0",
+          "attempt_no": 1,
+          "error_code": null,
+          "started_at": "2026-09-12T10:00:01+08:00",
+          "finished_at": "2026-09-12T10:12:30+08:00",
+          "created_at": "2026-09-12T10:00:00+08:00",
+          "updated_at": "2026-09-12T10:12:30+08:00",
+          "duration_ms": 749000.0
+        },
+        "events": [],
+        "tool_calls": [
+          {
+            "call_id": "tcall_01",
+            "tool_name": "course.read",
+            "status": "completed",
+            "error_code": null,
+            "started_at": "2026-09-12T10:04:00+08:00",
+            "finished_at": "2026-09-12T10:05:00+08:00",
+            "duration_ms": 60000.0
+          }
+        ],
+        "model_calls": [
+          {
+            "call_id": "mcall_01",
+            "provider": "zhipu",
+            "model": "glm-4",
+            "route_policy": "reasoning_primary",
+            "status": "completed",
+            "latency_ms": 3200,
+            "total_tokens": 2400,
+            "started_at": "2026-09-12T10:02:00+08:00"
+          }
+        ],
+        "approvals": [
+          {
+            "approval_id": "apv_01H8XKQD4",
+            "status": "APPROVED",
+            "risk_level": "CONFIRM_REQUIRED",
+            "action_summary": "激活期末复习计划 v1",
+            "wait_ms": 60000.0,
+            "expires_at": "2026-09-12T10:18:00+08:00"
+          }
+        ]
+      }
     }
   }
 }

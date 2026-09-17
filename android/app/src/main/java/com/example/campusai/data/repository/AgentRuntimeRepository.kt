@@ -32,8 +32,12 @@ class AgentRuntimeRepository(
         response.body() ?: AgentCapabilitiesDto()
     }
 
-    suspend fun createJob(jobKind: String, payload: Map<String, Any?> = emptyMap()): Result<AgentJobDto> = runCatching {
-        val key = AgentIdempotency.payloadKey(userIdProvider(), "create_job", jobKind to payload)
+    suspend fun createJob(
+        jobKind: String,
+        payload: Map<String, Any?> = emptyMap(),
+        idempotencyKey: String? = null,
+    ): Result<AgentJobDto> = runCatching {
+        val key = idempotencyKey ?: AgentIdempotency.payloadKey(userIdProvider(), "create_job", jobKind to payload)
         val response = api.agentCreateJob(mapOf("job_kind" to jobKind, "input_ref" to payload), key)
         check(response.isSuccessful) { "创建任务失败(${response.code()})" }
         response.body() ?: throw IllegalStateException("任务响应为空")

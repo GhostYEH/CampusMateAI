@@ -264,5 +264,41 @@ export default function agentRuntimeModelsTest(): void {
       expect(approval.risk_level).assertEqual(RiskLevel.MANUAL_ONLY);
       expect(approval.resolved_at).assertEqual(null);
     });
+
+    // ===== Agent Runtime v2 增量契约 =====
+    // 与 backend/tests/fixtures/agent_runtime/v1/runtime.json 的 v2 段保持一致:
+    // 恢复事件与 v2 错误码必须可解析;未知值安全降级到 UNKNOWN,不崩溃、不提升权限。
+
+    it('recognises v2 recovery event types', 0, () => {
+      const recovery: string[] = ['RUN_RETRY_SCHEDULED', 'RUN_RECOVERY_STARTED', 'RUN_RECOVERED'];
+      recovery.forEach((raw: string) => {
+        expect(AgentDtoParser.eventType(raw) !== AgentEventType.UNKNOWN).assertTrue();
+      });
+    });
+
+    it('recognises v2 error codes', 0, () => {
+      const codes: string[] = [
+        'AGENT_CAPABILITY_DISABLED', 'AGENT_RUNTIME_UNAVAILABLE',
+        'AGENT_CURSOR_INVALID', 'AGENT_IDEMPOTENCY_CONFLICT'
+      ];
+      codes.forEach((raw: string) => {
+        const env = AgentDtoParser.errorEnvelope(
+          { code: raw, message: 'x', request_id: 'req_x' } as Object as Record<string, Object>
+        );
+        expect(env.code !== AgentErrorCode.UNKNOWN).assertTrue();
+      });
+    });
+
+    it('202 creation without plan id is a queued job, not a failure', 0, () => {
+      const raw: Record<string, Object> = {
+        job_id: 'job_01H8XKQD9', user_id: 'user_demo_001', job_kind: 'learning_goal',
+        status: 'QUEUED', created_at: 't', updated_at: 't',
+        latest_run_id: 'run_01H8XKQDA', input_ref: { goal_id: 'goal_demo_001' }
+      };
+      const job = AgentDtoParser.job(raw);
+      expect(job.status).assertEqual(RunStatus.QUEUED);
+      expect(job.latest_run_id !== null).assertTrue();
+      expect(job.input_ref['plan_id'] === undefined).assertTrue();
+    });
   });
 }

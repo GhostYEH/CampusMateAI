@@ -1,6 +1,8 @@
 """Run 状态机与安全恢复。
 
 状态转换严格校验,非法转换抛 AgentRuntimeError。
+所有伴随状态变化的事件都由 `AgentRuntimeRepository` 的原子方法写入,
+保证 `agent_runs.status` 与 `agent_events` 在同一事务提交。
 重启后不会盲目重放中断的执行；无法安全恢复的执行 run 会明确失败。
 """
 from __future__ import annotations
@@ -18,7 +20,9 @@ from .event_store import AgentEventStore
 _VALID_TRANSITIONS: dict[str, set[str]] = {
     "QUEUED": {"RUNNING", "PAUSED", "CANCELLED", "FAILED"},
     "RUNNING": {"AWAITING_APPROVAL", "PAUSED", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
-    "AWAITING_APPROVAL": {"RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
+        # 审批通过后，原 Run 必须能被 Worker 重新领取 —— 否则批准了也永远不会执行，
+    # 客户端就只剩下"再建一个新 Job 并带上旧 approval"这条错误路径。
+    "AWAITING_APPROVAL": {"QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
     "PAUSED": {"RUNNING", "CANCELLED"},
     "SUCCEEDED": set(),  # 终态
     "PARTIAL": {"CANCELLED"},  # 可取消
@@ -78,17 +82,12 @@ class RunManager:
                     phase="IDLE",
                     error_code="AGENT_INVALID_STATE",
                     error_message=f"run 超过 {older_than_minutes} 分钟未推进,已由兜底清理置为失败",
+                    event_type="RUN_FAILED",
+                    event_summary="运行超时未推进,已由兜底清理终止",
                 )
             except AgentRuntimeError:
                 # 并发下已被其它路径收尾:跳过即可,不视为错误。
                 continue
-            self._events.append(
-                run_id=run["run_id"],
-                type="RUN_FAILED",
-                status="FAILED",
-                phase="IDLE",
-                summary="运行超时未推进,已由兜底清理终止",
-            )
             swept += 1
         return swept
 
@@ -101,8 +100,14 @@ class RunManager:
         risk_level: Optional[str] = None,
         error_code: Optional[str] = None,
         error_message: Optional[str] = None,
+        event_type: Optional[str] = None,
+        event_status: Optional[str] = None,
+        event_phase: Optional[str] = None,
+        event_role: Optional[str] = None,
+        event_summary: Optional[str] = None,
+        event_progress: Optional[dict] = None,
     ) -> dict:
-        """执行状态转换。校验合法性后更新 run。"""
+        """执行状态转换。校验合法性后,把状态与事件在同一事务写入。"""
         run = self._repo.get_run(run_id)
         if not run:
             raise AgentRuntimeError(
@@ -115,25 +120,21 @@ class RunManager:
                 http_status=409,
             )
         self.validate_transition(run["status"], to_status)
-        now = datetime.now(timezone.utc).isoformat()
-        update_kwargs: dict = {"status": to_status}
-        if phase:
-            update_kwargs["phase"] = phase
-        if risk_level:
-            update_kwargs["risk_level"] = risk_level
-        if error_code:
-            update_kwargs["error_code"] = error_code
-        if error_message:
-            update_kwargs["error_message"] = error_message
-        if to_status == "RUNNING" and not run["started_at"]:
-            update_kwargs["started_at"] = now
-        if to_status in _TERMINAL_STATES:
-            update_kwargs["finished_at"] = now
-        self._repo.update_run(run_id, **update_kwargs)
-        # Job status mirrors the latest run so task-center queries have one
-        # authoritative lifecycle value without inspecting every run.
-        self._repo.update_job_status(run["job_id"], to_status)
-        return self._repo.get_run(run_id)
+        return self._repo.transition_run_with_event(
+            run_id,
+            to_status,
+            expected_statuses=[run["status"]],
+            phase=phase,
+            risk_level=risk_level,
+            error_code=error_code,
+            error_message=error_message,
+            event_type=event_type,
+            event_status=event_status,
+            event_phase=event_phase,
+            event_role=event_role,
+            event_summary=event_summary,
+            event_progress=event_progress,
+        )
 
     def cancel(self, run_id: str, reason: Optional[str] = None) -> dict:
         """取消 run。已完成内部动作保留记录,仅阻止未来工作。"""
@@ -150,20 +151,15 @@ class RunManager:
                 code="AGENT_RUN_CANCELLED",
                 http_status=409,
             )
-        cancelled = self.transition(
+        return self.transition(
             run_id,
             "CANCELLED",
             phase="IDLE",
             error_message=reason,
+            event_type="RUN_CANCELLED",
+            event_summary=reason or "运行已取消",
         )
-        self._events.append(
-            run_id=run_id,
-            type="RUN_CANCELLED",
-            status="CANCELLED",
-            phase="IDLE",
-            summary=reason or "运行已取消",
-        )
-        return cancelled
+
     def pause(self, run_id: str, reason: Optional[str] = None) -> dict:
         """暂停可协作中断的 Run；审批等待态不被伪装成暂停。"""
         run = self._repo.get_run(run_id)
@@ -176,12 +172,10 @@ class RunManager:
                 f"Run 当前状态({run['status']})不可暂停",
                 code="AGENT_INVALID_STATE", http_status=409,
             )
-        paused = self.transition(run_id, "PAUSED", phase="IDLE", error_message=reason)
-        self._events.append(
-            run_id=run_id, type="RUN_PAUSED", status="PAUSED", phase="IDLE",
-            summary=reason or "运行已暂停",
+        return self.transition(
+            run_id, "PAUSED", phase="IDLE", error_message=reason,
+            event_type="RUN_PAUSED", event_summary=reason or "运行已暂停",
         )
-        return paused
 
     def resume(self, run_id: str) -> dict:
         """仅从 PAUSED 恢复到 RUNNING。"""
@@ -195,14 +189,19 @@ class RunManager:
                 f"Run 当前状态({run['status']})不可恢复",
                 code="AGENT_INVALID_STATE", http_status=409,
             )
-        resumed = self.transition(run_id, "RUNNING", phase="WAITING_FOR_TOOL")
-        self._events.append(
-            run_id=run_id, type="RUN_RESUMED", status="RUNNING", phase="WAITING_FOR_TOOL",
-            summary="运行已恢复",
+        return self.transition(
+            run_id, "RUNNING", phase="WAITING_FOR_TOOL",
+            event_type="RUN_RESUMED", event_summary="运行已恢复",
         )
-        return resumed
 
-    def retry(self, run_id: str, *, idempotency_key: Optional[str] = None) -> dict:
+    def retry(
+        self,
+        run_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        handler_code: Optional[str] = None,
+        handler_version: Optional[str] = None,
+    ) -> dict:
         """为失败/部分/取消的 Run 创建新的可追踪 Run，不重放旧 Run。"""
         run = self._repo.get_run(run_id)
         if not run:
@@ -219,41 +218,18 @@ class RunManager:
         new_run_id = self._repo.create_run(
             job_id=run["job_id"], user_id=run["user_id"],
             request_id=run.get("request_id"), idempotency_key=key, retry_of=run_id,
+            handler_code=handler_code or run.get("handler_code"),
+            handler_version=handler_version or run.get("handler_version"),
         )
-        new_run = self.transition(new_run_id, "RUNNING", phase="WAITING_FOR_MODEL")
-        self._events.append(
-            run_id=new_run_id, type="RUN_RETRIED", status="RUNNING", phase="WAITING_FOR_MODEL",
-            summary=f"已从运行 {run_id} 创建重试",
-        )
-        return new_run
+        return self._repo.get_run(new_run_id) or {}
 
     def recover_incomplete_runs(self) -> list[dict]:
-        """终止无法安全恢复的中断执行，并保留持久审批等待态。
+        """兼容旧调用方；恢复工作已由带租约的 AgentWorker 接管。
 
-        当前 final-review 执行发生在请求内，进程重启后不能安全重放模型或写入。
-        ``AWAITING_APPROVAL`` 是持久化的用户等待态，不属于中断执行，保持不变。
+        旧的“启动时把所有 RUNNING 标记 FAILED”会丢失安全 checkpoint，且会
+        破坏至少一次投递语义，因此这里不再修改任何运行记录。
         """
-        incomplete = self._repo.list_incomplete_runs()
-        recovered: list[dict] = []
-        for run in incomplete:
-            if run["status"] == "AWAITING_APPROVAL":
-                continue
-            failed = self.transition(
-                run["run_id"],
-                "FAILED",
-                phase="IDLE",
-                error_code="AGENT_RECOVERY_UNSUPPORTED",
-                error_message="系统重启后无法安全恢复此运行，请重新发起请求。",
-            )
-            self._events.append(
-                run_id=run["run_id"],
-                type="RUN_FAILED",
-                status="FAILED",
-                phase="IDLE",
-                summary="系统重启后无法安全恢复，运行已终止",
-            )
-            recovered.append(failed)
-        return recovered
+        return []
 
 
 __all__ = ["RunManager"]

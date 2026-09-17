@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -30,10 +31,15 @@ def test_learning_goal_job_generates_plan_and_persists_run_lineage() -> None:
         json={"job_kind": "learning_goal", "input_ref": {"goal_id": goal.goal_id, "available_minutes": 60}},
         headers=headers,
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
     job = response.json()
-    assert job["status"] == "SUCCEEDED"
+    assert job["status"] == "QUEUED"
     assert job["latest_run_id"]
+    assert "plan_id" not in job["input_ref"]
+
+    asyncio.run(container.agent_worker.run_once())
+    job = client.get(f"/api/v1/agent-jobs/{job['job_id']}", headers=headers).json()
+    assert job["status"] == "SUCCEEDED"
     assert job["input_ref"]["plan_id"]
 
     run = client.get(f"/api/v1/agent-runs/{job['latest_run_id']}", headers=headers)
@@ -97,8 +103,11 @@ def test_learning_goal_retry_replans_and_updates_job_reference() -> None:
     )
     assert response.status_code == 200, response.text
     retried = response.json()
-    assert retried["status"] == "SUCCEEDED"
+    assert retried["status"] == "QUEUED"
     assert retried["retry_of"] == run_id
+    asyncio.run(container.agent_worker.run_once())
+    retried = client.get(f"/api/v1/agent-runs/{retried['run_id']}", headers=headers).json()
+    assert retried["status"] == "SUCCEEDED"
     job = client.get(f"/api/v1/agent-jobs/{job_id}", headers=headers).json()
     assert job["latest_run_id"] == retried["run_id"]
     assert job["input_ref"]["plan_id"]

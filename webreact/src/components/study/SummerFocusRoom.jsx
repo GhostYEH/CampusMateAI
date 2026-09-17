@@ -32,6 +32,8 @@ export default function SummerFocusRoom({
   tasks,
   taskTotal = 0,
   taskCompleted = 0,
+  taskPending = 0,
+  agendaNotice = "",
   dailyGoalMinutes = 60,
   todayFocusMinutes = 0,
   scene,
@@ -48,6 +50,7 @@ export default function SummerFocusRoom({
   onReset,
   onSkip,
   onToggleTask,
+  onOpenTask,
   onAddTask,
   onOpenPlans,
   onOpenPlanning,
@@ -134,7 +137,7 @@ export default function SummerFocusRoom({
   const status = isBreak ? (isRunning ? "休息中" : "准备休息") : active?.status === "paused" ? "暂时休息" : active ? "正在专注" : "准备开始";
   const focusTitle = isBreak ? "给自己几分钟喘口气" : active?.goal || "开始专注";
   const ambientText = isBreak ? "let the mind reset" : isRunning ? "stay with it" : "a quiet place for today";
-  const activeTodos = tasks.filter((item) => String(item.status || "pending").toLowerCase() !== "completed");
+  const activeTodos = tasks;
   const sceneIndex = Math.max(0, STUDY_SCENES.findIndex((item) => item.key === scene));
 
   return (
@@ -188,16 +191,31 @@ export default function SummerFocusRoom({
           <small>{ambientText}</small>
         </div>
 
-        {/* 右：今日待办 */}
+        {/* 右：今日待办 —— 数据来自统一 /agenda/today，标题处总数/完成数取 summary，
+            而不是对截断后的列表再统计一遍。 */}
         <aside className="study-summer-todos" aria-labelledby="study-summer-todos-title">
           <header>
-            <div><span className="study-summer-todos__icon"><Icon name="PhListChecks" size={16} /></span><div><h2 id="study-summer-todos-title">今日待办</h2><p>{activeTodos.length ? `${activeTodos.length} 件等待完成 · ${taskCompleted}/${taskTotal} 已完成` : taskTotal ? `${taskCompleted}/${taskTotal} 已完成` : "从一件小事开始"}</p></div></div>
-            <strong>{activeTodos.length}</strong>
+            <div><span className="study-summer-todos__icon"><Icon name="PhListChecks" size={16} /></span><div><h2 id="study-summer-todos-title">今日待办</h2><p>{taskPending ? `${taskPending} 件等待完成 · ${taskCompleted}/${taskTotal} 已完成` : taskTotal ? `${taskCompleted}/${taskTotal} 已完成` : "从一件小事开始"}</p></div></div>
+            <strong>{taskPending}</strong>
           </header>
           <div className="study-summer-todos__progress"><span style={{ width: `${taskTotal ? Math.round((taskCompleted / taskTotal) * 100) : 0}%` }} /></div>
+          {agendaNotice && <p className="study-summer-todos__notice" role="status">{agendaNotice}</p>}
           <form className="study-summer-todos__add" onSubmit={submitNewTodo}><Icon name="PhPlus" size={14} /><input value={todoDraft} onChange={(event) => setTodoDraft(event.target.value)} placeholder="添加一件要做的事" aria-label="添加待办" /><button type="submit" disabled={!todoDraft.trim()} aria-label="添加到清单"><Icon name="PhCheck" size={14} weight="bold" /></button></form>
           <div className="study-summer-todos__list">
-            {tasks.length ? tasks.slice(0, 8).map((task) => { const done = String(task.status || "pending").toLowerCase() === "completed"; return <button type="button" className={done ? "is-done" : ""} key={task.id} onClick={() => onToggleTask(task)} aria-pressed={done}><span className="study-summer-todo-check" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span><span>{task.title}</span><small>{task.deadline ? deadlineText(task.deadline) : ""}</small></button>; }) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}
+            {activeTodos.length ? activeTodos.slice(0, 8).map((task) => task.readOnly ? (
+              // 学习通作业/考试只读: 没有勾选框，点击进入详情而不是伪造完成。
+              <button type="button" className="is-readonly" key={task.id} onClick={() => onOpenTask?.(task)} data-readonly="true">
+                <span className="study-summer-todo-lock" aria-hidden="true"><Icon name="PhLock" size={11} /></span>
+                <span>{task.title}</span>
+                <small>{task.sourceLabel}{task.deadline ? ` · ${deadlineText(task.deadline)}` : ""}</small>
+              </button>
+            ) : (
+              <button type="button" className={task.done ? "is-done" : ""} key={task.id} onClick={() => onToggleTask(task)} aria-pressed={Boolean(task.done)}>
+                <span className="study-summer-todo-check" aria-hidden="true"><Icon name="PhCheck" size={11} weight="bold" /></span>
+                <span>{task.title}</span>
+                <small>{task.deadline ? deadlineText(task.deadline) : ""}</small>
+              </button>
+            )) : <div className="study-summer-todos__empty"><Icon name="PhSparkle" size={20} /><p>留一点空间给今天</p><small>写下一件事，然后专心完成它</small></div>}
           </div>
           <div className="study-summer-todos__footer">
             <button type="button" onClick={() => onOpenPlanning?.(goal)}><Icon name="PhSparkle" size={14} />用 AI 拆解学习目标</button>

@@ -69,9 +69,9 @@ class TestAgentRuntimeRepository:
         assert run is not None
         assert run["status"] == "QUEUED"
         assert run["phase"] == "IDLE"
-        # job 状态应更新为 RUNNING
+        # 新 Run 在被 Worker 领取前保持 QUEUED
         job = repo.get_job(job_id)
-        assert job["status"] == "RUNNING"
+        assert job["status"] == "QUEUED"
 
     def test_update_run(self, repo):
         job_id = repo.create_job(user_id="u1", job_kind="final_review")
@@ -90,8 +90,8 @@ class TestAgentRuntimeRepository:
         eid2, seq2 = repo.append_event(
             run_id=run_id, type="MODEL_COMPLETED", status="RUNNING", phase="VALIDATING_OUTPUT"
         )
-        assert seq1 == 1
-        assert seq2 == 2
+        assert seq1 == 2
+        assert seq2 == 3
         assert eid1 != eid2
 
     def test_list_events_after_sequence(self, repo):
@@ -102,7 +102,7 @@ class TestAgentRuntimeRepository:
                 run_id=run_id, type="RUN_STARTED", status="RUNNING", phase="IDLE"
             )
         events = repo.list_events(run_id, after_sequence=2)
-        assert len(events) == 3
+        assert len(events) == 4
         assert events[0]["sequence"] == 3
 
     def test_tool_call_idempotency(self, repo):

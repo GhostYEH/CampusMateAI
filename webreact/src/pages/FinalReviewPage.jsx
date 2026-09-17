@@ -80,6 +80,22 @@ export default function FinalReviewPage() {
     } catch { /* 忽略次要加载错误 */ }
   }, []);
 
+  /**
+   * 激活是异步命令:路由只入队,审批后的实际写入由 Worker 完成。
+   * 这里做有界轮询,避免 UI 停在"命令已受理但计划尚未生效"的中间态。
+   */
+  const refreshAfterActivation = useCallback(async (campaignId) => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const agenda = await api.getTodayAgenda(campaignId).catch(() => null);
+      if (agenda) {
+        await refreshCampaignDetail(campaignId);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    await refreshCampaignDetail(campaignId);
+  }, [refreshCampaignDetail]);
+
   const handleCreateCampaign = useCallback(async (body) => {
     setSubmitting(true);
     setError(null);
@@ -120,14 +136,18 @@ export default function FinalReviewPage() {
     setActivating(true);
     setError(null);
     try {
-      await api.activateFinalReviewCampaign(campaignId, version, idempotencyKey);
-      await refreshCampaignDetail(campaignId);
+      const result = await api.activateFinalReviewCampaign(campaignId, version, idempotencyKey);
+      if (result && result.activated === false) {
+        await refreshAfterActivation(campaignId);
+      } else {
+        await refreshCampaignDetail(campaignId);
+      }
     } catch (err) {
       setError(err);
     } finally {
       setActivating(false);
     }
-  }, [refreshCampaignDetail]);
+  }, [refreshCampaignDetail, refreshAfterActivation]);
 
   useEffect(() => {
     if (!run.run) return;
@@ -156,17 +176,22 @@ export default function FinalReviewPage() {
       await api.resolveAgentApproval(approval.approval_id, "APPROVED", "用户确认激活", idempotencyKey || resolveKey);
       setApproval((prev) => ({ ...prev, status: "APPROVED" }));
       if (campaign && pendingPlanVersion) {
-        await api.activateFinalReviewCampaign(
+        const result = await api.activateFinalReviewCampaign(
           campaign.campaign_id,
           pendingPlanVersion,
           createIdempotencyKey("fr_activate_after_approval"),
         );
+        // 激活命令由 Worker 异步执行:等计划真正生效再刷新,避免 UI 停在未激活状态。
+        if (result && result.activated === false) {
+          await refreshAfterActivation(campaign.campaign_id);
+          return;
+        }
       }
       if (campaign) await refreshCampaignDetail(campaign.campaign_id);
     } catch (err) {
       setError(err);
     }
-  }, [approval, resolveKey, campaign, pendingPlanVersion, refreshCampaignDetail]);
+  }, [approval, resolveKey, campaign, pendingPlanVersion, refreshCampaignDetail, refreshAfterActivation]);
 
   const handleReject = useCallback(async (idempotencyKey) => {
     if (!approval) return;

@@ -55,6 +55,9 @@ export const EVENT_TYPE = Object.freeze([
   "RUN_PAUSED",
   "RUN_RESUMED",
   "RUN_RETRIED",
+  "RUN_RETRY_SCHEDULED",
+  "RUN_RECOVERY_STARTED",
+  "RUN_RECOVERED",
 ]);
 
 // ===== Risk level（§5.5） =====
@@ -86,6 +89,8 @@ export const ERROR_CODE = Object.freeze([
   "AGENT_OUTPUT_SCHEMA_INVALID",
   "AGENT_SOURCE_POLICY_VIOLATION",
   "AGENT_ACADEMIC_POLICY_RESTRICTED",
+  "AGENT_CAPABILITY_DISABLED",
+  "AGENT_RUNTIME_UNAVAILABLE",
 ]);
 
 // ===== Academic policy（§8.2） =====
@@ -335,6 +340,8 @@ const ERROR_CODE_MESSAGE = Object.freeze({
   AGENT_OUTPUT_SCHEMA_INVALID: "模型输出格式异常，请重试",
   AGENT_SOURCE_POLICY_VIOLATION: "来源策略不允许该操作",
   AGENT_ACADEMIC_POLICY_RESTRICTED: "当前学术政策下仅提供有限帮助",
+  AGENT_CAPABILITY_DISABLED: "该 Agent 能力当前不可用",
+  AGENT_RUNTIME_UNAVAILABLE: "任务运行服务暂不接受新任务，请稍后重试",
 });
 
 const ERROR_CODE_ACTION = Object.freeze({
@@ -343,6 +350,7 @@ const ERROR_CODE_ACTION = Object.freeze({
   AGENT_IDEMPOTENCY_CONFLICT: null,
   AGENT_PROVIDER_UNAVAILABLE: "retry",
   AGENT_OUTPUT_SCHEMA_INVALID: "retry",
+  AGENT_RUNTIME_UNAVAILABLE: "retry",
 });
 
 export function mapAgentError(error) {
