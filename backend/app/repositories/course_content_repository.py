@@ -62,6 +62,7 @@ class CourseSyncSectionRow:
     status: str
     item_count: int
     last_synced_at: str
+    last_success_at: Optional[str] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
 
@@ -150,16 +151,28 @@ class CourseContentRepository:
                               status: str, item_count: int, error_code: Optional[str] = None,
                               error_message: Optional[str] = None) -> CourseSyncSectionRow:
         now = _now()
+        # last_synced_at 记录"最近一次尝试"，每次都要刷新；
+        # last_success_at 只在这次确实抓到数据(complete/partial)时才前进，
+        # 失败时保留上一次成功的时间 —— 否则"成功但 0 条 → 之后失败"会把
+        # 最近成功时间丢掉，让同步新鲜度被误判成过期。
+        succeeded = status in ("complete", "partial")
         with self._db.transaction() as conn:
             conn.execute(
                 """INSERT INTO course_sync_sections
-                   (user_id,course_id,section,status,item_count,last_synced_at,error_code,error_message)
-                   VALUES (?,?,?,?,?,?,?,?)
+                   (user_id,course_id,section,status,item_count,last_synced_at,
+                    last_success_at,error_code,error_message)
+                   VALUES (?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(user_id,course_id,section) DO UPDATE SET
                      status=excluded.status,item_count=excluded.item_count,
-                     last_synced_at=excluded.last_synced_at,error_code=excluded.error_code,
+                     last_synced_at=excluded.last_synced_at,
+                     last_success_at=CASE
+                       WHEN excluded.status IN ('complete','partial')
+                       THEN excluded.last_synced_at
+                       ELSE course_sync_sections.last_success_at END,
+                     error_code=excluded.error_code,
                      error_message=excluded.error_message""",
-                (user_id,course_id,section,status,item_count,now,error_code,error_message),
+                (user_id, course_id, section, status, item_count, now,
+                 now if succeeded else None, error_code, error_message),
             )
             row = conn.execute(
                 "SELECT * FROM course_sync_sections WHERE user_id=? AND course_id=? AND section=?",

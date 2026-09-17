@@ -4,46 +4,45 @@
 从自己关心的表反推，得出互相矛盾的时间（例如"课程同步成功但今天没有作业"
 被误判成"从未同步"）。
 
-**关键：只统计"成功"的证据，不能用失败记录的时间。**
-`course_sync_sections.last_synced_at` 是**最近一次尝试**时间 —— 仓库的 upsert 在
-失败时也会把它刷成当前时间，所以首次抓取就失败的用户会留下一个失败记录的
-`last_synced_at`；不加过滤就会被当成"同步过"，把 `never_synced` 误报成 `empty`。
+**只统计"确实成功过"的证据，并且只统计学习通来源。**
 
-因此这里只用两类证据：
 1. 只在成功路径上才会被写入的表：`courses` / `personal_tasks` / `notices` /
-   `chaoxing_exams` / `course_content_items`；
-2. `course_sync_sections` 中 `status` 为 complete/partial 的行 —— 用来覆盖
-   "同步成功但该段确实 0 条"的情况（这时没有任何条目行可依赖）。
+   `chaoxing_exams`。
+2. `course_sync_sections.last_success_at` —— 这一列**只在 status 为 complete/partial
+   时前进**，失败时保留上一次成功的时间。它必须独立于 `last_synced_at`
+   （后者是"最近一次尝试"，失败也会刷新），否则：
+   - 首次就失败会被当成同步过（never_synced → empty）；
+   - "成功但 0 条 → 之后失败"会丢掉最近成功时间，让 stale 被提前置为 true。
 
-第 1 类里的 `course_content_items` 很重要：它让"先成功、后失败"仍能被正确判定为
-已同步（同步失败不会删除已有条目，也不会改它们的 `last_synced_at`），而首次失败
-因为没有条目、section 又是 failed，就正确地落到 never_synced。
+   section 表没有 provider 列，因此通过 `courses` 关联限定 `provider='chaoxing'`，
+   避免其它来源的课程内容同步状态混进来。
+
+不依赖 `course_content_items` 反推：那张表支持多个 provider，且"成功但 0 条"时
+根本没有任何条目可依赖；`last_success_at` 才是权威的成功事实。
 
 全部只读已落库的事实，不触网。
 """
 from __future__ import annotations
 
-# 每个分支都必须是"该次同步确实成功过"的证据。
+# 每个分支都必须是"该次同步确实成功过"的证据，且限定学习通来源。
 _LAST_SYNC_SQL = """
-SELECT MAX(last_synced_at) AS synced_at FROM (
-    SELECT last_synced_at FROM courses
+SELECT MAX(synced_at) AS synced_at FROM (
+    SELECT last_synced_at AS synced_at FROM courses
      WHERE owner_user_id = ? AND provider = 'chaoxing' AND last_synced_at IS NOT NULL
     UNION ALL
-    SELECT last_synced_at FROM personal_tasks
+    SELECT last_synced_at AS synced_at FROM personal_tasks
      WHERE user_id = ? AND source LIKE 'chaoxing%' AND last_synced_at IS NOT NULL
     UNION ALL
-    SELECT last_synced_at FROM notices
+    SELECT last_synced_at AS synced_at FROM notices
      WHERE user_id = ? AND source = 'chaoxing' AND last_synced_at IS NOT NULL
     UNION ALL
-    SELECT last_synced_at FROM chaoxing_exams
+    SELECT last_synced_at AS synced_at FROM chaoxing_exams
      WHERE user_id = ? AND last_synced_at IS NOT NULL
     UNION ALL
-    SELECT last_synced_at FROM course_content_items
-     WHERE user_id = ? AND last_synced_at IS NOT NULL
-    UNION ALL
-    SELECT last_synced_at FROM course_sync_sections
-     WHERE user_id = ? AND status IN ('complete', 'partial')
-       AND last_synced_at IS NOT NULL
+    SELECT s.last_success_at AS synced_at
+      FROM course_sync_sections s
+      JOIN courses c ON c.id = s.course_id
+     WHERE s.user_id = ? AND c.provider = 'chaoxing' AND s.last_success_at IS NOT NULL
 )
 """
 
@@ -55,7 +54,7 @@ def last_chaoxing_sync_at(container, user_id: str) -> str | None:
         return None
     try:
         with db.query() as conn:
-            row = conn.execute(_LAST_SYNC_SQL, (user_id,) * 6).fetchone()
+            row = conn.execute(_LAST_SYNC_SQL, (user_id,) * 5).fetchone()
     except Exception:
         return None
     if row is None:

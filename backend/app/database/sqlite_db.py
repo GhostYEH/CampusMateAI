@@ -603,7 +603,12 @@ CREATE TABLE IF NOT EXISTS course_sync_sections (
     section TEXT NOT NULL,
     status TEXT NOT NULL,
     item_count INTEGER NOT NULL DEFAULT 0,
+    -- last_synced_at 是"最近一次尝试"时间(失败也会刷新)；
+    -- last_success_at 只在 status 为 complete/partial 时前进，用来回答
+    -- "最近一次成功同步到数据是什么时候"。两者必须分开，否则一次失败就会
+    -- 抹掉真实的成功时间，把 never_synced 误报成 empty。
     last_synced_at TEXT NOT NULL,
+    last_success_at TEXT,
     error_code TEXT,
     error_message TEXT,
     PRIMARY KEY(user_id, course_id, section),
@@ -1688,6 +1693,13 @@ CREATE TABLE IF NOT EXISTS agent_approvals (
     status TEXT NOT NULL DEFAULT 'PENDING',
     risk_level TEXT NOT NULL,
     action_summary TEXT NOT NULL,
+    -- 审批必须绑定到"具体工具 + 具体参数"，否则一次批准可以被复用到
+    -- 另一门课程 / 另一种 mode / 另一组参数。
+    tool_name TEXT,
+    request_hash TEXT,
+    -- 由 Gateway 创建（绑定到某次工具调用）时记录 call_id；
+    -- 路由提前创建（如期末复习的计划生成）时为 NULL，此时按 tool+hash 校验。
+    call_id TEXT,
     expires_at TEXT NOT NULL,
     resolved_at TEXT,
     decision_reason TEXT,
@@ -1895,11 +1907,28 @@ class Database:
                 "heartbeat_at": "TEXT",
                 "checkpoint_json": "TEXT",
             },
+            # "最近一次成功同步"必须独立于"最近一次尝试": last_synced_at 在失败时
+            # 也会被刷新，用它回答"是否同步过"会把 never_synced 误报成 empty。
+            "course_sync_sections": {"last_success_at": "TEXT"},
+            # 审批必须绑定到具体工具与具体参数，否则一次批准可以被复用到
+            # 另一门课程 / 另一种 mode / 另一组参数（旧库缺这三列）。
+            "agent_approvals": {
+                "tool_name": "TEXT",
+                "request_hash": "TEXT",
+                "call_id": "TEXT",
+            },
         }.items():
             cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        # 旧库回填: 当前状态为 complete/partial 的行，其 last_synced_at 就是一次
+        # 成功的尝试时间。failed 行不回填 —— 无法区分"从未成功"与"曾成功后失败"，
+        # 宁可少报也不要把失败当成功。
+        conn.execute(
+            "UPDATE course_sync_sections SET last_success_at = last_synced_at "
+            "WHERE last_success_at IS NULL AND status IN ('complete', 'partial')"
+        )
         # v2 队列索引依赖上面补出来的列,必须在补列之后再建,否则旧库初始化会失败。
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_claim "
