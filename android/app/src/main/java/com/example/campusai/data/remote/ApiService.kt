@@ -611,16 +611,140 @@ data class CourseContentPageDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
-// ── 交互课堂（后台已生成；仅查询已存在的课堂，不触发 OpenMAIC 生成）──
+// ── 交互课堂（生成与运行都经 CampusMate 后端；客户端绝不持有 OpenMAIC 凭据）──
+//
+// 注意：DTO 里**永远**不出现 ACCESS_CODE / Cookie / Token / Provider Key。
+// 课堂地址只有通过 ClassroomUrlPolicy 校验后才会被打开。
 data class InteractiveClassroomItemDto(
     @Json(name = "url") val url: String? = null,
+    @Json(name = "session_id") val sessionId: String? = null,
+    @Json(name = "classroom_id") val classroomId: String? = null,
+    @Json(name = "mode") val mode: String? = null,
+    @Json(name = "scenes_count") val scenesCount: Int? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    /** 无法打开时的原因（未配置公开课堂地址 / 缺少可信课堂标识）。 */
+    @Json(name = "url_unavailable_reason") val urlUnavailableReason: String? = null,
 )
+
 data class InteractiveClassroomDto(
     @Json(name = "enabled") val enabled: Boolean = false,
     @Json(name = "items") val items: List<InteractiveClassroomItemDto> = emptyList(),
 ) {
     fun existingClassroomUrls(): List<String> = if (enabled) items.mapNotNull { it.url } else emptyList()
 }
+
+/** 服务状态：configured/available/unavailable/incompatible/degraded 必须可区分。 */
+data class InteractiveClassroomStatusDto(
+    @Json(name = "enabled") val enabled: Boolean = false,
+    @Json(name = "configured") val configured: Boolean = false,
+    @Json(name = "available") val available: Boolean = false,
+    @Json(name = "unavailable") val unavailable: Boolean = false,
+    @Json(name = "incompatible") val incompatible: Boolean = false,
+    @Json(name = "degraded") val degraded: Boolean = false,
+    @Json(name = "compatibility") val compatibility: String? = null,
+    @Json(name = "version") val version: String? = null,
+    @Json(name = "capabilities") val capabilities: Map<String, Boolean> = emptyMap(),
+    @Json(name = "unavailable_capabilities") val unavailableCapabilities: List<String> = emptyList(),
+    @Json(name = "embed_origin") val embedOrigin: String? = null,
+    @Json(name = "browser_embed_available") val browserEmbedAvailable: Boolean = false,
+    @Json(name = "browser_embed_reason") val browserEmbedReason: String? = null,
+    @Json(name = "external_3d_available") val external3dAvailable: Boolean = true,
+    @Json(name = "poll_interval_ms") val pollIntervalMs: Int = 5000,
+    @Json(name = "reason") val reason: String? = null,
+)
+
+data class InteractiveClassroomMaterialDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "title") val title: String,
+    @Json(name = "kind") val kind: String? = null,
+)
+
+/** 生成**之前**的计划（只读，不创建任何任务）。 */
+data class InteractiveClassroomPlanDto(
+    @Json(name = "course_id") val courseId: String,
+    @Json(name = "course_name") val courseName: String? = null,
+    @Json(name = "mode") val mode: String = "adaptive",
+    @Json(name = "mode_label") val modeLabel: String? = null,
+    @Json(name = "requested_mode") val requestedMode: String? = null,
+    @Json(name = "adaptive_reason") val adaptiveReason: String? = null,
+    @Json(name = "intent_note") val intentNote: String? = null,
+    @Json(name = "materials") val materials: List<InteractiveClassroomMaterialDto> = emptyList(),
+    @Json(name = "context_warnings") val contextWarnings: List<String> = emptyList(),
+    @Json(name = "can_generate") val canGenerate: Boolean = false,
+    @Json(name = "external_3d_available") val external3dAvailable: Boolean = true,
+    @Json(name = "reason") val reason: String? = null,
+)
+
+data class InteractiveClassroomGenerateRequest(
+    @Json(name = "mode") val mode: String = "adaptive",
+    @Json(name = "learning_objective") val learningObjective: String? = null,
+    @Json(name = "current_difficulty") val currentDifficulty: String? = null,
+    @Json(name = "desired_duration_minutes") val desiredDurationMinutes: Int? = null,
+    @Json(name = "difficulty_level") val difficultyLevel: String? = null,
+    @Json(name = "wants_more_practice") val wantsMorePractice: Boolean = false,
+    @Json(name = "selected_material_ids") val selectedMaterialIds: List<String> = emptyList(),
+)
+
+data class InteractiveClassroomSessionDto(
+    @Json(name = "session_id") val sessionId: String,
+    @Json(name = "course_id") val courseId: String? = null,
+    @Json(name = "mode") val mode: String? = null,
+    @Json(name = "requested_mode") val requestedMode: String? = null,
+    @Json(name = "adaptive_reason") val adaptiveReason: String? = null,
+    @Json(name = "status") val status: String = "queued",
+    @Json(name = "step") val step: String = "queued",
+    @Json(name = "progress") val progress: Int = 0,
+    @Json(name = "message") val message: String? = null,
+    @Json(name = "error") val error: String? = null,
+    @Json(name = "error_code") val errorCode: String? = null,
+    @Json(name = "url") val url: String? = null,
+    /** 无法构造公开地址时的**可操作**原因（未配置公开 Origin / 缺少可信课堂标识）。 */
+    @Json(name = "url_unavailable_reason") val urlUnavailableReason: String? = null,
+    @Json(name = "scenes_count") val scenesCount: Int? = null,
+    @Json(name = "terminal") val terminal: Boolean = false,
+    @Json(name = "retryable") val retryable: Boolean = false,
+    @Json(name = "partial") val partial: Boolean = false,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+)
+
+data class InteractiveClassroomGenerateResponse(
+    @Json(name = "accepted") val accepted: Boolean = true,
+    @Json(name = "session") val session: InteractiveClassroomSessionDto,
+    @Json(name = "poll_interval_ms") val pollIntervalMs: Int = 5000,
+    @Json(name = "mode") val mode: String? = null,
+    @Json(name = "adaptive_reason") val adaptiveReason: String? = null,
+    /** 个性化来源：snapshot（原任务快照，权威）/ client_body / legacy_mode_only / request。 */
+    @Json(name = "request_source") val requestSource: String? = null,
+    @Json(name = "request_source_note") val requestSourceNote: String? = null,
+    /** 学生指定但无法解析（不存在 / 已删除 / 越权）的资料 id。 */
+    @Json(name = "materials_unresolved") val materialsUnresolved: List<String> = emptyList(),
+    @Json(name = "materials_warning") val materialsWarning: String? = null,
+)
+
+/** 真实课堂组成（回读统计，绝不根据请求形态推断）。 */
+data class InteractiveClassroomCompositionDto(
+    @Json(name = "classroom_id") val classroomId: String? = null,
+    @Json(name = "scene_total") val sceneTotal: Int = 0,
+    @Json(name = "scenes") val scenes: List<InteractiveClassroomSceneCountDto> = emptyList(),
+    @Json(name = "widget_types") val widgetTypes: List<InteractiveClassroomWidgetCountDto> = emptyList(),
+    @Json(name = "has_whiteboard") val hasWhiteboard: Boolean = false,
+    @Json(name = "has_tts") val hasTts: Boolean = false,
+    @Json(name = "has_multi_agent") val hasMultiAgent: Boolean = false,
+    @Json(name = "requires_external_3d") val requiresExternal3d: Boolean = false,
+    @Json(name = "external_3d_available") val external3dAvailable: Boolean = true,
+    @Json(name = "degraded") val degraded: Boolean = false,
+    @Json(name = "error") val error: String? = null,
+)
+
+data class InteractiveClassroomSceneCountDto(
+    @Json(name = "type") val type: String,
+    @Json(name = "count") val count: Int = 0,
+)
+
+data class InteractiveClassroomWidgetCountDto(
+    @Json(name = "widget_type") val widgetType: String,
+    @Json(name = "count") val count: Int = 0,
+)
 
 // ── 课程知识点掌握（学习通课程图谱页观测，非本地推断）──
 data class KnowledgePointDto(
@@ -1105,6 +1229,48 @@ interface ApiService {
     suspend fun getInteractiveClassroom(
         @Path("courseId") courseId: String,
     ): Response<InteractiveClassroomDto>
+
+    /** 服务状态（configured/available/incompatible/degraded 可区分）。 */
+    @GET("courses/{courseId}/interactive-classroom/status")
+    suspend fun getInteractiveClassroomStatus(
+        @Path("courseId") courseId: String,
+    ): Response<InteractiveClassroomStatusDto>
+
+    /** 生成前的只读计划：课程、可选资料、推荐形态与理由。不创建任何任务。 */
+    @GET("courses/{courseId}/interactive-classroom/plan")
+    suspend fun getInteractiveClassroomPlan(
+        @Path("courseId") courseId: String,
+        @Query("mode") mode: String = "adaptive",
+    ): Response<InteractiveClassroomPlanDto>
+
+    /** 明确提交一次生成（调用方必须先让学生确认）。 */
+    @POST("courses/{courseId}/interactive-classroom/generate")
+    suspend fun generateInteractiveClassroom(
+        @Path("courseId") courseId: String,
+        @Body body: InteractiveClassroomGenerateRequest,
+    ): Response<InteractiveClassroomGenerateResponse>
+
+    /** 轮询进度（服务端会现场轮询一次 OpenMAIC）。 */
+    @GET("courses/{courseId}/interactive-classroom/jobs/{sessionId}")
+    suspend fun getInteractiveClassroomJob(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+    ): Response<InteractiveClassroomSessionDto>
+
+    /** 重试 = 重新提交一个新任务（OpenMAIC 没有原生 retry）。 */
+    @POST("courses/{courseId}/interactive-classroom/{sessionId}/retry")
+    suspend fun retryInteractiveClassroom(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+        @Body body: InteractiveClassroomGenerateRequest,
+    ): Response<InteractiveClassroomGenerateResponse>
+
+    /** 回读这节课**真实**包含的内容。 */
+    @GET("courses/{courseId}/interactive-classroom/{sessionId}/composition")
+    suspend fun getInteractiveClassroomComposition(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+    ): Response<InteractiveClassroomCompositionDto>
 
     @GET("courses/{courseId}/resources/{itemId}/open")
     suspend fun openCourseResource(

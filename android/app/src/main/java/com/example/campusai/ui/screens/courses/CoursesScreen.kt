@@ -103,6 +103,9 @@ fun CoursesScreen(
     repository: AppRepository,
     onOpenSchedule: () -> Unit = {},
     onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit = { _, _, _ -> },
+    initialCourseId: String? = null,
+    initialTab: String? = null,
+    initialSessionId: String? = null,
 ) {
     val courses by repository.courses.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
@@ -114,6 +117,11 @@ fun CoursesScreen(
 
     // 进入页面时尝试从后端拉取最新课程
     androidx.compose.runtime.LaunchedEffect(Unit) { repository.refreshCourses() }
+    androidx.compose.runtime.LaunchedEffect(courses, initialCourseId) {
+        if (selectedCourse == null && !initialCourseId.isNullOrBlank()) {
+            selectedCourse = courses.firstOrNull { it.id == initialCourseId }
+        }
+    }
     val types = listOf("全部", "今日课程", "专业课", "公共课", "实验课")
     val visibleCourses = courses.filter { course ->
         when (selectedType) {
@@ -197,7 +205,13 @@ fun CoursesScreen(
     }
 
     selectedCourse?.let { course ->
-        CourseDetailSheet(course = course, repository = repository, onDismiss = { selectedCourse = null }, onOpenCounselor = onOpenCounselor)
+        CourseDetailSheet(
+            course = course,
+            repository = repository,
+            initialSessionId = initialSessionId,
+            onDismiss = { selectedCourse = null },
+            onOpenCounselor = onOpenCounselor,
+        )
     }
 }
 
@@ -509,6 +523,7 @@ private fun EmptyCourses() {
 private fun CourseDetailSheet(
     course: Course,
     repository: AppRepository,
+    initialSessionId: String? = null,
     onDismiss: () -> Unit,
     onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit,
 ) {
@@ -569,6 +584,13 @@ private fun CourseDetailSheet(
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
+            item {
+                InteractiveClassroomSection(
+                    course = course,
+                    repository = repository,
+                    initialSessionId = initialSessionId,
+                )
+            }
             item {
                 Button(
                     onClick = {

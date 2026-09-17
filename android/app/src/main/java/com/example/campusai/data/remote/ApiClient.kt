@@ -9,6 +9,8 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.example.campusai.data.remote.agent.CounselorFinalMetaDto
+import com.example.campusai.data.remote.agent.CounselorSseParser
 import com.example.campusai.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -194,7 +196,11 @@ object ApiClient {
         return if (url.startsWith("/")) "$staticOrigin$url" else "$staticOrigin/$url"
     }
 
-    suspend fun streamCounselor(request: ChatRequest, onChunk: suspend (String) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun streamCounselor(
+        request: ChatRequest,
+        onChunk: suspend (String) -> Unit,
+        onMeta: suspend (CounselorFinalMetaDto) -> Unit = {},
+    ) = withContext(Dispatchers.IO) {
         val payload = moshi.adapter(ChatRequest::class.java).toJson(request.copy(stream = true))
         val httpRequest = Request.Builder()
             .url("${BASE_URL}counselor/chat")
@@ -207,6 +213,41 @@ object ApiClient {
             val source = response.body?.source() ?: throw java.io.IOException("AI 服务没有返回内容")
             var event = ""
             val data = StringBuilder()
+            // 同一个流里只认第一个 done：代理重放/重复事件不得二次触发副作用。
+            var doneSeen = false
+
+            /** 派发一条已完整收到的事件（空行分隔，或流结束时 flush）。 */
+            suspend fun dispatch() {
+                if (event.isEmpty() || data.isEmpty()) {
+                    event = ""
+                    data.clear()
+                    return
+                }
+                val current = event
+                val payload = data.toString()
+                event = ""
+                data.clear()
+                when (current) {
+                    "chunk" -> {
+                        val text = org.json.JSONObject(payload).optString("text")
+                        if (text.isNotEmpty()) {
+                            withContext(Dispatchers.Main.immediate) { onChunk(text) }
+                        }
+                    }
+                    "done" -> {
+                        if (!doneSeen) {
+                            doneSeen = true
+                            CounselorSseParser.parseFinalMeta(payload)?.let { meta ->
+                                withContext(Dispatchers.Main.immediate) { onMeta(meta) }
+                            }
+                        }
+                    }
+                    "error" -> throw java.io.IOException(
+                        org.json.JSONObject(payload).optString("message", "AI 服务生成失败"),
+                    )
+                }
+            }
+
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
                 when {
@@ -218,20 +259,12 @@ object ApiClient {
                         if (data.isNotEmpty()) data.append('\n')
                         data.append(line.removePrefix("data:").removePrefix(" "))
                     }
-                    line.isEmpty() -> {
-                        if (event == "chunk" && data.isNotEmpty()) {
-                            val text = org.json.JSONObject(data.toString()).optString("text")
-                            if (text.isNotEmpty()) {
-                                withContext(Dispatchers.Main.immediate) { onChunk(text) }
-                            }
-                        } else if (event == "error") {
-                            throw java.io.IOException(org.json.JSONObject(data.toString()).optString("message", "AI 服务生成失败"))
-                        }
-                        event = ""
-                        data.clear()
-                    }
+                    line.isEmpty() -> dispatch()
                 }
             }
+            // 连接在最后一条事件之后直接关闭（没有结尾空行）时，最后一条事件
+            // **必须照样 flush** —— 否则最终的 done 元数据（含互动课堂提案）会丢失。
+            dispatch()
         }
     }
 

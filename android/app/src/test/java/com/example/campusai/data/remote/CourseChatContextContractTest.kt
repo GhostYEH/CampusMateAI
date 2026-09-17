@@ -69,7 +69,21 @@ class CourseChatContextContractTest {
         val dtoProps = InteractiveClassroomDto::class.memberProperties.map { it.name }.toSet()
         assertEquals(setOf("enabled", "items"), dtoProps)
         val itemProps = InteractiveClassroomItemDto::class.memberProperties.map { it.name }.toSet()
-        assertEquals(setOf("url"), itemProps)
+        // 阶段 6 扩展了历史课堂条目（会话/形态/场景数/生成时间），用于渲染历史区。
+        // 断言重点仍是"没有任何凭据字段"，而不是字段集合一成不变。
+        assertEquals(
+            setOf("url", "sessionId", "classroomId", "mode", "scenesCount", "createdAt", "urlUnavailableReason"),
+            itemProps,
+        )
+        val forbidden = listOf("accesscode", "cookie", "token", "apikey", "secret", "password")
+        (dtoProps + itemProps).forEach { name ->
+            forbidden.forEach { bad ->
+                assertFalse(
+                    "互动课堂 DTO 不应包含凭据字段: $name",
+                    name.lowercase().contains(bad),
+                )
+            }
+        }
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.example.campusai.data.repository
 
+import retrofit2.Response
+
 import android.app.Application
 import com.example.campusai.data.local.AppDataStore
 import com.example.campusai.data.local.CredentialStore
@@ -11,6 +13,14 @@ import com.example.campusai.data.expression.MockExpressionRecognitionService
 import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
 import com.example.campusai.data.remote.ApiClient
+import com.example.campusai.data.remote.InteractiveClassroomStatusDto
+import com.example.campusai.data.remote.InteractiveClassroomSessionDto
+import com.example.campusai.data.remote.InteractiveClassroomPlanDto
+import com.example.campusai.data.remote.InteractiveClassroomItemDto
+import com.example.campusai.data.remote.InteractiveClassroomGenerateResponse
+import com.example.campusai.data.remote.InteractiveClassroomGenerateRequest
+import com.example.campusai.data.remote.InteractiveClassroomCompositionDto
+import com.example.campusai.data.remote.agent.CounselorFinalMetaDto
 import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.RefreshRequest
 import com.example.campusai.data.remote.ChatRequest
@@ -1241,6 +1251,7 @@ class AppRepository(
         expression: ExpressionResult? = null,
         courseId: String? = null,
         onChunk: suspend (String) -> Unit,
+        onMeta: suspend (CounselorFinalMetaDto) -> Unit = {},
     ) {
         if (_mockMode.value) {
             onChunk("**Mock 模式**未连接后端数据库与 DS，无法生成正式的校园事务答复。")
@@ -1266,6 +1277,7 @@ class AppRepository(
                 expression_signal = expressionSignal,
             ),
             onChunk = onChunk,
+            onMeta = onMeta,
         )
     }
 
@@ -1284,6 +1296,131 @@ class AppRepository(
             }
         }
         return emptyList()
+    }
+
+    /** 把失败响应转成可读文案；不含任何内部细节或凭据。 */
+    private fun Response<*>.errorMessage(fallback: String): String = when (code()) {
+        401, 403 -> "登录状态已失效，请重新登录"
+        404 -> "课程或课堂不存在"
+        409 -> "当前状态不允许该操作，请刷新后重试"
+        410 -> "确认已过期，请重新发起"
+        422 -> "请求参数不合法"
+        503 -> "互动课堂服务暂不可用"
+        else -> fallback
+    }
+
+    // ── 互动课堂：状态 / 计划 / 生成 / 进度 / 组成 / 历史（真实调用点）──
+
+    /** 生成前的只读计划：课程、可选资料、推荐形态与理由。**不创建任何任务**。 */
+    suspend fun interactiveClassroomPlan(courseId: String, mode: String): InteractiveClassroomPlanDto? {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomPlan(courseId, mode)
+            if (resp.isSuccessful) resp.body() else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 历史课堂（公开地址可能为 null，附 urlUnavailableReason）。 */
+    suspend fun interactiveClassroomHistory(courseId: String): List<InteractiveClassroomItemDto> {
+        if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return emptyList()
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroom(courseId)
+            if (resp.isSuccessful && resp.body()?.enabled == true) resp.body()?.items.orEmpty()
+            else emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** 明确提交一次生成。**调用方必须先让学生确认**。 */
+    suspend fun generateInteractiveClassroom(
+        courseId: String,
+        request: InteractiveClassroomGenerateRequest,
+    ): Result<InteractiveClassroomGenerateResponse> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法生成互动课堂"))
+        }
+        return try {
+            val resp = ApiClient.api.generateInteractiveClassroom(courseId, request)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("生成请求被拒绝")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 轮询进度（服务端会现场轮询一次 OpenMAIC）。 */
+    suspend fun interactiveClassroomJob(
+        courseId: String,
+        sessionId: String,
+    ): Result<InteractiveClassroomSessionDto> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法查询进度"))
+        }
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomJob(courseId, sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("进度查询失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 重试 = 重新提交一个新任务（OpenMAIC 没有原生 retry）。 */
+    suspend fun retryInteractiveClassroom(
+        courseId: String,
+        sessionId: String,
+        request: InteractiveClassroomGenerateRequest,
+    ): Result<InteractiveClassroomGenerateResponse> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法重试"))
+        }
+        return try {
+            val resp = ApiClient.api.retryInteractiveClassroom(courseId, sessionId, request)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("重试失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 回读这节课**真实**包含的内容。读取失败返回 failure，由 UI 明说失败而不是显示空课堂。 */
+    suspend fun interactiveClassroomComposition(
+        courseId: String,
+        sessionId: String,
+    ): Result<InteractiveClassroomCompositionDto> {
+        if (!_backendOnline.value || _mockMode.value) {
+            return Result.failure(IllegalStateException("离线状态下无法读取课堂内容"))
+        }
+        return try {
+            val resp = ApiClient.api.getInteractiveClassroomComposition(courseId, sessionId)
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) Result.success(body)
+            else Result.failure(IllegalStateException(resp.errorMessage("课堂内容读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 查询互动课堂服务状态（只读）。调用方用其中的 embed_origin 作为
+     * ClassroomUrlPolicy 的可信白名单；服务不可用时返回 null。
+     */
+    suspend fun interactiveClassroomStatus(courseId: String): InteractiveClassroomStatusDto? {
+        if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
+            return try {
+                val resp = ApiClient.api.getInteractiveClassroomStatus(courseId)
+                if (resp.isSuccessful) resp.body() else null
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return null
     }
 
     suspend fun extractNotice(text: String): ExtractResult {
