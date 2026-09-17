@@ -61,12 +61,16 @@ class OpenMAICProtocolError(AppException):
     message = "互动课堂服务响应异常，请稍后重试"
 
 
-class OpenMAICGenerationFailed(AppException):
-    """OpenMAIC 生成任务最终失败。"""
+class OpenMAICIncompatible(AppException):
+    """目标 OpenMAIC 部署与 CampusMate 期望的契约不兼容（版本或端点语义）。
 
-    code = "OPENMAIC_GENERATION_FAILED"
-    http_status = 502
-    message = "互动课堂生成失败，可重试"
+    这是**部署/配置**问题而非瞬时故障，因此与 `OpenMAICUnavailable` 严格区分：
+    客户端应提示"版本不匹配"，而不是"稍后重试"。
+    """
+
+    code = "OPENMAIC_INCOMPATIBLE"
+    http_status = 503
+    message = "互动课堂服务版本不兼容，已暂停生成"
 
 
 class OpenMAICInvalidOrigin(AppException):
@@ -77,6 +81,11 @@ class OpenMAICInvalidOrigin(AppException):
     message = "互动课堂返回地址校验失败"
 
 
+# 说明：曾经存在 `OpenMAICGenerationFailed`，但它从未被抛出过。
+# 生成失败在设计上是**任务状态**（`status="failed"` + `error_code`），不是 HTTP 异常：
+# 客户端是轮询任务的，抛出异常会让它拿不到失败状态与重试入口。因此删除该无用抽象。
+
+
 __all__ = [
     "OpenMAICNotEnabled",
     "OpenMAICUnavailable",
@@ -84,6 +93,6 @@ __all__ = [
     "OpenMAICRateLimited",
     "OpenMAICServerError",
     "OpenMAICProtocolError",
-    "OpenMAICGenerationFailed",
+    "OpenMAICIncompatible",
     "OpenMAICInvalidOrigin",
 ]

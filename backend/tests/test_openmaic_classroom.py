@@ -26,7 +26,7 @@ from app.main import create_app
 from app.repositories.multi_role_repository import CourseRepository
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
-from app.services.openmaic.client import OpenMAICClient
+from app.services.openmaic.client import PROBE_JOB_ID, OpenMAICClient
 from app.services.openmaic.classroom_service import OpenMAICClassroomService
 from app.services.openmaic.course_context import build_course_context
 from app.services.openmaic.requirement_builder import (
@@ -48,9 +48,30 @@ def _test_settings(**overrides) -> Settings:
         agent_allow_mock_providers=True,
         openmaic_enabled=True,
         openmaic_base_url=BASE,
+        # 浏览器公开 Origin 与内部 BASE_URL 分离；测试里用同一地址便于断言
+        openmaic_embed_origin=BASE,
     )
     kwargs.update(overrides)
     return Settings(**kwargs)
+
+
+def probe_not_found_response() -> httpx.Response:
+    """契约指纹 P3 的真实期望：格式合法但不存在的 jobId → 404 INVALID_REQUEST。"""
+    return httpx.Response(
+        404,
+        json={
+            "success": False,
+            "errorCode": "INVALID_REQUEST",
+            "error": "Classroom generation job not found",
+        },
+    )
+
+
+def is_probe_request(request: httpx.Request) -> bool:
+    """只匹配契约指纹探针（用固定的探针 jobId），不要误伤真实轮询。"""
+    return request.method == "GET" and request.url.path.endswith(
+        f"/api/generate-classroom/{PROBE_JOB_ID}"
+    )
 
 
 def _transport(handler):
@@ -214,7 +235,8 @@ def test_poll_success_validates_url_and_id():
     result = asyncio.run(client.poll("job_abc"))
     assert result.status == "succeeded"
     assert result.classroom_id == "room_1"
-    assert result.classroom_url == f"{BASE}/classroom/room_1"
+    # 客户端只做内部 Origin 校验；该字段是**内部**值，绝不进入领域层/响应
+    assert result.upstream_classroom_url == f"{BASE}/classroom/room_1"
     assert result.scenes_count == 6
 
 
@@ -357,10 +379,21 @@ def _setup_routes(tmp_path, handler, **settings_overrides):
 def _success_handler(requests: list):
     def handler(request: httpx.Request):
         requests.append(request)
+        if request.url.path.endswith("/api/access-code/status"):
+            return httpx.Response(
+                200, json={"success": True, "enabled": False, "authenticated": False}
+            )
         if request.url.path.endswith("/api/health"):
             return httpx.Response(
-                200, json={"success": True, "capabilities": {"webSearch": False, "tts": True}}
+                200,
+                json={
+                    "success": True,
+                    "status": "ok",
+                    "capabilities": {"webSearch": False, "tts": True},
+                },
             )
+        if is_probe_request(request):
+            return probe_not_found_response()
         if request.method == "POST" and request.url.path.endswith("/api/generate-classroom"):
             return httpx.Response(202, json={"success": True, "jobId": "job_success"})
         return httpx.Response(
@@ -395,7 +428,9 @@ def test_generate_returns_202_then_poll_succeeds(tmp_path):
     session = body["session"]
     assert session["status"] == "queued"
     assert session["job_id"] == "job_success"
-    assert session["mode"] == "practice"
+    # 旧值 practice 归一化到规范意图 quiz（阶段 2 / 决策 D2）
+    assert session["mode"] == "quiz"
+    assert session["requested_mode"] == "quiz"
 
     # 幂等：任务仍进行中时再次生成返回同一 session(不重复提交)
     gen2 = client.post(
@@ -452,17 +487,18 @@ def test_nonexistent_course_rejected(tmp_path):
     assert resp.status_code in (404, 403)
 
 
-def test_no_permission_course_rejected(tmp_path):
-    container, client, headers, _ = _setup_routes(tmp_path, _success_handler([]))
-    # 演示学生已经存在并且有权限加载 demo 课程;越权测试通过不存在课程已经部分覆盖。
-    # 完整权限校验已经在 assert_course_access 级别完成，这里不再插入违反约束的数据。
-    pass
-
-
 def test_task_failure_surfaces_retryable_state(tmp_path):
     def handler(request: httpx.Request):
+        if request.url.path.endswith("/api/access-code/status"):
+            return httpx.Response(
+                200, json={"success": True, "enabled": False, "authenticated": False}
+            )
         if request.url.path.endswith("/api/health"):
-            return httpx.Response(200, json={"success": True, "capabilities": {}})
+            return httpx.Response(
+                200, json={"success": True, "status": "ok", "capabilities": {}}
+            )
+        if is_probe_request(request):
+            return probe_not_found_response()
         if request.method == "POST":
             return httpx.Response(202, json={"success": True, "jobId": "job_fail"})
         return httpx.Response(

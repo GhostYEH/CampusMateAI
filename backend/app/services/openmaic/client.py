@@ -41,6 +41,14 @@ _CLASSROOM_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,192}$")
 
 ACCESS_COOKIE_NAME = "openmaic_access"
 
+# 契约指纹探针使用的 jobId：格式合法(isValidClassroomJobId = /^[a-zA-Z0-9_-]+$/)
+# 但必然不存在，因此目标服务会走"job not found"分支返回 404 —— 这是在不创建
+# 任何生成任务、不产生任何成本的前提下证明作业族存在与语义稳定的最稳办法。
+PROBE_JOB_ID = "__probe__"
+
+# 契约指纹包含的三个只读探针
+PROBE_CHECKS = ("health", "access_code", "generate_classroom")
+
 # 目标部署 generate-classroom 真实步骤(见 lib/server/classroom-generation.ts)
 GENERATION_STEPS = (
     "initializing",
@@ -79,6 +87,15 @@ def normalize_status(raw: Any) -> str:
     return status if status in JOB_STATUS_VALUES else "running"
 
 
+def _optional_int(raw: Any) -> Optional[int]:
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 # ===== 结果结构(扁平 { success: true, ... } OpenMAIC 契约) =====
 
 
@@ -110,8 +127,38 @@ class OpenMAICPollResult:
     done: bool = False
     error: Optional[str] = None
     classroom_id: Optional[str] = None
-    classroom_url: Optional[str] = None
+    # **仅内部**：上游返回并已通过内部 Origin 校验的地址。
+    # 绝不允许持久化或下发给客户端 —— 公开地址由 public_url 模块按公开 Origin 现场构造。
+    upstream_classroom_url: Optional[str] = None
     scenes_count: Optional[int] = None
+    # 真实进度计数（用于判断"部分完成"：succeeded 但产出少于预期）
+    scenes_generated: Optional[int] = None
+    total_scenes: Optional[int] = None
+
+    @property
+    def partial(self) -> bool:
+        return bool(
+            self.status == "succeeded"
+            and self.total_scenes is not None
+            and self.scenes_generated is not None
+            and self.scenes_generated < self.total_scenes
+        )
+
+
+@dataclass
+class OpenMAICProbeResult:
+    """契约指纹探测结果。**不抛异常**：探测失败也要能安全降级为状态。"""
+
+    ok: bool
+    version: str = ""
+    capabilities: Dict[str, bool] = field(default_factory=dict)
+    access_code_required: bool = False
+    authenticated: bool = True
+    checks: Dict[str, bool] = field(default_factory=dict)
+    failed_check: Optional[str] = None
+    # 服务不可达（连接失败/超时），与"契约不兼容"是两回事
+    unreachable: bool = False
+    reason: str = ""
 
 
 class OpenMAICClient:
@@ -125,9 +172,14 @@ class OpenMAICClient:
         origin: Optional[str] = None,
         transport: Optional[httpx.AsyncBaseTransport] = None,
         access_code: str = "",
+        probe_timeout_seconds: Optional[float] = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
+        # 探测用更短的超时：健康检查不能拖慢课程详情页
+        self._probe_timeout = (
+            timeout_seconds if probe_timeout_seconds is None else probe_timeout_seconds
+        )
         self._origin = origin or self._origin_from(base_url)
         self._transport = transport
         self._access_code = (access_code or "").strip()
@@ -142,9 +194,9 @@ class OpenMAICClient:
         parsed = urlparse(base_url)
         return f"{parsed.scheme}://{parsed.netloc}"
 
-    def _client(self) -> httpx.AsyncClient:
+    def _client(self, timeout: Optional[float] = None) -> httpx.AsyncClient:
         kwargs: Dict[str, Any] = {
-            "timeout": self._timeout,
+            "timeout": self._timeout if timeout is None else timeout,
             "base_url": self._base_url,
             "follow_redirects": False,
         }
@@ -301,9 +353,10 @@ class OpenMAICClient:
         *,
         params: Optional[dict] = None,
         json_body: Optional[dict] = None,
+        timeout: Optional[float] = None,
     ) -> httpx.Response:
         try:
-            async with self._client() as client:
+            async with self._client(timeout=timeout) as client:
                 await self._ensure_access(client)
                 return await client.request(
                     method, path, params=params, json=json_body
@@ -312,6 +365,138 @@ class OpenMAICClient:
             raise OpenMAICUnavailable(f"OpenMAIC 请求超时: {type(exc).__name__}") from exc
         except httpx.HTTPError as exc:
             raise OpenMAICUnavailable(f"OpenMAIC 连接失败: {type(exc).__name__}") from exc
+
+    # ===== 契约指纹（只读、零成本、无副作用）=====
+
+    async def _raw_get(self, path: str, *, timeout: Optional[float] = None) -> httpx.Response:
+        """不做状态码判定的 GET —— 探针需要区分 404/400/200，不能复用 `_request`。"""
+        try:
+            async with self._client(timeout=timeout) as client:
+                await self._ensure_access(client)
+                return await client.get(path)
+        except httpx.TimeoutException as exc:
+            raise OpenMAICUnavailable(f"OpenMAIC 请求超时: {type(exc).__name__}") from exc
+        except httpx.HTTPError as exc:
+            raise OpenMAICUnavailable(f"OpenMAIC 连接失败: {type(exc).__name__}") from exc
+
+    @staticmethod
+    def _json_dict(response: httpx.Response) -> Optional[Dict[str, Any]]:
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    async def probe(self) -> OpenMAICProbeResult:
+        """用三个只读探针判断目标部署的契约是否与预期一致。
+
+        依据（对参考实现源码核对）：
+        - P1 `GET /api/health`：`apiSuccess({status:'ok', version, capabilities})`
+          → 必须 200 且带 `success:true`、`status:'ok'`、`capabilities` 为对象。
+        - P2 `GET /api/access-code/status`：`apiSuccess({enabled, authenticated})`
+          → 必须 200 且 `enabled` 是布尔。
+        - P3 `GET /api/generate-classroom/{不存在的合法 id}`：作业族存在时返回
+          404 `INVALID_REQUEST` + "Classroom generation job not found"。
+          **不会创建任何任务**，是本设计里唯一能零成本验证作业族的办法。
+
+        绝不抛异常：不可达 → `unreachable=True`；契约不符 → `failed_check` 指出哪一项。
+        """
+        result = OpenMAICProbeResult(ok=False, checks={name: False for name in PROBE_CHECKS})
+        try:
+            health_response = await self._raw_get("/api/health", timeout=self._probe_timeout)
+        except OpenMAICAuthError:
+            result.failed_check = "access_code"
+            result.access_code_required = True
+            result.authenticated = False
+            result.reason = "目标服务启用了访问码，但后端未配置 OPENMAIC_ACCESS_CODE"
+            return result
+        except OpenMAICUnavailable as exc:
+            result.unreachable = True
+            result.reason = f"互动课堂服务不可达: {type(exc).__name__}"
+            return result
+        result.checks["health"] = self._check_health(health_response, result)
+
+        try:
+            access_response = await self._raw_get(
+                "/api/access-code/status", timeout=self._probe_timeout
+            )
+        except OpenMAICUnavailable as exc:
+            result.unreachable = True
+            result.reason = f"互动课堂服务不可达: {type(exc).__name__}"
+            return result
+        result.checks["access_code"] = self._check_access_code(access_response, result)
+
+        if result.access_code_required and not result.authenticated:
+            result.failed_check = "access_code"
+            result.reason = "目标服务启用了访问码，但后端未配置 OPENMAIC_ACCESS_CODE"
+            return result
+
+        try:
+            job_response = await self._raw_get(
+                f"/api/generate-classroom/{PROBE_JOB_ID}", timeout=self._probe_timeout
+            )
+        except OpenMAICUnavailable as exc:
+            result.unreachable = True
+            result.reason = f"互动课堂服务不可达: {type(exc).__name__}"
+            return result
+        result.checks["generate_classroom"] = self._check_generate_family(job_response)
+
+        for name in PROBE_CHECKS:
+            if not result.checks[name]:
+                result.failed_check = name
+                result.reason = result.reason or f"契约探针 {name} 不通过"
+                return result
+        result.ok = True
+        return result
+
+    @staticmethod
+    def _check_health(response: httpx.Response, result: "OpenMAICProbeResult") -> bool:
+        if response.status_code != 200:
+            return False
+        payload = OpenMAICClient._json_dict(response)
+        if payload is None or payload.get("success") is not True:
+            return False
+        if payload.get("status") != "ok":
+            return False
+        capabilities = payload.get("capabilities")
+        if not isinstance(capabilities, dict):
+            return False
+        result.version = str(payload.get("version") or "")
+        result.capabilities = {
+            str(key): bool(value)
+            for key, value in capabilities.items()
+            if isinstance(value, bool)
+        }
+        return True
+
+    @staticmethod
+    def _check_access_code(response: httpx.Response, result: "OpenMAICProbeResult") -> bool:
+        if response.status_code != 200:
+            return False
+        payload = OpenMAICClient._json_dict(response)
+        if payload is None or payload.get("success") is not True:
+            return False
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            return False
+        result.access_code_required = enabled
+        if enabled:
+            result.authenticated = bool(payload.get("authenticated"))
+        else:
+            result.authenticated = True
+        return True
+
+    @staticmethod
+    def _check_generate_family(response: httpx.Response) -> bool:
+        """作业族存在性：未知但格式合法的 jobId 必须返回 404 + INVALID_REQUEST。"""
+        if response.status_code != 404:
+            return False
+        payload = OpenMAICClient._json_dict(response)
+        if payload is None or payload.get("success") is not False:
+            return False
+        if payload.get("errorCode") != "INVALID_REQUEST":
+            return False
+        return "not found" in str(payload.get("error") or "").lower()
 
     # ===== 对外能力 =====
 
@@ -340,7 +525,25 @@ class OpenMAICClient:
             json_body=input_payload,
         )
         job_id = self._validate_openmaic_job_id(payload.get("jobId"))
-        return OpenMAICSubmitResult(job_id=job_id)
+        # 真实契约：202 响应里带 status / step，新建任务时为 queued。
+        # 字段**缺失**时按真实契约的取值 queued 处理，而不是走 normalize_status 的
+        # "running" 兜底 —— 新建任务不可能是 running，那是臆测。
+        raw_status = payload.get("status")
+        raw_step = payload.get("step")
+        status = normalize_status(raw_status) if raw_status is not None else "queued"
+        step = normalize_step(raw_step, status) if raw_step is not None else "queued"
+        return OpenMAICSubmitResult(job_id=job_id, status=status, step=step)
+
+    async def fetch_classroom(self, classroom_id: str) -> Dict[str, Any]:
+        """只读回读课堂文档（用于如实统计真实组成）。
+
+        端点：`GET /api/classroom?id={classroomId}`，返回
+        `{success:true, classroom:{id, stage, scenes[], createdAt}}`。
+        """
+        validated = self._validate_classroom_id(classroom_id)
+        if validated is None:
+            raise OpenMAICProtocolError("课堂 ID 无效")
+        return await self._request("GET", "/api/classroom", params={"id": validated})
 
     async def poll(self, job_id: str) -> OpenMAICPollResult:
         validated = self._validate_openmaic_job_id(job_id)
@@ -392,17 +595,22 @@ class OpenMAICClient:
             done=done,
             error=error,
             classroom_id=classroom_id,
-            classroom_url=classroom_url,
+            upstream_classroom_url=classroom_url,
             scenes_count=scenes_count,
+            scenes_generated=_optional_int(payload.get("scenesGenerated")),
+            total_scenes=_optional_int(payload.get("totalScenes")),
         )
 
 
 __all__ = [
     "OpenMAICClient",
     "OpenMAICHealth",
+    "OpenMAICProbeResult",
     "OpenMAICSubmitResult",
     "OpenMAICPollResult",
     "ACCESS_COOKIE_NAME",
+    "PROBE_JOB_ID",
+    "PROBE_CHECKS",
     "GENERATION_STEPS",
     "JOB_STEP_VALUES",
     "JOB_STATUS_VALUES",
