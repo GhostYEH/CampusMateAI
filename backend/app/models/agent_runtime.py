@@ -141,6 +141,10 @@ class AgentApprovalRow:
     status: str = "PENDING"
     resolved_at: Optional[str] = None
     decision_reason: Optional[str] = None
+    # 绑定信息：审批只对"这一个工具 + 这一组参数"有效
+    tool_name: Optional[str] = None
+    request_hash: Optional[str] = None
+    call_id: Optional[str] = None
 
 
 @dataclass

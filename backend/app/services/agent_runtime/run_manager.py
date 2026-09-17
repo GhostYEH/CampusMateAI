@@ -20,7 +20,9 @@ from .event_store import AgentEventStore
 _VALID_TRANSITIONS: dict[str, set[str]] = {
     "QUEUED": {"RUNNING", "PAUSED", "CANCELLED", "FAILED"},
     "RUNNING": {"AWAITING_APPROVAL", "PAUSED", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
-    "AWAITING_APPROVAL": {"RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
+        # 审批通过后，原 Run 必须能被 Worker 重新领取 —— 否则批准了也永远不会执行，
+    # 客户端就只剩下"再建一个新 Job 并带上旧 approval"这条错误路径。
+    "AWAITING_APPROVAL": {"QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
     "PAUSED": {"RUNNING", "CANCELLED"},
     "SUCCEEDED": set(),  # 终态
     "PARTIAL": {"CANCELLED"},  # 可取消
