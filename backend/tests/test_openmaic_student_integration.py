@@ -39,6 +39,7 @@ from app.services.openmaic.client import (
     GENERATION_STEPS,
     JOB_STATUS_VALUES,
     JOB_STEP_VALUES,
+    PROBE_JOB_ID,
     OpenMAICClient,
     normalize_step,
 )
@@ -61,9 +62,30 @@ def _test_settings(**overrides) -> Settings:
         agent_allow_mock_providers=True,
         openmaic_enabled=True,
         openmaic_base_url=BASE,
+        # 浏览器公开 Origin 与内部 BASE_URL 分离；测试里用同一地址便于断言
+        openmaic_embed_origin=BASE,
     )
     kwargs.update(overrides)
     return Settings(**kwargs)
+
+
+def _probe_not_found() -> httpx.Response:
+    """契约指纹 P3 的真实期望：格式合法但不存在的 jobId → 404 INVALID_REQUEST。"""
+    return httpx.Response(
+        404,
+        json={
+            "success": False,
+            "errorCode": "INVALID_REQUEST",
+            "error": "Classroom generation job not found",
+        },
+    )
+
+
+def _is_probe(request: httpx.Request) -> bool:
+    """只匹配契约指纹探针（用固定的探针 jobId），不要误伤真实轮询。"""
+    return request.method == "GET" and request.url.path.endswith(
+        f"/api/generate-classroom/{PROBE_JOB_ID}"
+    )
 
 
 def _login(client: TestClient, username: str = "student_demo") -> Dict[str, str]:
@@ -138,10 +160,13 @@ def _recording_handler(
                 200,
                 json={
                     "success": True,
+                    "status": "ok",
                     "version": "0.9.9",
                     "capabilities": {"tts": True, "webSearch": False},
                 },
             )
+        if _is_probe(request):
+            return _probe_not_found()
         if request.method == "POST" and path.endswith("/api/generate-classroom"):
             return httpx.Response(202, json={"success": True, "jobId": submit_job_id})
         if step_seq:
@@ -414,8 +439,15 @@ def _access_code_handler(recorder: List[httpx.Request]) -> Callable:
         if path.endswith("/api/health"):
             return httpx.Response(
                 200,
-                json={"success": True, "version": "1.0.0", "capabilities": {"tts": True}},
+                json={
+                    "success": True,
+                    "status": "ok",
+                    "version": "1.0.0",
+                    "capabilities": {"tts": True},
+                },
             )
+        if _is_probe(request):
+            return _probe_not_found()
         if request.method == "POST" and path.endswith("/api/generate-classroom"):
             return httpx.Response(202, json={"success": True, "jobId": "job_ac"})
         return httpx.Response(
@@ -532,9 +564,15 @@ def test_concurrent_generate_submits_exactly_once(tmp_path):
             recorder.append(request)
         path = request.url.path
         if path.endswith("/api/access-code/status"):
-            return httpx.Response(200, json={"success": True, "enabled": False})
+            return httpx.Response(
+                200, json={"success": True, "enabled": False, "authenticated": False}
+            )
         if path.endswith("/api/health"):
-            return httpx.Response(200, json={"success": True, "capabilities": {}})
+            return httpx.Response(
+                200, json={"success": True, "status": "ok", "capabilities": {}}
+            )
+        if _is_probe(request):
+            return _probe_not_found()
         if request.method == "POST" and path.endswith("/api/generate-classroom"):
             # 拉大窗口，让并发请求真的重叠
             time.sleep(0.2)
@@ -547,6 +585,8 @@ def test_concurrent_generate_submits_exactly_once(tmp_path):
     _, tc, headers, _ = _bootstrap(tmp_path, handler)
     cid = _first_course(tc, headers)
     url = f"/api/v1/courses/{cid}/interactive-classroom/generate"
+    # 混入旧值：必须被归一化后接受，不能 4xx
+    # 混入旧值：必须被归一化后接受，不能 4xx
     modes = ["adaptive", "explore", "practice", "project", "explain", "adaptive", "explore", "practice"]
 
     with ThreadPoolExecutor(max_workers=len(modes)) as pool:
@@ -570,7 +610,10 @@ def test_concurrent_generate_submits_exactly_once(tmp_path):
     top_modes = {b["mode"] for b in bodies}
     assert len(top_modes) == 1, f"复用时 mode 必须一致，实际 {top_modes}"
     assert top_modes == {bodies[0]["session"]["mode"]}
-    assert top_modes.pop() in set(modes)
+    assert top_modes.pop() in {
+        "adaptive", "explain", "quiz", "simulation", "visualization",
+        "mindmap", "coding", "pbl", "review",
+    }
 
 
 def test_second_generate_after_terminal_starts_new_task(tmp_path):
@@ -590,7 +633,8 @@ def test_second_generate_after_terminal_starts_new_task(tmp_path):
     second = tc.post(url, headers=headers, json={"mode": "project"})
     assert second.status_code == 202
     assert second.json()["session"]["session_id"] != sid
-    assert second.json()["mode"] == "project"
+    # 旧值 project 归一化到 pbl
+    assert second.json()["mode"] == "pbl"
     submits = [
         r
         for r in recorder
@@ -622,7 +666,8 @@ def test_stale_reservation_can_be_taken_over(tmp_path):
     )
     assert resp.status_code == 202, resp.text
     assert resp.json()["session"]["session_id"] != "om_stale"
-    assert resp.json()["mode"] == "explore"
+    # 旧值 explore 归一化到 simulation
+    assert resp.json()["mode"] == "simulation"
 
 
 def test_concurrent_stale_takeover_has_exactly_one_winner(tmp_path, monkeypatch):
@@ -1027,6 +1072,9 @@ def test_history_list_returns_only_trusted_succeeded_classrooms(tmp_path):
             user_id=user.id,
             status="succeeded",
             step="completed",
+            # 公开地址由可信 classroom_id 现场构造；这里显式给出 classroom_id，
+            # 否则（旧数据缺标识）后端不会下发任何地址。
+            classroom_id="room_ok",
             classroom_url=f"{BASE}/classroom/room_ok",
             mode="explain",
         )

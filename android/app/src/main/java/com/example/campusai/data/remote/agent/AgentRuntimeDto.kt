@@ -55,6 +55,7 @@ data class AgentJobDto(
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "latest_run_id") val latestRunId: String? = null,
+    @Json(name = "pending_approval_id") val pendingApprovalId: String? = null,
     @Json(name = "input_ref") val inputRef: Map<String, Any?> = emptyMap(),
 ) {
     fun kind(): AgentJobKind = safeEnum(jobKind, AgentJobKind.entries.toTypedArray(), AgentJobKind.UNKNOWN)

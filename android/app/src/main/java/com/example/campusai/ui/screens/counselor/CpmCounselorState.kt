@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.counselor
 
+import com.example.campusai.data.classroom.ClassroomJobState
+import com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Balance
@@ -60,6 +62,10 @@ data class CpmCounselorUiState(
     val courseContext: CpmCourseContext? = null,
     val playbackCommand: DigitalHumanCommand = DigitalHumanCommand.NONE,
     val playbackCommandId: Int = 0,
+    /** The final SSE metadata is retained separately from streamed answer text. */
+    val suggestedActions: List<com.example.campusai.data.remote.agent.SuggestedActionDto> = emptyList(),
+    val classroomProposal: InteractiveClassroomProposalDto? = null,
+    val classroomJob: ClassroomJobState = ClassroomJobState(),
 ) {
     val recommendations: List<CpmPrompt> get() = CpmPromptCatalog.batch(recommendationOffset)
 }
