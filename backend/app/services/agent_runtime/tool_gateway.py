@@ -197,9 +197,24 @@ class ToolInvocationGateway:
             if existing_status in {"awaiting_approval", "approved"}:
                 # 重放必须复核审批状态:已批准才继续执行,未决策就继续等,
                 # 已拒绝/已过期一律不执行——过期绝不等于批准。
-                resumed_approval_id = existing.get("error_code") or request.approval_id
+                #
+                # 安全要点:审批 id 只能来自**这次工具调用自己**记录的值
+                # (`agent_tool_calls.error_code`)。绝不能回落到请求里带来的
+                # `request.approval_id` —— 那正是"一次批准被复用到另一门课程/
+                # 另一组参数"的漏洞入口。
+                resumed_approval_id = existing.get("error_code")
+                if not resumed_approval_id:
+                    raise AgentToolRejected("工具调用缺少关联审批，拒绝执行")
                 if existing_status == "awaiting_approval":
-                    if self._approval_decision(resumed_approval_id, user_id=user_id) == "WAIT":
+                    decision = self._approval_decision(
+                        resumed_approval_id,
+                        user_id=user_id,
+                        run_id=request.run_id,
+                        tool_name=request.tool_name,
+                        request_hash=request_hash,
+                        call_id=call_id,
+                    )
+                    if decision == "WAIT":
                         return ToolInvocationResult(
                             status="AWAITING_APPROVAL",
                             call_id=call_id,
@@ -216,7 +231,15 @@ class ToolInvocationGateway:
             approval_id = request.approval_id
             if approval_id:
                 # 领域层已确认过的动作:复核后直接执行,不重复开票。
-                if self._approval_decision(approval_id, user_id=user_id) == "WAIT":
+                # 复核内容包含工具名与参数指纹 —— 换了工具或改了参数一律拒绝。
+                if self._approval_decision(
+                    approval_id,
+                    user_id=user_id,
+                    run_id=request.run_id,
+                    tool_name=request.tool_name,
+                    request_hash=request_hash,
+                    call_id=call_id,
+                ) == "WAIT":
                     self._repo.record_tool_call_finish(
                         call_id, status="awaiting_approval", result_digest=None,
                         error_code=approval_id,
@@ -238,6 +261,10 @@ class ToolInvocationGateway:
                     risk_level=effective_risk,
                     action_summary=self._action_summary(spec, arguments),
                     ttl_minutes=self._approval_ttl,
+                    # 绑定"这一个工具 + 这一组参数 + 这一次工具调用"
+                    tool_name=request.tool_name,
+                    request_hash=request_hash,
+                    call_id=call_id,
                 )
                 self._repo.record_tool_call_finish(
                     call_id, status="awaiting_approval", result_digest=None,
@@ -293,8 +320,24 @@ class ToolInvocationGateway:
 
     # ===== 内部步骤 =====
 
-    def _approval_decision(self, approval_id: Optional[str], *, user_id: str) -> str:
+    def _approval_decision(
+        self,
+        approval_id: Optional[str],
+        *,
+        user_id: str,
+        run_id: str,
+        tool_name: str,
+        request_hash: str,
+        call_id: Optional[str] = None,
+    ) -> str:
         """复核审批状态,返回 `EXECUTE`(已批准)或 `WAIT`(尚未决策)。
+
+        复核**不只是看状态**，还必须确认这张审批确实是为"这次工具调用 + 这组参数"
+        签发的：
+        - 用户必须一致；
+        - `tool_name` 必须一致（互动课堂的批准不能授权别的工具，反之亦然）；
+        - `request_hash` 必须一致（course_id / mode / 任何参数改了都必须重新审批）；
+        - 由 Gateway 创建的审批（带 `call_id`）还绑定到具体 Run 与具体工具调用。
 
         拒绝、过期或记录缺失一律抛错:过期绝不等于批准,任何情况下都不得执行。
         """
@@ -303,6 +346,18 @@ class ToolInvocationGateway:
             raise AgentToolRejected("审批记录不存在，拒绝执行工具调用")
         if str(approval.user_id) != str(user_id):
             raise AgentPermissionDenied("审批不属于当前用户，拒绝执行工具调用")
+        bound_tool = getattr(approval, "tool_name", None)
+        if bound_tool and bound_tool != tool_name:
+            raise AgentToolRejected("审批不是为该工具签发的，拒绝执行")
+        bound_hash = getattr(approval, "request_hash", None)
+        if bound_hash and bound_hash != request_hash:
+            raise AgentToolRejected("审批对应的请求参数已改变，必须重新审批")
+        bound_call = getattr(approval, "call_id", None)
+        if bound_call:
+            if str(approval.run_id) != str(run_id):
+                raise AgentToolRejected("审批不属于当前运行，拒绝执行工具调用")
+            if call_id is not None and str(bound_call) != str(call_id):
+                raise AgentToolRejected("审批不属于该次工具调用，拒绝执行")
         status = approval.status
         if status == ApprovalStatus.APPROVED.value:
             return "EXECUTE"

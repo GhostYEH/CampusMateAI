@@ -9,9 +9,17 @@
       "risk_level": "CONFIRM_REQUIRED",
       "requires_approval": true,
       "enabled": true,
-      "roles": ["planner", "analyzer"],
+      "roles": [
+        "planner",
+        "analyzer"
+      ],
       "skill": "final_review",
-      "tools": ["exam.read", "task.create", "plan.activate", "final_review.plan.activate"]
+      "tools": [
+        "exam.read",
+        "task.create",
+        "plan.activate",
+        "final_review.plan.activate"
+      ]
     },
     {
       "code": "final_review.adjust",
@@ -20,9 +28,17 @@
       "risk_level": "CONFIRM_REQUIRED",
       "requires_approval": true,
       "enabled": true,
-      "roles": ["planner", "analyzer"],
+      "roles": [
+        "planner",
+        "analyzer"
+      ],
       "skill": "final_review",
-      "tools": ["exam.read", "task.create", "plan.activate", "final_review.adjust.apply"]
+      "tools": [
+        "exam.read",
+        "task.create",
+        "plan.activate",
+        "final_review.adjust.apply"
+      ]
     },
     {
       "code": "course_research.run",
@@ -31,9 +47,16 @@
       "risk_level": "AUTO_SAFE",
       "requires_approval": false,
       "enabled": true,
-      "roles": ["coordinator", "course_researcher"],
+      "roles": [
+        "coordinator",
+        "course_researcher"
+      ],
       "skill": "course_research",
-      "tools": ["course.read", "knowledge.search", "research.report.create"]
+      "tools": [
+        "course.read",
+        "knowledge.search",
+        "research.report.create"
+      ]
     },
     {
       "code": "notice.workflow",
@@ -42,9 +65,16 @@
       "risk_level": "AUTO_SAFE",
       "requires_approval": false,
       "enabled": true,
-      "roles": ["notice_interpreter", "workflow_planner"],
+      "roles": [
+        "notice_interpreter",
+        "workflow_planner"
+      ],
       "skill": "notice_workflow",
-      "tools": ["notice.read", "task.propose", "reminder.schedule"]
+      "tools": [
+        "notice.read",
+        "task.propose",
+        "reminder.schedule"
+      ]
     },
     {
       "code": "citation.verify",
@@ -53,9 +83,13 @@
       "risk_level": "AUTO_SAFE",
       "requires_approval": false,
       "enabled": true,
-      "roles": ["citation_verifier"],
+      "roles": [
+        "citation_verifier"
+      ],
       "skill": "course_research",
-      "tools": ["research.source.fetch"]
+      "tools": [
+        "research.source.fetch"
+      ]
     },
     {
       "code": "learning_goal.run",
@@ -64,10 +98,38 @@
       "risk_level": "AUTO_SAFE",
       "requires_approval": false,
       "enabled": true,
-      "roles": ["planner"],
+      "roles": [
+        "planner"
+      ],
       "skill": "learning_goal_center",
       "job_kind": "learning_goal",
-      "tools": ["student.read", "course.read", "learner_state.read", "task.create"]
+      "tools": [
+        "student.read",
+        "course.read",
+        "learner_state.read",
+        "task.create"
+      ]
+    },
+    {
+      "code": "interactive_classroom.generate",
+      "version": "1.0",
+      "route_policy": "reasoning_primary",
+      "risk_level": "CONFIRM_REQUIRED",
+      "requires_approval": true,
+      "enabled": true,
+      "roles": [
+        "tutor"
+      ],
+      "skill": "interactive_classroom",
+      "job_kind": "interactive_classroom",
+      "tools": [
+        "interactive_classroom.inspect_context",
+        "interactive_classroom.list",
+        "interactive_classroom.propose",
+        "interactive_classroom.generate",
+        "interactive_classroom.status",
+        "interactive_classroom.open"
+      ]
     }
   ]
 }
