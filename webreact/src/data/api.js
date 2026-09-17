@@ -300,9 +300,37 @@ export async function getInteractiveClassroomStatus(courseId) {
   }
 }
 
+/** 生成前的只读计划：课程、可选资料、推荐形态与理由。不创建任何 OpenMAIC 任务。 */
+export async function getInteractiveClassroomPlan(courseId, mode = "adaptive") {
+  return dataOf(
+    await client.get(
+      `/courses/${courseId}/interactive-classroom/plan?mode=${encodeURIComponent(mode)}`,
+    ),
+  );
+}
+
+/** 把学生简报里已填写的字段挑出来（空值不发送，避免污染 requirement）。 */
+function interactiveBriefPayload(payload = {}) {
+  const out = {};
+  if (payload.learning_objective) out.learning_objective = payload.learning_objective;
+  if (payload.current_difficulty) out.current_difficulty = payload.current_difficulty;
+  if (payload.desired_duration_minutes) out.desired_duration_minutes = payload.desired_duration_minutes;
+  if (payload.difficulty_level) out.difficulty_level = payload.difficulty_level;
+  if (payload.wants_more_practice) out.wants_more_practice = true;
+  if (Array.isArray(payload.selected_material_ids) && payload.selected_material_ids.length) {
+    out.selected_material_ids = payload.selected_material_ids;
+  }
+  return out;
+}
+
 /** 提交一次课堂生成，返回 202 与初始 session（含 session_id / poll_interval_ms）。 */
 export async function generateInteractiveClassroom(courseId, payload) {
-  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/generate`, { mode: payload.mode, ...(payload.learning_objective ? { learning_objective: payload.learning_objective } : {}) }));
+  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/generate`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));
+}
+
+/** 回读这节课**真实**包含的内容（scene 类型统计 / widget 分布 / 白板 / TTS / 多智能体）。 */
+export async function getInteractiveClassroomComposition(courseId, sessionId) {
+  return dataOf(await client.get(`/courses/${courseId}/interactive-classroom/${sessionId}/composition`));
 }
 
 /** 轮询生成进度（服务端会现场轮询一次 OpenMAIC 后返回）。 */
@@ -317,7 +345,27 @@ export async function listInteractiveClassrooms(courseId) {
 
 /** 失败时重试生成。 */
 export async function retryInteractiveClassroom(courseId, sessionId, payload) {
-  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...(payload.learning_objective ? { learning_objective: payload.learning_objective } : {}) }));
+  return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));
+}
+
+/** 创建一个受管 Agent 任务（互动课堂生成走这里，前端不直接调用 OpenMAIC）。 */
+export async function createAgentJob(payload) {
+  return dataOf(await client.post("/agent-jobs", payload));
+}
+
+/** 查询 Agent 任务（含 input_ref 上回填的 session_id / deep_link）。 */
+export async function getAgentJob(jobId) {
+  return dataOf(await client.get(`/agent-jobs/${jobId}`));
+}
+
+/** 审批决策：APPROVED / REJECTED。 */
+export async function decideAgentApproval(approvalId, decision, reason) {
+  return dataOf(
+    await client.post(`/agent-approvals/${approvalId}/decision`, {
+      decision,
+      ...(reason ? { reason } : {}),
+    }),
+  );
 }
 
 export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null } = {}) {
@@ -336,17 +384,32 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
     if (!reader) throw new Error("浏览器不支持流式读取");
     const decoder = new TextDecoder();
     let buffer = "";
+    // 同一个流里只认第一个 done：重连/代理重放导致的重复 done 不得二次触发副作用。
+    let doneSeen = false;
     const consume = (block) => {
       let type = "";
-      let dataText = "";
-      block.split("\n").forEach((line) => { if (line.startsWith("event: ")) type = line.slice(7).trim(); else if (line.startsWith("data: ")) dataText = line.slice(6); });
-      if (!dataText) return;
+      const dataLines = [];
+      block.split("\n").forEach((rawLine) => {
+        const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+        if (!line || line.startsWith(":")) return; // 空行 / 注释 / 心跳
+        if (line.startsWith("event:")) {
+          type = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          // SSE 规范：冒号后可选一个空格；多行 data 用 \n 连接
+          dataLines.push(line.slice(5).replace(/^ /, ""));
+        }
+      });
+      if (!dataLines.length) return;
+      const dataText = dataLines.join("\n");
       try {
         const data = JSON.parse(dataText);
         if (type === "sources") onSources?.(data.sources || []);
         else if (type === "chunk") onChunk?.(data.text || "", data.mode || "llm");
-        else if (type === "done") onDone?.(data);
-        else if (type === "error") onError?.(new Error(data.message || "未知错误"));
+        else if (type === "done") {
+          if (doneSeen) return;
+          doneSeen = true;
+          onDone?.(data);
+        } else if (type === "error") onError?.(new Error(data.message || "未知错误"));
       } catch { /* incomplete SSE payloads are ignored */ }
     };
     while (true) {

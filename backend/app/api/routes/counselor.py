@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import html
 import re
+import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
@@ -49,7 +50,8 @@ from fastapi.responses import StreamingResponse
 from ...core.logging import logger
 from ...models.multi_role import UserRow
 from ...models.personal_task import PersonalTaskRow
-from ...schemas.chat import ChatFinalMeta, ChatRequest
+from ...schemas.chat import ChatFinalMeta, ChatRequest, SuggestedAction
+from ...schemas.openmaic import MODE_INTENT_LABELS
 from ...services.container import ServiceContainer, get_container
 from ...services.course_access import can_view_course
 from ...services.emotion_context import EmotionContextBuilder
@@ -567,6 +569,83 @@ def _build_context_warnings(
     return warnings
 
 
+# ===== 互动课堂提案（CPM → 受管 Agent Runtime）=====
+
+# 学生措辞 → 生成意图的确定性映射。未命中时用 adaptive（由后端按真实上下文决定）。
+_INTENT_KEYWORDS = (
+    (("实验", "模拟", "动手"), "simulation"),
+    (("思维导图", "知识结构", "梳理"), "mindmap"),
+    (("编程", "代码", "写代码"), "coding"),
+    (("复习", "考试", "考前提"), "review"),
+    (("自测", "练习", "测验", "做题", "刷题"), "quiz"),
+    (("3d", "三维", "可视化"), "visualization"),
+    (("项目", "pbl"), "pbl"),
+    (("讲讲", "讲解", "什么意思", "原理", "为什么"), "explain"),
+)
+
+
+def _infer_classroom_mode(message: str) -> str:
+    text = (message or "").strip().lower()
+    for keywords, mode in _INTENT_KEYWORDS:
+        if any(keyword in text for keyword in keywords):
+            return mode
+    return "adaptive"
+
+
+async def build_interactive_classroom_action(
+    container: ServiceContainer,
+    user: Optional[UserRow],
+    course_id: Optional[str],
+    message: str,
+):
+    """只读地提出一个互动课堂建议。**不创建任何 OpenMAIC 任务**。
+
+    CPM 只负责理解意图与提建议；真正的生成必须由学生确认后走
+    `POST /api/v1/agent-jobs`（受管 Handler + 审批门 + 幂等 + 审计），
+    counselor 与 LLM 都不允许直接调用 OpenMAICClient。
+    """
+    if not course_id or user is None or getattr(user, "role", "") != "student":
+        return None
+    service = getattr(container, "openmaic_classroom_service", None)
+    if service is None:
+        return None
+    from ...services.openmaic.course_context import assert_course_access
+
+    try:
+        course = assert_course_access(container, user, course_id)
+    except Exception:  # noqa: BLE001 - 无权限/课程不存在时不提建议，也不暴露原因
+        return None
+    try:
+        status = await service.status()
+    except Exception:  # noqa: BLE001
+        return None
+
+    mode = _infer_classroom_mode(message)
+    label = MODE_INTENT_LABELS.get(mode, mode)
+    return SuggestedAction(
+        id="interactive-classroom",
+        label=f"生成一节「{label}」互动课堂",
+        type="interactiveClassroomProposal",
+        data={
+            # 每次提案的**唯一身份**。`id` 是常量（同类提案共用），无法区分"同一门课
+            # 的第二个提案"，客户端因此会把第二个提案误当成第一个（复用旧 job /
+            # 旧幂等键 / 旧深链）。nonce 由服务端下发，客户端只做透传与隔离。
+            "proposal_id": f"icp_{uuid.uuid4().hex[:16]}",
+            "course_id": course_id,
+            "course_name": course.name,
+            "mode": mode,
+            "mode_label": label,
+            "intent_note": (
+                "内容形态只是生成意图，最终包含哪些形式由生成器根据课程内容决定。"
+            ),
+            "available": bool(status.get("enabled")),
+            "reason": status.get("reason"),
+            "requires_confirmation": True,
+            "job_kind": "interactive_classroom",
+        },
+    )
+
+
 @router.post("/counselor/chat")
 @router.post("/assistant/chat")
 async def chat(
@@ -619,6 +698,10 @@ async def chat(
         item for item in [tasks_hint, learner_state_context, extra_hints] if item
     )
 
+    # 互动课堂提案：只读、不创建任务；真正的生成必须由学生确认后走 /agent-jobs。
+    classroom_action = await build_interactive_classroom_action(
+        container, user, req.course_id, req.message
+    )
     if req.stream:
         return StreamingResponse(
             _stream(
@@ -629,6 +712,7 @@ async def chat(
                 context_used,
                 all_ctx_warnings,
                 expression_hint,
+                classroom_action,
             ),
             media_type="text/event-stream",
             headers={
@@ -644,6 +728,8 @@ async def chat(
         expression_hint,
     ):
         final = ev
+    if final is not None and classroom_action is not None:
+        final.suggested_actions = [*final.suggested_actions, classroom_action]
     if final is None:
         final = ChatFinalMeta(
             answer="生成失败,请重试。",
@@ -706,6 +792,7 @@ async def _stream(
     context_used: Dict[str, Any],
     context_warnings: List[str],
     expression_hint: Optional[str] = None,
+    classroom_action=None,
 ) -> AsyncIterator[bytes]:
     """SSE 流式输出。
 
@@ -771,7 +858,10 @@ async def _stream(
             "confidence": last_ev.confidence,
             "evidence_level": last_ev.evidence_level,
             "needs_human_confirmation": last_ev.needs_human_confirmation,
-            "suggested_actions": [a.model_dump(mode="json") for a in last_ev.suggested_actions],
+            "suggested_actions": [
+                *[a.model_dump(mode="json") for a in last_ev.suggested_actions],
+                *([classroom_action.model_dump(mode="json")] if classroom_action else []),
+            ],
             "conversation_id": last_ev.conversation_id,
             "mode": last_ev.mode,
             "warnings": last_ev.warnings,

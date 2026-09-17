@@ -13,15 +13,45 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from .client import GENERATION_STEPS, OpenMAICClient, normalize_step
-from .errors import OpenMAICNotEnabled, OpenMAICProtocolError
+from .client import (
+    GENERATION_STEPS,
+    OpenMAICClient,
+    OpenMAICProbeResult,
+    normalize_step,
+)
+from .compatibility import (
+    COMPATIBLE,
+    INCOMPATIBLE,
+    UNKNOWN,
+    VERSION_SOURCE_UNKNOWN,
+    effective_capabilities,
+    is_degraded,
+    resolve_compatibility,
+    unavailable_capabilities,
+    version_source,
+)
+from .composition import ClassroomComposition, parse_classroom_composition
+from .errors import (
+    OpenMAICAuthError,
+    OpenMAICInvalidOrigin,
+    OpenMAICIncompatible,
+    OpenMAICNotEnabled,
+    OpenMAICProtocolError,
+    OpenMAICUnavailable,
+)
 from .requirement_builder import (
+    GenerationRequestSnapshot,
+    StudentBrief,
     build_input_payload,
     build_requirement,
-    validate_mode,
+    choose_adaptive_mode,
+    normalize_mode,
 )
+from .public_url import project_session_url, resolve_public_classroom_url
+from .redaction import redact_public_text
 from .result_store import (
     OpenMAICReservation,
     OpenMAICResultStore,
@@ -30,9 +60,15 @@ from .result_store import (
 )
 from ...core.config import Settings
 
+if TYPE_CHECKING:  # 避免与 course_context 形成导入环
+    from .course_context import LearningContext
+
 # 目标部署的真实生成步骤(见 client.GENERATION_STEPS)。这里显式列出来做护栏，
 # 保证任何新增步骤都被显式评审，而不是被静默透传。
 PUBLIC_STEPS = ("queued", "failed", *GENERATION_STEPS)
+
+# 探测失败时的缓存窗口(秒)：失败不长期缓存，服务恢复后能很快被重新识别
+_FAILED_PROBE_TTL_SECONDS = 5.0
 
 
 def _public_step(step: str, status: str = "") -> str:
@@ -56,8 +92,12 @@ class OpenMAICClassroomService:
                 timeout_seconds=settings.openmaic_request_timeout_seconds,
                 origin=settings.openmaic_origin,
                 access_code=settings.openmaic_access_code,
+                probe_timeout_seconds=settings.openmaic_health_timeout_seconds,
             )
         self._client = client
+        # 契约指纹探测缓存：(过期时刻, 结果)。成功按 OPENMAIC_PROBE_TTL_SECONDS
+        # 缓存；失败只缓存很短时间，避免服务刚恢复仍被判不可用。
+        self._probe_cache: Optional[tuple[float, OpenMAICProbeResult]] = None
 
     @property
     def enabled(self) -> bool:
@@ -72,74 +112,150 @@ class OpenMAICClassroomService:
             raise OpenMAICNotEnabled()
         return self._client
 
+    async def _probe(self) -> OpenMAICProbeResult:
+        """带 TTL 缓存的契约指纹探测。"""
+        ttl = float(self._settings.openmaic_probe_ttl_seconds)
+        now = time.monotonic()
+        cached = self._probe_cache
+        if cached is not None and now < cached[0]:
+            return cached[1]
+        result = await self._require_client().probe()
+        window = ttl if result.ok else min(ttl, _FAILED_PROBE_TTL_SECONDS)
+        self._probe_cache = (now + window, result)
+        return result
+
+    def invalidate_probe_cache(self) -> None:
+        self._probe_cache = None
+
+    async def _require_compatible_client(self) -> OpenMAICClient:
+        """生成前的准入：未启用 / 不可达 / 访问码缺失 / 契约不兼容分别给出不同错误。"""
+        client = self._require_client()
+        probe = await self._probe()
+        if probe.ok:
+            return client
+        if probe.unreachable:
+            raise OpenMAICUnavailable()
+        if probe.access_code_required and not probe.authenticated:
+            raise OpenMAICAuthError()
+        raise OpenMAICIncompatible()
+
     # ===== 状态 =====
 
     async def status(self) -> Dict[str, Any]:
-        """返回 enabled/unavailable 契约。
+        """返回完整服务状态契约。
 
         契约：
         - configured: 后端是否配置了 OpenMAIC（OPENMAIC_ENABLED + BASE_URL）。
-        - available:  当前是否可用（health 可达 且 目标部署的 ACCESS_CODE 已通过）。
+        - available:  目标服务**真实可达**且契约指纹通过（不因为配置非空就为真）。
         - enabled:    == configured and available，供客户端决定是否展示生成入口。
-        - unavailable: configured and not available（配置了但当前不可用）。
-        - embed_origin: 可信的 OpenMAIC Origin（含端口），仅在 configured 时返回，
-          供客户端按完整 URL.origin 精确校验课堂地址；未配置时为 null(fail-closed)。
-        - browser_embed_available: 学生浏览器能否安全加载课堂。后端通过 ACCESS_CODE
-          仅代表服务间认证成功，不代表浏览器拥有 OpenMAIC cookie。
+        - unavailable: 配置了但当前连不上（瞬时故障，可稍后重试）。
+        - incompatible: 配置了、能连上，但接口契约/版本不匹配（部署问题，重试无用）。
+        - degraded:   生成服务可用，但部分可选能力（图像/视频/TTS/搜索）不可用。
+        - embed_origin: **浏览器公开 Origin**（独立子域），与内部 BASE_URL 分离；
+          未配置时为 None —— 客户端 fail-closed，不渲染内嵌。
+        - browser_embed_available: 学生浏览器能否安全内嵌课堂。
         """
         configured = self.enabled
-        origin = (self._settings.openmaic_origin or None) if configured else None
+        public_origin = self._settings.openmaic_public_origin or None
         base: Dict[str, Any] = {
             "enabled": False,
             "configured": configured,
             "available": False,
             "unavailable": False,
+            "incompatible": False,
+            "degraded": False,
+            "compatibility": UNKNOWN,
+            "compatibility_reason": None,
             "service": "openmaic",
             "version": "",
+            "version_source": VERSION_SOURCE_UNKNOWN,
+            "version_out_of_range": False,
             "capabilities": {},
-            "embed_origin": origin,
+            "unavailable_capabilities": [],
+            "embed_origin": public_origin if configured else None,
             "browser_embed_available": False,
             "browser_embed_reason": None,
+            "external_3d_available": bool(self._settings.openmaic_external_3d_available),
+            "poll_interval_ms": self._settings.openmaic_poll_interval_ms,
+            "poll_max_seconds": self._settings.openmaic_poll_max_seconds,
+            "checked_at": _now_iso(),
             "reason": None,
         }
         if not configured:
             base["reason"] = "互动课堂服务未启用"
             return base
         try:
-            health = await self._require_client().health()
-        except Exception:  # noqa: BLE001 - health 失败必须降级，不能影响课程详情
+            probe = await self._probe()
+        except Exception:  # noqa: BLE001 - status 必须安全降级，不能影响课程详情
             base["unavailable"] = True
             base["reason"] = "互动课堂服务暂不可用"
             return base
-        if health.access_code_required and not health.authenticated:
+
+        base["version"] = probe.version
+        base["version_source"] = version_source(probe.version)
+
+        if probe.unreachable:
+            base["unavailable"] = True
+            base["reason"] = "互动课堂服务暂不可用"
+            return base
+
+        # 访问码问题必须在兼容性判定**之前**处理：它是部署/配置问题，
+        # 不是契约不兼容，否则会把"需要访问码"误报成"版本不兼容"。
+        if probe.access_code_required and not probe.authenticated:
             base["unavailable"] = True
             base["reason"] = "互动课堂服务需要访问码"
             return base
+
+        verdict = resolve_compatibility(
+            probes_ok=probe.ok,
+            version=probe.version,
+            allowed_versions=self._settings.openmaic_allowed_versions,
+        )
+        base["compatibility"] = verdict.state
+        base["compatibility_reason"] = verdict.reason or None
+        base["version_out_of_range"] = verdict.version_out_of_range
+        if verdict.state == INCOMPATIBLE:
+            base["incompatible"] = True
+            base["reason"] = verdict.reason
+            return base
+
+        service_caps = probe.capabilities
         base.update(
             enabled=True,
             available=True,
             unavailable=False,
-            version=health.version,
-            capabilities=health.capabilities,
-            # ACCESS_CODE cookie 只在后端 httpx 会话中。浏览器直连 OpenMAIC
-            # 不会继承该 cookie，因此必须明确阻止生成无法供学生打开的课堂。
-            browser_embed_available=not health.access_code_required,
-            browser_embed_reason=(
-                None
-                if not health.access_code_required
-                else "目标互动课堂启用了独立访问保护，CampusMate 不会把访问码发送到浏览器。"
+            capabilities=effective_capabilities(
+                service_caps, self._settings.openmaic_capability_switches
             ),
+            unavailable_capabilities=unavailable_capabilities(service_caps),
+            degraded=is_degraded(service_caps),
             reason=None,
         )
+        if not public_origin:
+            base["browser_embed_reason"] = (
+                "未配置浏览器公开 Origin(OPENMAIC_EMBED_ORIGIN)，无法安全内嵌课堂"
+            )
+        elif not self._settings.openmaic_embed_enabled:
+            base["browser_embed_reason"] = "已按配置关闭浏览器内嵌课堂"
+        elif probe.access_code_required:
+            # ACCESS_CODE cookie 只在后端 httpx 会话中；浏览器直连不会继承它。
+            base["browser_embed_reason"] = (
+                "目标互动课堂启用了独立访问保护，CampusMate 不会把访问码发送到浏览器。"
+            )
+        else:
+            base["browser_embed_available"] = True
         return base
 
     # ===== 生成与轮询 =====
 
     async def _health_capabilities(self, client: OpenMAICClient) -> Dict[str, bool]:
+        """有效能力 = 服务端 health 声明 ∧ 运维开关（只能收紧，不能放开）。"""
         try:
-            health = await client.health()
-            return health.capabilities
-        except Exception:  # noqa: BLE001
+            probe = await self._probe()
+            return effective_capabilities(
+                probe.capabilities, self._settings.openmaic_capability_switches
+            )
+        except Exception:  # noqa: BLE001 - 能力探测失败不阻断生成，退化为"全部关闭"
             return {}
 
     def _reserved_session(
@@ -165,6 +281,7 @@ class OpenMAICClassroomService:
             course_id=course_id,
             user_id=user_id,
             mode=reservation.mode,
+            requested_mode=reservation.mode,
             job_id=reservation.job_id,
             status="queued",
             step="queued",
@@ -216,16 +333,27 @@ class OpenMAICClassroomService:
         *,
         user_id: str,
         course_id: str,
-        course_context: str,
+        context: LearningContext,
         mode: str,
-        learning_objective: Optional[str] = None,
+        brief: Optional[StudentBrief] = None,
+        request_snapshot: Optional[GenerationRequestSnapshot] = None,
     ) -> OpenMAICSession:
-        client = self._require_client()
-        mode = validate_mode(mode)
+        client = await self._require_compatible_client()
+        requested = normalize_mode(mode)
+
+        # adaptive：依据**真实**上下文确定性选择形态，并保留可解释的理由
+        resolved = requested
+        adaptive_reason: Optional[str] = None
+        if requested == "adaptive":
+            signals = replace(
+                context.signals,
+                external_3d_available=bool(self._settings.openmaic_external_3d_available),
+            )
+            resolved, adaptive_reason = choose_adaptive_mode(signals)
 
         # 1) 跨进程原子预占：并发时只有一个请求成为提交者
         session_id, reusable = self._acquire(
-            user_id=user_id, course_id=course_id, mode=mode
+            user_id=user_id, course_id=course_id, mode=resolved
         )
         if reusable is not None:
             # 复用已有任务 —— 必须返回任务真实 mode，而不是本次请求的 mode
@@ -236,37 +364,47 @@ class OpenMAICClassroomService:
             session_id=session_id,
             course_id=course_id,
             user_id=user_id,
-            mode=mode,
+            mode=resolved,
+            requested_mode=requested,
+            adaptive_reason=adaptive_reason,
             status="queued",
             step="queued",
             progress=0,
             message="课堂生成任务已排队",
+            # 快照与 session 同时落盘（且在提交上游**之前**），因此即使进程在
+            # 提交过程中崩溃，retry 仍能读到完整的学生诉求。
+            request_snapshot=(
+                request_snapshot.to_dict() if request_snapshot is not None else None
+            ),
         )
         self._store.save(session)
 
         try:
             capabilities = await self._health_capabilities(client)
             requirement = build_requirement(
-                course_context=course_context,
-                mode=mode,
-                learning_objective=learning_objective,
+                course_context=context.text,
+                mode=resolved,
+                brief=brief,
                 enable_web_search=bool(capabilities.get("webSearch")),
                 enable_image=bool(capabilities.get("imageGeneration")),
                 enable_video=bool(capabilities.get("videoGeneration")),
                 enable_tts=bool(capabilities.get("tts")),
+                external_3d_available=bool(self._settings.openmaic_external_3d_available),
             )
             payload = build_input_payload(
                 requirement=requirement,
                 capabilities=capabilities,
-                pdf_text=course_context,
+                pdf_text=context.material_text or context.text,
             )
             result = await client.submit(payload)
         except Exception as exc:  # noqa: BLE001 - 提交失败必须释放预占，允许重试
             session.status = "failed"
             session.step = "failed"
             session.progress = 0
+            session.error_code = _error_code_of(exc)
             session.error = f"提交课堂生成任务失败: {type(exc).__name__}"
             session.message = "提交失败，可重试"
+            session.updated_at = _now_iso()
             self._store.save(session)
             self._store.release_reservation(
                 user_id=user_id, course_id=course_id, session_id=session_id
@@ -300,27 +438,60 @@ class OpenMAICClassroomService:
             )
             return session
 
-        result = await client.poll(session.job_id)
+        try:
+            result = await client.poll(session.job_id)
+        except (OpenMAICInvalidOrigin, OpenMAICProtocolError) as exc:
+            # 上游返回了不可信的课堂地址（外域/端口不符/query/fragment/凭据/路径穿越）
+            # 或成功响应缺少必要字段。这类结果**不能**使用，按失败收口，
+            # 绝不下发地址，也不让轮询接口 502 掉。
+            session.status = "failed"
+            session.step = "failed"
+            session.progress = 100
+            session.partial = False
+            session.error_code = _error_code_of(exc)
+            session.error = "互动课堂返回了不可信的地址，已拒绝使用"
+            session.updated_at = _now_iso()
+            self._store.save(session)
+            self._store.release_reservation(
+                user_id=session.user_id,
+                course_id=session.course_id,
+                session_id=session.session_id,
+            )
+            return session
 
+        before = (session.status, session.step, session.progress, session.message)
         session.progress = result.progress
-        session.message = result.message or session.message
+        # 上游的 message / error 是**不可信自由文本**：可能包含内部地址或凭据，
+        # 下发前必须脱敏。
+        session.message = redact_public_text(result.message, self._settings) or session.message
         session.status = result.status
         session.step = _public_step(result.step, result.status)
-        # 每次成功轮询都刷新 updated_at（真实契约里的 job.updatedAt 语义）
-        session.updated_at = _now_iso()
 
         if result.status == "succeeded":
             session.progress = 100
             session.step = "completed"
             session.error = None
-            if result.classroom_url:
+            session.error_code = None
+            session.partial = result.partial
+            # 只持久化**经过校验的 classroom_id**。公开地址是**派生值**：
+            # 每次下发都由 public_url 按当前公开 Origin 现场投影，绝不落盘 ——
+            # 否则公开 Origin 变更后历史记录会带着过期地址，且落盘文件会成为
+            # 下一个"直接序列化原始 URL"的泄漏入口。
+            # 上游返回的内部地址（result.upstream_classroom_url）同样绝不落盘。
+            if result.classroom_id:
                 session.classroom_id = result.classroom_id
-                session.classroom_url = result.classroom_url
+                session.classroom_url = None
                 session.scenes_count = result.scenes_count
         elif result.status == "failed":
             session.progress = 100
             session.step = "failed"
-            session.error = result.error or session.error or "课堂生成失败"
+            session.partial = False
+            session.error_code = "OPENMAIC_GENERATION_FAILED"
+            session.error = (
+                redact_public_text(result.error, self._settings)
+                or session.error
+                or "课堂生成失败"
+            )
         else:
             # 进行中：续租，避免长时间生成被误判为过期
             self._store.touch_reservation(
@@ -328,7 +499,13 @@ class OpenMAICClassroomService:
                 course_id=session.course_id,
                 session_id=session.session_id,
             )
-            session.error = result.error or None
+            session.error = redact_public_text(result.error, self._settings) or None
+            session.partial = False
+
+        # updated_at 只在**真实进度发生变化**时前进（对应 job.updatedAt 语义），
+        # 而不是每次轮询都无条件刷新 —— 否则 UI 无法用它判断"多久没有进展"。
+        if (session.status, session.step, session.progress, session.message) != before:
+            session.updated_at = _now_iso()
 
         self._store.save(session)
         if session.is_terminal:
@@ -341,6 +518,35 @@ class OpenMAICClassroomService:
 
     # ===== 查询 =====
 
+    async def composition(self, session: OpenMAICSession) -> ClassroomComposition:
+        """回读并统计**真实**课堂组成。
+
+        读取失败**不**伪装成"空课堂"：返回带 `error` 的组成，由 UI 明确告知
+        "内容读取失败"，而不是显示"这节课没有内容"。
+        """
+        external_3d = bool(self._settings.openmaic_external_3d_available)
+        if not session.classroom_id:
+            return ClassroomComposition(
+                classroom_id="",
+                external_3d_available=external_3d,
+                read_at=_now_iso(),
+                error="该任务还没有可读取的课堂",
+            )
+        try:
+            payload = await self._require_client().fetch_classroom(session.classroom_id)
+        except Exception as exc:  # noqa: BLE001 - 读取失败必须降级为可展示的状态
+            return ClassroomComposition(
+                classroom_id=session.classroom_id,
+                external_3d_available=external_3d,
+                read_at=_now_iso(),
+                error=f"课堂内容读取失败({type(exc).__name__})",
+            )
+        return parse_classroom_composition(
+            payload,
+            classroom_id=session.classroom_id,
+            external_3d_available=external_3d,
+        )
+
     def get_session(self, *, user_id: str, course_id: str, session_id: str) -> Optional[OpenMAICSession]:
         return self._store.get_session(user_id=user_id, course_id=course_id, session_id=session_id)
 
@@ -352,14 +558,23 @@ class OpenMAICClassroomService:
         )
 
     def list_classrooms(self, *, user_id: str, course_id: str) -> List[Dict[str, Any]]:
+        """历史课堂列表。
+
+        公开地址一律由可信 `classroom_id` **重新构造**：
+        - 旧数据里存的是内部 URL → 读取时被替换成公开 URL（不做破坏性迁移）；
+        - 没有可信 classroom_id → 不下发地址（但条目本身保留，便于运维排查）；
+        - 未配置公开 Origin → 不下发地址，客户端显示"已生成但当前部署未开放浏览器访问"。
+        """
         out: List[Dict[str, Any]] = []
         for s in self.list_sessions(user_id=user_id, course_id=course_id):
-            if s.status != "succeeded" or not s.classroom_url:
+            if s.status != "succeeded":
                 continue
+            url, reason = project_session_url(self._settings, s)
             out.append({
                 "session_id": s.session_id,
                 "classroom_id": s.classroom_id,
-                "url": s.classroom_url,
+                "url": url,
+                "url_unavailable_reason": reason,
                 "mode": s.mode,
                 "scenes_count": s.scenes_count,
                 "created_at": s.created_at,
@@ -373,4 +588,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-__all__ = ["OpenMAICClassroomService", "PUBLIC_STEPS"]
+def _error_code_of(exc: BaseException) -> str:
+    """把异常映射成稳定错误码，供客户端分支（不泄露内部细节）。"""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    return f"OPENMAIC_{type(exc).__name__.upper()}"
+
+
+__all__ = ["OpenMAICClassroomService", "PUBLIC_STEPS", "ClassroomComposition"]
