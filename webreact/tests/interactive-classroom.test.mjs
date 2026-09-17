@@ -70,11 +70,21 @@ const renderPanel = (props = {}) =>
 
 // ===== 数据模块：5 种模式与真实步骤文案 =====
 
-test("提供 5 种学生互动课堂模式且枚举合法", () => {
-  assert.equal(C.INTERACTIVE_MODES.length, 5);
+test("提供 9 种学生生成意图且枚举合法", () => {
+  assert.equal(C.INTERACTIVE_MODES.length, 9);
   assert.deepEqual(
     C.INTERACTIVE_MODES.map((m) => m.mode),
-    ["adaptive", "explain", "explore", "practice", "project"],
+    [
+      "adaptive",
+      "explain",
+      "quiz",
+      "simulation",
+      "visualization",
+      "mindmap",
+      "coding",
+      "pbl",
+      "review",
+    ],
   );
   C.INTERACTIVE_MODES.forEach((m) => {
     assert.ok(typeof m.label === "string" && m.label.length > 0, `缺失中文名: ${m.mode}`);
@@ -183,11 +193,16 @@ test("成功课堂在可信 Origin 下真实渲染出 iframe 与新窗口入口"
   assert.doesNotMatch(markup, /无法在此内嵌课堂/, "可信地址不应走降级分支");
 });
 
-test("成功课堂的 iframe 在 React 中被沙箱约束", () => {
+test("成功课堂的 iframe 沙箱被收紧，且不再无条件放开弹窗与下载", () => {
   const markup = renderPanel({
     session: { session_id: "s1", status: "succeeded", step: "completed", url: CLASSROOM_URL },
   });
-  assert.match(markup, /sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"/);
+  assert.match(markup, /sandbox="allow-scripts allow-same-origin allow-forms"/);
+  assert.doesNotMatch(markup, /allow-popups/);
+  assert.doesNotMatch(markup, /allow-downloads/);
+  // referrer 不外泄，且不设置 allow="*"
+  assert.match(markup, /referrerpolicy="no-referrer"/i);
+  assert.doesNotMatch(markup, /allow="\*"/);
 });
 
 test("ACCESS_CODE 仅后端认证时禁止浏览器内嵌和生成不可访问的课堂", () => {
@@ -320,7 +335,8 @@ test("模式选择器有 radiogroup 可访问语义", () => {
   const markup = renderPanel();
   assert.match(markup, /role="radiogroup"[^>]*aria-label="选择辅导模式"/);
   assert.match(markup, /aria-pressed="true"/);
-  assert.match(markup, /开始生成 自适应课堂/);
+  assert.match(markup, /自动推荐/);
+  assert.match(markup, /考前复习/);
 });
 
 // ===== 课程详情入口（接线断言） =====

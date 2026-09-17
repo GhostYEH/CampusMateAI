@@ -65,3 +65,82 @@
   .interactive-objective input { min-width: 160px; width: 100%; box-sizing: border-box; }
   .counselor-course-context { flex-direction: column; align-items: flex-start; gap: 8px; }
 }
+/* ===== 阶段 4：学生化智能辅导面板新增区块 ===== */
+
+/* 提示条：与全局 .page-notice 配套，补上 warn / info 两种语义色 */
+.interactive-panel .notice-warn { color: #8a5a12; background: #fff6e6; }
+.interactive-panel .notice-info { color: #4266a5; background: #eef4ff; }
+
+/* 学生简报输入区：目标 / 困惑 / 时长 / 难度 / 更多练习 */
+.interactive-brief { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0 4px; }
+.interactive-brief .interactive-objective { display: flex; flex-direction: column; gap: 6px; }
+.interactive-brief .interactive-objective > span { color: var(--muted, #7a7f8c); font-size: 12px; font-weight: 600; }
+.interactive-brief .interactive-objective input,
+.interactive-brief .interactive-objective select { width: 100%; padding: 10px 12px; border: 1px solid var(--line-weak, rgba(0,0,0,0.12)); border-radius: 10px; font-size: 13px; box-sizing: border-box; }
+.interactive-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4a5568; }
+.interactive-checkbox input { accent-color: var(--accent, #3168da); }
+
+/* 生成前确认卡 */
+.interactive-plan { margin-top: 16px; padding: 16px; border: 1px solid var(--line-weak, rgba(0,0,0,0.12)); border-radius: 14px; background: #fafbfe; }
+.interactive-plan h3 { margin: 0 0 12px; font-size: 15px; }
+.interactive-plan-facts { display: grid; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.interactive-plan-facts li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13px; }
+.interactive-plan-facts li > span { color: var(--muted, #7a7f8c); }
+.interactive-plan-facts li > strong { font-weight: 600; }
+.interactive-materials { margin: 12px 0; padding: 12px; border: 1px dashed var(--line-weak, rgba(0,0,0,0.16)); border-radius: 12px; }
+.interactive-materials legend { padding: 0 6px; color: var(--muted, #7a7f8c); font-size: 12px; font-weight: 600; }
+.interactive-materials label { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+.interactive-materials label small { margin-left: auto; color: #9ba6b8; font-size: 11px; }
+.interactive-materials input { accent-color: var(--accent, #3168da); }
+
+/* 真实组成展示 */
+.interactive-composition { display: grid; gap: 4px; margin: 4px 0 8px; }
+.interactive-composition > p { margin: 0; font-size: 13px; color: #3d4757; }
+
+/* ===== 阶段 4：学生化智能辅导面板新增区块 ===== */
+
+/* 提示条：与全局 .page-notice 配套，补上 warn / info 两种语义色 */
+.interactive-panel .notice-warn { color: #8a5a12; background: #fff6e6; }
+.interactive-panel .notice-info { color: #4266a5; background: #eef4ff; }
+
+/* 学生简报输入区：目标 / 困惑 / 时长 / 难度 / 更多练习 */
+.interactive-brief { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0 4px; }
+.interactive-brief .interactive-objective { display: flex; flex-direction: column; gap: 6px; }
+.interactive-brief .interactive-objective > span { color: var(--muted, #7a7f8c); font-size: 12px; font-weight: 600; }
+.interactive-brief .interactive-objective input,
+.interactive-brief .interactive-objective select { width: 100%; padding: 10px 12px; border: 1px solid var(--line-weak, rgba(0,0,0,0.12)); border-radius: 10px; font-size: 13px; box-sizing: border-box; }
+.interactive-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #4a5568; }
+.interactive-checkbox input { accent-color: var(--accent, #3168da); }
+
+/* 生成前确认卡 */
+.interactive-plan { margin-top: 16px; padding: 16px; border: 1px solid var(--line-weak, rgba(0,0,0,0.12)); border-radius: 14px; background: #fafbfe; }
+.interactive-plan h3 { margin: 0 0 12px; font-size: 15px; }
+.interactive-plan-facts { display: grid; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+.interactive-plan-facts li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13px; }
+.interactive-plan-facts li > span { color: var(--muted, #7a7f8c); }
+.interactive-plan-facts li > strong { font-weight: 600; }
+.interactive-materials { margin: 12px 0; padding: 12px; border: 1px dashed var(--line-weak, rgba(0,0,0,0.16)); border-radius: 12px; }
+.interactive-materials legend { padding: 0 6px; color: var(--muted, #7a7f8c); font-size: 12px; font-weight: 600; }
+.interactive-materials label { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; }
+.interactive-materials label small { margin-left: auto; color: #9ba6b8; font-size: 11px; }
+.interactive-materials input { accent-color: var(--accent, #3168da); }
+
+/* 真实组成展示 */
+.interactive-composition { display: grid; gap: 4px; margin: 4px 0 8px; }
+.interactive-composition > p { margin: 0; font-size: 13px; color: #3d4757; }
+
+/* ===== 阶段 5：CPM 互动课堂提案确认卡 ===== */
+
+.classroom-proposal { display: flex; gap: 12px; margin: 14px auto 4px; max-width: var(--content-max, 1180px); width: min(100% - 32px, 1180px); padding: 14px 16px; border: 1px solid var(--line-weak, rgba(49,104,218,0.35)); border-radius: 14px; background: color-mix(in srgb, #3168da 6%, transparent); }
+.classroom-proposal-icon { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px; color: #fff; background: linear-gradient(135deg, #507cde, #836ae2); }
+.classroom-proposal-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+.classroom-proposal-body > strong { font-size: 14px; }
+.classroom-proposal-body > small { color: var(--muted, #7a7f8c); font-size: 12px; }
+.classroom-proposal-note { margin: 0; color: #59677d; font-size: 12px; line-height: 1.6; }
+.classroom-proposal-warn { margin: 0; color: #8a5a12; font-size: 12px; line-height: 1.6; }
+.classroom-proposal-error { margin: 0; color: #aa4c55; font-size: 12px; }
+.classroom-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+
+@media (max-width: 560px) {
+  .classroom-proposal { flex-direction: column; align-items: flex-start; }
+}
