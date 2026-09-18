@@ -89,6 +89,14 @@ export async function getLearningPlans(page = 1, pageSize = 10) {
   return _get("/learning-plans", { page, page_size: pageSize });
 }
 
+export async function getAdaptiveInterventions(page = 1, pageSize = 5) {
+  return _get("/adaptive-interventions", { page, page_size: pageSize });
+}
+
+export async function getAdaptiveInterventionOutcome(interventionId) {
+  return _get(`/adaptive-interventions/${interventionId}/outcome`);
+}
+
 export async function getLearningPlan(planId) {
   return _get(`/learning-plans/${planId}`);
 }

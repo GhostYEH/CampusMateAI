@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from ...models.adaptive_intervention import AdaptiveInterventionRow
@@ -38,6 +38,7 @@ from ...schemas.adaptive_intervention import (
     StudentStateAssessment,
 )
 from .outcome_evaluator import InterventionOutcomeEvaluator, PlanObservation
+from .observation_window import ObservationWindowPolicy
 from .state_analyzer import StudentStateAnalyzer
 from .strategy_policy import StrategyPolicy
 
@@ -53,8 +54,11 @@ FORECAST_TYPES = (
 OBSERVING_STATUS = "OBSERVING"
 # 观测完整（执行完成或窗口已结束）时的状态。
 EVALUATED_STATUS = "EVALUATED"
+REPLAN_COOLDOWN_HOURS = 12
+REPLAN_DAILY_LIMIT = 2
+MAX_REPLAN_CHAIN_DEPTH = 3
 # 这两类结论不落库、不推进状态：没有可评估的对象，或还没有开始执行。
-_NON_PERSISTED_VERDICTS = frozenset({"INCONCLUSIVE", "NOT_OBSERVED"})
+_NON_PERSISTED_VERDICTS = frozenset({"NOT_OBSERVED"})
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ class AdaptiveInterventionService:
         forecast_service: Any = None,
         student_goal_repository: Any = None,
         outcome_evaluator: InterventionOutcomeEvaluator | None = None,
+        observation_window_policy: ObservationWindowPolicy | None = None,
     ) -> None:
         self._repository = repository
         self._analyzer = analyzer
@@ -110,6 +115,7 @@ class AdaptiveInterventionService:
         self._student_goal_repository = student_goal_repository
         # 评估器是无状态纯函数对象，缺省自带一个实例，避免调用方必须知道它存在。
         self._outcome_evaluator = outcome_evaluator or InterventionOutcomeEvaluator()
+        self._observation_window_policy = observation_window_policy or ObservationWindowPolicy()
 
     # ------------------------------------------------------------------ 公开
 
@@ -243,10 +249,15 @@ class AdaptiveInterventionService:
 
         plan = self._load_plan(user_id=user_id, plan_id=row.plan_id) if row.plan_id else None
         metrics = plan_metrics if plan_metrics is not None else self._plan_metrics(user_id=user_id, row=row)
-        observation = self._build_observation(plan=plan, metrics=metrics)
+        observation = self._build_observation(row=row, plan=plan, metrics=metrics)
         result = self._outcome_evaluator.evaluate(intervention=row, observation=observation, as_of=now)
 
-        if row.status == "CANCELLED" or result.evaluation.verdict in _NON_PERSISTED_VERDICTS:
+        incomplete_without_adoption = (
+            result.evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
+            and result.evaluation.execution_signal in {"NOT_STARTED", "UNAVAILABLE"}
+            and not bool(result.evaluation.execution_signals.get("window_elapsed"))
+        )
+        if row.status == "CANCELLED" or result.evaluation.verdict in _NON_PERSISTED_VERDICTS or incomplete_without_adoption:
             # 已取消：不复活、不覆盖既有评估。结论不落库：没有可评估的对象或还没开始执行。
             stored = self._repository.get_evaluation(user_id=user_id, intervention_id=intervention_id)
             return InterventionOutcomeResult(
@@ -267,9 +278,7 @@ class AdaptiveInterventionService:
                 persisted=False, reused_evaluation=True,
             )
 
-        target = (
-            EVALUATED_STATUS if result.evaluation.observation_status == "COMPLETE" else OBSERVING_STATUS
-        )
+        target = EVALUATED_STATUS if bool(result.evaluation.execution_signals.get("window_elapsed")) else OBSERVING_STATUS
         self._repository.save_evaluation(
             user_id=user_id, intervention_id=intervention_id,
             evaluation=result.evaluation, input_digest=result.input_digest, status=target,
@@ -279,6 +288,37 @@ class AdaptiveInterventionService:
             intervention=current, evaluation=result.evaluation,
             persisted=True, reused_evaluation=False,
         )
+
+    def replan_from_evaluation(
+        self, *, user_id: str, intervention_id: str, evaluation_id: str,
+        decision_id: str, reason_codes: list[str], as_of: datetime,
+    ) -> InterventionPlanResult | None:
+        """Create and bind the successor before superseding the current intervention."""
+        old = self._repository.get(user_id=user_id, intervention_id=intervention_id)
+        if old is None or not old.plan_id or old.status in {"CANCELLED", "SUPERSEDED"}:
+            return None
+        if old.chain_depth >= MAX_REPLAN_CHAIN_DEPTH:
+            return None
+        day_start = as_of.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        if self._repository.has_replan_guard_violation(
+            user_id=user_id, goal_id=old.goal_id, old_intervention_id=old.intervention_id,
+            since=(as_of - timedelta(hours=REPLAN_COOLDOWN_HOURS)).isoformat(),
+            day_start=day_start.isoformat(), daily_limit=REPLAN_DAILY_LIMIT,
+        ):
+            return None
+        plan = self._load_plan(user_id=user_id, plan_id=old.plan_id)
+        available = int(getattr(getattr(plan, "run", None), "available_minutes", 60) or 60)
+        successor = self.plan_for_goal(
+            user_id=user_id, goal_id=old.goal_id, available_minutes=available,
+            idempotency_key=f"replan-evaluation:{evaluation_id}", as_of=as_of,
+            supersedes_plan_id=old.plan_id, force_new=True,
+        )
+        self._repository.link_replanned(
+            user_id=user_id, old_intervention_id=old.intervention_id,
+            new_intervention_id=successor.intervention.intervention_id, evaluation_id=evaluation_id,
+            decision_id=decision_id, reason_codes=reason_codes,
+        )
+        return successor
 
     # ------------------------------------------------------------------ 内部
 
@@ -339,8 +379,12 @@ class AdaptiveInterventionService:
                 user_id=user_id, intervention_id=intervention.intervention_id, status="CANCELLED"
             )
             raise ValueError("学习计划服务未返回 plan_id")
+        due_at = self._observation_window_policy.due_at(
+            planned_end=getattr(getattr(plan, "run", None), "window_end", None), generated_at=as_of,
+        )
         bound = self._repository.bind_plan(
-            user_id=user_id, intervention_id=intervention.intervention_id, plan_id=str(plan_id)
+            user_id=user_id, intervention_id=intervention.intervention_id, plan_id=str(plan_id),
+            observation_due_at=due_at.isoformat(),
         ) or intervention
         self._emit(on_stage, "PLAN_GENERATED", {
             "plan_id": str(plan_id),
@@ -379,7 +423,7 @@ class AdaptiveInterventionService:
         return metrics if isinstance(metrics, dict) else None
 
     @staticmethod
-    def _build_observation(*, plan: Any, metrics: dict[str, Any] | None) -> PlanObservation | None:
+    def _build_observation(*, row: AdaptiveInterventionRow, plan: Any, metrics: dict[str, Any] | None) -> PlanObservation | None:
         """把计划行转成评估器需要的观测输入；计划不存在时返回 None。"""
         if plan is None:
             return None
@@ -399,9 +443,9 @@ class AdaptiveInterventionService:
             run_id=run.run_id,
             allocated_minutes=int(run.allocated_minutes or 0),
             available_minutes=int(run.available_minutes or 0),
-            # 观测窗口 = 计划的有效期：计划失效后就不该再拿它解释干预效果。
-            window_start=run.as_of,
-            window_end=run.valid_until,
+            # plan.valid_until 仅是规划输入的新鲜度；效果观测窗口由独立策略持久化。
+            window_start=row.observation_started_at or row.created_at,
+            window_end=row.observation_due_at,
             items=items,
             metrics=metrics,
         )

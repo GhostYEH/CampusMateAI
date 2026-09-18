@@ -103,15 +103,16 @@ class AdaptiveInterventionRepository:
         return self.get(user_id=user_id, intervention_id=intervention_id)  # type: ignore[return-value]
 
     def bind_plan(
-        self, *, user_id: str, intervention_id: str, plan_id: str, status: str = "PLAN_GENERATED"
+        self, *, user_id: str, intervention_id: str, plan_id: str,
+        observation_due_at: str | None = None, status: str = "PLAN_GENERATED"
     ) -> AdaptiveInterventionRow | None:
         if status not in WRITABLE_INTERVENTION_STATUSES:
             raise ValueError(f"未知或本轮不可写入的干预状态: {status}")
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE adaptive_interventions SET plan_id=?, status=?, updated_at=? "
+                "UPDATE adaptive_interventions SET plan_id=?, status=?, observation_due_at=?, updated_at=? "
                 "WHERE intervention_id=? AND user_id=?",
-                (plan_id, status, _now(), intervention_id, user_id),
+                (plan_id, status, observation_due_at, _now(), intervention_id, user_id),
             )
         return self.get(user_id=user_id, intervention_id=intervention_id)
 
@@ -124,6 +125,45 @@ class AdaptiveInterventionRepository:
                 (status, _now(), intervention_id, user_id),
             )
         return self.get(user_id=user_id, intervention_id=intervention_id)
+
+    def link_replanned(
+        self, *, user_id: str, old_intervention_id: str, new_intervention_id: str,
+        evaluation_id: str, decision_id: str, reason_codes: list[str],
+    ) -> None:
+        """Only call after successor plan binding succeeds; the old record stays usable on failure."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE adaptive_interventions SET status='SUPERSEDED', superseded_by_intervention_id=?, "
+                "updated_at=? WHERE intervention_id=? AND user_id=? AND status!='CANCELLED'",
+                (new_intervention_id, _now(), old_intervention_id, user_id),
+            )
+            conn.execute(
+                "UPDATE adaptive_interventions SET supersedes_intervention_id=?, source_evaluation_id=?, "
+                "replan_decision_id=?, replan_reason_codes_json=?, chain_depth=(SELECT chain_depth+1 FROM adaptive_interventions "
+                "WHERE intervention_id=? AND user_id=?), updated_at=? WHERE intervention_id=? AND user_id=?",
+                (old_intervention_id, evaluation_id, decision_id, json.dumps(sorted(set(reason_codes))),
+                 old_intervention_id, user_id, _now(), new_intervention_id, user_id),
+            )
+
+    def has_replan_guard_violation(self, *, user_id: str, goal_id: str, old_intervention_id: str,
+                                   since: str, day_start: str, daily_limit: int) -> bool:
+        with self._db.query() as conn:
+            active = conn.execute(
+                "SELECT COUNT(*) FROM adaptive_interventions WHERE user_id=? AND goal_id=? "
+                "AND intervention_id!=? AND status IN ('PLAN_GENERATED','ACCEPTED','EXECUTING','OBSERVING')",
+                (user_id, goal_id, old_intervention_id),
+            ).fetchone()[0]
+            recent = conn.execute(
+                "SELECT COUNT(*) FROM adaptive_interventions WHERE user_id=? AND goal_id=? "
+                "AND supersedes_intervention_id IS NOT NULL AND created_at>=?",
+                (user_id, goal_id, since),
+            ).fetchone()[0]
+            daily = conn.execute(
+                "SELECT COUNT(*) FROM adaptive_interventions WHERE user_id=? AND goal_id=? "
+                "AND supersedes_intervention_id IS NOT NULL AND created_at>=?",
+                (user_id, goal_id, day_start),
+            ).fetchone()[0]
+        return bool(active or recent or daily >= daily_limit)
 
     def save_evaluation(
         self,
@@ -172,19 +212,46 @@ class AdaptiveInterventionRepository:
                 "WHERE intervention_id=? AND evaluator_version=? AND input_digest=?",
                 (intervention_id, evaluation.evaluator_version, input_digest),
             ).fetchone()
-            conn.execute(
-                "UPDATE adaptive_interventions SET "
-                "status = CASE WHEN status='EVALUATED' THEN 'EVALUATED' ELSE ? END, "
-                "observation_started_at = COALESCE(observation_started_at, ?), "
-                "evaluated_at = CASE WHEN ?='EVALUATED' THEN ? ELSE evaluated_at END, "
-                "outcome_verdict=?, evaluation_id=?, updated_at=? "
-                "WHERE intervention_id=? AND user_id=? AND status != 'CANCELLED'",
-                (
-                    status, now, status, evaluation.as_of,
-                    evaluation.verdict, stored["evaluation_id"], now, intervention_id, user_id,
-                ),
-            )
+            current = conn.execute(
+                "SELECT * FROM adaptive_interventions WHERE intervention_id=? AND user_id=?",
+                (intervention_id, user_id),
+            ).fetchone()
+            if current is not None and current["status"] not in {"CANCELLED", "SUPERSEDED"}:
+                previous = None
+                if current["evaluation_id"]:
+                    previous = conn.execute(
+                        "SELECT * FROM intervention_evaluations WHERE evaluation_id=?",
+                        (current["evaluation_id"],),
+                    ).fetchone()
+                if self._is_better_current(candidate=stored, current=previous, candidate_status=status):
+                    conn.execute(
+                        "UPDATE adaptive_interventions SET status=?, observation_started_at=COALESCE(observation_started_at, ?), "
+                        "observation_completed_at=CASE WHEN ?='EVALUATED' THEN ? ELSE observation_completed_at END, "
+                        "evaluated_at=CASE WHEN ?='EVALUATED' THEN ? ELSE evaluated_at END, "
+                        "evaluation_version=?, outcome_verdict=?, evaluation_id=?, updated_at=? "
+                        "WHERE intervention_id=? AND user_id=?",
+                        (status, now, status, evaluation.as_of, status, evaluation.as_of,
+                         evaluation.evaluator_version, evaluation.verdict, stored["evaluation_id"], now,
+                         intervention_id, user_id),
+                    )
         return InterventionEvaluationRow.from_row(stored), created
+
+    @staticmethod
+    def _is_better_current(*, candidate, current, candidate_status: str) -> bool:
+        """选择 current evaluation 的单调规则，永不让弱观察覆盖最终评估。"""
+        if current is None:
+            return True
+        current_payload = json.loads(current["evaluation_json"] or "{}")
+        candidate_payload = json.loads(candidate["evaluation_json"] or "{}")
+        current_final = current["observation_status"] == "COMPLETE"
+        candidate_final = candidate_status == "EVALUATED" and candidate["observation_status"] == "COMPLETE"
+        if current_final and not candidate_final:
+            return False
+        def rank(row, payload, final):
+            evidence = 1 if payload.get("observed_outcome") not in (None, "INSUFFICIENT_EVIDENCE") else 0
+            confidence = float(payload.get("confidence") or 0.0)
+            return (int(final), evidence, confidence, row["as_of"], row["created_at"], row["evaluation_id"])
+        return rank(candidate, candidate_payload, candidate_final) > rank(current, current_payload, current_final)
 
     # ---------------------------------------------------------------- 读取
 
@@ -210,8 +277,8 @@ class AdaptiveInterventionRepository:
         """最近一次结果评估。跨用户返回 None，与其它读取入口一致。"""
         with self._db.query() as conn:
             row = conn.execute(
-                "SELECT * FROM intervention_evaluations WHERE intervention_id=? AND user_id=? "
-                "ORDER BY created_at DESC, evaluation_id DESC LIMIT 1",
+                "SELECT e.* FROM intervention_evaluations e JOIN adaptive_interventions i "
+                "ON i.evaluation_id=e.evaluation_id WHERE i.intervention_id=? AND i.user_id=?",
                 (intervention_id, user_id),
             ).fetchone()
         return InterventionEvaluationRow.from_row(row) if row is not None else None
@@ -254,6 +321,17 @@ class AdaptiveInterventionRepository:
                 (user_id, max(1, page_size), offset),
             ).fetchall()
         return [AdaptiveInterventionRow.from_row(row) for row in rows], total
+
+    def list_due_for_evaluation(self, *, as_of: str, limit: int = 50) -> list[AdaptiveInterventionRow]:
+        """Bounded background-work query; never used by HTTP reads."""
+        with self._db.query() as conn:
+            rows = conn.execute(
+                "SELECT * FROM adaptive_interventions WHERE status IN ('PLAN_GENERATED','OBSERVING','EXECUTING') "
+                "AND observation_due_at IS NOT NULL AND observation_due_at<=? "
+                "ORDER BY observation_due_at, intervention_id LIMIT ?",
+                (as_of, max(1, min(limit, 100))),
+            ).fetchall()
+        return [AdaptiveInterventionRow.from_row(row) for row in rows]
 
     def count_for_user(self, *, user_id: str) -> int:
         with self._db.query() as conn:

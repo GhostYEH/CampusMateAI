@@ -36,8 +36,9 @@ WRITABLE_INTERVENTION_STATUSES = (
     "CANCELLED",
     "OBSERVING",
     "EVALUATED",
+    "SUPERSEDED",
 )
-RESERVED_INTERVENTION_STATUSES = ("SUPERSEDED",)
+RESERVED_INTERVENTION_STATUSES = ()
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,15 @@ class AdaptiveInterventionRow:
     evaluation_id: str | None
     created_at: str
     updated_at: str
+    observation_due_at: str | None = None
+    observation_completed_at: str | None = None
+    evaluation_version: str | None = None
+    supersedes_intervention_id: str | None = None
+    superseded_by_intervention_id: str | None = None
+    source_evaluation_id: str | None = None
+    replan_decision_id: str | None = None
+    replan_reason_codes_json: str | None = None
+    chain_depth: int = 0
 
     @classmethod
     def from_row(cls, row: Any) -> "AdaptiveInterventionRow":
@@ -100,6 +110,15 @@ class AdaptiveInterventionRow:
             evaluation_id=row["evaluation_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            observation_due_at=row["observation_due_at"],
+            observation_completed_at=row["observation_completed_at"],
+            evaluation_version=row["evaluation_version"],
+            supersedes_intervention_id=row["supersedes_intervention_id"],
+            superseded_by_intervention_id=row["superseded_by_intervention_id"],
+            source_evaluation_id=row["source_evaluation_id"],
+            replan_decision_id=row["replan_decision_id"],
+            replan_reason_codes_json=row["replan_reason_codes_json"],
+            chain_depth=int(row["chain_depth"] or 0),
         )
 
 

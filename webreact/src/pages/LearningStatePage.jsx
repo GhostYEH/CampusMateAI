@@ -141,6 +141,22 @@ function ErrorBar({ error, onRetry }) {
   );
 }
 
+function InterventionLoopSummary({ intervention, outcome }) {
+  if (!intervention) return null;
+  const decision = outcome?.observed_outcome === "INSUFFICIENT_EVIDENCE" ? "等待更多证据" : "继续观察";
+  return <section className="ls-section" aria-label="当前干预闭环">
+    <div className="ls-section__heading"><h2>当前干预闭环</h2><span className="ls-section__hint">基于可追溯证据，不作因果断言</span></div>
+    <article className="ls-state-card">
+      <p><strong>当前策略：</strong>{intervention.strategy_code}</p>
+      <p><strong>选择依据：</strong>{intervention.rationale_codes?.join("、") || "状态证据有限"}</p>
+      <p><strong>执行采纳：</strong>{outcome?.adoption === "COMPLETED" ? "计划已完成" : outcome?.adoption || "尚未开始"}</p>
+      <p><strong>观测结果：</strong>{outcome?.observed_outcome === "IMPROVED" ? "观测到改善" : "证据不足"}</p>
+      <p><strong>系统决定：</strong>{decision}{intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}</p>
+      {intervention.supersedes_intervention_id && <p>来源干预：{intervention.supersedes_intervention_id}</p>}
+    </article>
+  </section>;
+}
+
 function EmptyState({ text = "暂时没有数据" }) {
   return <div className="ls-empty">{text}</div>;
 }
@@ -747,6 +763,12 @@ export default function LearningStatePage() {
   const forecasts = useAsync(() => api.getForecasts({ horizonDays: 7, pageSize: 30 }), [refreshKey]);
   const goals = useAsync(() => api.getStudentGoals({ status: "active" }), [refreshKey]);
   const plans = useAsync(() => api.getLearningPlans(1, 10), [refreshKey]);
+  const interventions = useAsync(() => api.getAdaptiveInterventions(1, 5), [refreshKey]);
+  const currentIntervention = interventions.data?.items?.find((item) => item.status !== "SUPERSEDED") || null;
+  const interventionOutcome = useAsync(
+    () => (currentIntervention ? api.getAdaptiveInterventionOutcome(currentIntervention.intervention_id) : Promise.resolve(null)),
+    [currentIntervention?.intervention_id, refreshKey],
+  );
   const runtimeJobs = useAsync(() => runtimeApi.listAgentJobs(1, 20), [refreshKey]);
   const currentPlanId = useMemo(
     () => plans.data?.items?.find((plan) => !["REJECTED", "SUPERSEDED"].includes(plan.status))?.plan_id || null,
@@ -922,6 +944,7 @@ export default function LearningStatePage() {
       <div className="ls-layout">
         <div className="ls-layout__main">
           <StateOverview snapshots={snapshots.data} onViewEvidence={setEvidenceSnapshot} onMarkInaccurate={handleMarkInaccurate} />
+          <InterventionLoopSummary intervention={currentIntervention} outcome={interventionOutcome.data} />
           <WorldSnapshotSection snapshots={worldSnapshots.data} onViewEvidence={setEvidenceSnapshot} />
           <StateTimeline changes={changes.data} />
           <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />
