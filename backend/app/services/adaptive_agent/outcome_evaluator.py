@@ -43,6 +43,7 @@ from ...schemas.adaptive_intervention import (
     OutcomeEvidenceRef,
     StrategyDecision,
 )
+from .state_outcome_comparator import StateOutcomeComparator
 
 # 判定"存在截止时间压力"的理由码（来自 assessment 的 reason codes）。
 DEADLINE_PRESSURE_REASON_CODES = frozenset({
@@ -118,6 +119,7 @@ class InterventionOutcomeEvaluator:
         intervention: AdaptiveInterventionRow,
         observation: PlanObservation | None,
         as_of: datetime,
+        state_comparison: dict[str, Any] | None = None,
     ) -> OutcomeEvaluationResult:
         as_of = as_of.astimezone(timezone.utc).replace(microsecond=0)
         warnings: list[str] = []
@@ -139,7 +141,7 @@ class InterventionOutcomeEvaluator:
             return self._build(
                 intervention=intervention, strategy=strategy, checks=checks, observation=None,
                 execution_signal="UNAVAILABLE", window_elapsed=False, warnings=warnings,
-                metrics_available=False, as_of=as_of,
+                metrics_available=False, as_of=as_of, state_comparison=state_comparison,
             )
 
         if observation.metrics is None:
@@ -162,6 +164,7 @@ class InterventionOutcomeEvaluator:
             intervention=intervention, strategy=strategy, checks=checks, observation=observation,
             execution_signal=signal, window_elapsed=window_elapsed, warnings=warnings,
             metrics_available=observation.metrics_available, as_of=as_of, signals=signals,
+            state_comparison=state_comparison,
         )
 
     # ------------------------------------------------------------ 执行信号
@@ -337,6 +340,7 @@ class InterventionOutcomeEvaluator:
         metrics_available: bool,
         as_of: datetime,
         signals: dict[str, Any] | None = None,
+        state_comparison: dict[str, Any] | None = None,
     ) -> OutcomeEvaluationResult:
         realized = [c for c in checks if c.verdict == "REALIZED"]
         not_realized = [c for c in checks if c.verdict == "NOT_REALIZED"]
@@ -351,7 +355,11 @@ class InterventionOutcomeEvaluator:
         else:
             fidelity = "UNVERIFIABLE"
 
-        if observation is None or not decidable:
+        comparison_outcome = (state_comparison or {}).get("outcome", "INSUFFICIENT_EVIDENCE")
+        if comparison_outcome == "INSUFFICIENT_EVIDENCE":
+            # Compatibility verdict intentionally stays inconclusive: adoption/fidelity are not learning outcome.
+            verdict = "INCONCLUSIVE"
+        elif observation is None or not decidable:
             verdict = "INCONCLUSIVE"
         elif not_realized and not realized:
             verdict = "INEFFECTIVE"
@@ -414,9 +422,14 @@ class InterventionOutcomeEvaluator:
             "metrics": observation.metrics if observation else None,
             "window_elapsed": bool(window_elapsed),
             "expected_outcomes": [check.code for check in checks],
+            "state_comparison": state_comparison,
         }
         digest = _digest(payload)
 
+        comparison = state_comparison or StateOutcomeComparator().compare(
+            before={}, after={}, strategy_code=strategy.strategy_code,
+            comparison_as_of=as_of.isoformat(),
+        )
         evaluation = InterventionEvaluation(
             # 由输入摘要派生：同一份观测必然得到同一个 evaluation_id，落库天然幂等。
             evaluation_id=f"inteval_{digest[:16]}",
@@ -429,8 +442,12 @@ class InterventionOutcomeEvaluator:
             window_end=observation.window_end if observation else None,
             observation_status=observation_status,
             execution_signal=execution_signal,
+            adoption=execution_signal,
             plan_fidelity=fidelity,
             verdict=verdict,
+            observed_outcome=comparison["outcome"],
+            causal_claim="NOT_ESTIMATED",
+            state_comparison=comparison,
             outcome_checks=checks,
             execution_signals=final_signals,
             confidence=confidence,

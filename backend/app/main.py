@@ -51,6 +51,10 @@ async def lifespan(app: FastAPI):
     await container.agent_worker.start()
     logger.info("Agent Worker 已启动，mode={}, concurrency={}",
                 settings.agent_runtime_mode, settings.agent_worker_concurrency)
+    # 自适应闭环不依赖页面访问：每次安全启动先跑一个有界 tick，重复运行由评估/重规划幂等键收敛。
+    report = container.adaptive_replanning_worker.tick(batch_size=25)
+    logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, failed={}",
+                report.scanned, report.evaluated, report.reused, report.failed)
     # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
     if settings.agent_allow_mock_providers and settings.app_env != "production":
         try:

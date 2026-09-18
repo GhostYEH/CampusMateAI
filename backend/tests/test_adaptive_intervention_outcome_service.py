@@ -17,8 +17,8 @@ from app.services.adaptive_agent.state_analyzer import StudentStateAnalyzer
 from app.services.adaptive_agent.strategy_policy import StrategyPolicy
 from app.services.container import reset_container_for_tests
 
-# 计划有效期只有 15 分钟，用它把观测窗口推过去。
-AFTER_WINDOW = timedelta(hours=2)
+# 效果观测窗口独立于计划有效期，测试从持久化 due_at 推进时间。
+AFTER_WINDOW = timedelta(days=8)
 
 
 def _setup():
@@ -82,7 +82,7 @@ def test_observing_then_evaluated_follows_real_execution() -> None:
     first = service.observe_and_evaluate(user_id=student.id, intervention_id=intervention_id)
     assert first is not None
     assert first.persisted is False and first.reused_evaluation is False
-    assert first.evaluation.verdict == "NOT_OBSERVED"
+    assert first.evaluation.verdict == "INCONCLUSIVE"
     assert first.evaluation.execution_signal == "NOT_STARTED"
     assert first.intervention.status == "PLAN_GENERATED"
     assert repository.get_evaluation(user_id=student.id, intervention_id=intervention_id) is None
@@ -113,19 +113,20 @@ def test_observing_then_evaluated_follows_real_execution() -> None:
     assert fourth is not None and fourth.persisted is True
     assert fourth.evaluation.execution_signal == "COMPLETED"
     assert fourth.evaluation.observation_status == "COMPLETE"
-    assert fourth.evaluation.verdict == "EFFECTIVE"
-    assert fourth.intervention.status == "EVALUATED"
-    assert fourth.intervention.evaluated_at is not None
+    assert fourth.evaluation.verdict == "INCONCLUSIVE"
+    assert fourth.evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
+    assert fourth.intervention.status == "OBSERVING"
+    assert fourth.intervention.evaluated_at is None
     assert len(repository.list_evaluations(user_id=student.id, intervention_id=intervention_id)) == 2
 
     # 5. 已经是终态：同一份观测继续复用，不产生第三份评估。
     fifth = service.observe_and_evaluate(user_id=student.id, intervention_id=intervention_id)
     assert fifth is not None and fifth.reused_evaluation is True
-    assert fifth.intervention.status == "EVALUATED"
+    assert fifth.intervention.status == "OBSERVING"
     assert len(repository.list_evaluations(user_id=student.id, intervention_id=intervention_id)) == 2
 
 
-def test_window_passed_without_adoption_is_evaluated_as_ineffective() -> None:
+def test_window_passed_without_adoption_is_evaluated_without_claiming_ineffectiveness() -> None:
     container, student, _other, goal = _setup()
     outcome = _plan(container, student, goal)
     service = container.adaptive_intervention_service
@@ -137,8 +138,9 @@ def test_window_passed_without_adoption_is_evaluated_as_ineffective() -> None:
     )
     assert result is not None and result.persisted is True
     assert result.evaluation.execution_signal == "NOT_STARTED"
-    assert result.evaluation.verdict == "INEFFECTIVE"
-    assert "adoption_not_observed" in result.evaluation.warning_codes
+    assert result.evaluation.adoption == "NOT_STARTED"
+    assert result.evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
+    assert result.evaluation.verdict == "INCONCLUSIVE"
     assert result.intervention.status == "EVALUATED"
     # 计划结构本身没问题：是没人执行，不是策略没落地。
     assert result.evaluation.plan_fidelity == "MATCHED"
@@ -240,7 +242,7 @@ def test_injected_plan_metrics_are_used_verbatim() -> None:
     assert result is not None
     assert result.evaluation.execution_signal == "COMPLETED"
     assert result.evaluation.execution_signals["completed_plan_task_count"] == planned
-    assert result.intervention.status == "EVALUATED"
+    assert result.intervention.status == "OBSERVING"
 
 
 def test_evaluation_is_readable_through_the_intervention_list() -> None:
@@ -260,7 +262,7 @@ def test_evaluation_is_readable_through_the_intervention_list() -> None:
     )
     assert total == 1
     row = rows[0]
-    assert row.status == "EVALUATED"
-    assert row.outcome_verdict == "EFFECTIVE"
+    assert row.status == "OBSERVING"
+    assert row.outcome_verdict == "INCONCLUSIVE"
     assert row.evaluation_id and row.evaluation_id.startswith("inteval_")
-    assert row.observation_started_at is not None and row.evaluated_at is not None
+    assert row.observation_started_at is not None and row.evaluated_at is None

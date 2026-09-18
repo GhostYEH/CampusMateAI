@@ -9,8 +9,7 @@
 不返回内部 `user_id`、原始 JSON 字符串或任何证据正文；跨用户访问与不存在同样返回 404，
 与仓库其它资源隔离语义一致。不提供写入、人工篡改策略或管理员覆盖接口。
 
-`/outcome` 与既有的 `GET /learning-plans/{plan_id}/evaluation` 一样是"读触发观测"：
-评估本身按观测输入摘要幂等（同一份观测只落一行），重复请求不会产生重复记录。
+`/outcome` 是纯查询：后台闭环负责写入评估，页面访问绝不改变学生记录。
 """
 from __future__ import annotations
 
@@ -63,8 +62,11 @@ def _out(row: AdaptiveInterventionRow) -> AdaptiveInterventionOut:
         data_quality=assessment.get("data_quality"),
         warning_codes=[str(code) for code in _loads(row.warning_codes_json, [])],
         observation_started_at=row.observation_started_at,
+        observation_due_at=row.observation_due_at,
         evaluated_at=row.evaluated_at,
         outcome_verdict=row.outcome_verdict,
+        supersedes_intervention_id=row.supersedes_intervention_id,
+        superseded_by_intervention_id=row.superseded_by_intervention_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -106,35 +108,49 @@ def get_adaptive_intervention_outcome(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> AdaptiveInterventionOutcomeOut:
-    result = container.adaptive_intervention_service.observe_and_evaluate(
+    intervention = container.adaptive_intervention_repository.get(
         user_id=user.id, intervention_id=intervention_id
     )
-    if result is None:
+    if intervention is None:
         raise NotFoundError()
     stored = container.adaptive_intervention_repository.get_evaluation(
         user_id=user.id, intervention_id=intervention_id
     )
-    summary = result.evaluation.safe_summary()
+    if stored is None:
+        # 尚无后台观测：响应保持兼容形状，但不临时计算、更不写入任何评估。
+        return AdaptiveInterventionOutcomeOut(
+            evaluation_id="", intervention_id=intervention_id, goal_id=intervention.goal_id,
+            plan_id=intervention.plan_id, as_of=intervention.updated_at,
+            observation_status="NOT_STARTED", execution_signal="NOT_STARTED", adoption="NOT_STARTED",
+            plan_fidelity="UNVERIFIABLE", verdict="NOT_OBSERVED",
+            observed_outcome="INSUFFICIENT_EVIDENCE", causal_claim="NOT_ESTIMATED",
+            confidence=0.0, data_quality=None, evaluator_version="adaptive-intervention-outcome-v2",
+            created_at="",
+        )
+    evaluation = container.adaptive_intervention_service._restore_evaluation(stored)
+    summary = evaluation.safe_summary()
     return AdaptiveInterventionOutcomeOut(
-        evaluation_id=result.evaluation.evaluation_id,
+        evaluation_id=evaluation.evaluation_id,
         intervention_id=summary["intervention_id"],
         goal_id=summary["goal_id"],
         plan_id=summary["plan_id"],
         as_of=summary["as_of"],
-        window_start=result.evaluation.window_start,
-        window_end=result.evaluation.window_end,
+        window_start=evaluation.window_start,
+        window_end=evaluation.window_end,
         observation_status=summary["observation_status"],
         execution_signal=summary["execution_signal"],
+        adoption=summary["adoption"],
         plan_fidelity=summary["plan_fidelity"],
         verdict=summary["verdict"],
+        observed_outcome=summary["observed_outcome"],
+        causal_claim=summary["causal_claim"],
         outcome_checks=summary["outcome_checks"],
         execution_signals=summary["execution_signals"],
         confidence=summary["confidence"],
         data_quality=summary["data_quality"],
         warning_codes=summary["warning_codes"],
         evaluator_version=summary["evaluator_version"],
-        # 未落库的结论（无计划 / 还没开始执行）如实返回空，不伪造落库时间。
-        created_at=stored.created_at if stored is not None else "",
+        created_at=stored.created_at,
     )
 
 

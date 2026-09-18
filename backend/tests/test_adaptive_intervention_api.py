@@ -161,27 +161,34 @@ def _accept_and_execute(container, user_id: str, intervention_id: str) -> str:
     return row.plan_id
 
 
-def test_outcome_endpoint_explains_the_evaluation_and_advances_status() -> None:
+def test_outcome_endpoint_reads_stored_evaluation_without_advancing_status() -> None:
     container, student, _other, client, headers, _other_headers, _teacher_headers = _setup()
     intervention_ids = _seed(container, student.id, count=1)
     intervention_id = intervention_ids[0]
 
-    # 计划刚生成：还没有可判断的结果，结论可读但不落库。
+    # 计划刚生成：GET 只报告尚无后台结果，绝不创建评估。
+    before = container.adaptive_intervention_repository.count_for_user(user_id=student.id)
     early = client.get(f"/api/v1/adaptive-interventions/{intervention_id}/outcome", headers=headers)
     assert early.status_code == 200, early.text
     body = early.json()
     assert body["verdict"] == "NOT_OBSERVED"
     assert body["execution_signal"] == "NOT_STARTED"
     assert body["created_at"] == ""
-    assert body["outcome_checks"] and all(
-        {"code", "verdict", "reason_code"} == set(check) for check in body["outcome_checks"]
-    )
+    assert body["observed_outcome"] == "INSUFFICIENT_EVIDENCE"
+    assert body["causal_claim"] == "NOT_ESTIMATED"
+    assert container.adaptive_intervention_repository.count_for_user(user_id=student.id) == before
+    assert container.adaptive_intervention_repository.list_evaluations(
+        user_id=student.id, intervention_id=intervention_id
+    ) == []
 
     _accept_and_execute(container, student.id, intervention_id)
+    container.adaptive_intervention_service.observe_and_evaluate(
+        user_id=student.id, intervention_id=intervention_id,
+    )
     response = client.get(f"/api/v1/adaptive-interventions/{intervention_id}/outcome", headers=headers)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["verdict"] in {"PARTIALLY_EFFECTIVE", "EFFECTIVE"}
+    assert body["verdict"] in {"PARTIALLY_EFFECTIVE", "EFFECTIVE", "INCONCLUSIVE"}
     assert body["execution_signal"] == "IN_PROGRESS"
     assert body["observation_status"] == "IN_PROGRESS"
     assert body["plan_fidelity"] in {"MATCHED", "MISMATCHED", "UNVERIFIABLE"}
@@ -203,6 +210,9 @@ def test_outcome_endpoint_is_idempotent_for_the_same_observation() -> None:
     intervention_id = intervention_ids[0]
     _accept_and_execute(container, student.id, intervention_id)
 
+    container.adaptive_intervention_service.observe_and_evaluate(
+        user_id=student.id, intervention_id=intervention_id,
+    )
     first = client.get(f"/api/v1/adaptive-interventions/{intervention_id}/outcome", headers=headers).json()
     second = client.get(f"/api/v1/adaptive-interventions/{intervention_id}/outcome", headers=headers).json()
     assert first["evaluation_id"] == second["evaluation_id"]

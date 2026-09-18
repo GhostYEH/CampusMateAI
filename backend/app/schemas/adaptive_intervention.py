@@ -326,6 +326,11 @@ class PlanningStrategyContext(BaseModel):
 ObservationStatus = Literal["NOT_STARTED", "IN_PROGRESS", "COMPLETE"]
 # 执行信号：计划是否被真的推进。UNAVAILABLE 表示拿不到计划，不是"没执行"。
 ExecutionSignal = Literal["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "UNAVAILABLE"]
+# 执行采纳与计划结构对账不同：任务完成只说明学生采纳了计划。
+AdoptionStatus = ExecutionSignal
+# 只有可比较的前后状态证据才能得出状态结果；完成任务本身不是状态改善。
+ObservedOutcome = Literal["IMPROVED", "STABLE", "DECLINED", "INSUFFICIENT_EVIDENCE"]
+CausalClaim = Literal["NOT_ESTIMATED"]
 # 策略声明与计划实际结构的一致程度。三值各有明确含义，不留"部分一致"这种含糊档位：
 # MATCHED = 没有未通过的判定且至少一条可判定；MISMATCHED = 至少一条未通过；
 # UNVERIFIABLE = 一条都判不了（没有计划或没有可判定的期望结果）。
@@ -430,8 +435,12 @@ class InterventionEvaluation(BaseModel):
 
     observation_status: ObservationStatus
     execution_signal: ExecutionSignal
+    adoption: AdoptionStatus = "UNAVAILABLE"
     plan_fidelity: PlanFidelity
     verdict: OutcomeVerdict
+    observed_outcome: ObservedOutcome = "INSUFFICIENT_EVIDENCE"
+    causal_claim: CausalClaim = "NOT_ESTIMATED"
+    state_comparison: dict[str, Any] = Field(default_factory=dict)
 
     outcome_checks: list[OutcomeCheck] = Field(default_factory=list, max_length=8)
     execution_signals: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
@@ -463,8 +472,8 @@ class InterventionEvaluation(BaseModel):
         if self.verdict == "NOT_OBSERVED" and self.execution_signal != "NOT_STARTED":
             raise ValueError("NOT_OBSERVED 只适用于尚未观测到执行的情况")
         if self.verdict == "INCONCLUSIVE":
-            if self.execution_signal != "UNAVAILABLE" and decidable:
-                raise ValueError("INCONCLUSIVE 要求拿不到计划或没有可判定的期望结果")
+            if self.observed_outcome != "INSUFFICIENT_EVIDENCE" and self.execution_signal != "UNAVAILABLE" and decidable:
+                raise ValueError("INCONCLUSIVE 要求缺少状态结果证据或拿不到计划")
         if self.verdict == "PARTIALLY_EFFECTIVE" and not realized:
             raise ValueError("PARTIALLY_EFFECTIVE 要求至少一条期望结果通过")
 
@@ -493,8 +502,11 @@ class InterventionEvaluation(BaseModel):
             "as_of": self.as_of,
             "observation_status": self.observation_status,
             "execution_signal": self.execution_signal,
+            "adoption": self.adoption,
             "plan_fidelity": self.plan_fidelity,
             "verdict": self.verdict,
+            "observed_outcome": self.observed_outcome,
+            "causal_claim": self.causal_claim,
             "outcome_checks": [
                 {"code": c.code, "verdict": c.verdict, "reason_code": c.reason_code}
                 for c in self.outcome_checks
@@ -523,8 +535,12 @@ class AdaptiveInterventionOutcomeOut(BaseModel):
     window_end: str | None = None
     observation_status: str
     execution_signal: str
+    adoption: str
     plan_fidelity: str
     verdict: str
+    observed_outcome: str = "INSUFFICIENT_EVIDENCE"
+    causal_claim: str = "NOT_ESTIMATED"
+    state_comparison: dict[str, Any] = Field(default_factory=dict)
     outcome_checks: list[dict[str, str]] = Field(default_factory=list)
     execution_signals: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
     confidence: float = Field(..., ge=0.0, le=1.0)
@@ -555,8 +571,11 @@ class AdaptiveInterventionOut(BaseModel):
     data_quality: str | None = None
     warning_codes: list[str] = Field(default_factory=list)
     observation_started_at: str | None = None
+    observation_due_at: str | None = None
     evaluated_at: str | None = None
     outcome_verdict: str | None = None
+    supersedes_intervention_id: str | None = None
+    superseded_by_intervention_id: str | None = None
     created_at: str
     updated_at: str
 
@@ -589,6 +608,9 @@ __all__ = [
     "ExpectedOutcomeCode",
     "ObservationStatus",
     "ExecutionSignal",
+    "AdoptionStatus",
+    "ObservedOutcome",
+    "CausalClaim",
     "PlanFidelity",
     "OutcomeCheckVerdict",
     "OutcomeVerdict",
