@@ -56,6 +56,7 @@ class LearnerEventService:
         self, *, user_id: str, event_type: str, intervention_id: str, goal_id: str,
         occurred_at: datetime, evaluation_id: str | None = None, decision_id: str | None = None,
         outcome: str = "updated", evidence_refs: list[str] | None = None,
+        adoption: str | None = None, observed_outcome: str | None = None,
     ) -> LearnerEventAppendResult:
         """Append a bounded, idempotent adaptive-loop event.
 
@@ -64,6 +65,7 @@ class LearnerEventService:
         """
         payload = {"intervention_id": intervention_id, "goal_id": goal_id,
                    "evaluation_id": evaluation_id, "decision_id": decision_id,
+                   "adoption": adoption, "observed_outcome": observed_outcome,
                    "evidence_refs": sorted(set(evidence_refs or []))}
         return self.record_event(user_id=user_id, event=LearnerEventCreate(
             source="adaptive_intervention", event_type=event_type, occurred_at=occurred_at,

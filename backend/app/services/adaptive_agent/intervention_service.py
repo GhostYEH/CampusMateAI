@@ -326,9 +326,14 @@ class AdaptiveInterventionService:
                     evaluation_id=result.evaluation.evaluation_id,
                     occurred_at=now, outcome="observed_completed",
                     evidence_refs=[result.evaluation.evaluation_id],
+                    adoption=result.evaluation.adoption,
+                    observed_outcome=result.evaluation.observed_outcome,
                 )
             except Exception:
-                pass
+                # The evaluation is durable, but its audit event is part of
+                # the worker contract: surface the failure for retry instead
+                # of silently claiming a complete observation.
+                raise
         current = self._repository.get(user_id=user_id, intervention_id=intervention_id) or row
         return InterventionOutcomeResult(
             intervention=current, evaluation=result.evaluation,

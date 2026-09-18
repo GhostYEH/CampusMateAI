@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from ..database.sqlite_db import Database
@@ -397,9 +397,10 @@ class AdaptiveInterventionRepository:
                    JOIN intervention_evaluations e ON e.evaluation_id=i.evaluation_id
                    LEFT JOIN adaptive_replan_decisions d ON d.evaluation_id=e.evaluation_id
                    WHERE e.observation_status='COMPLETE'
-                     AND (d.decision_id IS NULL OR d.status IN ('PENDING','APPLYING'))
+                     AND (d.decision_id IS NULL OR d.status IN ('PENDING','APPLYING') OR
+                          (d.status='FAILED' AND d.failure_class='RETRYABLE' AND d.next_retry_at<=?))
                    ORDER BY e.as_of, i.intervention_id LIMIT ?""",
-                (max(1, min(limit, 100)),),
+                (as_of, max(1, min(limit, 100))),
             ).fetchall()
         out = []
         for row in rows:
@@ -418,6 +419,29 @@ class AdaptiveInterventionRepository:
             )
             if cursor.rowcount != 1:
                 return None
+        with self._db.query() as conn:
+            row = conn.execute("SELECT * FROM adaptive_replan_decisions WHERE decision_id=? AND user_id=?", (decision_id, user_id)).fetchone()
+        return AdaptiveReplanDecisionRow.from_row(row) if row else None
+
+    def mark_decision_failure(self, *, user_id: str, decision_id: str,
+                              failure_code: str, retryable: bool,
+                              max_retries: int = 3,
+                              now: datetime | None = None) -> AdaptiveReplanDecisionRow | None:
+        now = now or datetime.now(timezone.utc)
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT retry_count FROM adaptive_replan_decisions WHERE decision_id=? AND user_id=?",
+                (decision_id, user_id),
+            ).fetchone()
+            if row is None:
+                return None
+            count = int(row["retry_count"] or 0) + 1
+            can_retry = retryable and count <= max_retries
+            next_retry = (now + timedelta(seconds=min(3600, 60 * (2 ** (count - 1))))).isoformat() if can_retry else None
+            conn.execute(
+                "UPDATE adaptive_replan_decisions SET status='FAILED', failure_code=?, failure_class=?, retry_count=?, next_retry_at=? WHERE decision_id=? AND user_id=?",
+                (failure_code, "RETRYABLE" if can_retry else "PERMANENT", count, next_retry, decision_id, user_id),
+            )
         with self._db.query() as conn:
             row = conn.execute("SELECT * FROM adaptive_replan_decisions WHERE decision_id=? AND user_id=?", (decision_id, user_id)).fetchone()
         return AdaptiveReplanDecisionRow.from_row(row) if row else None
