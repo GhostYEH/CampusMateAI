@@ -4,9 +4,13 @@
 
 - `GET /api/v1/adaptive-interventions` 分页列出自己的干预记录
 - `GET /api/v1/adaptive-interventions/{intervention_id}` 查看单条
+- `GET /api/v1/adaptive-interventions/{intervention_id}/outcome` 查看结果评估
 
 不返回内部 `user_id`、原始 JSON 字符串或任何证据正文；跨用户访问与不存在同样返回 404，
-与仓库其它资源隔离语义一致。本轮不提供写入、人工篡改策略或管理员覆盖接口。
+与仓库其它资源隔离语义一致。不提供写入、人工篡改策略或管理员覆盖接口。
+
+`/outcome` 与既有的 `GET /learning-plans/{plan_id}/evaluation` 一样是"读触发观测"：
+评估本身按观测输入摘要幂等（同一份观测只落一行），重复请求不会产生重复记录。
 """
 from __future__ import annotations
 
@@ -17,7 +21,11 @@ from fastapi import APIRouter, Depends, Query
 from ...core.exceptions import NotFoundError
 from ...models.adaptive_intervention import AdaptiveInterventionRow
 from ...models.multi_role import UserRow
-from ...schemas.adaptive_intervention import AdaptiveInterventionOut, AdaptiveInterventionPage
+from ...schemas.adaptive_intervention import (
+    AdaptiveInterventionOut,
+    AdaptiveInterventionOutcomeOut,
+    AdaptiveInterventionPage,
+)
 from ...services.container import ServiceContainer, get_container
 from ..deps import student_only
 
@@ -54,6 +62,9 @@ def _out(row: AdaptiveInterventionRow) -> AdaptiveInterventionOut:
         problem_types=[str(code) for code in (assessment.get("problem_types") or [])],
         data_quality=assessment.get("data_quality"),
         warning_codes=[str(code) for code in _loads(row.warning_codes_json, [])],
+        observation_started_at=row.observation_started_at,
+        evaluated_at=row.evaluated_at,
+        outcome_verdict=row.outcome_verdict,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -87,6 +98,44 @@ def get_adaptive_intervention(
         # 非本人访问与不存在返回同样的 404，不泄露记录是否存在。
         raise NotFoundError()
     return _out(row)
+
+
+@router.get("/{intervention_id}/outcome", response_model=AdaptiveInterventionOutcomeOut)
+def get_adaptive_intervention_outcome(
+    intervention_id: str,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+) -> AdaptiveInterventionOutcomeOut:
+    result = container.adaptive_intervention_service.observe_and_evaluate(
+        user_id=user.id, intervention_id=intervention_id
+    )
+    if result is None:
+        raise NotFoundError()
+    stored = container.adaptive_intervention_repository.get_evaluation(
+        user_id=user.id, intervention_id=intervention_id
+    )
+    summary = result.evaluation.safe_summary()
+    return AdaptiveInterventionOutcomeOut(
+        evaluation_id=result.evaluation.evaluation_id,
+        intervention_id=summary["intervention_id"],
+        goal_id=summary["goal_id"],
+        plan_id=summary["plan_id"],
+        as_of=summary["as_of"],
+        window_start=result.evaluation.window_start,
+        window_end=result.evaluation.window_end,
+        observation_status=summary["observation_status"],
+        execution_signal=summary["execution_signal"],
+        plan_fidelity=summary["plan_fidelity"],
+        verdict=summary["verdict"],
+        outcome_checks=summary["outcome_checks"],
+        execution_signals=summary["execution_signals"],
+        confidence=summary["confidence"],
+        data_quality=summary["data_quality"],
+        warning_codes=summary["warning_codes"],
+        evaluator_version=summary["evaluator_version"],
+        # 未落库的结论（无计划 / 还没开始执行）如实返回空，不伪造落库时间。
+        created_at=stored.created_at if stored is not None else "",
+    )
 
 
 __all__ = ["router"]

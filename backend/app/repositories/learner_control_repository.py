@@ -559,6 +559,8 @@ class LearnerControlRepository:
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
             # 干预记录是"计划 + 生成决策时的状态引用"的派生记录：计划被删除后
             # 继续保留会留下指向已删计划的 plan_id 与已删状态 run 的悬空引用。
+            # 结果评估同样指向已删的干预记录，一并删除（不依赖 FK 级联开关）。
+            conn.execute("DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
         elif scope == "MODEL_SHADOW_ONLY":
             conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
@@ -593,6 +595,7 @@ class LearnerControlRepository:
                 conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
             conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))

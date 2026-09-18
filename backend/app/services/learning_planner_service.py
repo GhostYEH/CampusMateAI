@@ -685,11 +685,21 @@ class LearningPlannerService:
             action.item_id == item.item_id and action.status == "SUCCEEDED" for action in action_rows
         ))
         completed_tasks = 0
+        # 目标待办的完成状态必须进 input_digest：它直接决定 completed_plan_task_count，
+        # 只把 action 自身状态放进摘要会让"学生完成了计划任务"命中上一次的缓存指标，
+        # 于是完成数永远停在 0（只有重新执行计划才会刷新）。
+        target_task_states: list[tuple[str, str | None, str | None]] = []
         for action in action_rows:
-            if action.target_task_id:
-                task = self.task_repository.get_task(action.target_task_id, user_id=user_id)
-                if task and task.source == "learning_plan" and task.status == "completed":
-                    completed_tasks += 1
+            if not action.target_task_id:
+                continue
+            task = self.task_repository.get_task(action.target_task_id, user_id=user_id)
+            target_task_states.append((
+                action.target_task_id,
+                getattr(task, "status", None),
+                getattr(task, "completed_at", None),
+            ))
+            if task and task.source == "learning_plan" and task.status == "completed":
+                completed_tasks += 1
         evidence_count = sum(len(item.evidence) for item in plan.items)
         evidence_coverage = round(min(1.0, evidence_count / planned), 6) if planned else 0.0
         warnings = list(plan.run.warning_codes)
@@ -702,6 +712,7 @@ class LearningPlannerService:
         }
         input_digest = _digest({"plan_id": plan_id, "items": [(x.item_id, x.execution_status) for x in plan.items],
                                 "actions": [(x.action_id, x.status, x.target_task_id) for x in action_rows],
+                                "target_tasks": sorted(target_task_states),
                                 "warnings": sorted(set(warnings))})
         version = "learning-plan-observational-v1"
         existing = self.repository.get_latest_evaluation(plan_id=plan_id, user_id=user_id,

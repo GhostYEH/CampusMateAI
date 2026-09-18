@@ -171,6 +171,27 @@ def select_for(assessment, *, goal=None, available_minutes: int = 60):
     return StrategyPolicy().select(assessment=assessment, goal=goal, available_minutes=available_minutes)
 
 
+class StubStateService:
+    """按场景返回固定的三域投影，替代真实投影的"取数"部分。
+
+    规划器仍然读真实状态，所以场景之间的计划差异只可能来自策略上下文。
+    """
+
+    def __init__(self, letter: str) -> None:
+        self._core, self._academic, self._world, _goal = {
+            "a": scenario_a, "b": scenario_b, "c": scenario_c,
+        }[letter]()
+
+    def project_user(self, user_id, *, as_of=None, trigger=None):
+        return self._core
+
+    def project_academic(self, user_id, *, as_of=None, trigger=None):
+        return self._academic
+
+    def project_world(self, user_id, *, as_of=None, trigger=None):
+        return self._world
+
+
 def sample_assessment(letter: str = "a"):
     return analyze_scenario(letter)
 
@@ -188,7 +209,7 @@ def sample_strategy(letter: str = "a", *, available_minutes: int = 60):
 
 
 __all__ = [
-    "AS_OF", "USER_SCOPE_ID", "ProjectionStub", "GoalStub", "snapshot",
+    "AS_OF", "USER_SCOPE_ID", "ProjectionStub", "GoalStub", "snapshot", "StubStateService",
     "scenario_a", "scenario_b", "scenario_c", "analyze_scenario", "select_for",
     "sample_assessment", "sample_strategy",
 ]

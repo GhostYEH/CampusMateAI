@@ -10,31 +10,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from adaptive_intervention_helpers import scenario_a, scenario_b, scenario_c
+from adaptive_intervention_helpers import StubStateService, scenario_a, scenario_b, scenario_c
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.services.adaptive_agent.intervention_service import AdaptiveInterventionService
 from app.services.adaptive_agent.state_analyzer import StudentStateAnalyzer
 from app.services.adaptive_agent.strategy_policy import StrategyPolicy
 from app.services.container import reset_container_for_tests
-
-
-class _StubStateService:
-    """按场景返回固定的三域投影，替代真实投影的"取数"部分。"""
-
-    def __init__(self, letter: str) -> None:
-        self._core, self._academic, self._world, _goal = {
-            "a": scenario_a, "b": scenario_b, "c": scenario_c,
-        }[letter]()
-
-    def project_user(self, user_id, *, as_of=None, trigger=None):
-        return self._core
-
-    def project_academic(self, user_id, *, as_of=None, trigger=None):
-        return self._academic
-
-    def project_world(self, user_id, *, as_of=None, trigger=None):
-        return self._world
 
 
 def _setup():
@@ -68,7 +50,7 @@ def _run(container, student, goal, letter: str, *, key: str | None = None):
         analyzer=StudentStateAnalyzer(),
         policy=StrategyPolicy(),
         planner=container.learning_planner_service,
-        state_service=_StubStateService(letter),
+        state_service=StubStateService(letter),
         student_goal_repository=container.student_goal_repository,
     )
     return service.plan_for_goal(
@@ -178,3 +160,58 @@ def test_replaying_the_same_run_reuses_the_frozen_decision() -> None:
     assert replay.strategy.strategy_code == first.strategy.strategy_code
     assert replay.plan.plan_id == first.plan.plan_id
     assert container.adaptive_intervention_repository.count_for_user(user_id=student.id) == 1
+
+
+def test_each_scenario_declaration_reconciles_against_its_real_plan() -> None:
+    """策略声明的 `expected_outcomes` 必须能在真实生成的计划上对账，不能是空话。
+
+    这是"策略 → 计划"落地性的验收：如果规划器没按策略参数收紧条目数或单项时长，
+    对账会判成 NOT_REALIZED，整条策略就只是写在记录里的漂亮话。
+    """
+    container, student, goal = _setup()
+    for letter in ("a", "b", "c"):
+        outcome = _run(container, student, goal, letter)
+        result = container.adaptive_intervention_service.observe_and_evaluate(
+            user_id=student.id, intervention_id=outcome.intervention.intervention_id
+        )
+        assert result is not None
+        evaluation = result.evaluation
+        assert [check.code for check in evaluation.outcome_checks] == list(
+            outcome.strategy.expected_outcomes
+        )
+        assert evaluation.plan_fidelity == "MATCHED", (
+            letter, [(c.code, c.verdict, c.reason_code) for c in evaluation.outcome_checks]
+        )
+        # 计划刚生成、还没有执行记录：能对账但不能下"有效"的结论。
+        assert evaluation.execution_signal == "NOT_STARTED"
+        assert evaluation.verdict == "NOT_OBSERVED"
+        assert result.persisted is False
+        for check in evaluation.outcome_checks:
+            assert check.evidence_refs, (letter, check.code)
+
+
+def test_plan_shape_difference_between_scenarios_is_visible_in_the_evaluation() -> None:
+    """A（减负）与 B（加难）的对账结论必须反映真实的计划差异，而不是同一份模板。"""
+    container, student, goal = _setup()
+    a = _run(container, student, goal, "a")
+    b = _run(container, student, goal, "b")
+    evaluations = {}
+    for letter, outcome in (("a", a), ("b", b)):
+        result = container.adaptive_intervention_service.observe_and_evaluate(
+            user_id=student.id, intervention_id=outcome.intervention.intervention_id
+        )
+        assert result is not None
+        evaluations[letter] = result.evaluation
+
+    a_signals = evaluations["a"].execution_signals
+    b_signals = evaluations["b"].execution_signals
+    assert a_signals["planned_item_count"] < b_signals["planned_item_count"]
+    assert a_signals["allocated_minutes"] < b_signals["allocated_minutes"]
+    assert a_signals["available_minutes"] == b_signals["available_minutes"] == 120
+
+    a_reasons = {c.code: c.reason_code for c in evaluations["a"].outcome_checks}
+    b_reasons = {c.code: c.reason_code for c in evaluations["b"].outcome_checks}
+    assert a_reasons["TOTAL_WORKLOAD_REDUCED"] == "allocated_below_available"
+    assert b_reasons["CHALLENGE_INCREASED"] == "challenge_parameters_elevated"
+    # 两者的期望结果集合不同：减负与加难不可能对账出同一组结论。
+    assert set(a_reasons) != set(b_reasons)

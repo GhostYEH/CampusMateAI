@@ -1345,9 +1345,8 @@ CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
 CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
 """
 
-# 状态驱动干预记录。状态枚举只包含本轮真实会写入的生命周期;
-# OBSERVING / EVALUATED / SUPERSEDED 属于第二阶段(结果反馈与评估),
-# 这里刻意不放进 CHECK,避免出现"写进去但没人推进"的伪状态。
+# 状态驱动干预记录。状态枚举覆盖完整生命周期；SUPERSEDED 由重规划切片写入，
+# 本轮只有表约束预留，写入白名单（models/adaptive_intervention.py）会拒绝它。
 ADAPTIVE_INTERVENTION_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS adaptive_interventions (
     intervention_id TEXT PRIMARY KEY,
@@ -1356,7 +1355,7 @@ CREATE TABLE IF NOT EXISTS adaptive_interventions (
     plan_id TEXT,
     agent_job_id TEXT,
     agent_run_id TEXT,
-    status TEXT NOT NULL CHECK(status IN ('PROPOSED','PLAN_GENERATED','ACCEPTED','EXECUTING','CANCELLED')),
+    status TEXT NOT NULL CHECK(status IN ('PROPOSED','PLAN_GENERATED','ACCEPTED','EXECUTING','CANCELLED','OBSERVING','EVALUATED','SUPERSEDED')),
     strategy_code TEXT NOT NULL,
     strategy_version TEXT NOT NULL,
     assessment_id TEXT NOT NULL,
@@ -1371,6 +1370,10 @@ CREATE TABLE IF NOT EXISTS adaptive_interventions (
     confidence REAL NOT NULL DEFAULT 0 CHECK(confidence >= 0 AND confidence <= 1),
     warning_codes_json TEXT NOT NULL DEFAULT '[]',
     idempotency_key TEXT NOT NULL,
+    observation_started_at TEXT,
+    evaluated_at TEXT,
+    outcome_verdict TEXT,
+    evaluation_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1380,6 +1383,35 @@ CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_user_created
     ON adaptive_interventions(user_id, created_at DESC, intervention_id DESC);
 CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_plan
     ON adaptive_interventions(user_id, plan_id);
+"""
+
+# 结果评估。UNIQUE(intervention_id, evaluator_version, input_digest) 让"同一份观测
+# 只评估一次"成为数据库约束而不是调用方约定：输入变了才写新的一行。
+INTERVENTION_EVALUATION_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS intervention_evaluations (
+    evaluation_id TEXT PRIMARY KEY,
+    intervention_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    goal_id TEXT NOT NULL,
+    plan_id TEXT,
+    evaluator_version TEXT NOT NULL,
+    input_digest TEXT NOT NULL,
+    observation_status TEXT NOT NULL CHECK(observation_status IN ('NOT_STARTED','IN_PROGRESS','COMPLETE')),
+    execution_signal TEXT NOT NULL CHECK(execution_signal IN ('NOT_STARTED','IN_PROGRESS','COMPLETED','UNAVAILABLE')),
+    plan_fidelity TEXT NOT NULL CHECK(plan_fidelity IN ('MATCHED','MISMATCHED','UNVERIFIABLE')),
+    verdict TEXT NOT NULL CHECK(verdict IN ('NOT_OBSERVED','EFFECTIVE','PARTIALLY_EFFECTIVE','INEFFECTIVE','INCONCLUSIVE')),
+    evaluation_json TEXT NOT NULL DEFAULT '{}',
+    warning_codes_json TEXT NOT NULL DEFAULT '[]',
+    as_of TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(intervention_id) REFERENCES adaptive_interventions(intervention_id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(intervention_id, evaluator_version, input_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_intervention_evaluations_intervention
+    ON intervention_evaluations(intervention_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_intervention_evaluations_user
+    ON intervention_evaluations(user_id, created_at DESC);
 """
 
 MODEL_SHADOW_SCHEMA_SQL = """
@@ -1872,6 +1904,68 @@ class Database:
         if columns and "goal_id" not in columns:
             conn.execute("ALTER TABLE learning_plan_runs ADD COLUMN goal_id TEXT")
 
+    def _migrate_adaptive_intervention_statuses(self, conn: sqlite3.Connection) -> None:
+        """把旧库的干预表重建为放宽了 status CHECK 的新结构。
+
+        SQLite 不能修改 CHECK 约束，只能重建表。旧库的 CHECK 只允许 5 个状态，
+        第二阶段新增 OBSERVING / EVALUATED 后，旧库必须重建才能写入这两个状态。
+
+        顺序刻意与 `notice_workflow_repository` 的既有做法一致：先用
+        `CREATE TABLE ... AS SELECT` 把数据挪到暂存表（不复制索引），再 `DROP` 原表
+        （索引随之删除），然后执行 schema SQL 建新表与新索引，最后按列交集回填。
+        先 DROP 原表是必要的：否则旧索引名会占位，`CREATE INDEX IF NOT EXISTS` 变成空操作，
+        重建后的表就没有索引了。
+
+        检测方式读 `sqlite_master.sql`：比 PRAGMA 更能反映 CHECK 约束的真实内容。
+
+        中断恢复：重建分三步落盘（拷贝 → 删原表 → 建新表 → 回填）。若进程在
+        "删了原表、还没回填"之间退出，暂存表就是唯一的数据副本；下次启动时
+        主表已经是新约束，重建分支不会执行，所以必须显式回填而不是把暂存表当垃圾删掉。
+        """
+        stash = "adaptive_interventions__legacy_status"
+        has_stash = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (stash,)
+        ).fetchone() is not None
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='adaptive_interventions'"
+        ).fetchone()
+        needs_rebuild = row is not None and "'OBSERVING'" not in (row["sql"] or "")
+
+        if not needs_rebuild:
+            if has_stash:
+                # 上次重建中断在新表已建好、数据尚未回填的位置。
+                self._restore_adaptive_interventions(conn, stash)
+            return
+
+        # 走到这里说明主表还是旧约束。若暂存表已存在，说明上次中断在 DROP 之前，
+        # 主表仍是完整副本，直接重做一次拷贝即可，不能拿旧暂存表当数据源。
+        conn.execute(f"DROP TABLE IF EXISTS {stash}")
+        conn.execute(f"CREATE TABLE {stash} AS SELECT * FROM adaptive_interventions")
+        conn.execute("DROP TABLE adaptive_interventions")
+        # 新表由紧随其后的 ADAPTIVE_INTERVENTION_SCHEMA_SQL 建立（含新列与新索引）。
+        conn.executescript(ADAPTIVE_INTERVENTION_SCHEMA_SQL)
+        self._restore_adaptive_interventions(conn, stash)
+
+    @staticmethod
+    def _restore_adaptive_interventions(conn: sqlite3.Connection, stash: str) -> None:
+        """按列交集把暂存表的数据回填进新表，然后删除暂存表。
+
+        只回填两边都有的列：新增列取 DDL 默认值，不靠旧行伪造取值。
+        `INSERT OR IGNORE` 让"中断后重跑"不会因为主键冲突而失败。
+        """
+        legacy_columns = {item["name"] for item in conn.execute(f"PRAGMA table_info({stash})")}
+        current_columns = {
+            item["name"] for item in conn.execute("PRAGMA table_info(adaptive_interventions)")
+        }
+        shared = sorted(legacy_columns & current_columns)
+        if shared:
+            columns = ", ".join(shared)
+            conn.execute(
+                f"INSERT OR IGNORE INTO adaptive_interventions ({columns}) "
+                f"SELECT {columns} FROM {stash}"
+            )
+        conn.execute(f"DROP TABLE {stash}")
+
     def _init_schema(self) -> None:
         with self._lock:
             conn = self._connect()
@@ -1898,6 +1992,10 @@ class Database:
                 self._prepare_legacy_learning_plan_runs(conn)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
                 conn.executescript(ADAPTIVE_INTERVENTION_SCHEMA_SQL)
+                # 必须在建子表之前完成：重建会替换 adaptive_interventions，
+                # 若此时已有外键指向它，重建后会留下悬空引用。
+                self._migrate_adaptive_intervention_statuses(conn)
+                conn.executescript(INTERVENTION_EVALUATION_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)

@@ -107,6 +107,7 @@ from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.adaptive_agent.intervention_service import AdaptiveInterventionService
+from ..services.adaptive_agent.outcome_evaluator import InterventionOutcomeEvaluator
 from ..services.adaptive_agent.state_analyzer import StudentStateAnalyzer
 from ..services.adaptive_agent.strategy_policy import StrategyPolicy
 from ..repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
@@ -389,6 +390,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         planner=learning_planner_service,
         state_service=learner_state_service,
         student_goal_repository=student_goal_repo,
+        outcome_evaluator=InterventionOutcomeEvaluator(),
     )
     agent_handler_registry.register(
         LearningGoalHandler(

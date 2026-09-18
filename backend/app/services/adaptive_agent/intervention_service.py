@@ -9,9 +9,17 @@
       -> LearningPlannerService      (按策略生成差异化计划)
       -> plan_id 回写干预记录
 
-幂等性：以 `idempotency_key`（Agent Runtime 里按 Run 维度生成）为唯一键。
+结果反馈与评估（第二阶段）：
+
+    Adaptive Intervention Record + 计划观测(条目状态 + 计划级执行指标)
+      -> InterventionOutcomeEvaluator(期望结果对账 + 执行信号 -> 可解释结论)
+      -> intervention_evaluations    (同一份观测只落一行，按 input_digest 幂等)
+      -> 干预记录推进 OBSERVING / EVALUATED
+
+幂等性：计划生成以 `idempotency_key`（Agent Runtime 里按 Run 维度生成）为唯一键。
 重放时复用既有干预记录与其中已固化的策略，不会产生第二条记录或第二个计划；
 计划生成失败时把记录置为 CANCELLED，状态明确且不留无归属计划。
+评估以 `input_digest`（观测输入摘要）为唯一键，同一份观测重复请求不会重复落库。
 """
 from __future__ import annotations
 
@@ -24,10 +32,12 @@ from typing import Any, Callable
 from ...models.adaptive_intervention import AdaptiveInterventionRow
 from ...repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
 from ...schemas.adaptive_intervention import (
+    InterventionEvaluation,
     PlanningStrategyContext,
     StrategyDecision,
     StudentStateAssessment,
 )
+from .outcome_evaluator import InterventionOutcomeEvaluator, PlanObservation
 from .state_analyzer import StudentStateAnalyzer
 from .strategy_policy import StrategyPolicy
 
@@ -39,6 +49,13 @@ FORECAST_TYPES = (
     "ROUTINE_CONTINUITY",
 )
 
+# 观测窗口未结束但已经能下结论时的状态：正在收集结果信号。
+OBSERVING_STATUS = "OBSERVING"
+# 观测完整（执行完成或窗口已结束）时的状态。
+EVALUATED_STATUS = "EVALUATED"
+# 这两类结论不落库、不推进状态：没有可评估的对象，或还没有开始执行。
+_NON_PERSISTED_VERDICTS = frozenset({"INCONCLUSIVE", "NOT_OBSERVED"})
+
 
 @dataclass(frozen=True)
 class InterventionPlanResult:
@@ -49,6 +66,21 @@ class InterventionPlanResult:
     assessment: StudentStateAssessment
     strategy: StrategyDecision
     reused_intervention: bool
+
+
+@dataclass(frozen=True)
+class InterventionOutcomeResult:
+    """一次结果评估请求的返回。
+
+    `evaluation` 总有值（干预记录不存在时整个返回为 None）：即使没有落库，
+    调用方也能拿到"当前这份观测算出来的结论"。`persisted` 说明这份结论有没有
+    真的写进 `intervention_evaluations` 并推进了干预状态。
+    """
+
+    intervention: AdaptiveInterventionRow
+    evaluation: InterventionEvaluation
+    persisted: bool
+    reused_evaluation: bool
 
 
 def _digest(value: Any) -> str:
@@ -67,6 +99,7 @@ class AdaptiveInterventionService:
         state_service: Any,
         forecast_service: Any = None,
         student_goal_repository: Any = None,
+        outcome_evaluator: InterventionOutcomeEvaluator | None = None,
     ) -> None:
         self._repository = repository
         self._analyzer = analyzer
@@ -75,6 +108,8 @@ class AdaptiveInterventionService:
         self._state_service = state_service
         self._forecast_service = forecast_service
         self._student_goal_repository = student_goal_repository
+        # 评估器是无状态纯函数对象，缺省自带一个实例，避免调用方必须知道它存在。
+        self._outcome_evaluator = outcome_evaluator or InterventionOutcomeEvaluator()
 
     # ------------------------------------------------------------------ 公开
 
@@ -174,6 +209,77 @@ class AdaptiveInterventionService:
     def load_intervention(self, *, user_id: str, intervention_id: str) -> AdaptiveInterventionRow | None:
         return self._repository.get(user_id=user_id, intervention_id=intervention_id)
 
+    def observe_and_evaluate(
+        self,
+        *,
+        user_id: str,
+        intervention_id: str,
+        as_of: datetime | None = None,
+        plan_metrics: dict[str, Any] | None = None,
+    ) -> InterventionOutcomeResult | None:
+        """对一条干预记录做结果评估，并把状态推进到 OBSERVING / EVALUATED。
+
+        步骤：
+
+        1. 读取干预记录与它绑定的计划（跨用户返回 None，由路由映射成 404）。
+        2. 收集**真实执行信号**：计划条目状态直接来自 `learning_plan_items`；
+           "由计划创建的个人待办是否被真的完成"复用 `LearningPlannerService.evaluate`
+           的计划级观测，不在这里重算一遍任务归属。
+        3. 交给 `InterventionOutcomeEvaluator` 做确定性对账。
+        4. 只有结论**可落库**时才写库：
+           - `INCONCLUSIVE`（拿不到计划 / 一条都判不了）不落库；
+           - `NOT_OBSERVED`（窗口未结束且零执行）不落库；
+           - 其余按观测是否完整推进到 `OBSERVING` 或 `EVALUATED`。
+
+        `plan_metrics` 只用于测试注入；正常调用留空即可。
+
+        刻意不触发任何 Agent 事件：评估是只读接口触发的观测动作，不是 Agent Runtime
+        的执行阶段。新增事件类型会牵动跨端契约，属于另一个切片。
+        """
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        row = self._repository.get(user_id=user_id, intervention_id=intervention_id)
+        if row is None:
+            return None
+
+        plan = self._load_plan(user_id=user_id, plan_id=row.plan_id) if row.plan_id else None
+        metrics = plan_metrics if plan_metrics is not None else self._plan_metrics(user_id=user_id, row=row)
+        observation = self._build_observation(plan=plan, metrics=metrics)
+        result = self._outcome_evaluator.evaluate(intervention=row, observation=observation, as_of=now)
+
+        if row.status == "CANCELLED" or result.evaluation.verdict in _NON_PERSISTED_VERDICTS:
+            # 已取消：不复活、不覆盖既有评估。结论不落库：没有可评估的对象或还没开始执行。
+            stored = self._repository.get_evaluation(user_id=user_id, intervention_id=intervention_id)
+            return InterventionOutcomeResult(
+                intervention=row, evaluation=result.evaluation,
+                persisted=False, reused_evaluation=stored is not None,
+            )
+
+        existing = self._repository.find_evaluation_by_digest(
+            user_id=user_id, intervention_id=intervention_id,
+            evaluator_version=result.evaluation.evaluator_version,
+            input_digest=result.input_digest,
+        )
+        if existing is not None:
+            # 同一份观测已经评估过：复用，不重复写库也不重复推进状态。
+            current = self._repository.get(user_id=user_id, intervention_id=intervention_id) or row
+            return InterventionOutcomeResult(
+                intervention=current, evaluation=self._restore_evaluation(existing),
+                persisted=False, reused_evaluation=True,
+            )
+
+        target = (
+            EVALUATED_STATUS if result.evaluation.observation_status == "COMPLETE" else OBSERVING_STATUS
+        )
+        self._repository.save_evaluation(
+            user_id=user_id, intervention_id=intervention_id,
+            evaluation=result.evaluation, input_digest=result.input_digest, status=target,
+        )
+        current = self._repository.get(user_id=user_id, intervention_id=intervention_id) or row
+        return InterventionOutcomeResult(
+            intervention=current, evaluation=result.evaluation,
+            persisted=True, reused_evaluation=False,
+        )
+
     # ------------------------------------------------------------------ 内部
 
     def _generate_plan(
@@ -254,6 +360,57 @@ class AdaptiveInterventionService:
         strategy = StrategyDecision.model_validate(json.loads(row.strategy_json or "{}"))
         return assessment, strategy
 
+    def _plan_metrics(self, *, user_id: str, row: AdaptiveInterventionRow) -> dict[str, Any] | None:
+        """复用计划级观测拿"计划创建的任务是否被真的完成"。
+
+        这是唯一能回答"学生是否真的做了"的既有信号：`learning_plan_items.execution_status`
+        只反映待办有没有被建出来。观测失败时返回 None，让评估器把结论降级为"判不了"，
+        而不是把"没拿到数据"当成"没有执行"。
+        """
+        if not row.plan_id:
+            return None
+        evaluate = getattr(self._planner, "evaluate", None)
+        if evaluate is None:
+            return None
+        try:
+            metrics = evaluate(user_id=user_id, plan_id=row.plan_id)
+        except Exception:  # noqa: BLE001 - 计划级观测是增强项，缺失不能让结果接口 500
+            return None
+        return metrics if isinstance(metrics, dict) else None
+
+    @staticmethod
+    def _build_observation(*, plan: Any, metrics: dict[str, Any] | None) -> PlanObservation | None:
+        """把计划行转成评估器需要的观测输入；计划不存在时返回 None。"""
+        if plan is None:
+            return None
+        run = plan.run
+        items = tuple(
+            {
+                "item_id": item.item_id,
+                "item_type": item.item_type,
+                "estimated_minutes": int(item.estimated_minutes or 0),
+                "execution_status": item.execution_status,
+                "explanation_codes": tuple(item.explanation_codes or ()),
+            }
+            for item in (plan.items or [])
+        )
+        return PlanObservation(
+            plan_id=plan.plan_id,
+            run_id=run.run_id,
+            allocated_minutes=int(run.allocated_minutes or 0),
+            available_minutes=int(run.available_minutes or 0),
+            # 观测窗口 = 计划的有效期：计划失效后就不该再拿它解释干预效果。
+            window_start=run.as_of,
+            window_end=run.valid_until,
+            core_quality=str(getattr(run, "core_quality", "") or ""),
+            items=items,
+            metrics=metrics,
+        )
+
+    @staticmethod
+    def _restore_evaluation(row: InterventionEvaluationRow) -> InterventionEvaluation:
+        return InterventionEvaluation.model_validate(json.loads(row.evaluation_json or "{}"))
+
     def _load_plan(self, *, user_id: str, plan_id: str) -> Any:
         repository = getattr(self._planner, "repository", None)
         if repository is None:
@@ -310,4 +467,9 @@ class AdaptiveInterventionService:
         on_stage(stage, payload)
 
 
-__all__ = ["AdaptiveInterventionService", "InterventionPlanResult", "FORECAST_TYPES"]
+__all__ = [
+    "AdaptiveInterventionService",
+    "InterventionPlanResult",
+    "InterventionOutcomeResult",
+    "FORECAST_TYPES",
+]
