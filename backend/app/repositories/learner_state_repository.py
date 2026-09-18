@@ -59,7 +59,8 @@ class LearnerStateRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    def collect_inputs(self, *, user_id: str, limit: int = 5000) -> dict[str, Any]:
+    def collect_inputs(self, *, user_id: str, limit: int = 5000,
+                       exclude_evaluation_id: str | None = None) -> dict[str, Any]:
         if limit < 1 or limit > 10000:
             raise ValueError("limit must stay within 1..10000")
 
@@ -70,9 +71,19 @@ class LearnerStateRepository:
         with self._db.query() as conn:
             events, events_truncated = bounded(conn,
                 """SELECT event_id,user_id,occurred_at,source,event_type,course_id,
-                          subject_type,subject_id,outcome,data_quality
+                          subject_type,subject_id,outcome,data_quality,payload_json
                    FROM learner_events WHERE user_id=?
                    ORDER BY occurred_at DESC,event_id DESC LIMIT ?""", (user_id,))
+            if exclude_evaluation_id:
+                filtered = []
+                for event in events:
+                    try:
+                        payload = json.loads(event.get("payload_json") or "{}")
+                    except (TypeError, ValueError):
+                        payload = {}
+                    if payload.get("evaluation_id") != exclude_evaluation_id:
+                        filtered.append(event)
+                events = filtered
             sessions, sessions_truncated = bounded(conn,
                 """SELECT id,user_id,started_at,ended_at,duration_seconds,status
                    FROM study_sessions WHERE user_id=? ORDER BY started_at DESC,id DESC LIMIT ?""", (user_id,))
@@ -410,6 +421,20 @@ class LearnerStateRepository:
                 params + [page_size, offset],
             ).fetchall()
         return [_snapshot(row) for row in rows], total
+
+    def list_snapshots_for_run(self, *, user_id: str, run_id: str,
+                               projection_kind: str = "CORE") -> list[StateSnapshotRow]:
+        """Read an immutable historical run, not only the current projection."""
+        with self._db.query() as conn:
+            rows = conn.execute(
+                """SELECT s.*, r.projection_kind, r.projection_scope
+                   FROM learner_state_snapshots s
+                   JOIN learner_state_projection_runs r ON r.run_id=s.run_id
+                   WHERE s.run_id=? AND r.user_id=? AND r.projection_kind=?
+                   ORDER BY s.state_type, s.snapshot_id""",
+                (run_id, user_id, projection_kind),
+            ).fetchall()
+        return [_snapshot(row) for row in rows]
 
     def get_snapshot(
         self, *, user_id: str, snapshot_id: str,

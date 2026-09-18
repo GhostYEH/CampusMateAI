@@ -143,15 +143,19 @@ function ErrorBar({ error, onRetry }) {
 
 function InterventionLoopSummary({ intervention, outcome }) {
   if (!intervention) return null;
-  const decision = outcome?.observed_outcome === "INSUFFICIENT_EVIDENCE" ? "等待更多证据" : "继续观察";
+  const outcomeLabel = { IMPROVED: "观测到改善", STABLE: "状态基本稳定", DECLINED: "观测到下降", INSUFFICIENT_EVIDENCE: "证据不足" };
+  const decisionLabel = { CONTINUE: "继续当前计划", WAIT_FOR_EVIDENCE: "等待更多证据", REPLAN: "已决定调整计划", SUSPEND: "暂停后续规划" };
+  const decision = outcome?.decision ? decisionLabel[outcome.decision] || outcome.decision : "尚无持久化决策";
   return <section className="ls-section" aria-label="当前干预闭环">
     <div className="ls-section__heading"><h2>当前干预闭环</h2><span className="ls-section__hint">基于可追溯证据，不作因果断言</span></div>
     <article className="ls-state-card">
       <p><strong>当前策略：</strong>{intervention.strategy_code}</p>
       <p><strong>选择依据：</strong>{intervention.rationale_codes?.join("、") || "状态证据有限"}</p>
       <p><strong>执行采纳：</strong>{outcome?.adoption === "COMPLETED" ? "计划已完成" : outcome?.adoption || "尚未开始"}</p>
-      <p><strong>观测结果：</strong>{outcome?.observed_outcome === "IMPROVED" ? "观测到改善" : "证据不足"}</p>
+      <p><strong>观测结果：</strong>{outcomeLabel[outcome?.observed_outcome] || "证据不足"}</p>
       <p><strong>系统决定：</strong>{decision}{intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}</p>
+      {outcome?.decision_reason_codes?.length > 0 && <p><strong>决定依据：</strong>{outcome.decision_reason_codes.join("、")}</p>}
+      {outcome?.suggested_adjustments?.length > 0 && <p><strong>调整项：</strong>{outcome.suggested_adjustments.join("、")}</p>}
       {intervention.supersedes_intervention_id && <p>来源干预：{intervention.supersedes_intervention_id}</p>}
     </article>
   </section>;

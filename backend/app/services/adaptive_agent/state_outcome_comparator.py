@@ -23,12 +23,21 @@ class StateOutcomeComparator:
         dimensions = _DIMENSIONS.get(strategy_code, _DIMENSIONS["PACE_RECOVERY"])
         values = [(name, direction) for name, direction in dimensions
                   if isinstance(before.get(name), (int, float)) and isinstance(after.get(name), (int, float))]
+        # The normalizer may provide provenance-rich dimension records.  Keep the
+        # compact numeric view for the policy while returning every comparable
+        # dimension's source metadata to callers and the read-only API.
+        dimension_records: dict[str, Any] = {}
+        for name, direction in dimensions:
+            record = (before.get("_dimensions") or {}).get(name) or (after.get("_dimensions") or {}).get(name)
+            if record:
+                dimension_records[name] = record
         if not values:
             return {
                 "relevant_dimensions": [name for name, _ in dimensions], "before_values": {}, "after_values": {},
                 "delta": {}, "outcome": "INSUFFICIENT_EVIDENCE", "confidence": 0.0,
                 "evidence_refs": evidence_refs or [], "warnings": ["missing_comparable_state_evidence"],
                 "comparison_as_of": comparison_as_of,
+                "dimensions": dimension_records,
             }
         deltas = {name: round((float(after[name]) - float(before[name])) * direction, 4) for name, direction in values}
         mean = sum(deltas.values()) / len(deltas)
@@ -39,4 +48,5 @@ class StateOutcomeComparator:
             "after_values": {name: after[name] for name, _ in values},
             "delta": deltas, "outcome": outcome, "confidence": round(min(1.0, 0.4 + 0.15 * len(values)), 4),
             "evidence_refs": evidence_refs or [], "warnings": [], "comparison_as_of": comparison_as_of,
+            "dimensions": dimension_records,
         }

@@ -359,6 +359,11 @@ class InterventionOutcomeEvaluator:
         if comparison_outcome == "INSUFFICIENT_EVIDENCE":
             # Compatibility verdict intentionally stays inconclusive: adoption/fidelity are not learning outcome.
             verdict = "INCONCLUSIVE"
+        elif comparison_outcome in {"STABLE", "DECLINED"}:
+            # Adoption and plan fidelity never turn a non-improving state into
+            # EFFECTIVE.  Keep the verdict conservative while preserving the
+            # observed outcome for the replanning policy.
+            verdict = "INCONCLUSIVE"
         elif observation is None or not decidable:
             verdict = "INCONCLUSIVE"
         elif not_realized and not realized:

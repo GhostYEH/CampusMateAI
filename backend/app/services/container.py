@@ -393,6 +393,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         state_service=learner_state_service,
         student_goal_repository=student_goal_repo,
         outcome_evaluator=InterventionOutcomeEvaluator(),
+        learner_event_service=learner_event_service,
     )
     agent_handler_registry.register(
         LearningGoalHandler(
@@ -548,6 +549,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         adaptive_replanning_worker=AdaptiveReplanningWorker(
             repository=adaptive_intervention_repository,
             intervention_service=adaptive_intervention_service,
+            interval_seconds=settings.adaptive_replanning_interval_seconds,
         ),
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,

@@ -163,9 +163,41 @@ class InterventionEvaluationRow:
         )
 
 
+@dataclass(frozen=True)
+class AdaptiveReplanDecisionRow:
+    decision_id: str
+    decision_digest: str
+    user_id: str
+    goal_id: str
+    intervention_id: str
+    evaluation_id: str
+    decision: str
+    reason_codes_json: str
+    suggested_adjustments_json: str
+    confidence: float
+    evidence_refs_json: str
+    status: str
+    created_at: str
+    applied_at: str | None
+    failure_code: str | None
+
+    @classmethod
+    def from_row(cls, row: Any) -> "AdaptiveReplanDecisionRow":
+        return cls(
+            decision_id=row["decision_id"], decision_digest=row["decision_digest"],
+            user_id=row["user_id"], goal_id=row["goal_id"], intervention_id=row["intervention_id"],
+            evaluation_id=row["evaluation_id"], decision=row["decision"],
+            reason_codes_json=row["reason_codes_json"], suggested_adjustments_json=row["suggested_adjustments_json"],
+            confidence=float(row["confidence"]), evidence_refs_json=row["evidence_refs_json"],
+            status=row["status"], created_at=row["created_at"], applied_at=row["applied_at"],
+            failure_code=row["failure_code"],
+        )
+
+
 __all__ = [
     "AdaptiveInterventionRow",
     "InterventionEvaluationRow",
+    "AdaptiveReplanDecisionRow",
     "INTERVENTION_STATUSES",
     "WRITABLE_INTERVENTION_STATUSES",
     "RESERVED_INTERVENTION_STATUSES",

@@ -17,6 +17,7 @@ WritableSource = Literal[
     "ai_learning_feedback",
     "campus",
     "personal_growth",
+    "adaptive_intervention",
 ]
 WritableEventType = Literal[
     "study_session_finished",
@@ -47,6 +48,10 @@ WritableEventType = Literal[
     "preference_updated",
     "data_source_paused",
     "data_source_resumed",
+    "intervention_observed",
+    "intervention_feedback_received",
+    "intervention_decided",
+    "intervention_replanned",
 ]
 EventOutcome = Literal[
     "completed",
@@ -98,6 +103,10 @@ SOURCE_EVENT_TYPES: dict[str, set[str]] = {
         "personal_goal_updated",
         "goal_progress_reported",
     },
+    "adaptive_intervention": {
+        "intervention_observed", "intervention_feedback_received",
+        "intervention_decided", "intervention_replanned",
+    },
 }
 
 EVENT_OUTCOMES: dict[str, str] = {
@@ -129,6 +138,10 @@ EVENT_OUTCOMES: dict[str, str] = {
     "preference_updated": "updated",
     "data_source_paused": "paused",
     "data_source_resumed": "resumed",
+    "intervention_observed": "observed_completed",
+    "intervention_feedback_received": "reported",
+    "intervention_decided": "updated",
+    "intervention_replanned": "updated",
 }
 
 SENSITIVE_KEYS = frozenset(
