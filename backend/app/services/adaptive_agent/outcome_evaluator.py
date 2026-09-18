@@ -19,6 +19,10 @@
 
 不做的事还有：不调用 LLM、不使用随机数、不依赖字典/set 的迭代顺序。
 同一份观测输入必须产出完全相同的评估（包括 `evaluation_id`）。
+
+**这份评估是后续"自动重规划"的输入**：`verdict` / `plan_fidelity` / `execution_signal` 与
+`outcome_checks` 共同回答"上一次干预该不该继续、该换策略还是该只调参数"。本轮只负责把它算准、
+存下来、可查询；触发重规划的调度器与 `SUPERSEDED` 状态迁移属于下一个切片，不在这里实现。
 """
 from __future__ import annotations
 
