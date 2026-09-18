@@ -63,7 +63,6 @@ class PlanObservation:
     available_minutes: int
     window_start: str | None
     window_end: str | None
-    core_quality: str
     items: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     metrics: dict[str, Any] | None = None
 
@@ -441,16 +440,23 @@ class InterventionOutcomeEvaluator:
         self, *, intervention: AdaptiveInterventionRow, observation: PlanObservation | None,
         metrics_available: bool,
     ) -> str:
+        """评估输入本身的可信度。
+
+        只看**这次评估能看到什么**：策略当时的判断依据（assessment 质量）与执行观测是否完整。
+        刻意不把 `plan.run.core_quality` 算进来——那是"计划内容是在多差的状态下选出来的"，
+        属于计划本身的属性（已经体现在干预记录的 `strategy_from_degraded_state` 警告里）。
+        状态差会以"对账判不了"的形式出现在 `outcome_checks` 里，进而通过可判定比例压低
+        `confidence`；再把它计入 data_quality 就是重复计一次，而且会造出
+        "data_quality=unavailable 但 confidence=1.0"这种自相矛盾的展示。
+        """
         if observation is None:
             return "unavailable"
         candidates: list[str] = []
         assessment_quality = self._load_dict(intervention.assessment_json).get("data_quality")
         if isinstance(assessment_quality, str) and assessment_quality in _QUALITY_RANK:
             candidates.append(assessment_quality)
-        if observation.core_quality in _QUALITY_RANK:
-            candidates.append(observation.core_quality)
         if not metrics_available:
-            # 计划级观测缺失：评估输入不完整，质量上限是 partial。
+            # 执行观测不完整：评估输入缺一块，质量上限是 partial。
             candidates.append("partial")
         if not candidates:
             return "partial"

@@ -72,10 +72,10 @@ def _item(item_id: str, item_type: str, minutes: int, *, status: str = "PENDING"
 
 
 def _observation(*, items=(), metrics=None, allocated=60, available=120,
-                 window_end: str | None = WINDOW_END_FUTURE, core_quality="verified") -> PlanObservation:
+                 window_end: str | None = WINDOW_END_FUTURE) -> PlanObservation:
     return PlanObservation(
         plan_id="plan_1", run_id="lprun_1", allocated_minutes=allocated, available_minutes=available,
-        window_start=AS_OF.isoformat(), window_end=window_end, core_quality=core_quality,
+        window_start=AS_OF.isoformat(), window_end=window_end,
         items=tuple(items), metrics=metrics,
     )
 
@@ -437,15 +437,34 @@ def test_empty_plan_makes_structural_claims_unverifiable() -> None:
     assert _reasons(evaluation) == {"ITEM_COUNT_REDUCED": "plan_has_no_items"}
 
 
-def test_degraded_inputs_lower_data_quality_but_not_the_verdict_rules() -> None:
+def test_data_quality_describes_what_this_evaluation_could_see() -> None:
+    """data_quality 说的是"这次评估能看到什么"，不是"计划是在多差的状态下选出来的"。"""
     strategy = _strategy("WORKLOAD_REDUCTION", expected_outcomes=["TOTAL_WORKLOAD_REDUCED"])
-    evaluation = InterventionOutcomeEvaluator().evaluate(
-        intervention=_intervention(strategy, data_quality="stale"),
-        observation=_observation(items=[_item("i1", "TASK_FOCUS", 20)], core_quality="verified"),
+    evaluator = InterventionOutcomeEvaluator()
+    items = [_item("i1", "TASK_FOCUS", 20)]
+
+    verified = evaluator.evaluate(
+        intervention=_intervention(strategy, data_quality="verified"),
+        observation=_observation(items=items, metrics=_metrics()),
         as_of=AS_OF,
     ).evaluation
-    # 取参与评估的各来源里最差的一个：assessment 是 stale，计划侧是 verified。
-    assert evaluation.data_quality == "stale"
+    assert verified.data_quality == "verified"
+
+    stale = evaluator.evaluate(
+        intervention=_intervention(strategy, data_quality="stale"),
+        observation=_observation(items=items, metrics=_metrics()),
+        as_of=AS_OF,
+    ).evaluation
+    assert stale.data_quality == "stale"
+
+    # 执行观测缺一块：质量上限被压到 partial，即使策略当时的判断依据是 verified。
+    missing_metrics = evaluator.evaluate(
+        intervention=_intervention(strategy, data_quality="verified"),
+        observation=_observation(items=items, metrics=None),
+        as_of=AS_OF,
+    ).evaluation
+    assert missing_metrics.data_quality == "partial"
+    assert WARNING_PLAN_METRICS_UNAVAILABLE in missing_metrics.warning_codes
 
 
 def test_evaluation_id_is_deterministic_and_tracks_the_observation() -> None:

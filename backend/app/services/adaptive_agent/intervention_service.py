@@ -402,7 +402,6 @@ class AdaptiveInterventionService:
             # 观测窗口 = 计划的有效期：计划失效后就不该再拿它解释干预效果。
             window_start=run.as_of,
             window_end=run.valid_until,
-            core_quality=str(getattr(run, "core_quality", "") or ""),
             items=items,
             metrics=metrics,
         )
