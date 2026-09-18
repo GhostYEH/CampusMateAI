@@ -10,6 +10,7 @@
     "test": "node --test tests/**/*.test.mjs",
     "test:e2e:study": "python tests/e2e/run_study_e2e.py",
     "test:e2e:agent": "python tests/e2e/run_agent_golden_paths.py",
+    "test:e2e:classroom": "python tests/e2e/run_classroom_e2e.py",
     "test:e2e:learner-state": "python tests/e2e/learner-state-closed-loop.py",
     "test:all": "npm test && npm run test:e2e:study && npm run test:e2e:agent && npm run test:e2e:learner-state"
   },

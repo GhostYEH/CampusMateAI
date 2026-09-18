@@ -4,6 +4,25 @@
 
 设计方向已于 2026-09-14 批准。本书面版本纳入评审提出的六项修订，等待最终复核后再生成逐文件实施计划。
 
+实施进度：
+
+- **第一期已实现并通过测试**（后端规范化契约、Schema 收紧、display_goal 与 generation_context 分离、提示注入隔离、路由注释修正）。落地时对下述三处口径做了明确，已回写到 §4.3 与 §5.1。
+- **2a 已实现并通过测试**：计划页任务行新增「AI 拆解」入口，请求携带真实 `task_id`；
+  payload 构造抽为纯函数 `webreact/src/data/studyBreakdown.js::buildBreakdownPayload` 以便单测。
+- **移动端字段与展示补齐（Android / HarmonyOS）**：两端补上 `knowledge_document_id`
+  与 `knowledge_status`，并在步骤 UI 展示依赖与人工确认提示。详见更正后的 §6.3。
+- 2b（Web 完整字段预览与编辑）、第三期、第四期未开始。
+
+2a 落地说明：任务上下文下 `goal` 可留空（后端直接用任务标题拆解），也可补充更具体目标
+（同时发 `task_id` 与 `goal`）；自由文本入口行为不变。保存步骤时 `source_text` 只取
+`display_goal`，不再回写任务标题以外的任何上下文。
+
+第一期落地时明确的三处口径：
+
+1. **政策检索查询口径**：以 `display_goal` 为查询主体；仅当 `display_goal` 无政策意图而 `generation_context` 有时，才把截断后的上下文并入查询。
+2. **`estimated_minutes` 非法值不丢步**：不可解析时取默认值 30 并钳制到 5~120，只有 title 为空才丢弃整步。
+3. **规则降级产出同样过规范化**：模板结果也走一遍 §5.1 流程，确保满足最终不变量。
+
 ## 1. 目标
 
 把现有 AI 任务拆解从“可生成但上下文和结果各丢一半”的预览能力，升级为可追溯、可编辑、可持久化并能进入专注统计的学习执行闭环：
@@ -81,6 +100,12 @@
 
 响应的 `goal` 只返回 `display_goal`。不得再把拼接了通知原文的内部文本作为 goal 返回或保存到新待办的 `source_text`。
 
+政策检索的查询口径（避免通知原文里的无关政策词把检索带偏）：
+
+- 检索触发条件为 `display_goal` 或 `generation_context` 任一命中政策意图；
+- 查询主体固定为 `display_goal`；
+- 仅当 `display_goal` 无政策意图而 `generation_context` 有政策意图时，才把截断后的上下文（上限 300 字符）并入查询，用于捕捉"任务标题很泛、政策信息藏在说明里"的情况。
+
 ## 5. 第一期：生成契约与安全边界
 
 第一期不修改数据库。
@@ -90,12 +115,17 @@
 LLM 原始数组必须按以下顺序处理，顺序本身属于契约：
 
 1. 逐项解析并过滤非对象、缺字段、空白 title、非法 step_number 等无效项；
+   `estimated_minutes` 缺失或不可解析时取默认值 30 并钳制到 5~120，
+   **不**因此丢弃整步——只有 title 为空才丢弃；
 2. 按旧 `step_number` 升序稳定排序，相同编号保持模型数组中的原顺序；
 3. 截取前 8 个有效步骤，超量时增加受控 warning；
 4. 建立旧编号到新编号的映射；重复旧编号由第一次出现的步骤取得映射，后续同号步骤仍可保留但不能覆盖映射；
 5. 依次重编号为 1～n，并把依赖映射到新编号；
 6. 删除不存在、指向自身、指向后续步骤或重复的依赖；
 7. 执行最终不变量检查；有效步骤少于 3 个时判定整次 LLM 结果无效并进入规则降级。
+
+该流程对 **LLM 产出与规则降级产出同等适用**。规则模板结果也走一遍上述流程，
+确保模板自身违规时同样有兜底，而不是把规则路径当作天然可信。
 
 最终不变量为：
 
@@ -180,11 +210,29 @@ Web 提取一个纯转换函数，把响应转为可编辑草稿并完整保留�
 
 完成标准允许编辑。依赖第一版只显示“需先完成第 N 步”，不提供复杂图编辑。用户删除步骤后，客户端不自行猜测最终编号；提交时由服务端使用当前数组顺序重新编号并清理无效依赖。
 
-### 6.3 跨端范围声明
+### 6.3 跨端范围声明（已按实测更正）
 
-第二期只覆盖 Web 主入口。Android `ApiService` 的两个 overload 和 HarmonyOS `StudyRepository` 继续保持现有 goal-only 调用，因此这两端本期仍不能获得 PersonalTask 上下文增强。服务端收紧后的响应值域与当前实际输出一致，不主动破坏移动端，但必须运行现有 DTO/序列化测试。
+**原判断有误，特此更正。** 本节初稿称"Android 与 HarmonyOS 继续保持 goal-only 调用"，与代码不符：
 
-移动端任务级入口、完整预览和提交能力是独立后续工作，不得在第二期验收中表述为“跨端已打通”。微信小程序当前没有该调用路径，本期不新增。
+- `android/.../data/repository/FocusPlanRepository.kt:59` 的 `ensurePlan(taskId, taskTitle, goal)`
+  调用的就是 `breakdownStudyTask(TaskBreakdownRequest(task_id = taskId, goal = goal.ifBlank { taskTitle }))`，
+  由 `FocusScreen.kt:187` 在解析出当前专注任务后触发；
+- `harmony/.../repository/FocusPlanRepository.ets:85` 同样是
+  `breakdownTask({ task_id: taskId, goal: goal.trim().length > 0 ? goal : taskTitle })`，
+  `FocusPlanPage.ets` 甚至提供了"选择待办 → 生成"的任务级入口。
+
+因此**移动端的 PersonalTask 上下文增强早已可用，且 HarmonyOS 的任务级入口比 Web 更早具备**。
+真正的差距只有两点，已在本轮补齐：
+
+1. 两端 DTO 与本地模型缺少第一期新增的 `knowledge_document_id` / `knowledge_status`；
+2. 两端步骤 UI 未展示依赖（"需先完成第 N 步"），且政策步骤在没有来源时静默留空，
+   不会提示"需向辅导员确认"。
+
+HarmonyOS 的 `FocusPlanProgress.completeCurrentStep` 逐字段重建步骤对象，
+新增字段必须同步补上，否则完成一步后政策信息会丢失——这是一个容易漏掉的复制点。
+
+第三期的原子提交接口对移动端仍是独立后续工作：两端目前把规划存在本地
+（Android `KeyValueStorage`、HarmonyOS `Preferences`），尚未接入服务端计划表。
 
 ## 7. 第三期：持久化、原子提交与专注闭环
 

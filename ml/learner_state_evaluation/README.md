@@ -73,3 +73,43 @@ mixed fallback, and total fallback per capability. Missing token, device,
 memory, or cost measurements stay `null`, never zero. Use `evaluate` for an
 external prediction file and `compare` for generated reports. Never commit
 weights, caches, predictions, reports, logs, secrets, URLs, or machine paths.
+
+## Student World Model and adaptive closed-loop evaluation
+
+The repository also contains a deterministic, offline research harness. Its
+fixture is explicitly `synthetic`; replay inputs must be labelled
+`anonymized_replay`, and real-study data is not shipped here. The harness does
+not claim educational or causal effectiveness.
+
+Run the four comparable baselines from the repository root:
+
+```powershell
+$env:PYTHONPATH = "ml/learner_state_evaluation/src"
+python -m learner_state_evaluation.cli validate-dataset `
+  --dataset ml/learner_state_evaluation/datasets/adaptive_closed_loop_v1.json `
+  --output artifacts/results/adaptive-validate.json
+python -m learner_state_evaluation.cli run `
+  --dataset ml/learner_state_evaluation/datasets/adaptive_closed_loop_v1.json `
+  --modes STATIC_PLAN,PROFILE_ONLY,STATE_DRIVEN,CLOSED_LOOP `
+  --seed 20260918 --output artifacts/results/adaptive-run
+python -m learner_state_evaluation.cli compare `
+  --results artifacts/results/adaptive-run/result.json `
+  --output artifacts/results/adaptive-compare.json
+python -m learner_state_evaluation.cli summarize `
+  --result artifacts/results/adaptive-run/result.json
+```
+
+`STATIC_PLAN` uses only goal and time budget; `PROFILE_ONLY` adds the static
+profile; `STATE_DRIVEN` delegates state analysis and finite strategy selection
+to the existing backend policies without feedback replanning; `CLOSED_LOOP`
+adds the existing deterministic replan policy. All modes share the same
+scenario, as-of time, seed, versions, and input digest. Results contain state
+coverage/availability, policy safety and determinism, closed-loop recovery and
+oscillation metrics, and a reproducibility manifest. Outputs are ignored under
+`artifacts/`.
+
+The replay evaluator uses a simulated clock and returns lineage, evidence
+references, plan summaries, outcomes, decisions, and warning codes. It accepts
+no repository writer, creates no task, sends no notification, and makes no
+external model call. Participant assignment is opt-in only, stable by salted
+hash, and supports exit and deletion; safety rules apply to every group.

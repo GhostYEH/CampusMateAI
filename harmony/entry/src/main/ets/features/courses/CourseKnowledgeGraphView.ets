@@ -41,7 +41,8 @@ export class CourseKnowledgeGraphView {
     return (graph?.tags ?? []).join(' · ');
   }
 
-  static pointsToggleLabel(graph: CourseKnowledgeGraph | undefined, expanded: boolean): string {
+  // ArkTS 不允许必选参数跟在可选参数之后，所以 expanded 放前面。
+  static pointsToggleLabel(expanded: boolean, graph?: CourseKnowledgeGraph): string {
     if (expanded) return '收起知识点';
     return `查看 ${CourseKnowledgeGraphView.points(graph).length} 个知识点`;
   }

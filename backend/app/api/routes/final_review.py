@@ -316,11 +316,21 @@ async def generate_plan(
     # 创建 plan version
     version = repo.next_plan_version(campaign_id)
     risk_level = RiskLevel.CONFIRM_REQUIRED.value
+    # 审批必须绑定"具体工具 + 具体参数"：这里提前签发，稍后 activate 命令
+    # 会用同一组 (campaign_id, version, user_id) 触发该工具，指纹必须完全一致。
+    from ...services.agent_runtime.handlers.final_review import PLAN_ACTIVATE_TOOL
+    from ...services.agent_runtime.tool_gateway import build_request_hash
+
     approval_id = container.agent_approval_gate.require(
         run_id=run_id,
         user_id=user.id,
         risk_level=RiskLevel.CONFIRM_REQUIRED,
         action_summary=f"激活期末复习计划版本 {version}",
+        tool_name=PLAN_ACTIVATE_TOOL,
+        request_hash=build_request_hash(
+            PLAN_ACTIVATE_TOOL,
+            {"campaign_id": campaign_id, "version": int(version), "user_id": user.id},
+        ),
     )
     plan_row = repo.create_plan_version(
         campaign_id=campaign_id,
@@ -692,11 +702,23 @@ async def analyze_adjustments(
     if result["requires_approval"]:
         # 创建 approval 记录
         from datetime import timedelta
+        from ...services.agent_runtime.handlers.final_review import ADJUST_APPLY_TOOL
+        from ...services.agent_runtime.tool_gateway import build_request_hash
+
         approval_id = container.agent_approval_gate.require(
             run_id=run_id,
             user_id=user.id,
             risk_level=RiskLevel.CONFIRM_REQUIRED,
             action_summary=f"期末复习调整提案:{result['proposal'].get('reason', '')}",
+            tool_name=ADJUST_APPLY_TOOL,
+            request_hash=build_request_hash(
+                ADJUST_APPLY_TOOL,
+                {
+                    "proposal_id": result["proposal_id"],
+                    "approved": True,
+                    "user_id": user.id,
+                },
+            ),
         )
         # 将 approval_id 关联到 proposal(不改变 status)
         repo.attach_approval(

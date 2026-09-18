@@ -1,0 +1,9 @@
+{
+  "data_source_type": "synthetic",
+  "required_mode_keys": ["STATIC_PLAN", "PROFILE_ONLY", "STATE_DRIVEN", "CLOSED_LOOP"],
+  "required_metric_groups": ["state_model", "policy", "closed_loop"],
+  "claims": {
+    "educational_effect": false,
+    "causal_conclusion": false
+  }
+}

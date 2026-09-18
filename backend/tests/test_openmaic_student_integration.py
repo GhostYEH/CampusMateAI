@@ -1094,3 +1094,4 @@ def test_history_list_returns_only_trusted_succeeded_classrooms(tmp_path):
     urls = [item["url"] for item in body["items"]]
     assert urls == [f"{BASE}/classroom/room_ok"]
     assert body["items"][0]["mode"] == "explain"
+

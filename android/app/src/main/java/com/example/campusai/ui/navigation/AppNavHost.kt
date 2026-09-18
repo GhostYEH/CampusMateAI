@@ -294,6 +294,11 @@ fun AppNavHost(
                 initialPrompt = backStackEntry.arguments?.getString("prompt"),
                 courseId = backStackEntry.arguments?.getString("courseId"),
                 courseName = backStackEntry.arguments?.getString("courseName"),
+                agentRuntimeRepository = modules.agentRuntime,
+                onOpenCourseDeepLink = { deepLink ->
+                    val route = deepLink.removePrefix("/")
+                    if (route.startsWith("courses/")) go(route)
+                },
             )
         }
         // Historical study links now enter the one official Focus timer; no second timer exists.
@@ -313,6 +318,25 @@ fun AppNavHost(
                     go(
                         "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
                     )
+                },
+            )
+        }
+        composable(
+            route = "courses/{courseId}?tab={tab}&session={session}",
+            arguments = listOf(
+                navArgument("courseId") { type = NavType.StringType },
+                navArgument("tab") { type = NavType.StringType; defaultValue = "mentoring" },
+                navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { backStackEntry ->
+            CoursesScreen(
+                repository = repository,
+                initialCourseId = backStackEntry.arguments?.getString("courseId"),
+                initialTab = backStackEntry.arguments?.getString("tab"),
+                initialSessionId = backStackEntry.arguments?.getString("session"),
+                onOpenSchedule = { go(courseScheduleRoute()) },
+                onOpenCounselor = { courseId, courseName, initialPrompt ->
+                    go("counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}")
                 },
             )
         }

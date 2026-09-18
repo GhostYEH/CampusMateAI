@@ -153,7 +153,7 @@ export struct CourseDetailPage {
           Text(CourseKnowledgeGraphView.tagsText(this.knowledgeGraph)).fontColor(this.palette().muted).fontSize(10)
         }
         if (CourseKnowledgeGraphView.points(this.knowledgeGraph).length > 0) {
-          Text(CourseKnowledgeGraphView.pointsToggleLabel(this.knowledgeGraph, this.knowledgeExpanded))
+          Text(CourseKnowledgeGraphView.pointsToggleLabel(this.knowledgeExpanded, this.knowledgeGraph))
             .fontColor(this.palette().primary).fontSize(11).fontWeight(FontWeight.Medium)
             .onClick(() => { this.knowledgeExpanded = !this.knowledgeExpanded; })
           if (this.knowledgeExpanded) {

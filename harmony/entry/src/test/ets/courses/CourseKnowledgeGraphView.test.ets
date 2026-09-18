@@ -55,8 +55,8 @@ export default function courseKnowledgeGraphViewTest(): void {
     it('lists knowledge points and their toggle label', 0, () => {
       expect(CourseKnowledgeGraphView.points(graph).length).assertEqual(2);
       expect(CourseKnowledgeGraphView.points(graph)[0].name).assertEqual('二重积分·计算');
-      expect(CourseKnowledgeGraphView.pointsToggleLabel(graph, false)).assertEqual('查看 2 个知识点');
-      expect(CourseKnowledgeGraphView.pointsToggleLabel(graph, true)).assertEqual('收起知识点');
+      expect(CourseKnowledgeGraphView.pointsToggleLabel(false, graph)).assertEqual('查看 2 个知识点');
+      expect(CourseKnowledgeGraphView.pointsToggleLabel(true, graph)).assertEqual('收起知识点');
       expect(CourseKnowledgeGraphView.tagsText(graph)).assertEqual('考点 · 重点');
     });
   });
